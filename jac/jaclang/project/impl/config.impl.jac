@@ -101,6 +101,10 @@ impl JacConfig.discover(
     }
     (project_root, toml_path) = result;
     config = JacConfig.load(toml_path);
+    # Record whether discovery had to climb out of the starting directory, so
+    # a later write can warn before modifying an ancestor project's jac.toml.
+    base = start_path if start_path is not None else Path.cwd();
+    config.discovered_from_ancestor = project_root.resolve() != base.resolve();
     if profile {
         config.apply_profile_overlay(profile);
     }
@@ -108,13 +112,11 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import tomllib;
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = read_toml_with_encoding(str(toml_path));
     config = _parse_toml_data(data, toml_path);
     config.config_files = [toml_path];
     config.apply_env_interpolation();
@@ -302,13 +304,11 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import tomllib;
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
     if not toml_path.exists() {
         return;
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
     section_map: dict = {
         "run": self.run,
@@ -333,7 +333,13 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         proj = data["project"];
         for (key, value) in proj.items() {
             attr = key.replace("-", "_");
-            if hasattr(self.project, attr) {
+            if attr == "authors" {
+                self.project.authors = _parse_persons(value);
+            } elif attr == "maintainers" {
+                self.project.maintainers = _parse_persons(value);
+            } elif attr == "include" {
+                self.project.include = _parse_include(value);
+            } elif hasattr(self.project, attr) {
                 setattr(self.project, attr, value);
             }
         }
@@ -443,7 +449,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
 }
 
-impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
+impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
     deps = self.plugin_dependencies.get(dep_type, {});
     # Filter out the "dev" key which holds dev dependencies
     return {
@@ -453,7 +459,7 @@ impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
     };
 }
 
-impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, Any] {
+impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
 }
 
@@ -494,9 +500,8 @@ impl JacConfig.save -> None {
     }
     # Load existing data or start fresh
     if self.toml_path.exists() {
-        with open(self.toml_path, "rb") as f {
-            doc = tomllib.load(f);
-        }
+        import from jaclang.jac0core.helpers { read_toml_with_encoding }
+        doc = read_toml_with_encoding(str(self.toml_path));
     } else {
         doc = {};
     }
@@ -549,19 +554,49 @@ impl JacConfig.save -> None {
     # so we only update the disabled list, not the entire plugin configs.
     # Plugin configs are updated via plugin-specific save methods when needed.
     if self.plugins_config.disabled is not None {
-        if "plugins" not in doc {
-            doc["plugins"] = {};
-        }
-        # Persist disabled plugins list - handle both setting and clearing
+        # Persist disabled plugins list - handle both setting and clearing.
+        # Only materialize the [plugins] table when there is something to
+        # write, so an empty disabled list never leaves a stray empty table.
         if self.plugins_config.disabled {
+            if "plugins" not in doc {
+                doc["plugins"] = {};
+            }
             doc["plugins"]["disabled"] = self.plugins_config.disabled;
         } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"];  # Remove if empty
+            del doc["plugins"]["disabled"];
+            if not doc["plugins"] {
+                del doc["plugins"];  # Drop the table if it is now empty
+            }
         }
     }
-    # Write using simple TOML serializer
+    # Route the write through the single chokepoint (handles the ancestor warning).
+    self.persist_doc(doc);
+}
+
+"""Serialize `doc` to `self.toml_path` -- the one jac.toml write chokepoint.
+
+Every code path that persists jac.toml (JacConfig.save and the `jac config`
+set/unset helpers) goes through here, so the ancestor-directory guard cannot be
+silently skipped by a future mutating command: warn once, here, whenever this
+config was discovered by climbing out of the current directory.
+"""
+impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
+    if self.toml_path is None {
+        raise ValueError("No toml_path set, cannot save configuration");
+    }
+    if self.discovered_from_ancestor {
+        import from jaclang.cli.console { console }
+        console.warning(
+            f"No jac.toml in the current directory -- modifying {self.toml_path}"
+        );
+        console.print(
+            "  Run this command from the project root, "
+            "or 'jac create' here to start a new project.",
+            style="muted"
+        );
+    }
     with open(self.toml_path, "w") as f {
-        f.write(_serialize_toml(doc));
+        f.write(serialize_toml(doc));
     }
 }
 
@@ -580,8 +615,9 @@ def _quote_key(key: str) -> str {
     return key;
 }
 
-# Simple TOML serializer (does not preserve comments)
-def _serialize_toml(data: dict, prefix: str = "") -> str {
+# Simple TOML serializer (does not preserve comments). This is the single
+# canonical writer -- callers that need dict-to-TOML use this, never a copy.
+impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
@@ -593,7 +629,7 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
             table_key = f"{prefix}{quoted_key}" if prefix else quoted_key;
             tables.append((table_key, value));
         } else {
-            lines.append(f"{_quote_key(key)} = {_toml_value(value)}");
+            lines.append(f"{_quote_key(key)} = {toml_value(value)}");
         }
     }
 
@@ -608,7 +644,7 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
         has_nested = any(isinstance(v, dict) for v in table_data.values());
         if has_nested {
             # Write nested tables with dotted keys
-            simple_values: list[tuple[str, Any]] = [];
+            simple_values: list[tuple[str, any]] = [];
             nested_tables: list[tuple[str, dict]] = [];
             for (k, v) in table_data.items() {
                 if isinstance(v, dict) {
@@ -620,12 +656,12 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
             if simple_values {
                 lines.append(f"[{table_key}]");
                 for (k, v) in simple_values {
-                    lines.append(f"{_quote_key(k)} = {_toml_value(v)}");
+                    lines.append(f"{_quote_key(k)} = {toml_value(v)}");
                 }
                 lines.append("");
             }
             for (nested_key, nested_data) in nested_tables {
-                nested_content = _serialize_toml(
+                nested_content = serialize_toml(
                     {nested_key: nested_data}, f"{table_key}."
                 );
                 lines.append(nested_content);
@@ -633,7 +669,7 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
         } else {
             lines.append(f"[{table_key}]");
             for (k, v) in table_data.items() {
-                lines.append(f"{_quote_key(k)} = {_toml_value(v)}");
+                lines.append(f"{_quote_key(k)} = {toml_value(v)}");
             }
             lines.append("");
         }
@@ -642,9 +678,12 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
     return "\n".join(lines);
 }
 
-# Convert a Python value to TOML representation
-def _toml_value(value: Any) -> str {
-    if isinstance(value, bool) {
+# Convert a Python value to its TOML literal representation.
+impl toml_value(value: any) -> str {
+    if value is None {
+        # TOML has no null literal; mirror the legacy writer and use "".
+        return '""';
+    } elif isinstance(value, bool) {
         return "true" if value else "false";
     } elif isinstance(value, int) {
         return str(value);
@@ -655,8 +694,15 @@ def _toml_value(value: Any) -> str {
         escaped = value.replace("\\", "\\\\").replace('"', '\\"');
         return f'"{escaped}"';
     } elif isinstance(value, list) {
-        items = [_toml_value(item) for item in value];
+        items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
+    } elif isinstance(value, dict) {
+        # Inline table, e.g. authors/maintainers entries: { key = value, ... }
+        if not value {
+            return "{}";
+        }
+        pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
+        return "{ " + ", ".join(pairs) + " }";
     } else {
         # Fallback: convert to string
         return f'"{value}"';
@@ -728,8 +774,28 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
+impl _parse_persons(raw: list[any]) -> list[PersonConfig] {
+    result: list[PersonConfig] = [];
+    for item in raw {
+        if isinstance(item, dict) {
+            result.append(
+                PersonConfig(name=item.get("name", ""), email=item.get("email", ""))
+            );
+        } elif isinstance(item, str) {
+            result.append(PersonConfig(name=item, email=""));
+        }
+    }
+    return result;
+}
+
+impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
+    return PackageIncludeConfig(
+        packages=raw.get("packages", []), data=raw.get("data", {})
+    );
+}
+
 impl _parse_toml_data(
-    data: dict[str, Any], toml_path: Path | None = None
+    data: dict[str, any], toml_path: Path | None = None
 ) -> JacConfig {
     config = JacConfig();
     config._raw_data = data;
@@ -743,12 +809,17 @@ impl _parse_toml_data(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
             description=proj.get("description", ""),
-            authors=proj.get("authors", []),
+            authors=_parse_persons(proj.get("authors", [])),
+            maintainers=_parse_persons(proj.get("maintainers", [])),
             license=proj.get("license", ""),
             readme=proj.get("readme", "README.md"),
+            keywords=proj.get("keywords", []),
+            classifiers=proj.get("classifiers", []),
+            requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),
-            urls=proj.get("urls", {})
+            urls=proj.get("urls", {}),
+            include=_parse_include(proj.get("include", {}))
         );
     }
     if "dependencies" in data {
@@ -900,10 +971,24 @@ impl _parse_toml_data(
     if "scripts" in data {
         config.scripts = data["scripts"];
     }
+    if "entrypoints" in data {
+        for (group, refs) in data["entrypoints"].items() {
+            if isinstance(refs, dict) {
+                config.entrypoints[group] = dict(refs);
+            }
+        }
+    }
+    if "optional-dependencies" in data {
+        for (group, deps) in data["optional-dependencies"].items() {
+            if isinstance(deps, dict) {
+                config.optional_dependencies[group] = dict(deps);
+            }
+        }
+    }
     return config;
 }
 
-impl _interpolate_recursive(`obj: Any) -> Any {
+impl _interpolate_recursive(`obj: any) -> any {
     if isinstance(`obj, str) {
         try {
             return interpolate_env_vars(`obj);

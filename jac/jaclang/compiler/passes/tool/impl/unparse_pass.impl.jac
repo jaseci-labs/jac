@@ -245,6 +245,9 @@ impl UnparsePass.exit_import(nd: uni.Import) -> None {
     } else {
         parts.append("import");
     }
+    if nd.is_typed {
+        parts.append("type");
+    }
     items = self._comma_sep(nd.items);
     if nd.from_loc {
         parts.append("from");
@@ -764,6 +767,11 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.jac = "await " + nd.target.gen.jac;
 }
 
+"""CastExpr: value as cast_type"""
+impl UnparsePass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.jac = nd.value.gen.jac + " as " + nd.cast_type.gen.jac;
+}
+
 """GlobalStmt: global names ;"""
 impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
     nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
@@ -1156,6 +1164,24 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxSlot: statement-form `{...}` slot — emit each kid in order so the
+raw `{ stmt; stmt; ... }` shape round-trips through the formatter."""
+impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[str] = [];
+    for k in nd.kid {
+        s = k.gen.jac;
+        if s is not None {
+            parts.append(s);
+        }
+    }
+    nd.gen.jac = "".join(parts);
+}
+
+"""JsxComment: emit the raw `{#* ... *#}` text verbatim."""
+impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

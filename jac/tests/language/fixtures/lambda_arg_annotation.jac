@@ -6,6 +6,6 @@ with entry {
 }
 
 with entry {
-    f = lambda  x: Any: "even" if x % 2 == 0 else "odd";
+    f = lambda  x: any: "even" if x % 2 == 0 else "odd";
     print(f(7));
 }

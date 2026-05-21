@@ -15,6 +15,7 @@ import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
@@ -45,6 +46,52 @@ impl Memory.ahas(id: UUID) -> bool {
 
 impl Memory.acommit(anchor: (Anchor | None) = None) -> None {
     await asyncio.to_thread(self.commit, anchor);
+}
+
+# =============================================================================
+# Memory — default pushdown protocol
+# =============================================================================
+# Default: backend declares no native pushdown. The planner sees an empty
+# capability set, skips `execute_plan` entirely, and uses the universal floor
+# (topology_index narrowing → batch_get). Backends with real native filters
+# (Mongo compound index, Postgres jsonb GIN) override both methods.
+impl Memory.capabilities -> set[str] {
+    return set();
+}
+
+impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    # Default-implementation backends never get called here: the planner
+    # gates on `capabilities()` first. If we get called anyway, log it —
+    # most likely cause is a backend that declared capabilities but forgot
+    # to override execute_plan, which would silently return zero results.
+    if self.capabilities() {
+        logger.debug(
+            f"{type(self).__name__} declares capabilities "
+            f"{self.capabilities()} but did not override execute_plan; "
+            "falling back to empty result"
+        );
+    }
+    return;
+    yield ;
+}
+
+"""Convenience wrapper: build a QueryPlan from a type name + optional field
+predicates and delegate to `execute_plan`. Returns empty when the backend
+doesn't declare the needed capabilities. Backends without native pushdown
+should keep using `query()` with a Python-side filter for type-based scans
+— this method exists specifically to make the pushdown path ergonomic."""
+impl Memory.query_by_type(
+    arch_type_name: str, field_filter: (dict | None) = None
+) -> Generator[Anchor, None, None] {
+    plan = QueryPlan(
+        node_type_final=arch_type_name, field_predicates=field_filter or {}
+    );
+    if not (plan.needs() <= self.capabilities()) {
+        return;
+    }
+    for anchor in self.execute_plan(plan) {
+        yield anchor;
+    }
 }
 
 """Serialize an anchor to the tuple of columns stored in the anchors table."""
@@ -172,7 +219,13 @@ def _load_db_aliases(conn: sqlite3.Connection) -> int {
     return count;
 }
 
-"""Quarantine a row that failed to deserialize. Never raises."""
+"""Quarantine a row that failed to deserialize. Never raises.
+
+When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
+whose data.source or data.target references this node, then strip those
+edge IDs from all remaining live NodeAnchor data.edges arrays. This
+prevents dangling edge references after schema drift removes a node type.
+"""
 def _quarantine(
     conn: sqlite3.Connection,
     id: str,
@@ -185,6 +238,7 @@ def _quarantine(
     from_format_version: (int | None) = None
 ) {
     try {
+        now_ts = datetime.now(timezone.utc).isoformat();
         conn.execute(
             """
             INSERT OR REPLACE INTO anchors_quarantine
@@ -200,11 +254,112 @@ def _quarantine(
                 fingerprint,
                 data,
                 error,
-                datetime.now(timezone.utc).isoformat(),
+                now_ts,
                 from_format_version
             )
         );
         conn.execute("DELETE FROM anchors WHERE id = ?", (id, ));
+        # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
+        if anchor_type == 'NodeAnchor' {
+            cursor = conn.execute(
+                """
+                SELECT id, type, arch_module, arch_type, fingerprint,
+                       data, format_version
+                FROM anchors
+                WHERE type = 'EdgeAnchor'
+                  AND (json_extract(data, '$.source') = ?
+                       OR json_extract(data, '$.target') = ?)
+                """,
+                (id, id)
+            );
+            orphaned_edges = cursor.fetchall();
+            if orphaned_edges {
+                cascade_error = f"cascade quarantine: connected node {id} was quarantined";
+                orphan_edge_ids: list[str] = [];
+                try {
+                    conn.execute("SAVEPOINT cascade_q");
+                    for row in orphaned_edges {
+                        (e_id, e_type, e_mod, e_atype, e_fp, e_data, e_fv) = row;
+                        orphan_edge_ids.append(e_id);
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO anchors_quarantine
+                                (id, type, arch_module, arch_type, fingerprint, data,
+                                 error, quarantined_at, from_format_version)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                e_id,
+                                e_type,
+                                e_mod,
+                                e_atype,
+                                e_fp,
+                                e_data,
+                                cascade_error,
+                                now_ts,
+                                e_fv
+                            )
+                        );
+                    }
+                    # Batched delete — one round-trip instead of N.
+                    placeholders = ','.join('?' * len(orphan_edge_ids));
+                    conn.execute(
+                        f"DELETE FROM anchors WHERE id IN ({placeholders})",
+                        orphan_edge_ids
+                    );
+                    # Strip the orphaned edge IDs from live NodeAnchors' data.edges.
+                    live_nodes = conn.execute(
+                        f"""
+                        SELECT id, data FROM anchors
+                        WHERE type = 'NodeAnchor'
+                          AND EXISTS (
+                              SELECT 1 FROM json_each(json_extract(data, '$.edges')) je
+                              WHERE je.value IN ({placeholders})
+                          )
+                        """,
+                        orphan_edge_ids
+                    ).fetchall();
+                    for (node_id, node_data_str) in live_nodes {
+                        try {
+                            node_data = json.loads(node_data_str);
+                            old_edges = node_data.get('edges', []);
+                            orphan_edge_id_set = set(orphan_edge_ids);
+                            node_data['edges'] = [
+                                e
+                                for e in old_edges
+                                if e not in orphan_edge_id_set
+                            ];
+                            conn.execute(
+                                "UPDATE anchors SET data = ? WHERE id = ?",
+                                (json.dumps(node_data), node_id)
+                            );
+                        } except Exception as patch_err {
+                            logger.error(
+                                f"Failed to strip orphaned edges from node {node_id}: {patch_err}"
+                            );
+                        }
+                    }
+                    conn.execute("RELEASE cascade_q");
+                    logger.info(
+                        f"SqliteMemory: cascade-quarantined {len(
+                            orphan_edge_ids
+                        )} edge(s) "
+                        f"connected to quarantined node {id}."
+                    );
+                } except Exception as cascade_err {
+                    try {
+                        conn.execute("ROLLBACK TO SAVEPOINT cascade_q");
+                    } except Exception { }
+                    try {
+                        conn.execute("RELEASE cascade_q");
+                    } except Exception { }
+                    logger.error(
+                        f"SqliteMemory: cascade quarantine for node {id} failed "
+                        f"(rolled back to savepoint): {cascade_err}"
+                    );
+                }
+            }
+        }
         conn.commit();
     } except Exception as e {
         logger.error(f"Failed to quarantine anchor {id}: {e}");
@@ -584,6 +739,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         self.__mem__[id] = cast(Anchor, anchor);
+        _sqlite_snapshot_field_hashes(cast(Anchor, anchor));
         return cast(Anchor, anchor);
     }
 }
@@ -661,10 +817,54 @@ impl SqliteMemory.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors — the in-process working set plus rows on disk.
+
+Scanning only `__mem__` would make a freshly-opened SqliteMemory (e.g. the L3
+tier of a new server request) report only the roots it had itself loaded,
+silently hiding every root persisted by other requests/users. The disk scan
+reads anchor metadata cheaply, resolves Root (sub)classes without
+deserializing payloads, and only loads the rows that are actually roots.
+"""
 impl SqliteMemory.get_roots -> Generator[Root, None, None] {
-    for anchor in self.__mem__.values() {
+    seen: set[UUID] = set();
+    # In-process working set: includes roots not yet synced to disk.
+    for anchor in list(self.__mem__.values()) {
         if isinstance(anchor.archetype, Root) {
+            seen.add(anchor.id);
+            yield cast(Root, anchor.archetype);
+        }
+    }
+    # Persisted rows on disk that have not been loaded into this session.
+    candidate_ids: list[UUID] = [];
+    with self.__lock__ {
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ is not None {
+            cursor = self.__conn__.execute(
+                "SELECT id, arch_module, arch_type FROM anchors WHERE type = ?",
+                ("NodeAnchor", )
+            );
+            for row in cursor.fetchall() {
+                arch_module = row[1];
+                arch_type = row[2];
+                uid = UUID(row[0]);
+                if uid in seen or not arch_module or not arch_type {
+                    continue;
+                }
+                cls = Serializer._get_class(arch_module, arch_type);
+                if cls is not None
+                and isinstance(cls, type)
+                and issubclass(cls, Root) {
+                    candidate_ids.append(uid);
+                }
+            }
+        }
+    }
+    for uid in candidate_ids {
+        anchor = self.get(uid);
+        if anchor is not None and isinstance(anchor.archetype, Root) {
+            seen.add(uid);
             yield cast(Root, anchor.archetype);
         }
     }
@@ -708,6 +908,55 @@ def _canonical_json(val: object) -> str {
     );
 }
 
+"""Stable hash of a single serialized field value — used for per-field dirty detection."""
+def _sqlite_field_hash(val: object) -> int {
+    try {
+        return hash(json.dumps(val, sort_keys=True, default=str));
+    } except Exception {
+        return hash(str(val));
+    }
+}
+
+"""Snapshot per-field hashes onto the archetype after a successful DB load or sync write."""
+def _sqlite_snapshot_field_hashes(anchor: Anchor) -> None {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return;
+    }
+    arch = anchor.archetype;
+    known = Serializer._get_field_types(type(arch)).keys();
+    _seen: tuple[set, set] = (set(), set());
+    hashes: dict[str, int] = {};
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        hashes[name] = _sqlite_field_hash(serialized);
+    }
+    object.__setattr__(arch, '__jac_field_hashes__', hashes);
+}
+
+"""Derive dirty fields by comparing current field values against the stored hash snapshot."""
+def _sqlite_derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return set();
+    }
+    arch = anchor.archetype;
+    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
+    if not stored {
+        return set();
+    }
+    known = Serializer._get_field_types(type(arch)).keys();
+    dirty: set[str] = set();
+    _seen: tuple[set, set] = (set(), set());
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        if _sqlite_field_hash(serialized) != stored.get(name) {
+            dirty.add(name);
+        }
+    }
+    return dirty;
+}
+
 """Sync memory to database with access control checks.
 
 Preserves the field-level merge semantics from the legacy pickle path:
@@ -721,7 +970,6 @@ impl SqliteMemory.sync -> None {
     has_persistent = any(a.persistent for a in self.__mem__.values());
     if not self.__gc__ and not has_persistent {
         return;  # Nothing to sync, don't create DB
-
     }
     with self.__lock__ {
         # Lazily create connection now that we have data to persist
@@ -833,18 +1081,40 @@ impl SqliteMemory.sync -> None {
                     access_changed = _canonical_json(stored_anchor.access) != _canonical_json(
                         anchor.access
                     );
-                    archetype_changed = _canonical_json(stored_anchor.archetype) != _canonical_json(
-                        anchor.archetype
-                    );
-                    if (access_changed or archetype_changed)
+                    arch = anchor.archetype;
+                    setattr_dirty: set[str] = set(
+                        arch.__dict__.get('__jac_dirty_fields__') or set()
+                    )
+                        if arch is not None
+                        else set();
+                    hash_dirty: set[str] = _sqlite_derive_dirty_from_field_hashes(
+                        anchor
+                    )
+                        if arch is not None
+                        else set();
+                    dirty = setattr_dirty | hash_dirty;
+                    if (access_changed or dirty)
                     and Jac.check_write_access(anchor, op_hint="field_write") {
                         if access_changed {
                             stored_anchor.access = anchor.access;
+                            changed = True;
                         }
-                        if archetype_changed {
-                            stored_anchor.archetype = anchor.archetype;
+                        if dirty
+                        and stored_anchor.archetype is not None
+                        and arch is not None {
+                            for field in dirty {
+                                try {
+                                    setattr(
+                                        stored_anchor.archetype,
+                                        field,
+                                        getattr(arch, field)
+                                    );
+                                } except AttributeError {
+                                    continue;
+                                }
+                            }
+                            changed = True;
                         }
-                        changed = True;
                     }
                     # Only write to database if something actually changed
                     if changed {
@@ -858,6 +1128,10 @@ impl SqliteMemory.sync -> None {
                             """,
                             (key, ) + merged_row
                         );
+                        if anchor.archetype is not None {
+                            anchor.archetype.__dict__.pop('__jac_dirty_fields__', None);
+                            _sqlite_snapshot_field_hashes(anchor);
+                        }
                     }
                 } else {
                     # No stored or stored is a stub - save anchor if valid
@@ -988,6 +1262,47 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
         )
     );
     conn.execute("DELETE FROM anchors_quarantine WHERE id = ?", (row_id, ));
+    # Re-link: when recovering an EdgeAnchor that was cascade-quarantined, the
+    # connected node(s)' data.edges was stripped. Re-add the edge ID to the
+    # source (always) and also to the target for undirected edges.
+    if anchor_type == 'EdgeAnchor' and isinstance(data, dict) {
+        source_id = data.get('source');
+        target_id = data.get('target');
+        is_undirected = bool(data.get('is_undirected', False));
+        relink_ids: list[str] = [
+            n
+            for n in [source_id]
+            if n
+        ];
+        if is_undirected and target_id and target_id != source_id {
+            relink_ids.append(target_id);
+        }
+        for node_id in relink_ids {
+            node_row = conn.execute(
+                "SELECT data FROM anchors WHERE id = ? AND type = 'NodeAnchor'",
+                (node_id, )
+            ).fetchone();
+            if node_row {
+                try {
+                    node_data = json.loads(node_row[0]);
+                    edges = node_data.get('edges', []);
+                    if row_id not in edges {
+                        edges.append(row_id);
+                        node_data['edges'] = edges;
+                        conn.execute(
+                            "UPDATE anchors SET data = ? WHERE id = ?",
+                            (json.dumps(node_data), node_id)
+                        );
+                    }
+                } except Exception as relink_err {
+                    logger.warning(
+                        f"SqliteMemory: recover re-link of edge {row_id} "
+                        f"to node {node_id} failed: {relink_err}"
+                    );
+                }
+            }
+        }
+    }
     return (True, "recovered");
 }
 
@@ -1260,8 +1575,12 @@ impl TieredMemory.postinit -> None {
     }
     # Initialize L3 persistence if base_path provided
     if self.base_path {
-        # Use project.db for projects, filename.db for standalone apps
-        db_path = get_db_path(self.base_path);
+        # Use project.db for projects, filename.db for standalone apps.
+        # `target_path` is the per-context app identity — without it,
+        # `get_db_path` would fall back to `Jac.get_full_target_path()`
+        # (the bootstrap seed), which can leak across in-process clients
+        # (see context.impl.jac for the rationale).
+        db_path = get_db_path(self.base_path, target_path=self.target_path);
         self.l3 = SqliteMemory(path=db_path);
     } else {
         self.l3 = None;
@@ -1305,6 +1624,36 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     if self.l3 and anchor.persistent {
         if Jac.check_write_access(anchor, op_hint="field_write") {
             self.l3.put(anchor);
+        }
+    }
+}
+
+"""Enumerate roots across every tier — the basis for the `allroots()` builtin.
+
+L1 (this request's working set) holds roots created or mutated in-flight; L3
+(the shared persistent store) holds every root ever committed by any
+request/user. Without merging L3 in, `allroots()` would see only the caller's
+own root and every cross-user query would silently degrade to single-user.
+
+L2 is intentionally skipped: it is a partial cache whose entries are always
+also present in L1 or L3. Results are de-duplicated by archetype identity —
+when a root is resident in more than one tier every tier hands back the same
+anchor object, so the L1 copy (with any uncommitted mutations) wins.
+"""
+impl TieredMemory.get_roots -> Generator[Root, None, None] {
+    seen: set[int] = set();
+    for anchor in list(self.__mem__.values()) {
+        if isinstance(anchor.archetype, Root) {
+            seen.add(id(anchor.archetype));
+            yield cast(Root, anchor.archetype);
+        }
+    }
+    if self.l3 is not None {
+        for l3_root in self.l3.get_roots() {
+            if id(l3_root) not in seen {
+                seen.add(id(l3_root));
+                yield l3_root;
+            }
         }
     }
 }
@@ -1381,6 +1730,36 @@ impl TieredMemory.reset_l3_fetch_count -> None {
 impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 {
         self.l3.sync();
+    }
+}
+
+"""TieredMemory capabilities mirror L3 — that's where pushdown lives. L1/L2
+exist for cache hits, not for query planning."""
+impl TieredMemory.capabilities -> set[str] {
+    if self.l3 is not None {
+        return self.l3.capabilities();
+    }
+    return set();
+}
+
+"""Delegate pushdown to L3 and promote loaded anchors into L1 so subsequent
+gets are cache hits (same pattern as `batch_get`)."""
+impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.l3 is None {
+        return;
+    }
+    for anchor in self.l3.execute_plan(plan) {
+        # Promote to L1 unless already there
+        existing = self.__mem__.get(anchor.id);
+        if existing is None {
+            self.__mem__[anchor.id] = anchor;
+            if self.l2 {
+                self.l2.put(anchor);
+            }
+            yield anchor;
+        } else {
+            yield existing;
+        }
     }
 }
 

@@ -15,7 +15,7 @@ import uuid;
 import shutil;
 import requests;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 
 import from testcontainers.mongodb { MongoDbContainer }
 
@@ -37,10 +37,10 @@ def get_free_port -> int {
 
 """Extract data from TransportResponse envelope format."""
 def _extract_transport_response_data(
-    json_response: dict[str, Any] | list[Any]
-) -> dict[str, Any] | list[Any] {
+    json_response: dict[str, any] | list[any]
+) -> dict[str, any] | list[any] {
     if isinstance(json_response, list) and len(json_response) == 2 {
-        body: dict[str, Any] = json_response[1];
+        body: dict[str, any] = json_response[1];
         json_response = body;
     }
 
@@ -53,7 +53,7 @@ def _extract_transport_response_data(
             return json_response["data"];
         } elif not json_response.get("ok") and json_response.get("error") {
             error_info = json_response["error"];
-            result: dict[str, Any] = {
+            result: dict[str, any] = {
                 "error": error_info.get("message", "Unknown error")
             };
             if "code" in error_info {
@@ -75,7 +75,7 @@ def _generate_webhook_signature(payload: bytes, secret: str) -> str {
 }
 
 """Delete SQLite database files and legacy shelf files."""
-def _cleanup_db_files(fixtures_dir: Path) -> None {
+def _cleanup_db_files(fixtures_dir: Path) {
     for pattern in [
         "*.db",
         "*.db-wal",
@@ -175,7 +175,7 @@ def _start_server(
 }
 
 """Stop the server process."""
-def _stop_server(server_process: subprocess.Popen | None) -> None {
+def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
@@ -209,13 +209,13 @@ def _register_and_login(base_url: str, username: str, password: str) -> str {
         timeout=10
     );
     login_data = cast(
-        dict[str, Any], _extract_transport_response_data(login_resp.json())
+        dict[str, any], _extract_transport_response_data(login_resp.json())
     );
     return login_data["token"];
 }
 
 """Verify webhook endpoints are registered for walkers with webhook protocol."""
-def run_webhook_endpoint_exists_test(base_url: str) -> None {
+def run_webhook_endpoint_exists_test(base_url: str) {
     # Hit endpoints directly — non-404 means the route is registered
     resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
     assert resp.status_code != 404 , (
@@ -228,7 +228,7 @@ def run_webhook_endpoint_exists_test(base_url: str) -> None {
 }
 
 """Verify normal walkers are NOT in /webhook/."""
-def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
+def run_normal_walker_not_in_webhook_test(base_url: str) {
     # NormalPayment should be rejected by webhook endpoint
     # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
     resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
@@ -243,7 +243,7 @@ def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
 }
 
 """Verify NormalPayment works via /walker/ endpoint."""
-def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
+def run_normal_walker_accessible_via_walker_test(base_url: str) {
     username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
@@ -263,7 +263,7 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
         timeout=10
     );
     login_data = cast(
-        dict[str, Any], _extract_transport_response_data(login_response.json())
+        dict[str, any], _extract_transport_response_data(login_response.json())
     );
     token = login_data["token"];
 
@@ -282,7 +282,7 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
     assert response.status_code == 200 , (
         f"Expected 200, got {response.status_code}: {response.text}"
     );
-    data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
     assert "reports" in data;
     rpt = data["reports"][0];
     assert rpt["status"] == "success";
@@ -291,7 +291,7 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
 }
 
 """Test that webhook endpoints require API key authentication."""
-def run_webhook_requires_api_key_test(base_url: str) -> None {
+def run_webhook_requires_api_key_test(base_url: str) {
     payload = json.dumps({});
 
     response = requests.post(
@@ -307,7 +307,7 @@ def run_webhook_requires_api_key_test(base_url: str) -> None {
 }
 
 """Test that webhook endpoints reject invalid API keys."""
-def run_webhook_invalid_api_key_test(base_url: str) -> None {
+def run_webhook_invalid_api_key_test(base_url: str) {
     payload = json.dumps({});
 
     response = requests.post(
@@ -323,7 +323,7 @@ def run_webhook_invalid_api_key_test(base_url: str) -> None {
 }
 
 """MinimalWebhook works with valid API key."""
-def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
+def run_minimal_webhook_with_valid_api_key_test(base_url: str) {
     username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -337,7 +337,7 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
         f"Failed to create API key: {api_key_response.text}"
     );
     api_key_data = cast(
-        dict[str, Any], _extract_transport_response_data(api_key_response.json())
+        dict[str, any], _extract_transport_response_data(api_key_response.json())
     );
     api_key = api_key_data["api_key"];
 
@@ -358,14 +358,14 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
     assert response.status_code == 200 , (
         f"Expected 200, got {response.status_code}: {response.text}"
     );
-    data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
     assert "reports" in data;
     assert data["reports"][0]["status"] == "received";
     assert data["reports"][0]["transport"] == "webhook";
 }
 
 """PaymentReceived webhook walker with multiple fields."""
-def run_webhook_payment_received_test(base_url: str) -> None {
+def run_webhook_payment_received_test(base_url: str) {
     username = f"payment_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -377,7 +377,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
     );
     assert api_key_response.status_code == 201;
     api_key_data = cast(
-        dict[str, Any], _extract_transport_response_data(api_key_response.json())
+        dict[str, any], _extract_transport_response_data(api_key_response.json())
     );
     api_key = api_key_data["api_key"];
 
@@ -406,7 +406,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
     assert response.status_code == 200 , (
         f"Expected 200, got {response.status_code}: {response.text}"
     );
-    data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
     assert "reports" in data;
     rpt = data["reports"][0];
     assert rpt["status"] == "success";
@@ -417,7 +417,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
 }
 
 """Webhook walkers are NOT accessible via /walker/."""
-def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
+def run_webhook_not_accessible_via_walker_test(base_url: str) {
     username = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -434,7 +434,7 @@ def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
 }
 
 """Test that revoked API keys are rejected."""
-def run_webhook_revoked_api_key_test(base_url: str) -> None {
+def run_webhook_revoked_api_key_test(base_url: str) {
     username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -446,7 +446,7 @@ def run_webhook_revoked_api_key_test(base_url: str) -> None {
     );
     assert api_key_response.status_code == 201;
     api_key_data = cast(
-        dict[str, Any], _extract_transport_response_data(api_key_response.json())
+        dict[str, any], _extract_transport_response_data(api_key_response.json())
     );
     api_key = api_key_data["api_key"];
     api_key_id = api_key_data["api_key_id"];

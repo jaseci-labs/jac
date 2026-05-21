@@ -4,8 +4,6 @@ This module implements the JacMcpServer class that manages the MCP server
 lifecycle including transport setup, handler registration, and shutdown.
 """
 
-import from typing { Any }
-
 """MCP Server for Jac development assistance."""
 obj JacMcpServer {
     has transport: str = "stdio",

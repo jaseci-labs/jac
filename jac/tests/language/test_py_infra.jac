@@ -23,7 +23,11 @@ import from jaclang.cli.commands { execution, transform }
 import from jaclang.jac0core.jir { get_jir_cache_dir, get_module_cache_path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers {
+    read_file_with_encoding,
+    read_toml_with_encoding
+}
+import tomllib;
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
@@ -679,6 +683,82 @@ test "read file with encoding special characters" {
         assert "\u00a9\u00ae\u2122" in result;
         assert "\u2211\u220f\u222b" in result;
         assert "\U0001f600\U0001f60d" in result;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+# -- read_toml_with_encoding tests --
+test "read toml with encoding utf8" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".toml", delete=False
+    ) as f {
+        f.write('name = "demo"\nversion = "1.0.0"\n\n[deps]\npkg = "^1.0"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["name"] == "demo";
+        assert result["version"] == "1.0.0";
+        assert result["deps"]["pkg"] == "^1.0";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding utf8 bom" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8-sig", suffix=".toml", delete=False
+    ) as f {
+        f.write('description = "hello \u2013 world"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["description"] == "hello \u2013 world";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding utf16" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-16", suffix=".toml", delete=False
+    ) as f {
+        f.write('name = "utf16-encoded"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["name"] == "utf16-encoded";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding malformed raises TOMLDecodeError" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".toml", delete=False
+    ) as f {
+        f.write("this is not valid toml [[[\n");
+        temp_path = f.name;
+    }
+
+    raised = False;
+    try {
+        try {
+            read_toml_with_encoding(temp_path);
+        } except tomllib.TOMLDecodeError {
+            raised = True;
+        }
+        assert raised , "Expected TOMLDecodeError for malformed TOML";
     } finally {
         os.unlink(temp_path);
     }

@@ -54,7 +54,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: Any) {
+        def handleLogout(e: any) {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -132,7 +132,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: Any) -> None {
+        async def handleLogin(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -147,11 +147,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) {
+        def handleUsernameChange(e: any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) {
+        def handlePasswordChange(e: any) {
             password = e.target.value;
         }
 
@@ -252,7 +252,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleSignup(e: Any) -> None {
+        async def handleSignup(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -273,11 +273,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) {
+        def handleUsernameChange(e: any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) {
+        def handlePasswordChange(e: any) {
             password = e.target.value;
         }
 
@@ -371,7 +371,7 @@ cl {
     }
 
     # TodoInput Component
-    def TodoInput(props: Any) -> JsxElement {
+    def TodoInput(props: any) -> JsxElement {
         input = props.input;
         setInput = props.setInput;
         addTodo = props.addTodo;
@@ -381,8 +381,8 @@ cl {
                 <input
                     type="text"
                     value={input}
-                    onChange={lambda e: Any { setInput(e.target.value);}}
-                    onKeyPress={lambda e: Any { if e.key == "Enter" { addTodo(); }}}
+                    onChange={lambda e: any { setInput(e.target.value); }}
+                    onKeyPress={lambda e: any { if e.key == "Enter" { addTodo(); }}}
                     placeholder="What needs to be done?"
                     style={{
                         "flex": "1",
@@ -409,14 +409,14 @@ cl {
     }
 
     # TodoFilters Component
-    def TodoFilters(props: Any) -> JsxElement {
+    def TodoFilters(props: any) -> JsxElement {
         filter = props.filter;
         setFilter = props.setFilter;
 
         return
             <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
                 <button
-                    onClick={lambda { setFilter("all");}}
+                    onClick={lambda { setFilter("all"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": ("#3b82f6" if filter == "all" else "#e5e7eb"),
@@ -430,7 +430,7 @@ cl {
                     All
                 </button>
                 <button
-                    onClick={lambda { setFilter("active");}}
+                    onClick={lambda { setFilter("active"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": ("#3b82f6" if filter == "active" else "#e5e7eb"),
@@ -444,7 +444,7 @@ cl {
                     Active
                 </button>
                 <button
-                    onClick={lambda { setFilter("completed");}}
+                    onClick={lambda { setFilter("completed"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": (
@@ -463,7 +463,7 @@ cl {
     }
 
     # TodoItem Component
-    def TodoItem(props: Any) -> JsxElement {
+    def TodoItem(props: any) -> JsxElement {
         todo = props.todo;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -482,7 +482,7 @@ cl {
                 <input
                     type="checkbox"
                     checked={todo.done}
-                    onChange={lambda { toggleTodo(todo._jac_id);}}
+                    onChange={lambda { toggleTodo(todo._jac_id); }}
                     style={{"cursor": "pointer"}}
                 />
                 <span
@@ -495,7 +495,7 @@ cl {
                     {todo.text}
                 </span>
                 <button
-                    onClick={lambda { deleteTodo(todo._jac_id);}}
+                    onClick={lambda { deleteTodo(todo._jac_id); }}
                     style={{
                         "padding": "4px 8px",
                         "background": "#ef4444",
@@ -512,7 +512,7 @@ cl {
     }
 
     # TodoList Component
-    def TodoList(props: Any) -> JsxElement {
+    def TodoList(props: any) -> JsxElement {
         filteredTodos = props.filteredTodos;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -575,14 +575,14 @@ cl {
         }
 
         # Toggle todo
-        async def toggleTodo(id: Any) {
+        async def toggleTodo(id: any) {
             result = id spawn toggle_todo();
             updated = result.reports[0][0];
             todos = [updated if todo._jac_id == id else todo for todo in todos];
         }
 
         # Delete todo
-        async def deleteTodo(id: Any) {
+        async def deleteTodo(id: any) {
             #id spawn delete_todo();
             todos = [
                 todo
@@ -632,12 +632,12 @@ cl {
                 <h1 style={{"marginBottom": "20px"}}>My Todos</h1>
                 <TodoInput
                     input={input}
-                    setInput={lambda val: str -> str { input = val;}}
+                    setInput={lambda val: str -> str { input = val; }}
                     addTodo={addTodo}
                 />
                 <TodoFilters
                     filter={filter}
-                    setFilter={lambda val: str -> str { filter = val;}}
+                    setFilter={lambda val: str -> str { filter = val; }}
                 />
                 <TodoList
                     filteredTodos={filteredTodos}

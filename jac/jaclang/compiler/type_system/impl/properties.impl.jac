@@ -52,9 +52,7 @@ impl clone_property_with_setter(
     new_private.fget_info = prop.private.fget_info;
     new_private.fdel_info = prop.private.fdel_info;
 
-    return types.ClassType(
-        _shared=prop._shared, private=new_private, flags=prop.flags
-    );
+    return types.ClassType(_shared=prop._shared, private=new_private, flags=prop.flags);
 }
 
 """Clone a property and add a deleter."""
@@ -67,9 +65,7 @@ impl clone_property_with_deleter(
     new_private.fget_info = prop.private.fget_info;
     new_private.fset_info = prop.private.fset_info;
 
-    return types.ClassType(
-        _shared=prop._shared, private=new_private, flags=prop.flags
-    );
+    return types.ClassType(_shared=prop._shared, private=new_private, flags=prop.flags);
 }
 
 # =============================================================================

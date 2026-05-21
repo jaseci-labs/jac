@@ -1,6 +1,6 @@
 """Decorator that returns a random instance of the function's return type."""
 
-impl returns_fake(func: Any) -> Any {
+impl returns_fake(func: any) -> any {
     try {
         type_hints = get_type_hints(
             func, globalns=func.__globals__, localns=None, include_extras=True
@@ -10,14 +10,14 @@ impl returns_fake(func: Any) -> Any {
     }
     ret_t = type_hints.get('return', Any);
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any {
+    def wrapper(*args: any, **kwargs: any) -> any {
         return random_value_for_type(ret_t);
     }
     return wrapper;
 }
 
 """Generate a random value that (best-effort) conforms to the type 'tp'."""
-impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> Any {
+impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) -> any {
     random.seed(42);  # for reproducibility in tests
     if _depth > _max_depth {
         # Depth cap to avoid infinite recursion on self-referential types
@@ -117,7 +117,7 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
     if origin is dict {
         key_t = get_args(tp)[0] if get_args(tp) else Any;
         val_t = get_args(tp)[1] if len(get_args(tp)) > 1 else Any;
-        def mk_key -> Any {
+        def mk_key -> any {
             k = random_value_for_type(key_t, _depth=_depth + 1, _max_depth=_max_depth);
             try {
                 hash(k);
@@ -223,7 +223,7 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
         if args and len(args) == 2 {
             ret_t = args[1];
         }
-        def _fn_stub(*_a: Any, **_k: Any) -> Any {
+        def _fn_stub(*_a: any, **_k: any) -> any {
             return random_value_for_type(
                 ret_t, _depth=_depth + 1, _max_depth=_max_depth
             );
@@ -270,7 +270,7 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
 }
 
 """Generate a random value for primitive types."""
-impl _random_primitive(tp: Any) -> Any {
+impl _random_primitive(tp: any) -> any {
     if tp is int {
         return random.randint(-(10 ** 6), 10 ** 6);
     }
@@ -313,12 +313,12 @@ impl _random_primitive(tp: Any) -> Any {
 }
 
 """Choose a random element from a sequence."""
-impl _choose_from(seq: Any) -> Any {
+impl _choose_from(seq: any) -> any {
     return random.choice(list(seq));
 }
 
 """Unwrap NewType to get the underlying type."""
-impl _unwrap_newtype(tp: Any) -> Any {
+impl _unwrap_newtype(tp: any) -> any {
     if tp?.__supertype__ {
         return tp.__supertype__;
     }
@@ -326,7 +326,7 @@ impl _unwrap_newtype(tp: Any) -> Any {
 }
 
 """Unwrap Annotated type to get the underlying type."""
-impl _unwrap_annotated(tp: Any) -> Any {
+impl _unwrap_annotated(tp: any) -> any {
     if get_origin(tp) is Annotated {
         return get_args(tp)[0];
     }
@@ -334,7 +334,7 @@ impl _unwrap_annotated(tp: Any) -> Any {
 }
 
 """Safely get subclasses of a type."""
-impl _safe_subclasses(tp: Any) -> list[type] {
+impl _safe_subclasses(tp: any) -> list[type] {
     try {
         return list(tp.__subclasses__());
     } except Exception {
@@ -343,7 +343,7 @@ impl _safe_subclasses(tp: Any) -> list[type] {
 }
 
 """Check if type is an Enum."""
-impl _is_enum(tp: Any) -> bool {
+impl _is_enum(tp: any) -> bool {
     try {
         import enum;
         return isinstance(tp, type) and issubclass(tp, enum.Enum);
@@ -353,7 +353,7 @@ impl _is_enum(tp: Any) -> bool {
 }
 
 """Check if type is a NamedTuple."""
-impl _is_namedtuple(tp: Any) -> bool {
+impl _is_namedtuple(tp: any) -> bool {
     return (
         isinstance(tp, type)
         and issubclass(tp, tuple)
@@ -363,7 +363,7 @@ impl _is_namedtuple(tp: Any) -> bool {
 }
 
 """Check if type is a TypedDict."""
-impl _is_typed_dict(tp: Any) -> bool {
+impl _is_typed_dict(tp: any) -> bool {
     return (isinstance(tp, type) and tp?.__annotations__ and tp?.__required_keys__);
 }
 

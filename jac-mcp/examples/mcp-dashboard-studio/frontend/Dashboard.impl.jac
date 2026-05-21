@@ -1,6 +1,6 @@
 """Implementations for DashboardPage."""
 
-impl DashboardPage.get_first_report(spawn_res: Any) -> dict {
+impl DashboardPage.get_first_report(spawn_res: any) -> dict {
     if spawn_res {
         reps = spawn_res["reports"] if "reports" in spawn_res else [];
         if reps and len(reps) > 0 {
@@ -19,7 +19,7 @@ impl DashboardPage.busy(tool: str) -> bool {
     return loading == tool;
 }
 
-impl DashboardPage.pretty_json(val: Any) -> str {
+impl DashboardPage.pretty_json(val: any) -> str {
     return JSON.stringify(val, null, 2);
 }
 
@@ -128,7 +128,7 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
     active_tool = tool;
     notice = start_notice(tool);
     try {
-        spawn_res: Any = None;
+        spawn_res: any = None;
         if tool == "validate_jac" {
             spawn_res = await root spawn validate_jac(code=args["code"]);
         } elif tool == "check_syntax" {
@@ -270,7 +270,7 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
                     onClick={lambda {
                         navigator.clipboard.writeText(formatted);
                         output_copied = True;
-                        setTimeout(lambda { output_copied = False;}, 2000);
+                        setTimeout(lambda { output_copied = False; }, 2000);
                     }}
                     className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                         "bg-green-500/20 border-green-500/40 text-green-400"
@@ -332,7 +332,7 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                     onClick={lambda {
                         navigator.clipboard.writeText(json_str);
                         ast_copied = True;
-                        setTimeout(lambda { ast_copied = False;}, 2000);
+                        setTimeout(lambda { ast_copied = False; }, 2000);
                     }}
                     className={"px-2 py-0.5 text-[9px] rounded border transition " + (
                         "bg-green-500/20 border-green-500/30 text-green-400"
@@ -484,7 +484,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
                         <button
                             onClick={lambda { navigator.clipboard.writeText(
                                 s.split("\n").slice(1).join("\n")
-                            );}}
+                            ); }}
                             className="px-2 py-1 text-[9px] rounded-md border transition bg-white/5 hover:bg-white/10 border-white/10"
                         >
                             Copy

@@ -3,7 +3,11 @@ import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from enum { StrEnum }
-import from typing { TYPE_CHECKING, Any, ClassVar, override }
+import from typing { ClassVar, override }
+import type from enum { IntEnum }
+import type from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
+import type from jaclang.jac0core.runtime { LLMModel }
+import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol ( StrEnum ) {
     HTTP = 'http',
@@ -17,38 +21,29 @@ enum ScheduleTrigger ( StrEnum ) {
     DYNAMIC = 'dynamic'
 }
 
-with entry {
-    if TYPE_CHECKING {
-        import from enum { IntEnum }
-        import from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
-        import from jaclang.jac0core.runtime { LLMModel }
-        import from jaclang { JacRuntimeInterface }
-    }
-}
-
 def _get_jac -> type[JacRuntimeInterface];
 
 def _get_access_level -> type[AccessLevel];
 
-def _get_jid -> Callable[..., Any];
+def _get_jid -> Callable[..., any];
 
-def _get_jobj -> Callable[..., Any];
+def _get_jobj -> Callable[..., any];
 
-def _get_grant -> Callable[..., Any];
+def _get_grant -> Callable[..., any];
 
-def _get_revoke -> Callable[..., Any];
+def _get_revoke -> Callable[..., any];
 
-def _get_allroots -> Callable[..., Any];
+def _get_allroots -> Callable[..., any];
 
-def _get_save -> Callable[..., Any];
+def _get_save -> Callable[..., any];
 
-def _get_commit -> Callable[..., Any];
+def _get_commit -> Callable[..., any];
 
-def _get_store -> Callable[..., Any];
+def _get_store -> Callable[..., any];
 
 def _get_llm -> LLMModel;
 
-def _get_archetype_alias -> Callable[..., Any];
+def _get_archetype_alias -> Callable[..., any];
 
 def __getattr__(name: str) -> object;
 
@@ -66,9 +61,32 @@ def printgraph(
 
 def _jac_graph_json(file: (str | None) = None) -> str;
 
-def restspec(**specs: Any) -> Callable;
+def restspec(**specs: any) -> Callable;
 
-def schedule(**kwargs: Any) -> Callable;
+def schedule(**kwargs: any) -> Callable;
+
+"""Portable constructor: returns ``cls(*args)``.
+
+On the server this is just a thin alias for direct instantiation, so the
+same source code can be written once and used in any codespace. In a
+``cl { ... }`` block this same call lowers to
+``Reflect.construct(cls, [args])`` (the JS spelling for ``new cls(...)``),
+since JavaScript classes require ``new``.
+"""
+def new(cls: any, *args: any) -> any;
+
+"""Mark a string as raw HTML for insertion into JSX children.
+
+Returns a sentinel ``dict`` (``{"__jacUnsafeHtml": <html>}``) that the
+client runtime recognises and renders via ``dangerouslySetInnerHTML``
+(jac-client / React) or ``element.innerHTML`` (bare-serve). On the server
+this is an identity wrapper -- the marker survives JSON serialisation so a
+walker can return pre-rendered HTML to a client view. Named ``unsafe_html``
+because the caller takes responsibility for trust: the wrapped string is
+emitted verbatim with no escaping. Anything that came from user input or
+an LLM must be sanitised first.
+"""
+def unsafe_html(html: any) -> dict;
 
 glob __all__ = [
          'printgraph',
@@ -81,6 +99,7 @@ glob __all__ = [
          'commit',
          'store',
          'llm',
+         'new',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',
@@ -89,5 +108,6 @@ glob __all__ = [
          'schedule',
          'ScheduleTrigger',
          'APIProtocol',
-         'archetype_alias'
+         'archetype_alias',
+         'unsafe_html'
      ];

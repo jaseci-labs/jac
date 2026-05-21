@@ -1,0 +1,36 @@
+# .dockerignore template companion for Dockerfile.microservice.
+# Copy this to .dockerignore in your project root.
+
+# jac runtime artifacts (rebuilt on first request)
+**/.jac/cache
+**/.jac/data
+**/.jac/logs
+**/.jac/run
+**/__jac_gen__
+
+# Node / frontend (built separately or served via static_mounts from a
+# host volume; bundling node_modules into the image is slow + wasteful)
+**/node_modules
+**/dist
+**/.vite
+**/build
+
+# Git + CI metadata
+.git
+.github
+.gitignore
+.gitattributes
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Test fixtures + local dev config
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.env
+.envrc
+*.local

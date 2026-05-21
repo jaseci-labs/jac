@@ -7,10 +7,30 @@ impl DocIRGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.doc_ir = self.concat(parts, ast_node=nd);
 }
 
+"""Generate DocIR for JSX statement-form slots.
+
+The slot's body is kept as raw statements (ViewLowerPass doesn't run in
+the formatter pipeline), so concatenating the kid doc_irs reproduces the
+source `{ stmt; stmt; ... }` shape verbatim."""
+impl DocIRGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        parts.append(i.gen.doc_ir);
+    }
+    nd.gen.doc_ir = self.concat(parts, ast_node=nd);
+}
+
 """Generate DocIR for JSX text — normalize via single source of truth."""
 impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     source_tok = nd.kid[0] if nd.kid else None;
     nd.gen.doc_ir = doc.Text(nd.get_normalized_text(), source_token=source_tok);
+}
+
+"""Generate DocIR for JSX block comment — emit the raw `{#* ... *#}` text."""
+impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    source_tok = nd.kid[0] if nd.kid else None;
+    raw = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
+    nd.gen.doc_ir = doc.Text(raw, source_token=source_tok);
 }
 
 """Generate DocIR for JSX normal attributes."""
@@ -74,6 +94,27 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
+        } elif not nd.is_fragment {
+            # No JsxElementName and not a fragment — this is a dynamic tag
+            # (`<@expr ...>` / `</@expr>`) where the tag region is built
+            # from the `@` token plus the tag expression (and `{`/`}` for
+            # the brace-wrapped form). Emit every kid that sits between
+            # start_token and end_token in source order, skipping
+            # attributes (emitted separately below) and any child JSX
+            # content (emitted by the children handler below). Fragments
+            # are excluded so their children aren't duplicated here.
+            for k in nd.kid {
+                if k is start_token or k is end_token {
+                    continue;
+                }
+                if (
+                    isinstance(k, uni.JsxNormalAttribute)
+                    or isinstance(k, uni.JsxSpreadAttribute)
+                ) {
+                    continue;
+                }
+                parts.append(k.gen.doc_ir);
+            }
         }
         # Attributes live in their own Group so the opening-tag flat/break
         # decision is independent of the children flat/break decision. This
@@ -104,7 +145,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 child_parts.append(self.hard_line());
             }
             self.trim_trailing_line(child_parts);
-            inline_child_types = (uni.JsxText, uni.JsxExpression);
+            inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
             all_inline_children = (
                 nd.children
                 and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -1205,6 +1246,11 @@ impl DocIRGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     self._assign_space_group(nd);
 }
 
+"""Generate DocIR for type-cast expressions."""
+impl DocIRGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    self._assign_space_group(nd);
+}
+
 """Generate DocIR for keyword arguments."""
 impl DocIRGenPass.exit_k_w_pair(nd: uni.KWPair) -> None {
     self._assign_group_concat(nd);
@@ -1309,6 +1355,23 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     # jammed output like `}timer = setTimeout(...)`.
     body_stmts = list(nd.body) if isinstance(nd.body, Sequence) else [];
     has_multi_stmt_body = len(body_stmts) > 1;
+    # Single-stmt body: add space before `}` only when the statement ends with `;`
+    # not `}` (e.g. if/while/try-except blocks already close with `}`, no extra
+    # space needed). Walk last-kid chain iteratively since nodes like TryStmt have
+    # a non-Token last kid (ExceptClause) that itself ends with RBRACE.
+    _sbrace = len(body_stmts) == 0;
+    if len(body_stmts) == 1 and body_stmts[0].kid {
+        _cur = body_stmts[0];
+        while _cur.kid {
+            _last = _cur.kid[-1];
+            if isinstance(_last, uni.Token) {
+                _sbrace = _last.name == Tok.RBRACE;
+                break;
+            }
+            _cur = _last;
+        }
+    }
+    single_body_ends_with_brace = _sbrace;
     body_parts: list[doc.DocType] = [];
     in_body = False;
     for i in nd.kid {
@@ -1343,7 +1406,9 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Don't add trailing space after closing brace of code block lambda
+            if not single_body_ends_with_brace {
+                parts.append(self.space());
+            }
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
@@ -1875,6 +1940,7 @@ impl DocIRGenPass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
         }
         parts.append(self.space());
     }
+    parts.pop();
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
@@ -1959,6 +2025,7 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     # break onto their own lines, matching idiomatic Jac style.
     flat_capable = (
         isinstance(nd.parent, uni.LambdaExpr)
+        and not (isinstance(nd.parent.body, Sequence) and len(list(nd.parent.body)) > 1)
         and (nd.else_body is None)
         and (len(nd.body) == 1)
         and not self.has_gap(nd, nd.body[0])

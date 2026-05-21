@@ -15,6 +15,7 @@ import sqlite3;
 import uuid;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from typing { cast }
 import from jaclang.jac0core.archetype { NodeAnchor, Root }
 import from jaclang.runtimelib.memory { SqliteMemory }
 import from jaclang.runtimelib.serializer { Serializer }
@@ -25,9 +26,20 @@ obj _DemoArchV1(Root) {
         age: int = 0;
 }
 
+# Used by the type-mismatch quarantine test: score must be an int.
+obj _TypedProfile(Root) {
+    has score: int = 0;
+}
+
+obj _SyncProfile(Root) {
+    has name: str = "",
+        count: int = 0,
+        tags: list[str] = [];
+}
+
 
 test "fingerprint is present on archetypes and stable across instances" {
-    fp = getattr(_DemoArchV1, '__jac_fingerprint__', None);
+    fp = _DemoArchV1?.__jac_fingerprint__;
     assert isinstance(fp, str) , "archetype must have __jac_fingerprint__";
     assert len(fp) == 16 , f"fingerprint length should be 16 hex chars, got {len(fp)}";
     # Same class => same fingerprint; deterministic.
@@ -199,6 +211,215 @@ test "corrupt JSON data is quarantined on read, not deleted" {
             "SELECT count(*) FROM anchors_quarantine WHERE id = ?", (bad_id, )
         );
         assert cursor.fetchone()[0] == 1 , "bad row must land in quarantine";
+        mem.close();
+    }
+}
+
+
+test "field hashes are snapshotted on DB load" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        mem1 = SqliteMemory(path=db_path);
+        arch = _SyncProfile(name="alice", count=7);
+        anchor = NodeAnchor(archetype=arch, edges=[]);
+        anchor.persistent = True;
+        mem1.put(anchor);
+        mem1.sync();
+        anchor_id = anchor.id;
+        mem1.close();
+        mem2 = SqliteMemory(path=db_path);
+        loaded = mem2.get(anchor_id);
+        assert loaded is not None;
+        hashes = loaded.archetype.__dict__.get('__jac_field_hashes__');
+        assert isinstance(hashes, dict) , "__jac_field_hashes__ must be set after DB load";
+        assert 'name' in hashes , "name must be in field hashes";
+        assert 'count' in hashes , "count must be in field hashes";
+        mem2.close();
+    }
+}
+
+
+test "read-only walker sync does not clobber a concurrent write" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        mem_init = SqliteMemory(path=db_path);
+        arch_init = _SyncProfile(name="original", count=0);
+        anchor = NodeAnchor(archetype=arch_init, edges=[]);
+        anchor.persistent = True;
+        mem_init.put(anchor);
+        mem_init.sync();
+        anchor_id = anchor.id;
+        mem_init.close();
+        # Walker A loads the anchor — stale snapshot established, never modified
+        mem_a = SqliteMemory(path=db_path);
+        stale = mem_a.get(anchor_id);
+        assert stale is not None;
+        # Walker B loads, sets name, commits
+        mem_b = SqliteMemory(path=db_path);
+        fresh = mem_b.get(anchor_id);
+        assert fresh is not None;
+        cast(_SyncProfile, fresh.archetype).name = "written_by_B";
+        mem_b.sync();
+        mem_b.close();
+        # Walker A syncs with its stale snapshot — must NOT overwrite B's write
+        mem_a.sync();
+        mem_a.close();
+        mem_verify = SqliteMemory(path=db_path);
+        final = mem_verify.get(anchor_id);
+        assert final is not None;
+        final_name = cast(_SyncProfile, final.archetype).name;
+        assert final_name == "written_by_B" , (
+            f"read-only walker clobbered concurrent write: got '{final_name}'"
+        );
+        mem_verify.close();
+    }
+}
+
+
+test "sync merges only dirty fields, preserving concurrent writes to other fields" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        mem_init = SqliteMemory(path=db_path);
+        arch_init = _SyncProfile(name="init_name", count=0);
+        anchor = NodeAnchor(archetype=arch_init, edges=[]);
+        anchor.persistent = True;
+        mem_init.put(anchor);
+        mem_init.sync();
+        anchor_id = anchor.id;
+        mem_init.close();
+        # Walker A loads — will only write count
+        mem_a = SqliteMemory(path=db_path);
+        anchor_a = mem_a.get(anchor_id);
+        assert anchor_a is not None;
+        # Walker B loads, sets name, commits first
+        mem_b = SqliteMemory(path=db_path);
+        anchor_b = mem_b.get(anchor_id);
+        assert anchor_b is not None;
+        cast(_SyncProfile, anchor_b.archetype).name = "name_from_B";
+        mem_b.sync();
+        mem_b.close();
+        # Walker A sets only count then commits
+        cast(_SyncProfile, anchor_a.archetype).count = 42;
+        mem_a.sync();
+        mem_a.close();
+        # Both changes must survive: name from B, count from A
+        mem_verify = SqliteMemory(path=db_path);
+        final = mem_verify.get(anchor_id);
+        assert final is not None;
+        final_arch = cast(_SyncProfile, final.archetype);
+        assert final_arch.name == "name_from_B" , (
+            f"dirty-field merge lost B's name: got '{final_arch.name}'"
+        );
+        assert final_arch.count == 42 , (
+            f"dirty-field merge lost A's count: got {final_arch.count}"
+        );
+        mem_verify.close();
+    }
+}
+
+
+test "in-place list mutation is detected dirty and flushed to DB" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        mem1 = SqliteMemory(path=db_path);
+        arch_init = _SyncProfile(name="x", count=0, tags=["a"]);
+        anchor = NodeAnchor(archetype=arch_init, edges=[]);
+        anchor.persistent = True;
+        mem1.put(anchor);
+        mem1.sync();
+        anchor_id = anchor.id;
+        mem1.close();
+        # Load, mutate the list in-place (bypasses __setattr__)
+        mem2 = SqliteMemory(path=db_path);
+        loaded = mem2.get(anchor_id);
+        assert loaded is not None;
+        cast(_SyncProfile, loaded.archetype).tags.append("b");
+        mem2.sync();
+        mem2.close();
+        mem3 = SqliteMemory(path=db_path);
+        final = mem3.get(anchor_id);
+        assert final is not None;
+        final_tags = cast(_SyncProfile, final.archetype).tags;
+        assert final_tags == ["a", "b"] , (
+            f"in-place list mutation not persisted: got {final_tags}"
+        );
+        mem3.close();
+    }
+}
+
+
+test "unresolvable nested class in field is quarantined, not silently loaded as None" {
+    # When a field stores a nested object whose class no longer exists,
+    # _deserialize_value returns None. coerce(None, non-Optional-type) raises
+    # TypeError so the anchor is quarantined rather than loaded with a None field.
+    #
+    # Note: other coercion mismatches (e.g. set serialised as str due to JSON
+    # limitations) are NOT quarantined — they fall back with a warning. Only
+    # confirmed None-for-non-Optional is treated as hard corruption.
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        good_id = str(uuid.uuid4());
+        bad_nested_id = str(uuid.uuid4());
+        import json;
+        import sqlite3;
+        mem = SqliteMemory(path=db_path);
+        mem._ensure_connection();
+        def _insert(conn: sqlite3.Connection, row_id: str, score_val: object) {
+            conn.execute(
+                """
+                INSERT INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint, data,
+                     format_version, updated_at)
+                VALUES (?, 'NodeAnchor', ?, '_TypedProfile', NULL, ?, 1,
+                        '2026-05-18T00:00:00')
+                """,
+                (
+                    row_id,
+                    _TypedProfile.__module__,
+                    json.dumps(
+                        {
+                            '__type__': 'NodeAnchor',
+                            '__module__': 'jaclang.jac0core.archetype',
+                            'id': row_id,
+                            'persistent': True,
+                            'archetype': {
+                                '__type__': '_TypedProfile',
+                                '__module__': _TypedProfile.__module__,
+                                'score': score_val
+                            },
+                            'edges': []
+                        }
+                    )
+                )
+            );
+        }
+        _insert(mem.__conn__, good_id, 42);
+        # Nested dict with an unresolvable __type__ — _deserialize_value returns
+        # None, coerce(None, int) fails → TypeError → quarantine.
+        _insert(
+            mem.__conn__,
+            bad_nested_id,
+            {'__type__': 'RemovedClass', '__module__': 'app', 'x': 1}
+        );
+        mem.__conn__.commit();
+        # Good row loads fine.
+        good = mem.get(uuid.UUID(good_id));
+        assert good is not None , "valid row must load";
+        assert cast(_TypedProfile, good.archetype).score == 42;
+        # Bad row must be quarantined, not returned.
+        assert mem.get(uuid.UUID(bad_nested_id)) is None , "unresolvable nested class must quarantine";
+        conn = sqlite3.connect(db_path);
+        q_ids = {r[0] for r in conn.execute("SELECT id FROM anchors_quarantine")};
+        live_ids = {r[0] for r in conn.execute("SELECT id FROM anchors")};
+        conn.close();
+        assert bad_nested_id in q_ids , "bad row must be in quarantine table";
+        assert bad_nested_id not in live_ids , "bad row must leave anchors table";
+        assert good_id in live_ids , "good row must remain live";
         mem.close();
     }
 }

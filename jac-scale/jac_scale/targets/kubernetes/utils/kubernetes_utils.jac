@@ -14,6 +14,7 @@ import from jac_scale._optdeps.kubernetes {
     ApiException,
     ConfigException
 }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from requests.exceptions { RequestException }
 
 """Each companion component: (suffix, display_name, is_statefulset).
@@ -81,7 +82,7 @@ def check_deployment_status(
     node_port: int,
     path: str = '/docs',
     interval: int = 15,
-    max_retries: int = 30,
+    max_retries: int = 48,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci",
@@ -89,7 +90,7 @@ def check_deployment_status(
 
 def cluster_type -> str;
 
-def check_node_ports_available(node_port: int, current_namespace: str) -> None;
+def get_cluster_provider -> ClusterProvider;
 
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,
@@ -98,6 +99,12 @@ def ensure_pvc_exists(
     storage_size: str,
     storage_class: (str | None) = None,
     access_mode: str = 'ReadWriteOnce'
+) -> None;
+
+def parse_storage_quantity(quantity: str) -> int;
+
+def resize_pvc_if_needed(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
 ) -> None;
 
 def wait_for_pod_phase(

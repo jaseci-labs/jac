@@ -121,46 +121,7 @@ test "cfg raise terminal" {
 test "cfg boolean short circuit" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_bool_expr.jac"));
     expected_dot = (
-        "digraph G {\n"
-        + '  0 [label="BB0\\nx = 5 ;\\nif", shape=box];\n'
-        + '  1 [label="BB1\\nx < 3", shape=box];\n'
-        + '  2 [label="BB2\\nx < 10", shape=box];\n'
-        + '  3 [label="BB3\\nx > 20", shape=box];\n'
-        + '  4 [label="BB4\\nx < 30", shape=box];\n'
-        + '  5 [label="BB5\\nprint ( x ) ;\\nx = x + 1 ;", shape=box];\n'
-        + '  6 [label="BB6\\nprint ( \\"done\\" ) ;\\nif", shape=box];\n'
-        + '  7 [label="BB7\\nx > 0", shape=box];\n'
-        + '  8 [label="BB8\\nx == - 1", shape=box];\n'
-        + '  9 [label="BB9\\nx < 100", shape=box];\n'
-        + '  10 [label="BB10\\nx == 200", shape=box];\n'
-        + '  11 [label="BB11\\nprint ( \\"matched\\" ) ;", shape=box];\n'
-        + '  12 [label="BB12\\nprint ( \\"end\\" ) ;\\nif y", shape=box];\n'
-        + '  13 [label="BB13\\nprint ( \\"y is true\\" ) ;", shape=box];\n'
-        + '  14 [label="BB14\\nprint ( \\"finished\\" ) ;", shape=box];\n'
-        + "  0 -> 1;\n"
-        + '  1 -> 2 [label="T"];\n'
-        + '  1 -> 3 [label="F"];\n'
-        + '  2 -> 3 [label="F"];\n'
-        + '  2 -> 5 [label="T"];\n'
-        + '  3 -> 4 [label="T"];\n'
-        + '  3 -> 6 [label="F"];\n'
-        + '  4 -> 6 [label="F"];\n'
-        + '  4 -> 5 [label="T"];\n'
-        + "  5 -> 6;\n"
-        + "  6 -> 7;\n"
-        + '  7 -> 8 [label="F"];\n'
-        + '  7 -> 9 [label="T"];\n'
-        + '  8 -> 9 [label="T"];\n'
-        + '  8 -> 12 [label="F"];\n'
-        + '  9 -> 10 [label="F"];\n'
-        + '  9 -> 11 [label="T"];\n'
-        + '  10 -> 11 [label="T"];\n'
-        + '  10 -> 12 [label="F"];\n'
-        + "  11 -> 12;\n"
-        + '  12 -> 13 [label="T"];\n'
-        + "  12 -> 14;\n"
-        + "  13 -> 14;\n"
-        + "}\n"
+        "digraph G {\n" + '  0 [label="BB0\\nx = 5 ;\\nif", shape=box];\n' + '  1 [label="BB1\\nx < 3", shape=box];\n' + '  2 [label="BB2\\nx < 10", shape=box];\n' + '  3 [label="BB3\\nx > 20", shape=box];\n' + '  4 [label="BB4\\nx < 30", shape=box];\n' + '  5 [label="BB5\\nprint ( x ) ;\\nx = x + 1 ;", shape=box];\n' + '  6 [label="BB6\\nprint ( \\"done\\" ) ;\\nif", shape=box];\n' + '  7 [label="BB7\\nx > 0", shape=box];\n' + '  8 [label="BB8\\nx == - 1", shape=box];\n' + '  9 [label="BB9\\nx < 100", shape=box];\n' + '  10 [label="BB10\\nx == 200", shape=box];\n' + '  11 [label="BB11\\nprint ( \\"matched\\" ) ;", shape=box];\n' + '  12 [label="BB12\\nprint ( \\"end\\" ) ;\\nif y", shape=box];\n' + '  13 [label="BB13\\nprint ( \\"y is true\\" ) ;", shape=box];\n' + '  14 [label="BB14\\nprint ( \\"finished\\" ) ;", shape=box];\n' + "  0 -> 1;\n" + '  1 -> 2 [label="T"];\n' + '  1 -> 3 [label="F"];\n' + '  2 -> 3 [label="F"];\n' + '  2 -> 5 [label="T"];\n' + '  3 -> 4 [label="T"];\n' + '  3 -> 6 [label="F"];\n' + '  4 -> 6 [label="F"];\n' + '  4 -> 5 [label="T"];\n' + "  5 -> 6;\n" + "  6 -> 7;\n" + '  7 -> 8 [label="F"];\n' + '  7 -> 9 [label="T"];\n' + '  8 -> 9 [label="T"];\n' + '  8 -> 12 [label="F"];\n' + '  9 -> 10 [label="F"];\n' + '  9 -> 11 [label="T"];\n' + '  10 -> 11 [label="T"];\n' + '  10 -> 12 [label="F"];\n' + "  11 -> 12;\n" + '  12 -> 13 [label="T"];\n' + "  12 -> 14;\n" + "  13 -> 14;\n" + "}\n"
     );
     assert dot == expected_dot;
 }

@@ -4,7 +4,7 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 }
 
 """Get default configuration structure for scale."""
-impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     return {
         'jwt': {
             'secret': 'supersecretkey_for_testing_only!',
@@ -25,7 +25,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'redis_max_memory': '200mb',
             'redis_eviction_policy': 'allkeys-lru',
             'redis_eviction_samples': 5,
-            'redis_default_ttl': 0,
+            'redis_default_ttl': 3600,
+            'redis_max_connections': 20,
             'redis_enable_keyspace_notifications': False
         },
         'kubernetes': {
@@ -60,12 +61,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            # Probe timings
-            'readiness_initial_delay': 10,
-            'readiness_period': 20,
-            'liveness_initial_delay': 10,
-            'liveness_period': 20,
-            'liveness_failure_threshold': 80
+            # Probe timings (aligned with microservice drain semantics;
+            # see kubernetes_config.jac probe-default comment).
+            'readiness_initial_delay': 5,
+            'readiness_period': 5,
+            'liveness_initial_delay': 15,
+            'liveness_period': 10,
+            'liveness_failure_threshold': 3
         },
         'secrets': {},
         'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},
@@ -130,7 +132,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get JWT configuration from jac.toml."""
-impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     jwt_config = config.get('jwt', {});
     return {
@@ -141,7 +143,7 @@ impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get SSO configuration from jac.toml."""
-impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     sso_config = config.get('sso', {});
     google_config = sso_config.get('google', {});
@@ -166,7 +168,7 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get database configuration from jac.toml."""
-impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     db_config = config.get('database', {});
     return {
@@ -176,7 +178,8 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
         'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
         'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),
         'redis_eviction_samples': int(db_config.get('redis_eviction_samples', 5)),
-        'redis_default_ttl': int(db_config.get('redis_default_ttl', 0)),
+        'redis_default_ttl': int(db_config.get('redis_default_ttl', 3600)),
+        'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
         'redis_enable_keyspace_notifications': db_config.get(
             'redis_enable_keyspace_notifications', False
         )
@@ -184,7 +187,7 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
 }
 
 """Get Kubernetes configuration from jac.toml."""
-impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
     # Handle docker_image_name default (needs app_name)
@@ -204,7 +207,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
 }
 
 """Get server configuration from jac.toml."""
-impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     server_config = config.get('server', {});
     return {
@@ -215,7 +218,7 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get webhook configuration from jac.toml."""
-impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     webhook_config = config.get('webhook', {});
     return {
@@ -261,7 +264,7 @@ impl sanitize_prometheus_namespace(name: str) -> str {
 Combines HTTP metrics endpoint settings and Kubernetes monitoring stack settings.
 'enabled' controls both the /metrics endpoint and Prometheus + Grafana deployment.
 """
-impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     monitoring_config = config.get('monitoring', {});
     default_buckets = [
@@ -301,6 +304,34 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
     };
 }
 
+"""Get event-streaming config from jac.toml.
+Reads `[plugins.scale.events]`. `enabled` is the master switch; `url` defaults to None so the caller can fall back to `database.redis_url`.
+"""
+impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
+    import from jac_scale.events.broker { RetryPolicy }
+    config = self.load();
+    events_config = config.get('events', {});
+    retry_config = events_config.get('retry', {});
+    retry_defaults = RetryPolicy();
+    return {
+        'enabled': events_config.get('enabled', False),
+        'url': events_config.get('url'),
+        'consumer_group': events_config.get('consumer_group', 'jac-scale'),
+        'serializer': events_config.get('serializer', 'json'),
+        'retry': {
+            'max_attempts': retry_config.get(
+                'max_attempts', retry_defaults.max_attempts
+            ),
+            'backoff_seconds': retry_config.get(
+                'backoff_seconds', retry_defaults.backoff_seconds
+            ),
+            'dead_letter_suffix': retry_config.get(
+                'dead_letter_suffix', retry_defaults.dead_letter_suffix
+            )
+        }
+    };
+}
+
 """Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
@@ -319,14 +350,14 @@ impl reset_scale_config -> None {
 }
 
 """Get telemetry configuration from jac.toml."""
-impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
     return {'max_traces': int(telemetry_config.get('max_traces', 1000))};
 }
 
 """Get scheduler configuration from jac.toml."""
-impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     return {
@@ -337,7 +368,7 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any]
 }
 
 """Get WebSocket configuration from jac.toml."""
-impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     ws_config = config.get('websocket', {});
     backplane = ws_config.get('backplane');
@@ -369,7 +400,7 @@ Schema: `routes: {module_name: prefix}` - services are discovered via
 `sv import`; the routes table only controls public URL routing on the
 gateway.
 """
-impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     ms_config = config.get('microservices', {});
     client_config = ms_config.get('client', {});
@@ -410,12 +441,23 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             'entry': client_config.get('entry', ''),
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/')
-        }
+        },
+        # Ingress block. Pass through opaquely so K8s target sees
+        # whatever the user wrote (host / ingress_class_name / annotations).
+        'ingress': dict(ms_config.get('ingress', {})),
+        # Cross-service shared volumes. Array-of-tables in jac.toml
+        # ([[plugins.scale.microservices.shared_volumes]]) decoded as a
+        # list of dicts. Pass through opaquely so the K8s microservice
+        # target validates each entry (name/mount_path/services/...) at
+        # manifest-build time. Empty list when the user hasn't declared
+        # any - existing microservice apps without shared FS state get
+        # an empty list and the same pod specs they had before.
+        'shared_volumes': list(ms_config.get('shared_volumes', []))
     };
 }
 
 """Get admin configuration from jac.toml."""
-impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});
     return {

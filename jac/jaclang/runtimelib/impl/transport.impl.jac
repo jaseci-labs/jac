@@ -1,6 +1,6 @@
 """Create a success response with envelope pattern."""
 impl TransportResponse.success(
-    data: Any = None,
+    data: any = None,
     msg_type: MessageType = MessageType.RESPONSE,
     meta: (Meta | None) = None
 ) -> TransportResponse {
@@ -18,7 +18,7 @@ impl TransportResponse.success(
 impl TransportResponse.fail(
     code: str,
     message: str,
-    details: Any = None,
+    details: any = None,
     msg_type: MessageType = MessageType.ERROR,
     meta: (Meta | None) = None
 ) -> TransportResponse {
@@ -36,7 +36,7 @@ impl TransportResponse.fail(
 impl HTTPTransport.connect -> None { }
 
 """Serialize and send HTTP response. Converts TransportResponse to HTTP format."""
-impl HTTPTransport.send(data: Any) -> None {
+impl HTTPTransport.send(data: any) -> None {
     if isinstance(data, TransportResponse) {
         # Extract HTTP status from meta.extra or use defaults
         status = data.meta.extra.get('http_status', 200 if data.ok else 500)
@@ -112,7 +112,7 @@ impl HTTPTransport.close -> None { }
 impl StreamTransport.connect -> None { }
 
 """Push data to the queue for SSE streaming."""
-impl StreamTransport.send(data: Any) -> None {
+impl StreamTransport.send(data: any) -> None {
     import asyncio;
     # Queue.put is async, so we need to handle it properly
     # In real usage, this would be: await self.queue.put(data)
@@ -196,7 +196,7 @@ impl WebSocketTransport.connect -> None {
 }
 
 """Send an envelope or raw JSON message over the WebSocket."""
-impl WebSocketTransport.send(data: Any) -> None {
+impl WebSocketTransport.send(data: any) -> None {
     payload = (
         serialize_transport_response(data)
             if isinstance(data, TransportResponse)

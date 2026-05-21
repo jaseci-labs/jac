@@ -153,11 +153,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if isinstance(conv_arg, list) {
         conv_list_ref = conv_arg;
         for item in conv_arg {
-            m: Any = item;
+            m: any = item;
             if isinstance(m, Message) {
                 conv_msgs.append(m);
             } elif isinstance(m, dict) {
-                reconstructed: Any = Message.from_dict(m);
+                reconstructed: any = Message.from_dict(m);
                 conv_msgs.append(reconstructed);
             } else {
                 conv_msgs.append(m);
@@ -251,7 +251,7 @@ impl MTRuntime.write_back_conversation -> None {
     }
     out: list = [];
     for msg in self.get_history_for_persist() {
-        m: Any = msg;
+        m: any = msg;
         if hasattr(m, "to_dict") {
             out.append(m.to_dict());
         } elif isinstance(m, dict) {
@@ -269,7 +269,7 @@ impl MTRuntime.write_back_conversation -> None {
 
 
 # Test against finish_tool both at object level and dict level.
-def _is_finish_tool_call(tc: Any) -> bool {
+def _is_finish_tool_call(tc: any) -> bool {
     if tc?.function and hasattr(tc.function, "name") {
         return tc.function.name == "finish_tool";
     }
@@ -360,7 +360,6 @@ impl MTRuntime.get_output_schema -> dict | None {
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {
             return None;  # Strings are default and not using a schema.
-
         }
         # Use MTIR info if available, otherwise None (Python library mode)
         return_type_info = self.mtir.ir_info.return_type

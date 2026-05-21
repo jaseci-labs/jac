@@ -376,7 +376,6 @@ with entry {
 
 ```jac
 import from collections { Counter, defaultdict }
-import from typing { Optional, List }
 
 with entry {
     counts = Counter(["a", "b", "a", "c", "a"]);
@@ -402,18 +401,17 @@ with entry {
 
 ### Type-Only Imports
 
-In Python, you often need to wrap imports in `if TYPE_CHECKING:` blocks to avoid circular imports when a type is only used in annotations. Jac handles this automatically -- just write a normal import and the compiler detects whether it's only used in type positions:
+When two modules only reference each other in type annotations, a regular `import` creates a circular import at module load. Mark the import with `type` to tell the compiler it's annotation-only:
 
 ```jac
-import from mymodule { MyClass }
+import type from billing { Invoice }
 
-# MyClass only appears in type annotations, never instantiated here
-def process(item: MyClass) -> MyClass {
-    return item;
+def total(inv: Invoice) -> int {
+    return inv.amount;
 }
 ```
 
-The compiler automatically wraps `MyClass` in a `TYPE_CHECKING` guard in the generated Python output. If you later add runtime usage like `MyClass()`, it automatically becomes a regular import.
+The generated Python lowers this to `if TYPE_CHECKING: from billing import Invoice` (with `TYPE_CHECKING` imported from `typing`), so the import never runs at runtime and the cycle is broken. Keep `import type` to names you only use in `def` parameter/return types -- decorators like `dataclass` and `Pydantic.BaseModel` resolve annotations on archetype `has` fields at class-definition time and need their types as regular runtime imports.
 
 ---
 
@@ -422,13 +420,13 @@ The compiler automatically wraps `MyClass` in a `TYPE_CHECKING` guard in the gen
 The `glob` keyword declares module-level variables that are accessible from any function in the file. This is Jac's equivalent of Python's module-level variables, but made explicit with a keyword so you can immediately distinguish global state from local variables when reading code.
 
 ```jac
-glob config: dict = {
+glob config: dict[str, any] = {
     "debug": True,
     "version": "1.0.0"
 };
 
 def get_version() -> str {
-    return config["version"];
+    return str(config["version"]);
 }
 
 with entry {

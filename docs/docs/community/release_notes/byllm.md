@@ -2,7 +2,51 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.4 (Latest Release)
+## byllm 0.6.9 (Latest Release)
+
+### New Features
+
+- **Tool calling for local models**: byLLM now supports tool calling on backends without server-side tool support by rendering the tool protocol into the prompt and recovering tool calls from the reply.
+
+### Bug Fixes
+
+- **Fix: `by llm()` no longer stalls the server in async walkers**: Using `by llm()` inside an `async` walker previously blocked the entire event loop for the full LLM round-trip (0.5–30 s), freezing every other concurrent request. It now runs fully non-blocking via `litellm.acompletion`, `AsyncOpenAI`, and `httpx.AsyncClient`. No code changes needed. Sync walkers are unaffected.
+- **Fix: CI dependency alignment check restored for `byllm`**: `httpx>=0.27.0` was missing from `jac.toml` after being added to `pyproject.toml` in #5944, causing the CI alignment check to fail. Both files are now in sync.
+
+## byllm 0.6.6
+
+### New Features
+
+- **Add: Universal schema-hint injection for structured-output prompts**: byLLM now extracts the `response_format` schema's enum/description metadata and appends a human-readable hint (e.g. `Schema requirements: - field must be one of: 1=WORK, 2=PERSONAL, ...`) to the last user message inside `BaseLLM.make_model_params`, so every backend sees the same explicit name-to-value mapping cloud frontier providers' server-side prompt builders inject for free. Fixes systematic miscategorization on Ollama, vLLM, and other local-style backends where small open-weight models (Gemma 4 E4B, Llama 3.x 8B class) were defaulting to the first allowed enum value because the schema description never reached the prompt. Empirical impact on the day_planner mini-bench: Ollama `gemma4:e4b` jumps from 1/6 (17%) to 6/6 (100%) on the categorize fixture; in-process `local:gemma-4-e4b` stays at 24/24 (100%). The previously LocalLLM-only `attach_schema_hint` is now `byllm.schema.inject_schema_hint`; LocalLLM's `filter_params` is reduced to llama.cpp-specific concerns (multimodal-content flatten and `json_schema` -> `json_object` rewrite) since the hint is already applied upstream.
+
+### Bug Fixes
+
+- **Fix: `local:` model ctx_window propagation to compaction layer**: `LocalLLM._get_ctx_window` (introduced in #5830) returned only `self.spec["n_ctx"]`, ignoring every user override. The proactive-compaction threshold then fired against the alias's hardcoded spec value (8192 for all bundled aliases) regardless of `by llm(ctx_window=N)`, `LocalLLM(ctx_window=N)`, `[plugins.byllm.compaction] ctx_window` in `jac.toml`, or `config={"n_ctx": N}`. Worst case: a user who built the engine with `config={"n_ctx": 2048}` got engine overflow at ~2048 tokens because compaction was waiting for 80% of 8192.
+- **Fix: `Message.to_dict()` crashing on media params with `sem` declarations**: An explicit `sem foo.img = "..."` on an `Image` (or any other `Media`) parameter crashed byllm with `TypeError: list indices must be integers or slices, not str`. The semstr-handling branch assumed `media.to_dict()` returns a single dict, but all `Media` subclasses return `list[dict]` (one entry per content block). The branch is now correct, and the sem string is emitted as a standard `{"type": "text", "text": ...}` block immediately before the media - replacing the previous non-standard `"description"` key that LLM provider APIs (OpenAI/Anthropic) would have rejected anyway. Surfaces in JacCoder image uploads through JacBuilder.
+
+### Refactors
+
+- **Refactor: Auto-compaction test suite**: Replaced the auto-compaction test suite (introduced in #5722) with 13 focused integration tests that drive the real `by llm()` pipeline end-to-end. The new suite asserts on observable outcomes (result correctness, exception type, message-list shape, hook-call counts) and never patches `_default_compact`, `_compact_messages`, `_copy_for_compaction`, `_get_ctx_window`, or `model_call_no_stream`; they all run as real implementations.
+
+## byllm 0.6.5
+
+### New Features
+
+- **Add: Native MCP tool support**: New `McpClient` and `McpTool` let `by llm()` use tools from any MCP server alongside local tools, e.g. `def answer(q: str) -> str by llm(tools=[*mcp.get_tools()]);`. Supports `stdio`, `sse`, and `streamable-http` transports, auto-detected from `command=` or `url=`. Optional dep: `pip install byllm[mcp]`.
+- **Add: Parent-child invocation tracking for nested `by llm()` calls**: `Model.invoke` now uses a `ContextVar` to propagate the current invocation ID, so nested `by llm()` calls automatically capture their parent. Each telemetry record includes a `parent_invocation_id` field, enabling external consumers (e.g., jac-scale) to reconstruct the full agent call tree.
+- **Add: `parent_invocation_id` forwarded to LiteLLM metadata**: `BaseLLM.make_model_params` now includes `jac_parent_invocation_id` in `agent_metadata`, allowing LiteLLM-level loggers to correlate individual API calls with the nested invocation hierarchy.
+- **Add: Parallel tool calling**: When the LLM emits multiple tool calls in one response, byllm now runs them concurrently via a shared thread pool. Enable globally with  `jac.toml` / `BYLLM_PARALLEL_TOOL_CALLING=true` /, or per-call with `by llm(parallelize=True)`. The LLM receives scheduling hints to intelligently batch independent tools and sequence dependent ones. Default remains sequential - no change for existing applications.
+- **Add: Auto-compaction for long ReAct loops**: When a ReAct agent's message history approaches the model's context window limit, byLLM now automatically summarises old tool-call rounds and replaces them with a compact summary message, letting agents run indefinitely long tasks without hitting provider context errors. The system message and original user task are always preserved. Configure globally via `[plugins.byllm.compaction]` in `jac.toml` (`enabled`, `threshold_ratio`, `keep_recent_iterations`, `ctx_window`, `compaction_model`) or override per-call with `by llm(ctx_window=N, threshold_ratio=0.80, ...)`. Supply `on_compaction=my_fn` to replace the built-in summarisation with custom logic. Set `compaction_model` to use a cheaper model for compaction calls (inherits `api_key` and `base_url` from the active model). `Model` and `ModelPool` gain a `ctx_window` field for models not in LiteLLM's registry. A `CompactionNotEffectiveError` is raised if compaction fires twice consecutively without reducing context size. Default is enabled - set `compaction_enabled=False` per-call or `enabled = false` in `jac.toml` to opt out.
+- **Add: `MockLLM` usage tuple support for compaction testing**: Each entry in `MockLLM`'s `outputs` list may now be a `(payload, usage_dict)` tuple (e.g. `(MockToolCall(...), {"prompt_tokens": 850})`) to inject token-usage metadata without a real API call. Non-tuple entries behave exactly as before - fully backwards-compatible.
+- **Add: `conversation=<list>` kwarg for multi-turn `by llm()` calls**: Pass a caller-owned list to bind conversation history. byllm reads it as prior context, runs the ReAct loop, and writes the full persistable turn (user, assistant `tool_calls`, `tool_call_id`-linked results, final answer) back into the same list - byllm itself stays stateless.
+- **Add: Built-in in-process local LLM runtime via `local:<alias>`**: Run Gemma 4 E4B/E2B and Qwen 3.5 4B in-process through `llama.cpp` with no daemon and no proxy server. Activated by the opt-in `[local]` extra (`pip install 'byllm[local]'`); use `--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu` (or the matching `/cu124`, `/metal`, `/vulkan` URL) to skip the `llama-cpp-python` source build. Weights download lazily into `~/.cache/jac/models/<alias>/` on first use and are managed via the new `jac model list/pull/rm` command. Configurable under `[plugins.byllm.local]` (`default_alias`, `n_ctx`, `n_gpu_layers`, `n_threads`, `verbose`, `auto_download`). For most local-inference use cases, **Ollama is the recommended path** -- it ships with automatic GPU detection and a curated model registry, and byLLM has supported it through litellm since launch (`default_model = "ollama/<model>"`); the new `local:*` runtime is for users who specifically don't want a separate daemon. The `default_llm` auto-fallback uses `local:<default_alias>` when no provider key is configured and `[local]` is installed; otherwise it raises a `ConfigurationError` listing the three concrete fixes (set an API key, point `default_model` at an explicit model such as `ollama/<model>`, or install `byllm[local]`).
+
+### Bug Fixes
+
+- **Fix: Schema generation now emits a JSON-Schema `enum` constraint for enum-typed return values**: `_type_to_schema` previously described enum members only in the `description` text, which frontier cloud models inferred but smaller open-weight models ignored. The generated schema now binds output to the actual member set on every provider.
+- **Fix: Schema generation drops MTIR enum members with no runtime value**: stale or polluted MTIR could append a `member.name` whose runtime value was missing, shifting the index pairing (e.g. emitting `5=FITNESS` for an enum that actually maps `5=OTHER`). The schema generator now skips MTIR members not present in the live `__members__` map, keeping `enum_names` and `enum_values` aligned.
+
+## byllm 0.6.4
 
 - **Fix: `ModelPool` streaming fallback infinite recursion**: Fixed a bug where `ModelPool` with `strategy="fallback"` and `stream=True` caused LiteLLM Router's `stream_with_fallbacks` to recurse infinitely on primary model failure. The fix calls `Router._completion()` directly per model with `fallbacks=[]`, avoiding recursive re-entry. A `yielded` guard prevents corrupted output on mid-stream failures by propagating the exception instead of silently falling back. Fallback alias construction is deduplicated into a `_fallback_model_names` field populated in `postinit`.
 - **Add: Automatic Anthropic prompt caching**: Caches system prompt, tool schemas, and ReAct conversation history across iterations for Claude models, significantly reducing input token costs. Enabled by default.

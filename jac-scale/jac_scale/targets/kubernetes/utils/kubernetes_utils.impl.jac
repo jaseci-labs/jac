@@ -2,6 +2,11 @@ import os;
 import pathlib;
 import from jaclang.cli.console { console }
 import from jac_scale._optdeps.kubernetes { client }
+import from jac_scale.targets.kubernetes.cluster_provider {
+    AWSProvider,
+    ClusterProvider,
+    LocalProvider
+}
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -317,6 +322,100 @@ impl wait_for_pod_phase(
     );
 }
 
+"""Parse a Kubernetes storage quantity string into bytes (int).
+
+Supports binary suffixes (Ki, Mi, Gi, Ti, Pi, Ei) and decimal suffixes
+(k, M, G, T, P, E) as well as plain byte values.
+"""
+impl parse_storage_quantity(quantity: str) -> int {
+    q = quantity.strip();
+    if q == '' {
+        raise ValueError('Storage quantity cannot be empty.');
+    }
+    suffixes_binary: dict[str, int] = {
+        'Ki': 1024,
+        'Mi': 1024 ** 2,
+        'Gi': 1024 ** 3,
+        'Ti': 1024 ** 4,
+        'Pi': 1024 ** 5,
+        'Ei': 1024 ** 6
+    };
+    suffixes_decimal: dict[str, int] = {
+        'k': 1000,
+        'M': 1000 ** 2,
+        'G': 1000 ** 3,
+        'T': 1000 ** 4,
+        'P': 1000 ** 5,
+        'E': 1000 ** 6
+    };
+    for (suffix, multiplier) in suffixes_binary.items() {
+        if q.endswith(suffix) {
+            number_part = q[:-len(suffix)].strip();
+            if number_part == '' {
+                raise ValueError(
+                    f"Storage quantity '{quantity}' is missing a numeric component."
+                );
+            }
+            return int(number_part) * multiplier;
+        }
+    }
+    for (suffix, multiplier) in suffixes_decimal.items() {
+        if q.endswith(suffix) {
+            number_part = q[:-len(suffix)].strip();
+            if number_part == '' {
+                raise ValueError(
+                    f"Storage quantity '{quantity}' is missing a numeric component."
+                );
+            }
+            return int(number_part) * multiplier;
+        }
+    }
+    try {
+        return int(q);
+    } except ValueError {
+        raise ValueError(
+            f"Unrecognized storage quantity '{quantity}'. "
+            f"Use a plain integer (bytes) or a suffix: Ki, Mi, Gi, Ti, Pi, Ei, k, M, G, T, P, E."
+        );
+    }
+}
+
+"""Resize a PVC to the desired size if it is larger than the current size.
+
+Raises ValueError if the desired size is smaller than the current size,
+since shrinking a PVC is not supported. Does nothing if the sizes are equal.
+Data is preserved because only the PVC capacity request is patched; the
+underlying volume and its contents are untouched.
+"""
+impl resize_pvc_if_needed(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
+) -> None {
+    try {
+        pvc = core_v1.read_namespaced_persistent_volume_claim(pvc_name, namespace);
+    } except ApiException as exc {
+        if exc.status == 404 {
+            return;
+        }
+        raise;
+    }
+    current_size_str = pvc.spec.resources.requests.get('storage', '0');
+    current_bytes = parse_storage_quantity(current_size_str);
+    desired_bytes = parse_storage_quantity(desired_size);
+
+    if desired_bytes < current_bytes {
+        raise ValueError(
+            f"Cannot shrink PVC '{pvc_name}': desired size '{desired_size}' is "
+            f"smaller than current size '{current_size_str}'. "
+            f"Decrease of PVC size is not supported."
+        );
+    }
+    if desired_bytes == current_bytes {
+        return;
+    }
+    patch = {'spec': {'resources': {'requests': {'storage': desired_size}}}};
+    core_v1.patch_namespaced_persistent_volume_claim(pvc_name, namespace, patch);
+}
+
 """Create a PersistentVolumeClaim if it does not already exist."""
 impl ensure_pvc_exists(
     core_v1: client.CoreV1Api,
@@ -348,50 +447,6 @@ impl ensure_pvc_exists(
         pvc_body['spec']['storageClassName'] = storage_class;
     }
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
-}
-
-"""Check that the requested NodePorts are not already bound by services
-in other namespaces.
-
-NodePorts are cluster-scoped, so two services in different namespaces
-cannot share the same NodePort value.  Services inside current_namespace
-are excluded because they will be replaced by this deployment.
-Raises ValueError listing every conflicting port and the service that owns it.
-"""
-impl check_node_ports_available(node_port: int, current_namespace: str) -> None {
-    """Check that the ingress controller NodePort is not already bound by a
-    service in another namespace.
-
-    NodePorts are cluster-scoped, so two services in different namespaces
-    cannot share the same NodePort value.  Services inside current_namespace
-    are excluded because they will be replaced by this deployment.
-    Raises ValueError if the port is already bound.
-    """;
-    v1 = client.CoreV1Api();
-    all_services = v1.list_service_for_all_namespaces();
-    # Build a map: port_number -> "namespace/service-name"
-    # Only include services from OTHER namespaces.
-    used_ports: dict[int, str] = {};
-    for svc in all_services.items {
-        if svc.metadata.namespace == current_namespace {
-            continue;
-        }
-        svc_id = f"{svc.metadata.namespace}/{svc.metadata.name}";
-        for port_obj in (svc.spec.ports or []) {
-            if port_obj.node_port is not None {
-                used_ports[port_obj.node_port] = svc_id;
-            }
-        }
-    }
-    if node_port in used_ports {
-        raise ValueError(
-            f"NodePort conflict detected on local cluster.\n"
-            f"  ingress_node_port={node_port} is already in use by '{used_ports[
-                node_port
-            ]}'\n"
-            f"Please choose a different ingress_node_port value in your KubernetesConfig and try again."
-        );
-    }
 }
 
 """Detect if the current connected cluster is AWS or local.
@@ -437,6 +492,13 @@ impl cluster_type -> str {
     }
 }
 
+impl get_cluster_provider -> ClusterProvider {
+    if cluster_type() == 'aws' {
+        return AWSProvider();
+    }
+    return LocalProvider();
+}
+
 impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     try {
         config.load_kube_config();
@@ -466,10 +528,79 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                             if (container.state and container.state.waiting)
                             else "unknown"
                     );
+                    # Surface the K8s-level exit reason from the previous
+                    # termination if the kubelet recorded one. OOMKilled
+                    # / Error / Completed all show up here, separately
+                    # from `state.waiting.reason` which is the *current*
+                    # waiting reason (CrashLoopBackOff etc.).
+                    last_state = container.last_state;
+                    term_reason = "n/a";
+                    term_exit_code = "n/a";
+                    if last_state and last_state.terminated {
+                        term_reason = last_state.terminated.reason or "n/a";
+                        term_exit_code = (
+                            str(last_state.terminated.exit_code)
+                                if (last_state.terminated.exit_code is not None)
+                                else "n/a"
+                        );
+                    }
                     console.print(
                         f"Pod {pod.metadata.name} container "
-                        f"{container.name} restarted and is not running (reason: {reason})"
+                        f"{container.name} restarted and is not running "
+                        f"(waiting={reason}, last_terminated={term_reason}, "
+                        f"exit_code={term_exit_code})"
                     );
+                    # Dump the previous-instance logs so CI failure output
+                    # shows the actual crash cause instead of just the K8s-
+                    # level CrashLoopBackOff reason. tail_lines=500 keeps
+                    # the dump bounded but generous enough to capture the
+                    # error message even when the install/compile chain is
+                    # noisy; previous=True targets the crashed instance
+                    # rather than the (possibly-restarting) current one.
+                    try {
+                        prev_logs = v1.read_namespaced_pod_log(
+                            name=pod.metadata.name,
+                            namespace=namespace,
+                            container=container.name,
+                            previous=True,
+                            tail_lines=500
+                        );
+                        console.print(
+                            f"--- {pod.metadata.name}/{container.name} previous logs (last 500 lines) ---"
+                        );
+                        console.print(prev_logs);
+                        console.print(f"--- end of {pod.metadata.name} logs ---");
+                    } except Exception as log_err {
+                        console.print(
+                            f"(could not fetch previous logs for {pod.metadata.name}: {log_err})"
+                        );
+                    }
+                    # Also dump pod-level Events so we see OOMKilled,
+                    # liveness-probe-killed, FailedScheduling, etc. The
+                    # logs above only show what the process printed; the
+                    # events show what the kubelet did *to* the process.
+                    try {
+                        field_sel = (
+                            f"involvedObject.name={pod.metadata.name}"
+                            f",involvedObject.namespace={namespace}"
+                        );
+                        events = v1.list_namespaced_event(
+                            namespace=namespace, field_selector=field_sel
+                        );
+                        if events.items {
+                            console.print(f"--- {pod.metadata.name} events ---");
+                            for ev in events.items {
+                                console.print(
+                                    f"  [{ev.type}] {ev.reason}: {ev.message}"
+                                );
+                            }
+                            console.print(f"--- end of {pod.metadata.name} events ---");
+                        }
+                    } except Exception as ev_err {
+                        console.print(
+                            f"(could not fetch events for {pod.metadata.name}: {ev_err})"
+                        );
+                    }
                     return True;
                 }
             }
@@ -488,7 +619,7 @@ impl check_deployment_status(
     node_port: int,
     path: str = '/docs',
     interval: int = 15,
-    max_retries: int = 30,
+    max_retries: int = 48,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci"

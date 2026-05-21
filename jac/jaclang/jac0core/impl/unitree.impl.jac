@@ -735,9 +735,12 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+        )
+        and not isinstance(
+            nd.bb_in[0],
+            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -753,9 +756,12 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+        )
+        and not isinstance(
+            nd.bb_out[0],
+            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -1456,6 +1462,15 @@ impl Ability.method_owner -> Archetype | Enum | None {
             )
             else None
     );
+    if (found is None) and (self.accessor_kind != "") {
+        nodew = self.parent;
+        while nodew is not None {
+            if isinstance(nodew, (Archetype, Enum)) {
+                return nodew;
+            }
+            nodew = nodew.parent;
+        }
+    }
     return found;
 }
 
@@ -1653,6 +1668,14 @@ impl FinallyStmt.postinit -> None {
 }
 
 
+impl AwaitingClause.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IterForStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1750,6 +1773,11 @@ impl DisengageStmt.postinit -> None {
 
 
 impl AwaitExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
+impl CastExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -1881,6 +1909,7 @@ impl KWPair.postinit -> None {
 impl InnerCompr.postinit -> None {
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -1889,6 +1918,7 @@ impl ListCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -1897,6 +1927,7 @@ impl DictCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -2128,6 +2159,16 @@ impl JsxText.get_normalized_text -> str {
 }
 
 impl JsxExpression.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxSlot.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxComment.postinit -> None {
     JsxChild.postinit(self);
 }
 

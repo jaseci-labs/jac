@@ -1,7 +1,7 @@
 """Local filesystem storage implementation for Jac core."""
 import shutil;
 import from pathlib { Path }
-import from typing { Any, BinaryIO, Generator }
+import from typing { BinaryIO, Generator }
 import from jaclang.runtimelib.storage.storage { Storage }
 
 """Local filesystem storage provider.
@@ -38,7 +38,7 @@ class LocalStorage(Storage) {
         self: LocalStorage, prefix: str = "", recursive: bool = False
     ) -> Generator[str, None, None];
 
-    override def get_metadata(self: LocalStorage, path: str) -> dict[str, Any];
+    override def get_metadata(self: LocalStorage, path: str) -> dict[str, any];
     override def copy(self: LocalStorage, source: str, destination: str) -> bool;
     override def move(self: LocalStorage, source: str, destination: str) -> bool;
 }

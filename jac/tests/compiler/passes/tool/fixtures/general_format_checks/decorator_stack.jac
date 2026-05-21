@@ -1,7 +1,7 @@
 import from typing { Callable }
 
 def star(func: Callable) -> Callable {
-    def inner(x: Any) {
+    def inner(x: any) {
         print(("*" * 30));
         func(x);
         print(("*" * 30));
@@ -10,7 +10,7 @@ def star(func: Callable) -> Callable {
 }
 
 def percent(func: Callable) -> Callable {
-    def inner(y: Any) {
+    def inner(y: any) {
         print(("%" * 30));
         func(y);
         print(("%" * 30));
@@ -19,7 +19,7 @@ def percent(func: Callable) -> Callable {
 }
 
 def percent2(func: Callable) -> Callable {
-    def inner(y: Any) {
+    def inner(y: any) {
         print(("-" * 30));
         func(y);
         print(("+" * 30));
@@ -30,7 +30,7 @@ def percent2(func: Callable) -> Callable {
 @star
 @percent
 @percent2
-def printer(msg: Any) {
+def printer(msg: any) {
     print(msg);
 }
 

@@ -101,7 +101,7 @@ impl ServiceProcessManager._assign_port(service_entry: ServiceEntry) -> int {
     if service_entry.port > 0 {
         return service_entry.port;
     }
-    import from jac_scale.microservices._util { pick_free_port }
+    import from jac_scale.microservices.runtime.util { pick_free_port }
     return pick_free_port(service_entry.name);
 }
 
@@ -115,7 +115,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     entry = self.registry.entries[name];
     port = self._assign_port(entry);
 
-    import from jac_scale.microservices._util { resolve_jac_binary }
+    import from jac_scale.microservices.runtime.util { resolve_jac_binary }
     jac_bin: str = resolve_jac_binary();
 
     cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
@@ -191,7 +191,7 @@ Two passes:
      engine calls create_all() simultaneously.
 """
 impl ServiceProcessManager.start_all -> None {
-    import from jac_scale.microservices._util { wait_for_health }
+    import from jac_scale.microservices.runtime.util { wait_for_health }
 
     for (name, entry) in self.registry.entries.items() {
         if entry.port == 0 {
@@ -200,14 +200,19 @@ impl ServiceProcessManager.start_all -> None {
         }
     }
 
+    timeout: float = self._boot_health_timeout;
     for name in self.registry.entries {
         self.start_service(name);
         entry = self.registry.entries[name];
         proc = self.processes.get(name);
         if proc and entry.url {
-            ok = wait_for_health(entry.url, lambda : proc.poll() is None, timeout=20.0);
+            ok = wait_for_health(
+                entry.url, lambda : proc.poll() is None, timeout=timeout
+            );
             if not ok {
-                logger.warning(f"{name} did not become healthy within 20s; proceeding");
+                logger.warning(
+                    f"{name} did not become healthy within {timeout:.0f}s; proceeding"
+                );
             }
         }
     }
@@ -300,6 +305,8 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
 
 """Stop all running services."""
 impl ServiceProcessManager.stop_all -> None {
+    # Stop the monitor first so it doesn't race with stop_service.
+    self.stop_health_monitor();
     names = list(self.processes.keys());
     for name in names {
         self.stop_service(name);
@@ -355,4 +362,55 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
     }
 
     return results;
+}
+
+
+"""Background recovery loop; module-scope so the thread target is
+picklable. Swallows per-iteration exceptions so a transient socket
+error doesn't kill the loop."""
+def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
+    while not stop_event.is_set() {
+        try {
+            pm.check_all_health();
+        } except Exception as e {
+            logger.warning(f"health monitor iteration failed: {e}");
+        }
+        if stop_event.wait(interval) {
+            return;
+        }
+    }
+}
+
+
+impl ServiceProcessManager.start_health_monitor(interval: float | None = None) -> None {
+    if (
+        self._health_monitor_thread is not None
+        and self._health_monitor_thread.is_alive()
+    ) {
+        return;
+    }
+    poll_interval: float = (
+        interval if interval is not None else self._health_monitor_interval
+    );
+    self._health_monitor_stop = threading.Event();
+    self._health_monitor_thread = threading.Thread(
+        target=_health_monitor_loop,
+        args=(self, self._health_monitor_stop, poll_interval),
+        daemon=True,
+        name="jac-scale-health-monitor"
+    );
+    self._health_monitor_thread.start();
+    logger.info(f"Health monitor started (interval={poll_interval}s)");
+}
+
+
+impl ServiceProcessManager.stop_health_monitor -> None {
+    if self._health_monitor_stop is not None {
+        self._health_monitor_stop.set();
+    }
+    if self._health_monitor_thread is not None {
+        self._health_monitor_thread.join(timeout=2);
+    }
+    self._health_monitor_thread = None;
+    self._health_monitor_stop = None;
 }

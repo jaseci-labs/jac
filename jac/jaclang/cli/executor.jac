@@ -7,7 +7,7 @@ The executor runs commands and manages:
 - Hook context passing between hooks and handlers
 """
 
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jaclang.cli.command { CommandSpec, HookContext }
 
 """Result from executing a command."""
@@ -27,13 +27,13 @@ Handles the full command lifecycle:
 5. Return final exit code
 """
 obj CommandExecutor {
-    def execute(spec: CommandSpec, args: dict[str, Any]) -> ExecutionResult;
+    def execute(spec: CommandSpec, args: dict[str, any]) -> ExecutionResult;
     def run_pre_hooks(spec: CommandSpec, context: HookContext) -> bool;
     def run_post_hooks(
         spec: CommandSpec, context: HookContext, return_code: int
     ) -> int;
 
-    def run_handler(spec: CommandSpec, args: dict[str, Any]) -> int;
+    def run_handler(spec: CommandSpec, args: dict[str, any]) -> int;
 }
 
 # Global singleton instance

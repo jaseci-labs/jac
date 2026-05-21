@@ -1,6 +1,18 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.11 (Latest Release)
+## jac-mcp 0.1.16 (Latest Release)
+
+### New Features
+
+- **MCP: Serve reference guides from the shared store**: The MCP server now serves the Jac reference guides from jaclang's bundled guide store (`jac://guide/*`) instead of vendoring its own copy, keeping one source of truth.
+
+## jac-mcp 0.1.12
+
+### New Features
+
+- **Add: `mode` setting for tool/prompt surface (lite/standard/full)**: The MCP server now reads a `mode` field from `[plugins.mcp]` in `jac.toml` and exposes a `--mode` CLI flag on `jac mcp` that writes the choice into the in-memory plugin config. Resolution order is CLI > `jac.toml` > default (`full`). `full` preserves existing behavior; `lite` and `standard` are reserved tiers for smaller models and currently expose the same surface as `full`. Per-mode exclusion sets will be populated in follow-up releases. Unknown values fall back to `full` with a logged warning.
+
+## jac-mcp 0.1.11
 
 - 1 small refactor/change.
 

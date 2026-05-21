@@ -76,12 +76,12 @@ impl useIsStandalone -> bool {
     [standalone, setStandalone] = reactUseState(isStandalone());
 
     reactUseEffect(
-        lambda -> Any {
+        lambda -> any {
             # Listen for display-mode changes
             mediaQuery = window.matchMedia("(display-mode: standalone)");
-            handler = lambda e: Any { setStandalone(e.matches);};
+            handler = lambda e: any { setStandalone(e.matches); };
             mediaQuery.addEventListener("change", handler);
-            return lambda { mediaQuery.removeEventListener("change", handler);};
+            return lambda { mediaQuery.removeEventListener("change", handler); };
         },
         []
     );
@@ -102,7 +102,7 @@ impl captureInstallPrompt -> None {
 
     window.addEventListener(
         "beforeinstallprompt",
-        lambda e: Any {
+        lambda e: any {
             e.preventDefault();
             window.__jacPwaPrompt = e;
             window.dispatchEvent(
@@ -325,7 +325,7 @@ impl usePwaInstall -> dict {
 
     # Fetch manifest data on mount
     reactUseEffect(
-        lambda -> Any {
+        lambda -> any {
             async def loadManifest {
                 name = await getAppName();
                 icon = await getAppIcon();
@@ -340,7 +340,7 @@ impl usePwaInstall -> dict {
 
     # Listen for prompt ready event
     reactUseEffect(
-        lambda -> Any {
+        lambda -> any {
             handler = lambda {
                 setCanInstall(True);
                 setShowBanner(shouldShowInstallBanner());
@@ -348,21 +348,21 @@ impl usePwaInstall -> dict {
             window.addEventListener("jac:pwa:promptready", handler);
             return lambda { window.removeEventListener(
                 "jac:pwa:promptready", handler
-            );};
+            ); };
         },
         []
     );
 
     # Listen for installed event
     reactUseEffect(
-        lambda -> Any {
+        lambda -> any {
             handler = lambda {
                 setIsInstalled(True);
                 setCanInstall(False);
                 setShowBanner(False);
             };
             window.addEventListener("jac:pwa:installed", handler);
-            return lambda { window.removeEventListener("jac:pwa:installed", handler);};
+            return lambda { window.removeEventListener("jac:pwa:installed", handler); };
         },
         []
     );
@@ -700,10 +700,12 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
 
     # Show after delay
     reactUseEffect(
-        lambda -> Any {
-            if not pwa.shouldShowBanner or pwa.isInstalled { return None;  }
-            timer = setTimeout(lambda { setVisible(True);}, showAfterMs);
-            return lambda { clearTimeout(timer);};
+        lambda -> any {
+            if not pwa.shouldShowBanner or pwa.isInstalled {
+                return None;
+            }
+            timer = setTimeout(lambda { setVisible(True); }, showAfterMs);
+            return lambda { clearTimeout(timer); };
         },
         [pwa.shouldShowBanner, pwa.isInstalled]
     );
@@ -851,7 +853,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: Any { e.stopPropagation();}}
+                    onClick={lambda e: any { e.stopPropagation(); }}
                 >
                     <div className="jac-pwa-ios-guide__title">{title}</div>
                     <div className="jac-pwa-ios-guide__subtitle">

@@ -17,7 +17,12 @@ impl TypeEvaluator.validate_arg_types(
             arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
-        if not self.assign_type(arg_type, param.param_type) {
+        # Layer 2 strict-Any dispatch: the call site's containing module
+        # decides strictness (see `_is_strict_site`). A leak across a
+        # Python -> Jac boundary gets caught at the Jac call site.
+        if not self.assign_type(
+            arg_type, param.param_type, strict=self._is_strict_site(arg)
+        ) {
             has_errors = True;
             if not checking_overload {
                 self.emit_diag(
@@ -147,13 +152,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 if isinstance(first_arg, uni.KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
-            if isinstance(cast_target_type, types.ClassType)
-            and cast_target_type.is_instantiable_class() {
-                return cast_target_type.clone_as_instance();
-            }
-            # For non-class types (e.g. cast(str, x)), return the type directly
             if not isinstance(cast_target_type, types.UnknownType) {
-                return cast_target_type;
+                return self._convert_to_instance(cast_target_type);
             }
         }
     }
@@ -470,7 +470,6 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             and caller_type.shared == self.prefetch.any_class.shared
         ) {
             return caller_type;  # Any() -> Any
-
         }
         magic_call_ret = self.get_type_of_magic_method_call(
             caller_type, "__call__", expr.params, expr
@@ -673,7 +672,7 @@ with the caller's class type. Returns an OverloadedType when multiple signatures
 exist, otherwise returns the base FunctionType.
 """
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: Any, caller_type: types.ClassType
+    method_member: any, caller_type: types.ClassType
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);

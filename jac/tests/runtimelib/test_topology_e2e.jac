@@ -27,6 +27,14 @@ edge Weighted {
     has weight: int = 0;
 }
 
+# Inheritance hierarchy used by the parent-type-query test below.
+node BaseContent {
+    has val: int = 0;
+}
+
+node PostNode(BaseContent) {}
+node ArticleNode(BaseContent) {}
+
 test "index type-filtered query returns correct results" {
     cfg = JacConfig();
     cfg.run.topology_index = True;
@@ -166,6 +174,198 @@ test "nested post-hoc filter as origin of outer edge-op" {
 
         assert inline == nested , f"Inline vs nested differ: {inline} vs {nested}";
         assert inline == [0, 10, 20, 30, 40];
+    } finally {
+        ctx.close();
+        set_config(JacConfig());
+    }
+}
+
+test "planner bypasses index when no hop is filtered" {
+    import from jaclang.jac0core.archetype {
+        ObjectSpatialPath,
+        ObjectSpatialDestination,
+        EdgeDir
+    }
+    import from jaclang.runtimelib.planner { execute_path }
+
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    try {
+        r = root;
+        for i in range(10) {
+            r +>: EdgeX :+> TypeA(val=i);
+        }
+
+        # Fully unfiltered single-hop chain → planner must return None so
+        # the runtime falls back to the natural edge-walk.
+        unfiltered_path = ObjectSpatialPath(
+            [r], [ObjectSpatialDestination(EdgeDir.OUT)]
+        );
+        assert execute_path(ctx.mem, unfiltered_path) is None , (
+            "planner should bypass TI for fully unfiltered chains"
+        );
+
+        # Edge-type filter alone is enough to engage the index.
+        edge_filter = lambda e: any : isinstance(e, EdgeX);
+        edge_typed_path = ObjectSpatialPath(
+            [r], [ObjectSpatialDestination(EdgeDir.OUT, edge_filter)]
+        );
+        assert execute_path(ctx.mem, edge_typed_path) is not None , (
+            "planner should engage TI when edge_type is filtered"
+        );
+
+        # Node-type filter alone also engages the index.
+        node_filter = lambda n: any : isinstance(n, TypeA);
+        node_typed_path = ObjectSpatialPath(
+            [r], [ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)]
+        );
+        result = execute_path(ctx.mem, node_typed_path);
+        assert result is not None , "planner should engage TI when node_type is filtered";
+        assert len(result) == 10 , f"expected 10 TypeA nodes, got {len(result)}";
+
+        # Multi-hop fully unfiltered → still bypasses. The contract is "every
+        # hop unfiltered", not just the first.
+        two_hop_unfiltered = ObjectSpatialPath(
+            [r],
+            [
+                ObjectSpatialDestination(EdgeDir.OUT),
+                ObjectSpatialDestination(EdgeDir.OUT)
+            ]
+        );
+        assert execute_path(ctx.mem, two_hop_unfiltered) is None , (
+            "two-hop fully unfiltered should bypass TI"
+        );
+
+        # Multi-hop with a filter on only the second hop → engages. A single
+        # filtered hop anywhere in the chain is enough to want the index.
+        mixed_two_hop = ObjectSpatialPath(
+            [r],
+            [
+                ObjectSpatialDestination(EdgeDir.OUT),
+                ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)
+            ]
+        );
+        assert execute_path(ctx.mem, mixed_two_hop) is not None , (
+            "two-hop with filter on second hop should engage TI"
+        );
+    } finally {
+        ctx.close();
+        set_config(JacConfig());
+    }
+}
+
+test "planner bails when a hop has predicates beyond type" {
+    # The planner's filter introspection detects lambdas that do more than
+    # `isinstance(i, T)` (attribute access, comparisons, etc). The index
+    # can resolve those for the FINAL hop only — the planner post-applies
+    # that filter on the planned set. For non-final hops, execute_path
+    # must bail and let the linear edge-walk evaluate the predicate.
+    import from jaclang.jac0core.archetype {
+        ObjectSpatialPath,
+        ObjectSpatialDestination,
+        EdgeDir
+    }
+    import from jaclang.runtimelib.planner { execute_path }
+
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    try {
+        r = root;
+        for i in range(10) {
+            a = TypeA(val=i);
+            r +>: EdgeX :+> a;
+            a +>: EdgeY :+> TypeB(val=i * 10);
+        }
+
+        # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — the planner's
+        # predicate detector returns True. On a single-hop (and therefore
+        # final) chain, execute_path still engages: the planner post-applies
+        # the predicate above the materialized list.
+        pred_filter = lambda n: any : isinstance(n, TypeA) and n.val > 5;
+        single_hop_pred = ObjectSpatialPath(
+            [r], [ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter)]
+        );
+        assert execute_path(ctx.mem, single_hop_pred) is not None , (
+            "predicate on the FINAL hop should still engage TI"
+        );
+
+        # Same predicate on a non-final hop in a 2-hop chain → bail.
+        two_hop_pred_first = ObjectSpatialPath(
+            [r],
+            [
+                ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter),
+                ObjectSpatialDestination(EdgeDir.OUT)
+            ]
+        );
+        assert execute_path(ctx.mem, two_hop_pred_first) is None , (
+            "predicate on a non-final hop should bail to linear path"
+        );
+
+        # End-to-end correctness: predicate on final hop produces the right
+        # subset, regardless of which path the runtime took.
+        result = [r->:EdgeX:->[?:TypeA, val>5]];
+        assert sorted([n.val for n in result]) == [6, 7, 8, 9];
+    } finally {
+        ctx.close();
+        set_config(JacConfig());
+    }
+}
+
+test "parent-type filter returns all subtype instances" {
+    # BUG: pre-PR 5784 main only ever indexed concrete type names. The hooks
+    # called `_type_name(node.archetype)` which is just `type(obj).__name__`,
+    # and resolve_chain matched targets by strict `node_table[lid][1] ==
+    # ntid`. So `[r->:EdgeX:->[?:BaseContent]]` against a graph containing
+    # only PostNode and ArticleNode instances returned the empty set --
+    # parent-type queries silently dropped every subtype instance.
+    #
+    # The fix indexes each target under every ancestor in its MRO at
+    # edge-creation time. This test pins the e2e behavior so a regression
+    # in the MRO fan-out path can't silently return empty sets again.
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    try {
+        r = root;
+        for i in range(5) {
+            r +>: EdgeX :+> PostNode(val=i);
+        }
+        for i in range(5) {
+            r +>: EdgeX :+> ArticleNode(val=100 + i);
+        }
+
+        # Parent-type filter: must return ALL 10 (5 PostNode + 5 ArticleNode).
+        all_subtypes = [r->:EdgeX:->[?:BaseContent]];
+        assert len(all_subtypes) == 10 , (
+            f"BaseContent parent query should return all 10 subtype instances, got {len(
+                all_subtypes
+            )}"
+        );
+        vals = sorted([n.val for n in all_subtypes]);
+        assert vals == [0, 1, 2, 3, 4, 100, 101, 102, 103, 104];
+
+        # Concrete-subtype filter still narrows to exactly its own type.
+        only_posts = [r->:EdgeX:->[?:PostNode]];
+        assert len(only_posts) == 5;
+        assert sorted([n.val for n in only_posts]) == [0, 1, 2, 3, 4];
+
+        # Cross-check with the index disabled in the same context — both paths
+        # must produce identical results, proving the MRO-aware index doesn't
+        # invent matches that the natural walk wouldn't return.
+        cfg.run.topology_index = False;
+        set_config(cfg);
+        nat_all = sorted([n.val for n in [r->:EdgeX:->[?:BaseContent]]]);
+        nat_posts = sorted([n.val for n in [r->:EdgeX:->[?:PostNode]]]);
+        assert nat_all == vals;
+        assert nat_posts == [0, 1, 2, 3, 4];
     } finally {
         ctx.close();
         set_config(JacConfig());

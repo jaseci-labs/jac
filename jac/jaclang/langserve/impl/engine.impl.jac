@@ -53,6 +53,15 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 
 """Actually queue the type check task after debounce delay."""
 impl JacLangServer._do_type_check(file_uri: str) -> None {
+    # Fan out BEFORE queuing the primary task. `_fanout_dependents` calls
+    # `invalidate_module(resolved)` for `file_uri` itself; if that runs
+    # after the worker has already popped the task, compiled the file,
+    # and populated `mod.hub`, the invalidation wipes the freshly
+    # written entry — diagnostics for the file then disappear because
+    # `JacLangServer.diagnostics` enumerates `mod.hub` keys. Doing the
+    # eviction first guarantees the worker observes a post-invalidation
+    # state and its mod.hub write survives.
+    self._fanout_dependents(file_uri);
     with self._state_lock.write_lock() {
         # Clear timer reference and pending file
         self._debounce_timer = None;
@@ -63,6 +72,49 @@ impl JacLangServer._do_type_check(file_uri: str) -> None {
         self.pipe.append(self.last_task);
         # Trigger the worker to pick up the new task.
         self._work_event.set();
+    }
+}
+
+"""Drop the changed file's IR from program caches and queue every open
+consumer of it for re-check. See `_fanout_dependents` declaration."""
+impl JacLangServer._fanout_dependents(file_uri: str) -> None {
+    import from pathlib { Path }
+    fs_path = uris.to_fs_path(file_uri);
+    if fs_path is None {
+        return;
+    }
+    try {
+        resolved = str(Path(fs_path).resolve());
+    } except OSError {
+        return;
+    }
+    # Defensive eviction. Fix 1's mtime gate already invalidates on a
+    # subsequent compile, but invalidating up front means consumers that
+    # consult cached state outside the import path (hover, completion)
+    # also see fresh data immediately.
+    self.invalidate_module(resolved);
+    dependents = self.transitive_dependents(resolved);
+    if not dependents {
+        return;
+    }
+    with self._state_lock.write_lock() {
+        for dep_path in dependents {
+            dep_uri = uris.from_fs_path(dep_path);
+            if dep_uri is None or dep_uri == file_uri {
+                continue;
+            }
+            # Only re-check files that are actually open: the LSP only
+            # publishes diagnostics for open documents, and re-compiling
+            # closed files is wasted work proportional to the size of the
+            # rdep graph.
+            if dep_uri in self.workspace._text_documents {
+                self.dirty_files[dep_uri] = True;
+                self._idle_event.clear();
+            }
+        }
+        if self.dirty_files {
+            self._work_event.set();
+        }
     }
 }
 

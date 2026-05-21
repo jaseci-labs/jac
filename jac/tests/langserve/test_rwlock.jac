@@ -66,7 +66,7 @@ test "rwlock concurrent readers and exclusive writer" {
         results: list[str] = [];
         barrier = threading.Barrier(3);  # Sync 3 reader threads
 
-        def reader_work(reader_id: int) -> None {
+        def reader_work(reader_id: int) {
             with lock.read_lock() {
                 # All readers should be able to enter concurrently
                 barrier.wait(timeout=5);  # Would deadlock if readers blocked each other
@@ -93,7 +93,7 @@ test "rwlock concurrent readers and exclusive writer" {
         writer_done = threading.Event();
         reader_entered = threading.Event();
 
-        def writer_work -> None {
+        def writer_work {
             with lock.write_lock() {
                 writer_entered.set();
                 results.append("writer_in");
@@ -103,7 +103,7 @@ test "rwlock concurrent readers and exclusive writer" {
             writer_done.set();
         }
 
-        def reader_after_writer -> None {
+        def reader_after_writer {
             # Wait until writer has started, then try to read
             writer_entered.wait(timeout=5);
             time.sleep(0.02);  # Small delay to ensure writer is holding lock
@@ -130,7 +130,7 @@ test "rwlock concurrent readers and exclusive writer" {
         hold_read = threading.Event();
         writer_waiting = threading.Event();
 
-        def holding_reader -> None {
+        def holding_reader {
             with lock.read_lock() {
                 results.append("hold_reader_in");
                 hold_read.wait(timeout=5);  # Hold read lock until signaled
@@ -138,14 +138,14 @@ test "rwlock concurrent readers and exclusive writer" {
             }
         }
 
-        def priority_writer -> None {
+        def priority_writer {
             writer_waiting.set();
             with lock.write_lock() {
                 results.append("priority_writer");
             }
         }
 
-        def late_reader -> None {
+        def late_reader {
             writer_waiting.wait(timeout=5);
             time.sleep(0.05);  # Ensure writer is queued first
             with lock.read_lock() {
@@ -194,7 +194,7 @@ test "concurrent queries during type checking" {
         results: dict[str, bool] = {};
         num_iterations = 10;
 
-        def read_hover -> None {
+        def read_hover {
             try {
                 for _ in range(num_iterations) {
                     lsp.get_hover_info(circle_uri, lspt.Position(line=5, character=4));
@@ -205,7 +205,7 @@ test "concurrent queries during type checking" {
             }
         }
 
-        def read_outline -> None {
+        def read_outline {
             try {
                 for _ in range(num_iterations) {
                     lsp.get_outline(circle_uri);
@@ -216,7 +216,7 @@ test "concurrent queries during type checking" {
             }
         }
 
-        def read_semantic_tokens -> None {
+        def read_semantic_tokens {
             try {
                 for _ in range(num_iterations) {
                     lsp.get_semantic_tokens(circle_uri);
@@ -227,7 +227,7 @@ test "concurrent queries during type checking" {
             }
         }
 
-        def read_definition -> None {
+        def read_definition {
             try {
                 for _ in range(num_iterations) {
                     lsp.get_definition(circle_uri, lspt.Position(line=5, character=4));
@@ -238,7 +238,7 @@ test "concurrent queries during type checking" {
             }
         }
 
-        def write_type_check -> None {
+        def write_type_check {
             try {
                 for _ in range(3) {
                     lsp.type_check_file(circle_uri);
@@ -289,7 +289,7 @@ test "shutdown under active dispatch" {
         # Shutdown should complete without deadlock
         shutdown_done = threading.Event();
 
-        def do_shutdown -> None {
+        def do_shutdown {
             lsp.shutdown();
             shutdown_done.set();
         }

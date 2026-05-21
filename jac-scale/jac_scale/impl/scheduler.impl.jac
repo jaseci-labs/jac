@@ -16,12 +16,12 @@ impl JacScaleScheduler.instance -> JacScaleScheduler {
 }
 
 """Set up the scheduler with a system token and optional server reference."""
-impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> None {
+impl JacScaleScheduler.setup(system_token: str, server: any | None = None) -> None {
     self._system_token = system_token;
     self._server = server;
 
     # Register the dynamic handler via the public API in jaclang's scheduler.
-    def _dynamic_handler(task: Any) {
+    def _dynamic_handler(task: any) {
         self._execute_task(task.name, self._system_username, task.is_walker);
     }
     Scheduler.instance().dynamic_handler = _dynamic_handler;
@@ -83,12 +83,12 @@ impl JacScaleScheduler.stop -> None {
 
 """Register static tasks (STATIC trigger) with the base jaclang Scheduler."""
 impl JacScaleScheduler.register_static_tasks(
-    walkers: dict, functions: dict, server: Any
+    walkers: dict, functions: dict, server: any
 ) -> None {
     self._server = server;
     base_scheduler = Scheduler.instance();
 
-    def _make_target(_name: str, _is_walker: bool) -> Any {
+    def _make_target(_name: str, _is_walker: bool) -> any {
         def target {
             self._execute_task(_name, self._system_username, _is_walker);
         }
@@ -311,11 +311,13 @@ impl JacScaleScheduler.delete_job(job_id: str) -> bool {
     return result;
 }
 
-"""Execute a scheduled walker or function in the context of the given user."""
+"""Execute a scheduled walker or function in an isolated execution context."""
 impl JacScaleScheduler._execute_task(
     name: str, username: str, is_walker: bool
 ) -> None {
     import asyncio;
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime }
     label = 'walker' if is_walker else 'function';
     try {
         if self._server is None {
@@ -336,19 +338,35 @@ impl JacScaleScheduler._execute_task(
         logger.debug(f"Executing scheduled {label} '{name}' as '{username}'");
 
         async def _run {
-            if is_walker {
-                result = await self._server.execution_manager.spawn_walker(
-                    target, {}, username
-                );
-            } else {
-                result = await self._server.execution_manager.execute_function(
-                    target, {}, username
-                );
-            }
-            if isinstance(result, dict) and 'error' in result {
-                logger.error(
-                    f"Scheduled {label} '{name}' error: {result.get('error')}"
-                );
+            import from jac_scale.context { JScaleExecutionContext }
+            import from jaclang { JacRuntimeInterface as Jac }
+            # Each scheduled job runs in its own isolated root context so
+            # concurrent jobs cannot share L1 state or interfere with
+            # in-flight HTTP requests that may be using the global context.
+            ctx = JScaleExecutionContext();
+            ctx_token = Jac.push_request_context(ctx);
+            try {
+                if is_walker {
+                    result = await self._server.execution_manager.spawn_walker(
+                        target, {}, username
+                    );
+                } else {
+                    result = await self._server.execution_manager.execute_function(
+                        target, {}, username
+                    );
+                }
+                if isinstance(result, dict) and 'error' in result {
+                    logger.error(
+                        f"Scheduled {label} '{name}' error: {result.get('error')}"
+                    );
+                }
+            } finally {
+                Jac.reset_request_context(ctx_token);
+                try {
+                    ctx.mem.close();
+                } except Exception as ce {
+                    logger.warning(f"Scheduled job context close failed: {ce}");
+                }
             }
         }
 

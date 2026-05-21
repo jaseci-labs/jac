@@ -434,7 +434,9 @@ impl NaIRGenPass._codegen_string_slice(
     # slice_len = stop - start
     slice_len = self.builder.sub(stop_val, start_val, name="ss.slen");
     alloc_size = self.builder.add(slice_len, ir.Constant(i64, 1), name="ss.alloc");
+    self._set_rc_ctx("str_substr", "");
     new_str = self.builder.call(self.rc_alloc_fn, [alloc_size], name="ss.new");
+    self._clear_rc_ctx();
     self._emit_set_type_tag(self.builder, new_str, "str");
     # src_ptr = target_val + start
     src_ptr = self.builder.gep(target_val, [start_val], name="ss.src");
@@ -523,7 +525,9 @@ impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
     # Allocate result: end - start + 1 (for null terminator)
     result_len = self.builder.sub(final_end, final_start, name="result.len");
     alloc_size = self.builder.add(result_len, ir.Constant(i64, 1), name="alloc.size");
+    self._set_rc_ctx("str_strip", "");
     result_ptr = self.builder.call(self.rc_alloc_fn, [alloc_size], name="strip.result");
+    self._clear_rc_ctx();
     self._emit_set_type_tag(self.builder, result_ptr, "str");
     # memcpy from str_val + start to result
     src_ptr = self.builder.gep(str_val, [final_start], name="src.ptr");
@@ -550,7 +554,9 @@ impl NaIRGenPass._codegen_str_split(
         return None;
     }
     # Create a new list
+    self._set_rc_ctx("str_split", "");
     new_list = self.builder.call(helpers["new"], [], name="split.list");
+    self._clear_rc_ctx();
     # Get lengths
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     str_len = self.builder.call(strlen_fn, [str_val], name="str.len");
@@ -593,7 +599,9 @@ impl NaIRGenPass._codegen_str_split(
     ts = self.builder.load(token_start_alloca, name="token.start");
     token_len = self.builder.sub(cur_i, ts, name="token.len");
     alloc_len = self.builder.add(token_len, ir.Constant(i64, 1), name="token.alloc");
+    self._set_rc_ctx("str_split", "");
     token_ptr = self.builder.call(self.rc_alloc_fn, [alloc_len], name="token.ptr");
+    self._clear_rc_ctx();
     src = self.builder.gep(str_val, [ts], name="token.src");
     self.builder.call(memcpy, [token_ptr, src, token_len]);
     null_pos = self.builder.gep(token_ptr, [token_len], name="token.null");
@@ -615,7 +623,9 @@ impl NaIRGenPass._codegen_str_split(
     final_ts = self.builder.load(token_start_alloca, name="final.ts");
     last_len = self.builder.sub(str_len, final_ts, name="last.len");
     last_alloc = self.builder.add(last_len, ir.Constant(i64, 1), name="last.alloc");
+    self._set_rc_ctx("str_split", "");
     last_ptr = self.builder.call(self.rc_alloc_fn, [last_alloc], name="last.ptr");
+    self._clear_rc_ctx();
     last_src = self.builder.gep(str_val, [final_ts], name="last.src");
     self.builder.call(memcpy, [last_ptr, last_src, last_len]);
     last_null = self.builder.gep(last_ptr, [last_len], name="last.null");
@@ -702,7 +712,9 @@ impl NaIRGenPass._emit_sys_argv -> (ir.Value | None) {
     # Get length, allocate RC string, copy
     slen = self.builder.call(strlen_fn, [arg_ptr], name="arg.len");
     alloc_size = self.builder.add(slen, ir.Constant(i64, 1), name="arg.alloc");
+    self._set_rc_ctx("argv", "");
     rc_str = self.builder.call(self.rc_alloc_fn, [alloc_size], name="arg.str");
+    self._clear_rc_ctx();
     self._emit_set_type_tag(self.builder, rc_str, "str");
     self.builder.call(memcpy_fn, [rc_str, arg_ptr, alloc_size]);
 

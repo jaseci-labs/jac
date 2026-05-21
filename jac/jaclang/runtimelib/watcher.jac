@@ -6,7 +6,7 @@ Uses the watchdog library for cross-platform file system events.
 
 import time;
 import from pathlib { Path }
-import from typing { Callable, Any }
+import from typing { Callable }
 
 """Event types for file changes."""
 enum ChangeType {
@@ -39,7 +39,7 @@ obj JacFileWatcher {
             "*.jpg",
             "*.jpeg"
         ],
-        _observer: Any = None,
+        _observer: any = None,
         _callbacks: list[Callable[[FileChangeEvent], None]] = [],
         _debounce_ms: int = 100,
         _running: bool = False,

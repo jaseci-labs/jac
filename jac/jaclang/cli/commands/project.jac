@@ -1,7 +1,4 @@
-"""Project commands: create, install, add, remove, script.
-
-Commands for managing Jac projects and dependencies.
-"""
+"""Commands for managing Jac projects and dependencies."""
 
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
@@ -63,28 +60,107 @@ def create(
     list_jacpacks: bool = False
 ) -> int;
 
-"""Install all dependencies from jac.toml."""
+"""Install all dependencies from jac.toml, or install a package in editable mode."""
 @registry.command(
     name="install",
-    help="Install project dependencies",
+    help="Install project dependencies (or -e <path> for editable install)",
     args=[
+        Arg.create(
+            "editable",
+            default="",
+            help="Install the package at this path in editable mode (like pip install -e)",
+            short="e"
+        ),
         Arg.create(
             "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
         ),
         Arg.create(
+            "extras",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Optional dependency groups to install (e.g. data monitoring)",
+            short="x"
+        ),
+        Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
+        ),
+        Arg.create(
+            "force-reinstall",
+            typ=bool,
+            default=False,
+            help="Reinstall all packages even if they are already up-to-date",
+            short=""
+        ),
+        Arg.create(
+            "no-cache-dir",
+            typ=bool,
+            default=False,
+            help="Disable the pip download cache",
+            short=""
+        ),
+        Arg.create(
+            "pre",
+            typ=bool,
+            default=False,
+            help="Include pre-release and development versions",
+            short=""
+        ),
+        Arg.create(
+            "dry-run",
+            typ=bool,
+            default=False,
+            help="Show what would be installed without actually installing anything",
+            short=""
+        ),
+        Arg.create(
+            "no-deps",
+            typ=bool,
+            default=False,
+            help="Don't install package dependencies",
+            short=""
+        ),
+        Arg.create(
+            "quiet", typ=bool, default=False, help="Suppress pip output", short=""
+        ),
+        Arg.create(
+            "prefer-binary",
+            typ=bool,
+            default=False,
+            help="Prefer wheel files over source distributions",
+            short=""
         ),
 
     ],
     examples=[
         ("jac install", "Install all dependencies"),
+        ("jac install -e .", "Install current package in editable mode"),
+        ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         ("jac install --dev", "Include dev dependencies"),
-        ("jac install --verbose", "Show detailed progress"),
+        ("jac install --extras data monitoring", "Include optional dependency groups"),
+        ("jac install -e . --extras all", "Editable install with all optional deps"),
+        ("jac install --force-reinstall", "Reinstall all packages from scratch"),
+        ("jac install --pre", "Include pre-release versions"),
+        ("jac install --no-cache-dir", "Install without using pip's download cache"),
+        ("jac install --dry-run", "Preview what would be installed without doing it"),
+        ("jac install --no-deps", "Install packages without their dependencies"),
+        ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
 
     ],
     group="project"
 )
-def install(dev: bool = False, verbose: bool = False) -> int;
+def install(
+    editable: str = "",
+    dev: bool = False,
+    extras: list = [],
+    verbose: bool = False,
+    force_reinstall: bool = False,
+    no_cache_dir: bool = False,
+    pre: bool = False,
+    dry_run: bool = False,
+    no_deps: bool = False,
+    quiet: bool = False,
+    prefer_binary: bool = False
+) -> int;
 
 """Add dependencies to the project."""
 @registry.command(
@@ -289,3 +365,25 @@ def clean(
     group="project"
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
+
+"""Build a wheel from jac.toml into the output directory."""
+@registry.command(
+    name="bundle",
+    help="Build a .whl from jac.toml (upload separately with twine)",
+    args=[
+        Arg.create(
+            "output",
+            default="dist",
+            help="Output directory for the built .whl file",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
+
+    ],
+    group="project"
+)
+def bundle(output: str = "dist") -> int;

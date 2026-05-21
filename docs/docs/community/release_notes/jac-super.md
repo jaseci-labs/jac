@@ -2,7 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.10 (Latest Release)
+## jac-super 0.1.15 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: `JacSuperConsole` honors `sys.stderr` redirection**: `console.error` / `console.warning` now resolve `sys.stderr` per call via `RichConsole(stderr=True)` instead of capturing the stream at construction, so test redirection (`sys.stderr = io.StringIO()`) works again.
+- **Fix: `print` passes long lines through unchanged**: The `print` override now sets `soft_wrap=True`, restoring the documented `JacConsole` contract so JSON, paths, and code snippets are no longer reflowed to the terminal width.
+
+## jac-super 0.1.11
+
+### Bug Fixes
+
+- **Fix:** `jac check` diagnostic snippets preserve bracketed source like `[root()-->][?:Task]` and list comprehension RHS verbatim instead of stripping them.
+
+## jac-super 0.1.10
 
 - **Fix: `JacSuperConsole.warning` Now Writes to Stderr**: `warning()` was incorrectly using `self._console` (stdout) while `error()` already used `_console_stderr`. Warnings now go to stderr as intended, so they no longer corrupt piped command output.
 

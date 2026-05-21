@@ -1,19 +1,14 @@
 """Helpers for generating target-specific JSX AST nodes."""
 import ast as ast3;
-import from typing { TYPE_CHECKING, cast }
+import from typing { cast }
 import jaclang.jac0core.unitree as uni;
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
-        import from jaclang.compiler.passes.ecmascript.estree {
-            Expression,
-            Property,
-            SpreadElement
-        }
-        import from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
-    }
+import type from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+import type from jaclang.compiler.passes.ecmascript.estree {
+    Expression,
+    Property,
+    SpreadElement
 }
+import type from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
 
 """Generate ESTree structures for JSX nodes."""
 class EsJsxProcessor {

@@ -42,7 +42,7 @@ impl JacClient.build_client_bundle(
 impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
     import from jaclang.project.config { find_project_root }
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
-    base_path_dir = Path(Jac.base_path_dir);
+    base_path_dir = Path(Jac.get_base_path_dir());
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -90,7 +90,7 @@ impl JacClient.render_page(
     function_name: str,
     args: dict[(str, Any)],
     username: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     introspector.load();
     available_exports = (
         set(introspector._client_manifest.get('exports', []))
@@ -100,7 +100,7 @@ impl JacClient.render_page(
         raise ValueError(f"Client function '{function_name}' not found");
     }
     import from jaclang.project.config { find_project_root, get_config }
-    base_path_dir = Path(Jac.base_path_dir);
+    base_path_dir = Path(Jac.get_base_path_dir());
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -178,7 +178,7 @@ Otherwise returns the introspector bundle.
 impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
     import from jaclang.project.config { find_project_root, get_config }
     # Find project root
-    base_path_dir = Path(Jac.base_path_dir);
+    base_path_dir = Path(Jac.get_base_path_dir());
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;

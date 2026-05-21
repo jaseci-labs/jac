@@ -2,17 +2,12 @@
 import ast as ast3;
 import from collections.abc { Sequence }
 import from dataclasses { field }
-import from typing { TYPE_CHECKING, Any }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
-        import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
-        import from jaclang.compiler.passes.tool.doc_ir { Doc }
-        import from jaclang.jac0core.unitree { Source, Token }
-        import from llvmlite.binding { ModuleRef, ExecutionEngine }
-    }
-}
+import from typing { Any }
+import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
+import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
+import type from jaclang.compiler.passes.tool.doc_ir { Doc }
+import type from jaclang.jac0core.unitree { Source, Token }
+import type from llvmlite.binding { ModuleRef, ExecutionEngine }
 
 """Client-side rendering manifest metadata."""
 obj ClientManifest {
@@ -165,9 +160,14 @@ obj InteropBinding {
         ret_type: str = 'int',
         param_types: list[str] = [],
         param_names: list[str] = [],
-        ast_node: Any = None,
+        ast_node: any = None,
         route: list[InteropContext] = [],
-        source_module: (str | None) = None;
+        source_module: (str | None) = None,
+        # Kind of provider symbol this binding stubs out: 'function' for
+        # `def:pub` functions (POST /function/<name>), 'walker' for
+        # `walker:pub` archetypes (POST /walker/<name>). Drives stub
+        # codegen and runtime dispatch for sv-to-sv imports.
+        kind: str = 'function';
 
     @property
     def is_direct -> bool;
@@ -234,10 +234,10 @@ obj CodeGenTarget {
         native_bitcode: (bytes | None) = None,
         interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
-        _interop_callbacks: list[Any] = field(default_factory=`list),
+        _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
         native_compat: bool = False,
-        layout_registry: Any = None,
+        layout_registry: any = None,
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.

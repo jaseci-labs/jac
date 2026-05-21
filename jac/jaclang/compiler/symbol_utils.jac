@@ -105,6 +105,91 @@ def collect_field_names(
 Returns keys like "x" or "obj.speed" for use in affected_symbols.
 Returns None for expressions that cannot be represented as a key.
 """
+def int_subscript_suffix(right: uni.IndexSlice) -> str | None {
+    if (not right.is_range and len(right.slices) == 1) {
+        idx = right.slices[0];
+        if (idx.start is not None and idx.stop is None and idx.step is None) {
+            start = idx.start;
+            # items[0] - positive integer literal
+            if isinstance(start, uni.Int) {
+                return f"[{start.lit_value}]";
+            }
+            # items[-1] - negative integer (UnaryExpr with minus op)
+            if (
+                isinstance(start, uni.UnaryExpr)
+                and isinstance(start.op, uni.Token)
+                and start.op.name == "MINUS"
+                and isinstance(start.operand, uni.Int)
+            ) {
+                return f"[-{start.operand.lit_value}]";
+            }
+            # config["host"] - string literal index (MultiString wraps String in Jac AST)
+            if isinstance(start, uni.MultiString)
+            and len(start.strings) == 1
+            and isinstance(start.strings[0], uni.String) {
+                return f'[{start.strings[0].lit_value!r}]';
+            }
+            # items[i] - simple name index. The CFG assignment barrier
+            # consults the narrowing target's `deps` set (populated by
+            # `reference_key_deps` from the AST) so reassigning `i`
+            # invalidates the narrowing; `if x[i] is not None: x[i].foo`
+            # narrows under the same loop iteration while still dying
+            # the moment any index is rebound.
+            if isinstance(start, uni.Name) {
+                return f"[{start.value}]";
+            }
+        }
+    }
+    return None;
+}
+
+"""Reference-key dependencies that invalidate narrowing when reassigned.
+
+A narrowing fact on `x[r] is not None` is keyed by the exact spelling
+`"x[r]"`, so the CFG predecessor walk drops the narrowing when the
+same key is rebound. But the key *also* depends on the base name `x`
+and the index name `r` -- reassigning either changes what `x[r]`
+denotes, so the narrowing must die too. Walks the AST to collect
+those identifier names; literal indices like `[0]` / `["host"]`
+contribute nothing because they're stable.
+"""
+def reference_key_deps(expr: uni.Expr) -> set[str] {
+    deps: set[str] = set();
+    cur: uni.UniNode | None = expr;
+    while cur is not None {
+        if isinstance(cur, uni.AtomUnit) and cur.value is not None {
+            cur = cur.value;
+            continue;
+        }
+        if isinstance(cur, uni.Name) {
+            deps.add(cur.value);
+            return deps;
+        }
+        if isinstance(cur, uni.AtomTrailer) {
+            if (
+                not cur.is_attr
+                and isinstance(cur.right, uni.IndexSlice)
+                and not cur.right.is_range
+                and len(cur.right.slices) == 1
+            ) {
+                idx = cur.right.slices[0];
+                if (
+                    idx.start is not None
+                    and idx.stop is None
+                    and idx.step is None
+                    and isinstance(idx.start, uni.Name)
+                ) {
+                    deps.add(idx.start.value);
+                }
+            }
+            cur = cur.target;
+            continue;
+        }
+        break;
+    }
+    return deps;
+}
+
 def get_expr_key(expr: uni.Expr) -> str | None {
     if isinstance(expr, uni.Name) {
         return expr.value;
@@ -113,6 +198,15 @@ def get_expr_key(expr: uni.Expr) -> str | None {
         base = get_expr_key(expr.target);
         if base and isinstance(expr.right, uni.Name) {
             return f"{base}.{expr.right.value}";
+        }
+    }
+    if isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
+        base = get_expr_key(expr.target);
+        if base and isinstance(expr.right, uni.IndexSlice) {
+            suffix = int_subscript_suffix(expr.right);
+            if suffix {
+                return f"{base}{suffix}";
+            }
         }
     }
     # Unwrap parentheses
@@ -133,7 +227,7 @@ def _extract_first_arg_key(arg: uni.Expr) -> str | None {
     if isinstance(arg, uni.Name) {
         return arg.value;
     }
-    if isinstance(arg, uni.AtomTrailer) and arg.is_attr {
+    if isinstance(arg, uni.AtomTrailer) {
         return get_expr_key(arg);
     }
     if (
@@ -158,7 +252,7 @@ def _extract_compare_left_key(left: uni.Expr) -> str | None {
     if isinstance(left, uni.Name) {
         return left.value;
     }
-    if isinstance(left, uni.AtomTrailer) and left.is_attr {
+    if isinstance(left, uni.AtomTrailer) {
         return get_expr_key(left);
     }
     if (
@@ -296,7 +390,7 @@ def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
     keys: set[str] = set();
     if isinstance(target, uni.Name) {
         keys.add(target.value);
-    } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+    } elif isinstance(target, uni.AtomTrailer) {
         if key := get_expr_key(target) {
             keys.add(key);
         }

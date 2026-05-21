@@ -285,6 +285,110 @@ Same code, different deployer:
 | Scaling | 1 replica | HPA per service |
 | Data | `.jac/data/{module}/` per process | Separate PVC per pod |
 
+## Kubernetes Deployment
+
+`jac start <file>.jac --scale` with `[plugins.scale.microservices].enabled = true`
+auto-routes to the microservice K8s target: one image built and pushed,
+then per-service `Deployment` + `ClusterIP Service` + HPA + PDB applied
+for every `sv import`-discovered service plus the gateway.
+
+Each pod boots with `JAC_SV_NAME=<service>` (`__gateway__` for gateway);
+the entrypoint reads it to know which service to host. Gateway resolves
+peers via in-cluster DNS (`<svc>-service.<ns>.svc.cluster.local`) - no
+code changes from local mode.
+
+### Per-service config
+
+`[plugins.scale.microservices.services.NAME]` (gateway = `__gateway__`):
+
+| Key | Default | Notes |
+|---|---|---|
+| `replicas` | `1` | `Deployment.spec.replicas` |
+| `cpu_request`/`cpu_limit` | unset | `"100m"`, `"2000m"` |
+| `memory_request`/`memory_limit` | unset | `"128Mi"`, `"4Gi"` |
+| `env` | `{}` | extra env vars |
+| `image_tag` | unset | per-service override (canary) |
+| `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
+| `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
+| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler |
+| `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
+
+```toml
+[plugins.scale.microservices.services.llm_app]
+replicas = 2
+cpu_limit = "2000m"
+memory_limit = "4Gi"
+rpc_timeout = 120.0
+
+[plugins.scale.microservices.services.llm_app.hpa]
+min = 3
+max = 20
+```
+
+### Rolling deploy, autoscaling, drain
+
+Every Deployment gets `RollingUpdate { maxSurge: 1, maxUnavailable: 0 }`,
+readinessProbe on `/healthz/ready`, `terminationGracePeriodSeconds =
+drain_timeout_seconds + 5`, and `preStop: sleep 5`. Together with the
+drain middleware (`P13`), `kubectl rollout restart deployment/<svc>-deployment`
+completes with zero non-2xx responses.
+
+Each service also gets an HPA and a PDB (`maxUnavailable=1`). Opt out
+per-service with `hpa.enabled = false` / `pdb.enabled = false`.
+
+### Ingress
+
+Default off. Opt in for an external URL routed to the gateway:
+
+```toml
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "shop.example.com"          # optional
+ingress_class_name = "nginx"       # or alb / gce / traefik
+annotations = { "nginx.ingress.kubernetes.io/proxy-body-size" = "10m" }
+```
+
+One `Ingress` routes `/` to `gateway-service`; the gateway dispatches
+`/api/{svc}/*` internally. HTTP only - TLS automation (cert-manager,
+ACM) is deployment-specific; add via your own annotations/`tls:` block.
+
+### Tear down
+
+```bash
+target.destroy("app-name")
+# or:
+kubectl delete deployment,service,hpa,pdb,ingress -l managed=jac-scale -n <ns>
+```
+
+`destroy()` deletes by `managed=jac-scale,jac-scale.role in
+(microservice,gateway)` so renamed services still get cleaned up.
+
+### Image + entrypoint
+
+Every pod runs the same image, only needs `jac` + `jac-scale[deploy]`.
+The pod-spec's `command`/`args` reads `JAC_SV_NAME` and dispatches:
+`<svc>` -> `jac start <svc>.jac`, `__gateway__` -> `jac scale gateway`.
+`JAC_SV_SIBLING=1` is set so the JacScalePlugin pre-hook skips the
+local-mode orchestrator.
+
+Starter Dockerfile + .dockerignore at
+`jac-scale/scripts/Dockerfile.microservice` / `dockerignore.microservice`.
+
+### End-to-end smoke
+
+`jac-scale/scripts/k8s_microservice_real_e2e.sh` builds the image,
+deploys, waits for rollout, curls gateway + per-service routes, then
+hammers `/health` during a rolling restart asserting zero non-2xx.
+
+```bash
+minikube start
+bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
+
+# Remote (registry):
+USE_MINIKUBE=0 REGISTRY=myregistry.io/myorg \
+    bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
+```
+
 ## Built-in Route Passthrough
 
 The gateway forwards these to healthy services (tries all, skips 404):
@@ -423,11 +527,11 @@ responses carry the standard envelope + `Retry-After` header.
 
 ### Observability
 
-- `GET /health` - JSON summary of service statuses (always on).
-- `GET /metrics` - Prometheus exposition. Enable with
++ `GET /health` - JSON summary of service statuses (always on).
++ `GET /metrics` - Prometheus exposition. Enable with
   `[plugins.scale.monitoring] enabled = true`.
-- `X-Trace-Id` - gateway mints one if the client omits it and threads
++ `X-Trace-Id` - gateway mints one if the client omits it and threads
   it through every downstream hop (including `sv` RPCs). Echoed back
   on every response.
-- `GET /docs` + `GET /openapi.json` - unified Swagger UI + merged
++ `GET /docs` + `GET /openapi.json` - unified Swagger UI + merged
   OpenAPI doc across all healthy services.
