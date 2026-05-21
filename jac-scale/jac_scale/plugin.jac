@@ -1458,4 +1458,5 @@ glob func = JacScalePlugin.create_j_context,
 
 with entry {
     func.__signature__ = sig_nodef;
+    plugin_manager.register(JacScalePlugin());
 }
