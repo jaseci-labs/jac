@@ -220,6 +220,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0077 = _err(
+         "E0077",
+         Category.SYNTAX,
+         "Duplicate declaration of '{name}' (already declared as {kind})",
+         help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,

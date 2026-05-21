@@ -455,7 +455,7 @@ glob NODE_SPECS: tuple = (
              type_idx=37,
              class_name="DictCompr",
              is_scope=True,
-             is_cfg=False,
+             is_cfg=True,
              is_name_atom=False,
              fields=(FieldDesc(name="kv_pair", kind=4), FieldDesc(name="compr", kind=5))
          ),
@@ -727,7 +727,7 @@ glob NODE_SPECS: tuple = (
              type_idx=62,
              class_name="GenCompr",
              is_scope=True,
-             is_cfg=False,
+             is_cfg=True,
              is_name_atom=False,
              fields=(
                  FieldDesc(name="out_expr", kind=4),
@@ -1012,7 +1012,7 @@ glob NODE_SPECS: tuple = (
              type_idx=88,
              class_name="ListCompr",
              is_scope=True,
-             is_cfg=False,
+             is_cfg=True,
              is_name_atom=False,
              fields=(
                  FieldDesc(name="out_expr", kind=4),
@@ -1401,7 +1401,7 @@ glob NODE_SPECS: tuple = (
              type_idx=124,
              class_name="SetCompr",
              is_scope=True,
-             is_cfg=False,
+             is_cfg=True,
              is_name_atom=False,
              fields=(
                  FieldDesc(name="out_expr", kind=4),

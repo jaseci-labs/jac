@@ -77,7 +77,16 @@ glob plugin_manager = plugin.PluginManager('jac'),
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', default=None
-     );
+     ),
+     # Pre-context seeds for app identity. CLI bootstrap (`jac enter`,
+     # `jac start`, `jac db`) and pytest harnesses set these BEFORE any
+     # ExecutionContext exists; new contexts snapshot them at postinit
+     # time. Once a ctx is constructed, its own `base_path_dir` /
+     # `full_target_path` fields are authoritative — the seed cannot
+     # poison a live ctx. Live behavior always follows the ctx; these
+     # values are only consulted during ctx construction.
+     _default_base_path_dir: list = [os.getcwd()],
+     _default_full_target_path: list = [None];
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -364,9 +373,6 @@ class JacCmd {
 
 """Jac Feature."""
 class JacBasics {
-    """Set Class References."""
-    static def setup -> None;
-
     """Get current execution context (request-scoped if available, else global)."""
     static def get_context -> ExecutionContext;
 
@@ -775,12 +781,26 @@ class JacUtils {
             user_root: User root ID for permission boundary. Required parameter.
                        Pass None for CLI/system contexts (uses system_root).
                        Pass user's root ID for authenticated server requests.
+            base_path_dir: Per-context override for the L3 storage root.
+                       When None, the new context snapshots the bootstrap
+                       seed (`Jac.get_base_path_dir()`) at construction time.
+            full_target_path: Per-context override for the app target file.
+                       Drives the L3 SQLite filename via `get_db_path` /
+                       `get_name`. When None, the new context snapshots
+                       `Jac.get_full_target_path()` at construction time.
 
         Storage backend is configured via plugins/environment, not per-context.
-        For file backend: auto-generates path from JacRuntime.base_path_dir.
+        For file backend: derives the path from the context's own
+        `base_path_dir` / `full_target_path` (either passed explicitly here
+        or snapshotted from JacRuntime). Subsequent mutations to the global
+        statics never poison an already-constructed ctx.
         For database backends (jac-scale): configured via environment variables.
         """
-    static def create_j_context(user_root: (str | None)) -> ExecutionContext;
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext;
 
     """Attach a JacProgram to the machine."""
     static def attach_program(jac_program: JacProgram) -> None;
@@ -1083,11 +1103,17 @@ with entry {
     plugin_manager.add_hookspecs(JacRuntimeSpec);
 }
 
-"""Jac Machine State."""
+"""Jac Machine State.
+
+App identity (`base_path_dir`, `full_target_path`) lives on
+`ExecutionContext`, not here. Bootstrap callers that need to stash a
+value before a ctx exists use `Jac.set_base_path` / `Jac.set_full_target_path`,
+which write to module-level seeds that `ExecutionContext.postinit`
+snapshots from. Live reads go through `Jac.get_context().<field>` so
+multiple in-process clients stay isolated from each other.
+"""
 class JacRuntime(JacRuntimeInterface) {
     with entry {
-        base_path_dir: (str | None) = os.getcwd();
-        full_target_path: (str | None) = None;
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
@@ -1115,31 +1141,50 @@ class JacRuntime(JacRuntimeInterface) {
     @classmethod
     def get_program(cls: any) -> JacProgram;
 
-    """Set the base path for the machine.
+    """Return the bootstrap-time default base path used to seed new
+    ExecutionContexts. Live reads should prefer
+    `Jac.get_context().base_path_dir`; this accessor exists for tooling
+    that needs the pre-context default (CLI bootstrap, test snapshots).
+    """
+    static def get_base_path_dir -> (str | None);
+
+    """Return the bootstrap-time default target path used to seed new
+    ExecutionContexts. Live reads should prefer
+    `Jac.get_context().full_target_path`; this accessor exists for
+    tooling that needs the pre-context default.
+    """
+    static def get_full_target_path -> (str | None);
+
+    """Set the seed base path used by new ExecutionContexts.
 
         When base_path is None, L3 persistence is disabled (faster for tests).
+        Mutates only the seed — already-constructed contexts are unaffected.
         """
     static def set_base_path(base_path: (str | None)) -> None;
 
-    """Set the context for the machine (global, for backward compatibility)."""
-    static def set_context(context: ExecutionContext) -> None;
+    """Set the seed target path used by new ExecutionContexts.
 
-    """Set request-scoped execution context (for web servers)."""
-    static def set_request_context(context: ExecutionContext) -> None;
+        Mutates only the seed — already-constructed contexts are unaffected.
+        """
+    static def set_full_target_path(target_path: (str | None)) -> None;
+
+    """Install the process-global execution context for CLI and other
+    non-server callers. Server request paths use `push_request_context`
+    so each request has its own ContextVar-scoped ctx.
+    """
+    static def set_context(context: ExecutionContext) -> None;
 
     """Push a request-scoped execution context and return the reset token.
 
-    Prefer this over `set_request_context` for concurrent servers: the
-    returned token lets the caller restore the prior value in a `finally`
-    block, which keeps concurrent requests (each in its own asyncio Task
-    with its own ContextVar view) from trampling each other's state."""
+    The token lets the caller restore the prior value in a `finally`
+    block. This is the safe way to scope a ctx to a server request:
+    concurrent requests each get their own ContextVar view, and nested
+    pushes compose cleanly. Pair with `reset_request_context`.
+    """
     static def push_request_context(context: ExecutionContext) -> any;
 
     """Reset the request-scoped context using a token from `push_request_context`."""
     static def reset_request_context(token: any) -> None;
-
-    """Clear request-scoped context and commit changes."""
-    static def clear_request_context -> None;
 }
 
 """Context manager to temporarily disable external plugins.

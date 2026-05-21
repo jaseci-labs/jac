@@ -57,8 +57,6 @@ impl CompilerBridge.parse_snippet(
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
             tmp_path = f.name;
@@ -111,8 +109,6 @@ impl CompilerBridge.typecheck_snippet(
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
             tmp_path = f.name;
@@ -162,7 +158,6 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
     def _do_format -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-        Jac.setup();
         compiler = Jac.get_compiler();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
@@ -208,7 +203,6 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
         compiler = Jac.get_compiler();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f {
@@ -266,8 +260,6 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
             tmp_path = f.name;
@@ -318,8 +310,6 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
     def _do_lint -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.compiler { JacCompiler }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -390,8 +380,6 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
             tmp_path = f.name;
@@ -438,8 +426,6 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     def _do_jac2js -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".cl.jac", delete=False
@@ -497,8 +483,6 @@ impl CompilerBridge.run_snippet(
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.constructs { WalkerArchetype }
 
-        Jac.setup();
-
         # Create temp file
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".jac", delete=False, dir=tempfile.gettempdir()
@@ -523,10 +507,14 @@ impl CompilerBridge.run_snippet(
             base = base or './';
             mod_name = mod_name[:-4];  # Remove .jac
 
-            if not Jac.base_path_dir {
+            if not Jac.get_base_path_dir() {
                 Jac.set_base_path(base);
             }
-            mach = Jac.create_j_context(user_root=None);
+            mach = Jac.create_j_context(
+                user_root=None,
+                base_path_dir=Jac.get_base_path_dir(),
+                full_target_path=Jac.get_full_target_path()
+            );
             Jac.set_context(mach);
 
             try {

@@ -22,7 +22,7 @@ impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str
 
 """Initialize config loader with project directory."""
 impl PluginConfigBase.postinit{
-    full_target = JacRuntime.full_target_path;
+    full_target = JacRuntime.get_full_target_path();
     project_root_result = find_project_root(Path(full_target)) if full_target else None;
     self.project_dir = (
         self.project_dir

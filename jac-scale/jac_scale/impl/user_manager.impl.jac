@@ -42,8 +42,16 @@ impl JacScaleUserManager.postinit -> None {
 # ============================================================================
 # Identity-based User CRUD
 # ============================================================================
-"""Create a user with identity-based model."""
-impl JacScaleUserManager.create_user(
+"""Create a user from a username/password (the `UserManager` contract)."""
+impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, any] {
+    return self.create_user_with_identities(
+        identities=[{'type': 'username', 'value': username}],
+        credential={'type': 'password', 'password': password}
+    );
+}
+
+"""Create a user from explicit identities (username / email / SSO)."""
+impl JacScaleUserManager.create_user_with_identities(
     identities: list[dict[str, any]],
     credential: dict[str, any],
     profile: dict[str, any] | None = None
@@ -55,21 +63,27 @@ impl JacScaleUserManager.create_user(
 impl JacScaleUserManager.create_internal_user(
     username: str, password: str, role: str = 'user'
 ) -> dict[str, any] {
-    result = self.create_user(
-        identities=[{'type': 'username', 'value': username}],
-        credential={'type': 'password', 'password': password}
-    );
+    result = self.create_user(username, password);
     if result.get('user_id') and role != 'user' {
         self.set_user_role(result['user_id'], role);
     }
     return result;
 }
 
-"""Authenticate by any identity value (username or email) + password."""
+"""Authenticate by any identity value (username or email) + password.
+
+The `UserManager` contract (jaclang's `AuthHandler.login`) expects the
+authenticated result to carry a `token`. Identity storage only verifies the
+credential, so the JWT is minted here before the result is returned.
+"""
 impl JacScaleUserManager.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {
-    return self._identity_storage.authenticate(identifier, password);
+    result = self._identity_storage.authenticate(identifier, password);
+    if result is not None {
+        result['token'] = self.create_jwt_token(result.get('user_id', ''));
+    }
+    return result;
 }
 
 """Find a user by any identity value."""
@@ -376,7 +390,7 @@ impl JacScaleUserManager.sso_callback(
         }
         # Create user with verified email identity (provider already verified it)
         sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
-        result = self.create_user(
+        result = self.create_user_with_identities(
             identities=[{'type': 'email', 'value': email, 'verified': True}],
             credential={'type': 'password', 'password': generate_random_password()},
             profile=sso_profile

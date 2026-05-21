@@ -1918,6 +1918,7 @@ impl ListCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -1926,6 +1927,7 @@ impl DictCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
