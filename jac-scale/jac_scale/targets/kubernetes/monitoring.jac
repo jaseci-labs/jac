@@ -1671,7 +1671,17 @@ obj MonitoringDeployer {
                                 'args': [
                                     'run',
                                     '--server.http.listen-addr=0.0.0.0:12345',
-                                    '--storage.path=/var/lib/alloy/data',
+                                    # Use container /tmp as the WAL + remotecfg
+                                    # scratch path instead of a mounted volume.
+                                    # /tmp is always tmpfs-writable for any UID,
+                                    # which sidesteps an Alloy v1.6 startup quirk
+                                    # where the remotecfg service mkdir under a
+                                    # mounted emptyDir fails with EACCES even
+                                    # when the container runs as root with the
+                                    # dir mode 0777. Validated on EKS m14a
+                                    # deploy 2026-05-20 (13/13 pods Ready after
+                                    # this swap).
+                                    '--storage.path=/tmp/alloy',
                                     '/etc/alloy/config.alloy'
                                 ],
                                 'ports': [{'containerPort': 12345, 'name': 'http'}],
@@ -1689,10 +1699,6 @@ obj MonitoringDeployer {
                                         'name': 'varlogcontainers',
                                         'mountPath': '/var/lib/docker/containers',
                                         'readOnly': True
-                                    },
-                                    {
-                                        'name': 'alloy-data',
-                                        'mountPath': '/var/lib/alloy/data'
                                     }
                                 ]
                             }
@@ -1709,13 +1715,7 @@ obj MonitoringDeployer {
                             {
                                 'name': 'varlogcontainers',
                                 'hostPath': {'path': '/var/lib/docker/containers'}
-                            },
-                            # WAL / positions equivalent. emptyDir so a
-                            # restarted Alloy pod re-tails files from
-                            # the start; Loki dedupes within a small
-                            # window so duplicates are harmless. For
-                            # production use a hostPath instead.
-                            {'name': 'alloy-data', 'emptyDir': {}}
+                            }
                         ]
                     }
                 }
