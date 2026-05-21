@@ -187,6 +187,18 @@ impl new(cls: any, *args: any) -> any {
     return cls(*args);
 }
 
+"""Wrap a string so the JSX flattener renders it as raw HTML.
+
+The marker is a plain dict with a single ``__jacUnsafeHtml`` key, so it
+survives JSON serialisation across the walker boundary and is recognised
+by both client runtimes (jac-client React adapter and bare-serve DOM
+adapter). Server code never renders -- it just produces the marker for
+client-side consumption.
+"""
+impl unsafe_html(html: any) -> dict {
+    return {"__jacUnsafeHtml": str(html) if (html is not None) else ""};
+}
+
 """REST API decorator factory."""
 impl restspec(**specs: any) -> Callable {
     import from jaclang { JacRuntimeInterface as Jac }

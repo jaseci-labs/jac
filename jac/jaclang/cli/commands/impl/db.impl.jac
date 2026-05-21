@@ -61,19 +61,18 @@ def _resolve_app_path(explicit: str) -> (str | None) {
 backend is installed via the usual plugin hooks. Returns the live
 PersistentMemory backend, or None on error.
 
-Crucially, we set `JacRuntime.full_target_path` BEFORE creating the
-context -- `get_db_path()` / `get_name()` use that to derive the DB
-filename (`<stem>.db`), and without it the fallback is `main.db`. That
-would make `jac db` point at a different file than `jac enter` created
-(which DOES set the path via _discover_config_from_file), and the CLI
-would appear to "see no data" in an otherwise healthy DB. jac-scale
-overrides the DB path via its config loader and so masks this on
-installs that have jac-scale; pure jaclang deployments hit it.
+We pass `full_target_path` explicitly when constructing the context so
+`get_db_path()` / `get_name()` derive the DB filename from this app's
+stem. Without it the fallback is `main.db`, which would make `jac db`
+point at a different file than `jac enter` created (which DOES set the
+path via _discover_config_from_file), and the CLI would appear to "see
+no data" in an otherwise healthy DB. jac-scale overrides the DB path
+via its config loader and so masks this on installs that have
+jac-scale; pure jaclang deployments hit it.
 """
 def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        Jac.setup();
         abs_path = os.path.abspath(app_path);
         (base, mod) = os.path.split(abs_path);
         if mod.endswith('.jac') {
@@ -81,12 +80,18 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
         }
         # Match `jac enter`'s path setup so get_db_path() picks the same
         # backing file the app writes to.
-        Jac.full_target_path = abs_path;
-        if not Jac.base_path_dir {
+        Jac.set_full_target_path(abs_path);
+        if not Jac.get_base_path_dir() {
             Jac.set_base_path(base);
         }
         # Create a fresh CLI execution context so ctx.mem is wired up.
-        mach = Jac.create_j_context(user_root=None);
+        # Pass the seeds explicitly so the ctx's L3 path is locked in at
+        # postinit time, immune to later seed mutations.
+        mach = Jac.create_j_context(
+            user_root=None,
+            base_path_dir=Jac.get_base_path_dir(),
+            full_target_path=abs_path
+        );
         Jac.set_context(mach);
         Jac.jac_import(target=mod, base_path=base, override_name='__main__');
     } except Exception as e {

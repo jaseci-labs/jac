@@ -691,8 +691,7 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
         type_params: (Sequence[TypeParam] | None) = None,
-        accessor_kind: str = "",  # "" | "property" | "setter" | "deleter"
-        is_view: bool = False;  # parsed from a `view` declarator (pre-lowering)
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -1124,8 +1123,15 @@ obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     def postinit -> None;
 }
 
-"""ListCompr node type for Jac Ast."""
-obj ListCompr(AtomExpr, UniScopeNode) {
+"""ListCompr node type for Jac Ast.
+
+Inherits UniCFGNode so the comprehension is a flow-sensitive node:
+cfg_build_pass wires each `if` filter as a CfgExpr predecessor whose
+true edge feeds back into the comprehension itself, so the existing
+CFG narrowing engine threads filter narrowing into the head expression
+without any side-channel state on the type evaluator.
+"""
+obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has out_expr: Expr,
         compr: list[InnerCompr];
 
@@ -1138,8 +1144,12 @@ obj GenCompr(ListCompr) {}
 """SetCompr node type for Jac Ast."""
 obj SetCompr(ListCompr) {}
 
-"""DictCompr node type for Jac Ast."""
-obj DictCompr(AtomExpr, UniScopeNode) {
+"""DictCompr node type for Jac Ast.
+
+Same UniCFGNode rationale as ListCompr -- the conditional filters wire
+through the CFG so narrowing flows into the head key/value expressions.
+"""
+obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has kv_pair: KVPair,
         compr: list[InnerCompr];
 
@@ -1305,6 +1315,25 @@ obj JsxText(JsxChild) {
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
     has expr: Expr;
+
+    def postinit -> None;
+}
+
+"""JsxSlot: a `{...}` JSX child whose body is a sequence of statements.
+
+When a `{...}` slot in JSX child position contains anything other than a
+single expression -- a JSX statement, control flow yielding JSX, an
+assignment followed by an expression, an explicit `return` guard -- the
+parser emits a `JsxSlot` instead of `JsxExpression`. The slot lowers to
+an IIFE that runs the body and returns either the accumulated JSX
+children fragment (if any JSX was emitted statement-by-statement) or the
+value of the last expression.
+
+Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
+`JsxExpression` so the cheap path (no IIFE) is preserved.
+"""
+obj JsxSlot(JsxChild) {
+    has body: list[UniNode];
 
     def postinit -> None;
 }

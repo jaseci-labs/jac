@@ -3462,14 +3462,78 @@ impl Parser.parse_jsx_child -> Expr {
         cmt_node = self.make_uni_token(cmt_tok);
         return JsxComment(value=cmt_node, kid=[cmt_node]);
     }
-    # Expression: {expr}
+    # `{...}` slot. When the body is a single expression (the common case
+    # like `{name}` or `{<p/>}`), emit `JsxExpression` so the lowering stays
+    # zero-cost. When the body is statement-form (control flow yielding JSX,
+    # assignments, an explicit `return` guard), emit `JsxSlot` and let the
+    # slot-lowering pass wrap it in an IIFE that runs the body and returns
+    # either the accumulated JSX fragment or the last expression value.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         lbrace_uni = self.make_uni_token(lbrace);
+        # Peek the first non-trivia token to decide between expression slot
+        # and statement-form slot. Statement keywords ALWAYS mean a slot:
+        # `for`/`while`/`if`/`match`/`switch`/`with`/`try` -- and a bare
+        # `return` in a slot is the early-exit guard.
+        if self.check_any(
+            TokenKind.KW_FOR,
+            TokenKind.KW_WHILE,
+            TokenKind.KW_IF,
+            TokenKind.KW_MATCH,
+            TokenKind.KW_SWITCH,
+            TokenKind.KW_WITH,
+            TokenKind.KW_TRY,
+            TokenKind.KW_RETURN
+        ) {
+            self._view_body_depth += 1;
+            stmts = self.parse_code_block_stmts();
+            self._view_body_depth -= 1;
+            rbrace_uni = self.consume_uni(TokenKind.RBRACE);
+            kid: list = [lbrace_uni];
+            for s in stmts {
+                kid.append(s);
+            }
+            kid.append(rbrace_uni);
+            return JsxSlot(body=stmts, kid=kid);
+        }
+        # Expression-form slot. Try to parse exactly one expression; if a
+        # `;` separates additional statements, fall through to slot mode.
         expr = self.parse_expression();
+        if self.check(TokenKind.SEMI) {
+            # Multi-statement slot: rewind by treating the parsed expression
+            # as the first statement, then collect the rest.
+            first = ExprStmt(expr=expr, in_fstring=False, kid=[expr]);
+            stmts2: list = [first];
+            if self.match_tok(TokenKind.SEMI) {
+                prev_semi = self.previous();
+                stmts2.append(
+                    Semi(
+                        orig_src=self.get_source(),
+                        name=Tok.SEMI.value,
+                        value=prev_semi.value,
+                        line=prev_semi.loc.line,
+                        end_line=prev_semi.loc.end_line,
+                        col_start=prev_semi.loc.col_start,
+                        col_end=prev_semi.loc.col_end,
+                        pos_start=prev_semi.loc.pos_start,
+                        pos_end=prev_semi.loc.pos_end
+                    )
+                );
+            }
+            self._view_body_depth += 1;
+            stmts2.extend(self.parse_code_block_stmts());
+            self._view_body_depth -= 1;
+            rbrace_uni = self.consume_uni(TokenKind.RBRACE);
+            kid2: list = [lbrace_uni];
+            for s in stmts2 {
+                kid2.append(s);
+            }
+            kid2.append(rbrace_uni);
+            return JsxSlot(body=stmts2, kid=kid2);
+        }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
-        kid: list = [lbrace_uni, expr, rbrace_uni];
-        return JsxExpression(expr=expr, kid=kid);
+        kid_expr: list = [lbrace_uni, expr, rbrace_uni];
+        return JsxExpression(expr=expr, kid=kid_expr);
     }
     # Nested JSX element
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
@@ -3661,7 +3725,6 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
-        TokenKind.KW_VIEW,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM,
         TokenKind.KW_IMPL,
@@ -3673,10 +3736,6 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
-    }
-    # `view` declarator — sugar for `def:pub -> JsxElement`.
-    if self.check(TokenKind.KW_VIEW) {
-        return self.parse_view();
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         return self.parse_ability();
@@ -3824,13 +3883,6 @@ impl Parser.parse_docstring_target{
     }
     if self.check(TokenKind.KW_WITH) {
         result = self.parse_module_code();
-        result.doc = elem_doc;
-        result.add_kids_left([elem_doc]);
-        return result;
-    }
-    # `view` declarator — sugar for `def:pub -> JsxElement`.
-    if self.check(TokenKind.KW_VIEW) {
-        result = self.parse_view();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
         return result;
@@ -6220,70 +6272,6 @@ impl Parser._parse_post_async_modifiers(
         static_tok = self.previous();
     }
     return (is_override, override_tok, is_static, static_tok);
-}
-
-"""Parse a `view` declarator.
-
-`view Name[generics](params) { body }` is parsed as a faithful `Ability`
-with `is_view = True`: the real `view` keyword token is kept in the kid list,
-the body holds the author's raw statement template, and no `:pub` access or
-`-> JsxElement` return type is synthesized here. The desugaring into an
-ordinary `def:pub -> JsxElement` is done later by `ViewLowerPass`, so the
-`jac format` pipeline (which does not run that pass) round-trips `view`
-syntax faithfully. The generic list and parameter list are both optional, so
-`view Name { body }` is valid."""
-impl Parser.parse_view -> Ability {
-    view_uni = self.consume_uni(TokenKind.KW_VIEW);  # `defview`
-    name_tok = self.expect_name();
-    name = self.make_name(name_tok);
-    # Optional generic params: view Name[T](...)
-    type_params: list | None = None;
-    tp_lb_uni: UniToken | None = None;
-    tp_rb_uni: UniToken | None = None;
-    tp_comma_unis: list = [];
-    if self.match_tok(TokenKind.LSQUARE) {
-        tp_lb_uni = self.make_uni_token(self.previous());
-        (type_params, tp_comma_unis) = self.parse_type_params();
-        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
-    }
-    signature = self.parse_func_signature();
-    body_lb_uni = self.consume_uni(TokenKind.LBRACE);
-    self._view_body_depth += 1;
-    raw_stmts = self.parse_code_block_stmts();
-    self._view_body_depth -= 1;
-    body_rb_uni = self.consume_uni(TokenKind.RBRACE);
-    # Faithful kid list — `view` token kept; `ViewLowerPass` rewrites it.
-    kid: list = [view_uni, name];
-    if type_params is not None {
-        kid.append(tp_lb_uni);
-        for (i, tp) in enumerate(type_params) {
-            if i > 0 {
-                kid.append(tp_comma_unis[i - 1]);
-            }
-            kid.append(tp);
-        }
-        kid.append(tp_rb_uni);
-    }
-    kid.append(signature);
-    kid.append(body_lb_uni);
-    kid.extend(raw_stmts);
-    kid.append(body_rb_uni);
-    return Ability(
-        name_ref=name,
-        is_async=False,
-        is_override=False,
-        is_static=False,
-        is_classmethod=False,
-        is_abstract=False,
-        access=None,
-        signature=signature,
-        body=raw_stmts,
-        kid=kid,
-        doc=None,
-        decorators=[],
-        type_params=type_params,
-        is_view=True
-    );
 }
 
 impl Parser.parse_func_signature -> FuncSignature {

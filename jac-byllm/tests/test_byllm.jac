@@ -620,9 +620,9 @@ test "byllm config defaults to gpt-4o-mini when no jac.toml" {
 test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
     # cwd is /tmp, but full_target_path points at the gemini fixture —
     # the correct jac.toml must still be picked up
-    orig = JacRuntime.full_target_path;
+    orig = JacRuntime.get_full_target_path();
     orig_cwd = os.getcwd();
-    JacRuntime.full_target_path = os.path.join(GEMINI_FIXTURE, "main.jac");
+    JacRuntime.set_full_target_path(os.path.join(GEMINI_FIXTURE, "main.jac"));
     reset_byllm_config();
     os.chdir("/tmp");
     try {
@@ -630,7 +630,7 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
         assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
     } finally {
         os.chdir(orig_cwd);
-        JacRuntime.full_target_path = orig;
+        JacRuntime.set_full_target_path(orig);
         reset_byllm_config();
     }
 }

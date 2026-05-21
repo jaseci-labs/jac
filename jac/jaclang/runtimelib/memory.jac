@@ -283,6 +283,13 @@ jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
     has base_path: (str | None) = None,
+        # App identity used to derive the L3 SQLite filename. When None,
+        # `get_db_path` falls back to `Jac.get_full_target_path()` (the
+        # bootstrap seed) for compatibility with CLI flows. The
+        # ExecutionContext that owns this memory passes its own captured
+        # `full_target_path` here so the filename is decided at this
+        # memory's construction time, not by later seed mutations.
+        target_path: (str | None) = None,
         l2: (CacheMemory | None) by postinit,
         l3: (PersistentMemory | None) by postinit,
         use_cache: bool = False;

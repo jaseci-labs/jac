@@ -37,20 +37,20 @@ For full CRUD shapes (update / toggle / delete + typed returns + async), see `ja
 ## Sharing data with specific users
 
 `def:pub` (one shared global graph) and `def:priv` (per-user isolated graph) are
-not the only two options. For data that some *specific* users share but the
-public must not see - a shared document, a team workspace, a two-player game -
-keep the endpoints `def:priv` and use the ambient permission builtins (no
-import needed):
+not the only two options. For data shared across logged-in users - a shared
+document, team workspace, or two-player game, but also a multi-user social
+feed, comments, follows, or moderation/admin views - keep the endpoints
+`def:priv` and use the ambient permission builtins (no import needed):
 
 - `grant(node, level)` - give another user access to a specific node.
 - `revoke(node)` - withdraw that access.
 - `allroots()` - list every user's `root` (returns `list[Root]`), for admin or
   cross-user views.
 
-This opens a chosen node to chosen users instead of dumping shared state into
-the global `def:pub` graph. The jac-scale reference documents the full
+This opens chosen nodes to chosen users instead of dumping shared state into
+the global `def:pub` graph. **Load `jac-sv-multi-user`** for the full
 cross-user permission model (access levels, granting against another user's
-root) - consult it before building a multi-user-shared feature.
+root, per-user roles) - required for any multi-user-shared feature.
 
 ## Pitfalls
 

@@ -240,7 +240,15 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | JSX_COMMENT | "{" expression "}" | jsx_element
+jsx_child ::=
+    JSX_TEXT jsx_child?
+    | JSX_COMMENT
+    | "{" (
+          ("for" | "while" | "if" | "match" | "switch" | "with" | "try" | "return")
+          code_block_stmts "}"
+          | expression (";"? code_block_stmts "}" | "}")
+      )
+    | jsx_element
 
 element_stmt ::=
     ";"
@@ -254,7 +262,6 @@ element_stmt ::=
     | enum
     | test
     | docstring_target
-    | view
     | ability
     | global_var
     | impl_def
@@ -270,7 +277,6 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
-        | view
         | ("cl" | "sv" | "na") element_stmt
     )?
 
@@ -464,9 +470,6 @@ ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
     (NAME | KWESC_NAME)? ("[" type_params "]")? ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
-
-view ::= "defview" (NAME | KWESC_NAME) ("[" type_params "]")? func_signature
-    "{" code_block_stmts "}"
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 

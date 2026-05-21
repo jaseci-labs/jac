@@ -679,6 +679,31 @@ test "bug_comprehension_narrowing" {
 }
 
 # =========================================================================
+# Bug #JSX-SLOT-NARROW: `T | None` narrowing did not reach JSX statement
+# slot bodies (`{for ... { <jsx> }}` / `{if ... { <jsx> }}`).
+#
+# `ViewLowerPass` rewrites a slot body into `acc = []; ...; return
+# <>{acc}</>;` and stores the lowered statements as the slot's `body`
+# list. `CFGBuildPass` had no `exit_jsx_slot` handler - the body
+# statements were visited individually but never wired sequentially or
+# linked back to the slot's enclosing CodeBlockStmt. A name reference
+# inside the slot's loop header (e.g. `recipe.ingredients` in `{for ing
+# in recipe.ingredients { ... }}`) walked up to its enclosing
+# `InForStmt`, found an empty `bb_in`, and dead-ended - losing any
+# narrowing from an enclosing `if recipe is None { return; }` guard.
+# =========================================================================
+test "bug_jsx_slot_narrowing" {
+    program = compile_and_check("checker_bug_jsx_slot_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`T | None` narrowing established by an enclosing guard must "
+        "propagate into JSX statement slot bodies (loop iterators, "
+        "conditions, and child interpolations). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
 # Bug #PROP-SETTER: @<name>.setter flagged as duplicate method
 #
 # ASTValidationPass.enter_archetype scans archetype bodies for duplicate

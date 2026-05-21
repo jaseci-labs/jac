@@ -220,6 +220,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0077 = _err(
+         "E0077",
+         Category.SYNTAX,
+         "Duplicate declaration of '{name}' (already declared as {kind})",
+         help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,
@@ -705,26 +711,26 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2019 = _err(
          "E2019",
          Category.SEMANTIC,
-         "A 'defview' renders template content and cannot 'return' a value. "
-         "Drop the value to use a bare 'return;' guard, or write a "
-         "'def ... -> JsxElement' for a value-returning component."
+         "A JSX slot renders template content and cannot 'return' a value. "
+         "Drop the value to use a bare 'return;' guard, or move the "
+         "value-producing expression outside the JSX slot."
      ),
      E2020 = _err(
          "E2020",
          Category.SEMANTIC,
-         "'return' is not allowed inside a '{loop}' loop in a 'defview' body. "
+         "'return' is not allowed inside a '{loop}' loop in a JSX slot. "
          "Use 'continue' to skip an iteration."
      ),
      E2021 = _err(
          "E2021",
          Category.SEMANTIC,
-         "'{kw}' is not allowed inside a '{loop}' loop in a 'defview' body. "
+         "'{kw}' is not allowed inside a '{loop}' loop in a JSX slot. "
          "Use 'continue' to skip an iteration."
      ),
      W2019 = _warn(
          "W2019",
          Category.SEMANTIC,
-         "'while' loop in a 'defview' renders JSX without a 'key' attribute — "
+         "'while' loop in a JSX slot renders JSX without a 'key' attribute — "
          "add 'key=' so siblings keep their identity across re-renders."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

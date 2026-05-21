@@ -63,8 +63,16 @@ impl JacTestClient._ensure_initialized -> None {
     }
     # Set base path for isolated storage
     Jac.set_base_path(self._base_path);
-    # Create execution context
-    mach = Jac.create_j_context(user_root=None);
+    # Create execution context with this client's OWN base_path + target.
+    # Passing them explicitly is what isolates one in-process client from
+    # another: if a prior client (or CLI command) left a bootstrap seed
+    # pointing at a different app, the new ctx would otherwise inherit
+    # that stale identity and `allroots()` / L3 file routing would mix
+    # across clients. See test_context_isolation for the contract this
+    # pins.
+    mach = Jac.create_j_context(
+        user_root=None, base_path_dir=self._base_path, full_target_path=self._jac_file
+    );
     Jac.set_context(mach);
     # Load the Jac module
     Jac.jac_import(target=mod, base_path=base, lng="jac");

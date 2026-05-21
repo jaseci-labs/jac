@@ -26,6 +26,14 @@ impl __buildDom(nd: any) -> any {
     if not __isObject(nd) {
         return document.createTextNode(str(nd));
     }
+    # `unsafe_html(...)` sentinel -- caller has asserted the content is
+    # trusted, render it as raw HTML in a wrapper <span>. The wrapper
+    # exists so adjacent siblings keep their own DOM nodes.
+    if nd.__jacUnsafeHtml != undefined {
+        span = document.createElement("span");
+        span.innerHTML = nd.__jacUnsafeHtml;
+        return span;
+    }
     # Handle component functions
     tag = nd.tag;
     if __isFunction(tag) {
