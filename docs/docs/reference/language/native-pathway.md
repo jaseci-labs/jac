@@ -293,6 +293,7 @@ Collections are represented as LLVM struct types:
 | Sets | `s: set[int] = {1, 2, 3};` |
 | Tuples | `t: tuple[int, str] = (1, "a");` |
 | Enums | `enum Color { RED=0, BLUE=1 }` |
+| Typed-base enums | `enum HttpStatus: int { OK=200, NOT_FOUND=404 }` (members are real `int`) |
 | Objects | `obj Point { has x: int; }` |
 
 ### Control Flow
