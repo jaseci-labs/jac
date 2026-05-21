@@ -1480,48 +1480,21 @@ impl JacBasics.refs(
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
-    # Try topology index optimization for non-edge-only queries
+    # Try the storage-aware planner for non-edge-only queries. The planner
+    # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
+    # predicates) → topology_index narrowing → batch_get materialization. It
+    # returns NodeAnchors when a fast path applies, or None to signal that
+    # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
-        import from jaclang.runtimelib.topo_utils {
-            plan_query,
-            plan_query_ordered,
-            batch_load_nodes,
-            batch_load_nodes_by_ids
-        }
-        # Storage-layer pagination: when a slice is requested and the chain is
-        # pushdown-eligible, the planner returns the bounded ordered UUID list
-        # so we only batch_get the sliced subset.
-        if slc is not None {
-            planned_ordered = plan_query_ordered(path, slc);
-            if planned_ordered is not None {
-                return batch_load_nodes_by_ids(planned_ordered);
-            }
-        }
-        planned_ids = plan_query(path);
-        if planned_ids is not None {
-            # Index resolved which nodes survive type filters.
-            # For single-hop, preserve edge-list order via origin walk.
-            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
-            destinations = path.destinations[:-1]
-                if path.edge_only
-                else path.destinations;
-            use_origin = path.origin if len(destinations) <= 1 else None;
-            nodes = batch_load_nodes(planned_ids, origin=use_origin);
-            destinations = path.destinations;
-            if destinations {
-                last_dest = destinations[-1];
-                if last_dest.nd {
-                    nodes = [
-                        n
-                        for n in nodes
-                        if last_dest.node_filter(n)
-                    ];
-                }
-            }
-            if slc is not None {
-                nodes = nodes[slc];
-            }
-            return nodes;
+        import from jaclang.runtimelib.planner { execute_path }
+        ctx = JacRuntimeInterface.get_context();
+        planned = execute_path(ctx.mem, path, slc);
+        if planned is not None {
+            return [
+                a.archetype
+                for a in planned
+                if a.archetype is not None
+            ];
         }
     }
     # Fallback: original approach

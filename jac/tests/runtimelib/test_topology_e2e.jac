@@ -180,13 +180,13 @@ test "nested post-hoc filter as origin of outer edge-op" {
     }
 }
 
-test "plan_query bypasses index when no hop is filtered" {
+test "planner bypasses index when no hop is filtered" {
     import from jaclang.jac0core.archetype {
         ObjectSpatialPath,
         ObjectSpatialDestination,
         EdgeDir
     }
-    import from jaclang.runtimelib.topo_utils { plan_query }
+    import from jaclang.runtimelib.planner { execute_path }
 
     cfg = JacConfig();
     cfg.run.topology_index = True;
@@ -204,8 +204,8 @@ test "plan_query bypasses index when no hop is filtered" {
         unfiltered_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT)]
         );
-        assert plan_query(unfiltered_path) is None , (
-            "plan_query should bypass TI for fully unfiltered chains"
+        assert execute_path(ctx.mem, unfiltered_path) is None , (
+            "planner should bypass TI for fully unfiltered chains"
         );
 
         # Edge-type filter alone is enough to engage the index.
@@ -213,8 +213,8 @@ test "plan_query bypasses index when no hop is filtered" {
         edge_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, edge_filter)]
         );
-        assert plan_query(edge_typed_path) is not None , (
-            "plan_query should engage TI when edge_type is filtered"
+        assert execute_path(ctx.mem, edge_typed_path) is not None , (
+            "planner should engage TI when edge_type is filtered"
         );
 
         # Node-type filter alone also engages the index.
@@ -222,8 +222,8 @@ test "plan_query bypasses index when no hop is filtered" {
         node_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)]
         );
-        result = plan_query(node_typed_path);
-        assert result is not None , "plan_query should engage TI when node_type is filtered";
+        result = execute_path(ctx.mem, node_typed_path);
+        assert result is not None , "planner should engage TI when node_type is filtered";
         assert len(result) == 10 , f"expected 10 TypeA nodes, got {len(result)}";
 
         # Multi-hop fully unfiltered → still bypasses. The contract is "every
@@ -235,7 +235,7 @@ test "plan_query bypasses index when no hop is filtered" {
                 ObjectSpatialDestination(EdgeDir.OUT)
             ]
         );
-        assert plan_query(two_hop_unfiltered) is None , (
+        assert execute_path(ctx.mem, two_hop_unfiltered) is None , (
             "two-hop fully unfiltered should bypass TI"
         );
 
@@ -248,7 +248,7 @@ test "plan_query bypasses index when no hop is filtered" {
                 ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)
             ]
         );
-        assert plan_query(mixed_two_hop) is not None , (
+        assert execute_path(ctx.mem, mixed_two_hop) is not None , (
             "two-hop with filter on second hop should engage TI"
         );
     } finally {
@@ -257,18 +257,18 @@ test "plan_query bypasses index when no hop is filtered" {
     }
 }
 
-test "plan_query bails when a hop has predicates beyond type" {
-    # `_filter_has_predicates` detects filter lambdas that do more than
+test "planner bails when a hop has predicates beyond type" {
+    # The planner's filter introspection detects lambdas that do more than
     # `isinstance(i, T)` (attribute access, comparisons, etc). The index
-    # can resolve those for the FINAL hop only — the runtime post-applies
-    # that filter on the planned set. For non-final hops, plan_query
-    # must bail and let the linear path evaluate the predicate directly.
+    # can resolve those for the FINAL hop only — the planner post-applies
+    # that filter on the planned set. For non-final hops, execute_path
+    # must bail and let the linear edge-walk evaluate the predicate.
     import from jaclang.jac0core.archetype {
         ObjectSpatialPath,
         ObjectSpatialDestination,
         EdgeDir
     }
-    import from jaclang.runtimelib.topo_utils { plan_query }
+    import from jaclang.runtimelib.planner { execute_path }
 
     cfg = JacConfig();
     cfg.run.topology_index = True;
@@ -283,14 +283,15 @@ test "plan_query bails when a hop has predicates beyond type" {
             a +>: EdgeY :+> TypeB(val=i * 10);
         }
 
-        # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — _filter_has_predicates
-        # returns True. On a single-hop (and therefore final) chain, plan_query
-        # still engages: the runtime post-applies the predicate.
+        # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — the planner's
+        # predicate detector returns True. On a single-hop (and therefore
+        # final) chain, execute_path still engages: the planner post-applies
+        # the predicate above the materialized list.
         pred_filter = lambda n: any : isinstance(n, TypeA) and n.val > 5;
         single_hop_pred = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter)]
         );
-        assert plan_query(single_hop_pred) is not None , (
+        assert execute_path(ctx.mem, single_hop_pred) is not None , (
             "predicate on the FINAL hop should still engage TI"
         );
 
@@ -302,7 +303,7 @@ test "plan_query bails when a hop has predicates beyond type" {
                 ObjectSpatialDestination(EdgeDir.OUT)
             ]
         );
-        assert plan_query(two_hop_pred_first) is None , (
+        assert execute_path(ctx.mem, two_hop_pred_first) is None , (
             "predicate on a non-final hop should bail to linear path"
         );
 

@@ -33,7 +33,39 @@ impl MongoBackend.postinit -> None {
         } except Exception as e {
             logger.debug(f"MongoBackend: alias preload skipped: {e}");
         }
+        try {
+            self.ensure_indexes();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: index creation skipped: {e}");
+        }
     }
+}
+
+
+"""Create indexes that make type-based pushdown queries efficient.
+
+Idempotent — `create_index` is a no-op when an index of the same shape and
+name already exists, so this can be called on every connect without cost.
+
+The compound `(arch_type, type)` index is what makes `execute_plan`
+worthwhile: queries that filter by archetype type (the common case, e.g.
+"all `User` nodes connected to root R") become IXSCAN instead of COLLSCAN.
+A descending `updated_at` index supports recency-based ops without forcing
+a full sort.
+"""
+impl MongoBackend.ensure_indexes -> None {
+    if self.collection is None {
+        return;
+    }
+    import from pymongo { ASCENDING, DESCENDING }
+    self.collection.create_index(
+        [('arch_type', ASCENDING), ('type', ASCENDING)],
+        name='arch_type_1_type_1',
+        background=True
+    );
+    self.collection.create_index(
+        [('updated_at', DESCENDING)], name='updated_at_-1', background=True
+    );
 }
 
 """Get the `_quarantine` companion collection."""
@@ -440,12 +472,127 @@ impl MongoBackend.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors using an indexed type filter (no full collection scan).
+
+Uses the `(arch_type, type)` compound index — IXSCAN, not COLLSCAN. The
+Python-side `isinstance` check is kept as a defense-in-depth filter in case
+schema drift left a non-Root archetype with `arch_type='Root'`.
+"""
 impl MongoBackend.get_roots -> Generator[Root, None, None] {
-    for anchor in self.query() {
-        if isinstance(anchor.archetype, Root) {
-            yield cast(Root, anchor.archetype);
+    if self.client is None {
+        return;
+    }
+    try {
+        for doc in self.collection.find({'arch_type': 'Root', 'type': 'NodeAnchor'}) {
+            if (anchor := self._load_anchor(doc)) {
+                if isinstance(anchor.archetype, Root) {
+                    yield cast(Root, anchor.archetype);
+                }
+            }
         }
+    } except Exception as e {
+        logger.debug(f"MongoDB get_roots failed: {e}");
+    }
+}
+
+
+"""Declare MongoDB's native pushdown capabilities.
+
+MongoDB can apply: archetype-type filter (compound index), arbitrary
+declarative field predicates (`data.archetype.<f>` paths), `_id IN (...)`
+narrowing (primary index), and contiguous slicing (`skip`+`limit`).
+
+The planner combines these with the topology_index narrowing automatically
+— see `jaclang.runtimelib.planner` for the strategy chooser.
+"""
+impl MongoBackend.capabilities -> set[str] {
+    return {'type_pushdown','field_pushdown','id_in','slice'};
+}
+
+
+"""Translate a QueryPlan into the MongoDB filter dict + cursor options.
+
+Filter shape (only includes keys the plan actually populates):
+  - `arch_type`: archetype class name (final hop's `node_type` or `node_type_final`)
+  - `type`: 'NodeAnchor' (we only push down node queries — edges are handled
+            via the source/target subdoc separately, not by execute_plan)
+  - `_id`:  `{'$in': [...]}` when the planner narrowed via topology_index
+  - `data.archetype.<f>`: each archetype-field predicate, value passed through
+                          verbatim (MongoDB operator dicts like `{'$lt': 28}`
+                          work as-is)
+
+Returns (filter_dict, skip, limit). When slc has a step != 1 we leave skip/
+limit at None and let the planner slice the result list (Mongo can't apply
+strided slicing natively).
+"""
+def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
+    filt: dict = {};
+    # Prefer the explicit `node_type_final`; otherwise pick the final hop's
+    # node_type so single-hop plans like `[root -->User]` push down cleanly.
+    type_name = plan.node_type_final;
+    if type_name is None and plan.chain {
+        type_name = plan.chain[-1].node_type;
+    }
+    if type_name {
+        filt['arch_type'] = type_name;
+        filt['type'] = 'NodeAnchor';
+    }
+    if plan.id_in is not None {
+        filt['_id'] = {'$in': [str(u) for u in plan.id_in]};
+    }
+    for (k, v) in plan.field_predicates.items() {
+        filt[f'data.archetype.{k}'] = v;
+    }
+    skip_n: int = 0;
+    limit_n: (int | None) = None;
+    if plan.slc is not None {
+        step = plan.slc.step;
+        if step is None or step == 1 {
+            start = plan.slc.start or 0;
+            stop = plan.slc.stop;
+            skip_n = start;
+            if stop is not None {
+                limit_n = max(0, stop - start);
+            }
+        }
+    }
+    return (filt, skip_n, limit_n);
+}
+
+
+"""Native MongoDB execution of a QueryPlan.
+
+This is the backend's pushdown entry point. The planner only calls us when
+`plan.needs() <= self.capabilities()`, so we can assume:
+  - any chain in the plan has been already narrowed (`plan.id_in` carries
+    the candidate UUIDs) OR there is no chain (a pure type/field query)
+  - `field_predicates` use cross-backend operators (`$eq`, `$lt`, `$in`...)
+  - `slc` is either absent or contiguous-step (we early-rejected stepped
+    slices by leaving skip/limit as None — caller applies them)
+
+We never raise to the caller: any error logs at debug and returns an empty
+generator so the planner can fall back if it wants to.
+"""
+impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.client is None {
+        return;
+    }
+    (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
+    try {
+        cursor = self.collection.find(filt);
+        if skip_n {
+            cursor = cursor.skip(skip_n);
+        }
+        if limit_n is not None {
+            cursor = cursor.limit(limit_n);
+        }
+        for doc in cursor {
+            if (anchor := self._load_anchor(doc)) {
+                yield anchor;
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB execute_plan failed ({filt}): {e}");
     }
 }
 
