@@ -382,7 +382,7 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                 # ---- Track walker HTTP requests ----
                 walker_requests: list = [];
 
-                def _track_request(request: Any) {
+                def _track_request(request: any) {
                     if "/walker/" in request.url {
                         walker_requests.append(request.url);
                     }
@@ -470,6 +470,36 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                     f"request (expected 2 total), got "
                     f"{ping_hits_after_invalidation}"
                 );
+            } finally {
+                context.close();
+                browser.close();
+            }
+        }
+    } finally {
+        _stop_running_server(server, temp_dir, original_cwd);
+    }
+}
+
+test "undefined JSX child does not crash render" {
+    (server, port, url, temp_dir, original_cwd) = _start_running_server();
+    try {
+        with sync_playwright() as p {
+            browser = p.chromium.launch(headless=True);
+            context = browser.new_context();
+            page = context.new_page();
+            try {
+                username = f"e2e_undef_child_{int(time.time())}";
+                _signup(page, url, username, "undef_pass_123");
+                page.wait_for_load_state("load");
+                page.wait_for_selector(
+                    '[data-testid="undef-child-probe-ok"]',
+                    state="attached",
+                    timeout=30000
+                );
+                marker = page.locator(
+                    '[data-testid="undef-child-probe-ok"]'
+                ).first.text_content();
+                assert marker == "ok" , (f"expected probe marker 'ok', got {marker!r}");
             } finally {
                 context.close();
                 browser.close();

@@ -22,6 +22,7 @@ import from jaclang.jac0core.constant { SymbolAccess, Tokens }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.helpers { evaluate_version_condition }
+import from jaclang.jac0core.diagnostics { E0077 }
 
 """Jac Symbol table build pass."""
 class SymTabBuildPass(UniPass) {
@@ -52,6 +53,9 @@ class SymTabBuildPass(UniPass) {
     def exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None;
     """Handle walrus operator (:=) assignments."""
     def exit_binary_expr(self: SymTabBuildPass, nd: uni.BinaryExpr) -> None;
+
+    """Bind `global x;` so subsequent assignments to `x` rebind the global."""
+    def enter_global_stmt(self: SymTabBuildPass, nd: uni.GlobalStmt) -> None;
 
     def enter_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def exit_test(self: SymTabBuildPass, nd: uni.Test) -> None;
@@ -114,6 +118,8 @@ class SymTabBuildPass(UniPass) {
     def exit_inner_compr(self: SymTabBuildPass, nd: uni.InnerCompr) -> None;
     def enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
     def exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
+    def enter_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
+    def exit_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
 }
 
 """Walk up ancestors to find the nearest Python-scoping node.

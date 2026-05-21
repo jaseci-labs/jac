@@ -113,7 +113,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
 
     """Get the set of builtin names, cached after first successful access."""
     @classmethod
-    def _get_builtin_names(cls: Any) -> set[str];
+    def _get_builtin_names(cls: any) -> set[str];
 
     """Get the curated ambient typing names. Single source of truth is
     `compiler/type_system/typing_ambient.pyi` — the same file TypeEvaluator
@@ -122,7 +122,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     a reference appears, keeping `typing.get_type_hints` / pydantic /
     FastAPI annotation introspection working at runtime."""
     @classmethod
-    def _get_ambient_typing_names(cls: Any) -> set[str];
+    def _get_ambient_typing_names(cls: any) -> set[str];
 
     def postinit -> None;
     """Enter node."""
@@ -319,10 +319,10 @@ variables
     def enter_enum(nd: uni.Enum) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
-    """Reusable method to codegen call_llm(model, caller, args)."""
+    """Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
     def _invoke_llm_call(
-        model: ast3.expr, caller: ast3.expr, args: ast3.Dict
-    ) -> ast3.Call;
+        model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
+    ) -> ast3.expr;
 
     """Generate the by LLM body."""
     def gen_llm_body(nd: uni.Ability) -> list[ast3.stmt];
@@ -365,6 +365,7 @@ variables
     def exit_visit_stmt(nd: uni.VisitStmt) -> None;
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
+    def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_global_stmt(nd: uni.GlobalStmt) -> None;
     def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_assignment(nd: uni.Assignment) -> None;
@@ -451,6 +452,12 @@ variables
 
     """Generate Python AST for JSX expression children."""
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+
+    """Generate Python AST for JSX statement-form slots."""
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
+
+    """Generate Python AST for JSX block comments (no-op)."""
+    def exit_jsx_comment(nd: uni.JsxComment) -> None;
 
     def exit_semi(nd: uni.Semi) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;

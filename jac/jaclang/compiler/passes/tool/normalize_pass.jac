@@ -59,6 +59,7 @@ obj NormalizePass(UniPass) {
     def enter_visit_stmt(nd: uni.VisitStmt) -> None;
     def enter_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def enter_await_expr(nd: uni.AwaitExpr) -> None;
+    def enter_cast_expr(nd: uni.CastExpr) -> None;
     def enter_global_stmt(nd: uni.GlobalStmt) -> None;
     def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def enter_assignment(nd: uni.Assignment) -> None;
@@ -104,6 +105,8 @@ obj NormalizePass(UniPass) {
     def enter_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def enter_jsx_text(nd: uni.JsxText) -> None;
     def enter_jsx_expression(nd: uni.JsxExpression) -> None;
+    def enter_jsx_slot(nd: uni.JsxSlot) -> None;
+    def enter_jsx_comment(nd: uni.JsxComment) -> None;
     def enter_match_stmt(nd: uni.MatchStmt) -> None;
     def enter_match_case(nd: uni.MatchCase) -> None;
     def enter_switch_stmt(nd: uni.SwitchStmt) -> None;

@@ -8,13 +8,13 @@ cl {
     import from ....components.common.Alert { InlineAlert }
     import from ....constants.users { ROLE_OPTIONS }
 
-    def:pub CreateUserModal(isOpen: bool, onClose: Any, onCreate: Any) -> JsxElement {
+    def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement {
         has newUsername: str = "",
             newPassword: str = "",
             newRole: str = "user",
             createError: str = "";
 
-        async def handleSubmit(e: Any) {
+        async def handleSubmit(e: any) {
             e.preventDefault();
             createError = "";
             result = await onCreate(newUsername, newPassword, newRole);
@@ -44,20 +44,20 @@ cl {
                         label="Username"
                         type="text"
                         value={newUsername}
-                        onChange={lambda e: Any { newUsername = e.target.value; }}
+                        onChange={lambda e: any { newUsername = e.target.value; }}
                         className="mb-3"
                     />
                     <Input
                         label="Password"
                         type="password"
                         value={newPassword}
-                        onChange={lambda e: Any { newPassword = e.target.value; }}
+                        onChange={lambda e: any { newPassword = e.target.value; }}
                         className="mb-3"
                     />
                     <Select
                         label="Role"
                         value={newRole}
-                        onChange={lambda e: Any { newRole = e.target.value; }}
+                        onChange={lambda e: any { newRole = e.target.value; }}
                         options={ROLE_OPTIONS}
                         className="mb-4"
                     />

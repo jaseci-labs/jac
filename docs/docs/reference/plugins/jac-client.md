@@ -29,11 +29,15 @@ cd myapp
 myapp/
 ├── jac.toml           # Project configuration
 ├── main.jac           # Entry point with app() function
+├── README.md          # Project readme
+├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
-│   └── Button.tsx     # TypeScript components supported
-└── styles/            # CSS files
-    └── main.css
+│   └── Button.cl.jac  # Example component (.cl.jac = client-side)
+└── assets/            # Static assets (images, fonts)
 ```
+
+TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
+a `.css` file anywhere in the project and import it from your Jac code.
 
 ### The `.cl.jac` Convention
 
@@ -165,11 +169,11 @@ node Task {
 
 # Server: return typed objects directly
 def:pub get_tasks -> list[Task] {
-    return [root()-->][?:Task];
+    return [root-->][?:Task];
 }
 
 def:pub create_task(title: str) -> Task {
-    task = root() ++> Task(title=title);
+    task = root ++> Task(title=title);
     return task[0];
 }
 
@@ -233,7 +237,23 @@ with entry {
 
 ## Client Sections
 
-Use the `to cl:` section header to tag every following module-level element as client-side (React) code:
+Wrap client-side (React) code in a `cl { ... }` block -- the braces bracket exactly the tagged region, which is the clearest way to mix client and server code in one file:
+
+```jac
+cl {
+    def:pub app() -> JsxElement {
+        return <div>
+            <h1>Hello, World!</h1>
+        </div>;
+    }
+}
+```
+
+A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
+
+### Section Headers
+
+As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
 
 ```jac
 to cl:
@@ -245,7 +265,7 @@ def:pub app() -> JsxElement {
 }
 ```
 
-A section header applies until the next `to X:` header or end of file. You can switch back with `to sv:`, `to na:`, or end the file.
+You can switch back with `to sv:`, `to na:`, or end the file.
 
 ### Single-Statement Forms
 
@@ -256,7 +276,7 @@ cl import from react { useState }
 cl glob THEME: str = "dark";
 ```
 
-This also works for component definitions -- the preferred shorthand for a single tagged declaration inside a mostly-server file:
+This also works for component definitions -- a handy shorthand for a single tagged declaration inside a mostly-server file:
 
 ```jac
 cl def:pub app -> JsxElement {
@@ -264,10 +284,6 @@ cl def:pub app -> JsxElement {
     return <div>Count: {count}</div>;
 }
 ```
-
-### Braced Blocks (legacy / inner-scope)
-
-The older `cl { ... }` braced block still works and is useful for **inner-scope overrides** inside a function or class, but at module scope it emits **W0064** pointing at the section-header form. In `.cl.jac` files or after a `to cl:` header, no wrapper is needed at all.
 
 ### Export Requirement
 
@@ -287,15 +303,20 @@ def:pub app() -> JsxElement {  # :pub required
 
 ### Function Components
 
+Declare each prop as a named, typed parameter -- the type-checker validates
+every JSX call site per attribute. `children` is the special prop that holds
+the JSX nested between a component's tags:
+
 ```jac
 to cl:
 
-def:pub Button(props: dict) -> JsxElement {
-    return <button
-        className={props.get("className", "")}
-        onClick={props.get("onClick")}
-    >
-        {props.children}
+def:pub Button(
+    className: str = "",
+    onClick: MouseEventHandler = None,
+    children: any = None
+) -> JsxElement {
+    return <button className={className} onClick={onClick}>
+        {children}
     </button>;
 }
 ```
@@ -305,11 +326,11 @@ def:pub Button(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(props: dict) -> JsxElement {
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
     return <div className="card">
-        <h2>{props["title"]}</h2>
-        <p>{props["description"]}</p>
-        {props.children}
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
     </div>;
 }
 ```
@@ -336,7 +357,7 @@ def:pub app() -> JsxElement {
 
 ### The `has` Keyword
 
-Inside client-tagged code (`to cl:` sections, `.cl.jac` files, or `cl { }` blocks), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
 
 ```jac
 to cl:
@@ -481,11 +502,11 @@ import from react { createContext, useContext }
 
 glob AppContext = createContext(None);
 
-def:pub AppProvider(props: dict) -> JsxElement {
+def:pub AppProvider(children: any = None) -> JsxElement {
     has theme: str = "light";
 
     return <AppContext.Provider value={{"theme": theme}}>
-        {props.children}
+        {children}
     </AppContext.Provider>;
 }
 
@@ -550,7 +571,7 @@ def:pub TaskList() -> JsxElement {
 
     # Fetch data on component mount
     async can with entry {
-        result = root() spawn get_tasks();
+        result = root spawn get_tasks();
         if result.reports and result.reports.length > 0 {
             tasks = result.reports[0];
         }
@@ -580,8 +601,8 @@ The `spawn` call returns a result object:
 
 | Syntax | Description |
 |--------|-------------|
-| `root() spawn WalkerName()` | Spawn walker from root node |
-| `root() spawn WalkerName(arg=value)` | Spawn with parameters |
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
 | `node_id spawn WalkerName()` | Spawn from specific node |
 
 The spawn call returns a result object with:
@@ -601,7 +622,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Create
     async def handle_add(title: str) -> None {
-        result = root() spawn add_task(title=title);
+        result = root spawn add_task(title=title);
         if result.reports and result.reports.length > 0 {
             tasks = tasks + [result.reports[0]];
         }
@@ -609,7 +630,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Update
     async def handle_toggle(task_id: str) -> None {
-        result = root() spawn toggle_task(task_id=task_id);
+        result = root spawn toggle_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [
                 {**t, "completed": not t["completed"]} if t["id"] == task_id else t
@@ -620,7 +641,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Delete
     async def handle_delete(task_id: str) -> None {
-        result = root() spawn delete_task(task_id=task_id);
+        result = root spawn delete_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [t for t in tasks if t["id"] != task_id];
         }
@@ -645,7 +666,7 @@ def:pub SafeDataView() -> JsxElement {
     async can with entry {
         loading = True;
         try {
-            result = root() spawn get_data();
+            result = root spawn get_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -679,7 +700,7 @@ def:pub LiveData() -> JsxElement {
     has data: any = None;
 
     async def fetch_data() -> None {
-        result = root() spawn get_live_data();
+        result = root spawn get_live_data();
         if result.reports and result.reports.length > 0 {
             data = result.reports[0];
         }
@@ -687,9 +708,11 @@ def:pub LiveData() -> JsxElement {
 
     async can with entry { await fetch_data(); }
 
-    useEffect(lambda -> None {
-        interval = setInterval(lambda -> None { fetch_data(); }, 5000);
-        return lambda -> None { clearInterval(interval); };
+    # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
+    # returns a function, so `-> None` would be a type error.
+    useEffect(lambda {
+        interval = setInterval(lambda { fetch_data(); }, 5000);
+        return lambda { clearInterval(interval); };
     }, []);
 
     return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
@@ -745,7 +768,7 @@ def:pub page() -> JsxElement {
     params = useParams();
     return <div>
         <Link to="/users">Back</Link>
-        <h1>User {params.id}</h1>
+        <h1>User {params["id"]}</h1>
     </div>;
 }
 ```
@@ -863,7 +886,7 @@ Import from `@jac/runtime`:
 
 | Hook | Returns | Usage |
 |------|---------|-------|
-| `useParams()` | dict | Access URL parameters: `params.id` |
+| `useParams()` | dict | Access URL parameters: `params["id"]` |
 | `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
 | `useLocation()` | object | Current location: `location.pathname`, `location.search` |
 | `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
@@ -1122,6 +1145,28 @@ def:pub JsxExamples() -> JsxElement {
     </div>;
 }
 ```
+
+### Comments inside JSX
+
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+
+```jac
+to cl:
+
+def:pub App() -> JsxElement {
+    return <div>
+        <h1>Hello</h1>
+        {#* TODO: replace with a custom Button component *#}
+        <button>Click me</button>
+    </div>;
+}
+```
+
+A few rules to keep in mind:
+
+- **Line comments don't work in JSX text.** A `#` outside an expression slot is treated as literal text -- HTML allows `#` in content, so the lexer can't reinterpret it. Wrap the note in `{#* ... *#}` instead.
+- **The standard React form `{/* ... */}` is not supported.** Inside an expression slot, `/` and `*` parse as Jac operators, so a JSX comment must use Jac-native `{#* ... *#}`.
+- **`{#* ... *#}` is the only no-op JSX slot.** An empty `{}` is still a parse error -- the slot must contain either a real expression or a block comment.
 
 ---
 
@@ -1455,6 +1500,17 @@ minify = true
 
 Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 
+### Base Path
+
+Control the base path for asset resolution (JS/CSS) in the generated `index.html`. Useful for deploying the app on a subpath (e.g., `https://example.com/myapp/`).
+
+```toml
+[plugins.client]
+base_path = "/myapp/"
+```
+
+Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if needed.
+
 ---
 
 ## CLI Commands
@@ -1468,8 +1524,10 @@ Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
 | `jac start --client desktop` | Start desktop app in dev mode |
+| `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app |
+| `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
@@ -1501,8 +1559,8 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
-| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
 
 For desktop builds, the **client-only** variant (web bundle inside a Tauri shell, no bundled sidecar) is enabled by setting `client_only = true` under `[desktop]` in `jac.toml` rather than via a CLI flag -- see [Desktop Target → Client-Only Mode](#client-only-mode). In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
 
@@ -1526,6 +1584,12 @@ jac build --client desktop --platform windows
 
 # Build for all platforms
 jac build --client desktop --platform all
+
+# Build mobile app for Android
+jac build --client mobile --platform android
+
+# Build mobile app for iOS
+jac build --client mobile --platform ios
 ```
 
 ### jac setup
@@ -1533,12 +1597,13 @@ jac build --client desktop --platform all
 One-time initialization for a build target.
 
 ```bash
-jac setup <target>
+jac setup <target> [-p PLATFORM]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `target` | Target to setup (`desktop`, `pwa`) |
+| `target` | Target to setup (`desktop`, `mobile`, `pwa`) |
+| `-p, --platform` | Mobile setup platform (`android`, `ios`, `all`) |
 
 **Examples:**
 
@@ -1548,6 +1613,12 @@ jac setup desktop
 
 # Setup PWA target (creates pwa_icons/ directory)
 jac setup pwa
+
+# Setup mobile target for one platform only
+jac setup mobile --platform ios
+
+# Setup both mobile platforms (macOS only)
+jac setup mobile --platform all
 ```
 
 ### Extended Core Commands
@@ -1573,6 +1644,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
 | **Desktop** (Tauri) | `jac build --client desktop` | Native installers | Yes |
+| **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
 ### Web Target (Default)
@@ -1743,6 +1815,67 @@ If you are debugging an "API not reachable" issue inside an installed desktop ap
 1. Run the sidecar binary directly from `src-tauri/binaries/` -- it logs to stderr and prints `JAC_SIDECAR_PORT=<port>` to stdout on startup.
 2. Use the **Debug** page in the `all-in-one` example app (under `examples/all-in-one/pages/debug.jac`), which shows the resolved API base URL, Tauri runtime detection, `get_api_url` invoke results, and interactive walker/HTTP probes.
 3. Check the data path the sidecar settled on -- it logs `[sidecar] Cannot use data path …` lines for any candidate it had to skip.
+
+### Mobile Target (Capacitor)
+
+Native mobile applications for Android and iOS using [Capacitor](https://capacitorjs.com/). The same web bundle the web target produces is wrapped in a native shell, producing an Android APK or an iOS app.
+
+**Prerequisites:**
+
+- Node.js (or Bun)
+- **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
+- **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
+
+**Setup & Build:**
+
+```bash
+# 1. One-time setup (defaults from config / host)
+jac setup mobile
+
+# Optional explicit setup platform
+jac setup mobile --platform android
+jac setup mobile --platform ios     # macOS only
+jac setup mobile --platform all     # both on macOS
+
+# 2. Development: build and launch on device/simulator
+jac start main.jac --client mobile                    # Android (default)
+jac start main.jac --client mobile --platform ios
+
+# 3. Build for Android
+jac build --client mobile --platform android
+
+# 4. Build for iOS
+jac build --client mobile --platform ios
+```
+
+**Output:**
+
+- Android: APK in `android/app/build/outputs/apk/`
+- iOS: Xcode build products in `ios/App/build/`
+
+**Configuration** via `[plugins.client.mobile]` in `jac.toml`:
+
+```toml
+[plugins.client.mobile]
+app_name = "My App"
+app_id = "com.example.myapp"
+release = false          # true for release builds
+bundle = false           # true to produce AAB instead of APK (Android)
+default_platform = "android"  # default for jac start --client mobile
+ios_sdk = "iphonesimulator"   # or "iphoneos" for device builds
+ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
+```
+
+**Notes:**
+
+- `jac setup mobile` uses `--platform` when provided, otherwise `[plugins.client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
+- Mobile dev networking is auto-resolved by default; use `--host <ip>` only when you need to force a specific host.
+- Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
+- iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
+- Android release builds and signing require a keystore configured in `android/app/build.gradle`.
+- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac add --npm @capacitor/<plugin>` followed by `npx cap sync`.
+
+For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
 
 ### PWA Target
 

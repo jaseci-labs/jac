@@ -1029,6 +1029,12 @@ impl NormalizePass.enter_await_expr(nd: uni.AwaitExpr) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
+"""Normalize CastExpr kid list."""
+impl NormalizePass.enter_cast_expr(nd: uni.CastExpr) -> None {
+    new_kid: list[uni.UniNode] = [nd.value, nd.gen_token(Tok.KW_AS), nd.cast_type];
+    nd.set_kids(nodes=new_kid);
+}
+
 """Normalize GlobalStmt kid list."""
 impl NormalizePass.enter_global_stmt(nd: uni.GlobalStmt) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.GLOBAL_OP)];
@@ -1695,6 +1701,32 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
 
     ];
     nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize JsxSlot kid list.
+
+A `JsxSlot` is a statement-form `{...}` JSX child whose kids are the raw
+brace tokens flanking the body statements (the parser emits
+`[LBRACE, ...body, RBRACE]`). Rebuild the kid list deterministically so
+later passes and the formatter can round-trip the slot regardless of how
+the body was produced.
+"""
+impl NormalizePass.enter_jsx_slot(nd: uni.JsxSlot) -> None {
+    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.LBRACE)];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize JsxComment kid list."""
+impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None {
+    if isinstance(nd.value, uni.Token) {
+        nd.set_kids(nodes=[nd.value]);
+    } else {
+        nd.set_kids(nodes=[nd.gen_token(Tok.JSX_COMMENT, value=str(nd.value))]);
+    }
 }
 
 """Normalize MatchStmt kid list."""

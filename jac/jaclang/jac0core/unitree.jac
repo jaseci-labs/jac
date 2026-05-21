@@ -690,7 +690,8 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         is_abstract: bool,
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -777,7 +778,8 @@ obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
 obj HasVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         value: (Expr | None),
-        defer: bool;
+        defer: bool,
+        accessors: (Sequence[Ability] | None) = None;
 
     def postinit -> None;
 }
@@ -950,6 +952,16 @@ obj AwaitExpr(Expr) {
     def postinit -> None;
 }
 
+"""CastExpr node type for Jac Ast.
+Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
+it evaluates to `value` unchanged; statically its type is `cast_type`."""
+obj CastExpr(Expr) {
+    has value: Expr,
+        cast_type: Expr;
+
+    def postinit -> None;
+}
+
 """GlobalStmt node type for Jac Ast."""
 obj GlobalStmt(CodeBlockStmt) {
     has target: Sequence[NameAtom];
@@ -1111,8 +1123,15 @@ obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     def postinit -> None;
 }
 
-"""ListCompr node type for Jac Ast."""
-obj ListCompr(AtomExpr, UniScopeNode) {
+"""ListCompr node type for Jac Ast.
+
+Inherits UniCFGNode so the comprehension is a flow-sensitive node:
+cfg_build_pass wires each `if` filter as a CfgExpr predecessor whose
+true edge feeds back into the comprehension itself, so the existing
+CFG narrowing engine threads filter narrowing into the head expression
+without any side-channel state on the type evaluator.
+"""
+obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has out_expr: Expr,
         compr: list[InnerCompr];
 
@@ -1125,8 +1144,12 @@ obj GenCompr(ListCompr) {}
 """SetCompr node type for Jac Ast."""
 obj SetCompr(ListCompr) {}
 
-"""DictCompr node type for Jac Ast."""
-obj DictCompr(AtomExpr, UniScopeNode) {
+"""DictCompr node type for Jac Ast.
+
+Same UniCFGNode rationale as ListCompr -- the conditional filters wire
+through the CFG so narrowing flows into the head key/value expressions.
+"""
+obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has kv_pair: KVPair,
         compr: list[InnerCompr];
 
@@ -1241,7 +1264,8 @@ obj JsxElement(AtomExpr) {
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
         is_self_closing: bool,
-        is_fragment: bool;
+        is_fragment: bool,
+        dynamic_tag: (Expr | None) = None;
 
     def postinit -> None;
     def get_body_start_line -> (int | None);
@@ -1291,6 +1315,38 @@ obj JsxText(JsxChild) {
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
     has expr: Expr;
+
+    def postinit -> None;
+}
+
+"""JsxSlot: a `{...}` JSX child whose body is a sequence of statements.
+
+When a `{...}` slot in JSX child position contains anything other than a
+single expression -- a JSX statement, control flow yielding JSX, an
+assignment followed by an expression, an explicit `return` guard -- the
+parser emits a `JsxSlot` instead of `JsxExpression`. The slot lowers to
+an IIFE that runs the body and returns either the accumulated JSX
+children fragment (if any JSX was emitted statement-by-statement) or the
+value of the last expression.
+
+Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
+`JsxExpression` so the cheap path (no IIFE) is preserved.
+"""
+obj JsxSlot(JsxChild) {
+    has body: list[UniNode];
+
+    def postinit -> None;
+}
+
+"""JsxComment node type for Jac Ast.
+
+Represents a Jac-native JSX block comment of the form ``{#* ... *#}``.
+The whole brace-wrapped span is owned by this node so the formatter can
+round-trip the comment verbatim; codegen passes treat it as a no-op
+child and emit nothing.
+"""
+obj JsxComment(JsxChild) {
+    has value: Token;
 
     def postinit -> None;
 }

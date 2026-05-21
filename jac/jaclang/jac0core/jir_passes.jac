@@ -10,7 +10,6 @@ kid/parent, scope chains, symbol tables, and CFG edges.
 import struct;
 import sys;
 import zlib;
-import from typing { Any }
 
 import from jaclang.jac0core.jir_registry {
     FieldKind,

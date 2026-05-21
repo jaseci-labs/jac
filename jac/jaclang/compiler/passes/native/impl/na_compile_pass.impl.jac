@@ -169,6 +169,13 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
 
+        # Short-circuit before JIT creation if any link-time errors were emitted
+        # (e.g. E5024/E5025/E5026). Running create_mcjit_compiler on broken IR
+        # can crash or produce misleading follow-on errors.
+        if self.errors_had {
+            return ir_in;
+        }
+
         # Collect all function names from the module BEFORE create_mcjit_compiler
         # consumes it.  We need these to build the symbol map for GDB.
         _all_fn_names: list = [];
@@ -181,9 +188,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
                         _all_fn_names.append(_fn_name_str);
                     }
                 }
-            } except Exception {
-                pass;
-            }
+            } except Exception { }
         }
 
         engine = llvm.create_mcjit_compiler(mod, target_machine);
@@ -192,9 +197,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         if _native_debug {
             try {
                 engine.enable_jit_events();
-            } except Exception {
-                pass;  # best-effort; GDB listener may not be available
-            }
+            } except Exception { }
         }
         module.gen.native_engine = engine;
 
@@ -249,10 +252,89 @@ impl NativeCompilePass._compile_and_link_native_imports(
     module: uni.Module, main_mod: object, imports: list, target_machine: object
 ) -> None {
     import os;
+    import hashlib;
+    import json;
     import from jaclang.jac0core.codeinfo { NativeModuleInfo, NativeFunctionInfo }
+
+    # ── Compiler fingerprint for cache invalidation ─────────────────────
+    # Hash all .jac implementation files so that any compiler change
+    # automatically invalidates stale .ir_cache files.  Computed once per
+    # _compile_and_link_native_imports call (negligible vs. compile time).
+    import glob as _cgl;
+    import jaclang as _jlm;
+    _jl_dir = os.path.dirname(os.path.abspath(_jlm.__file__));
+    _nat_dir = os.path.join(_jl_dir, "compiler", "passes", "native");
+    _comp_h = hashlib.sha256();
+    for _cp in [
+        os.path.join(_nat_dir, "impl", "*.jac"),
+        os.path.join(_nat_dir, "na_ir_gen_pass.impl", "*.jac"),
+
+    ] {
+        for _cf in sorted(_cgl.glob(_cp)) {
+            try {
+                with open(_cf, "rb") as _cfh {
+                    _comp_h.update(_cfh.read());
+                }
+            } except Exception { }
+        }
+    }
+    _compiler_fp = _comp_h.hexdigest()[:8];
+
     # Keep track of linked modules to avoid duplicate linking.
     # Keyed by os.path.realpath so diamond deps (A→B→C, A→C) are linked once.
     linked_modules: dict = {};
+    # Track which module originally defined each exported symbol, so collision
+    # error messages can name both conflicting source files.  We use this dict
+    # as the AUTHORITATIVE source of "what is defined and where", rather than
+    # querying main_mod.get_function(...).is_declaration after link_in() —
+    # that can be unreliable across llvmlite versions for cross-module
+    # declarations promoted to definitions during linking.
+    symbol_origins: dict = {};  # symbol_name -> module_path
+    # Parallel to symbol_origins: True when the recording module genuinely
+    # *owns* the symbol (declares it with `def:pub`), False when the symbol
+    # is only present because the module imported it and the dep's definition
+    # got pulled into its IR transitively. A real collision (E5026) requires
+    # two *owning* modules; an owner-vs-carrier overlap is the same symbol
+    # reached twice and is benign.
+    symbol_owned: dict = {};  # symbol_name -> bool
+    _MAIN_ORIGIN = "(main module)";
+    # Names the main module imports from other native modules — used to tell
+    # owned definitions apart from transitively-carried ones.
+    _main_imported_names: set = set();
+    _main_manifest = module.gen.interop_manifest;
+    if _main_manifest is not None {
+        for _imp_b in _main_manifest.native_cross_module_imports {
+            _main_imported_names.add(_imp_b.name);
+        }
+    }
+    # Seed symbol_origins with the main module's own non-declaration symbols.
+    # Otherwise the very first imported module that legitimately *declares*
+    # one of main's functions could be mis-flagged as a collision after a
+    # subsequent module *defines* the same name.
+    _INTERNAL_LINKAGE = 8;  # internal — per-module, renamed on link_in
+    _PRIVATE_LINKAGE = 9;  # private  — per-module
+    _WEAK_LINKAGE = 5;  # weak     — linker merges; safe to define in multiple modules
+    _WEAK_ODR_LINKAGE = 6;  # weak_odr — same, body guaranteed identical across modules
+    for _mfn in main_mod.functions {
+        if _mfn.is_declaration or _mfn.name.startswith("llvm.") {
+            continue;
+        }
+        if _mfn.linkage == _INTERNAL_LINKAGE or _mfn.linkage == _PRIVATE_LINKAGE {
+            continue;
+        }
+        symbol_origins[_mfn.name] = _MAIN_ORIGIN;
+        symbol_owned[_mfn.name] = _mfn.name not in _main_imported_names;
+    }
+    for _mgv in main_mod.global_variables {
+        if _mgv.is_declaration {
+            continue;
+        }
+        if _mgv.linkage == _INTERNAL_LINKAGE or _mgv.linkage == _PRIVATE_LINKAGE {
+            continue;
+        }
+        symbol_origins[_mgv.name] = _MAIN_ORIGIN;
+        symbol_owned[_mgv.name] = _mgv.name not in _main_imported_names;
+    }
     # Work queue: (binding, base_dir). Seeded with direct imports; transitive
     # deps are appended after each successful compile.
     work_queue: list = [];
@@ -301,22 +383,165 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
         linked_modules[real_path] = None;  # mark visited before compile
 
-        # Compile the imported module to get its LLVM IR.
-        # Use options with skip_native_engine=True to skip JIT engine creation.
-        import from jaclang.jac0core.compile_options { CompileOptions }
-        import_options = CompileOptions(skip_native_engine=True);
-        try {
-            imported_ir = self.prog.compile(
-                file_path=full_path, options=import_options
-            );
-        } except Exception as e {
-            self.emit(W5024, path=full_path, error=str(e));
-            continue;
+        # ── Incremental compilation: check IR cache before recompiling ────
+        # Hash the source file + compiler fingerprint to form the cache key.
+        # Cache layout: <source_dir>/.jac_ir/<stem>.<src_hash>.<comp_fp>.ir_cache
+        #               <source_dir>/.jac_ir/<stem>.<src_hash>.<comp_fp>.ir_meta
+        # The .ir_cache file contains the raw LLVM IR text (pre-rename).
+        # The .ir_meta file contains clib_paths and transitive dep info.
+        # Including _compiler_fp ensures stale caches from a previous compiler
+        # version are never reused after compiler implementation files change.
+        _src_dir = os.path.dirname(real_path);
+        _src_stem = os.path.splitext(os.path.basename(real_path))[0];
+        if _src_stem.endswith(".na") {
+            _src_stem = _src_stem[:-3];
         }
+        _ir_cache_dir = os.path.join(_src_dir, ".jac_ir");
 
-        if imported_ir is None or imported_ir.gen.llvm_ir is None {
-            self.emit(W5024, path=full_path, error="No LLVM IR generated");
-            continue;
+        _source_hash = "";
+        _cache_ir_path = "";
+        _cache_meta_path = "";
+        _cache_hit = False;
+        imported_llvm_str_raw = "";
+        dep_clib_paths_cached: list = [];
+        dep_transitive_cached: list = [];
+        # Symbols this module imports from other native modules. Set by both
+        # the cache-hit and cache-miss paths; consumed by the collision check
+        # to distinguish owned definitions from transitively-carried ones.
+        dep_imported_symbols: list[str] = [];
+        # Symbols declared directly in this module's source. This is broader
+        # than dep_imported_symbols because a transitive dependency can carry
+        # globals referenced by imported functions (e.g. _TABLE) even though
+        # the importing module never names those globals in its import list.
+        dep_owned_symbols: list[str] = [];
+
+        try {
+            with open(real_path, "rb") as _sf {
+                _source_hash = hashlib.sha256(_sf.read()).hexdigest()[:12];
+            }
+            _cache_ir_path = os.path.join(
+                _ir_cache_dir, f"{_src_stem}.{_source_hash}.{_compiler_fp}.ir_cache"
+            );
+            _cache_meta_path = os.path.join(
+                _ir_cache_dir, f"{_src_stem}.{_source_hash}.{_compiler_fp}.ir_meta"
+            );
+
+            if os.path.exists(_cache_ir_path) and os.path.exists(_cache_meta_path) {
+                with open(_cache_ir_path, "r") as _cf {
+                    imported_llvm_str_raw = _cf.read();
+                }
+                with open(_cache_meta_path, "r") as _mf {
+                    _meta = json.loads(_mf.read());
+                }
+                dep_clib_paths_cached = _meta.get("clib_paths", []);
+                dep_transitive_cached = _meta.get("transitive_deps", []);
+                dep_imported_symbols = _meta.get("imported_symbols", []);
+                dep_owned_symbols = _meta.get("owned_symbols", []);
+                _cache_hit = True;
+            }
+        } except Exception { }
+
+        if _cache_hit {
+            # Use cached IR — skip full compilation
+            # Still need to handle clib paths and transitive deps
+            dep_clib_paths = dep_clib_paths_cached;
+
+            # Enqueue transitive deps from cached metadata
+            dep_base = os.path.dirname(full_path);
+            for dep_mod_path in dep_transitive_cached {
+                # Create a lightweight binding-like object with source_module attr
+                class _DepBinding {
+                    def init(self: _DepBinding, sm: str) {
+                        self.source_module = sm;
+                    }
+                }
+                work_queue.append((_DepBinding(dep_mod_path), dep_base));
+            }
+        } else {
+            # No cache hit — compile from scratch
+            import from jaclang.jac0core.compile_options { CompileOptions }
+            import_options = CompileOptions(skip_native_engine=True, type_check=False);
+            try {
+                import re as _own_re;
+                with open(real_path, "r") as _src_f {
+                    _src_txt = _src_f.read();
+                }
+                _owned_seen: set[str] = set();
+                for _def_m in _own_re.finditer(
+                    r"\bdef(?::[A-Za-z_, ]+)?\s+([A-Za-z_]\w*)\s*\(", _src_txt
+                ) {
+                    _owned_seen.add(_def_m.group(1));
+                }
+                for _glob_m in _own_re.finditer(
+                    r"(?:\bglob|,)\s*([A-Za-z_]\w*)\s*:", _src_txt
+                ) {
+                    _owned_seen.add(_glob_m.group(1));
+                }
+                dep_owned_symbols = list(_owned_seen);
+            } except Exception { }
+            try {
+                imported_ir = self.prog.compile(
+                    file_path=full_path, options=import_options
+                );
+            } except Exception as e {
+                self.emit(E5024, path=full_path, error=str(e));
+                continue;
+            }
+            if imported_ir is None or imported_ir.gen.llvm_ir is None {
+                self.emit(E5024, path=full_path, error="No LLVM IR generated");
+                continue;
+            }
+            imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
+            dep_clib_paths = imported_ir.gen._clib_paths or [];
+            # Collect transitive dep paths for cache metadata
+            dep_transitive_paths: list = [];
+            dep_manifest = imported_ir.gen.interop_manifest;
+            if dep_manifest is not None {
+                dep_base = os.path.dirname(full_path);
+                for dep_binding in dep_manifest.native_cross_module_imports {
+                    if dep_binding.source_module is not None {
+                        dep_transitive_paths.append(dep_binding.source_module);
+                        work_queue.append((dep_binding, dep_base));
+                    }
+                    # The imported symbol's name — a definition carrying this
+                    # name in the dep's IR is transitively linked, not owned.
+                    if dep_binding.name {
+                        dep_imported_symbols.append(dep_binding.name);
+                    }
+                }
+            }
+            # Write cache files (best-effort, don't fail build on cache errors)
+            try {
+                os.makedirs(_ir_cache_dir, exist_ok=True);
+                # Remove stale caches for this stem (different hash)
+                import glob as _glob;
+                for stale in _glob.glob(
+                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_cache")
+                ) {
+                    if stale != _cache_ir_path {
+                        os.remove(stale);
+                    }
+                }
+                for stale in _glob.glob(
+                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_meta")
+                ) {
+                    if stale != _cache_meta_path {
+                        os.remove(stale);
+                    }
+                }
+                with open(_cache_ir_path, "w") as _wf {
+                    _wf.write(imported_llvm_str_raw);
+                }
+                _meta_obj = {
+                    "clib_paths": dep_clib_paths,
+                    "transitive_deps": dep_transitive_paths,
+                    "imported_symbols": dep_imported_symbols,
+                    "owned_symbols": dep_owned_symbols
+                };
+                with open(_cache_meta_path, "w") as _wmf {
+                    _wmf.write(json.dumps(_meta_obj));
+                }
+            } except Exception { }
         }
 
         # Load any .so libraries required by this imported module so that
@@ -324,7 +549,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         # Without this, transitive `import from "lib.so" { ... }` in a dep
         # module causes an unresolved-symbol segfault at runtime.
         import ctypes.util as _ctu;
-        dep_clib_paths = imported_ir.gen._clib_paths;
+        # dep_clib_paths is set by both cache-hit and cache-miss paths above.
         if dep_clib_paths {
             # Propagate dep C-lib paths back to the main module so that
             # nacompile (AOT) can discover all needed shared libraries.
@@ -341,26 +566,17 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             llvm.load_library_permanently(found_lib);
                         }
                     }
-                } except Exception {
-                    pass;  # best-effort; missing lib will fail at JIT time anyway
-                }
+                } except Exception { }
             }
         }
 
-        # Enqueue transitive deps of this module for DFS traversal.
-        dep_manifest = imported_ir.gen.interop_manifest;
-        if dep_manifest is not None {
-            dep_base = os.path.dirname(full_path);
-            for dep_binding in dep_manifest.native_cross_module_imports {
-                work_queue.append((dep_binding, dep_base));
-            }
-        }
-
+        # Transitive deps already enqueued above (both cache-hit and cache-miss).
         try {
             # Parse the imported module's IR, renaming jac_entry to avoid
             # duplicate symbol conflicts (each .na.jac has its own entry).
             # LLVM IR may quote names as @"jac_entry" or use bare @jac_entry.
-            imported_llvm_str = str(imported_ir.gen.llvm_ir);
+            # imported_llvm_str_raw is set by both cache-hit and cache-miss.
+            imported_llvm_str = imported_llvm_str_raw;
             import re;
             safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', source_mod_path);
             entry_rename = f"__jac_entry_{safe_name}";
@@ -369,6 +585,10 @@ impl NativeCompilePass._compile_and_link_native_imports(
             );
             imported_llvm_str = imported_llvm_str.replace(
                 "@jac_entry", f"@{entry_rename}"
+            );
+            # Also update DISubprogram name: for jac_entry so GDB resolves it
+            imported_llvm_str = imported_llvm_str.replace(
+                'name: "jac_entry"', f'name: "{entry_rename}"'
             );
             # Rename __jac_glob_init to __jac_glob_init_<safe_name> so each
             # imported module's initializer has a unique symbol after linking.
@@ -379,15 +599,115 @@ impl NativeCompilePass._compile_and_link_native_imports(
             imported_llvm_str = imported_llvm_str.replace(
                 "@__jac_glob_init", f"@{glob_init_rename}"
             );
+            # Also update DISubprogram name: for __jac_glob_init so GDB resolves it
+            imported_llvm_str = imported_llvm_str.replace(
+                'name: "__jac_glob_init"', f'name: "{glob_init_rename}"'
+            );
             imported_mod = llvm.parse_assembly(imported_llvm_str);
 
             # Collect exported function names BEFORE linking, because
-            # link_in consumes the module and invalidates its references
+            # link_in consumes the module and invalidates its references.
+            # Also detect symbol collisions: if an externally-visible
+            # *definition* in the imported module corresponds to a symbol
+            # already defined by a previously linked module (or by main_mod
+            # itself), emit an error instead of silently merging (which
+            # causes SIGSEGV).  We consult our own symbol_origins dict
+            # rather than main_mod.get_function(...).is_declaration so that
+            # *declarations* brought in by an earlier link_in (e.g. mid
+            # declares get_leaf, then leaf defines it) are not misreported
+            # as collisions.
+            #
+            # A genuine collision needs two modules that each *own* the
+            # symbol (declare it themselves). When a module merely imports a
+            # symbol, a dep's definition can still get carried into its IR
+            # transitively — that overlaps the real owner's definition but is
+            # the *same* symbol, so it is benign: skip the redundant link
+            # without raising E5026 (the real owner already provides it).
+            #   linkage 0 = external, 8 = internal, 9 = private
+            dep_imported_set: set[str] = set(dep_imported_symbols);
+            dep_owned_set: set[str] = set(dep_owned_symbols);
             exported_funcs: list[str] = [];
+            has_collision = False;
             for func in imported_mod.functions {
-                if not func.name.startswith("llvm.") and not func.is_declaration {
-                    exported_funcs.append(func.name);
+                if func.name.startswith("llvm.") or func.is_declaration {
+                    continue;
                 }
+                if func.linkage == _INTERNAL_LINKAGE
+                or func.linkage == _PRIVATE_LINKAGE
+                or func.linkage == _WEAK_LINKAGE
+                or func.linkage == _WEAK_ODR_LINKAGE {
+                    continue;
+                }
+                exported_funcs.append(func.name);
+                # Check collision against previously recorded definitions
+                if func.name in symbol_origins {
+                    has_collision = True;
+                    _is_owned = (
+                        func.name in dep_owned_set
+                            if dep_owned_set
+                            else func.name not in dep_imported_set
+                    );
+                    if _is_owned and symbol_owned.get(func.name, True) {
+                        self.emit(
+                            E5026,
+                            symbol=func.name,
+                            existing_module=symbol_origins[func.name],
+                            new_module=full_path
+                        );
+                    }
+                }
+            }
+            exported_globals: list[str] = [];
+            for gv in imported_mod.global_variables {
+                if gv.is_declaration
+                or gv.linkage == _INTERNAL_LINKAGE
+                or gv.linkage == _PRIVATE_LINKAGE
+                or gv.linkage == _WEAK_LINKAGE
+                or gv.linkage == _WEAK_ODR_LINKAGE {
+                    continue;
+                }
+                exported_globals.append(gv.name);
+                if gv.name in symbol_origins {
+                    has_collision = True;
+                    _is_owned = (
+                        gv.name in dep_owned_set
+                            if dep_owned_set
+                            else gv.name not in dep_imported_set
+                    );
+                    if _is_owned and symbol_owned.get(gv.name, True) {
+                        self.emit(
+                            E5026,
+                            symbol=gv.name,
+                            existing_module=symbol_origins[gv.name],
+                            new_module=full_path
+                        );
+                    }
+                }
+            }
+            if has_collision {
+                # Either a real collision (E5026 emitted above) or a benign
+                # transitive duplicate — in both cases skip link_in so the
+                # symbol is not multiply defined in main_mod.
+                continue;
+            }
+
+            # Record symbol origins (and whether this module owns each symbol)
+            # for future collision diagnostics.
+            for fname in exported_funcs {
+                symbol_origins[fname] = full_path;
+                symbol_owned[fname] = (
+                    fname in dep_owned_set
+                        if dep_owned_set
+                        else fname not in dep_imported_set
+                );
+            }
+            for gname in exported_globals {
+                symbol_origins[gname] = full_path;
+                symbol_owned[gname] = (
+                    gname in dep_owned_set
+                        if dep_owned_set
+                        else gname not in dep_imported_set
+                );
             }
 
             # Link the imported module into the main module at IR level
@@ -410,7 +730,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             linked_modules[real_path] = mod_info;
             module.gen.interop_manifest.native_module_imports[source_mod_path] = mod_info;
         } except Exception as e {
-            self.emit(W5025, path=full_path, error=str(e));
+            self.emit(E5025, path=full_path, error=str(e));
         }
     }
 }

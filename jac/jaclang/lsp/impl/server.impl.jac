@@ -25,7 +25,7 @@ impl _to_snake_case(name: str) -> str {
 }
 
 """Recursively convert an LSP object to a JSON-compatible dict."""
-impl to_dict(`obj: Any) -> Any {
+impl to_dict(`obj: any) -> any {
     if `obj is None {
         return None;
     }
@@ -60,7 +60,7 @@ impl to_dict(`obj: Any) -> Any {
 }
 
 """Recursively construct an LSP object from a JSON dict."""
-impl from_dict(data: Any, cls: Any) -> Any {
+impl from_dict(data: any, cls: any) -> any {
     if data is None {
         return None;
     }
@@ -239,7 +239,7 @@ impl TextDocument.lines -> list[str] {
     return self.source.splitlines(True);
 }
 
-impl TextDocument.apply_change(change: Any) -> None {
+impl TextDocument.apply_change(change: any) -> None {
     if isinstance(change, TextDocumentContentChangeEvent_Type1) {
         self._apply_incremental_change(change);
     } elif isinstance(change, dict) and "range" in change {
@@ -299,7 +299,7 @@ impl TextDocument._apply_incremental_change(
     self._source = new.getvalue();
 }
 
-impl TextDocument._apply_full_change(change: Any) -> None {
+impl TextDocument._apply_full_change(change: any) -> None {
     if isinstance(change, dict) {
         self._source = change.get("text", "");
     } else {
@@ -334,7 +334,7 @@ impl Workspace.put_text_document(text_document: TextDocumentItem) -> None {
 }
 
 impl Workspace.update_text_document(
-    text_doc: VersionedTextDocumentIdentifier, change: Any
+    text_doc: VersionedTextDocumentIdentifier, change: any
 ) -> None {
     doc_uri = text_doc.uri;
     if doc_uri in self._text_documents {
@@ -366,7 +366,7 @@ impl LanguageServer.lsp -> LanguageServer {
 }
 
 """Register an LSP feature handler. Returns a decorator."""
-impl LanguageServer.feature(method: str, options: Any = None) -> Callable {
+impl LanguageServer.feature(method: str, options: any = None) -> Callable {
     def decorator(func: Callable) -> Callable {
         self._features[method] = func;
         if options is not None {
@@ -480,7 +480,7 @@ impl LanguageServer.publish_diagnostics(uri: str, diagnostics: list) -> None {
 }
 
 """Show a message popup to the user."""
-impl LanguageServer.show_message(message: str, msg_type: Any = None) -> None {
+impl LanguageServer.show_message(message: str, msg_type: any = None) -> None {
     self._send_notification(
         WINDOW_SHOW_MESSAGE,
         {"type": int(msg_type) if msg_type else 3, "message": message}
@@ -488,7 +488,7 @@ impl LanguageServer.show_message(message: str, msg_type: Any = None) -> None {
 }
 
 """Log a message to the output channel."""
-impl LanguageServer.show_message_log(message: str, msg_type: Any = None) -> None {
+impl LanguageServer.show_message_log(message: str, msg_type: any = None) -> None {
     self._send_notification(
         WINDOW_LOG_MESSAGE,
         {"type": int(msg_type) if msg_type else 3, "message": message}
@@ -496,7 +496,7 @@ impl LanguageServer.show_message_log(message: str, msg_type: Any = None) -> None
 }
 
 """Send a request to the client (fire-and-forget)."""
-impl LanguageServer.send_request(method: str, params: Any = None) -> None {
+impl LanguageServer.send_request(method: str, params: any = None) -> None {
     if self._transport_writer is None {
         return;
     }
@@ -516,12 +516,12 @@ impl LanguageServer.shutdown -> None {
 # ---------------------------------------------------------------------------
 # Internal transport
 # ---------------------------------------------------------------------------
-impl LanguageServer._send_notification(method: str, params: Any) -> None {
+impl LanguageServer._send_notification(method: str, params: any) -> None {
     body: dict = {"jsonrpc": "2.0", "method": method, "params": params};
     self._write_message(body);
 }
 
-impl LanguageServer._send_response(msg_id: Any, result: Any) -> None {
+impl LanguageServer._send_response(msg_id: any, result: any) -> None {
     body: dict = {"jsonrpc": "2.0", "id": msg_id, "result": to_dict(result)};
     self._write_message(body);
 }
@@ -543,7 +543,7 @@ impl LanguageServer._write_message(body: dict) -> None {
     }
 }
 
-impl LanguageServer._read_message(stream: Any) -> Optional[dict] {
+impl LanguageServer._read_message(stream: any) -> Optional[dict] {
     # Read headers
     content_length = -1;
     while True {

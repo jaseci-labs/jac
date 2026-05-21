@@ -11,7 +11,6 @@ import sys;
 import time;
 import requests;
 import from pathlib { Path }
-import from typing { Any }
 
 glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures";
 
@@ -26,14 +25,14 @@ def get_free_port -> int {
     }
 }
 
-def _data(resp: dict[str, Any]) -> Any {
+def _data(resp: dict[str, any]) -> any {
     if isinstance(resp, dict) and "data" in resp {
         return resp["data"];
     }
     return resp;
 }
 
-def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
+def _err(resp: dict[str, any]) -> dict[str, any] | None {
     if isinstance(resp, dict) and not resp.get("ok") {
         return resp.get("error") or resp;
     }
@@ -120,7 +119,7 @@ def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> s
     return _data(resp)["token"];
 }
 
-def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, Any] {
+def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, any] {
     return requests.post(
         f"{base_url}/jobs", json=payload, headers=headers, timeout=5
     ).json();

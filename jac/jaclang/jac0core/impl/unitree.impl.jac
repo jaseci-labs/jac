@@ -1462,6 +1462,15 @@ impl Ability.method_owner -> Archetype | Enum | None {
             )
             else None
     );
+    if (found is None) and (self.accessor_kind != "") {
+        nodew = self.parent;
+        while nodew is not None {
+            if isinstance(nodew, (Archetype, Enum)) {
+                return nodew;
+            }
+            nodew = nodew.parent;
+        }
+    }
     return found;
 }
 
@@ -1760,6 +1769,11 @@ impl AwaitExpr.postinit -> None {
     Expr.postinit(self);
 }
 
+impl CastExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
 
 impl GlobalStmt.postinit -> None {
     self.target = `list(self.target);
@@ -1896,6 +1910,7 @@ impl ListCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -1904,6 +1919,7 @@ impl DictCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -2135,6 +2151,16 @@ impl JsxText.get_normalized_text -> str {
 }
 
 impl JsxExpression.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxSlot.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxComment.postinit -> None {
     JsxChild.postinit(self);
 }
 

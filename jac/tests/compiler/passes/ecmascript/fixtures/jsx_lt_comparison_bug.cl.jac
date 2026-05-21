@@ -16,11 +16,11 @@ cl {
         return result;
     }
 
-    def:pub app() -> Any {
+    def:pub app() -> any {
         data = [10, 5, 30, 2, 20];
         filtered = filter_points(data, 15);
         items = filtered.map(
-            lambda x: Any -> Any { return <li>{x}</li>; }
+            lambda x: any -> any { return <li>{x}</li>; }
         );
 
         return (

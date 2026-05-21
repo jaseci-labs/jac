@@ -19,7 +19,7 @@ test "different standalone files get separate db files" {
     db_persistent = db_dir / "simple_persistent.db";
     db_connection = db_dir / "simple_node_connection.db";
 
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     try {
         Jac.set_base_path(FIXTURES);
 
@@ -59,7 +59,7 @@ test "running file with same name as project uses project DB name" {
     db_project = db_dir / "test_db_naming.db";
     file_path = Path(FIXTURES) / "test_project";
 
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     try {
         Jac.set_base_path(FIXTURES);
 

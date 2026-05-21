@@ -77,7 +77,16 @@ glob plugin_manager = plugin.PluginManager('jac'),
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', default=None
-     );
+     ),
+     # Pre-context seeds for app identity. CLI bootstrap (`jac enter`,
+     # `jac start`, `jac db`) and pytest harnesses set these BEFORE any
+     # ExecutionContext exists; new contexts snapshot them at postinit
+     # time. Once a ctx is constructed, its own `base_path_dir` /
+     # `full_target_path` fields are authoritative — the seed cannot
+     # poison a live ctx. Live behavior always follows the ctx; these
+     # values are only consulted during ctx construction.
+     _default_base_path_dir: list = [os.getcwd()],
+     _default_full_target_path: list = [None];
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -351,13 +360,19 @@ class JacBuiltin {
 class JacCmd {
     """Create Jac CLI cmds."""
     static def create_cmd -> None;
+
+    """Run the `jac ai` interactive coding agent.
+
+        A hook so the agent engine is pluggable: the core ships a built-in
+        byLLM agent as the default implementation, and a plugin can register
+        its own implementation to replace it. `req` is an `AgentRequest`
+        carrying the resolved flags plus a `CodeIntelligence` handle.
+        """
+    static def run_ai_agent(req: object) -> int;
 }
 
 """Jac Feature."""
 class JacBasics {
-    """Set Class References."""
-    static def setup -> None;
-
     """Get current execution context (request-scoped if available, else global)."""
     static def get_context -> ExecutionContext;
 
@@ -465,7 +480,7 @@ system,
     ) -> T;
 
     """Jac's report stmt feature."""
-    static def log_report(expr: Any, custom: bool = False) -> None;
+    static def log_report(expr: any, custom: bool = False) -> None;
 
     """Jac's apply_dir stmt feature.
 
@@ -512,11 +527,11 @@ system,
 
     """Jac's assign comprehension feature."""
     static def assign_all(
-        target: list[T], attr_val: tuple[(tuple[str], tuple[Any])]
+        target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
     ) -> list[T];
 
     """Jac's safe subscript feature."""
-    static def safe_subscript(`obj: Any, key: Any) -> Any;
+    static def safe_subscript(`obj: any, key: any) -> any;
 
     """Jac's root getter."""
     static def root -> Root;
@@ -611,7 +626,7 @@ class JacAPIServer {
         Returns the unwrapped result from the TransportResponse envelope.
         Raises RuntimeError on transport or application-level failure.
         """
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any;
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
 
     """Execute an sv-to-sv walker spawn over HTTP.
 
@@ -628,8 +643,8 @@ class JacAPIServer {
         contract as sv_service_call.
         """
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: Any
-    ) -> Any;
+        module_name: str, walker_name: str, args: dict, stub_cls: any
+    ) -> any;
 
     """Return the current sv-service registry as a {module_name: base_url} dict.
 
@@ -722,7 +737,10 @@ class JacByLLM {
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
 
     """Call the LLM model."""
-    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
+    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
+
+    """Async variant of call_llm; offloads the LLM call so the event loop stays free."""
+    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
 
     """Python library mode decorator for Jac's by llm() syntax."""
     static def `by(model: LLMModel) -> Callable;
@@ -736,7 +754,7 @@ class JacByLLM {
         Currently not implemented - raises NotImplementedError.
         Plugins like byllm can override this via the plugin hook system.
         """
-    static def by_operator(lhs: Any, rhs: Any) -> Any;
+    static def by_operator(lhs: any, rhs: any) -> any;
 
     """Return the default LLM model for use with 'by llm()' syntax.
 
@@ -763,12 +781,26 @@ class JacUtils {
             user_root: User root ID for permission boundary. Required parameter.
                        Pass None for CLI/system contexts (uses system_root).
                        Pass user's root ID for authenticated server requests.
+            base_path_dir: Per-context override for the L3 storage root.
+                       When None, the new context snapshots the bootstrap
+                       seed (`Jac.get_base_path_dir()`) at construction time.
+            full_target_path: Per-context override for the app target file.
+                       Drives the L3 SQLite filename via `get_db_path` /
+                       `get_name`. When None, the new context snapshots
+                       `Jac.get_full_target_path()` at construction time.
 
         Storage backend is configured via plugins/environment, not per-context.
-        For file backend: auto-generates path from JacRuntime.base_path_dir.
+        For file backend: derives the path from the context's own
+        `base_path_dir` / `full_target_path` (either passed explicitly here
+        or snapshotted from JacRuntime). Subsequent mutations to the global
+        statics never poison an already-constructed ctx.
         For database backends (jac-scale): configured via environment variables.
         """
-    static def create_j_context(user_root: (str | None)) -> ExecutionContext;
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext;
 
     """Attach a JacProgram to the machine."""
     static def attach_program(jac_program: JacProgram) -> None;
@@ -833,7 +865,7 @@ code.
     static def thread_run(func: Callable, *args: object) -> Future;
 
     """Wait for a thread to finish."""
-    static def thread_wait(future: Any) -> None;
+    static def thread_wait(future: any) -> None;
 }
 
 """Plugin configuration hooks for jac.toml integration.
@@ -949,7 +981,7 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
         Returns:
             Storage instance (LocalStorage by default)
         """
-    static def store(base_path: str = './storage', create_dirs: bool = True) -> Any;
+    static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
 }
 
 """Generate three helper classes based on a plugin class.
@@ -962,8 +994,8 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
         Tuple of (SpecClass, ImplClass, ProxyClass).
     """
 def generate_plugin_helpers(
-    plugin_class: type[Any]
-) -> tuple[(type[Any], type[Any], type[Any])] {
+    plugin_class: type[any]
+) -> tuple[(type[any], type[any], type[any])] {
     spec_methods = {};
     impl_methods = {};
     proxy_methods = {};
@@ -1019,7 +1051,22 @@ def generate_plugin_helpers(
             }
         }
         """Create a proxy method for the proxy class.""";
-        def make_proxy(name: str, sig: inspect.Signature) -> Callable {
+        def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
+            if is_coro {
+                async def async_proxy(*args: object, **kwargs: object) -> object {
+                    bound = sig.bind_partial(*args, **kwargs);
+                    bound.apply_defaults();
+                    hookcaller = getattr(plugin_manager.hook, name);
+                    result = hookcaller(**bound.arguments);
+                    if inspect.iscoroutine(result) {
+                        return await result;
+                    }
+                    return result;
+                }
+                async_proxy.__name__ = name;
+                async_proxy.__signature__ = sig;
+                return async_proxy;
+            }
             def proxy(*args: object, **kwargs: object) -> object {
                 bound = sig.bind_partial(*args, **kwargs);
                 bound.apply_defaults();
@@ -1030,7 +1077,9 @@ def generate_plugin_helpers(
             proxy.__signature__ = sig;
             return proxy;
         }
-        proxy_methods[name] = make_proxy(name, sig);
+        proxy_methods[name] = make_proxy(
+            name, sig, inspect.iscoroutinefunction(method)
+        );
     }
     spec_cls = `type(f"{plugin_class.__name__}Spec", (object, ), spec_methods);
     impl_cls = `type(f"{plugin_class.__name__}Impl", (object, ), impl_methods);
@@ -1054,11 +1103,17 @@ with entry {
     plugin_manager.add_hookspecs(JacRuntimeSpec);
 }
 
-"""Jac Machine State."""
+"""Jac Machine State.
+
+App identity (`base_path_dir`, `full_target_path`) lives on
+`ExecutionContext`, not here. Bootstrap callers that need to stash a
+value before a ctx exists use `Jac.set_base_path` / `Jac.set_full_target_path`,
+which write to module-level seeds that `ExecutionContext.postinit`
+snapshots from. Live reads go through `Jac.get_context().<field>` so
+multiple in-process clients stay isolated from each other.
+"""
 class JacRuntime(JacRuntimeInterface) {
     with entry {
-        base_path_dir: (str | None) = os.getcwd();
-        full_target_path: (str | None) = None;
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
@@ -1080,37 +1135,56 @@ class JacRuntime(JacRuntimeInterface) {
         operations. It persists across program resets and can be reused.
         """
     @classmethod
-    def get_compiler(cls: Any) -> JacCompiler;
+    def get_compiler(cls: any) -> JacCompiler;
 
     """Get or create the JacProgram instance."""
     @classmethod
-    def get_program(cls: Any) -> JacProgram;
+    def get_program(cls: any) -> JacProgram;
 
-    """Set the base path for the machine.
+    """Return the bootstrap-time default base path used to seed new
+    ExecutionContexts. Live reads should prefer
+    `Jac.get_context().base_path_dir`; this accessor exists for tooling
+    that needs the pre-context default (CLI bootstrap, test snapshots).
+    """
+    static def get_base_path_dir -> (str | None);
+
+    """Return the bootstrap-time default target path used to seed new
+    ExecutionContexts. Live reads should prefer
+    `Jac.get_context().full_target_path`; this accessor exists for
+    tooling that needs the pre-context default.
+    """
+    static def get_full_target_path -> (str | None);
+
+    """Set the seed base path used by new ExecutionContexts.
 
         When base_path is None, L3 persistence is disabled (faster for tests).
+        Mutates only the seed — already-constructed contexts are unaffected.
         """
     static def set_base_path(base_path: (str | None)) -> None;
 
-    """Set the context for the machine (global, for backward compatibility)."""
-    static def set_context(context: ExecutionContext) -> None;
+    """Set the seed target path used by new ExecutionContexts.
 
-    """Set request-scoped execution context (for web servers)."""
-    static def set_request_context(context: ExecutionContext) -> None;
+        Mutates only the seed — already-constructed contexts are unaffected.
+        """
+    static def set_full_target_path(target_path: (str | None)) -> None;
+
+    """Install the process-global execution context for CLI and other
+    non-server callers. Server request paths use `push_request_context`
+    so each request has its own ContextVar-scoped ctx.
+    """
+    static def set_context(context: ExecutionContext) -> None;
 
     """Push a request-scoped execution context and return the reset token.
 
-    Prefer this over `set_request_context` for concurrent servers: the
-    returned token lets the caller restore the prior value in a `finally`
-    block, which keeps concurrent requests (each in its own asyncio Task
-    with its own ContextVar view) from trampling each other's state."""
-    static def push_request_context(context: ExecutionContext) -> Any;
+    The token lets the caller restore the prior value in a `finally`
+    block. This is the safe way to scope a ctx to a server request:
+    concurrent requests each get their own ContextVar view, and nested
+    pushes compose cleanly. Pair with `reset_request_context`.
+    """
+    static def push_request_context(context: ExecutionContext) -> any;
 
     """Reset the request-scoped context using a token from `push_request_context`."""
-    static def reset_request_context(token: Any) -> None;
-
-    """Clear request-scoped context and commit changes."""
-    static def clear_request_context -> None;
+    static def reset_request_context(token: any) -> None;
 }
 
 """Context manager to temporarily disable external plugins.
