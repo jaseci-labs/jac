@@ -322,7 +322,7 @@ def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
 }
 
 
-def _render_totals(bundle: Any) -> None {
+def _render_totals(bundle: Any) {
     def _n(key: str, label: str) -> str | None {
         n = len(dget(bundle, key));
         return f"{n} {label}{'s' if n != 1 else ''}" if n else None;
