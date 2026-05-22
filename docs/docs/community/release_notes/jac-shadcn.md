@@ -30,9 +30,11 @@ A complete UX + production-readiness overhaul. The plugin now exposes a `jac sha
   - `jac shadcn upgrade [names…]` — re-fetch installed components (also: switch styles/themes)
   - `jac shadcn prune` — drop orphan npm deps without uninstalling
 - **Theme flags on `jac create --use shadcn`** so scaffold + init happens in one command:
+
   ```
   jac create myapp --use shadcn --style nova --theme rose --font outfit
   ```
+
   Pre-hook validates flags before any files are written; bad theme aborts cleanly.
 
 #### Theme flags + validation
