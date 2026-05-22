@@ -2104,6 +2104,31 @@ test "super_init_with_has_vars" {
     );
 }
 
+test "super_init_dataclass_no_w1051" {
+    # Regression: `super.init(...)` on a parent whose constructor is
+    # dataclass-synthesized from `has` fields was emitting a spurious W1051
+    # (Unknown expression type) and an E1001 when the call result was assigned
+    # to a None-annotated slot. Root cause: _create_dataclass_init_method
+    # returned a FunctionType with return_type=UnknownType. Since an implicit
+    # __init__ returns None, the synthesized init must reflect that so member
+    # calls through `super.init(...)` type cleanly.
+    path = os.path.join(CHECKER_FIXTURES, "checker_super_init_dataclass_no_w1051.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on super.init() with synthesized parent init, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "super_init_with_explicit_init" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_super_init_explicit.jac");
