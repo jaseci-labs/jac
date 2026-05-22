@@ -700,35 +700,24 @@ impl JacCompiler.compile(
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
         # schedule — TypeCheckPass + StaticAnalysis + Portability + the
-        # enrich-pass-second-pass + Lint — and keeps all diagnostics.
+        # enrich-pass-second-pass + Lint.
         #
         # The implicit native run (.na.jac trigger) only needs Expr.type
         # populated for NaIRGenPass, so it runs the inference-only schedule
         # (TypeCheckPass alone). Rerunning UniTreeEnrichPass / Portability /
         # Lint mutates AST state that NaIRGenPass and the cross-module linker
-        # depend on. Native compilation keeps its own error discipline (the
-        # NA pass validates, and native numeric types like f64/i32 have
-        # conversion rules the strict checker does not model), so diagnostics
-        # from this inference-only run are suppressed.
+        # depend on. Diagnostics from this run are kept: native code is held
+        # to the same type discipline as the rest of Jac (#6049).
         implicit_native = not options.type_check;
         passes = get_native_inference_sched()
             if implicit_native
             else get_type_check_sched();
-        err_mark = len(actual_program.errors_had);
-        warn_mark = len(actual_program.warnings_had);
-        try {
-            self.run_schedule(
-                mod=mod_targ,
-                target_program=actual_program,
-                passes=passes,
-                cancel_token=options.cancel_token
-            );
-        } finally {
-            if implicit_native {
-                del actual_program.errors_had[err_mark:];
-                del actual_program.warnings_had[warn_mark:];
-            }
-        }
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=passes,
+            cancel_token=options.cancel_token
+        );
     }
     if (not had_parse_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.
