@@ -29,7 +29,16 @@ Runs first in the IR-generation schedule, before `ASTValidationPass`.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.diagnostics { E2019, E2020, E2021, E2022, W2019, W2020 }
+import from jaclang.jac0core.diagnostics {
+    E2019,
+    E2020,
+    E2021,
+    E2022,
+    E2024,
+    W2019,
+    W2020,
+    W2021
+}
 
 """Name of the synthesized child accumulator local."""
 glob VIEW_ACC: str = "__jac_view_kids";
@@ -124,6 +133,11 @@ obj ViewLowerPass(UniPass) {
                 if in_loop and s.ctrl.value == "break" {
                     self.emit(E2021, node_override=s, kw=s.ctrl.value, loop=loop_kw);
                 }
+            } elif isinstance(s, uni.ArchHas) {
+                # `has`-fields declared inside a slot body would compile
+                # to a conditional `useState` — a rules-of-hooks violation.
+                # State belongs at the enclosing `def -> JsxElement` scope.
+                self.emit(E2024, node_override=s);
             } elif isinstance(s, uni.WhileStmt) {
                 if self._emits_keyless_jsx(s.body) {
                     self.emit(W2019, node_override=s);
@@ -131,6 +145,15 @@ obj ViewLowerPass(UniPass) {
                 self._check_body(s.body, True, "while");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.InForStmt) or isinstance(s, uni.IterForStmt) {
+                # Keyless for-loop in a slot: until the auto-fragment
+                # lowering (#6082 item 1) lands, an unkeyed loop child
+                # contributes its JSX as flat siblings into the parent's
+                # children list, and a re-render with a reordered iterable
+                # loses iteration identity. W2021 names the fix at the
+                # source site.
+                if self._emits_keyless_jsx(s.body) {
+                    self.emit(W2021, node_override=s);
+                }
                 self._check_body(s.body, True, "for");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.IfStmt) {
@@ -597,8 +620,16 @@ obj ViewLowerPass(UniPass) {
         }
         try_stmts: list = list(s.body);
         awaiting_stmts: list = list(s.awaiting_body.body);
-        jsx_awaiting = self._make_jac_awaiting(try_stmts, awaiting_stmts, anchor);
-        return self._make_append(jsx_awaiting, anchor, acc_name_str);
+        wrapper = self._make_jac_awaiting(try_stmts, awaiting_stmts, anchor);
+        # `<JacAwaiting>` only models the loading state. If the `try` also
+        # declares `except` arms, the error state is just as much a part
+        # of the construct, so wrap the awaiting node in an error boundary
+        # whose fallback renders the except bodies. Without this the
+        # except arms would be silently dropped on the `cl` target.
+        if s.excepts {
+            wrapper = self._make_error_boundary(wrapper, list(s.excepts), anchor);
+        }
+        return self._make_append(wrapper, anchor, acc_name_str);
     }
 
     """Synthesize `<JacAwaiting fallback={<>{...awaiting}</>}>{...try}</JacAwaiting>`.
@@ -645,6 +676,64 @@ obj ViewLowerPass(UniPass) {
         );
     }
 
+    """Wrap `inner` in `<JacClientErrorBoundary fallback={<>{...except}</>}>`.
+
+    On the `cl` target a slot `try` that pairs `awaiting` with one or more
+    `except` arms models BOTH async outcomes: the `<JacAwaiting>` node
+    supplies the loading fallback (React Suspense) and this boundary
+    supplies the error fallback. `JacClientErrorBoundary` is
+    `@jac/runtime`'s re-export of `react-error-boundary`'s `ErrorBoundary`
+    — the same component jac-client installs at the app root — and it
+    accepts a `fallback` element rendered when a descendant throws.
+
+    The except bodies are concatenated in source order into a single
+    fallback fragment, lowered through the same synthetic-slot machinery
+    as the awaiting body. A JS error boundary catches every error
+    regardless of the declared `ex_type`, so per-type dispatch and the
+    optional `except ... as <name>` binding are not modeled here; that
+    matches the app-level boundary's behavior. The fallback is built with
+    `_make_fragment_with_slot` so its accumulator gets a fresh suffixed
+    binding, distinct from the try and awaiting slots."""
+    def _make_error_boundary(
+        inner: uni.JsxElement, excepts: list, anchor: uni.UniNode
+    ) -> uni.JsxElement {
+        except_stmts: list = [];
+        for ex in excepts {
+            except_stmts.extend(list(ex.body));
+        }
+        name_part = self._synth_name("JacClientErrorBoundary", anchor);
+        el_name = uni.JsxElementName(parts=[name_part], kid=[name_part]);
+        fallback_attr = self._make_attr_expr(
+            "fallback", self._make_fragment_with_slot(except_stmts, anchor), anchor
+        );
+        open_lt = self._synth_tok(Tok.LT.value, "<", anchor);
+        open_gt = self._synth_tok(Tok.GT.value, ">", anchor);
+        close_open = self._synth_tok(Tok.LT.value, "<", anchor);
+        slash_tok = self._synth_tok(Tok.DIV.value, "/", anchor);
+        close_name = self._synth_name("JacClientErrorBoundary", anchor);
+        close_gt = self._synth_tok(Tok.GT.value, ">", anchor);
+        kid: list = [
+            open_lt,
+            el_name,
+            fallback_attr,
+            open_gt,
+            inner,
+            close_open,
+            slash_tok,
+            close_name,
+            close_gt
+        ];
+        return uni.JsxElement(
+            name=el_name,
+            attributes=[fallback_attr],
+            children=[inner],
+            is_self_closing=False,
+            is_fragment=False,
+            kid=kid,
+            dynamic_tag=None
+        );
+    }
+
     """Build a `JsxSlot` whose body is the lowered statement list.
 
     `_lower_body` produces the canonical slot-body shape (`acc = []; ...
@@ -657,7 +746,12 @@ obj ViewLowerPass(UniPass) {
     def _make_synthetic_slot(stmts: list, anchor: uni.UniNode) -> uni.JsxSlot {
         self._nested_acc_counter += 1;
         acc_name = f"{VIEW_ACC}_{self._nested_acc_counter}";
-        self._check_body(stmts, False, "");
+        # No `_check_body` here: these statements are sub-bodies of the
+        # `try`/`awaiting`/`except` clause that `exit_jsx_slot` already
+        # validated via the top-level `_check_body` recursion (which also
+        # carries the correct loop context). Re-checking would double-emit
+        # every body diagnostic — e.g. a keyless `for` in an awaiting or
+        # except arm would warn W2021 twice for the same source span.
         lowered = self._lower_body(stmts, anchor=anchor, acc_name_str=acc_name);
         lb = self._synth_tok(Tok.LBRACE.value, "{", anchor);
         rb = self._synth_tok(Tok.RBRACE.value, "}", anchor);

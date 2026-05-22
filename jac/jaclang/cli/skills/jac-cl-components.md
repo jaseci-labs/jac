@@ -47,6 +47,8 @@ def:pub BookCard(bookId: str, title: str, onDelete: Callable[([str], None)]) -> 
 
 Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`. For an optional callback, type it `Callable[([str], None)] | None` and guard the call: `if onDelete { onDelete(bookId); }`.
 
+**`{name}` shorthand:** when an attribute's value is a bare variable of the same name, `<BookCard {title} {onDelete} />` expands to `title={title} onDelete={onDelete}`. Pure sugar - the type-checker validates it per-attribute exactly like the explicit form. Distinct from the spread, which forwards a whole object: use `{**props}` (the canonical Jac form) - the JS-idiomatic `{...props}` also works but earns a `W0063` warning ("prefer `{**expr}`").
+
 ## Event types (ambient, no import)
 
 | Handler | Type | Access |
@@ -100,8 +102,10 @@ Caveats specific to slot bodies:
 
 - `skip;` inside a slot is the slot early-exit - it ends the current slot's accumulator (rest of *this* slot stops), **not** the enclosing function. Useful for "show empty state, stop here." Bare `return;` inside a slot is rejected (E2020) because it reads like a function-exit but only exits the slot; the value form `return expr;` is also rejected (E2019).
 - Inside a slot body, don't wrap inner control flow with another `{...}` - the body is already in slot mode. Write `if cond { <X/> }` directly, not `{if cond { <X/> }}` (E2023). The `{...}` wrapping is only needed when descending from a JSX element's children into slot mode.
-- Slot iteration that yields keyless JSX siblings earns a `W2019` warning - add `key={...}` on the inner element.
+- Slot iteration that yields keyless JSX siblings earns a warning - `W2019` for a `while` loop, `W2021` for a `for` loop - add `key={...}` on the inner element so siblings keep their identity across re-renders.
+- A `has`-field inside a slot body is rejected (E2024). The slot body is a statement template that re-runs every render, so a `has` there would compile to a conditional `useState` and break React's rules of hooks. Declare reactive state at the component scope (the enclosing `def -> JsxElement` body), never inside a `{...}` slot.
 - `try { ... } awaiting { ... }` in a slot lowers to a `<JacAwaiting fallback={...}>{...}</JacAwaiting>` Suspense wrapper (cl only). The `awaiting` body shows during the dispatched-but-not-joined window of any Suspense-aware primitive inside the `try` body; today Jac's `flow`/`wait` don't suspend, so the fallback only fires when the `try` body opts into something Suspense-shaped (e.g. a fetcher that throws a promise). On `sv` / `na` the `awaiting` body is dropped with `W2020`. `finally` with `awaiting` is rejected (`E2022`).
+- Add an `except` arm (`try { ... } awaiting { ... } except Exception { ... }`) to name the error state. On cl this synthesizes a `<JacClientErrorBoundary fallback={...}>` (auto-imported from `@jac/runtime`) that **wraps** the `<JacAwaiting>`, so a throw in the resolved `try` body renders the `except` body. The JS boundary catches all errors regardless of type, so per-type dispatch and `except ... as <name>` bindings aren't modeled; multiple except bodies concatenate in source order into the one fallback.
 
 ## Pitfalls
 
@@ -161,7 +165,7 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 **For server response objects (dicts/lists from `sv import` calls), prefer truthy checks (`if result {`) over `!= None`.** The `!=` operator uses deep equality which calls `Object.keys()` - crashes with `"Cannot convert undefined or null to object"` if the value is `null`/`undefined`. `!= None` is safe for primitives (strings, ints, bools) but not for complex objects returned from server calls.
 
 - **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, use the base `Event` type - not `any`, which earns a `W1037` warning (and capital `Any` is not the keyword, warning `W2001` "Name 'Any' may be undefined").
-- **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>` or move styling to `className` + a CSS file.
+- **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
@@ -171,4 +175,5 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 - `jac-cl-routing` - `Router`/`Route`/`Navigate`/`useNavigate` patterns
 - `jac-cl-auth` - `jacLogin`/`jacSignup`/`jacLogout`, signup→login→def:priv chain
 - `jac-cl-organization` - file layout, component reuse, hook pattern
+- `jac-cl-styling` - Tailwind/`cn()`, semantic tokens, scoped `.style.css` annexes
 - `jac-core-cheatsheet` - imports, lambda, ternary, error handling

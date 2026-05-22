@@ -30,6 +30,10 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.compiler.passes.ecmascript.scoped_styles {
+    ScopedStyleSheet,
+    load_style_annex
+}
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path

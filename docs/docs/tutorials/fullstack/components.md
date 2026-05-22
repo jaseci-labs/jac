@@ -66,6 +66,8 @@ def:pub app() -> JsxElement {
 
 There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the honest type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
+**`{name}` attribute shorthand:** when a prop's value is a variable of the same name, `<Card {title} {onClose} />` is sugar for `<Card title={title} onClose={onClose} />`. Each shorthand attribute is still validated per-prop against the component signature. This is distinct from the `{**props}` spread (above), which forwards an entire object instead of a single named attribute.
+
 ---
 
 ## Forwarding the props bundle (advanced)
@@ -368,7 +370,7 @@ def:pub ItemList(items: list[str]) -> JsxElement {
 }
 ```
 
-`while` slots that emit keyless JSX get a `W2019` warning -- siblings produced by a loop need a stable `key=` so a re-render keeps their identity.
+Loop slots that emit keyless JSX get a warning -- `W2019` for a `while` loop and `W2021` for a `for` loop. Siblings produced by a loop need a stable `key=` (as in the `<li key={i}>` above) so a re-render keeps their identity.
 
 ### `has`-fields and Handlers
 
@@ -387,6 +389,8 @@ def:pub Counter() -> JsxElement {
     return <button onClick={bump}>Count: {count}</button>;
 }
 ```
+
+Declare `has`-fields at the component scope, never inside a `{...}` slot body. A slot body is a statement template that re-runs on every render, so a `has` there would compile to a conditional `useState` and violate React's rules of hooks -- the compiler rejects it with `E2024`.
 
 ### Dynamic Tags
 
@@ -437,11 +441,31 @@ def:pub UserPanel(user: User) -> JsxElement {
 
 The `try` body needs a Suspense-aware data primitive (today: a `use(promise)` call or a Suspense-integrated fetcher inside the rendered subtree) for the fallback to actually fire. The wrapper is the language-level integration point -- once the `flow`/`wait` story plugs into `use()`, the same source picks up real async behavior with no call-site change.
 
+Add an `except` arm to name the error state alongside the loading state. The slot then lowers to a `<JacClientErrorBoundary fallback={...}>` **wrapping** the `<JacAwaiting>` node, so a throw anywhere in the resolved `try` body is caught and the `except` body renders instead:
+
+```jac
+to cl:
+
+def:pub UserPanel(user: User) -> JsxElement {
+    return <section class="panel">
+        {try {
+            <UserCardView user={user}/>
+        } awaiting {
+            <UserCardSkeleton/>
+        } except Exception {
+            <div class="card error">Couldn't load this user.</div>
+        }}
+    </section>;
+}
+```
+
+`JacClientErrorBoundary` is auto-imported from `@jac/runtime` -- the same boundary jac-client installs at the app root. Because a JS error boundary catches every error regardless of the declared type, per-type dispatch and the optional `except ... as <name>` binding are not modeled; the `except` bodies are concatenated in source order into the boundary's fallback.
+
 **Notes:**
 
 - `awaiting` is a clause of `try`; bare `awaiting { ... }` is a parse error.
 - `finally` alongside `awaiting` is rejected (`E2022`) -- the cleanup timing relative to the in-flight window is ambiguous.
-- `except` clauses are still legal but in v1 they don't render through the `<JacAwaiting>` wrapper -- wrap the slot with `<JacClientErrorBoundary>` for an error fallback.
+- `except` arms render through a synthesized `<JacClientErrorBoundary>` that wraps the `<JacAwaiting>` (cl target). An `except` without an `awaiting` clause stays an ordinary `try`/`except`.
 - On `sv` and `na` targets the `awaiting` body is silently dropped with a `W2020` warning; the construct compiles as an ordinary `try` until the streaming-SSR and native-thread lowerings land.
 
 ### Raw HTML: `unsafe_html`
@@ -570,6 +594,41 @@ def:pub app() -> JsxElement {
 }
 ```
 
+### Scoped Styles (`.style.css`)
+
+Drop a `.style.css` file with the **same base name** as a component and its
+classes are auto-scoped to that component -- no import, no naming collisions.
+The compiler hashes each declared class, rewrites the CSS, and rewrites the
+matching `className` references to agree.
+
+```jac
+# Card.cl.jac
+def:pub Card(title: str) -> JsxElement {
+    return <div className="card">
+        <h2 className="card-title">{title}</h2>
+    </div>;
+}
+```
+
+```css
+/* Card.style.css -- paired by base name, no import required */
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+.card-title { font-weight: 600; }
+
+/* :global(...) opts a selector out of scoping */
+:global(body) { margin: 0; }
+```
+
+At compile time `className="card"` becomes `className="card-1419142b"` and
+the CSS selector is hashed to match, so another component can declare its own
+`.card` without conflict. Tokens not declared in the annex (like Tailwind
+utilities) pass through unchanged. See the
+[jac-client reference](../../reference/plugins/jac-client.md#scoped-css-stylecss-annexes)
+for the full contract.
+
 ---
 
 ## Key Takeaways
@@ -580,6 +639,7 @@ def:pub app() -> JsxElement {
 | Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
 | Early-exit guard | `skip;` inside a statement slot |
 | Suspense fallback | `{try { <Resolved/> } awaiting { <Loading/> }}` (cl only) |
+| Suspense + error fallback | `{try { <Resolved/> } awaiting { <Loading/> } except Exception { <Err/> }}` (cl only) |
 | Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
 | Dynamic tag | `<@expr>...</@expr>` |
 | JSX element | `<div className="x">content</div>` |

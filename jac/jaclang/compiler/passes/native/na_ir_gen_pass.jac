@@ -71,6 +71,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         enum_string_values: dict[str, list] = {},
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
+        enum_member_ordinal: dict[str, int] = {},
         var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
@@ -235,9 +236,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    def _llvm_to_spec(t: any) -> str;
-    def _resolve_callable_type(slice: uni.IndexSlice) -> ir.Type;
-    def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
+    # Unified TypeBase -> LLVM lowering (consumes the central type checker's
+    # result; returns None when a type category is not yet handled).
+    def _lower_type(t: any) -> (ir.Type | None);
+    def _lower_class_type(t: any) -> (ir.Type | None);
+    def _lower_function_type(t: any) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
@@ -256,7 +259,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(nd: uni.Enum) -> None;
-    def _build_enum_string_table(enum_name: str, entries: list) -> None;
+    def _build_enum_string_table(
+        enum_name: str, entries: list, with_values: bool = True
+    ) -> None;
+
     def _codegen_enum_value_lookup(
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);

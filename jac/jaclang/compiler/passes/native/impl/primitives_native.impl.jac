@@ -5825,6 +5825,16 @@ impl NativeBuiltinEmitter.emit_str(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
+    # str() of something already a string (char*) is the string itself.
+    # Native strings and bound exception messages are both i8*, so str(e)
+    # in `except E as e` returns the message rather than formatting the
+    # pointer address.
+    if isinstance(arg_val.type, ir.PointerType) {
+        if arg_val.type != i8p {
+            return b.bitcast(arg_val, i8p, name="str.identity");
+        }
+        return arg_val;
+    }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
     snprintf = p._get_or_declare_extern(

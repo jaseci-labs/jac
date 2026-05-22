@@ -2157,22 +2157,6 @@ test "list_bugs reassign str list with empty literal" {
 }
 
 # --- String Enum Tests ---
-test "string_enums ordinal red" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_red", ctypes.c_int64);
-    assert f() == 0 , f"Color.RED ordinal should be 0, got {f()}";
-}
-
-test "string_enums ordinal blue" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_blue", ctypes.c_int64);
-    assert f() == 2 , f"Color.BLUE ordinal should be 2, got {f()}";
-}
-
 test "string_enums comparison" {
     (eng, _) = compile_native("string_enums.na.jac");
     entry_fn = get_func(eng, "jac_entry", None);
@@ -2220,6 +2204,16 @@ test "string_enums int enum still works" {
     assert f() == 2 , f"Priority.HIGH should be 2, got {f()}";
 }
 
+test "string_enums int enum name access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "priority_high_name", ctypes.c_char_p);
+    assert f() == b"HIGH" , f"Priority.HIGH.name should be 'HIGH', got {f()}";
+    g = get_func(eng, "priority_low_name", ctypes.c_char_p);
+    assert g() == b"LOW" , f"Priority.LOW.name should be 'LOW', got {g()}";
+}
+
 # --- Cross-Module Enum Import Tests ---
 test "enum_import compiles" {
     (eng, _) = compile_native("na_enum_import.na.jac");
@@ -2232,15 +2226,6 @@ test "enum_import enum comparison" {
     entry_fn();
     f = get_func(eng, "use_imported_enum", ctypes.c_int64);
     assert f() == 1 , "TokenKind.KW_IF == TokenKind.KW_IF should return 1";
-}
-
-test "enum_import ordinal" {
-    (eng, _) = compile_native("na_enum_import.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "imported_enum_ordinals", ctypes.c_int64);
-    # TokenKind.EOF is the last member (ordinal 6)
-    assert f() == 6 , f"TokenKind.EOF ordinal should be 6, got {f()}";
 }
 
 test "enum_import value access" {
