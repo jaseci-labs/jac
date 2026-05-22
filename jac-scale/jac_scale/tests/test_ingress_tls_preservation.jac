@@ -13,7 +13,6 @@ import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
 def _tls_ingress_dict(host: str, secret: str) -> dict {
     return {
         'metadata': {
@@ -32,7 +31,7 @@ def _tls_ingress_dict(host: str, secret: str) -> dict {
     };
 }
 
-def _no_tls_ingress_dict() -> dict {
+def _no_tls_ingress_dict -> dict {
     return {
         'metadata': {'annotations': {}},
         'spec': {
@@ -49,7 +48,6 @@ def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {
 }
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
-
 test "deploy ingress resource preserves tls spec on redeployment" {
     # Verifies the primary regression: a redeployment after --enable-tls must
     # keep spec.tls, the rule host, and the three TLS annotations intact.
@@ -61,29 +59,33 @@ test "deploy ingress resource preserves tls spec on redeployment" {
     );
 
     with unittest.mock.patch.object(
-        ingress_module.client, 'ApiClient', lambda: mock_api_client
+        ingress_module.client, 'ApiClient', lambda : mock_api_client
     ) {
         deployer = _make_deployer(domain='example.com', cert_email='a@b.com');
         deployer._deploy_ingress_resource(
-            'myapp', 'test-ns', 'test-ns-myapp-nginx', 8000,
-            False, False, False, networking_v1, core_v1
+            'myapp',
+            'test-ns',
+            'test-ns-myapp-nginx',
+            8000,
+            False,
+            False,
+            False,
+            networking_v1,
+            core_v1
         );
     }
 
     call_args = networking_v1.replace_namespaced_ingress.call_args;
     body = call_args[1]['body'];
 
-    assert body['spec'].get('tls') == [{'hosts': ['example.com'], 'secretName': 'myapp-tls'}] ,
-        "spec.tls must be carried forward from the existing Ingress";
-    assert body['spec']['rules'][0].get('host') == 'example.com' ,
-        "rule host must be carried forward from the existing Ingress";
+    assert body['spec'].get('tls') == [
+        {'hosts': ['example.com'], 'secretName': 'myapp-tls'}
+    ] , "spec.tls must be carried forward from the existing Ingress";
+    assert body['spec']['rules'][0].get('host') == 'example.com' , "rule host must be carried forward from the existing Ingress";
     ann = body['metadata']['annotations'];
-    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' ,
-        "cert-manager.io/issuer annotation must be preserved";
-    assert ann.get('nginx.ingress.kubernetes.io/ssl-redirect') == 'true' ,
-        "ssl-redirect annotation must be preserved";
-    assert ann.get('nginx.ingress.kubernetes.io/force-ssl-redirect') == 'true' ,
-        "force-ssl-redirect annotation must be preserved";
+    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' , "cert-manager.io/issuer annotation must be preserved";
+    assert ann.get('nginx.ingress.kubernetes.io/ssl-redirect') == 'true' , "ssl-redirect annotation must be preserved";
+    assert ann.get('nginx.ingress.kubernetes.io/force-ssl-redirect') == 'true' , "force-ssl-redirect annotation must be preserved";
 }
 
 test "deploy ingress resource uses wildcard rule when no existing ingress" {
@@ -95,16 +97,21 @@ test "deploy ingress resource uses wildcard rule when no existing ingress" {
 
     deployer = _make_deployer();
     deployer._deploy_ingress_resource(
-        'myapp', 'test-ns', 'test-ns-myapp-nginx', 8000,
-        False, False, False, networking_v1, core_v1
+        'myapp',
+        'test-ns',
+        'test-ns-myapp-nginx',
+        8000,
+        False,
+        False,
+        False,
+        networking_v1,
+        core_v1
     );
 
     call_args = networking_v1.replace_namespaced_ingress.call_args;
     body = call_args[1]['body'];
-    assert body['spec'].get('tls') is None ,
-        "spec.tls must be absent on first deploy";
-    assert body['spec']['rules'][0].get('host') is None ,
-        "rule host must be absent on first deploy";
+    assert body['spec'].get('tls') is None , "spec.tls must be absent on first deploy";
+    assert body['spec']['rules'][0].get('host') is None , "rule host must be absent on first deploy";
 }
 
 test "deploy ingress resource re-raises non-404 read error" {
@@ -118,8 +125,15 @@ test "deploy ingress resource re-raises non-404 read error" {
     raised = False;
     try {
         deployer._deploy_ingress_resource(
-            'myapp', 'test-ns', 'test-ns-myapp-nginx', 8000,
-            False, False, False, networking_v1, core_v1
+            'myapp',
+            'test-ns',
+            'test-ns-myapp-nginx',
+            8000,
+            False,
+            False,
+            False,
+            networking_v1,
+            core_v1
         );
     } except ApiException as e {
         raised = e.status == 500;
@@ -140,7 +154,7 @@ test "deploy ingress resource preserves redis insight tls on redeployment" {
     ];
 
     with unittest.mock.patch.object(
-        ingress_module.client, 'ApiClient', lambda: mock_api_client
+        ingress_module.client, 'ApiClient', lambda : mock_api_client
     ) {
         cfg = KubernetesConfig(
             domain='example.com',
@@ -150,8 +164,15 @@ test "deploy ingress resource preserves redis insight tls on redeployment" {
         );
         deployer = IngressDeployer(k8s_config=cfg);
         deployer._deploy_ingress_resource(
-            'myapp', 'test-ns', 'test-ns-myapp-nginx', 8000,
-            False, True, False, networking_v1, core_v1
+            'myapp',
+            'test-ns',
+            'test-ns-myapp-nginx',
+            8000,
+            False,
+            True,
+            False,
+            networking_v1,
+            core_v1
         );
     }
 
@@ -160,11 +181,10 @@ test "deploy ingress resource preserves redis insight tls on redeployment" {
     assert len(all_calls) == 2 , "Expected two replace_namespaced_ingress calls";
     redis_body = all_calls[1][1]['body'];
 
-    assert redis_body['spec'].get('tls') == [{'hosts': ['example.com'], 'secretName': 'myapp-tls'}] ,
-        "RedisInsight Ingress spec.tls must be preserved on redeployment";
-    assert redis_body['spec']['rules'][0].get('host') == 'example.com' ,
-        "RedisInsight Ingress rule host must be preserved on redeployment";
+    assert redis_body['spec'].get('tls') == [
+        {'hosts': ['example.com'], 'secretName': 'myapp-tls'}
+    ] , "RedisInsight Ingress spec.tls must be preserved on redeployment";
+    assert redis_body['spec']['rules'][0].get('host') == 'example.com' , "RedisInsight Ingress rule host must be preserved on redeployment";
     ann = redis_body['metadata']['annotations'];
-    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' ,
-        "cert-manager.io/issuer must be preserved on RedisInsight Ingress";
+    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' , "cert-manager.io/issuer must be preserved on RedisInsight Ingress";
 }
