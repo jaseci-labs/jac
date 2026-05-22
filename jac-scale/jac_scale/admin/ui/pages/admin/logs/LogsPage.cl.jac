@@ -35,13 +35,16 @@ cl {
             autoRefresh: bool = False,
             errorMsg: str = "",
             backendOffline: bool = False,
-            # Trace explorer state - when set, switch to the trace view
-            traceMode: bool = False,
+            # Side panel state. panelIdx = -1 means the drawer is closed.
+            # When a row is clicked we copy the line dict into panelLine
+            # for the header section, and if the line has a trace_id we
+            # kick off loadTrace() to populate the journey list below.
+            panelIdx: int = -1,
+            panelLine: dict = {},
             traceId: str = "",
             traceLines: list = [],
             traceServices: list = [],
-            traceLoading: bool = False,
-            expandedIdx: int = -1;
+            traceLoading: bool = False;
 
         auth = useAuth();
 
@@ -88,7 +91,6 @@ cl {
         }
 
         async def loadTrace(tid: str) {
-            traceMode = True;
             traceId = tid;
             traceLoading = True;
             traceLines = [];
@@ -107,8 +109,23 @@ cl {
             traceLoading = False;
         }
 
-        def closeTrace {
-            traceMode = False;
+        def openPanel(idx: int, line: dict) {
+            panelIdx = idx;
+            panelLine = line;
+            tid = String(line["trace_id"] or "");
+            if tid {
+                loadTrace(tid);
+            } else {
+                traceId = "";
+                traceLines = [];
+                traceServices = [];
+                traceLoading = False;
+            }
+        }
+
+        def closePanel {
+            panelIdx = -1;
+            panelLine = {};
             traceId = "";
             traceLines = [];
             traceServices = [];
@@ -128,9 +145,6 @@ cl {
         # hammering Loki on every keystroke.
         useEffect(
             lambda -> any {
-                if traceMode {
-                    return undefined;
-                }
                 timer = setTimeout(lambda { loadLogs(); }, 250);
                 return lambda { clearTimeout(timer); };
             },
@@ -139,13 +153,13 @@ cl {
 
         useEffect(
             lambda -> any {
-                if not autoRefresh or traceMode {
+                if not autoRefresh {
                     return undefined;
                 }
                 interval = setInterval(lambda { loadLogs(); }, 10000);
                 return lambda { clearInterval(interval); };
             },
-            [autoRefresh, traceMode]
+            [autoRefresh]
         );
 
         # ---- helpers -----------------------------------------------------
@@ -212,84 +226,6 @@ cl {
             }
             s = String(t);
             return s.slice(0, 8);
-        }
-
-        # ---- render: trace explorer ------------------------------------
-        if traceMode {
-            return
-                <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                        <Button onClick={closeTrace} variant="secondary">
-                            ← Back to Logs
-                        </Button>
-                        <div>
-                            <div className="text-xs text-slate-500">Trace</div>
-                            <div className="font-mono text-white text-sm">
-                                {traceId}
-                            </div>
-                        </div>
-                        {traceServices.length > 0
-                        and <div className="ml-auto flex items-center gap-2">
-                            <span className="text-xs text-slate-500">touched:</span>
-                            {traceServices.map(
-                                lambda (s: str) { return
-                                    <span
-                                        key={s}
-                                        className={"text-xs font-mono " + serviceColor(
-                                            s
-                                        )}
-                                    >
-                                        {s}
-                                    </span>; }
-                            )}
-                        </div>}
-                    </div>
-                    {traceLoading
-                    and <div className="flex items-center justify-center h-32">
-                        <div className="text-sky-400">Loading trace lines...</div>
-                    </div>}
-                    {not traceLoading
-                    and traceLines.length == 0
-                    and <div
-                        className="bg-slate-900 border border-slate-800 rounded p-6 text-slate-500 text-center"
-                    >
-                        No log lines found for this trace in the last 24 hours.
-                    </div>}
-                    {not traceLoading
-                    and traceLines.length > 0
-                    and <div
-                        className="bg-slate-900 border border-slate-800 rounded font-mono text-sm overflow-x-auto"
-                    >
-                        {traceLines.map(
-                            lambda (line: dict, idx: int) { return
-                                <div
-                                    key={idx}
-                                    className="flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30"
-                                >
-                                    <span
-                                        className="text-slate-500 text-xs whitespace-nowrap"
-                                    >
-                                        {shortTime(line["ts"] or "")}
-                                    </span>
-                                    <span
-                                        className={"text-xs font-bold whitespace-nowrap " + serviceColor(
-                                            line["service"] or ""
-                                        )}
-                                    >
-                                        {line["service"] or "?"}
-                                    </span>
-                                    <span
-                                        className={levelBadge(line["level"] or "INFO")}
-                                    >
-                                        {(line["level"] or "INFO").toUpperCase()}
-                                    </span>
-                                    <span className="text-slate-200 break-all">
-                                        {line["msg"] or ""}
-                                    </span>
-                                </div>; }
-                        )}
-                    </div>}
-                </div>;
         }
 
         # ---- render: main logs view ------------------------------------
@@ -404,115 +340,159 @@ cl {
                 >
                     {lines.map(
                         lambda (line: dict, idx: int) { return
-                            <div key={idx} className="border-b border-slate-800/50">
-                                <div
-                                    className="flex items-start gap-3 px-3 py-1.5 hover:bg-slate-800/30 cursor-pointer"
-                                    onClick={lambda { expandedIdx = idx
-                                        if expandedIdx != idx
-                                        else -1; }}
+                            <div
+                                key={idx}
+                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer "
+                                    + (panelIdx == idx
+                                    and "bg-sky-500/10 border-l-2 border-l-sky-400"
+                                    or "")}
+                                onClick={lambda { openPanel(idx, line); }}
+                            >
+                                <span
+                                    className="text-slate-500 text-xs whitespace-nowrap"
                                 >
-                                    <span
-                                        className="text-slate-500 text-xs whitespace-nowrap"
-                                    >
-                                        {shortTime(line["ts"] or "")}
-                                    </span>
-                                    <span
-                                        className={"text-xs font-bold whitespace-nowrap " + serviceColor(
-                                            line["service"] or ""
-                                        )}
-                                    >
-                                        {line["service"] or "?"}
-                                    </span>
-                                    <span
-                                        className={levelBadge(line["level"] or "INFO")}
-                                    >
-                                        {(line["level"] or "INFO").toUpperCase()}
-                                    </span>
-                                    <span className="text-slate-200 break-all flex-1">
-                                        {line["msg"] or ""}
-                                    </span>
-                                    {line["trace_id"]
-                                    and <button
-                                        className="text-xs font-mono text-purple-300 hover:text-purple-200 px-1.5 py-0.5 rounded border border-purple-500/30 hover:bg-purple-500/10 whitespace-nowrap"
-                                        onClick={lambda (e: any) {
-                                            e.stopPropagation();
-                                            loadTrace(String(line["trace_id"]));
-                                        }}
-                                        title="View full trace across all services"
-                                    >
-                                        trace:{shortTrace(String(line["trace_id"]))}
-                                    </button>}
-                                </div>
-                                {expandedIdx == idx
-                                and <div
-                                    className="bg-slate-950/60 border-t border-slate-800/50 px-6 py-3 text-xs space-y-1.5"
+                                    {shortTime(line["ts"] or "")}
+                                </span>
+                                <span
+                                    className={"text-xs font-bold whitespace-nowrap " + serviceColor(
+                                        line["service"] or ""
+                                    )}
                                 >
-                                    <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Timestamp</span>
-                                        <span
-                                            className="text-slate-200 font-mono break-all"
-                                        >{line["ts"] or "-"}</span>
-                                    </div>
-                                    <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Service</span>
-                                        <span
-                                            className={"font-mono break-all " + serviceColor(
-                                                line["service"] or ""
-                                            )}
-                                        >{line["service"] or "-"}</span>
-                                    </div>
-                                    <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Level</span>
-                                        <span
-                                            className="text-slate-200 font-mono"
-                                        >{(line["level"] or "INFO").toUpperCase()}</span>
-                                    </div>
-                                    {line["pod"]
-                                    and <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Pod</span>
-                                        <span
-                                            className="text-slate-200 font-mono break-all"
-                                        >{line["pod"]}</span>
-                                    </div>}
-                                    {line["trace_id"]
-                                    and <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Trace ID</span>
-                                        <span
-                                            className="text-purple-300 font-mono break-all"
-                                        >{line["trace_id"]}</span>
-                                    </div>}
-                                    <div className="flex">
-                                        <span
-                                            className="text-slate-500 w-24 shrink-0"
-                                        >Message</span>
-                                        <span
-                                            className="text-slate-200 break-all whitespace-pre-wrap"
-                                        >{line["msg"] or ""}</span>
-                                    </div>
-                                    {line["extras"]
-                                    and <div>
-                                        <div
-                                            className="text-slate-500 mb-1"
-                                        >Extras</div>
-                                        <pre
-                                            className="bg-slate-900 border border-slate-800 rounded p-2 text-slate-200 overflow-x-auto"
-                                        >{JSON.stringify(
-                                            line["extras"], None, 2
-                                        )}</pre>
-                                    </div>}
-                                </div>}
+                                    {line["service"] or "?"}
+                                </span>
+                                <span className={levelBadge(line["level"] or "INFO")}>
+                                    {(line["level"] or "INFO").toUpperCase()}
+                                </span>
+                                <span className="text-slate-200 break-all flex-1">
+                                    {line["msg"] or ""}
+                                </span>
+                                {line["trace_id"]
+                                and <span
+                                    className="text-xs font-mono text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30 whitespace-nowrap"
+                                    title="Click row to view full trace"
+                                >
+                                    trace:{shortTrace(String(line["trace_id"]))}
+                                </span>}
                             </div>; }
                     )}
+                </div>}
+                {panelIdx >= 0
+                and <div
+                    className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col z-50"
+                >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                        <div className="flex items-center gap-2">
+                            <span
+                                className={"text-sm font-bold " + serviceColor(
+                                    panelLine["service"] or ""
+                                )}
+                            >
+                                {panelLine["service"] or "?"}
+                            </span>
+                            <span
+                                className={levelBadge(panelLine["level"] or "INFO")}
+                            >
+                                {(panelLine["level"] or "INFO").toUpperCase()}
+                            </span>
+                            <span className="text-xs text-slate-500 font-mono">
+                                {shortTime(panelLine["ts"] or "")}
+                            </span>
+                        </div>
+                        <button
+                            className="text-slate-400 hover:text-white text-xl leading-none"
+                            onClick={lambda { closePanel(); }}
+                            title="Close"
+                        >×</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-4 py-3 text-xs space-y-3">
+                        <div>
+                            <div
+                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
+                            >Message</div>
+                            <div
+                                className="text-slate-100 font-mono break-all whitespace-pre-wrap bg-slate-900 border border-slate-800 rounded p-2"
+                            >{panelLine["msg"] or ""}</div>
+                        </div>
+                        <div className="grid grid-cols-[7rem_1fr] gap-y-1">
+                            <div className="text-slate-500">Timestamp</div>
+                            <div
+                                className="text-slate-200 font-mono break-all"
+                            >{panelLine["ts"] or "-"}</div>
+                            {panelLine["pod"]
+                            and <div className="text-slate-500">Pod</div>}
+                            {panelLine["pod"]
+                            and <div
+                                className="text-slate-200 font-mono break-all"
+                            >{panelLine["pod"]}</div>}
+                            {panelLine["trace_id"]
+                            and <div className="text-slate-500">Trace ID</div>}
+                            {panelLine["trace_id"]
+                            and <div
+                                className="text-purple-300 font-mono break-all"
+                            >{panelLine["trace_id"]}</div>}
+                        </div>
+                        {panelLine["extras"]
+                        and <div>
+                            <div
+                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
+                            >Extras</div>
+                            <pre
+                                className="bg-slate-900 border border-slate-800 rounded p-2 text-slate-200 overflow-x-auto"
+                            >{JSON.stringify(panelLine["extras"], None, 2)}</pre>
+                        </div>}
+                        {panelLine["trace_id"]
+                        and <div className="pt-2 border-t border-slate-800">
+                            <div
+                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-2 flex items-center gap-2"
+                            >
+                                <span>Trace journey</span>
+                                {traceServices.length > 0
+                                and <span className="text-slate-600">·</span>}
+                                {traceServices.length > 0
+                                and traceServices.map(
+                                    lambda (s: str) { return
+                                        <span
+                                            key={s}
+                                            className={"font-mono " + serviceColor(s)}
+                                        >{s}</span>; }
+                                )}
+                            </div>
+                            {traceLoading
+                            and <div
+                                className="text-sky-400 text-center py-3"
+                            >Loading trace lines...</div>}
+                            {not traceLoading
+                            and traceLines.length == 0
+                            and <div
+                                className="text-slate-500 text-center py-3"
+                            >No other log lines found for this trace.</div>}
+                            {not traceLoading
+                            and traceLines.length > 0
+                            and <div
+                                className="bg-slate-900 border border-slate-800 rounded font-mono overflow-x-auto"
+                            >
+                                {traceLines.map(
+                                    lambda (tl: dict, ti: int) { return
+                                        <div
+                                            key={ti}
+                                            className="flex items-start gap-2 px-2 py-1 border-b border-slate-800/40 last:border-b-0"
+                                        >
+                                            <span
+                                                className="text-slate-500 text-[10px] whitespace-nowrap"
+                                            >{shortTime(tl["ts"] or "")}</span>
+                                            <span
+                                                className={"text-[10px] font-bold whitespace-nowrap " + serviceColor(
+                                                    tl["service"] or ""
+                                                )}
+                                            >{tl["service"] or "?"}</span>
+                                            <span
+                                                className="text-slate-200 break-all"
+                                            >{tl["msg"] or ""}</span>
+                                        </div>; }
+                                )}
+                            </div>}
+                        </div>}
+                    </div>
                 </div>}
             </div>;
     }
