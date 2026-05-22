@@ -1326,9 +1326,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                                         and isinstance(val.strings[0], uni.String)
                                         and isinstance(val.strings[0].lit_value, str)
                                     ) {
-                                        fwd = self._try_resolve_forward_ref(val.strings[0]);
+                                        fwd = self._try_resolve_forward_ref(
+                                            val.strings[0]
+                                        );
                                         if fwd is not None {
-                                            union_args.append(self._convert_to_instance(fwd));
+                                            union_args.append(
+                                                self._convert_to_instance(fwd)
+                                            );
                                             continue;
                                         }
                                     }
@@ -1345,9 +1349,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     and isinstance(ua_vals.strings[0], uni.String)
                                     and isinstance(ua_vals.strings[0].lit_value, str)
                                 ) {
-                                    fwd = self._try_resolve_forward_ref(ua_vals.strings[0]);
+                                    fwd = self._try_resolve_forward_ref(
+                                        ua_vals.strings[0]
+                                    );
                                     if fwd is not None {
-                                        union_args.append(self._convert_to_instance(fwd));
+                                        union_args.append(
+                                            self._convert_to_instance(fwd)
+                                        );
                                     } else {
                                         union_args.append(
                                             self._convert_to_instance(

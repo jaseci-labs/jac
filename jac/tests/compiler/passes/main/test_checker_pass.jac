@@ -2818,8 +2818,9 @@ test "union_string_forward_refs" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , (
         f"Expected 0 errors — Union[('Foo','Bar')] should resolve to Foo|Bar not "
-        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: "
-        + "\n".join([e.pretty_print() for e in program.errors_had])
+        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: " + "\n".join(
+            [e.pretty_print() for e in program.errors_had]
+        )
     );
 }
 
