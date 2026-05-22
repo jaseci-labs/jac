@@ -246,7 +246,8 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
         _trace('mixed', plan, f"narrowed={len(narrowed)}");
         result: list = [];
         for anchor in mem.execute_plan(reduced) {
-            if plan.post_filter is not None and not plan.post_filter(anchor) {
+            if plan.post_filter is not None
+            and not plan.post_filter(anchor.archetype) {
                 continue;
             }
             result.append(anchor);
