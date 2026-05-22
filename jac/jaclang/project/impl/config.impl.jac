@@ -744,28 +744,24 @@ impl JacConfig.remove_dependency(
                 del self.dev_dependencies[name];
                 return True;
             }
-        } else {
-            if name in self.dependencies {
-                del self.dependencies[name];
-                return True;
-            }
+        } elif name in self.dependencies {
+            del self.dependencies[name];
+            return True;
         }
     } elif dep_type == "git" {
         if name in self.git_dependencies {
             del self.git_dependencies[name];
             return True;
         }
-    } else {
-        if dep_type in self.plugin_dependencies {
-            if dev and "dev" in self.plugin_dependencies[dep_type] {
-                if name in self.plugin_dependencies[dep_type]["dev"] {
-                    del self.plugin_dependencies[dep_type]["dev"][name];
-                    return True;
-                }
-            } elif name in self.plugin_dependencies[dep_type] {
-                del self.plugin_dependencies[dep_type][name];
+    } elif dep_type in self.plugin_dependencies {
+        if dev and "dev" in self.plugin_dependencies[dep_type] {
+            if name in self.plugin_dependencies[dep_type]["dev"] {
+                del self.plugin_dependencies[dep_type]["dev"][name];
                 return True;
             }
+        } elif name in self.plugin_dependencies[dep_type] {
+            del self.plugin_dependencies[dep_type][name];
+            return True;
         }
     }
     return False;
@@ -934,11 +930,13 @@ impl _parse_toml_data(
     }
     if "storage" in data {
         storage_data = data["storage"];
-        config.storage = StorageConfig(
-            storage_type=storage_data.get("type", "local"),
-            base_path=storage_data.get("base_path", "./storage"),
-            create_dirs=storage_data.get("create_dirs", True)
-        );
+        for (key, value) in storage_data.items() {
+            if key == "type" {
+                config.storage.storage_type = value;
+            } elif hasattr(config.storage, key) {
+                setattr(config.storage, key, value);
+            }
+        }
     }
     if "client_errors" in data {
         ce_data = data["client_errors"];

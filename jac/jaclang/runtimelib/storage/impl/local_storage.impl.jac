@@ -128,3 +128,10 @@ impl LocalStorage.move(self: LocalStorage, source: str, destination: str) -> boo
     shutil.move(str(src_path), str(dest_path));
     return True;
 }
+
+impl LocalStorage.get_url(
+    self: LocalStorage, path: str, expires_in: (int | None) = 3600
+) -> str {
+    file_path = self._resolve_path(path);
+    return f"file://{file_path.absolute()}";
+}

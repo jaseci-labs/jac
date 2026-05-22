@@ -788,9 +788,14 @@ are oversights that hide real bugs behind an un-checkable type.
 
 `ann_node` is the annotation AST node (a type-tag expression or signature
 return type). Walks the whole subtree so nested forms each warn at their
-own `any` — `list[any]`, `any | None`, callable params/returns. Matches
-only the lowercase `any` builtin keyword; `Any` imported from `typing`
-resolves through a Name and is left to typeshed-style code."""
+own `any` — `list[any]`, `any | None`, callable params/returns.
+
+Both spellings of explicit Any are caught: the lowercase `any` builtin
+keyword (matched syntactically on its `BuiltinType` node) and `typing.Any`
+(matched by type identity against the prefetched `Any` class). Matching
+`typing.Any` by resolved type rather than by name means an alias such as
+`from typing import Any as A` still warns, while a user-defined class that
+happens to be named `Any` does not."""
 impl TypeCheckPass._check_explicit_any(
     self: TypeCheckPass, ann_node: uni.UniNode
 ) -> None {
@@ -800,6 +805,36 @@ impl TypeCheckPass._check_explicit_any(
     for sub in ann_node.get_all_sub_nodes(uni.BuiltinType) {
         if sub.value == "any" {
             self.emit(W1037, node_override=sub);
+        }
+    }
+    # `typing.Any` is the same gradual-typing escape hatch as `any`, but
+    # spelled as a name reference. Only `Any`-named candidates are resolved
+    # (cheap, and avoids touching unrelated names); the type check then
+    # confirms the reference truly is the prefetched `typing.Any` class.
+    names = ann_node.get_all_sub_nodes(uni.Name);
+    if isinstance(ann_node, uni.Name) {
+        names = [ann_node] + names;
+    }
+    for nm in names {
+        if nm.sym_name != "Any" {
+            continue;
+        }
+        # For the `typing.Any` attribute form the bare `Any` token is the
+        # member of a trailer, not a standalone reference — resolve the whole
+        # trailer, but still anchor the warning at the `Any` token.
+        resolve_target: uni.Expr = nm;
+        parent = nm.parent;
+        if (
+            isinstance(parent, uni.AtomTrailer)
+            and parent.is_attr
+            and (parent.right is nm)
+        ) {
+            resolve_target = parent;
+        }
+        if self.evaluator.is_explicit_any(
+            self.evaluator.get_type_of_expression(resolve_target)
+        ) {
+            self.emit(W1037, node_override=nm);
         }
     }
 }
@@ -1329,6 +1364,16 @@ This validates all TypeVar usages including nested ones like `list[T]`.
 impl TypeCheckPass.exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> None {
     if isinstance(nd.tag, uni.Expr) {
         self.evaluator.validate_typevar_in_type_expr(nd.tag);
+        # Evaluate the annotation so the tag Expr carries a resolved `.type`.
+        # Symbol-type resolution only annotates the tag for the symbol kinds
+        # whose path happens to evaluate it; doing it here covers every
+        # annotation uniformly. Codegen backends (notably NaIRGenPass) lower
+        # Expr.type directly instead of re-deriving structure from the
+        # annotation AST. get_type_of_expression is memoized, so this is a
+        # no-op when the tag was already evaluated.
+        if nd.tag?.type is None {
+            self.evaluator.get_type_of_expression(nd.tag);
+        }
     }
 }
 

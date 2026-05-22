@@ -1,444 +1,245 @@
 """Type resolution and LLVM type helpers."""
-"""Resolve a Jac type expression to an LLVM type."""
+
+"""Lower a semantic TypeBase (from the central type checker) to an LLVM type.
+
+NaIRGenPass runs after TypeCheckPass, so annotation Expr nodes carry a fully
+resolved `.type`. This consumes that TypeBase directly instead of re-deriving
+type structure from raw annotation AST. Returns None when the type category
+is not (yet) handled, so callers can fall back to the legacy AST walk.
+"""
+impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
+    if t is None {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.type_system.types {
+            ClassType as _ClassType,
+            UnionType as _UnionType,
+            FunctionType as _FunctionType,
+            NeverType as _NeverType,
+            AnyType as _AnyType
+        }
+    } except ImportError {
+        return None;
+    }
+    if isinstance(t, _NeverType) {
+        return ir.VoidType();
+    }
+    if isinstance(t, _AnyType) {
+        return self.jacval_type;
+    }
+    if isinstance(t, _ClassType) {
+        return self._lower_class_type(t);
+    }
+    if isinstance(t, _UnionType) {
+        # `T | None` (and general unions) lower to the first non-None member;
+        # native pointers are nullable, so the optional wrapper is implicit.
+        for m in (t.types or []) {
+            if isinstance(m, _ClassType)
+            and m.shared.class_name in ("NoneType", "None") {
+                continue;
+            }
+            return self._lower_type(m);
+        }
+        return ir.VoidType();
+    }
+    if isinstance(t, _FunctionType) {
+        return self._lower_function_type(t);
+    }
+    return None;
+}
+
+"""Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
+
+Handles primitives (registry-backed), enums, user structs, and the builtin
+collections list/dict/set/frozenset/tuple — recursing on type arguments.
+"""
+impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
+    cname = t.shared.class_name;
+    # Primitive (registry-backed): int/float/bool/str/i8../f64..
+    if cname in self.type_map {
+        return self.type_map[cname];
+    }
+    if cname in ("NoneType", "None") {
+        return ir.VoidType();
+    }
+    # Both Jac's lowercase `any` and the central checker's normalised
+    # `Any` ClassType wrapper lower to the boxed jacval representation.
+    if cname in ("any", "Any", "object") {
+        return self.jacval_type;
+    }
+    # User-defined enum -> backing integer type.
+    if cname in self.enum_types {
+        return self.enum_types[cname];
+    }
+    # User-defined object/struct -> pointer to struct.
+    if cname in self.struct_types {
+        return self.struct_types[cname].as_pointer();
+    }
+    type_args = t.private.type_args or [];
+    # list[T] — bare `list` defaults to a list of i64.
+    if cname == "list" {
+        elem_llvm: ir.Type = ir.IntType(64);
+        if type_args {
+            _e = self._lower_type(type_args[0]);
+            if _e is None {
+                return None;
+            }
+            elem_llvm = _e;
+        }
+        spec = "i64";
+        if isinstance(elem_llvm, ir.DoubleType) {
+            spec = "f64";
+        } elif isinstance(elem_llvm, ir.PointerType) {
+            spec = "ptr";
+        }
+        self._emit_list_helpers(spec, elem_llvm);
+        return self.list_types[spec].as_pointer();
+    }
+    # dict[K, V] — bare `dict` defaults to dict[i64, i64].
+    if cname == "dict" {
+        k_llvm: ir.Type = ir.IntType(64);
+        v_llvm: ir.Type = ir.IntType(64);
+        if len(type_args) >= 2 {
+            _k = self._lower_type(type_args[0]);
+            _v = self._lower_type(type_args[1]);
+            if _k is None or _v is None {
+                return None;
+            }
+            k_llvm = _k;
+            v_llvm = _v;
+        }
+        # Key spec: i64 / f64 / ptr / tuple{size}.
+        k_spec = "i64";
+        k_size = 0;
+        if isinstance(k_llvm, ir.DoubleType) {
+            k_spec = "f64";
+        } elif isinstance(k_llvm, ir.PointerType) {
+            k_spec = "ptr";
+            if isinstance(k_llvm.pointee, ir.LiteralStructType) {
+                k_size = self._get_struct_size(k_llvm.pointee);
+                k_spec = f"tuple{k_size}";
+            }
+        }
+        # Value spec: i64 / f64 / ptr / jacval.
+        v_spec = "i64";
+        if isinstance(v_llvm, ir.DoubleType) {
+            v_spec = "f64";
+        } elif isinstance(v_llvm, ir.PointerType) {
+            v_spec = "ptr";
+        } elif self?.jacval_type and v_llvm == self.jacval_type {
+            v_spec = "jacval";
+        }
+        self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
+        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+    }
+    # set[T] / frozenset[T] — bare forms default to a set of i64.
+    if cname in ("set", "frozenset") {
+        elem_llvm: ir.Type = ir.IntType(64);
+        if type_args {
+            _e = self._lower_type(type_args[0]);
+            if _e is None {
+                return None;
+            }
+            elem_llvm = _e;
+        }
+        spec = "i64";
+        esize = 0;
+        if isinstance(elem_llvm, ir.DoubleType) {
+            spec = "f64";
+        } elif isinstance(elem_llvm, ir.PointerType) {
+            spec = "ptr";
+            if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
+                esize = self._get_struct_size(elem_llvm.pointee);
+                spec = f"tuple{esize}";
+            }
+        }
+        self._emit_set_helpers(spec, elem_llvm, esize);
+        return self.set_types[spec].as_pointer();
+    }
+    # tuple[T1, T2, ...] -> pointer to an LLVM literal struct.
+    if cname == "tuple" {
+        if not type_args {
+            return None;
+        }
+        elem_types: list[ir.Type] = [];
+        for a in type_args {
+            _et = self._lower_type(a);
+            if _et is None {
+                return None;
+            }
+            elem_types.append(_et);
+        }
+        n = len(elem_types);
+        tuple_key = f"Tuple.{n}." + ".".join([str(x) for x in elem_types]);
+        if tuple_key not in self.tuple_types {
+            self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
+        }
+        return self.tuple_types[tuple_key].as_pointer();
+    }
+    return None;
+}
+
+"""Lower a FunctionType / Callable annotation to an LLVM function-pointer type.
+
+Unresolved parameter types default to i64 (matching untyped-param handling
+for native function pointers); an unresolved return type defaults to void.
+"""
+impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
+    ret_type: ir.Type = ir.VoidType();
+    if t.return_type is not None {
+        _r = self._lower_type(t.return_type);
+        if _r is not None {
+            ret_type = _r;
+        }
+    }
+    param_types: list[ir.Type] = [];
+    for p in (t.parameters or []) {
+        _p = self._lower_type(p.param_type);
+        if _p is None {
+            param_types.append(ir.IntType(64));
+        } else {
+            param_types.append(_p);
+        }
+    }
+    return ir.FunctionType(ret_type, param_types).as_pointer();
+}
+
+"""Resolve a Jac type expression to an LLVM type.
+
+The primary path is unified with the central type checker: an annotation
+Expr carries a `.type` (TypeBase) populated by TypeCheckPass, and
+_lower_type maps that TypeBase to an LLVM type. A small name-based path
+follows it for NA-internal runtime types (e.g. native `File`) the central
+checker does not model — those types are registered by NA itself
+(_emit_file_helpers etc.) and only ever resolved via their textual name.
+Unhandled cases default to i64.
+"""
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
     }
-    # Tag-first fast path: use pre-computed backend_type_tag from UniTreeEnrichPass.
-    # This avoids re-walking type annotation AST nodes for primitive and simple
-    # collection types that TypeCheckPass already resolved.
-    if isinstance(type_expr, uni.Expr) and type_expr?.backend_type_tag is not None {
-        tag = type_expr.backend_type_tag;
-        if tag == "void" {
-            return ir.VoidType();
-        }
-        if tag.startswith("list[") and tag.endswith("]") {
-            elem_name = tag[5:-1];
-            elem_llvm = self.type_map.get(elem_name);
-            if elem_llvm is not None {
-                na_spec = self._llvm_to_spec(elem_llvm);
-                self._emit_list_helpers(na_spec, elem_llvm);
-                return self.list_types[na_spec].as_pointer();
-            }
-        } elif tag.startswith("dict[") and tag.endswith("]") {
-            inner = tag[5:-1];
-            colon_idx = inner.find(":");
-            if colon_idx > 0 {
-                k_name = inner[:colon_idx];
-                v_name = inner[colon_idx + 1:];
-                k_llvm = self.type_map.get(k_name);
-                v_llvm = self.type_map.get(v_name);
-                if k_llvm is not None and v_llvm is not None {
-                    k_spec = self._llvm_to_spec(k_llvm);
-                    v_spec = self._llvm_to_spec(v_llvm);
-                    self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, 0);
-                    return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
-                }
-            }
-        } elif tag.startswith("set[") and tag.endswith("]") {
-            elem_name = tag[4:-1];
-            elem_llvm = self.type_map.get(elem_name);
-            if elem_llvm is not None {
-                na_spec = self._llvm_to_spec(elem_llvm);
-                self._emit_set_helpers(na_spec, elem_llvm, 0);
-                return self.set_types[na_spec].as_pointer();
-            }
-        } else {
-            llvm_type = self.type_map.get(tag);
-            if llvm_type is not None {
-                return llvm_type;
-            }
+    # Unified path: TypeBase → ir.Type via the central type checker.
+    if isinstance(type_expr, uni.Expr) and type_expr?.type is not None {
+        lowered = self._lower_type(type_expr.type);
+        if lowered is not None {
+            return lowered;
         }
     }
-    # Handle Name nodes (type references like `int`, `float`, `Point`)
-    if isinstance(type_expr, uni.Name) {
-        type_name = type_expr.value;
-        if type_name in self.type_map {
-            return self.type_map[type_name];
-        }
-        # Check if it's a known struct type → pointer to struct
+    # NA-internal types not modeled by the central checker (e.g. native File).
+    type_name = self._get_name(type_expr);
+    if type_name is not None {
         if type_name in self.struct_types {
             return self.struct_types[type_name].as_pointer();
         }
-        if type_name == "None" {
-            return ir.VoidType();
-        }
-        if type_name == "any" {
-            return self.jacval_type;
-        }
-        # Bare unparameterized collection types → default to i64-element variants.
-        # This handles annotations like `a: list = [1, 2]` where no element type
-        # is specified. The default is List[int] / Dict[int, int] / Set[int].
-        if type_name == "list" {
-            self._emit_list_helpers("i64", ir.IntType(64));
-            return self.list_types["i64"].as_pointer();
-        }
-        if type_name in {"dict"} {
-            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
-            return self.dict_types["i64:i64"].as_pointer();
-        }
-        if type_name in {"set","frozenset"} {
-            self._emit_set_helpers("i64", ir.IntType(64), 0);
-            return self.set_types["i64"].as_pointer();
-        }
-    }
-    # Handle BuiltinType nodes
-    if uni?.BuiltinType and isinstance(type_expr, uni.BuiltinType) {
-        type_name = type_expr.value;
         if type_name in self.type_map {
             return self.type_map[type_name];
         }
-    }
-    # Generic fallback: any node with .value matching a known type (handles Tokens)
-    if type_expr?.value and isinstance(type_expr?.value, str) {
-        type_name = type_expr.value;
-        if type_name in self.type_map {
-            return self.type_map[type_name];
-        }
-        if type_name in self.struct_types {
-            return self.struct_types[type_name].as_pointer();
-        }
-        if type_name == "None" {
-            return ir.VoidType();
-        }
-        if type_name == "any" {
-            return self.jacval_type;
-        }
-        # Bare unparameterized collection names (e.g. from Token nodes)
-        if type_name == "list" {
-            self._emit_list_helpers("i64", ir.IntType(64));
-            return self.list_types["i64"].as_pointer();
-        }
-        if type_name == "dict" {
-            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
-            return self.dict_types["i64:i64"].as_pointer();
-        }
-        if type_name in {"set","frozenset"} {
-            self._emit_set_helpers("i64", ir.IntType(64), 0);
-            return self.set_types["i64"].as_pointer();
+        if type_name in self.enum_types {
+            return self.enum_types[type_name];
         }
     }
-    # Handle union types: T | None → resolve T (BinaryExpr with BW_OR op)
-    if isinstance(type_expr, uni.BinaryExpr) {
-        op_val = getattr(type_expr.op, 'value', '');
-        if op_val == "|" {
-            # Resolve left side; right is typically None
-            right_name = self._get_name(type_expr.right);
-            left_type = self._resolve_jac_type(type_expr.left);
-            if right_name == "None" {
-                # T | None → just use T's type (pointers are nullable)
-                return left_type;
-            }
-            # For non-None unions, use the left type (simplified)
-            return left_type;
-        }
-    }
-    # Handle list[T] type annotations (AtomTrailer: list[T])
-    if isinstance(type_expr, uni.AtomTrailer) and not type_expr.is_attr {
-        target_name = self._get_name(type_expr.target);
-        if target_name == "list" {
-            if type_expr?.right and type_expr.right?.slices {
-                slices = type_expr.right.slices or [];
-                if slices {
-                    elem_node = slices[0];
-                    if elem_node?.start and elem_node.start is not None {
-                        elem_type = self._resolve_jac_type(elem_node.start);
-                    } else {
-                        elem_type = self._resolve_jac_type(elem_node);
-                    }
-                    elem_type_name = "i64";
-                    if isinstance(elem_type, ir.DoubleType) {
-                        elem_type_name = "f64";
-                    } elif isinstance(elem_type, ir.PointerType) {
-                        elem_type_name = "ptr";
-                    }
-                    self._emit_list_helpers(elem_type_name, elem_type);
-                    return self.list_types[elem_type_name].as_pointer();
-                }
-            }
-        }
-        # Handle dict[K, V] type annotations
-        if target_name == "dict" {
-            if type_expr?.right and type_expr.right?.slices {
-                slices = type_expr.right.slices or [];
-                key_node: (object | None) = None;
-                val_node: (object | None) = None;
-                # dict[K, V] may parse as one slice with TupleVal, or two separate slices
-                if len(slices) == 1
-                and slices[0]?.start
-                and isinstance(slices[0].start, uni.TupleVal) {
-                    # Single slice with TupleVal: dict[(K, V)] → extract K and V from tuple values
-                    tuple_val = slices[0].start;
-                    if tuple_val.values and len(tuple_val.values) >= 2 {
-                        key_node = tuple_val.values[0];
-                        val_node = tuple_val.values[1];
-                    }
-                } elif len(slices) >= 2 {
-                    # Two separate slices
-                    key_node = slices[0];
-                    val_node = slices[1];
-                    if key_node?.start and key_node.start is not None {
-                        key_node = key_node.start;
-                    }
-                    if val_node?.start and val_node.start is not None {
-                        val_node = val_node.start;
-                    }
-                }
-                if key_node is not None and val_node is not None {
-                    key_type = self._resolve_jac_type(key_node);
-                    val_type = self._resolve_jac_type(val_node);
-                    key_type_name = "i64";
-                    key_size = 0;
-                    if isinstance(key_type, ir.DoubleType) {
-                        key_type_name = "f64";
-                    } elif isinstance(key_type, ir.PointerType) {
-                        key_type_name = "ptr";
-                        # Check if key is a tuple (pointer to LiteralStructType)
-                        if isinstance(key_type.pointee, ir.LiteralStructType) {
-                            key_size = self._get_struct_size(key_type.pointee);
-                            key_type_name = f"tuple{key_size}";
-                        }
-                    }
-                    val_type_name = "i64";
-                    if isinstance(val_type, ir.DoubleType) {
-                        val_type_name = "f64";
-                    } elif isinstance(val_type, ir.PointerType) {
-                        val_type_name = "ptr";
-                    } elif self?.jacval_type and val_type == self.jacval_type {
-                        val_type_name = "jacval";
-                    }
-                    dict_key = f"{key_type_name}:{val_type_name}";
-                    self._emit_dict_helpers(
-                        key_type_name, val_type_name, key_type, val_type, key_size
-                    );
-                    return self.dict_types[dict_key].as_pointer();
-                }
-            }
-        }
-        # Handle set[T] type annotations
-        if target_name == "set" {
-            if type_expr?.right and type_expr.right?.slices {
-                slices = type_expr.right.slices or [];
-                if slices {
-                    elem_node = slices[0];
-                    if elem_node?.start and elem_node.start is not None {
-                        elem_type = self._resolve_jac_type(elem_node.start);
-                    } else {
-                        elem_type = self._resolve_jac_type(elem_node);
-                    }
-                    elem_type_name = "i64";
-                    elem_size = 0;
-                    if isinstance(elem_type, ir.DoubleType) {
-                        elem_type_name = "f64";
-                    } elif isinstance(elem_type, ir.PointerType) {
-                        elem_type_name = "ptr";
-                        # Check if this is a tuple (pointer to LiteralStructType)
-                        if isinstance(elem_type.pointee, ir.LiteralStructType) {
-                            elem_size = self._get_struct_size(elem_type.pointee);
-                            elem_type_name = f"tuple{elem_size}";
-                        }
-                    }
-                    self._emit_set_helpers(elem_type_name, elem_type, elem_size);
-                    return self.set_types[elem_type_name].as_pointer();
-                }
-            }
-        }
-        # Handle frozenset[T] type annotations -- same underlying type as set[T]
-        if target_name == "frozenset" {
-            if type_expr?.right and type_expr.right?.slices {
-                slices = type_expr.right.slices or [];
-                if slices {
-                    elem_node = slices[0];
-                    if elem_node?.start and elem_node.start is not None {
-                        elem_type = self._resolve_jac_type(elem_node.start);
-                    } else {
-                        elem_type = self._resolve_jac_type(elem_node);
-                    }
-                    elem_type_name = "i64";
-                    elem_size = 0;
-                    if isinstance(elem_type, ir.DoubleType) {
-                        elem_type_name = "f64";
-                    } elif isinstance(elem_type, ir.PointerType) {
-                        elem_type_name = "ptr";
-                        if isinstance(elem_type.pointee, ir.LiteralStructType) {
-                            elem_size = self._get_struct_size(elem_type.pointee);
-                            elem_type_name = f"tuple{elem_size}";
-                        }
-                    }
-                    self._emit_set_helpers(elem_type_name, elem_type, elem_size);
-                    return self.set_types[elem_type_name].as_pointer();
-                }
-            }
-        }
-        # Handle tuple[T1, T2, ...] type annotations
-        if target_name == "tuple" {
-            if type_expr?.right and type_expr.right?.slices {
-                slices = type_expr.right.slices or [];
-                elem_types: list[ir.Type] = [];
-                for s in slices {
-                    # Check if slice.start is a TupleVal (tuple[int, int] parses as tuple[(int, int)])
-                    if s?.start and isinstance(s.start, uni.TupleVal) {
-                        for tv in s.start.values {
-                            et = self._resolve_jac_type(tv);
-                            elem_types.append(et);
-                        }
-                    } elif s?.start and s.start is not None {
-                        et = self._resolve_jac_type(s.start);
-                        elem_types.append(et);
-                    } else {
-                        et = self._resolve_jac_type(s);
-                        elem_types.append(et);
-                    }
-                }
-                if elem_types {
-                    n = len(elem_types);
-                    tuple_key = f"Tuple.{n}." + ".".join([str(t) for t in elem_types]);
-                    if tuple_key not in self.tuple_types {
-                        struct_type = ir.LiteralStructType(elem_types);
-                        self.tuple_types[tuple_key] = struct_type;
-                    }
-                    return self.tuple_types[tuple_key].as_pointer();
-                }
-            }
-        }
-    }
-    # Handle Callable[[param_types], ret_type] → function pointer type.
-    # Callable[[i64, i64], i64] parses as AtomTrailer(Name('Callable'), IndexSlice(...)).
-    if isinstance(type_expr, uni.AtomTrailer) {
-        _kids = type_expr.kid or [];
-        if (
-            len(_kids) == 2
-            and isinstance(_kids[0], uni.Name)
-            and _kids[0].value == "Callable"
-            and isinstance(_kids[1], uni.IndexSlice)
-        ) {
-            return self._resolve_callable_type(_kids[1]);
-        }
-    }
-    # Handle FuncSignature → function pointer type
-    if isinstance(type_expr, uni.FuncSignature) {
-        return self._resolve_func_ptr_type(type_expr);
-    }
-    # Try structured type
-    if isinstance(type_expr, uni.Expr) and type_expr.type {
-        type_str = str(type_expr.type);
-        if type_str in self.type_map {
-            return self.type_map[type_str];
-        }
-    }
-    import logging as _logging;
-    _logging.getLogger("jaclang.native").debug(
-        "[NaIRGenPass] _resolve_jac_type: unresolved type %r (type=%s) — "
-        "defaulting to i64; consider adding an explicit type annotation",
-        type_expr,
-        type(type_expr).__name__,
-    );
     return ir.IntType(64);
-}
-
-"""Classify an LLVM ir.Type into the na_type_spec string used as collection helper keys.
-
-Returns "f64" for DoubleType, "ptr" for PointerType, and "i64" for all integer types
-(i8, i16, i32, i64, bool). This matches the classification used in _resolve_jac_type's
-AtomTrailer branches so collection helper keys are consistent.
-"""
-impl NaIRGenPass._llvm_to_spec(t: any) -> str {
-    if isinstance(t, ir.DoubleType) {
-        return "f64";
-    }
-    if isinstance(t, ir.PointerType) {
-        return "ptr";
-    }
-    return "i64";
-}
-
-"""Resolve a Callable[[param_types], ret_type] IndexSlice to a function pointer type.
-
-Expected AST structure:
-  IndexSlice (is_range=False)
-    slices: [Slice]
-      Slice.start = TupleVal
-        ListVal  ← parameter types (non-Token kids)
-        <ret_type_expr>  ← return type
-"""
-impl NaIRGenPass._resolve_callable_type(slice: uni.IndexSlice) -> ir.Type {
-    # Dig out the TupleVal inside the IndexSlice.
-    # With Slice as a UniNode, the TupleVal is in Slice.start.
-    _tuple_val = None;
-    if slice.slices and len(slice.slices) == 1 {
-        _sl = slice.slices[0];
-        if isinstance(_sl.start, uni.TupleVal) {
-            _tuple_val = _sl.start;
-        }
-    }
-    # Fallback: check IndexSlice.kid directly for backwards compatibility.
-    if _tuple_val is None {
-        for _k in (slice.kid or []) {
-            if isinstance(_k, uni.TupleVal) {
-                _tuple_val = _k;
-                break;
-            }
-        }
-    }
-    if _tuple_val is None {
-        return ir.IntType(64).as_pointer();
-    }
-    # Filter out pure punctuation Token nodes (brackets, commas).
-    # Use isinstance(c, uni.Expr) because uni.Name is a Token subclass —
-    # filtering by "not Token" would eat Name nodes (the actual type names).
-    _non_tok = [
-        _c
-        for _c in (_tuple_val.kid or [])
-        if isinstance(_c, uni.Expr)
-    ];
-    if len(_non_tok) < 2 {
-        return ir.IntType(64).as_pointer();
-    }
-    _params_node = _non_tok[0];  # ListVal with parameter type names
-    _ret_node = _non_tok[1];  # return type expression
-    # Resolve return type.
-    _ret_type: ir.Type = self._resolve_jac_type(_ret_node);
-    # Resolve parameter types from the ListVal.
-    # Same filter: keep Expr nodes (Name is both Token and Expr).
-    _param_types: list[ir.Type] = [];
-    if isinstance(_params_node, uni.ListVal) {
-        for _p in (_params_node.kid or []) {
-            if isinstance(_p, uni.Expr) {
-                _param_types.append(self._resolve_jac_type(_p));
-            }
-        }
-    }
-    _fn_type = ir.FunctionType(_ret_type, _param_types);
-    return _fn_type.as_pointer();
-}
-
-"""Resolve a FuncSignature to an LLVM function pointer type.
-
-Builds ir.FunctionType from the signature's parameter and return types,
-then returns a pointer to that function type.
-"""
-impl NaIRGenPass._resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type {
-    # Resolve return type
-    ret_type: ir.Type = ir.VoidType();
-    if sig.return_type is not None {
-        resolved_ret = self._resolve_jac_type(sig.return_type);
-        if not isinstance(resolved_ret, ir.VoidType) {
-            ret_type = resolved_ret;
-        }
-    }
-    # Resolve parameter types
-    param_types: list[ir.Type] = [];
-    all_params = sig.get_parameters();
-    for param in all_params {
-        if param.type_tag and param.type_tag.tag {
-            ptype = self._resolve_jac_type(param.type_tag.tag);
-        } else {
-            ptype = ir.IntType(64);  # default to i64 for untyped params
-        }
-        param_types.append(ptype);
-    }
-    fn_type = ir.FunctionType(ret_type, param_types);
-    return fn_type.as_pointer();
 }
 
 """Resolve a type for C library declarations -- clib structs use value types, not pointers."""

@@ -1082,6 +1082,72 @@ to cl:
 import "./styles/main.css";
 ```
 
+### Scoped CSS (`.style.css` annexes)
+
+A `.style.css` file that **shares a base name** with a `.cl.jac` module is
+treated as a scoped-style annex -- the two files form one logical module. The
+compiler hashes every class selector the annex declares with a per-module
+digest, rewrites the CSS rule selectors, and rewrites JSX `className`/`class`
+literals in the module that reference a declared class to the same hashed
+form. Class names are scoped to the component automatically, so two modules
+can both declare `.card` without colliding.
+
+Given `Card.style.css` beside `Card.cl.jac`:
+
+```css
+/* Card.style.css */
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+.card-title { font-weight: 600; }
+
+/* :global(...) opts out of scoping -- the inner selector is kept verbatim. */
+:global(html) { box-sizing: border-box; }
+```
+
+```jac
+# Card.cl.jac
+def:pub Card(title: str, body: str) -> JsxElement {
+    return <article className="card">
+        <h2 className="card-title">{title}</h2>
+        <p>{body}</p>
+    </article>;
+}
+```
+
+the compiler hashes the selectors and rewrites the matching `className`
+literals to agree (hashes are stable per module):
+
+```js
+import "./Card.css";
+function Card(props) {
+  const {title, body} = props;
+  return __jacJsx("article", {"className": "card-1419142b"},
+    [__jacJsx("h2", {"className": "card-title-769bf254"}, [title]),
+     __jacJsx("p", {}, [body])]);
+}
+```
+
+```css
+/* emitted sidecar Card.css */
+.card-1419142b { padding: 1rem; border: 1px solid #ccc; }
+.card-title-769bf254 { font-weight: 600; }
+html { box-sizing: border-box; }   /* :global(...) unwrapped */
+```
+
+Key points:
+
+- **No import needed.** The annex is paired by base name; the compiler injects
+  the side-effect `import "./<base>.css";` for you.
+- **Only declared classes are rewritten.** A `className` token with no matching
+  selector in the annex is left untouched, so you can mix scoped and global
+  (e.g. Tailwind) classes in the same `className`.
+- **`:global(...)` is the escape hatch** for selectors that must stay
+  unscoped (resets, third-party class targets, element selectors).
+- Scoped styles are per-module; for app-wide styles (themes, resets, Tailwind)
+  use a plain shared `import "./global.css";` instead.
+
 ### cn() Utility (Tailwind/shadcn)
 
 ```jac
@@ -1141,10 +1207,32 @@ def:pub JsxExamples() -> JsxElement {
 
         {items}
 
-        <button {...props}>Click</button>
+        <button {**props} {variable}>Click</button>
     </div>;
 }
 ```
+
+Two brace forms appear in attribute position. `{**props}` is a **spread** -- it forwards every key of `props` as an attribute. The JS-idiomatic `{...props}` spread is also accepted but emits `W0063` ("prefer `{**expr}`"), so `{**props}` is the canonical Jac form. `{variable}` is the **`{name}` shorthand** -- when an attribute's value is a variable of the same name it expands to `variable={variable}`, so `<Box {title} {count} {onClick}/>` is sugar for `<Box title={title} count={count} onClick={onClick}/>`. The shorthand is still validated per-attribute against the component signature.
+
+### Suspense Fallbacks: `try` with `awaiting`
+
+A `try` slot whose body needs to wait on async work can name its loading state with an `awaiting` clause. The cl lowering wraps the slot in `<JacAwaiting fallback={...}>{...}</JacAwaiting>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On `sv` and `na` targets the `awaiting` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
+
+```jac
+to cl:
+
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        }}
+    </article>;
+}
+```
+
+See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`; `except` arms don't render through the wrapper yet).
 
 ### Comments inside JSX
 

@@ -40,7 +40,7 @@ def:pub Composer(
                     rows={rows}
                 />
                 <div className="lx-composer-footer">
-                    {(
+                    {if showCharRing {
                         <div className="lx-char-ring-wrap">
                             <svg className="lx-char-ring" viewBox="0 0 24 24">
                                 <circle
@@ -59,7 +59,7 @@ def:pub Composer(
                                     stroke={ring_color}
                                 />
                             </svg>
-                            {(
+                            {if charsLeft <= 20 {
                                 <span
                                     className={"lx-char-count-over"
                                         if charsLeft < 0
@@ -67,13 +67,11 @@ def:pub Composer(
                                 >
                                     {str(charsLeft)}
                                 </span>
-                            )
-                                if charsLeft <= 20
-                                else None}
+                            }}
                         </div>
-                    )
-                        if showCharRing
-                        else <div/>}
+                    } else {
+                        <div/>
+                    } }
                     <button
                         className="lx-post-btn"
                         disabled={not value.strip() or over_limit}

@@ -712,26 +712,68 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2019",
          Category.SEMANTIC,
          "A JSX slot renders template content and cannot 'return' a value. "
-         "Drop the value to use a bare 'return;' guard, or move the "
-         "value-producing expression outside the JSX slot."
+         "Use 'skip;' for slot early-exit, or move the value-producing "
+         "expression outside the JSX slot."
      ),
      E2020 = _err(
          "E2020",
          Category.SEMANTIC,
-         "'return' is not allowed inside a '{loop}' loop in a JSX slot. "
-         "Use 'continue' to skip an iteration."
+         "Bare 'return;' is not allowed inside a JSX slot — it reads like "
+         "it exits the enclosing function, but a slot body is an inlined "
+         "IIFE. Use 'skip;' for slot early-exit."
      ),
      E2021 = _err(
          "E2021",
          Category.SEMANTIC,
          "'{kw}' is not allowed inside a '{loop}' loop in a JSX slot. "
-         "Use 'continue' to skip an iteration."
+         "Use 'continue' to skip an iteration, or 'skip;' to exit the "
+         "whole slot."
      ),
      W2019 = _warn(
          "W2019",
          Category.SEMANTIC,
          "'while' loop in a JSX slot renders JSX without a 'key' attribute — "
          "add 'key=' so siblings keep their identity across re-renders."
+     ),
+     E2022 = _err(
+         "E2022",
+         Category.SEMANTIC,
+         "'finally' is not allowed on a 'try' that has an 'awaiting' clause. "
+         "The dispatched-but-not-joined window and finalization semantics "
+         "are ambiguous together; move cleanup into an explicit "
+         "mount/unmount hook or drop one of the clauses."
+     ),
+     W2020 = _warn(
+         "W2020",
+         Category.SEMANTIC,
+         "'awaiting' is not yet implemented on the '{target}' target — "
+         "the 'awaiting' clause body will be ignored at runtime. Only the "
+         "'cl' (react/preact) target currently lowers 'awaiting' to a "
+         "Suspense fallback."
+     ),
+     E2023 = _err(
+         "E2023",
+         Category.SEMANTIC,
+         "Redundant '{{...}}' slot wrapping inside a JSX slot body — slot "
+         "bodies are already in slot mode. Drop the outer braces: write "
+         "'{stmt_kw} ... {{ ... }}' directly instead of "
+         "'{{{stmt_kw} ... {{ ... }}}}'."
+     ),
+     E2024 = _err(
+         "E2024",
+         Category.SEMANTIC,
+         "'has' is not allowed inside a JSX slot body. A slot body is a "
+         "statement template that re-runs on every render; declaring "
+         "reactive state there would compile to a conditional 'useState' "
+         "and violate React's rules of hooks. Declare 'has'-fields at the "
+         "component scope (the enclosing 'def -> JsxElement' body)."
+     ),
+     W2021 = _warn(
+         "W2021",
+         Category.SEMANTIC,
+         "'for' loop in a JSX slot renders JSX without a 'key' attribute — "
+         "annotate one child element with 'key=' so iteration siblings "
+         "keep their identity across re-renders."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)

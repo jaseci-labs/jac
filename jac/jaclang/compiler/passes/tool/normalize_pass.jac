@@ -43,6 +43,7 @@ obj NormalizePass(UniPass) {
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
     def enter_expr_stmt(nd: uni.ExprStmt) -> None;
     def enter_try_stmt(nd: uni.TryStmt) -> None;
+    def enter_awaiting_clause(nd: uni.AwaitingClause) -> None;
     def enter_except(nd: uni.Except) -> None;
     def enter_finally_stmt(nd: uni.FinallyStmt) -> None;
     def enter_iter_for_stmt(nd: uni.IterForStmt) -> None;

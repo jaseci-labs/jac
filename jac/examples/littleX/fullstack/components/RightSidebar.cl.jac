@@ -39,7 +39,7 @@ def:pub RightSidebar(
                             searchFn.call(None, e.target.value);
                         }}}
                     />
-                    {(
+                    {if searchQuery {
                         <button
                             className="lx-search-clear"
                             title="Clear search"
@@ -47,9 +47,7 @@ def:pub RightSidebar(
                         >
                             <X size={16}/>
                         </button>
-                    )
-                        if searchQuery
-                        else None}
+                    }}
                     <button
                         className="lx-search-btn"
                         onClick={lambda { searchFn.call(None, searchQuery); }}
@@ -57,10 +55,10 @@ def:pub RightSidebar(
                         Search
                     </button>
                 </div>
-                {(
+                {if len(trendingTags) > 0 {
                     <div className="lx-widget">
                         <div className="lx-widget-title">Trending</div>
-                        {[
+                        {for t in trendingTags {
                             <div
                                 className="lx-trend-item"
                                 key={t.tag}
@@ -72,16 +70,14 @@ def:pub RightSidebar(
                                         " post" if t.count == 1 else " posts"
                                     )}
                                 </span>
-                            </div> for t in trendingTags
-                        ]}
+                            </div>
+                        }}
                     </div>
-                )
-                    if len(trendingTags) > 0
-                    else None}
-                {(
+                }}
+                {if len(toFollow) > 0 {
                     <div className="lx-widget">
                         <div className="lx-widget-title">Who to follow</div>
-                        {[
+                        {for u in toFollow[:5] {
                             <div className="lx-follow-item" key={u.id}>
                                 <img
                                     className="lx-avatar-sm"
@@ -108,22 +104,18 @@ def:pub RightSidebar(
                                 >
                                     Follow
                                 </button>
-                            </div> for u in toFollow[:5]
-                        ]}
-                        {(
+                            </div>
+                        }}
+                        {if len(toFollow) > 5 {
                             <div
                                 className="lx-widget-show-more"
                                 onClick={lambda { showMoreFn.call(None); }}
                             >
                                 Show more
                             </div>
-                        )
-                            if len(toFollow) > 5
-                            else None}
+                        }}
                     </div>
-                )
-                    if len(toFollow) > 0
-                    else None}
+                }}
                 <div className="lx-about-widget">
                     <div className="lx-about-title">LITTLE-X</div>
                     <div className="lx-about-desc">

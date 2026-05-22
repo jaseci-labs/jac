@@ -381,7 +381,7 @@ def:pub Button(props: any) -> JsxElement {
         props.className
     );
 
-    return <button className={computedClass} {...props}>
+    return <button className={computedClass} {**props}>
         {props.children}
     </button>;
 }
@@ -404,13 +404,13 @@ import from "radix-ui" { Dialog as DialogPrimitive }
 import from ...lib.utils { cn }
 
 def:pub Dialog(props: any) -> JsxElement {
-    return <DialogPrimitive.Root {...props}>
+    return <DialogPrimitive.Root {**props}>
         {props.children}
     </DialogPrimitive.Root>;
 }
 
 def:pub DialogTrigger(props: any) -> JsxElement {
-    return <DialogPrimitive.Trigger {...props}>
+    return <DialogPrimitive.Trigger {**props}>
         {props.children}
     </DialogPrimitive.Trigger>;
 }

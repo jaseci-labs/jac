@@ -3083,6 +3083,19 @@ impl EsastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
 
 """Process JSX element."""
 impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
+    # `<JacAwaiting>` is synthesized by ViewLowerPass to wrap a slot's
+    # `try { ... } awaiting { ... }` clause on the `cl` target. The
+    # component lives in `@jac/runtime`; auto-inject the import so the
+    # synthesized name resolves at runtime without forcing user code to
+    # import it explicitly.
+    if (
+        nd.name is not None
+        and nd.name.parts
+        and isinstance(nd.name.parts[0], uni.Name)
+        and nd.name.parts[0].value == "JacAwaiting"
+    ) {
+        self._inject_runtime_import("JacAwaiting", nd);
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
 }
 
@@ -4574,6 +4587,27 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 
 """Process module node."""
 impl EsastGenPass.exit_module(nd: uni.Module) -> None {
+    # Scoped-style annex: emit the selector-rewritten CSS as a sidecar
+    # artifact and prepend a side-effect import so the styles load with the
+    # module. Duplicate imports from impl/variant modules are deduped below.
+    if (self.scoped_styles is not None and self.scoped_styles.class_map) {
+        import os;
+        nd.gen.css = self.scoped_styles.scoped_css;
+        base = os.path.basename(self.scoped_styles.css_path);
+        if base.endswith('.style.css') {
+            base = base[:-len('.style.css')];
+        }
+        css_import = f"./{base}.css";
+        css_source = self.sync_loc(
+            es.Literal(value=css_import, raw=f'"{css_import}"'), jac_node=nd
+        );
+        self.imports.insert(
+            0,
+            self.sync_loc(
+                es.ImportDeclaration(specifiers=[], source=css_source), jac_node=nd
+            )
+        );
+    }
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
     # Include stubs for def:pub functions imported via sv import
@@ -5396,6 +5430,12 @@ impl EsastGenPass.before_pass -> None {
     self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
     self.client_manifest = ClientManifest();
     self.jsx_processor = EsJsxProcessor(self);
+    # Load the `.style.css` scoped-style annex (if any) keyed off the head
+    # module path, so every variant/impl module shares one class map and
+    # JSX `className` literals can be rewritten during traversal.
+    self.scoped_styles: (ScopedStyleSheet | None) = load_style_annex(
+        self.ir_in.annexable_by or self.ir_in.loc.mod_path
+    );
     # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
     self.reactive_vars: dict[str, str] = {};
     # Stack to save/restore reactive_vars per function boundary

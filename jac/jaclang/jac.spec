@@ -244,8 +244,17 @@ jsx_child ::=
     JSX_TEXT jsx_child?
     | JSX_COMMENT
     | "{" (
-          ("for" | "while" | "if" | "match" | "switch" | "with" | "try" | "return")
-          code_block_stmts "}"
+          (
+              "for"
+              | "while"
+              | "if"
+              | "match"
+              | "switch"
+              | "with"
+              | "try"
+              | "return"
+              | "skip"
+          ) code_block_stmts "}"
           | expression (";"? code_block_stmts "}" | "}")
       )
     | jsx_element
@@ -338,8 +347,8 @@ for_stmt ::=
     )
 
 try_stmt ::=
-    "try" "{" code_block_stmts "}" except_handler* else_stmt?
-    ("finally" "{" code_block_stmts "}")?
+    "try" "{" code_block_stmts "}" ("awaiting" "{" code_block_stmts "}")?
+    except_handler* else_stmt? ("finally" "{" code_block_stmts "}")?
 
 except_handler ::=
     "except" expression ("as" (NAME | KWESC_NAME))? "{" code_block_stmts "}"

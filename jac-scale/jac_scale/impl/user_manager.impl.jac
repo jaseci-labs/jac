@@ -22,7 +22,7 @@ impl JacScaleUserManager.postinit -> None {
         client = get_mongo_client();
         db = client['jac_db'];
         self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-        # LEGACY MIGRATION (removable) — must run before ensure_indexes (old docs have user_id: null)
+        # LEGACY MIGRATION (removable) - must run before ensure_indexes (old docs have user_id: null)
         self._identity_storage.migrate_legacy_users();
         self._identity_storage.ensure_indexes();
     } else {
@@ -143,6 +143,35 @@ impl JacScaleUserManager.update_password(
     );
 }
 
+"""Set a new password without verifying the current one.
+
+Intended for password-reset flows where the caller has already authenticated
+the user via a single-use reset token (see auth_tokens.AuthTokenStore).
+Replaces the existing password credential, or creates one if none exists.
+"""
+impl JacScaleUserManager.reset_password_by_user_id(
+    user_id: str, new_password: str
+) -> dict[str, str] {
+    return self._identity_storage.reset_password(user_id, new_password);
+}
+
+"""Append an identity (email, username, etc.) to an existing user."""
+impl JacScaleUserManager.add_identity(user_id: str, identity: dict[str, Any]) -> bool {
+    return self._identity_storage._add_identity(user_id, identity);
+}
+
+"""Check whether the given normalized identity value is already taken."""
+impl JacScaleUserManager.is_identity_taken(value: str) -> bool {
+    return self._identity_storage.identity_taken(value);
+}
+
+"""Mark an identity (matched by value_normalized) as verified for a user."""
+impl JacScaleUserManager.set_identity_verified(
+    user_id: str, value_normalized: str
+) -> bool {
+    return self._identity_storage._set_identity_verified(user_id, value_normalized);
+}
+
 impl JacScaleUserManager.update_profile(
     user_id: str, profile_updates: dict[str, any]
 ) -> dict[str, any] {
@@ -177,7 +206,7 @@ impl JacScaleUserManager.get_username(user_id: str) -> str | None {
 }
 
 # ============================================================================
-# JWT Methods — now use user_id as the primary claim
+# JWT Methods - now use user_id as the primary claim
 # ============================================================================
 impl JacScaleUserManager.create_jwt_token(
     user_id: str, include_role: bool = True

@@ -589,6 +589,67 @@ test "JSX slot statement-position control flow lowers to statements" {
     assert has_loop , "a statement `for` in a slot should emit a JS loop";
 }
 
+test "try/awaiting in JSX slot lowers to <JacAwaiting> wrapper on cl" {
+    # `try { ... } awaiting { ... }` inside a slot is the cl-target surface
+    # for React Suspense: ViewLowerPass replaces the TryStmt with a single
+    # `<JacAwaiting fallback={<>{...awaiting...}</>}>{...try...}</JacAwaiting>`
+    # element. The runtime wrapper lives in `@jac/runtime` and is auto-
+    # imported when the synthesized element shows up in the bundle.
+    es_ast = compile_to_esast(fixture_path("view_awaiting.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "UserCardSkeleton" in func_names
+    and "UserCardView" in func_names
+    and "UserPanel" in func_names;
+
+    # The wrapper component is referenced as a JSX tag (the cl lowering
+    # synthesizes the element with `JacAwaiting` as the identifier).
+    assert "__jacJsx(JacAwaiting," in js_code , (
+        "the cl-target try/awaiting lowering should emit a "
+        "<JacAwaiting> wrapper element:\n" + js_code
+    );
+    # The wrapper must be auto-imported from @jac/runtime so user code
+    # doesn't have to know the runtime export name.
+    assert "JacAwaiting" in js_code , (
+        "JacAwaiting should be referenced in the emitted bundle"
+    );
+    import re;
+    assert re.search(
+        r'import\s*\{[^}]*\bJacAwaiting\b[^}]*\}\s*from\s*[\'"]@jac/runtime[\'"]',
+        js_code
+    ) , ("JacAwaiting should be auto-imported from @jac/runtime:\n" + js_code);
+    # `fallback` is the prop carrying the awaiting-clause's rendered
+    # fragment — must appear in the JSX element's props object literal.
+    assert '"fallback":' in js_code , (
+        "the synthesized JSX element should carry a `fallback` prop:\n" + js_code
+    );
+    # Both branch bodies' user content survive into the bundle.
+    assert "Loading user" in js_code , (
+        "the awaiting body's text content should appear in the bundle"
+    );
+    assert "UserCardView" in js_code , (
+        "the try body should still reference UserCardView"
+    );
+    # Each branch is wrapped in an inline IIFE that accumulates its JSX
+    # into a fragment — the same shape as ordinary slot lowering.
+    assert "__jac_view_kids" in js_code , (
+        "branch bodies should reuse the slot accumulator pattern"
+    );
+    # The Suspense-shaped wrapper means children are passed positionally
+    # (the try-body's fragment is the wrapper's child), not lifted into
+    # the `children` prop of the JacAwaiting element.
+    for (op, cl) in [("{", "}"), ("(", ")"), ("[", "]")] {
+        assert js_code.count(op) == js_code.count(cl) , (
+            f"unbalanced {op}{cl} pairs in view_awaiting.cl.jac output"
+        );
+    }
+}
+
 test "dynamic JSX tags resolve at runtime" {
     # Phase 2: `<@expr />` — the JSX tag is an expression, not a static name.
     es_ast = compile_to_esast(fixture_path("view_dynamic_tag.cl.jac"));

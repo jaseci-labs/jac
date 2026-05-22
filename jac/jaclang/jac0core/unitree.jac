@@ -313,8 +313,7 @@ are evaluated to produce a value.
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit,
-        backend_type_tag: (str | None) by postinit;
+        attached_tokens: (list[Token] | None) by postinit;
 
     def postinit -> None;
     @property
@@ -822,7 +821,22 @@ obj ExprStmt(CodeBlockStmt) {
 obj TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     has body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
+        awaiting_body: (AwaitingClause | None),
         finally_body: (FinallyStmt | None);
+
+    def postinit -> None;
+}
+
+"""AwaitingClause node type for Jac Ast.
+
+Holds the `awaiting { ... }` arm of a `try` statement. Renders/produces
+a value during the dispatched-but-not-joined window of any `flow`/`wait`
+work inside the `try` body. In a JSX slot on the `cl` target, lowered
+into the React `Suspense` fallback of the synthesized `<JacAwaiting>`
+wrapper. On `sv`/`na` the clause is currently ignored with W2020 until
+the streaming-SSR and native-thread lowerings land."""
+obj AwaitingClause(CodeBlockStmt, UniScopeNode) {
+    has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
 }
@@ -1291,10 +1305,16 @@ obj JsxSpreadAttribute(JsxAttribute) {
     def postinit -> None;
 }
 
-"""JsxNormalAttribute node type for Jac Ast."""
+"""JsxNormalAttribute node type for Jac Ast.
+
+The `is_shorthand` flag marks attributes parsed from the `{name}` JSX
+attribute shorthand — semantically identical to `name={name}` but the
+formatter must round-trip the shorter spelling. Both `name` and `value`
+point at the same identifier when this flag is set."""
 obj JsxNormalAttribute(JsxAttribute) {
     has name: (Name | Token),
-        value: String | Expr | None;
+        value: String | Expr | None,
+        is_shorthand: bool = False;
 
     def postinit -> None;
 }
