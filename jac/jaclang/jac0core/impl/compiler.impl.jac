@@ -701,23 +701,24 @@ impl JacCompiler.compile(
         # `Ref[T]`-typed has-field is marked `is_client_ref` by TypeCheckPass
         # so it lowers to `useRef(...)` instead of `useState(...)`. Run the
         # checker for client compilation even when options.type_check is off so
-        # that marker lands. Like the native trigger this uses the inference-
+        # that marker lands. Unlike the native trigger this uses the inference-
         # only schedule with diagnostics suppressed (below), so existing client
         # builds don't gain new type errors — explicit `jac check` still keeps
-        # the full client diagnostic surface.
-        if not run_type_check {
-            is_client_mod = bool(mp) and mp.endswith('.cl.jac');
-            if not is_client_mod and mod_targ?.body {
-                for _stmt in mod_targ.body {
-                    if isinstance(_stmt, uni.ClientBlock) {
-                        is_client_mod = True;
-                        break;
-                    }
+        # the full client diagnostic surface. Compute `is_client_mod`
+        # unconditionally (not gated on `run_type_check`) so it is always bound
+        # for the suppression decision — a native module that already set
+        # `run_type_check` still reaches that decision.
+        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
+        if not is_client_mod and mod_targ?.body {
+            for _stmt in mod_targ.body {
+                if isinstance(_stmt, uni.ClientBlock) {
+                    is_client_mod = True;
+                    break;
                 }
             }
-            if is_client_mod {
-                run_type_check = True;
-            }
+        }
+        if is_client_mod {
+            run_type_check = True;
         }
     }
     if run_type_check {
