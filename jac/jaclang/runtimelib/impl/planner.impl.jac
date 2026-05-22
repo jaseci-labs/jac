@@ -70,6 +70,25 @@ def _filter_has_predicates(filt: any) -> bool {
 }
 
 
+"""Structural view of a destination filter: `(type_name, has_predicates,
+field_predicates)`.
+
+A compiler-emitted `FilterSpec` carries all three directly — the common case
+for `[?:Type, ...]` node filters, read with no bytecode inspection. Other
+callables (the `:EdgeType:` edge-ref syntax, condition-only `[?cond]` lambdas,
+or bare instance/list filters) have no carrier, so we fall back to inspecting
+the lambda: its type via `_filter_type_name`, and — conservatively — whether it
+carries predicates via `_filter_has_predicates`. Non-carriers never expose
+pushable field predicates, so that channel is always empty for them.
+"""
+def _filter_info(filt: any) -> tuple {
+    if isinstance(filt, FilterSpec) {
+        return (filt.type_name, bool(filt.predicates), filt.predicates);
+    }
+    return (_filter_type_name(filt), _filter_has_predicates(filt), {});
+}
+
+
 """Log the chosen strategy for a plan. No-op when trace is off."""
 def _trace(strategy: str, plan: QueryPlan, extra: str = '') -> None {
     if not _trace_enabled() {
@@ -246,7 +265,13 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
         _trace('mixed', plan, f"narrowed={len(narrowed)}");
         result: list = [];
         for anchor in mem.execute_plan(reduced) {
-            if plan.post_filter is not None and not plan.post_filter(anchor) {
+            # post_filter is the node-filter callable — it takes the archetype,
+            # exactly as the pure-pushdown path does.
+            if (
+                plan.post_filter is not None
+                and anchor.archetype is not None
+                and not plan.post_filter(anchor.archetype)
+            ) {
                 continue;
             }
             result.append(anchor);
@@ -368,35 +393,22 @@ def _build_plan_from_path(
         return None;
     }
     import from jaclang.runtimelib.query_plan { HopSpec }
-    # Imported once; used to detect compiler-emitted FilterSpec on any hop.
-    try {
-        import from jaclang.jac0core.filter_spec { FilterSpec as _FS }
-        _fs_class: any = _FS;
-    } except Exception {
-        _fs_class: any = None;
-    }
     chain: list[HopSpec] = [];
     last_idx = len(destinations) - 1;
     last_post_filter: any = None;
     last_field_preds: dict = {};
     has_filter = False;
     for (i, dest) in enumerate(destinations) {
-        # Edge filter: type-only or bail.
-        if _filter_has_predicates(dest.`edge) {
+        # Edge filter: type-only or bail (edge predicates aren't pushable).
+        (edge_type, edge_has_pred, _) = _filter_info(dest.`edge);
+        if edge_has_pred {
             return None;
         }
         # Non-final node filters must be type-only too; the final hop's
         # predicates can be applied post-narrowing as post_filter.
-        node_has_pred = _filter_has_predicates(dest.nd);
+        (node_type, node_has_pred, node_preds) = _filter_info(dest.nd);
         if i != last_idx and node_has_pred {
             return None;
-        }
-        edge_type = _filter_type_name(dest.`edge);
-        # FilterSpec carries type_name directly; fall back to lambda inspection.
-        if _fs_class is not None and isinstance(dest.nd, _fs_class) {
-            node_type = dest.nd.type_name;
-        } else {
-            node_type = _filter_type_name(dest.nd);
         }
         chain.append(
             HopSpec(
@@ -408,10 +420,8 @@ def _build_plan_from_path(
         }
         if i == last_idx and node_has_pred {
             last_post_filter = dest.node_filter;
-            # FilterSpec predicates enable backend-native field pushdown.
-            if _fs_class is not None and isinstance(dest.nd, _fs_class) {
-                last_field_preds = dest.nd.predicates;
-            }
+            # Carrier predicates enable backend-native field pushdown.
+            last_field_preds = node_preds;
         }
     }
     if not has_filter and last_post_filter is None {

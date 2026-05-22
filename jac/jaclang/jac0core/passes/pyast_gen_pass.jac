@@ -197,13 +197,30 @@ needs_enum)
     codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
 
-    """Try to build a Python ast3.Dict literal from simple field predicates.
+    """True for a compile-time scalar: a constant or a unary +/- on one."""
+    def _is_literal_scalar(expr: ast3.AST) -> bool;
 
-    Returns an ast3.Dict node encoding the predicate dict (e.g.
-    {'age': {'$lt': 28}, 'role': 'admin'}) when every compare in nd.compares is
-    a simple (field op constant) expression. Returns None for anything more
-    complex so the caller falls back to a plain lambda."""
-    def _build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | None);
+    """The value-side AST of a pushable predicate, or None if not a literal.
+
+    `in`/`nin` accept a literal collection of scalars; other ops a lone scalar."""
+    def _pushdown_value(expr: ast3.AST, op_name: str) -> (ast3.expr | None);
+
+    """Expand one (possibly chained) comparison into backend-neutral predicates
+    on `field_name` as list[(op, value_ast)], or None if any clause is not a
+    `field <op> literal` (operator flips when the field is on the right)."""
+    def _compare_predicates(
+        operands: list, ops: list, field_name: str
+    ) -> (list | None);
+
+    """Normalize one filter comparison into (lambda_clause, predicates).
+
+    lambda_clause binds the field operand to `i` (order/structure preserved);
+    predicates is list[(field, op, value_ast)] when fully pushable, else None.
+    Returns None when the comparison has no bare-field operand to bind."""
+    def _analyze_compare(nd_x: uni.UniNode) -> (tuple | None);
+
+    """Build the `{field: [FieldPredicate(...)]}` AST from analyzed compares."""
+    def _predicates_dict_ast(analyses: list) -> ast3.Dict;
 
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;

@@ -353,6 +353,86 @@ test "field-predicate range and eq operators push down to mongodb" {
 }
 
 
+"""Membership (`in`) and negative-literal predicates must push down too.
+
+  [?:_PushdownLead, idx in [3, 17, 42]]  → {$in: [3, 17, 42]}  → 3 docs
+  [?:_PushdownLead, idx < -1]            → {$lt: -1}           → 0 docs (no negatives)
+
+These operators were previously emitted only into the per-node lambda and never
+into FilterSpec.predicates, so they silently fell back to the floor path. Proof
+of pushdown is identical: execute_plan_fetch_count carries the result and
+fetch_count stays 0."""
+test "field-predicate membership and negative-literal operators push down to mongodb" {
+    _reset_dbs();
+    orig_base = JacRuntime.get_base_path_dir();
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    JacRuntime.set_base_path("/tmp/_pushdown_in_neg");
+
+    try {
+        # --- Phase 1: build 50 leads (idx 0-49), persist ---
+        (mem1, mongo1, redis1) = _make_scale_memory();
+        ctx1 = ExecutionContext();
+        ctx1.mem = mem1;
+        ctx1.mem.put(ctx1.system_root);
+        JacRuntime.set_context(ctx1);
+
+        for i in range(50) {
+            root ++> _PushdownLead(idx=i);
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: membership pushdown ---
+        (mem2, mongo2, redis2) = _make_scale_memory();
+        ctx2 = ExecutionContext();
+        ctx2.mem = mem2;
+        JacRuntime.set_context(ctx2);
+
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        mongo2.reset_counters();
+        chosen = [r2-->[?:_PushdownLead, idxin[3,17,42]]];
+
+        assert len(chosen) == 3 , f"Expected 3 leads for `in [3,17,42]`, got {len(
+            chosen
+        )}";
+        for lead in chosen {
+            assert lead.idx in [3, 17, 42] , f"Membership not applied: idx={lead.idx}";
+        }
+        assert mongo2.execute_plan_fetch_count == 3 , (
+            f"Expected execute_plan to fetch 3 docs; got {mongo2.execute_plan_fetch_count}"
+        );
+        assert mongo2.fetch_count == 0 , (
+            f"fetch_count should be 0 (pushdown only); got {mongo2.fetch_count}"
+        );
+
+        # negative-literal bound: no idx is < -1, so the backend returns nothing.
+        mongo2.reset_counters();
+        none_match = [r2-->[?:_PushdownLead, idx<-1]];
+
+        assert len(none_match) == 0 , f"Expected 0 leads for `idx < -1`, got {len(
+            none_match
+        )}";
+        assert mongo2.execute_plan_fetch_count == 0 , (
+            f"Expected 0 docs from execute_plan; got {mongo2.execute_plan_fetch_count}"
+        );
+        assert mongo2.fetch_count == 0 , (
+            f"fetch_count should be 0 (pushdown only); got {mongo2.fetch_count}"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+    }
+}
+
+
 """[?:Type, field op const] must push predicates to MongoDB via execute_plan.
 
 Proof of pushdown: mongo.fetch_count == 0 (execute_plan uses collection.find()

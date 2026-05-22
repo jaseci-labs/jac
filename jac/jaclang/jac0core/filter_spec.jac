@@ -19,16 +19,19 @@ obj FieldPredicate {
         value: Any;
 }
 
-"""
+"""Compile-time carrier for a typed filter comprehension ([?:Type, conditions]).
 
-Emitted by the compiler when a FilterCompr has both a type annotation and
-field-level comparison predicates. The Python lambda (func) is always usable
-as a fallback. Storage backends read type_name and predicates to build
-backend-native queries without evaluating the lambda per-node.
+Emitted by the compiler for *every* typed FilterCompr so the runtime planner
+reads `type_name` (and any `predicates`) structurally, with no lambda bytecode
+inspection. `func` is the equivalent Python predicate — it is always a correct
+fallback, applied per-node whenever a backend can't push the conditions down.
 
-Only emitted when all predicates are simple (field op constant). Complex
-conditions — method calls, nested expressions — keep the plain lambda so
-behaviour is unchanged.
+`predicates` is populated only when *every* condition is a simple
+`field <op> literal` (in either operand order, including chained comparisons
+and `in`/`not in`). When any condition is more complex — a method call, a
+nested expression, a field-to-field comparison — `predicates` is left empty and
+`func` alone enforces the filter. A type-only filter ([?:Type]) is just the
+empty-predicates case.
 """
 obj FilterSpec {
     has type_name: str,
