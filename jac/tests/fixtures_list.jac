@@ -11,7 +11,7 @@ To add new test files, manually add them to the appropriate list below.
 # These files were discovered as of the initial snapshot and should be
 # manually updated when new test files are added.
 glob MICRO_JAC_FILES: list[str] = [
-         "examples/littleX/fullstack/server.jac",
+         "examples/littleX/server.jac",
          "tests/language/fixtures/circle_clean.jac",
          "tests/language/fixtures/circle_clean_tests.jac",
          "tests/compiler/fixtures/micro/__init__.jac",

@@ -441,11 +441,31 @@ def:pub UserPanel(user: User) -> JsxElement {
 
 The `try` body needs a Suspense-aware data primitive (today: a `use(promise)` call or a Suspense-integrated fetcher inside the rendered subtree) for the fallback to actually fire. The wrapper is the language-level integration point -- once the `flow`/`wait` story plugs into `use()`, the same source picks up real async behavior with no call-site change.
 
+Add an `except` arm to name the error state alongside the loading state. The slot then lowers to a `<JacClientErrorBoundary fallback={...}>` **wrapping** the `<JacAwaiting>` node, so a throw anywhere in the resolved `try` body is caught and the `except` body renders instead:
+
+```jac
+to cl:
+
+def:pub UserPanel(user: User) -> JsxElement {
+    return <section class="panel">
+        {try {
+            <UserCardView user={user}/>
+        } awaiting {
+            <UserCardSkeleton/>
+        } except Exception {
+            <div class="card error">Couldn't load this user.</div>
+        }}
+    </section>;
+}
+```
+
+`JacClientErrorBoundary` is auto-imported from `@jac/runtime` -- the same boundary jac-client installs at the app root. Because a JS error boundary catches every error regardless of the declared type, per-type dispatch and the optional `except ... as <name>` binding are not modeled; the `except` bodies are concatenated in source order into the boundary's fallback.
+
 **Notes:**
 
 - `awaiting` is a clause of `try`; bare `awaiting { ... }` is a parse error.
 - `finally` alongside `awaiting` is rejected (`E2022`) -- the cleanup timing relative to the in-flight window is ambiguous.
-- `except` clauses are still legal but in v1 they don't render through the `<JacAwaiting>` wrapper -- wrap the slot with `<JacClientErrorBoundary>` for an error fallback.
+- `except` arms render through a synthesized `<JacClientErrorBoundary>` that wraps the `<JacAwaiting>` (cl target). An `except` without an `awaiting` clause stays an ordinary `try`/`except`.
 - On `sv` and `na` targets the `awaiting` body is silently dropped with a `W2020` warning; the construct compiles as an ordinary `try` until the streaming-SSR and native-thread lowerings land.
 
 ### Raw HTML: `unsafe_html`
@@ -619,6 +639,7 @@ for the full contract.
 | Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
 | Early-exit guard | `skip;` inside a statement slot |
 | Suspense fallback | `{try { <Resolved/> } awaiting { <Loading/> }}` (cl only) |
+| Suspense + error fallback | `{try { <Resolved/> } awaiting { <Loading/> } except Exception { <Err/> }}` (cl only) |
 | Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
 | Dynamic tag | `<@expr>...</@expr>` |
 | JSX element | `<div className="x">content</div>` |

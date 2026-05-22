@@ -57,8 +57,7 @@ obj MicroserviceDatabaseProvisioner {
                 {"namespace": namespace}
             );
         }
-        # cluster_env is a monolith-only knob; pass empty string.
-        self.k8s_target._deploy_databases(app_name, namespace, apps_v1, core_v1, "");
+        self.k8s_target._deploy_databases(app_name, namespace, apps_v1, core_v1);
 
         # Init containers block pod startup until DB Endpoints are reachable -
         # without this, pods crash-loop with connection-refused on every

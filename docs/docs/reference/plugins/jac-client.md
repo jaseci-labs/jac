@@ -1232,7 +1232,25 @@ def:pub Profile(user_id: int) -> JsxElement {
 }
 ```
 
-See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`; `except` arms don't render through the wrapper yet).
+Add an `except` arm to name the error state. On the cl target the slot then lowers to a `<JacClientErrorBoundary fallback={...}>` (auto-imported from `@jac/runtime`, where it re-exports [`react-error-boundary`'s `ErrorBoundary`](#jacclienterrorboundary)) **wrapping** the `<JacAwaiting>` node, so a throw in the resolved `try` body -- including from data the suspense shim awaited -- is caught and the `except` body renders in its place:
+
+```jac
+to cl:
+
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        } except Exception {
+            <p>Could not load profile.</p>
+        }}
+    </article>;
+}
+```
+
+Because a JS error boundary catches every error regardless of declared type, per-type dispatch and the optional `except ... as <name>` binding are not modeled -- the except bodies are concatenated in source order into the boundary's fallback. See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`).
 
 ### Comments inside JSX
 

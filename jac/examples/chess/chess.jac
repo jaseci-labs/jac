@@ -179,7 +179,7 @@ obj Board {
 # ────────────────────── Game ──────────────────────
 """Top-level game controller: legality checking, turn management, I/O loop."""
 obj Game {
-    has board: Board | None = None,
+    has board: Board by postinit,
         current_turn: Color = Color.WHITE,
         is_over: bool = False,
         move_count: int = 0;

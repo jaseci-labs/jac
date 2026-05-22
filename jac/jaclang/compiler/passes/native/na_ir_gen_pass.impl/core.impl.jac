@@ -467,14 +467,26 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if imported_mod is None {
             imported_mod = self.prog.mod.hub.get(abs_key);
         }
-        # If not in hub, parse the imported .jac file for type extraction.
+        # Not pre-loaded into the hub by the entry module's type-check (e.g.
+        # an import whose symbols the checker never resolved). Pull it in
+        # through the program pipeline rather than a raw parse: a .na.jac
+        # compile runs the implicit native type-check (see JacCompiler.compile),
+        # so the module's annotations land with `.type` populated and resolve
+        # via the unified `_lower_type` path -- a raw rd_parse would leave
+        # `.type = None` and silently fall back to name-based resolution.
+        # A nested compile overwrites prog._compile_options; save and restore
+        # it so the remaining native codegen still reads our skip_native_engine
+        # / aot_mode settings (mirrors the re-pin in JacCompiler.compile).
         if imported_mod is None and os.path.isfile(full_path) {
+            _saved_opts = self.prog._compile_options;
             try {
-                import from jaclang.jac0core.parser { parse as rd_parse }
-                source = open(full_path, encoding="utf-8").read();
-                (imported_mod, _) = rd_parse(source, full_path, prog=self.prog);
+                imported_mod = self.prog.compile(
+                    full_path, no_cgen=True, symtab_ir_only=True
+                );
             } except Exception {
-                continue;
+                imported_mod = None;
+            } finally {
+                self.prog._compile_options = _saved_opts;
             }
         }
         if imported_mod is None {

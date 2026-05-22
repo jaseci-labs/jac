@@ -207,13 +207,11 @@ impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
 
 """Resolve a Jac type expression to an LLVM type.
 
-The primary path is unified with the central type checker: an annotation
-Expr carries a `.type` (TypeBase) populated by TypeCheckPass, and
-_lower_type maps that TypeBase to an LLVM type. A small name-based path
-follows it for NA-internal runtime types (e.g. native `File`) the central
-checker does not model — those types are registered by NA itself
-(_emit_file_helpers etc.) and only ever resolved via their textual name.
-Unhandled cases default to i64.
+Primary path: an annotation Expr's `.type` (TypeBase, set by TypeCheckPass)
+is mapped via _lower_type. A name-based fallback covers the two cases that
+path can't: NA-internal types the checker doesn't model (e.g. native
+`File`), and annotations in imported `.na.jac` modules, walked without
+TypeCheckPass so carrying `.type = None`. Unhandled cases default to i64.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
@@ -226,7 +224,8 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return lowered;
         }
     }
-    # NA-internal types not modeled by the central checker (e.g. native File).
+    # Name-based fallback (see docstring). No enum branch needed: _codegen_enum
+    # also registers each enum in type_map (same i64), which is checked first.
     type_name = self._get_name(type_expr);
     if type_name is not None {
         if type_name in self.struct_types {
@@ -234,9 +233,6 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
         if type_name in self.type_map {
             return self.type_map[type_name];
-        }
-        if type_name in self.enum_types {
-            return self.enum_types[type_name];
         }
     }
     return ir.IntType(64);
