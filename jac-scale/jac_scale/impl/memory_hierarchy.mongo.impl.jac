@@ -83,6 +83,28 @@ def _anchor_has_structural_change(anchor: Anchor) -> bool {
     return anchor.hash == 0;
 }
 
+"""Recursively remove empty-dict leaves from a serialized value.
+
+MongoDB's aggregation-pipeline $set (used in _put_node_atomic) rejects any
+embedded empty document with error 40180 (EmptyObjectInUpdate).  The default
+Permission / Access values always produce `access.roots.anchors = {}`, so
+every NodeAnchor update fails unless we strip those leaves before building
+the set_doc.  The Serializer restores default empty dicts on deserialize via
+field(default_factory=dict), so stripping them from the stored document is
+safe and lossless.
+"""
+def _strip_empty_dicts(v: object) -> object {
+    if isinstance(v, dict) {
+        cleaned = {k: _strip_empty_dicts(vv) for (k, vv) in v.items()};
+        return {k: vv for (k, vv) in cleaned.items() if not (isinstance(vv, dict) and not vv)};
+    }
+    if isinstance(v, list) {
+        return [_strip_empty_dicts(item) for item in v];
+    }
+    return v;
+}
+
+
 """Stable hash of any serialized field value (dict, list, or scalar)."""
 def _field_hash(val: object) -> int {
     import from json { dumps }
@@ -713,9 +735,12 @@ impl MongoBackend._put_node_atomic(
         partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
 
         # Non-archetype, non-edge top-level data fields (e.g. access control).
+        # Strip empty nested dicts before including in the aggregation-pipeline
+        # $set: MongoDB rejects empty embedded documents (error 40180) in that
+        # context.  access.roots.anchors defaults to {} and is the common trigger.
         full = dict(Serializer.serialize(anchor, include_type=True));
         non_arch_top = {
-            k: v
+            k: _strip_empty_dicts(v)
             for (k, v) in full.items()
             if k not in ('edges', 'archetype')
         };
