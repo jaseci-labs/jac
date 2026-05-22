@@ -1353,8 +1353,13 @@ Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
 `JsxExpression` so the cheap path (no IIFE) is preserved.
 """
 obj JsxSlot(JsxChild) {
-    has body: list[UniNode];
-
+    has body: list[UniNode],
+        view_raw_src: str = "";
+    # Verbatim source span of the `{...}` slot, captured by ViewLowerPass
+    # before it desugars the body in place. The lowered body is invalid
+    # JSX surface syntax, so the formatter/unparser emit this raw span to
+    # round-trip the source. Empty when the slot was never lowered (the
+    # format-only pipeline does not run ViewLowerPass).
     def postinit -> None;
 }
 

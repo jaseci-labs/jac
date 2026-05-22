@@ -1173,8 +1173,14 @@ impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
 }
 
 """JsxSlot: statement-form `{...}` slot — emit each kid in order so the
-raw `{ stmt; stmt; ... }` shape round-trips through the formatter."""
+raw `{ stmt; stmt; ... }` shape round-trips. When the slot was lowered in
+place by ViewLowerPass its kids are no longer valid JSX surface syntax,
+so emit the verbatim span captured before lowering instead."""
 impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    if nd.view_raw_src {
+        nd.gen.jac = nd.view_raw_src;
+        return;
+    }
     parts: list[str] = [];
     for k in nd.kid {
         s = k.gen.jac;

@@ -532,7 +532,20 @@ impl NormalizePass.enter_ability(nd: uni.Ability) -> None {
         new_kid.append(nd.doc);
         # When defining an ability inside code blocks (not at module/class level),
         # make the docstring a standalone statement so it doesn't merge with code.
-        if not isinstance(nd.parent, (uni.Module, uni.Archetype, uni.Enum)) {
+        # Implicit/explicit `to cl:`/`cl { }` section blocks hold module-scope
+        # element statements, so a docstring there attaches to the following
+        # declaration just like at module level — no separating `;`.
+        if not isinstance(
+            nd.parent,
+            (
+                uni.Module,
+                uni.Archetype,
+                uni.Enum,
+                uni.ClientBlock,
+                uni.ServerBlock,
+                uni.NativeBlock
+            )
+        ) {
             new_kid.append(nd.gen_token(Tok.SEMI));
         }
     }

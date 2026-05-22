@@ -9,10 +9,19 @@ impl DocIRGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
 
 """Generate DocIR for JSX statement-form slots.
 
-The slot's body is kept as raw statements (ViewLowerPass doesn't run in
-the formatter pipeline), so concatenating the kid doc_irs reproduces the
-source `{ stmt; stmt; ... }` shape verbatim."""
+In the format-only pipeline the slot's body is kept as raw statements
+(ViewLowerPass doesn't run), so concatenating the kid doc_irs reproduces
+the source `{ stmt; stmt; ... }` shape verbatim. When the slot has been
+lowered (its body desugared in place by ViewLowerPass), the kids are no
+longer valid JSX surface syntax, so emit the verbatim span captured
+before lowering instead."""
 impl DocIRGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    if nd.view_raw_src {
+        nd.gen.doc_ir = doc.Text(
+            nd.view_raw_src, source_token=(nd.kid[0] if nd.kid else None)
+        );
+        return;
+    }
     parts: list[doc.DocType] = [];
     for i in nd.kid {
         parts.append(i.gen.doc_ir);

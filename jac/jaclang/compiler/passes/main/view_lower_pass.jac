@@ -74,6 +74,10 @@ obj ViewLowerPass(UniPass) {
 
     """Lower a JSX `{...}` slot body into an accumulator IIFE shape."""
     def exit_jsx_slot(nd: uni.JsxSlot) {
+        # Snapshot the verbatim `{...}` source before desugaring the body in
+        # place. The lowered body is not valid JSX surface syntax, so the
+        # formatter/unparser replay this raw span to round-trip the source.
+        self._capture_raw_src(nd);
         raw_body: list = list(nd.body);
         # Diagnose body rule violations (re-targeted view-body-check).
         self._check_body(raw_body, False, "");
@@ -103,6 +107,30 @@ obj ViewLowerPass(UniPass) {
             }
         }
         nd.set_kids(new_kid);
+    }
+
+    """Record the slot's verbatim `{...}` source span on the node.
+
+    Uses the source positions of the flanking `{`/`}` tokens, so the
+    capture is immune to the in-place body mutation that follows. Skips
+    synthesized slots (e.g. nested `awaiting` slots) whose brace tokens
+    carry no real source span — those keep `view_raw_src` empty and fall
+    back to kid concatenation."""
+    def _capture_raw_src(nd: uni.JsxSlot) -> None {
+        if not nd.kid {
+            return;
+        }
+        open_tok = nd.kid[0];
+        close_tok = nd.kid[-1];
+        if (
+            not isinstance(open_tok, uni.Token)
+            or not isinstance(close_tok, uni.Token)
+            or open_tok.orig_src is None
+            or close_tok.pos_end <= open_tok.pos_start
+        ) {
+            return;
+        }
+        nd.view_raw_src = open_tok.orig_src.code[open_tok.pos_start:close_tok.pos_end];
     }
 
     # ----- view_body_check diagnostics -------------------------------------
