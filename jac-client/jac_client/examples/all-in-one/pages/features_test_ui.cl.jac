@@ -29,7 +29,7 @@ sv import from ..main {
 # ============================================================================
 
 # Button component demonstrating props - NEW PATTERN: Direct parameters
-def:pub TestButton(text: str, onClick: Any, variant: str) -> JsxElement {
+def:pub TestButton(text: str, onClick: any, variant: str) -> JsxElement {
     bg_color = "#3b82f6" if variant == "primary" else "#6b7280";
     hover_color = "#2563eb" if variant == "primary" else "#4b5563";
 
@@ -47,15 +47,15 @@ def:pub TestButton(text: str, onClick: Any, variant: str) -> JsxElement {
                 "fontWeight": "600",
                 "transition": "all 0.2s"
             }}
-            onMouseOver={lambda e: Any { e.target.style.backgroundColor = hover_color; }}
-            onMouseOut={lambda e: Any { e.target.style.backgroundColor = bg_color; }}
+            onMouseOver={lambda e: any { e.target.style.backgroundColor = hover_color; }}
+            onMouseOut={lambda e: any { e.target.style.backgroundColor = bg_color; }}
         >
             {text}
         </button>;
 }
 
 # # Card component with props - NEW PATTERN: Direct parameters
-def:pub TestCard(title: str, children: Any, color: str) -> JsxElement {
+def:pub TestCard(title: str, children: any, color: str) -> JsxElement {
     return
         <div
             style={{
@@ -91,7 +91,7 @@ def:pub TestCard(title: str, children: Any, color: str) -> JsxElement {
 }
 
 # Result display component - NEW PATTERN: Direct parameters
-def:pub ResultDisplay(data: Any, label: str) -> JsxElement {
+def:pub ResultDisplay(data: any, label: str) -> JsxElement {
     if not data {
         return
             <div style={{"color": "#9ca3af", "fontStyle": "italic"}}>
@@ -136,10 +136,10 @@ def:pub FeaturesTest -> JsxElement {
     has testMessage: str = "",
         testData: list = [],
         stringInput: str = "Hello JAC World!",
-        stringResult: Any = None,
+        stringResult: any = None,
         numberList: str = "1,2,3,4,5",
-        listResult: Any = None,
-        complexResult: Any = None,
+        listResult: any = None,
+        complexResult: any = None,
         loading: bool = false;
 
     # Load test data on mount
@@ -178,7 +178,7 @@ def:pub FeaturesTest -> JsxElement {
     }
 
     # Update test data
-    async def handleUpdate(item_id: Any) -> None {
+    async def handleUpdate(item_id: any) -> None {
         new_msg = prompt("Enter new message:");
         if not new_msg {
             return;
@@ -199,7 +199,7 @@ def:pub FeaturesTest -> JsxElement {
     }
 
     # Delete test data
-    async def handleDelete(item_id: Any) -> None {
+    async def handleDelete(item_id: any) -> None {
         if not confirm("Are you sure you want to delete this item?") {
             return;
         }
@@ -365,7 +365,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={testMessage}
-                            onChange={lambda e: Any { testMessage = e.target.value; }}
+                            onChange={lambda e: any { testMessage = e.target.value; }}
                             placeholder="Enter test message..."
                             style={{
                                 "flex": "1",
@@ -476,7 +476,7 @@ def:pub FeaturesTest -> JsxElement {
                             <input
                                 type="text"
                                 value={stringInput}
-                                onChange={lambda e: Any { stringInput = e.target.value; }}
+                                onChange={lambda e: any { stringInput = e.target.value; }}
                                 style={{
                                     "flex": "1",
                                     "padding": "10px",
@@ -508,7 +508,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={numberList}
-                            onChange={lambda e: Any { numberList = e.target.value; }}
+                            onChange={lambda e: any { numberList = e.target.value; }}
                             placeholder="Enter numbers (comma-separated)"
                             style={{
                                 "flex": "1",

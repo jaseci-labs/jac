@@ -96,6 +96,31 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
     return results;
 }
 
+"""Discover the `.style.css` scoped-style annex for a Jac source file.
+
+    Scoped styles attach to a module by shared base name: ``foo.cl.jac`` (or
+    ``foo.jac`` / ``foo.sv.jac`` / ``foo.na.jac``) pairs with ``foo.style.css``
+    living in the same directory. The variant suffix is stripped before the
+    base is matched so every variant of a module shares one annex.
+
+    Returns the absolute path to the annex if it exists, else ``None``.
+    """
+def discover_style_annex(source_path: str) -> (str | None) {
+    src = Path(source_path).resolve();
+    if not src.name.endswith('.jac') {
+        return None;
+    }
+    base = src.stem;
+    for vext in ('.sv', '.cl', '.na') {
+        if base.endswith(vext) {
+            base = base[:-len(vext)];
+            break;
+        }
+    }
+    candidate = src.parent / (base + '.style.css');
+    return str(candidate) if candidate.is_file() else None;
+}
+
 """Discover variant files (.sv.jac, .cl.jac, .na.jac) for a head module.
 
     The head module is whichever file has the highest precedence among the
@@ -181,7 +206,7 @@ def discover_base_file(annex_path: str) -> (str | None) {
                 candidates.append((src.parent.parent, base_name));
             }
             for (directory, name) in candidates {
-                for ext in ('.jac', '.cl.jac') {
+                for ext in ('.jac', '.na.jac', '.cl.jac') {
                     path = directory / f"{name}{ext}";
                     if (path.is_file() and (path != src)) {
                         return str(path);

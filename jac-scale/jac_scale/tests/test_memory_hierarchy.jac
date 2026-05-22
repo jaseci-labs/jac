@@ -9,7 +9,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 import redis;
 import requests;
 import from pymongo { MongoClient }
@@ -84,11 +84,11 @@ def _reset_redis {
 
 """Extract data from TransportResponse envelope format."""
 def extract_transport_response_data(
-    json_response: dict[str, Any] | list[Any]
-) -> dict[str, Any] | list[Any] {
+    json_response: dict[str, any] | list[any]
+) -> dict[str, any] | list[any] {
     if isinstance(json_response, list) {
         if len(json_response) == 2 {
-            body: dict[str, Any] = json_response[1];
+            body: dict[str, any] = json_response[1];
             json_response = body;
         }
     }
@@ -102,7 +102,7 @@ def extract_transport_response_data(
             return json_response["data"];
         } elif not json_response.get("ok") and json_response.get("error") {
             error_info = json_response["error"];
-            result: dict[str, Any] = {
+            result: dict[str, any] = {
                 "error": error_info.get("message", "Unknown error")
             };
             if "code" in error_info {
@@ -137,14 +137,14 @@ def register_user(base_url: str, username: str, password: str = "password123") -
     );
     assert login_res.status_code == 200 , f"Login failed: {login_res.status_code} - {login_res.text}";
     login_data = cast(
-        dict[str, Any], extract_transport_response_data(login_res.json())
+        dict[str, any], extract_transport_response_data(login_res.json())
     );
     return login_data["token"];
 }
 
 def post_request(
     base_url: str, path: str, payload: dict, token: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     res = requests.post(
         f"{base_url}{path}",
         json=payload,
@@ -152,7 +152,7 @@ def post_request(
         timeout=2
     );
     assert res.status_code == 200 , f"POST {path} failed: {res.status_code} - {res.text}";
-    return cast(dict[str, Any], extract_transport_response_data(res.json()));
+    return cast(dict[str, any], extract_transport_response_data(res.json()));
 }
 
 """Start jac server and wait for it to become ready."""
@@ -311,7 +311,7 @@ test "data persists after server restart for mongo db" {
         # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , "Should have 1 task before restart";
@@ -330,7 +330,7 @@ test "data persists after server restart for mongo db" {
         # Verify task persists after restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , "Task should persist after restart";
@@ -507,7 +507,7 @@ test "data persists after server restart for sqlite" {
         # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , f"Should have 1 task before restart, got {len(
@@ -529,7 +529,7 @@ test "data persists after server restart for sqlite" {
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         assert res.status_code == 200 , f"Post-restart request failed: {res.status_code}";
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , f"Task should persist after SQLite restart, got {len(
@@ -642,7 +642,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , "Should have 1 task before restart";
@@ -707,7 +707,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         assert res.status_code == 200 , f"Login failed: {res.status_code} - {res.text}";
-        login_data = cast(dict[str, Any], extract_transport_response_data(res.json()));
+        login_data = cast(dict[str, any], extract_transport_response_data(res.json()));
         token_after_restart = login_data["token"];
 
         # Verify task persists after restart (proves L3 commit worked) - use authenticated request
@@ -718,7 +718,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , "Task should persist after restart (L3 commit)";
@@ -880,7 +880,7 @@ test "sequential requests work correctly" {
 
         # Verify all 5 tasks were created
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
-        all_tasks = cast(dict[str, Any], extract_transport_response_data(res.json()))[
+        all_tasks = cast(dict[str, any], extract_transport_response_data(res.json()))[
             "reports"
         ][0];
         assert len(all_tasks) == 5 , f"Expected 5 tasks, got {len(all_tasks)}";
@@ -958,7 +958,7 @@ test "batch_get reduces MongoDB queries for edge traversals" {
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=10);
         assert res.status_code == 200;
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks = response_data["reports"][0];
         assert len(tasks) == num_tasks , (
@@ -1286,7 +1286,7 @@ test "concurrent requests do not lose edges" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks = response_data["reports"][0];
         task_titles = [t.get("title", "") for t in tasks];
@@ -1320,7 +1320,7 @@ test "acommit forwards anchor argument to commit()" {
 
     received: list = [None];
 
-    def capture_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def capture_commit(self: ScaleTieredMemory, anchor: any = None) {
         received[0] = anchor;
     }
 
@@ -1354,7 +1354,7 @@ test "acommit is idempotent — _committed flag prevents second sync pass" {
 
     call_count = [0];
 
-    def mock_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def mock_commit(self: ScaleTieredMemory, anchor: any = None) {
         call_count[0] += 1;
     }
 
@@ -1384,7 +1384,7 @@ test "acommit leaves _committed False when commit() raises" {
     import from unittest.mock { patch }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
 
-    def failing_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def failing_commit(self: ScaleTieredMemory, anchor: any = None) {
         raise RuntimeError("simulated commit failure");
     }
 

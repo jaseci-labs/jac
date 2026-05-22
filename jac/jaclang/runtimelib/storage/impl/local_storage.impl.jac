@@ -92,7 +92,7 @@ impl LocalStorage.list_files(
     }
 }
 
-impl LocalStorage.get_metadata(self: LocalStorage, path: str) -> dict[str, Any] {
+impl LocalStorage.get_metadata(self: LocalStorage, path: str) -> dict[str, any] {
     file_path = self._resolve_path(path);
     if not file_path.exists() {
         raise FileNotFoundError(f"File not found: {path}");
@@ -127,4 +127,11 @@ impl LocalStorage.move(self: LocalStorage, source: str, destination: str) -> boo
     dest_path.parent.mkdir(parents=True, exist_ok=True);
     shutil.move(str(src_path), str(dest_path));
     return True;
+}
+
+impl LocalStorage.get_url(
+    self: LocalStorage, path: str, expires_in: (int | None) = 3600
+) -> str {
+    file_path = self._resolve_path(path);
+    return f"file://{file_path.absolute()}";
 }

@@ -42,7 +42,7 @@ cl {
     sv import from .typed_collection_return { get_metrics, get_dashboard, get_metrics_by_name }
 
     def:pub app -> JsxElement {
-        has dashboard: Any = None;
+        has dashboard: any = None;
 
         async can with entry {
             dashboard = await get_dashboard();

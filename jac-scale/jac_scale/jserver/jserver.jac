@@ -27,9 +27,9 @@ obj APIParameter {
     has name: str,
         `type: ParameterType = ParameterType.QUERY,
         data_type: str = 'str',
-        type_obj: Any = None,
+        type_obj: any = None,
         required: bool = True,
-        `default: Any = None,
+        `default: any = None,
         description: str = '';
 }
 

@@ -12,7 +12,7 @@ def mixed_kwonly(a: int, *, kw1: str, kw2: bool = False) -> dict {
 }
 
 def complex_kwonly(
-    pos: int, /, reg: str, *args: float, kw_req: bool, kw_opt: int = 10, **kwargs: Any
+    pos: int, /, reg: str, *args: float, kw_req: bool, kw_opt: int = 10, **kwargs: any
 ) -> dict {
     return {
         "pos": pos,

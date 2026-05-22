@@ -69,8 +69,15 @@ impl TypeEvaluator._create_dataclass_init_method(
 ) -> types.FunctionType {
     param_map = self._build_field_params(class_type, skip_deferred=True);
     parameters = list(param_map.values());
+    # `__init__` returns None. Synthesizing UnknownType here used to cascade
+    # into W1051 on every `super.init(...)` call to a dataclass-synthesized
+    # parent, and into E1001 when the call result was assigned to a typed slot.
+    ret_type: TypeBase = types.UnknownType();
+    if self.prefetch and self.prefetch.none_type_class {
+        ret_type = self._convert_to_instance(self.prefetch.none_type_class);
+    }
     return types.FunctionType(
-        func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
+        func_name="__init__", return_type=ret_type, parameters=parameters,
     );
 }
 
@@ -192,7 +199,7 @@ from the receiver argument — `object.__new__(self.__class__)` must resolve
 `Self -> type(self.__class__)`, not the lookup-time class.
 """
 impl TypeEvaluator.get_type_of_member(
-    member: Any, class_type: types.ClassType
+    member: any, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, types.FunctionType) {

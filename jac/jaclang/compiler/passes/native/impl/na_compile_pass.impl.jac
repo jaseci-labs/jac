@@ -11,13 +11,18 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
     if module.gen.llvm_ir is None {
         return ir_in;
     }
+    # Snapshot prog._compile_options at pass entry. This field is mutated by
+    # every prog.compile() call (including the recursive ones we issue below
+    # while linking imports), so reading it later would pick up the inner
+    # caller's options instead of ours.
+    _compile_opts = self.prog._compile_options;
     # Skip engine creation if this module is being compiled as an import
     # during native cross-module linking. We only need the LLVM IR here;
     # the parent's _compile_and_link_native_imports will collect ALL
     # transitive deps itself (DFS with a shared visited set) and link them
     # into the single top-level module — so we must NOT link anything here
     # to avoid duplicate symbols.
-    if self.prog._compile_options.skip_native_engine {
+    if _compile_opts.skip_native_engine {
         return ir_in;
     }
     llvm_ir_str = str(module.gen.llvm_ir);
@@ -165,7 +170,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # AOT mode (used by nacompile): all imports are linked and the
         # linked+optimised bitcode is stored above. Skip JIT engine creation
         # so the module is not consumed and the caller can emit object code.
-        if self.prog._compile_options.aot_mode {
+        if _compile_opts.aot_mode {
             return ir_in;
         }
 

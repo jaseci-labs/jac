@@ -1,6 +1,6 @@
 [project]
 name = "jac-scale"
-version = "0.2.18"
+version = "0.2.19"
 description = "Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -9,7 +9,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "rich>=13.0.0",
-    "jaclang>=0.15.2",
+    "jaclang>=0.15.3",
     "python-dotenv>=1.2.1,<2.0.0",
     "fastapi>=0.121.3,<0.122.0",
     "uvicorn[standard]>=0.38.0,<0.39.0",
@@ -44,13 +44,17 @@ deploy = [
     # bundle them rather than make every user remember `[deploy,data]`.
     "jac-scale[data]",
 ]
+aws = [
+    "boto3>=1.40.0",
+]
 all = [
-    "jac-scale[data,monitoring,scheduler,deploy]",
+    "jac-scale[data,monitoring,scheduler,deploy,aws]",
 ]
 test = [
     "jac-scale[all]",
     "testcontainers[mongodb,redis]",
     "requests",
+    "moto[s3]>=5.0.0",
 ]
 
 [project.urls]
@@ -64,6 +68,7 @@ Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
 scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
+scale_plugin = "jac_scale.plugin:JacScalePlugin"
 
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]

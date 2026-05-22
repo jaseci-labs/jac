@@ -31,8 +31,8 @@ cl {
     sv import from .typed_optional_union { find_user, get_user_or_error }
 
     def:pub app -> JsxElement {
-        has user: Any = None,
-            error: Any = None;
+        has user: any = None,
+            error: any = None;
 
         async can with entry {
             result = await get_user_or_error("123");

@@ -15,7 +15,7 @@ glob logger = logging.getLogger(__name__),
 """Redis provider for Kubernetes deployments."""
 obj KubernetesRedisProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
-        config: dict[str, Any] = {},
+        config: dict[str, any] = {},
         app_name: str by postinit,
         connection_string: str = '';
 
@@ -211,7 +211,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return hash_obj.hexdigest()[:8];
     }
 
-    def deploy(config: dict[str, Any] = {}) -> dict[str, Any] {
+    def deploy(config: dict[str, any] = {}) -> dict[str, any] {
         redis_name = f"{self.app_name}-redis";
         redis_port = 6379;
         redis_service_name = f"{redis_name}-service";
@@ -520,7 +520,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
     Authentication is handled at the NGINX Ingress level via the
     nginx.ingress.kubernetes.io/auth-type: basic annotation, so no sidecar is needed.
     """
-    def deploy_dashboard -> dict[str, Any] {
+    def deploy_dashboard -> dict[str, any] {
         redis_service_name = f"{self.app_name}-redis-service";
         redis_secret_name = f"{self.app_name}-redis-secret";
         insight_name = f"{self.app_name}-redis-insight";

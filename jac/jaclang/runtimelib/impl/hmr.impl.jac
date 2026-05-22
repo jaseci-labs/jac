@@ -9,7 +9,6 @@ import sys;
 import time;
 import shutil;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.cli.console { console }
@@ -41,7 +40,7 @@ impl HotReloader.stop -> None {
 }
 
 """Callback for file change events from the watcher."""
-impl HotReloader.on_file_change(event: Any) -> None {
+impl HotReloader.on_file_change(event: any) -> None {
     if not self._running {
         return;
     }

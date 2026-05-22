@@ -64,6 +64,7 @@ __all__ = [
     "printgraph",
     "restspec",
     "schedule",
+    "unsafe_html",
     # Ambient values and constants
     "llm",
     "NoPerm",
@@ -159,6 +160,11 @@ def printgraph(
 ) -> str: ...
 def restspec(**specs: object) -> Callable[..., Any]: ...
 def schedule(**kwargs: object) -> Callable[..., Any]: ...
+
+# Returns a sentinel object that the JSX flattener turns into raw HTML
+# (`dangerouslySetInnerHTML` on jac-client, `innerHTML` on bare-serve).
+# Use only with content you trust -- the name is the security review hint.
+def unsafe_html(html: object) -> object: ...
 
 # ── User-facing builtin functions (from jaclang.jac0core.jaclib) ────
 # These jaclib functions are directly callable by users in Jac code.

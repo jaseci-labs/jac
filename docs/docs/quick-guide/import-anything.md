@@ -38,7 +38,14 @@ Imports do not carry a codespace by themselves -- they inherit it from their sur
 # 1. Default: the top of any .jac file is the SERVER codespace.
 import os;
 
-# 2. Section header -- everything until the next "to X:" runs in that codespace.
+# 2. Braced block -- scopes a group of statements for one codespace.
+cl {
+    import from react { useState, useRef }
+}
+```
+
+```jac
+# 3. Section header -- everything until the next "to X:" runs in that codespace.
 to cl:
 import from react { useState }
 
@@ -50,23 +57,16 @@ import from json { dumps }
 ```
 
 ```jac
-# 3. Single-statement prefix -- tags exactly one statement.
+# 4. Single-statement prefix -- tags exactly one statement.
 cl import from react { useEffect }
 na import from math_utils { square }
 sv import from analytics { track }
 ```
 
-```jac
-# 4. Braced block -- scopes a group of statements.
-cl {
-    import from react { useState, useRef }
-}
-```
-
 You can also dedicate a whole file to one codespace with a file extension: `.sv.jac` (server), `.cl.jac` (client), `.na.jac` (native). Inside such a file no header or prefix is needed.
 
-!!! tip "Prefer file-based separation, then section headers"
-    For clean, scalable codebases, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. At module scope within a mixed file, `to cl:` / `to sv:` / `to na:` headers are the idiomatic choice -- they read like chapter markers and keep imports grouped. Reserve the single-statement prefix for one-off cases and braced blocks for small nested fragments.
+!!! tip "Prefer file-based separation, then braced blocks"
+    For clean, scalable codebases, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Section headers are a flatter alternative for a file that is mostly one codespace; reserve the single-statement prefix for one-off cases.
 
 ---
 

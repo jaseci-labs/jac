@@ -38,6 +38,44 @@ impl Lexer.in_jsx -> bool {
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
 }
 
+impl Lexer.in_view_body -> bool {
+    # True when the lexer cursor is lexically inside a JSX `{...}` slot body.
+    # Inside a slot the template is statement-based, so a `<Tag` that
+    # follows a `}` (end of a control-flow block) or a sibling JSX close
+    # tag must open a JSX element rather than be read as a `<` comparison.
+    return len(self._view_body_depths) > 0;
+}
+
+impl Lexer._track_view_context(tok: Token) {
+    # Track brace depths so JSX `{...}` slot tracking (pushed by
+    # `scan_jsx_content` when the slot's LBRACE is emitted) pops on the
+    # matching slot RBRACE.
+    k = tok.kind;
+    if k == TokenKind.LPAREN {
+        self._paren_depth += 1;
+    } elif k == TokenKind.RPAREN {
+        if self._paren_depth > 0 {
+            self._paren_depth -= 1;
+        }
+    } elif k == TokenKind.LSQUARE {
+        self._bracket_depth += 1;
+    } elif k == TokenKind.RSQUARE {
+        if self._bracket_depth > 0 {
+            self._bracket_depth -= 1;
+        }
+    } elif k == TokenKind.LBRACE {
+        self._brace_depth += 1;
+    } elif k == TokenKind.RBRACE {
+        if len(self._view_body_depths) > 0
+        and self._brace_depth == self._view_body_depths[-1] {
+            self._view_body_depths.pop();
+        }
+        if self._brace_depth > 0 {
+            self._brace_depth -= 1;
+        }
+    }
+}
+
 impl Lexer.prev_is_value -> bool {
     # Returns True when the previous token ends a value-producing expression.
     # Used to disambiguate `<` as comparison (after values) vs JSX tag opener.
@@ -929,6 +967,13 @@ impl Lexer.scan_jsx_tag_token -> Token {
         self.advance();
         return self.make_token(TokenKind.DOT, ".", start_line, start_col, start_pos);
     }
+    # `@` introduces a dynamic-tag expression: <@expr ...> / </@expr>
+    if ch == "@" {
+        self.advance();
+        return self.make_token(
+            TokenKind.DECOR_OP, "@", start_line, start_col, start_pos
+        );
+    }
     # Unknown - return error token
     self.error(
         f"Unexpected character in JSX tag: '{ch}'",
@@ -983,8 +1028,8 @@ impl Lexer.scan_jsx_content -> Token {
             TokenKind.JSX_CLOSE_START, "</", start_line, start_col, start_pos
         );
     }
-    # Check for nested JSX element: <identifier
-    if ch == "<" and self.is_alpha(self.peek()) {
+    # Check for nested JSX element: <identifier (or a dynamic tag <@expr)
+    if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
         self.advance();  # consume <
         self.jsx_depth += 1;
         # Push JSX_TAG on top of current JSX_CONTENT
@@ -1045,7 +1090,12 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();  # consume {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
-        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        self.push_mode(LexerMode.NORMAL);  # Parse slot body in normal mode
+        # Track the slot's brace depth so any nested JSX inside the slot
+        # body (statement-position JSX after a `}` close of a control-flow
+        # arm) is still lexed as JSX. The +1 anticipates the increment
+        # `_track_view_context` will apply on this LBRACE.
+        self._view_body_depths.append(self._brace_depth + 1);
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Text content - collect until we hit a meaningful JSX delimiter or end.
@@ -1065,7 +1115,8 @@ impl Lexer.scan_jsx_content -> Token {
             #   </  (closing tag / fragment close)
             #   <>  (fragment open)
             #   <A  (nested element — alpha means tag name)
-            if nxt == "/" or nxt == ">" or self.is_alpha(nxt) {
+            #   <@  (dynamic-tag element)
+            if nxt == "/" or nxt == ">" or nxt == "@" or self.is_alpha(nxt) {
                 break;
             }
         }
@@ -1697,10 +1748,24 @@ impl Lexer.next_token -> Token {
     if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
-    # Check for JSX opening tag: <identifier
+    # Check for JSX opening tag: <identifier (or a dynamic tag <@expr).
     # Only if the previous token is NOT a value (otherwise < is a comparison operator).
-    if ch == "<" and self.is_alpha(self.peek()) and not self.prev_is_value() {
-        return self.scan_jsx_open_start();
+    # Inside a `view` body the template is statement-based, so a `<Tag` that
+    # immediately follows a block close `}` or a sibling JSX close tag still
+    # opens a JSX element even though those tokens are "value"-ending.
+    if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
+        if not self.prev_is_value() {
+            return self.scan_jsx_open_start();
+        }
+        if self.in_view_body()
+        and self.prev_token_kind in [
+            TokenKind.RBRACE,
+            TokenKind.JSX_TAG_END,
+            TokenKind.JSX_SELF_CLOSE,
+            TokenKind.JSX_FRAG_CLOSE
+        ] {
+            return self.scan_jsx_open_start();
+        }
     }
     # Identifier or keyword
     if self.is_alpha(ch) {
@@ -1750,6 +1815,7 @@ impl Lexer.tokenize -> list[Token] {
     while True {
         token = self.next_token();
         tokens.append(token);
+        self._track_view_context(token);
         self.prev_token_kind = token.kind;
         if token.kind == TokenKind.EOF {
             break;

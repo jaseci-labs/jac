@@ -24,13 +24,16 @@ def test_try_no_exception() -> int {
     return result;
 }
 
-# Test 3: Exception with "as" binding — bind exception message
+# Test 3: Exception with "as" binding — bind exception message.
+# `str(e)` yields the exception's message. The native runtime represents
+# an exception as a char* message pointer, so str() of it is the message
+# string itself; this matches Jac-proper semantics where str(e) is a str.
 def test_except_as_binding() -> str {
     msg: str = "none";
     try {
         raise Exception("caught me");
     } except Exception as e {
-        msg = e;
+        msg = str(e);
     }
     return msg;
 }

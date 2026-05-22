@@ -482,8 +482,8 @@ import from react { createContext, useContext }
 
 glob AuthContext = createContext(None);
 
-# Auth Provider component
-def:pub AuthProvider(props: dict) -> JsxElement {
+# Auth Provider component -- `children` holds the nested JSX
+def:pub AuthProvider(children: any = None) -> JsxElement {
     has user: any = None;
     has loading: bool = True;
 
@@ -518,7 +518,7 @@ def:pub AuthProvider(props: dict) -> JsxElement {
     };
 
     return <AuthContext.Provider value={value}>
-        {props.children}
+        {children}
     </AuthContext.Provider>;
 }
 

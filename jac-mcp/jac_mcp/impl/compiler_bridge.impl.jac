@@ -1,13 +1,12 @@
 """Implementation of compiler bridge."""
 
-import from typing { Any }
 import tempfile;
 import os;
 import sys;
 import threading;
 import io;
 """Extract line, col, and message from an Alert object."""
-def _extract_error_info(alert: object) -> dict[str, Any] {
+def _extract_error_info(alert: object) -> dict[str, any] {
     return {
         "line": alert?.loc?.first_line or 0,
         "col": alert?.loc?.col_start or 0,
@@ -41,7 +40,7 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
 """Parse Jac code and return structured errors."""
 impl CompilerBridge.parse_snippet(
     code: str, filename: str = "snippet.jac"
-) -> dict[str, Any] {
+) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "valid": False,
@@ -54,11 +53,9 @@ impl CompilerBridge.parse_snippet(
             ]
         };
     }
-    def _do_parse -> dict[str, Any] {
+    def _do_parse -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -94,7 +91,7 @@ impl CompilerBridge.parse_snippet(
 """Full type-check pipeline on Jac code."""
 impl CompilerBridge.typecheck_snippet(
     code: str, filename: str = "snippet.jac"
-) -> dict[str, Any] {
+) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "valid": False,
@@ -108,11 +105,9 @@ impl CompilerBridge.typecheck_snippet(
             "warnings": []
         };
     }
-    def _do_typecheck -> dict[str, Any] {
+    def _do_typecheck -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -152,7 +147,7 @@ impl CompilerBridge.typecheck_snippet(
 }
 
 """Format Jac code."""
-impl CompilerBridge.format_snippet(code: str) -> dict[str, Any] {
+impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "formatted": code,
@@ -160,10 +155,9 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, Any] {
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_format -> dict[str, Any] {
+    def _do_format -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-        Jac.setup();
         compiler = Jac.get_compiler();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
@@ -198,18 +192,17 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, Any] {
 }
 
 """Convert Python code to Jac."""
-impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, Any] {
+impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
     if len(python_code) > MAX_INPUT_SIZE {
         return {
             "jac_code": "",
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_py2jac -> dict[str, Any] {
+    def _do_py2jac -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        Jac.setup();
         compiler = Jac.get_compiler();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f {
@@ -254,7 +247,7 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, Any] {
 }
 
 """Parse Jac code and return AST representation."""
-impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, Any] {
+impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, any] {
     import json;
 
     if len(code) > MAX_INPUT_SIZE {
@@ -263,11 +256,9 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, A
             "ast": None
         };
     }
-    def _do_ast -> dict[str, Any] {
+    def _do_ast -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -307,7 +298,7 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, A
 }
 
 """Lint Jac code and return violations with optional auto-fix."""
-impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str, Any] {
+impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "violations": [],
@@ -316,11 +307,9 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_lint -> dict[str, Any] {
+    def _do_lint -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.compiler { JacCompiler }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -380,18 +369,16 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
 }
 
 """Convert Jac code to Python."""
-impl CompilerBridge.jac_to_py(code: str) -> dict[str, Any] {
+impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "python_code": "",
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_jac2py -> dict[str, Any] {
+    def _do_jac2py -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
             f.write(code);
@@ -429,18 +416,16 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, Any] {
 }
 
 """Convert Jac code to JavaScript."""
-impl CompilerBridge.jac_to_js(code: str) -> dict[str, Any] {
+impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "js_code": "",
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_jac2js -> dict[str, Any] {
+    def _do_jac2js -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
-
-        Jac.setup();
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".cl.jac", delete=False
@@ -485,7 +470,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, Any] {
 """Execute Jac code and return output."""
 impl CompilerBridge.run_snippet(
     code: str, entrypoint: str = "", timeout: int = 10
-) -> dict[str, Any] {
+) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "stdout": "",
@@ -494,11 +479,9 @@ impl CompilerBridge.run_snippet(
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_run -> dict[str, Any] {
+    def _do_run -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.constructs { WalkerArchetype }
-
-        Jac.setup();
 
         # Create temp file
         with tempfile.NamedTemporaryFile(
@@ -524,10 +507,14 @@ impl CompilerBridge.run_snippet(
             base = base or './';
             mod_name = mod_name[:-4];  # Remove .jac
 
-            if not Jac.base_path_dir {
+            if not Jac.get_base_path_dir() {
                 Jac.set_base_path(base);
             }
-            mach = Jac.create_j_context(user_root=None);
+            mach = Jac.create_j_context(
+                user_root=None,
+                base_path_dir=Jac.get_base_path_dir(),
+                full_target_path=Jac.get_full_target_path()
+            );
             Jac.set_context(mach);
 
             try {
@@ -578,7 +565,7 @@ impl CompilerBridge.run_snippet(
                 stdout_val = captured_out.getvalue();
                 stderr_val = captured_err.getvalue();
 
-                result: dict[str, Any] = {
+                result: dict[str, any] = {
                     "stdout": stdout_val,
                     "stderr": stderr_val,
                     "exit_code": 0
@@ -633,14 +620,14 @@ impl CompilerBridge.graph_viz_snippet(
     bfs: bool = True,
     edge_limit: int = 512,
     node_limit: int = 512
-) -> dict[str, Any] {
+) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
             "graph": "",
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_graph -> dict[str, Any] {
+    def _do_graph -> dict[str, any] {
         import subprocess;
         import shutil;
         import from pathlib { Path }
@@ -689,8 +676,8 @@ impl CompilerBridge.graph_viz_snippet(
 }
 
 """List available Jac project templates."""
-impl CompilerBridge.list_templates -> dict[str, Any] {
-    def _do_list_templates -> dict[str, Any] {
+impl CompilerBridge.list_templates -> dict[str, any] {
+    def _do_list_templates -> dict[str, any] {
         import from jaclang.project.template_registry {
             get_template_registry,
             initialize_template_registry
@@ -714,7 +701,7 @@ impl CompilerBridge.list_templates -> dict[str, Any] {
 """Create a new Jac project from a template."""
 impl CompilerBridge.create_project(
     name: str, template: str = "default", directory: str = ""
-) -> dict[str, Any] {
+) -> dict[str, any] {
     import subprocess;
     import from pathlib { Path }
 
@@ -732,7 +719,7 @@ impl CompilerBridge.create_project(
     # Build command
     cmd: list[str] = ["jac", "create", name, "-u", template, "--force"];
 
-    def _do_create -> dict[str, Any] {
+    def _do_create -> dict[str, any] {
         result = subprocess.run(
             cmd, capture_output=True, text=True, cwd=work_dir, timeout=30
         );
@@ -776,7 +763,7 @@ impl CompilerBridge.create_project(
 """Start a Jac REST API server as a background process."""
 impl CompilerBridge.start_server(
     filename: str, port: int = 8000, faux: bool = False
-) -> dict[str, Any] {
+) -> dict[str, any] {
     import subprocess;
     import from pathlib { Path }
     import time;
@@ -796,7 +783,7 @@ impl CompilerBridge.start_server(
 
     if faux {
         # Faux mode: run jac start --faux synchronously to get endpoint docs
-        def _do_faux -> dict[str, Any] {
+        def _do_faux -> dict[str, any] {
             result = subprocess.run(
                 ["jac", "start", file_name_only, "--faux", "-p", str(port)],
                 capture_output=True,

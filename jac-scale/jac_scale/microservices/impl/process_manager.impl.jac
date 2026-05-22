@@ -368,7 +368,7 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
 """Background recovery loop; module-scope so the thread target is
 picklable. Swallows per-iteration exceptions so a transient socket
 error doesn't kill the loop."""
-def _health_monitor_loop(pm: Any, stop_event: Any, interval: float) -> None {
+def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
     while not stop_event.is_set() {
         try {
             pm.check_all_health();

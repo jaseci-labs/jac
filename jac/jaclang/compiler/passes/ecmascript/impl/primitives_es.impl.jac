@@ -1884,6 +1884,17 @@ impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return "Reflect.construct(" + cls + ", " + ctor_args + ")";
 }
 
+# Raw-HTML opt-in:  unsafe_html(x) → _jac.builtin.unsafe_html(x). The runtime
+# wraps the value in a sentinel object that the JSX flattener turns into a
+# `<span dangerouslySetInnerHTML={{__html: x}}/>` (jac-client) or sets
+# `innerHTML` on the parent element (bare-serve). Named `unsafe_html`
+# specifically so the danger is visible at the call site.
+impl ESBuiltinEmitter.emit_unsafe_html(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
+    return _rt("builtin", "unsafe_html", args);
+}
+
 impl ESBuiltinEmitter.emit_hash(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     return _rt("builtin", "hash", args);
 }

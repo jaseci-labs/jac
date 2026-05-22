@@ -1,7 +1,6 @@
 """Tests for admin portal API endpoints using ScaleTestClient."""
 
 import uuid;
-import from typing { Any }
 import from jac_scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,

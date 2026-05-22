@@ -1,7 +1,6 @@
 """File covering plugin implementation."""
 import os;
 import pathlib;
-import from typing { Any }
 import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
@@ -141,6 +140,39 @@ def _scale_pre_hook(context: HookContext) -> None {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
+        # --dry-run cancels execution before the deploy. auto_build and
+        # guard_fallback_image stay at their defaults (False) so
+        # generate_manifests never tries to build an image.
+        dry_run = context.get_arg("dry-run", False);
+        if dry_run {
+            if target != "kubernetes-microservice" {
+                console.print(
+                    f"\n[yellow]--dry-run only supported with "
+                    f"kubernetes-microservice target (got {target!r}).[/yellow]"
+                );
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            show_yaml: bool = bool(context.get_arg("show_yaml", False));
+            try {
+                import from jac_scale.microservices.cli.plan { print_plan }
+                import from jac_scale.microservices.cli.diagnostics { has_errors }
+                (bundle, diagnostics) = print_plan(
+                    deployment_target, app_config, show_yaml=show_yaml
+                );
+                exit_code = 2 if has_errors(diagnostics) else 0;
+            } except Exception as e {
+                console.print(f"\n[red]--dry-run failed:[/red] {e}");
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", exit_code);
+            return;
+        }
+
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
         # build=False for manifest-shape assertions construct the
@@ -301,6 +333,20 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
+                    short=""
+                ),
+                Arg.create(
+                    "dry-run",
+                    typ=bool,
+                    default=False,
+                    help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+                    short=""
+                ),
+                Arg.create(
+                    "show-yaml",
+                    typ=bool,
+                    default=False,
+                    help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
                     short=""
                 ),
 
@@ -704,8 +750,14 @@ class JacCmd {
 """Jac Scale Plugin Implementation."""
 class JacScalePlugin {
     @hookimpl
-    static def create_j_context(user_root: (str | None)) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.)
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext {
+        # Storage backend configured via environment (MONGODB_URI, etc.) —
+        # base_path_dir / full_target_path are SQLite-backend artifacts that
+        # don't apply here, but the spec carries them so we accept the kwargs.
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);
@@ -936,7 +988,7 @@ class JacScalePlugin {
     RuntimeError (we cannot replay events that were already consumed).
     """
     @hookimpl
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
@@ -1083,8 +1135,8 @@ class JacScalePlugin {
     """
     @hookimpl
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: Any
-    ) -> Any {
+        module_name: str, walker_name: str, args: dict, stub_cls: any
+    ) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
@@ -1175,8 +1227,8 @@ The TestClient branch passes `client=None` because the TestClient
 instance is owned by sv_client._test_clients and outlives the call.
 """
 def _wrap_sse_keepalive_scale(
-    stream_cm: Any, resp: Any, client: Any, func_label: str
-) -> Any {
+    stream_cm: any, resp: any, client: any, func_label: str
+) -> any {
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     try {
         for ev in consume_sse_stream(resp, func_label) {
@@ -1340,7 +1392,7 @@ Shared between the retry and test-client paths in sv_service_call so
 both observe the same error semantics. Raises RuntimeError with the
 envelope's error message when ok=false.
 """
-def _unwrap_sv_envelope(data: Any, module_name: str, func_name: str) -> Any {
+def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
     if isinstance(data, dict) and data.get("ok") {
         result_envelope = data.get("data");
         if isinstance(result_envelope, dict) and ("result" in result_envelope) {
@@ -1366,8 +1418,8 @@ can read both like a locally-spawned walker. Raises RuntimeError on
 envelope-level failure, matching `_unwrap_sv_envelope`.
 """
 def _hydrate_walker_envelope(
-    data: Any, module_name: str, walker_name: str, stub_cls: Any
-) -> Any {
+    data: any, module_name: str, walker_name: str, stub_cls: any
+) -> any {
     if isinstance(data, dict) and data.get("ok") {
         envelope = data.get("data") or {};
         result_dict = envelope.get("result") if isinstance(envelope, dict) else None;

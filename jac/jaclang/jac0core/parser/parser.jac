@@ -49,10 +49,10 @@ import from jaclang.jac0core.diagnostics {
     E0047,
     E0050,
     E0051,
+    E2023,
     W0060,
     W0061,
-    W0063,
-    W0064
+    W0063
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -103,6 +103,7 @@ import from jaclang.jac0core.unitree {
     TryStmt,
     Except,
     FinallyStmt,
+    AwaitingClause,
     WithStmt,
     ExprAsItem
 }
@@ -183,7 +184,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
@@ -407,7 +408,8 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None;
+        prog: object | None = None,
+        _view_body_depth: int = 0;  # > 0 while parsing inside a JSX `{...}` slot body
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;
@@ -492,7 +494,7 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
-    def _make_attr_from_keyword(name_tok: Any);
+    def _make_attr_from_keyword(name_tok: any);
     def parse_index_slice -> IndexSlice;
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
@@ -523,6 +525,8 @@ obj Parser {
     def parse_lambda_param -> ParamVar;
     # JSX parsing
     def parse_jsx_element -> Expr;
+    def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
+    def _consume_jsx_dynamic_close(close_kid: list);
     def parse_jsx_opening_element -> tuple;
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
@@ -587,7 +591,7 @@ obj Parser {
     def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
-        is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+        is_override: bool, override_tok: any, is_static: bool, static_tok: any
     ) -> tuple;
 
     def parse_func_signature -> FuncSignature;

@@ -10,7 +10,7 @@
 def test_int_div_by_zero() -> int {
     result: int = 0;
     try {
-        x: int = 10 / 0;
+        x: int = 10 // 0;
         result = -1;  # Should not reach
     } except ZeroDivisionError {
         result = 1;
@@ -35,7 +35,7 @@ def test_div_by_zero_var() -> int {
     result: int = 0;
     d: int = 0;
     try {
-        x: int = 42 / d;
+        x: int = 42 // d;
         result = -1;
     } except ZeroDivisionError {
         result = 1;
@@ -59,7 +59,7 @@ def test_float_div_by_zero() -> int {
 def test_div_no_error() -> int {
     result: int = 0;
     try {
-        x: int = 10 / 2;
+        x: int = 10 // 2;
         result = x;  # Should be 5
     } except ZeroDivisionError {
         result = -1;
@@ -257,12 +257,14 @@ obj SimpleObj {
     }
 }
 
-# Test 19: Field access on None
+# Test 19: Field access on None. The variable is honestly typed nullable
+# and the `as` cast asserts non-None so `.val` type-checks; at runtime the
+# value is None and the native deref traps as an AttributeError.
 def test_none_field_access() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.val;
+        x: int = (s as SimpleObj).val;
         result = -1;
     } except AttributeError {
         result = 1;
@@ -270,12 +272,12 @@ def test_none_field_access() -> int {
     return result;
 }
 
-# Test 20: Method call on None
+# Test 20: Method call on None -- same nullable-plus-cast pattern as Test 19.
 def test_none_method_call() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.get_val();
+        x: int = (s as SimpleObj).get_val();
         result = -1;
     } except AttributeError {
         result = 1;
@@ -387,7 +389,7 @@ def test_alloc_ok() -> int {
 def test_catch_base_exception() -> int {
     result: int = 0;
     try {
-        x: int = 10 / 0;
+        x: int = 10 // 0;
         result = -1;
     } except Exception {
         result = 1;
@@ -400,7 +402,7 @@ def test_sequential_errors() -> int {
     r1: int = 0;
     r2: int = 0;
     try {
-        x: int = 1 / 0;
+        x: int = 1 // 0;
     } except ZeroDivisionError {
         r1 = 1;
     }
@@ -420,7 +422,7 @@ def test_error_in_loop() -> int {
     i: int = 0;
     while i < 5 {
         try {
-            x: int = 10 / i;  # Fails when i==0
+            x: int = 10 // i;  # Fails when i==0
         } except ZeroDivisionError {
             count = count + 1;
         }

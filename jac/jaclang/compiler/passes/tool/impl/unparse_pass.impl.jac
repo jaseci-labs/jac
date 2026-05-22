@@ -1147,8 +1147,14 @@ impl UnparsePass.exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None {
     nd.gen.jac = nd.expr.gen.jac;
 }
 
-"""JsxNormalAttribute: name[=value]."""
+"""JsxNormalAttribute: `name[=value]` — or `{name}` for the shorthand
+form (`#6082` item 6) where the attribute name and value are the same
+bare identifier."""
 impl UnparsePass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
+    if nd.is_shorthand {
+        nd.gen.jac = "{" + nd.name.gen.jac + "}";
+        return;
+    }
     result = nd.name.gen.jac;
     if nd.value {
         result = result + " = " + nd.value.gen.jac;
@@ -1164,6 +1170,19 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxSlot: statement-form `{...}` slot — emit each kid in order so the
+raw `{ stmt; stmt; ... }` shape round-trips through the formatter."""
+impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[str] = [];
+    for k in nd.kid {
+        s = k.gen.jac;
+        if s is not None {
+            parts.append(s);
+        }
+    }
+    nd.gen.jac = "".join(parts);
 }
 
 """JsxComment: emit the raw `{#* ... *#}` text verbatim."""

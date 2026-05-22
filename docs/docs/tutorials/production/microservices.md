@@ -363,6 +363,74 @@ If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor
 
 For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
 
+### Previewing a deploy with `--dry-run`
+
+`jac start --scale` builds an image, pushes it to a registry, and applies manifests to your cluster. That is 5-10 minutes of work and several side effects (registry tags, rolling pod restarts, namespace state). If your config is wrong, you find out at the end.
+
+`jac start --scale --dry-run` does the same planning step in under a second, lints the config, and prints a per-service summary of what would be applied. Nothing is built, pushed, or applied.
+
+```bash
+jac start main.jac --scale --dry-run
+```
+
+Output (default, card view):
+
+```text
+=== jac scale plan: dry-run ===
+Cluster:    minikube    Namespace: my-app
+check: no errors or warnings
+
+Microservices (3)
+
+  orders_app
+    image:     my-app:v1.0
+    replicas:  2  (HPA: 2 -> 10 @ 70% CPU)
+    resources: cpu 100m -> 500m    mem 128Mi -> 256Mi
+    port:      8000
+    route:     /api/orders  (via gateway)
+    pdb:       maxUnavailable=1
+
+  users_app
+    image:     my-app:v1.0
+    replicas:  1  (HPA: 1 -> 3 @ 70% CPU)
+    resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
+    port:      8000
+    route:     /api/users  (via gateway)
+
+  __gateway__
+    image:     my-app:v1.0
+    replicas:  1
+    resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
+    port:      8000
+
+Totals
+  3 deployments, 3 services, 2 HPAs, 3 PDBs
+
+To see the raw YAML manifests, re-run with --show-yaml
+```
+
+The summary line at the top tells you whether the plan is deployable:
+
+- `check: no errors or warnings` - safe to apply
+- `! N warnings` - advisory; deploy still works
+- `X N errors` - errors block the apply; exit code is 2
+
+Errors and warnings appear inline on the service card they belong to, so you don't have to hunt for the offending block. The validator catches things like HPA `min > max`, `cpu_request > cpu_limit`, missing image resolution, PDB `minAvailable` that would block node drains, and invalid Kubernetes resource units (`500MB` instead of `500Mi`).
+
+**Use `--dry-run` whenever you:**
+
+- Edit `jac.toml` (routes, resources, ingress, secrets, HPA, PDB)
+- Add or remove a service from `routes`
+- Deploy to a shared/staging/prod cluster
+- Want a reviewer to see the plan in a PR
+
+For the raw YAML stream (e.g. to pipe into `kubectl diff`), add `--show-yaml`:
+
+```bash
+jac start main.jac --scale --dry-run --show-yaml | sed -n '/^---$/,$p' > planned.yaml
+diff <(kubectl get -n my-app deployment,service,hpa,pdb,ingress -o yaml) planned.yaml
+```
+
 ---
 
 ## Common Pitfalls

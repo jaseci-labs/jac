@@ -10,7 +10,6 @@ and `llm.impl/local.impl.jac`.
 
 import logging;
 import json;
-import from typing { Any }
 
 glob _logger: logging.Logger = logging.getLogger("byllm.local_runtime"),
      # Bundled local model registry. Each entry maps an alias the user types

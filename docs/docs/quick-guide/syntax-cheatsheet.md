@@ -294,7 +294,7 @@ with entry {
 
 # `obj` is like a Python dataclass -- fields are per-instance,
 # auto-generates __init__, __eq__, __repr__, etc.
-obj Dog {
+obj Pet {
     has name: str = "Unnamed",
         age: int = 0;
 
@@ -303,8 +303,8 @@ obj Dog {
     }
 
     # Static method -- no self or Self; works as a named constructor
-    static def make(name: str) -> Dog {
-        return Dog(name=name);
+    static def make(name: str) -> Pet {
+        return Pet(name=name);
     }
 
     # Static method -- no self or Self
@@ -314,16 +314,16 @@ obj Dog {
 }
 
 # `class` follows standard Python class behavior
-class Cat {
+class Kitten {
     has name: str = "Unnamed";
 
-    def meow(self: Cat) {
+    def meow(self: Kitten) {
         print(f"{self.name} says Meow!");
     }
 }
 
 # Inheritance
-obj Puppy(Dog) {
+obj Puppy(Pet) {
     has parent_name: str = "Unknown";
 
     override def bark() {
@@ -341,7 +341,9 @@ obj Result[T, E = Exception] {
     }
 }
 
-# Forward declaration (define body later or in another file)
+# Decl-only archetype (body lives in a separate `impl` block, possibly
+# in another file). Jac's decl/impl pattern -- two `obj UserProfile`
+# blocks would be a duplicate-declaration error (E0077).
 obj UserProfile;
 
 
@@ -402,7 +404,7 @@ obj Account {
 # Access modifiers work on obj, class, node, edge, walker,
 # def, has -- controlling visibility and API exposure
 
-obj:pub Person {
+obj:pub Profile {
     has:pub name: str;          # Public (default)
     has:priv ssn: str;          # Private
     has:protect age: int;       # Protected
@@ -1222,9 +1224,9 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   to sv: = server (Python/PyPI)
-#   to cl: = client (JavaScript/npm)
-#   to na: = native (C ABI)
+#   sv { } / to sv: = server (Python/PyPI)
+#   cl { } / to cl: = client (JavaScript/npm)
+#   na { } / to na: = native (C ABI)
 
 
 # ============================================================
@@ -1240,32 +1242,36 @@ def:pub get_todos() -> list {
     return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
-# Client section (compiles to JavaScript/React)
-to cl:
+# Client code in a braced block (compiles to JavaScript/React).
+# The braces bracket exactly the client region.
+cl {
+    def:pub app() -> JsxElement {
+        has items: list = [];
 
-def:pub app() -> JsxElement {
-    has items: list = [];
+        async can with entry {
+            items = await get_todos();
+        }
 
-    async can with entry {
-        items = await get_todos();
+        return <div>
+            {[<p key={i.title}>{i.title}</p> for i in items]}
+        </div>;
     }
-
-    return <div>
-        {[<p key={i.title}>{i.title}</p> for i in items]}
-    </div>;
 }
 
-# Return to server section
-to sv:
-
+# Code after the block is back in the server codespace
 node Secret { has value: str; }
+
+# Section header -- an alternative to a block; sets the codespace for
+# every following element until the next "to X:" header or end of file
+to cl:
+
+import from react { useEffect }
+
+to sv:
 
 # Single-statement form (no header, no braces)
 sv import from .database { connect_db }
 cl import from react { useState }
-
-# Braced form (cl { ... }) is still valid in inner scopes,
-# but emits W0064 at module scope -- prefer `to cl:` / `cl` prefix.
 
 
 # ============================================================
@@ -1277,6 +1283,7 @@ cl import from react { useState }
 # .na.jac        Native variant
 # .impl.jac      Implementation annex (method bodies)
 # .test.jac      Test annex
+# .style.css     Scoped CSS annex (auto-scopes classes for the matching .cl.jac)
 
 
 # ============================================================
@@ -1297,16 +1304,36 @@ def:pub Counter() -> JsxElement {
     </div>;
 }
 
+# JSX `{...}` slots accept statement-form control flow as children.
+# Inside the slot, JSX statements push into the enclosing element's
+# children list; `skip;` ends the slot with whatever was emitted.
+def:pub Greeting(name: str) -> JsxElement {
+    return <div>
+        {if name == "" {
+            <p>(no name given)</p>
+            skip;                     # skip; = slot early-exit guard
+        }}
+        <h1>Hello, {name}!</h1>
+    </div>;
+}
+
+# Raw HTML opt-in (the name is the security review hint):
+#   <div>{unsafe_html(trusted_html_blob)}</div>
+
 # JSX syntax reference:
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
-# {expression}                  JavaScript expression
+# {expression}                  Expression slot (one value)
+# {if .. for ..}                Statement slot (control flow as children)
 # {#* comment *#}               JSX comment (renders nothing)
-# {condition and <p>Show</p>}   Conditional render
-# {[<li>...</li> for x in xs]}  List rendering
-# <div {...props}>               Spread props
+# {unsafe_html(x)}              Raw HTML opt-in (escapes off)
+# <@expr />                     Dynamic tag (resolves expr at runtime)
+# <div {**props}>               Spread props ({...props} also works but warns W0063)
+# <Box {title} {count} />       Attribute shorthand ({title} -> title={title})
 # <div className="cls">         Class name (not "class")
 # <div style={{"color": "red"}} Inline styles
+#   (classes declared in a same-base-name <Comp>.style.css are auto-scoped)
+# <@expr>...</@expr>            Dynamic tag (tag chosen by expression)
 
 
 # ============================================================

@@ -1,7 +1,7 @@
 """Implementation for helpers."""
 
 """Initialize the Jac debugger."""
-impl Jdb.init(self: Jdb, *args: Any, **kwargs: Any) -> None {
+impl Jdb.init(self: Jdb, *args: any, **kwargs: any) -> None {
     super.init(*args, **kwargs);
     self.prompt = 'Jdb > ';
 }

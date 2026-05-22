@@ -6,6 +6,11 @@ impl JacAPIServerAuth.register_auth_endpoints -> None {
     self.register_login_endpoint();
     self.register_refresh_token_endpoint();
     self.register_update_password_endpoint();
+    self.register_add_identity_endpoint();
+    self.register_send_verification_endpoint();
+    self.register_verify_identity_endpoint();
+    self.register_forgot_password_endpoint();
+    self.register_reset_password_endpoint();
     self.register_me_endpoint();
     self.register_update_me_endpoint();
     self.register_sso_endpoints();
@@ -20,7 +25,7 @@ impl JacAPIServerAuth.register_register_endpoint -> None {
         identities = [i.model_dump(mode='json') for i in body_data.identities];
         credential = body_data.credential.model_dump(mode='json');
         try {
-            result = self.user_manager.create_user(
+            result = self.user_manager.create_user_with_identities(
                 identities, credential, body_data.profile
             );
             if 'error' in result {
@@ -213,7 +218,7 @@ impl JacAPIServerAuth.register_me_endpoint -> None {
         # response clean.
         identities_out = [];
         for ident in user.get('identities', []) {
-            identity_out: dict[str, Any] = {
+            identity_out: dict[str, any] = {
                 'type': ident.get('type'),
                 'verified': ident.get('verified', False),
                 'is_recovery': ident.get('is_recovery', False)

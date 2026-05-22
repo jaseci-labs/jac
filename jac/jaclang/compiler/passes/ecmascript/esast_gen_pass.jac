@@ -30,6 +30,10 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.compiler.passes.ecmascript.scoped_styles {
+    ScopedStyleSheet,
+    load_style_annex
+}
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
@@ -267,6 +271,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
@@ -319,7 +324,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _extract_return_type(
-        ability_node: uni.Ability, func_name: str, manifest: Any
+        ability_node: uni.Ability, func_name: str, manifest: any
     ) -> str;
 
     def _wrap_return_with_boundary(
