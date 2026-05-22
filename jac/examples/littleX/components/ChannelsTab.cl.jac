@@ -219,12 +219,12 @@ def:pub ChannelsTab(
                 for tweet in channelPosts {
                     <TweetCard
                         key={tweet.id}
-                        tweet={tweet}
+                        {tweet}
                         myUsername={profileUsername}
-                        onLike={onLike}
-                        onComment={onComment}
-                        onDelete={onDelete}
-                        onRepost={onRepost}
+                        {onLike}
+                        {onComment}
+                        {onDelete}
+                        {onRepost}
                     />
                 }
             } }
