@@ -72,6 +72,12 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in self.enum_types {
         return self.enum_types[cname];
     }
+    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+    # its struct on demand so a `File` annotation lowers even before any file
+    # op has emitted the helpers.
+    if cname == "File" {
+        return self._get_file_struct_type().as_pointer();
+    }
     # User-defined object/struct -> pointer to struct.
     if cname in self.struct_types {
         return self.struct_types[cname].as_pointer();
