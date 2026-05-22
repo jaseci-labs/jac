@@ -96,7 +96,11 @@ safe and lossless.
 def _strip_empty_dicts(v: object) -> object {
     if isinstance(v, dict) {
         cleaned = {k: _strip_empty_dicts(vv) for (k, vv) in v.items()};
-        return {k: vv for (k, vv) in cleaned.items() if not (isinstance(vv, dict) and not vv)};
+        return {
+            k: vv
+            for (k, vv) in cleaned.items()
+            if not (isinstance(vv, dict) and not vv)
+        };
     }
     if isinstance(v, list) {
         return [_strip_empty_dicts(item) for item in v];
