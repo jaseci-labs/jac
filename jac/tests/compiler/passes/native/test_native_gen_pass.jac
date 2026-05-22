@@ -7,7 +7,6 @@ native machine code, and produce correct results when executed via ctypes.
 import ctypes;
 import io;
 import os;
-import pytest;
 import subprocess;
 import sys;
 import tempfile;
@@ -1947,17 +1946,7 @@ def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
 }
 
 test "auto promote chess.jac detects native compatible" {
-    # xfail (#6049 section A follow-ups): with native diagnostic suppression
-    # dropped, chess.jac trips type-checker gaps the central evaluator does not
-    # yet model for the native dialect -- nullability narrowing on
-    # `Board | NoneType` and numeric operator-overload resolution
-    # (`__add__`/`__mul__`/`__mod__`). Tracked as separate sub-issues; this test
-    # recovers to green automatically once those land.
-    try {
-        (ir, _) = compile_auto_native(CHESS_JAC);
-    } except AssertionError as e {
-        pytest.xfail(f"#6049 deferred native-dialect type-checker gaps: {e}");
-    }
+    (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
     assert ir.gen.native_compat , ("chess.jac should be auto-promoted to native");
     assert ir.gen.native_engine is not None , (
@@ -1966,15 +1955,7 @@ test "auto promote chess.jac detects native compatible" {
 }
 
 test "auto promote chess.jac has entry and key functions" {
-    # xfail (#6049 section A follow-ups): see "detects native compatible" above
-    # -- chess.jac hits unmodeled native-dialect nullability/operator-overload
-    # type-checker gaps once suppression is dropped. Recovers to green once the
-    # deferred sub-issues land.
-    try {
-        (ir, _) = compile_auto_native(CHESS_JAC);
-    } except AssertionError as e {
-        pytest.xfail(f"#6049 deferred native-dialect type-checker gaps: {e}");
-    }
+    (ir, _) = compile_auto_native(CHESS_JAC);
     eng = ir.gen.native_engine;
     assert eng is not None;
     # jac_entry must exist
