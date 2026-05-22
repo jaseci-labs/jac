@@ -852,6 +852,15 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 if right_name == "value" {
                     return member_val;
                 }
+                # Integer enum .name: index the name table by the member's
+                # static declaration ordinal (the table is built ordinal-keyed,
+                # independent of the assigned int values).
+                ordinal = self.enum_member_ordinal.get(f"{mem_enum}.{mem_name}");
+                if ordinal is not None {
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, ir.Constant(ir.IntType(64), ordinal), use_name=True
+                    );
+                }
             }
         }
         if target_name is not None and right_name is not None {

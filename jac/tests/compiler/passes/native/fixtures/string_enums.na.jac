@@ -47,6 +47,14 @@ def int_enum_still_works() -> int {
     return Priority.HIGH.value;
 }
 
+def priority_high_name() -> str {
+    return Priority.HIGH.name;
+}
+
+def priority_low_name() -> str {
+    return Priority.LOW.name;
+}
+
 with entry {
     _x: int = 1;
 }

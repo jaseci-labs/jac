@@ -2204,6 +2204,16 @@ test "string_enums int enum still works" {
     assert f() == 2 , f"Priority.HIGH should be 2, got {f()}";
 }
 
+test "string_enums int enum name access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "priority_high_name", ctypes.c_char_p);
+    assert f() == b"HIGH" , f"Priority.HIGH.name should be 'HIGH', got {f()}";
+    g = get_func(eng, "priority_low_name", ctypes.c_char_p);
+    assert g() == b"LOW" , f"Priority.LOW.name should be 'LOW', got {g()}";
+}
+
 # --- Cross-Module Enum Import Tests ---
 test "enum_import compiles" {
     (eng, _) = compile_native("na_enum_import.na.jac");
