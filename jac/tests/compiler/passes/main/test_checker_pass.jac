@@ -4052,6 +4052,33 @@ test "explicit_any_annotations_emit_w1037" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);
 }
 
+test "explicit_typing_any_annotations_emit_w1037" {
+    # `typing.Any` is the same gradual-typing escape hatch as the Jac `any`
+    # keyword and must warn identically. Without this, `from typing { Any }`
+    # would be a silent loophole around W1037.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_typing_any.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    explicit_any_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1037" in w.pretty_print()
+    ];
+    # Expected sites (6 total), mirroring checker_explicit_any.jac:
+    #   1. `x: Any`          param type on `takes_any`
+    #   2. `-> Any`          return type on `takes_any`
+    #   3. `y: Any = 5`      annotated assignment
+    #   4. `list[Any]`       nested Any in a generic param
+    #   5. `Any | None`      Any branch of a union return type
+    #   6. `payload: Any`    field annotation
+    assert len(explicit_any_warnings) == 6 , f"Expected 6 W1037 warnings, got {len(
+        explicit_any_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();
