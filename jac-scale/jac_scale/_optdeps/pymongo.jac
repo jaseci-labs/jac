@@ -2,10 +2,10 @@
 
 with entry {
     try {
-        import from pymongo { MongoClient, UpdateOne }
+        import from pymongo { AsyncMongoClient, MongoClient, UpdateOne }
         import from pymongo.collection { Collection }
         import from pymongo.cursor { Cursor }
-        import from pymongo.errors { ConnectionFailure }
+        import from pymongo.errors { ConnectionFailure, DuplicateKeyError }
         import from pymongo.results {
             InsertOneResult as PyMongoInsertOneResult,
             InsertManyResult as PyMongoInsertManyResult,
@@ -15,6 +15,7 @@ with entry {
         HAS_PYMONGO = True;
     } except ImportError {
         MongoClient = None;
+        AsyncMongoClient = None;
         UpdateOne = None;
         PyMongoInsertOneResult = None;
         PyMongoInsertManyResult = None;
@@ -23,6 +24,7 @@ with entry {
         Cursor = None;
         Collection = None;
         ConnectionFailure = Exception;
+        DuplicateKeyError = Exception;
         HAS_PYMONGO = False;
     }
 

@@ -2,17 +2,11 @@
 import time;
 import from abc { ABC, abstractmethod }
 import from threading { Event }
-import from typing { Any, TYPE_CHECKING }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
 import from jaclang.jac0core.log { logging }
 import from jaclang.jac0core.unitree { UniNode }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 """Alert interface."""
 obj Alert {
@@ -49,7 +43,7 @@ obj BaseTransform[T_in, T_out](ABC) {
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
-        logger: Any by postinit,
+        logger: any by postinit,
         ir_out: T_out by postinit;
 
     """Initialize pass and run transformation."""
@@ -92,7 +86,7 @@ obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
         node_override: (UniNode | None) = None,
         related: (list[tuple[str, UniNode]] | None) = None,
         help_text: (str | None) = None,
-        **kwargs: Any
+        **kwargs: any
     ) -> bool;
 
     """Check if a diagnostic code is suppressed."""

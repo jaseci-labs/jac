@@ -12,6 +12,18 @@ Diagnostic codes follow the pattern `{severity}{category}{sequence}`:
 
 For example, `E1030` is a **type error** about attribute access, and `W3005` is a **lint warning** about empty parentheses.
 
+## Guide Pointers
+
+When a diagnostic maps to a topic covered by the bundled reference guides, `jac check` prints a one-line pointer beneath it:
+
+```text
+error[E1001]: Cannot assign Literal["hello"] to int
+  --> example.jac:2:5
+  → run 'jac guide jac-types' for guidance
+```
+
+Run the suggested command for the relevant reference material. See [`jac guide`](cli/index.md#jac-guide).
+
 ## Suppressing Diagnostics
 
 ### Inline Suppression
@@ -62,7 +74,7 @@ Emitted by the parser and lexer during source code parsing.
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
 | `E0011` | Jac does not allow this keyword in any syntactic position |
-| `E0012` | Use `Reflect.construct(target, argumentsList)` method to create new instances |
+| `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
 ### Operator / Expression Errors
@@ -104,12 +116,21 @@ Emitted by the parser and lexer during source code parsing.
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 
+### Property Declaration Errors
+
+| Code | Message |
+|------|---------|
+| `E0080` | Property declarations cannot have an initializer (declare backing storage as a separate `has` field) |
+| `E0081` | Property declaration must contain at least one of `getter`, `setter`, `deleter` |
+
 ### Parser Warnings
 
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
-| `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
+| `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
+| `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
+| `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
 
@@ -138,6 +159,9 @@ Emitted by the type checker and type evaluator.
 | `E1002` | Cannot return {actual}, expected {expected} |
 | `E1003` | Return type annotation required when function returns a value |
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
+
+!!! tip "`E1001`/`E1002` with `any` on the right-hand side"
+    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/foundation.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
 
 ### Operator Errors
 
@@ -233,6 +257,15 @@ Emitted by the type checker and type evaluator.
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
 
+### Type Warnings
+
+| Code | Message |
+|------|---------|
+| `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1050` | Unknown intrinsic JSX element '<{tag}>' |
+| `W1051` | Expression type could not be resolved (Unknown) |
+| `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+
 ---
 
 ## Import Warnings (W1xxx)
@@ -241,7 +274,9 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
-| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as any |
+| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
+| `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
 ---
 
@@ -276,6 +311,22 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `E2011` | Parameter count mismatch for ability {name} |
 | `E2012` | From the declaration of {name} |
 
+### JSX Slot Body Rules
+
+Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body violates the body-shape rules. See the [components tutorial](../tutorials/fullstack/components.md#jsx-slots-control-flow-as-children) for the underlying model.
+
+| Code | Message |
+|------|---------|
+| `E2019` | A JSX slot renders template content and cannot 'return' a value. Use 'skip;' for slot early-exit, or move the value-producing expression outside the JSX slot. |
+| `E2020` | Bare 'return;' is not allowed inside a JSX slot -- it reads like it exits the enclosing function, but a slot body is an inlined IIFE. Use 'skip;' for slot early-exit. |
+| `E2021` | '{kw}' is not allowed inside a '{loop}' loop in a JSX slot. Use 'continue' to skip an iteration, or 'skip;' to exit the whole slot. |
+| `E2022` | 'finally' is not allowed on a 'try' that has an 'awaiting' clause. The dispatched-but-not-joined window and finalization semantics are ambiguous together; move cleanup into an explicit mount/unmount hook or drop one of the clauses. |
+| `E2023` | Redundant '{...}' slot wrapping inside a JSX slot body -- slot bodies are already in slot mode. Drop the outer braces: write '`<kw>` ... { ... }' directly instead of '{`<kw>` ... { ... }}'. |
+| `E2024` | 'has' is not allowed inside a JSX slot body. A slot body is a statement template that re-runs on every render; declaring reactive state there would compile to a conditional 'useState' and violate React's rules of hooks. Declare 'has'-fields at the component scope (the enclosing 'def -> JsxElement' body). |
+| `W2019` | 'while' loop in a JSX slot renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
+| `W2020` | 'awaiting' is not yet implemented on the '{target}' target -- the 'awaiting' clause body will be ignored at runtime. Only the 'cl' (react/preact) target currently lowers 'awaiting' to a Suspense fallback. |
+| `W2021` | 'for' loop in a JSX slot renders JSX without a 'key' attribute -- annotate one child element with 'key=' so iteration siblings keep their identity across re-renders. |
+
 ---
 
 ## Lint Rules (W3xxx / E3xxx)
@@ -296,6 +347,21 @@ Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#c
 | `W3010` | `fix-impl-signature` | Implementation signature does not match declaration | default |
 | `W3011` | `remove-import-semi` | Unnecessary semicolon after import | default |
 | `E3012` | `no-print` | Calling print() is disallowed by rule | all |
+| `W3020` | `unnecessary-pass` | Unnecessary 'pass' in non-empty body | default |
+| `W3021` | `unnecessary-else-after-return` | Unnecessary 'else' after 'return' | default |
+| `W3022` | `nested-if-to-elif` | Nested 'if' in 'else' can be 'elif' | default |
+| `W3023` | `simplify-return-bool` | `if cond return True else return False` can be simplified to `return cond` | default |
+| `W3024` | `repeated-condition` | Repeated condition in if/elif chain | default |
+| `W3025` | `identical-branches` | Identical if/else branches -- the else is redundant | default |
+| `W3030` | `too-many-params` | Function has {count} parameters (threshold is {threshold}) | default |
+| `W3035` | `is-with-literal` | Use '==' instead of 'is' when comparing to a literal | default |
+| `W3036` | `mutable-default` | Mutable default argument '{type}' -- use None and assign inside the function | default |
+| `W3037` | `unnecessary-none-return` | Unnecessary '-> None' return type annotation on '{name}'; functions without a return statement implicitly return None | default |
+| `W3038` | `usestate-to-has` | useState hook for '{name}' can be replaced with `has {name}: {type} = {init}` | default |
+| `W3039` | `getattr-to-null-ok` | getattr(obj, 'attr', None) should use null-safe access | default |
+| `W3040` | `filter-compare-tautology` | Filter comparison '{name} == {name}' is always true | default |
+| `W3041` | `stale-has-read` | Reactive `has` field '{name}' is read after being assigned in the same `can with entry` block | default |
+| `W3042` | `map-lambda-to-comprehension` | `.map(lambda x -> any { return <jsx>; })` can be replaced with comprehension syntax | default |
 
 ---
 

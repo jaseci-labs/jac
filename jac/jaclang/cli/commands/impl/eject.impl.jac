@@ -10,11 +10,9 @@ jaclang dependency".
 """
 
 import shutil;
-import tomllib;
 import json;
 import re;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.cli.console { console }
 
 # Python imports in the ejected backend that pull in a jaclang "companion"
@@ -77,13 +75,8 @@ def load_eject_project_metadata(src: Path) -> dict {
     if not toml_path.exists() {
         raise FileNotFoundError(f"No jac.toml found in {src}");
     }
-    try {
-        with open(toml_path, "rb") as f {
-            toml_data = tomllib.load(f);
-        }
-    } except Exception as e {
-        raise RuntimeError(f"Failed to parse {toml_path}: {e}");
-    }
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    toml_data = read_toml_with_encoding(str(toml_path));
     project_section = toml_data.get("project", {});
     raw_name = project_section.get("name", "") or "";
     # Fall back to the source directory name if jac.toml has the unrendered
@@ -390,7 +383,7 @@ pre-computed access sets classify walkers and abilities exactly the way
 the normal `jac start` path would — otherwise a walker that's public in
 source would end up gated at runtime.
 """
-def _has_pub_access(ast_item: Any) -> bool {
+def _has_pub_access(ast_item: any) -> bool {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { Tokens as Tok }
     if not isinstance(ast_item, uni.AstAccessNode) {

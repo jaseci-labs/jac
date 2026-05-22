@@ -1,4 +1,4 @@
-impl __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -12,7 +12,26 @@ impl __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement {
     }
     reactChildren = [];
     for child in childrenArray {
-        if child != None {
+        # Skip both `null` and `undefined`: a missing prop or omitted slot
+        # surfaces as `undefined` in the compiled bundle, and accessing
+        # `.__jacUnsafeHtml` on it would TypeError.
+        if child == None or child == undefined {
+            continue;
+        }
+        # `unsafe_html(...)` sentinel: wrap in a <span dangerouslySetInnerHTML>
+        # so the raw markup renders inline with surrounding siblings. Property
+        # access on primitives (string / number / boolean) returns `undefined`
+        # in JS, so the check naturally rejects non-marker children -- no
+        # `typeof` / `__isObject` guard needed. Both `null` and `undefined`
+        # children were filtered above, so this access is safe.
+        if child.__jacUnsafeHtml != undefined {
+            reactChildren.append(
+                React.createElement(
+                    "span",
+                    {"dangerouslySetInnerHTML": {"__html": child.__jacUnsafeHtml}}
+                )
+            );
+        } else {
             reactChildren.append(child);
         }
     }
@@ -136,7 +155,7 @@ impl __cacheGet(key: str) -> dict {
 }
 
 # Store an entry in the cache with LRU eviction
-impl __cacheSet(key: str, data: Any, ttl: int) -> None {
+impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state = __getCacheState();
     # Remove existing entry if present
     if state["cache"][key] {
@@ -197,7 +216,7 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # ============================================================================
 
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
-impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any {
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -226,7 +245,7 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any {
 }
 
 # Direct function fetch (POST /function/<name>)
-impl __doFuncFetch(function_name: str, args: dict) -> Any {
+impl __doFuncFetch(function_name: str, args: dict) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -260,7 +279,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> Any {
 # ============================================================================
 # AUTO-CACHE DISPATCH — shared by __jacSpawn and __jacCallFunction
 # ============================================================================
-impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: Any) -> Any {
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
@@ -306,7 +325,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: Any) -> An
 # ============================================================================
 # PUBLIC API — __jacSpawn and __jacCallFunction with auto-caching
 # ============================================================================
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     # Auth walkers always skip cache
     if left == "login"
     or left == "signup"
@@ -319,32 +338,32 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> Any { return __doWalkerFetch(left, right, fields); }
+        lambda -> any { return __doWalkerFetch(left, right, fields); }
     );
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
+impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     endpoint_key = f"func:{function_name}";
     args_key = f"{endpoint_key}:{JSON.stringify(args)}";
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> Any { return __doFuncFetch(function_name, args); }
+        lambda -> any { return __doFuncFetch(function_name, args); }
     );
 }
 
-impl __normalizeIdentity(x: Any) -> dict {
+impl __normalizeIdentity(x: any) -> dict {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-impl __normalizeCredential(x: Any) -> dict {
+impl __normalizeCredential(x: any) -> dict {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
@@ -489,7 +508,20 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
         <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
+# Thin wrapper over React.Suspense for the `awaiting` template clause.
+# When a child throws a Promise (the React Suspense protocol), the
+# `fallback` element renders until the Promise settles. `flow`/`wait`
+# don't throw Promises today, so the fallback only appears when the
+# try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
+# a fetcher that suspends). The wrapper is still useful as the named
+# integration point so the language-level lowering stays stable.
+impl JacAwaiting(props: dict) -> JsxElement {
+    return React.createElement(
+        React.Suspense, {"fallback": props.fallback}, props.children
+    );
+}
+
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
     # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
     # which is the only place React exposes `info.componentStack`.
     return
@@ -799,10 +831,7 @@ impl JacForm(props: dict) -> JsxElement {
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
                     <option value="">{placeholder or f"Select {label}"}</option>
-                    {options.map(
-                        lambda opt: any -> JsxElement { return
-                            <option value={opt} key={opt}>{opt}</option>; }
-                    )}
+                    {[<option value={opt} key={opt}>{opt}</option> for opt in options]}
                 </select>
             );
         }
@@ -813,32 +842,30 @@ impl JacForm(props: dict) -> JsxElement {
             watchValue = form.watch(fieldName);
             return (
                 <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
-                    {options.map(
-                        lambda opt: any -> JsxElement { return (
-                            <label
-                                key={opt}
-                                style={{
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem"
-                                }}
-                            >
-                                <input
-                                    type="radio"
-                                    name={field.name}
-                                    value={opt}
-                                    ref={field.ref}
-                                    onChange={field.onChange}
-                                    onBlur={field.onBlur}
-                                    checked={watchValue == opt}
-                                    className={inputClassName}
-                                    style={{cursor: "pointer"}}
-                                />
-                                <span>{opt}</span>
-                            </label>
-                        ); }
-                    )}
+                    {[
+                        <label
+                            key={opt}
+                            style={{
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem"
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name={field.name}
+                                value={opt}
+                                ref={field.ref}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                checked={watchValue == opt}
+                                className={inputClassName}
+                                style={{cursor: "pointer"}}
+                            />
+                            <span>{opt}</span>
+                        </label> for opt in options
+                    ]}
                 </div>
             );
         }
@@ -850,7 +877,7 @@ impl JacForm(props: dict) -> JsxElement {
                 <textarea
                     placeholder={placeholder}
                     rows={rows}
-                    {...field}
+                    {**field}
                     className={inputClassName}
                     style={{
                         width: "100%",
@@ -875,7 +902,7 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type={"text" if isVisible else "password"}
                             placeholder={placeholder}
-                            {...field}
+                            {**field}
                             className={inputClassName}
                             style={{
                                 width: "100%",
@@ -923,7 +950,7 @@ impl JacForm(props: dict) -> JsxElement {
             <input
                 type={fieldType}
                 placeholder={placeholder}
-                {...field}
+                {**field}
                 className={inputClassName}
                 style={{
                     width: "100%",
@@ -1061,7 +1088,7 @@ to ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
 therefore `info.componentStack`, the only thing that names user components when
 the JS stack lives inside react-dom) is exclusively delivered to onError.
 Wiring this here is the one place we can capture it."""
-impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
         stack = error.stack if error else "";
@@ -1083,7 +1110,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     window.addEventListener(
         "error",
-        lambda event: Any { __jacReportError(
+        lambda event: any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -1093,7 +1120,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any {
+        lambda event: any {
             reason = event.reason;
             message = "";
             stack = "";

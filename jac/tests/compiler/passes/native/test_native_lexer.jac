@@ -10,6 +10,7 @@ import ctypes;
 import os;
 import sys;
 import from pathlib { Path }
+import from typing { Callable }
 import jaclang;
 import from jaclang.jac0core.codeinfo { NativeFunctionInfo }
 import from jaclang.jac0core.program { JacProgram }
@@ -177,16 +178,15 @@ test "auto-marshal string enum functions" {
     assert layout is not None;
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
-    # color_ordinal_red should return 0 (ordinal of RED)
-    func_layout = layout.functions.get("color_ordinal_red");
+    # color_cmp branches on string-enum members (RED=0, BLUE=2 ordinals),
+    # proving enum members compile to usable comparison constants and that a
+    # function in a string-enum module wraps and round-trips through marshalling.
+    func_layout = layout.functions.get("color_cmp");
     assert func_layout is not None;
     wrapper = wrap_native_function(eng, func_layout, ct_classes, enum_maps, {});
     assert wrapper is not None;
-    assert wrapper() == 0 , f"Expected 0 (RED ordinal), got {wrapper()}";
-    # color_ordinal_blue should return 2 (ordinal of BLUE)
-    func_layout2 = layout.functions.get("color_ordinal_blue");
-    wrapper2 = wrap_native_function(eng, func_layout2, ct_classes, enum_maps, {});
-    assert wrapper2() == 2 , f"Expected 2 (BLUE ordinal), got {wrapper2()}";
+    assert wrapper(0) == 10 , f"color_cmp(RED=0) should be 10, got {wrapper(0)}";
+    assert wrapper(2) == 30 , f"color_cmp(BLUE=2) should be 30, got {wrapper(2)}";
 }
 
 # --- Tuple metadata export ---
@@ -476,7 +476,7 @@ test "accelerate module compiles lexer" {
     lexer_mod = sys.modules[mod_name];
 
     # Save original functions so we can restore after test
-    saved: dict = {};
+    saved: dict[str, Callable] = {};
     for (name, obj) in list(lexer_mod.__dict__.items()) {
         if callable(obj) and not name.startswith("_") {
             saved[name] = obj;

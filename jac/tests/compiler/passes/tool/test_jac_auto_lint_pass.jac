@@ -792,26 +792,26 @@ test "nested class impl signature fixed" {
     # NOT: (self, shared, private) which would happen if bug exists
     assert "OuterClass.InnerClass.init" in impl_defs , "OuterClass.InnerClass.init impl not found";
     inner_init_params = get_impl_params(impl_defs["OuterClass.InnerClass.init"]);
-    assert inner_init_params == ["self", "name"] , f"OuterClass.InnerClass.init should be FIXED to [self, name] "
+    assert inner_init_params == ["self", "name"] , "OuterClass.InnerClass.init should be FIXED to [self, name] "
     f"(matching InnerClass.init decl), got: {inner_init_params}. "
-    f"Original impl had [self, a, b]. "
-    f"If you got [self, shared, private], the bug is that auto-lint looked up "
-    f"OuterClass.init instead of InnerClass.init.";
+    "Original impl had [self, a, b]. "
+    "If you got [self, shared, private], the bug is that auto-lint looked up "
+    "OuterClass.init instead of InnerClass.init.";
 
     # OuterClass.AnotherInner.init should be FIXED from (self, foo) to (self, x, y)
     # (plus kwonly z, but we only check positional params here)
     assert "OuterClass.AnotherInner.init" in impl_defs , "OuterClass.AnotherInner.init impl not found";
     another_init_params = get_impl_params(impl_defs["OuterClass.AnotherInner.init"]);
-    assert another_init_params == ["self", "x", "y"] , f"OuterClass.AnotherInner.init should be FIXED to [self, x, y] "
+    assert another_init_params == ["self", "x", "y"] , "OuterClass.AnotherInner.init should be FIXED to [self, x, y] "
     f"(matching AnotherInner.init decl), got: {another_init_params}. "
-    f"Original impl had [self, foo].";
+    "Original impl had [self, foo].";
 
     # OuterClass.process should be FIXED from (wrong) to (data)
     assert "OuterClass.process" in impl_defs , "OuterClass.process impl not found";
     process_params = get_impl_params(impl_defs["OuterClass.process"]);
-    assert process_params == ["data"] , f"OuterClass.process should be FIXED to [data] "
+    assert process_params == ["data"] , "OuterClass.process should be FIXED to [data] "
     f"(matching process decl), got: {process_params}. "
-    f"Original impl had [wrong].";
+    "Original impl had [wrong].";
 }
 
 # ── TestRemoveImportSemicolons ───────────────────────────────────────────
@@ -1271,4 +1271,38 @@ test "W3038 does not remove import when useState call is not a destructure assig
     # import must stay since useState is still referenced
     assert "import from \"react\"" in formatted;
     assert "useState" in formatted;
+}
+
+# ── W3042: map(lambda → JSX) to list comprehension ──────────────────────────
+test "W3042 converts map lambda to list comprehension" {
+    input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Single-param case: HourGrid is converted.
+    assert "for hour in hours" in formatted;
+    assert "[<div className=\"text-xs text-center\">{hour}</div> for hour in hours]" in formatted;
+
+    # Multi-param case: MultiParamMap must be left untouched — list
+    # comprehensions only bind one iteration variable per `for` clause.
+    assert "items.map(" in formatted;
+    assert "lambda a: any" in formatted;
+    assert "b: any" in formatted;
+    assert "for a in items" not in formatted;
+    assert "for a, b in items" not in formatted;
+}
+
+test "W3042 filter-map chain converts to filtered comprehension" {
+    input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Both .filter() and .map() calls must be gone
+    assert ".map(" not in formatted;
+    assert ".filter(" not in formatted;
+
+    # Should produce a filtered list comprehension with an if clause
+    assert "<li className=\"active\">{item.name}</li>" in formatted;
+    assert "for item in items" in formatted;
+    assert "if item.active" in formatted;
 }

@@ -5,7 +5,7 @@ import json as json_mod;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-impl _read_shadcn_config(config: Any) -> Any {
+impl _read_shadcn_config(config: any) -> any {
     if config.project_root is None {
         return None;
     }
@@ -15,7 +15,7 @@ impl _read_shadcn_config(config: Any) -> Any {
     return config._raw_data.get("jac-shadcn");
 }
 
-impl _fetch_json(url: str) -> Any {
+impl _fetch_json(url: str) -> any {
     import urllib.request;
     import urllib.error;
 
@@ -98,7 +98,7 @@ def _dep_exists_in_toml(key: str, content: str) -> bool {
     );
 }
 
-impl _update_npm_deps(config: Any, npm_deps: dict) -> None {
+impl _update_npm_deps(config: any, npm_deps: dict) -> None {
     if not npm_deps {
         return;
     }
@@ -154,7 +154,7 @@ def _patch_toml_section(toml_path: Path, section_marker: str, deps: dict) {
     }
 }
 
-impl add_shadcn_components(config: Any, component_names: list) -> bool {
+impl add_shadcn_components(config: any, component_names: list) -> bool {
     shadcn_config = _read_shadcn_config(config);
     if not shadcn_config {
         console.error(
@@ -278,7 +278,7 @@ impl add_shadcn_components(config: Any, component_names: list) -> bool {
     return len(added) > 0;
 }
 
-impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
+impl init_shadcn_theme(config: any, theme_url: str) -> bool {
     import from urllib.parse { urlparse, parse_qs }
 
     project_root = Path(str(config.project_root));
@@ -452,7 +452,7 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
     return True;
 }
 
-impl remove_shadcn_components(config: Any, component_names: list) -> bool {
+impl remove_shadcn_components(config: any, component_names: list) -> bool {
     project_root = Path(str(config.project_root));
     ui_dir = project_root / "components" / "ui";
 

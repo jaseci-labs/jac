@@ -2,14 +2,8 @@
 import ast as ast3;
 import builtins;
 import html;
-import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.unitree { UniNode, UniScopeNode }
-    }
-}
+import type from jaclang.jac0core.unitree { UniNode, UniScopeNode }
 
 glob id_bag: dict = {},
      id_used: int = 0,
@@ -71,6 +65,7 @@ glob id_bag: dict = {},
          'RevisitStmt': '#d8f3dc',
          'DisengageStmt': '#d8f3dc',
          'AwaitExpr': '#fbeb93',
+         'CastExpr': '#fbeb93',
          'GlobalStmt': '#ffc596',
          'NonLocalStmt': '#ffc596',
          'Assignment': '#ffc596',

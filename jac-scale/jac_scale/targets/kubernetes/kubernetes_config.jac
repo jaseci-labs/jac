@@ -1,5 +1,4 @@
 """Kubernetes-specific configuration."""
-import from typing { Any }
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 
 """Configuration for Kubernetes deployments."""
@@ -14,6 +13,14 @@ obj KubernetesConfig(BaseConfig) {
         cpu_limit: (str | None) = None,
         memory_request: (str | None) = None,
         memory_limit: (str | None) = None,
+        # Probe defaults match upstream's pre-microservice baseline so the
+        # monolith all-in-one path keeps the rollout-grace window it
+        # expected (slow first-boot apps with multiple init containers
+        # need ~13min of liveness grace before restart-looping).
+        # Microservice-mode apps that want tighter drain semantics set
+        # `[plugins.scale.kubernetes].liveness_failure_threshold` etc.
+        # in jac.toml explicitly; we don't tighten the defaults globally
+        # because the parent KubernetesTarget shares this config object.
         readiness_initial_delay: int = 10,
         readiness_period: int = 20,
         liveness_initial_delay: int = 10,
@@ -69,9 +76,16 @@ obj KubernetesConfig(BaseConfig) {
         ingress_session_affinity: bool = True,
         # Domain / TLS configuration
         domain: str = "",
-        cert_manager_email: str = "";
+        cert_manager_email: str = "",
+        # Microservice deployments default to the namespace `default`
+        # ServiceAccount (no RBAC). Apps that need cluster API access
+        # (e.g. sandbox-spawning apps that watch pods, create namespaces)
+        # point this at a pre-bound SA. The microservice target does
+        # not create the SA - it must already exist in the namespace,
+        # with whatever RoleBindings / ClusterRoleBindings the app needs.
+        service_account_name: str = "";
 
-    override def to_dict -> dict[str, Any] {
+    override def to_dict -> dict[str, any] {
         base = super.to_dict();
         base.update(
             {
@@ -138,13 +152,14 @@ obj KubernetesConfig(BaseConfig) {
                 'ingress_session_affinity': self.ingress_session_affinity,
                 # Domain / TLS configuration
                 'domain': self.domain,
-                'cert_manager_email': self.cert_manager_email
+                'cert_manager_email': self.cert_manager_email,
+                'service_account_name': self.service_account_name
             }
         );
         return base;
     }
 
-    static def from_dict(cls: type, config: dict[str, Any]) -> KubernetesConfig {
+    static def from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
         return cls(
             app_name=config.get('app_name', 'jaseci'),
             namespace=config.get('namespace', 'default'),
@@ -208,7 +223,8 @@ obj KubernetesConfig(BaseConfig) {
             ingress_limit_connections=config.get('ingress_limit_connections', 20),
             ingress_session_affinity=config.get('ingress_session_affinity', True),
             domain=config.get('domain', ''),
-            cert_manager_email=config.get('cert_manager_email', '')
+            cert_manager_email=config.get('cert_manager_email', ''),
+            service_account_name=config.get('service_account_name', '')
         );
     }
 }

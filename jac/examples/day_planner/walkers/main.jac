@@ -11,12 +11,10 @@ def:pub app -> JsxElement {
 
 to sv:
 
-# --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
 enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
-# --- AI Types ---
 obj Ingredient {
     has name: str,
         quantity: float,
@@ -34,7 +32,6 @@ sem categorize = "Categorize a task based on its title";
 def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
 sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
-# --- Data Nodes ---
 node Task {
     has title: str,
         done: bool = False,
@@ -49,9 +46,9 @@ node ShoppingItem {
         carby: bool;
 }
 
-# --- Task Walkers ---
 walker:priv AddTask {
-    has title: str;
+    has title: str,
+        reports: list[Task] = [];
 
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
@@ -61,7 +58,8 @@ walker:priv AddTask {
 }
 
 walker:priv ListTasks {
-    has results: list[Task] = [];
+    has results: list[Task] = [],
+        reports: list[list[Task]] = [];
 
     can start with Root entry {
         visit [-->];
@@ -77,7 +75,8 @@ walker:priv ListTasks {
 }
 
 walker:priv ToggleTask {
-    has task_id: str;
+    has task_id: str,
+        reports: list[Task] = [];
 
     can search with Root entry {
         visit [-->];
@@ -108,9 +107,9 @@ walker:priv DeleteTask {
     }
 }
 
-# --- Shopping List Walkers ---
 walker:priv GenerateShoppingList {
-    has meal_description: str;
+    has meal_description: str,
+        reports: list[list[ShoppingItem]] = [];
 
     can generate with Root entry {
         visit [-->];
@@ -133,7 +132,8 @@ walker:priv GenerateShoppingList {
 }
 
 walker:priv GetShoppingList {
-    has items: list[ShoppingItem] = [];
+    has items: list[ShoppingItem] = [],
+        reports: list[list[ShoppingItem]] = [];
 
     can collect with Root entry {
         visit [-->];

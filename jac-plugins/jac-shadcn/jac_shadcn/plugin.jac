@@ -7,14 +7,13 @@ Registers:
 
 import from jaclang.cli.command { Arg, HookContext }
 import from jaclang.jac0core.runtime { hookimpl }
-import from typing { Any }
 
 class JacShadcnPlugin {
     @hookimpl
     static def create_cmd -> None;
 
     @hookimpl
-    static def register_project_template -> dict[str, Any] | None;
+    static def register_project_template -> dict[str, any] | None;
 }
 
 """Pre-hook handler for `jac add --shadcn`."""

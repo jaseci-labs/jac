@@ -589,7 +589,6 @@ impl `test(
     verbose: bool = False
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    Jac.setup();
     # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
     if (test_name and not filepath) {
         console.error(

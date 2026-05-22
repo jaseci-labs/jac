@@ -1,0 +1,226 @@
+"""Guardrail tests for the .na.jac / na {} native pipeline.
+
+These tests verify that NaIRGenPass raises a clear E5090 error on AST
+node types it does not yet support, rather than silently dropping them
+and emitting empty function bodies.
+
+Each test below targets one feature that NaIRGenPass currently no-ops.
+When a feature gains real support, its test here should be deleted and
+a behavioral test added to test_native_gen_pass.jac.
+
+A regression that re-introduces silent-failure mode shows up here as a
+test that fails: "expected E5090, got no errors" — which is exactly the
+class of bug this guardrail exists to prevent.
+"""
+
+import os;
+import from pathlib { Path }
+import jaclang;
+import from jaclang.jac0core.program { JacProgram }
+
+glob FIXTURES_DIR = str(
+         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+     );
+
+"""Compile a snippet through the native pipeline and return the program.
+
+Uses a synthetic .na.jac path under the fixtures directory so the file
+extension routes the compile through NaIRGenPass.
+"""
+def compile_na_inline(label: str, code: str) -> JacProgram {
+    path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.na.jac");
+    prog = JacProgram();
+    prog.compile(file_path=path, use_str=code);
+    return prog;
+}
+
+"""Return True if the program emitted at least one alert with the given code."""
+def has_error_code(prog: JacProgram, code: str) -> bool {
+    for alrt in prog.errors_had {
+        if alrt.code is not None and alrt.code.code == code {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Format errors for assertion messages."""
+def fmt_errors(prog: JacProgram) -> str {
+    return str([str(e) for e in prog.errors_had]);
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Statement-level gaps
+# ─────────────────────────────────────────────────────────────────────
+test "guardrail: match statement is rejected" {
+    prog = compile_na_inline(
+        "match_stmt",
+        "def classify(x: int) -> int {\n"
+        "    match x {\n"
+        "        case 0: return 100;\n"
+        "        case _: return 300;\n"
+        "    }\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchStmt, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: C-style iter-for is rejected" {
+    prog = compile_na_inline(
+        "iter_for",
+        "def sum_n(n: int) -> int {\n"
+        "    total: int = 0;\n"
+        "    for i = 0 to i < n by i += 1 {\n"
+        "        total = total + i;\n"
+        "    }\n"
+        "    return total;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for IterForStmt, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: nested function definition is rejected" {
+    prog = compile_na_inline(
+        "nested_def",
+        "def outer() -> int {\n"
+        "    def inner(x: int) -> int { return x * 2; }\n"
+        "    return inner(5);\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for nested Ability, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: visit statement is rejected" {
+    prog = compile_na_inline(
+        "visit",
+        "node N { has v: int = 0; }\n"
+        "walker W {\n"
+        "    can run with N entry {\n"
+        "        visit [-->];\n"
+        "    }\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for VisitStmt, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: disengage statement is rejected" {
+    prog = compile_na_inline(
+        "disengage",
+        "node N { has v: int = 0; }\n"
+        "walker W {\n"
+        "    can run with N entry {\n"
+        "        disengage;\n"
+        "    }\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisengageStmt, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: report statement is rejected" {
+    prog = compile_na_inline(
+        "report",
+        "node N { has v: int = 0; }\n"
+        "walker W {\n"
+        "    can run with N entry {\n"
+        "        report here.v;\n"
+        "    }\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for ReportStmt, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Expression-level gaps
+# ─────────────────────────────────────────────────────────────────────
+test "guardrail: walrus operator is rejected" {
+    prog = compile_na_inline(
+        "walrus",
+        "def f() -> int {\n"
+        "    if (n := 10) > 5 {\n"
+        "        return n;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for walrus (NamedExpr), got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: yield expression is rejected" {
+    prog = compile_na_inline(
+        "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for YieldExpr, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: await expression is rejected" {
+    prog = compile_na_inline(
+        "await_expr",
+        "async def get_val() -> int { return 5; }\n"
+        "async def driver() -> int {\n"
+        "    return await get_val();\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for AwaitExpr, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: flow / wait concurrent expression is rejected" {
+    prog = compile_na_inline(
+        "flow_wait",
+        "def task() -> int { return 7; }\n"
+        "def driver() -> int {\n"
+        "    h = flow task();\n"
+        "    return wait h;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for ConcurrentExpr, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Negative controls — supported features must NOT trigger E5090
+# ─────────────────────────────────────────────────────────────────────
+test "guardrail: supported features do not trigger E5090" {
+    prog = compile_na_inline(
+        "supported_ok",
+        "glob counter: int = 0;\n"
+        "def add(a: int, b: int) -> int { return a + b; }\n"
+        "def loops(n: int) -> int {\n"
+        "    total: int = 0;\n"
+        "    i: int = 0;\n"
+        "    while i < n {\n"
+        "        total = total + i;\n"
+        "        i = i + 1;\n"
+        "    }\n"
+        "    for v in [1, 2, 3] { total = total + v; }\n"
+        "    if total > 0 { total = total + 1; } else { total = -1; }\n"
+        "    try {\n"
+        "        if n < 0 { raise ValueError(\"neg\"); }\n"
+        "    } except ValueError as e {\n"
+        "        return -1;\n"
+        "    }\n"
+        "    return total;\n"
+        "}\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Supported features triggered E5090: {fmt_errors(
+        prog
+    )}";
+}

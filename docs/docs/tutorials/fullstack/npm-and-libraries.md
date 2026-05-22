@@ -7,6 +7,9 @@ Jac's client-side compiler gives you full access to the npm ecosystem. You can i
 > - Completed: [State Management](state.md)
 > - Time: ~30 minutes
 
+!!! note "npm imports and `jac check`"
+    npm packages bundle correctly under `jac start`, but the static checker has no `.d.ts`-equivalent stubs for them yet, so attribute access on imported npm symbols (`useRef().current`, `axios.get`, lodash methods, shadcn primitives, etc.) shows up as Unknown under isolated `jac check`. The snippets below run as written; a typed-stub story for npm imports lands as a separate type-checker improvement.
+
 ---
 
 ## Adding NPM Dependencies
@@ -378,7 +381,7 @@ def:pub Button(props: any) -> JsxElement {
         props.className
     );
 
-    return <button className={computedClass} {...props}>
+    return <button className={computedClass} {**props}>
         {props.children}
     </button>;
 }
@@ -401,13 +404,13 @@ import from "radix-ui" { Dialog as DialogPrimitive }
 import from ...lib.utils { cn }
 
 def:pub Dialog(props: any) -> JsxElement {
-    return <DialogPrimitive.Root {...props}>
+    return <DialogPrimitive.Root {**props}>
         {props.children}
     </DialogPrimitive.Root>;
 }
 
 def:pub DialogTrigger(props: any) -> JsxElement {
-    return <DialogPrimitive.Trigger {...props}>
+    return <DialogPrimitive.Trigger {**props}>
         {props.children}
     </DialogPrimitive.Trigger>;
 }

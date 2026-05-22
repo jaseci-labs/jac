@@ -1,6 +1,12 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.12 (Latest Release)
+## jac-mcp 0.1.16 (Latest Release)
+
+### New Features
+
+- **MCP: Serve reference guides from the shared store**: The MCP server now serves the Jac reference guides from jaclang's bundled guide store (`jac://guide/*`) instead of vendoring its own copy, keeping one source of truth.
+
+## jac-mcp 0.1.12
 
 ### New Features
 

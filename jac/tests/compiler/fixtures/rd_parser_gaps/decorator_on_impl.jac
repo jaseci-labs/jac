@@ -1,5 +1,5 @@
 # Decorator on impl definition
-def my_decorator(func: Any) -> Any {
+def my_decorator(func: any) -> any {
     return func;
 }
 

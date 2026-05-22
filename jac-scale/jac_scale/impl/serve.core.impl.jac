@@ -82,8 +82,8 @@ impl JacAPIServerCore.postinit -> None {
     if custom_headers {
         class CustomHeadersMiddleware(BaseHTTPMiddleware) {
             async def dispatch(
-                self: CustomHeadersMiddleware, request: Any, call_next: Any
-            ) -> Any {
+                self: CustomHeadersMiddleware, request: any, call_next: any
+            ) -> any {
                 response = await call_next(request);
                 for (header_name, header_value) in custom_headers.items() {
                     response.headers[header_name] = header_value;
@@ -103,8 +103,8 @@ impl JacAPIServerCore.postinit -> None {
         # Add metrics middleware to track request timing
         class MetricsMiddleware(BaseHTTPMiddleware) {
             async def dispatch(
-                self: MetricsMiddleware, request: Any, call_next: Any
-            ) -> Any {
+                self: MetricsMiddleware, request: any, call_next: any
+            ) -> any {
                 # Skip metrics endpoint itself
                 if request.url.path == metrics_endpoint {
                     return await call_next(request);
@@ -150,6 +150,73 @@ impl JacAPIServerCore.postinit -> None {
         );
         logger.info(f"Prometheus metrics enabled at {metrics_endpoint} (admin-only)");
     }
+}
+
+"""Initialize the event-streaming broker.
+RedisEventStream if a redis URL resolves and the redis extra is installed, else LocalEventStream. When events.enabled is false the broker stays unset and publish()/@subscribe no-op via the facade.
+"""
+impl JacAPIServerCore._setup_events -> None {
+    import from jac_scale.events.publisher { set_broker }
+    import from jac_scale.events.subscriber { get_subscriptions }
+    import from jac_scale._optdeps.optional_deps { is_optional_available }
+    import atexit;
+
+    cfg = get_scale_config().get_events_config();
+    if not cfg.get('enabled', False) {
+        return;
+    }
+
+    # Resolve the redis URL: events.url first, then fall back to database.redis_url
+    # so apps don't have to repeat the same URL twice.
+    db_cfg = get_scale_config().get_database_config();
+    url = cfg.get('url') or db_cfg.get('redis_url');
+
+    if url and is_optional_available('redis') {
+        import from jac_scale.events.streams.redis { RedisEventStream }
+        broker_cfg = dict(cfg);
+        broker_cfg['url'] = url;
+        self._broker = RedisEventStream(config=broker_cfg);
+        broker_kind = "redis";
+    } else {
+        import from jac_scale.events.streams.local { LocalEventStream }
+        self._broker = LocalEventStream(config=cfg);
+        broker_kind = "local";
+        if url is None {
+            logger.warning(
+                "events enabled with no redis url; using LocalEventStream "
+                "(in-memory, single-pod). Set events.url or database.redis_url "
+                "for cross-pod streaming via Redis."
+            );
+        } else {
+            logger.warning(
+                "events enabled and url set, but `redis` extra is not installed; "
+                "using LocalEventStream. Run `pip install jac-scale[data]` to use Redis."
+            );
+        }
+    }
+
+    set_broker(self._broker);
+    self._broker.start();
+
+    subs = get_subscriptions();
+    for entry in subs {
+        try {
+            self._broker.register_handler(
+                entry.topic,
+                entry.handler,
+                group=entry.group,
+                retry=entry.retry,
+                start_from=entry.start_from
+            );
+        } except Exception as e {
+            logger.error(f"Failed to register handler for '{entry.topic}': {e}");
+        }
+    }
+
+    atexit.register(self._broker.stop);
+    logger.info(
+        f"Events broker enabled " f"(kind={broker_kind}, subscriptions={len(subs)})"
+    );
 }
 
 impl JacAPIServerCore.start(
@@ -224,7 +291,7 @@ impl JacAPIServerCore.start(
         _self = self;
         @self.server.app.middleware("http")
         async def hmr_refresh_middleware(
-            request: StarletteRequest, call_next: Any
+            request: StarletteRequest, call_next: any
         ) -> StarletteResponse {
             if _self._hmr_pending {
                 _self._refresh_dev_endpoints();
@@ -233,7 +300,9 @@ impl JacAPIServerCore.start(
         }
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+    self.setup_emailer();
     self._setup_scheduler();
+    self._setup_events();
     # Find an available port (may differ from requested if port is in use)
     original_port = self.port;
     self.port = _find_available_port(self.port);
@@ -280,7 +349,7 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
 """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
 impl JacAPIServerCore._configure_openapi_security -> None {
     import from fastapi.openapi.utils { get_openapi }
-    def custom_openapi -> dict[str, Any] {
+    def custom_openapi -> dict[str, any] {
         if self.server.app.openapi_schema {
             return self.server.app.openapi_schema;
         }
@@ -353,21 +422,78 @@ impl JacAPIServerCore._configure_openapi_security -> None {
 # ============================================================================
 # HMR (Hot Module Replacement) Support
 # ============================================================================
-"""Register the /healthz endpoint for liveness checks."""
+"""Register health endpoints: /healthz/live (liveness, restart-gating)
+and /healthz/ready (readiness, traffic-gating), plus the legacy /healthz
+as a back-compat alias for /healthz/live.
+
+Liveness deliberately does NOT check dependencies (DB, peer services) -
+a transient downstream blip would otherwise restart the pod, which can
+cascade. Readiness flips to 503 once `is_draining()` is true so kube-proxy
+removes us from Endpoints during graceful shutdown.
+"""
 impl JacAPIServerCore.register_health_endpoint -> None {
-    async def health_check -> dict {
+    import from fastapi.responses { JSONResponse }
+    import from jac_scale.microservices.gateway_internals.drain { is_draining }
+
+    async def health_live -> dict {
+        return {"status": "alive"};
+    }
+    async def health_ready -> JSONResponse {
+        if is_draining() {
+            return JSONResponse(
+                status_code=503, content={"status": "draining", "ready": False}
+            );
+        }
+        return JSONResponse(status_code=200, content={"status": "ready"});
+    }
+    # Legacy alias - same shape as live (an earlier revision used a
+    # single /healthz for both probes; users hitting /healthz manually
+    # still get 200).
+    async def health_legacy -> dict {
         return {"status": "ok"};
     }
+
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/healthz',
-            callback=health_check,
+            path='/healthz/live',
+            callback=health_live,
             parameters=[],
             response_model=None,
             tags=['Health'],
             summary='Liveness check',
-            description='Returns 200 if the server is running'
+            description=(
+                'Returns 200 if the server process is alive. Used by '
+                'Kubernetes livenessProbe to gate pod restarts.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz/ready',
+            callback=health_ready,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Readiness check',
+            description=(
+                'Returns 200 when ready to serve traffic, 503 during '
+                'graceful shutdown drain. Used by Kubernetes readinessProbe '
+                'to gate Endpoints membership.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz',
+            callback=health_legacy,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check (legacy)',
+            description='Back-compat alias; returns 200 if the server is running.'
         )
     );
 }
@@ -446,10 +572,10 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
 }
 
 """Enable HMR mode - file changes trigger reload on next request."""
-impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
+impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
     self._hot_reloader = hot_reloader;
     # Callback when file changes - sets pending flag
-    def on_change(event: Any) {
+    def on_change(event: any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }
@@ -521,8 +647,8 @@ impl JacAPIServerCore._setup_scheduler -> None {
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""
 impl JacAPIServerCore._create_admin_metrics_handler(
-    original_handler: Callable[..., Any]
-) -> Callable[..., Any] {
+    original_handler: Callable[..., any]
+) -> Callable[..., any] {
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }

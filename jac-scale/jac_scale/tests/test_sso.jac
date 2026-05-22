@@ -5,7 +5,6 @@ import os;
 import shutil;
 import asyncio;
 import from tempfile { mkdtemp }
-import from typing { Any }
 import from dataclasses { dataclass }
 import from types { TracebackType }
 import unittest.mock;
@@ -75,8 +74,8 @@ obj MockUserInfo {
         picture: str = "https://example.com/picture.jpg";
 
     """Mirror SSOUserInfo.profile_fields() so production code can call it."""
-    def profile_fields -> dict[str, Any] {
-        fields: dict[str, Any] = {};
+    def profile_fields -> dict[str, any] {
+        fields: dict[str, any] = {};
         for key in ['display_name', 'first_name', 'last_name', 'picture'] {
             val = getattr(self, key, None);
             if val {
@@ -129,7 +128,7 @@ obj MockGoogleSSO {
         _exc_type: type | None,
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None
-    ) -> None {
+    ) {
         0;
     }
 }
@@ -176,7 +175,7 @@ obj MockAppleSSO {
         _exc_type: type | None,
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None
-    ) -> None {
+    ) {
         0;
     }
 }
@@ -223,7 +222,7 @@ obj MockGithubSSO {
         _exc_type: type | None,
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None
-    ) -> None {
+    ) {
         0;
     }
 }
@@ -258,6 +257,10 @@ obj MockScaleConfig {
     }
 
     def get_monitoring_config -> dict {
+        return {"enabled": False};
+    }
+
+    def get_events_config -> dict {
         return {"enabled": False};
     }
 }
@@ -315,12 +318,13 @@ def _setup_user_manager -> tuple[str, JacScaleUserManager] {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
     user_manager.create_user = unittest.mock.Mock();
+    user_manager.create_user_with_identities = unittest.mock.Mock();
     user_manager.get_user = unittest.mock.Mock();
     return (test_dir, user_manager);
 }
 
 """Teardown user manager temp dir."""
-def _teardown_user_manager(test_dir: str) -> None {
+def _teardown_user_manager(test_dir: str) {
     if os.path.exists(test_dir) {
         shutil.rmtree(test_dir);
     }
@@ -583,7 +587,7 @@ test "sso callback new user with no profile data" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -611,8 +615,14 @@ test "sso callback new user with no profile data" {
                     asyncio.run(
                         user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
                     );
-                    user_manager.create_user.assert_called_once_with(
-                        identities=[{'type': 'email', 'value': 'newuser@example.com', 'verified': True}],
+                    user_manager.create_user_with_identities.assert_called_once_with(
+                        identities=[
+                            {
+                                'type': 'email',
+                                'value': 'newuser@example.com',
+                                'verified': True
+                            }
+                        ],
                         credential={'type': 'password', 'password': 'random_pass'},
                         profile=None
                     );
@@ -631,7 +641,7 @@ test "sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -656,15 +666,25 @@ test "sso callback auto register new user" {
                     assert isinstance(result, (JSONResponse, TransportResponse));
                     # MockUserInfo defaults populate all four optional fields,
                     # so the SSO profile sub-document is fully populated.
-                    user_manager.create_user.assert_called_once_with(
-                        identities=[{'type': 'email', 'value': 'newuser@example.com', 'verified': True}],
+                    user_manager.create_user_with_identities.assert_called_once_with(
+                        identities=[
+                            {
+                                'type': 'email',
+                                'value': 'newuser@example.com',
+                                'verified': True
+                            }
+                        ],
                         credential={'type': 'password', 'password': 'random_pass'},
-                        profile={'sso': {'google': {
-                            'display_name': 'Test User',
-                            'first_name': 'Test',
-                            'last_name': 'User',
-                            'picture': 'https://example.com/picture.jpg'
-                        }}}
+                        profile={
+                            'sso': {
+                                'google': {
+                                    'display_name': 'Test User',
+                                    'first_name': 'Test',
+                                    'last_name': 'User',
+                                    'picture': 'https://example.com/picture.jpg'
+                                }
+                            }
+                        }
                     );
                 }
             }
@@ -781,10 +801,7 @@ test "supported platforms initialization with jac toml credentials" {
     mock_config = MockScaleConfig(
         {
             "host": "http://localhost:8000",
-            "google": {
-                "client_id": "toml_test_id",
-                "client_secret": "toml_test_secret"
-            }
+            "google": {"client_id": "toml_test_id", "client_secret": "toml_test_secret"}
         }
     );
     with unittest.mock.patch(
@@ -1028,9 +1045,7 @@ test "apple sso initiate success" {
             user_manager, "get_sso", return_value=MockAppleSSO("id", "secret", "uri")
         ) {
             result = asyncio.run(
-                user_manager.sso_initiate(
-                    Platforms.APPLE.value, Operations.LOGIN.value
-                )
+                user_manager.sso_initiate(Platforms.APPLE.value, Operations.LOGIN.value)
             );
             assert isinstance(result, RedirectResponse);
             assert "apple.com" in result.headers.get("location", "");
@@ -1089,7 +1104,7 @@ test "apple sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -1112,15 +1127,25 @@ test "apple sso callback auto register new user" {
                         user_manager.sso_callback(mock_request, Platforms.APPLE.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user.assert_called_once_with(
-                        identities=[{'type': 'email', 'value': 'newuser@privaterelay.appleid.com', 'verified': True}],
+                    user_manager.create_user_with_identities.assert_called_once_with(
+                        identities=[
+                            {
+                                'type': 'email',
+                                'value': 'newuser@privaterelay.appleid.com',
+                                'verified': True
+                            }
+                        ],
                         credential={'type': 'password', 'password': 'random_pass'},
-                        profile={'sso': {'apple': {
-                            'display_name': 'Test User',
-                            'first_name': 'Test',
-                            'last_name': 'User',
-                            'picture': 'https://example.com/picture.jpg'
-                        }}}
+                        profile={
+                            'sso': {
+                                'apple': {
+                                    'display_name': 'Test User',
+                                    'first_name': 'Test',
+                                    'last_name': 'User',
+                                    'picture': 'https://example.com/picture.jpg'
+                                }
+                            }
+                        }
                     );
                 }
             }
@@ -1317,7 +1342,7 @@ test "github sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -1340,15 +1365,25 @@ test "github sso callback auto register new user" {
                         user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user.assert_called_once_with(
-                        identities=[{'type': 'email', 'value': 'newuser@github.com', 'verified': True}],
+                    user_manager.create_user_with_identities.assert_called_once_with(
+                        identities=[
+                            {
+                                'type': 'email',
+                                'value': 'newuser@github.com',
+                                'verified': True
+                            }
+                        ],
                         credential={'type': 'password', 'password': 'random_pass'},
-                        profile={'sso': {'github': {
-                            'display_name': 'Test User',
-                            'first_name': 'Test',
-                            'last_name': 'User',
-                            'picture': 'https://example.com/picture.jpg'
-                        }}}
+                        profile={
+                            'sso': {
+                                'github': {
+                                    'display_name': 'Test User',
+                                    'first_name': 'Test',
+                                    'last_name': 'User',
+                                    'picture': 'https://example.com/picture.jpg'
+                                }
+                            }
+                        }
                     );
                 }
             }

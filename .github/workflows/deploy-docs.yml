@@ -63,7 +63,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ../jac
-          pip install -e .
+          jac install -e .
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
@@ -124,13 +124,11 @@ jobs:
 
           RUN apt-get update && apt-get install -y \
               curl \
-              git \
               graphviz \
               && rm -rf /var/lib/apt/lists/*
 
           WORKDIR /app
 
-          COPY .git/ ./.git/
           COPY docs/ ./docs/
           COPY jac/ ./jac/
           COPY jac-client/ ./jac-client/
@@ -139,7 +137,7 @@ jobs:
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
           RUN pip install -e ./jac
-          RUN pip install -e ./docs
+          RUN jac install -e ./docs
 
           EXPOSE 8000
 

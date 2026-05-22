@@ -1,7 +1,6 @@
 """Test file upload functionality in jac-scale serve."""
 
 import io;
-import from typing { Any }
 import from jac_scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,

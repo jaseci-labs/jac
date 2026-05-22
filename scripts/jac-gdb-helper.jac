@@ -187,13 +187,24 @@ class JacBacktrace(gdb.Command) {
         gdb.write("Jac backtrace:\n");
         for i in range(jac_entry_idx + 1) {
             f = frames[i];
+            pc = f.pc();
             name = f.name() or "??";
+            # Address below 0x1000 is always unmapped — GDB picks the
+            # nearest global variable as the symbol which is misleading.
+            # Show ?? (NULL) so it's clear this is a null function pointer.
+            if pc < 0x1000 {
+                name = "??";
+            }
             sal = f.find_sal();
             loc = "";
             if sal.symtab {
                 loc = f" at {sal.symtab.filename}:{sal.line}";
             }
-            gdb.write(f"  #{i:<3d} 0x{f.pc():016x} in {name}(){loc}\n");
+            null_note = "";
+            if pc < 0x1000 {
+                null_note = " [NULL call]";
+            }
+            gdb.write(f"  #{i:<3d} 0x{pc:016x} in {name}(){loc}{null_note}\n");
         }
         gdb.write("\n");
     }

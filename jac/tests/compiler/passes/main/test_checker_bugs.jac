@@ -26,6 +26,7 @@ Bug index:
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
+  #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
 """
 
 import os;
@@ -33,6 +34,7 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.compiler.type_system.type_utils { compute_mro_linearization }
 import from jaclang.compiler.type_system.types { ClassType, TypeFlags }
 
@@ -64,9 +66,9 @@ test "bug_1_is_in_returns_unknown_type" {
 
     # Expected: 4 errors (assigning bool to str for is/is_not/in/not_in)
     # Actual: 0 errors (all expressions are UnknownType, assignable to anything)
-    assert len(program.errors_had) == 4 , f"Bug #1: 'is'/'in' operators return UnknownType instead of bool. "
+    assert len(program.errors_had) == 4 , "Bug #1: 'is'/'in' operators return UnknownType instead of bool. "
     f"Expected 4 type errors but got {len(program.errors_had)}. "
-    f"The missing 'return' in operations.jac:141 causes bool results to be discarded.";
+    "The missing 'return' in operations.jac:141 causes bool results to be discarded.";
 }
 
 # =========================================================================
@@ -82,11 +84,11 @@ test "bug_3_list_element_type_first_only" {
 
     # Expected: at least 1 error (list[int|str] not assignable to list[int])
     # Actual: 0 errors (list inferred as list[int], so list[int] -> list[int] is ok)
-    assert len(program.errors_had) >= 1 , f"Bug #3: List element type inference only considers the first element. "
+    assert len(program.errors_had) >= 1 , "Bug #3: List element type inference only considers the first element. "
     f"Expected at least 1 type error for mixed list assignment but got {len(
         program.errors_had
     )}. "
-    f"[1, 'hello'] is typed as list[int] instead of list[int | str].";
+    "[1, 'hello'] is typed as list[int] instead of list[int | str].";
 }
 
 # =========================================================================
@@ -130,9 +132,9 @@ test "bug_6_mro_not_c3_diamond" {
     # Buggy DFS MRO: [D, B, A, C] (A before C)
     expected_c3 = ["D", "B", "C", "A"];
 
-    assert mro_names == expected_c3 , f"Bug #6: MRO is not C3 linearized. "
+    assert mro_names == expected_c3 , "Bug #6: MRO is not C3 linearized. "
     f"Expected {expected_c3} but got {mro_names}. "
-    f"In diamond inheritance, C should come before A in the MRO.";
+    "In diamond inheritance, C should come before A in the MRO.";
 }
 
 # =========================================================================
@@ -149,9 +151,9 @@ test "bug_7_protocol_name_only_check" {
 
     # Expected: 1 error (WrongSignature.draw has wrong param/return types)
     # Actual: 0 errors (protocol check only validates method names exist)
-    assert len(program.errors_had) >= 1 , f"Bug #7: Protocol conformance only checks method names, not signatures. "
+    assert len(program.errors_had) >= 1 , "Bug #7: Protocol conformance only checks method names, not signatures. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"WrongSignature.draw(int)->str should not satisfy Drawable.draw(str)->None.";
+    "WrongSignature.draw(int)->str should not satisfy Drawable.draw(str)->None.";
 }
 
 # =========================================================================
@@ -167,9 +169,9 @@ test "bug_8_dict_tuple_set_return_unknown" {
 
     # Expected: 3 errors (dict->str, tuple->str, set->str assignments)
     # Actual: 0 errors (all literals are UnknownType, assignable to anything)
-    assert len(program.errors_had) == 3 , f"Bug #8: Dict/tuple/set literals return UnknownType. "
+    assert len(program.errors_had) == 3 , "Bug #8: Dict/tuple/set literals return UnknownType. "
     f"Expected 3 type errors but got {len(program.errors_had)}. "
-    f"No case handlers exist for DictVal, TupleVal, SetVal in the evaluator.";
+    "No case handlers exist for DictVal, TupleVal, SetVal in the evaluator.";
 }
 
 # =========================================================================
@@ -191,9 +193,9 @@ test "bug_11_bool_expr_last_operand_only" {
     #
     # With the bug: both pass because result is typed as int (last operand).
     # Expected: 2 errors. Actual: 0 errors.
-    assert len(program.errors_had) == 2 , f"Bug #11: BoolExpr returns last operand type only. "
+    assert len(program.errors_had) == 2 , "Bug #11: BoolExpr returns last operand type only. "
     f"Expected 2 type errors but got {len(program.errors_had)}. "
-    f"'x and y' should be typed as type(x) | type(y), not just type(y).";
+    "'x and y' should be typed as type(x) | type(y), not just type(y).";
 }
 
 # =========================================================================
@@ -209,9 +211,9 @@ test "bug_12_compare_returns_unknown" {
 
     # Expected: 2 errors (assigning comparison bool to str)
     # Actual: 0 errors (comparisons return UnknownType)
-    assert len(program.errors_had) == 2 , f"Bug #12: CompareExpr returns UnknownType instead of bool. "
+    assert len(program.errors_had) == 2 , "Bug #12: CompareExpr returns UnknownType instead of bool. "
     f"Expected 2 type errors but got {len(program.errors_had)}. "
-    f"No case handler exists for CompareExpr in _get_type_of_expression_core.";
+    "No case handler exists for CompareExpr in _get_type_of_expression_core.";
 }
 
 # =========================================================================
@@ -231,9 +233,9 @@ test "bug_13_ternary_returns_unknown" {
     # Note: even check1: str = r1 and check3: str = ... should be ok,
     # but they won't produce errors either way since Unknown is assignable
     # to everything. The bug is that check2 should error but doesn't.
-    assert len(program.errors_had) >= 1 , f"Bug #13: IfExpr (ternary) returns UnknownType. "
+    assert len(program.errors_had) >= 1 , "Bug #13: IfExpr (ternary) returns UnknownType. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"No case handler exists for IfExpr in _get_type_of_expression_core.";
+    "No case handler exists for IfExpr in _get_type_of_expression_core.";
 }
 
 # =========================================================================
@@ -249,9 +251,9 @@ test "bug_15_no_generic_variance_check" {
 
     # Expected: 2 errors (list[int] not assignable to list[str])
     # Actual: 0 errors (same ClassType.shared means assignable)
-    assert len(program.errors_had) >= 1 , f"Bug #15: No generic type argument checking. "
+    assert len(program.errors_had) >= 1 , "Bug #15: No generic type argument checking. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"list[int] should NOT be assignable to list[str].";
+    "list[int] should NOT be assignable to list[str].";
 }
 
 # =========================================================================
@@ -268,9 +270,9 @@ test "bug_23_with_stmt_alias_unknown" {
 
     # Expected: 1 error (TextIOWrapper not assignable to int)
     # With the bug: different error (Unknown cannot access "write")
-    assert len(program.errors_had) == 1 , f"Bug #23: With statement alias typed as Unknown. "
+    assert len(program.errors_had) == 1 , "Bug #23: With statement alias typed as Unknown. "
     f"Expected 1 type error but got {len(program.errors_had)}. "
-    f"'with open(...) as f' should type f as TextIOWrapper, not Unknown.";
+    "'with open(...) as f' should type f as TextIOWrapper, not Unknown.";
 }
 
 # Bug #22: Tuple unpacking in for loops returns UnknownType
@@ -297,9 +299,9 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
     # Total: 5 errors
     #
     # With the bug: 0 errors (all unpacked vars are UnknownType)
-    assert len(program.errors_had) == 5 , f"Bug #22: Tuple unpacking in for loops returns UnknownType. "
+    assert len(program.errors_had) == 5 , "Bug #22: Tuple unpacking in for loops returns UnknownType. "
     f"Expected 5 type errors but got {len(program.errors_had)}. "
-    f"for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
+    "for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
 }
 
 # =========================================================================
@@ -313,7 +315,7 @@ test "bug_any1_typing_any_attr_access" {
     program = compile_and_check("checker_bug_typing_any_attr.jac");
     # Expect 1 error: object.nonexistent (object does not allow arbitrary attr access)
     # Any still allows all attribute access (0 errors for Any tests)
-    assert len(program.errors_had) == 1 , f"Bug #ANY-1: Expected 1 error (object.nonexistent), "
+    assert len(program.errors_had) == 1 , "Bug #ANY-1: Expected 1 error (object.nonexistent), "
     f"got {len(
         program.errors_had
     )} errors. Any must allow all attribute access, but object must not.";
@@ -331,7 +333,7 @@ test "bug_any1_typing_any_attr_access" {
 # =========================================================================
 test "bug_final1_final_unwrap_for_attr_access" {
     program = compile_and_check("checker_bug_final_unwrap_attr.jac");
-    assert len(program.errors_had) == 0 , f"Bug #FINAL-1: attribute access on Final[T] raised E1030 "
+    assert len(program.errors_had) == 0 , "Bug #FINAL-1: attribute access on Final[T] raised E1030 "
     f"({len(program.errors_had)} errors). Final[T] must unwrap to T for member lookup.";
 }
 
@@ -355,10 +357,10 @@ test "bug_tvar1_typevar_dedup_in_extract_type_params" {
 
     # Expected: 1 error (int not assignable to str for `bad: str = m.lookup("key")`)
     # Without fix: 0 errors (V is Unknown, assignable to anything)
-    assert len(program.errors_had) >= 1 , f"Bug #TVAR-1: _extract_type_params duplicates TypeVars from "
-    f"multiple generic bases, causing positional mismatch. "
+    assert len(program.errors_had) >= 1 , "Bug #TVAR-1: _extract_type_params duplicates TypeVars from "
+    "multiple generic bases, causing positional mismatch. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"Without dedup, V in BaseMapping(BaseCollection[K], Generic[K, V]) is unresolved.";
+    "Without dedup, V in BaseMapping(BaseCollection[K], Generic[K, V]) is unresolved.";
 }
 
 # =========================================================================
@@ -380,10 +382,10 @@ test "bug_tvar2_transitive_typevar_propagation" {
 
     # Expected: 1 error (int not assignable to str for `bad: str = c.read("key")`)
     # Without fix: 0 errors (V2 is Unknown, assignable to anything)
-    assert len(program.errors_had) >= 1 , f"Bug #TVAR-2: build_type_var_solution doesn't propagate TypeVars "
-    f"through base_classes chain. "
+    assert len(program.errors_had) >= 1 , "Bug #TVAR-2: build_type_var_solution doesn't propagate TypeVars "
+    "through base_classes chain. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"Without transitive propagation, V2 in BaseReader is unresolved.";
+    "Without transitive propagation, V2 in BaseReader is unresolved.";
 }
 
 # =========================================================================
@@ -406,10 +408,10 @@ test "bug_tvar3_typevar_union_return_type" {
 
     # Expected: 1 error (int | None not assignable to str for `bad: str = s.lookup("key")`)
     # Without fix: 0 errors (V | None is Unknown, assignable to anything)
-    assert len(program.errors_had) >= 1 , f"Bug #TVAR-3: Union return types with TypeVars (V | None) resolve "
-    f"to Unknown due to is_any_type() short-circuit in operations.jac. "
+    assert len(program.errors_had) >= 1 , "Bug #TVAR-3: Union return types with TypeVars (V | None) resolve "
+    "to Unknown due to is_any_type() short-circuit in operations.jac. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"Without the fix, dict.get() and similar methods return Unknown.";
+    "Without the fix, dict.get() and similar methods return Unknown.";
 }
 
 # =========================================================================
@@ -433,7 +435,7 @@ test "bug_tvar4_generic_base_canonical_typevar_order" {
     # Expected: 2 errors on the `bad` lines (24 and 30), NOT on the `good` lines (23 and 29).
     # Without fix: 2 errors on the WRONG lines (23 and 30) because key/value types are swapped,
     # so a count-only check would still pass — we must verify the error locations.
-    assert len(program.errors_had) >= 2 , f"Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
+    assert len(program.errors_had) >= 2 , "Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}.";
 
     # Verify errors are on the `bad` assignment lines, not the `good` ones.
@@ -445,12 +447,12 @@ test "bug_tvar4_generic_base_canonical_typevar_order" {
         if e.loc
     ];
     assert 24 in error_lines , f"Expected error on line 24 (bad: int = v), got errors on lines {error_lines}. "
-    f"Without fix, dict.values() yields key type instead of value type.";
+    "Without fix, dict.values() yields key type instead of value type.";
     assert 30 in error_lines , f"Expected error on line 30 (bad2: str = k), got errors on lines {error_lines}.";
     # The `good` lines should NOT have errors.
-    assert 23 not in error_lines , f"Line 23 (good: str = v) should not error — values() yields str, "
+    assert 23 not in error_lines , "Line 23 (good: str = v) should not error — values() yields str, "
     f"but got errors on lines {error_lines}. TypeVar order is likely swapped.";
-    assert 29 not in error_lines , f"Line 29 (good2: int = k) should not error — keys() yields int, "
+    assert 29 not in error_lines , "Line 29 (good2: int = k) should not error — keys() yields int, "
     f"but got errors on lines {error_lines}.";
 }
 
@@ -597,14 +599,194 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-# =========================================================================
-# Bug: while-loop guard does not narrow the condition variable
-# =========================================================================
-test "bug_5768_while_loop_narrowing" {
+test "bug_while_loop_narrowing" {
     program = compile_and_check("checker_bug_while_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
         "`while cur` should narrow cur from Item|None to Item inside the body. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "items[0], items[-1], config[\"host\"] should all narrow inside isinstance guard. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing_negative" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 5 , (
+        "Variable index, range slice, and post-narrow subscript writes "
+        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
+        "Expected at least 5 E1099 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_cast_union_instance" {
+    program = compile_and_check("checker_bug_cast_union_instance.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "instance types so that attribute access on the result does not "
+        "produce false-positive E1099 errors. "
+    );
+}
+
+# =========================================================================
+# Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
+#
+# `is None` / `is not None` correctly narrowed Optional unions, but the
+# operator-equality forms fell through unhandled in classify_condition,
+# leaving attribute access on the narrowed branch typed as `T | None` and
+# producing spurious E1099 errors. Pyright, mypy, and TypeScript all
+# narrow on both forms; Jac now does too.
+# =========================================================================
+test "bug_none_eq_neq_narrowing" {
+    program = compile_and_check("checker_bug_eq_none_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`x != None` (true branch) and `x == None` (fall-through) must "
+        "narrow `T | None` to `T`, matching the existing `is`/`is not None` "
+        "behavior. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #COMPR-NARROW: `T | None` narrowing did not reach comprehension
+# iterators or conditionals.
+#
+# `InnerCompr` is a `UniCFGNode` but is never wired into the CFG. A
+# reference to a narrowed symbol inside the comprehension's `collection`
+# or `conditional` walks up to the orphan `InnerCompr` and stops, missing
+# the narrowing established by an enclosing guard. Pyright and mypy treat
+# the comprehension as part of the enclosing flow scope; Jac now does too.
+# =========================================================================
+test "bug_comprehension_narrowing" {
+    program = compile_and_check("checker_bug_compr_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`T | None` narrowing established by an enclosing guard must "
+        "propagate into list/dict/set/gen comprehension iterators, out "
+        "expressions, and conditional clauses. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #JSX-SLOT-NARROW: `T | None` narrowing did not reach JSX statement
+# slot bodies (`{for ... { <jsx> }}` / `{if ... { <jsx> }}`).
+#
+# `ViewLowerPass` rewrites a slot body into `acc = []; ...; return
+# <>{acc}</>;` and stores the lowered statements as the slot's `body`
+# list. `CFGBuildPass` had no `exit_jsx_slot` handler - the body
+# statements were visited individually but never wired sequentially or
+# linked back to the slot's enclosing CodeBlockStmt. A name reference
+# inside the slot's loop header (e.g. `recipe.ingredients` in `{for ing
+# in recipe.ingredients { ... }}`) walked up to its enclosing
+# `InForStmt`, found an empty `bb_in`, and dead-ended - losing any
+# narrowing from an enclosing `if recipe is None { return; }` guard.
+# =========================================================================
+test "bug_jsx_slot_narrowing" {
+    program = compile_and_check("checker_bug_jsx_slot_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`T | None` narrowing established by an enclosing guard must "
+        "propagate into JSX statement slot bodies (loop iterators, "
+        "conditions, and child interpolations). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #PROP-SETTER: @<name>.setter flagged as duplicate method
+#
+# ASTValidationPass.enter_archetype scans archetype bodies for duplicate
+# method names to emit E0076. It correctly skips `@overload` methods but
+# did not skip property accessor decorators (`@<name>.setter`,
+# `@<name>.deleter`, `@<name>.getter`). Those decorators extend an existing
+# `@property` definition by reusing the same method name — the canonical
+# Python property pattern — and must not be reported as duplicates.
+#
+# Impact: any archetype declaring a property setter (e.g. JacProgram.doc_ir
+# in jac0core/codeinfo.jac) triggered a spurious E0076 syntax error.
+#
+# The fix is *semantic*, not just structural: the dup-check first collects
+# names declared with `@property` in the class body, then skips a method
+# only when its decorator is `@<name>.setter`/`.getter`/`.deleter`, the
+# decorator's target Name matches the method name, AND `<name>` was
+# declared `@property` in this class. This preserves dup detection for:
+#   (a) accessors targeting non-properties (`@bar.setter def foo`)
+#   (b) duplicate accessors of the same kind (two `@x.setter def x`)
+# =========================================================================
+"""Return E0076 errors emitted while checking a fixture."""
+def _e0076_errors_of(fixture_name: str) -> list[Alert] {
+    program = compile_and_check(fixture_name);
+    return [
+        e
+        for e in program.errors_had
+        if (e.code is not None and e.code.code == "E0076")
+    ];
+}
+
+test "bug_property_setter_not_duplicate_method" {
+    # Canonical property + setter + deleter + multi-property fixture: no E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter.jac");
+    assert len(errs) == 0 , (
+        "Bug #PROP-SETTER: `@<name>.setter`/`.deleter`/`.getter` decorators "
+        "extend a property and must not be flagged as duplicate methods. "
+        f"Got E0076 errors: {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_strict_masked_dup_still_reported" {
+    # `@bar.setter def foo` where `bar` is not a @property must NOT mask
+    # a real duplicate of `def foo`. A purely structural skip (any decorator
+    # ending in `.setter`/`.getter`/`.deleter`) would silently swallow this;
+    # the semantic skip only triggers when the decorator target is a
+    # property declared in this class, so the second `def foo` still flags.
+    errs = _e0076_errors_of("checker_bug_property_setter_masked_dup.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: a duplicate `def foo` whose second "
+        "occurrence carries `@bar.setter` (with no `@property def bar` in "
+        "this class) must still raise E0076 — the property-accessor skip "
+        "must be semantic, not just structural. "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_duplicate_accessor_reported" {
+    # Two `@val.setter def val` for the same property is a real dup: a
+    # property can have at most one setter, getter, or deleter. The dup-
+    # detector tracks `(name, accessor_kind)` pairs alongside plain
+    # method names so this case still raises E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter_dup_accessor.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: declaring two `@val.setter def val` for "
+        "the same property must raise E0076 — a property has at most one "
+        "setter (or getter, or deleter). "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+# Bug #STUB-VGUARD: top-level `if sys.version_info` guards left their symbols
+# wrapped in IfStmt by proc_module, so the type checker saw e.g. `datetime.UTC`
+# as Unknown and emitted W1051 at every use site.
+test "bug_stub_vguard_module_level_symbol_resolves" {
+    program = compile_and_check("checker_bug_version_guard_stub_symbol.jac");
+    unresolved = [
+        w
+        for w in program.warnings_had
+        if "could not be resolved" in str(w)
+    ];
+    assert unresolved == [] , (
+        "Bug #STUB-VGUARD: `datetime.UTC` (defined under `if sys.version_info "
+        ">= (3, 11):` in typeshed) must resolve to its declared type, not Unknown. "
+        f"Got W1051 warnings: {[str(w) for w in unresolved]}"
     );
 }

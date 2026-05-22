@@ -12,6 +12,10 @@ import time;
 import requests;
 import from pathlib { Path }
 import from typing { Any }
+import from jac_scale.tests.auth_test_helpers {
+    data as _data,
+    register_and_login as _get_token
+}
 
 glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures";
 
@@ -26,13 +30,6 @@ def get_free_port -> int {
     }
 }
 
-def _data(resp: dict[str, Any]) -> Any {
-    if isinstance(resp, dict) and "data" in resp {
-        return resp["data"];
-    }
-    return resp;
-}
-
 def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
     if isinstance(resp, dict) and not resp.get("ok") {
         return resp.get("error") or resp;
@@ -40,7 +37,7 @@ def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
     return None;
 }
 
-def _cleanup -> None {
+def _cleanup {
     for pattern in ["*.db", "*.db-wal", "*.db-shm"] {
         for f in glob.glob(str(FIXTURES_DIR / pattern)) {
             with contextlib.suppress(Exception) {
@@ -85,7 +82,7 @@ def _start_server(port: int) -> subprocess.Popen {
     raise RuntimeError("Server failed to start within 30s");
 }
 
-def _stop_server(proc: subprocess.Popen | None) -> None {
+def _stop_server(proc: subprocess.Popen | None) {
     if proc {
         proc.terminate();
         with contextlib.suppress(subprocess.TimeoutExpired) {
@@ -98,26 +95,6 @@ def _stop_server(proc: subprocess.Popen | None) -> None {
     }
     time.sleep(0.2);
     gc.collect();
-}
-
-def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> str {
-    requests.post(
-        f"{base_url}/user/register",
-        json={
-            "identities": [{"type": "username", "value": user}],
-            "credential": {"type": "password", "password": pwd}
-        },
-        timeout=5
-    );
-    resp = requests.post(
-        f"{base_url}/user/login",
-        json={
-            "identity": {"type": "username", "value": user},
-            "credential": {"type": "password", "password": pwd}
-        },
-        timeout=5
-    ).json();
-    return _data(resp)["token"];
 }
 
 def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, Any] {
@@ -217,7 +194,9 @@ test "dynamic jobs - all trigger types for walker and function" {
         for (name, tpayload) in cases {
             payload = {** {"walker_or_function": name}, ** tpayload};
             body = _post_job(base_url, h, payload);
-            assert body.get("ok") , f"POST /jobs failed for {name}/{tpayload['trigger']}: {body}";
+            assert body.get("ok") , f"POST /jobs failed for {name}/{tpayload[
+                'trigger'
+            ]}: {body}";
             job = _data(body);
             assert job["name"] == name;
             assert job["trigger"] == tpayload["trigger"];
@@ -281,7 +260,9 @@ test "jobs crud lifecycle" {
         assert body.get("ok") and _data(body)["interval"] == 120;
 
         # Delete
-        body = requests.delete(f"{base_url}/jobs/{job_id}", headers=h, timeout=5).json();
+        body = requests.delete(
+            f"{base_url}/jobs/{job_id}", headers=h, timeout=5
+        ).json();
         assert body.get("ok") and _data(body).get("deleted") == True;
 
         # Verify gone

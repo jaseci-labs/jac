@@ -18,14 +18,13 @@ import struct;
 import sys;
 import zlib;
 import from pathlib { Path }
-import from typing { Any }
 
 # --- Constants ---
 """JIR file magic bytes."""
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 10;
+glob FORMAT_VERSION: int = 11;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
@@ -38,7 +37,7 @@ glob EXTERNAL_REF: int = 0xFFFFFF;
 
 # --- Section constants (extended JIR format) ---
 """Magic bytes marking the start of optional TLV sections after the AST payload."""
-glob SECTIONS_MAGIC: Any = b"JIRX";
+glob SECTIONS_MAGIC: any = b"JIRX";
 
 """Section type: raw marshal.dumps(code_object) bytes."""
 glob SEC_BYTECODE: int = 0x02;
@@ -60,13 +59,6 @@ optimized code on cache reload. Includes a platform header:
   [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
 """
 glob SEC_NATIVE_OBJ: int = 0x06;
-
-"""Section type: varint-encoded (node_id, str_pool_idx) pairs for Expr.backend_type_tag.
-
-Format: [count: varint] + repeat([node_id: varint] [str_pool_idx: varint])
-Only Expr nodes with non-None backend_type_tag are stored.
-"""
-glob SEC_TYPE_TAGS: int = 0x07;
 
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
@@ -135,7 +127,7 @@ def deserialize_string_pool(
 # --- Header ---
 """JIR file header (32 bytes fixed size)."""
 obj JirHeader {
-    has magic: Any = b"JIR\x00",
+    has magic: any = b"JIR\x00",
         format_version: int = FORMAT_VERSION,
         python_version: int = 0,
         jaclang_version_hash: int = 0,
@@ -303,7 +295,7 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     if not sections {
         return bytes();
     }
-    magic: Any = SECTIONS_MAGIC;
+    magic: any = SECTIONS_MAGIC;
     buf = bytearray(magic);
     for (sec_type, data) in sections.items() {
         buf.append(sec_type);
@@ -354,7 +346,7 @@ Returns None if no bytecode section is present.
 """
 def read_bytecode_only(data: bytes) -> (bytes | None) {
     try {
-        magic_bytes: Any = SECTIONS_MAGIC;
+        magic_bytes: any = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
         if pos < 0 {
             return None;

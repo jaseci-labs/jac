@@ -664,6 +664,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
         body=valid_body,
         excepts=excepts,
         else_body=elsestmt if else_body else None,
+        awaiting_body=None,
         finally_body=finally_stmt_obj,
         kid=kid
     );
@@ -2908,6 +2909,7 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
         return uni.Module.make_stub(inject_src=self.ir_in.orig_src);
     }
     elements: list[uni.UniNode] = [self.convert(i) for i in nd.body];
+    elements = self._flatten_version_conditionals(elements);
     elements[0] = elements[0].expr
         if (
             isinstance(elements[0], uni.ExprStmt)

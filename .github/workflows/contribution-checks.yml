@@ -66,7 +66,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
-          pip install -e docs
+          jac install -e docs
 
       - name: Validate Jac code block syntax
         run: jac run docs/scripts/validate_docs_code.jac
@@ -88,6 +88,11 @@ jobs:
             echo "- Jac code block syntax: ✓" >> $GITHUB_STEP_SUMMARY
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Check plugin manifest sync (jac.toml ↔ pyproject.toml)
+        run: |
+          pip install tomlkit==0.14.0
+          jac run scripts/check_manifest_sync.jac
 
       - name: Check Release Notes Updated
         if: |

@@ -12,7 +12,11 @@ import from jac_scale.microservices.service_registry {
     ServiceStatus
 }
 import from jac_scale.microservices.impl.http_forward { raw_forward }
-import from typing { Any }
+import from jac_scale.microservices.runtime.util {
+    DEFAULT_GATEWAY_PORT,
+    DEFAULT_GATEWAY_HOST,
+    DEFAULT_CLIENT_DIST_DIR
+}
 
 glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {"host","transfer-encoding","connection","keep-alive"};
@@ -26,9 +30,9 @@ dispatcher.
 obj MicroserviceGateway {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
-        port: int = 8000,
-        host: str = "0.0.0.0",
-        client_dist_dir: str = ".jac/client/dist",
+        port: int = DEFAULT_GATEWAY_PORT,
+        host: str = DEFAULT_GATEWAY_HOST,
+        client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
         admin_dist_dir: str = ".jac/admin",
         # Optional declarative static mounts: each entry is
         # {"url_prefix": "/foo", "local_path": "/abs/or/rel/path"}.
@@ -41,9 +45,9 @@ obj MicroserviceGateway {
         # Prometheus metrics registry + collectors. None when
         # prometheus_client isn't installed; the dispatcher no-ops
         # instrumentation in that case.
-        _metrics_registry: Any = None,
-        _metrics_requests: Any = None,
-        _metrics_duration: Any = None;
+        _metrics_registry: any = None,
+        _metrics_requests: any = None,
+        _metrics_duration: any = None;
 
     """Create the FastAPI app and register routes."""
     def setup -> FastAPI;
@@ -52,8 +56,16 @@ obj MicroserviceGateway {
     def resolve_target_url(service_entry: ServiceEntry, path: str, query: str) -> str;
 
     # --- request handlers (each returns a Response or None to defer) ---
-    """Return the health summary response."""
+    """Return the health summary response (registry view, human-facing)."""
     def handle_health -> Response;
+
+    """Liveness response - always 200 if the dispatcher runs (for K8s
+       livenessProbe; dependency state is intentionally NOT checked here)."""
+    def handle_health_live -> Response;
+
+    """Readiness response - 200 normally, 503 when drain is in progress
+       (for K8s readinessProbe; gates Endpoints membership)."""
+    def handle_health_ready -> Response;
 
     """Forward built-in jac-scale routes (/user/*, /walker/*, /function/* etc)
        to any healthy service; returns None if path isn't a built-in."""

@@ -8,8 +8,6 @@ Supports ELF64 with dynamic linking against libc.
 Architecture support: x86_64, aarch64.
 """
 
-import from typing { Any }
-
 """Parsed ELF section."""
 obj ElfSection {
     has name: str,
@@ -94,7 +92,8 @@ obj ElfLinker {
         symbols: list[ElfSymbol],
         relocations: list[ElfRela],
         needed_libs: list[str],
-        arch: (ArchConfig | None) = None;
+        arch: (ArchConfig | None) = None,
+        sym_vaddrs: dict[str, int] = {};
 
     static def link(
         obj_bytes: bytes,

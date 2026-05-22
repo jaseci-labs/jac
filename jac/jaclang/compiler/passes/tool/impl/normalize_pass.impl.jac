@@ -274,6 +274,9 @@ impl NormalizePass.enter_import(nd: uni.Import) -> None {
     } else {
         new_kid.append(nd.gen_token(Tok.KW_IMPORT));
     }
+    if nd.is_typed {
+        new_kid.append(nd.gen_token(Tok.TYP_TYPE));
+    }
     if nd.from_loc {
         new_kid.append(nd.gen_token(Tok.KW_FROM));
         new_kid.append(nd.from_loc);
@@ -795,6 +798,9 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
         new_kid.append(stmt);
     }
     new_kid.append(nd.gen_token(Tok.RBRACE));
+    if nd.awaiting_body {
+        new_kid.append(nd.awaiting_body);
+    }
     for exc in nd.excepts {
         new_kid.append(exc);
     }
@@ -804,6 +810,20 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
     if nd.finally_body {
         new_kid.append(nd.finally_body);
     }
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize AwaitingClause kid list."""
+impl NormalizePass.enter_awaiting_clause(nd: uni.AwaitingClause) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_AWAITING),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
@@ -1023,6 +1043,12 @@ impl NormalizePass.enter_disengage_stmt(nd: uni.DisengageStmt) -> None {
 """Normalize AwaitExpr kid list."""
 impl NormalizePass.enter_await_expr(nd: uni.AwaitExpr) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_AWAIT), nd.target, ];
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize CastExpr kid list."""
+impl NormalizePass.enter_cast_expr(nd: uni.CastExpr) -> None {
+    new_kid: list[uni.UniNode] = [nd.value, nd.gen_token(Tok.KW_AS), nd.cast_type];
     nd.set_kids(nodes=new_kid);
 }
 
@@ -1656,8 +1682,20 @@ impl NormalizePass.enter_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> Non
     nd.set_kids(nodes=new_kid);
 }
 
-"""Normalize JsxNormalAttribute kid list."""
+"""Normalize JsxNormalAttribute kid list.
+
+Two shapes are produced here. The default `name={value}` (or
+`name="literal"`) form lays out `[name, =, value]`. The `{name}`
+shorthand introduced by #6082 collapses to `[{, name, }]` — a single
+Name node referenced from both the attribute's `name` and `value`
+slots, so the kid list mentions it once."""
 impl NormalizePass.enter_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
+    if nd.is_shorthand {
+        nd.set_kids(
+            nodes=[nd.gen_token(Tok.LBRACE), nd.name, nd.gen_token(Tok.RBRACE)]
+        );
+        return;
+    }
     new_kid: list[uni.UniNode] = [nd.name];
     if nd.value {
         new_kid.append(nd.gen_token(Tok.EQ));
@@ -1692,6 +1730,32 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
 
     ];
     nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize JsxSlot kid list.
+
+A `JsxSlot` is a statement-form `{...}` JSX child whose kids are the raw
+brace tokens flanking the body statements (the parser emits
+`[LBRACE, ...body, RBRACE]`). Rebuild the kid list deterministically so
+later passes and the formatter can round-trip the slot regardless of how
+the body was produced.
+"""
+impl NormalizePass.enter_jsx_slot(nd: uni.JsxSlot) -> None {
+    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.LBRACE)];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize JsxComment kid list."""
+impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None {
+    if isinstance(nd.value, uni.Token) {
+        nd.set_kids(nodes=[nd.value]);
+    } else {
+        nd.set_kids(nodes=[nd.gen_token(Tok.JSX_COMMENT, value=str(nd.value))]);
+    }
 }
 
 """Normalize MatchStmt kid list."""
