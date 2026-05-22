@@ -2099,14 +2099,14 @@ docker_password = "${DOCKER_PASSWORD}"
 
 #### Auto-generated Dockerfile
 
-If no `Dockerfile` exists in your project folder, one is automatically generated from the built-in template when `--build` is used. It:
+If no `Dockerfile` exists in your project folder, one is automatically generated at `.jac/Dockerfile.gen` from the built-in template when `--build` is used. The `.jac/` directory is covered by the repo's `.gitignore`, so the generated file never appears in your repository. It:
 
 - Installs `jaclang`, `jac-scale`, `jac-client`, and `jac-super`
 - Installs [Bun](https://bun.sh) (required for npm dependencies)
-- Copies `jac.toml` first for Docker layer caching, runs `jac install`, then copies all files
-- Excludes `jac.local.toml` and `jac.*.toml` via auto-generated `.dockerignore`
+- Copies all project files, then runs `jac install` if `jac.toml` is present
+- Excludes `jac.local.toml`, `jac.*.toml`, `.env`, and `.jac/` via auto-generated `.dockerignore`
 
-You can create your own `Dockerfile` to override this behavior.
+Place a `Dockerfile` at your project root to use it instead of the auto-generated one.
 
 #### Private DockerHub Repositories
 

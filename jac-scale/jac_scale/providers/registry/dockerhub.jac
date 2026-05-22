@@ -1,4 +1,7 @@
 """DockerHub registry implementation."""
+import os;
+import shutil;
+import from typing { Any }
 import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 import from jaclang.cli.console { console }

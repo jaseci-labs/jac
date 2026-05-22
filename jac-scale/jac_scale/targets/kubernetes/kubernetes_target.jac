@@ -1466,8 +1466,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 probe_configs,
                 resources_config,
                 command=build_command,
-                secret_ref_name=secret_ref_name,
-                needs_root=app_config.build
+                secret_ref_name=secret_ref_name
             );
 
             # 10. Handle volumes and build container if not building image

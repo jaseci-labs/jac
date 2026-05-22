@@ -34,7 +34,7 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 # ---------------------------------------------------------------------------
 test "end to end build and push produces correct image url and side effects" {
     with tempfile.TemporaryDirectory() as tmpdir {
-        with unittest.mock.patch("docker.from_env") as mock_docker {
+        with unittest.mock.patch("jac_scale._optdeps.docker.docker_module.from_env") as mock_docker {
             mock_client = unittest.mock.MagicMock();
             mock_docker.return_value = mock_client;
             # Simulate docker build returning an image object + streaming log lines
@@ -72,8 +72,9 @@ test "end to end build and push produces correct image url and side effects" {
             # Verify final URL
             assert final_url == "integuser/myservice:v1" , f"Unexpected URL: {final_url}";
             # Dockerfile must have been generated from template (no Dockerfile existed)
-            dockerfile_path = os.path.join(tmpdir, "Dockerfile");
-            assert os.path.exists(dockerfile_path) , "Dockerfile should have been generated";
+            jac_dir: str = os.path.join(str(tmpdir), ".jac");
+            dockerfile_path = os.path.join(jac_dir, "Dockerfile.gen");
+            assert os.path.exists(dockerfile_path) , "Dockerfile.gen should have been generated under .jac/";
             with open(dockerfile_path) as f {
                 dockerfile_content = f.read();
             }
@@ -130,7 +131,7 @@ test "build_platform propagates from kubernetes config through registry to docke
     config_dict = original.to_dict();
     assert config_dict["build_platform"] == "linux/arm64";
 
-    restored = KubernetesConfig.from_dict(config_dict);
+    restored = KubernetesConfig.from_dict(KubernetesConfig, config_dict);
     assert restored.build_platform == "linux/arm64";
 
     # Build the registry config the same way KubernetesTarget does it
@@ -146,7 +147,7 @@ test "build_platform propagates from kubernetes config through registry to docke
 
     # Now verify the platform reaches docker.images.build
     with tempfile.TemporaryDirectory() as tmpdir {
-        with unittest.mock.patch("docker.from_env") as mock_docker {
+        with unittest.mock.patch("jac_scale._optdeps.docker.docker_module.from_env") as mock_docker {
             mock_client = unittest.mock.MagicMock();
             mock_docker.return_value = mock_client;
             mock_client.images.build.return_value = (
@@ -231,7 +232,8 @@ test "build mode sets container startup command and imagePullSecrets in pod spec
     # --- verify _build_container_config for the build=True path ---
     probe_configs = {
         "readiness": {"httpGet": {"path": "/docs", "port": 8000}},
-        "liveness": {"httpGet": {"path": "/docs", "port": 8000}}
+        "liveness": {"httpGet": {"path": "/docs", "port": 8000}},
+        "startup": {"httpGet": {"path": "/docs", "port": 8000}}
     };
     build_command = ["jac", "start", file_name];
     container_cfg = target._build_container_config(

@@ -24,8 +24,6 @@ RUN pip install --no-cache-dir jaclang jac-scale[all] jac-client jac-super
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
-COPY jac.toml* ./
+COPY . .
 
 RUN if [ -f jac.toml ]; then jac install; fi
-
-COPY . .
