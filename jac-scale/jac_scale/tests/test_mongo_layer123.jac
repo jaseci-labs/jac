@@ -425,7 +425,6 @@ test "MongoBackend recover re-links undirected edge to both endpoints" {
 # MongoDB's aggregation-pipeline $set rejects empty embedded documents
 # (error 40180), so every graph write silently failed before this fix.
 # ---------------------------------------------------------------------------
-
 test "_put_node_atomic persists node despite default empty access.roots.anchors (issue #6076)" {
     # Each test gets its own container (different port).  Force a fresh
     # MongoClient so this test's backend does not reuse a cached client
@@ -533,8 +532,9 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
             f"archetype fields must survive round-trip; got name={reloaded_arch.name}"
         );
         reloaded_edges = cast(NodeAnchor, reloaded).edges;
-        edge_ids = [str(e.id) if hasattr(e, 'id') else str(e) for e in reloaded_edges];
-        assert fake_edge_id in edge_ids or any(fake_edge_id in str(e) for e in reloaded_edges) , (
+        edge_ids = [str(e.id) if e?.id else str(e) for e in reloaded_edges];
+        assert fake_edge_id in edge_ids
+        or any(fake_edge_id in str(e) for e in reloaded_edges) , (
             f"added edge must appear in reloaded anchor's edges; got: {reloaded_edges}"
         );
 
