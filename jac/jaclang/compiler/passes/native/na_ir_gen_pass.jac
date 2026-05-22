@@ -71,6 +71,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         enum_string_values: dict[str, list] = {},
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
+        enum_member_ordinal: dict[str, int] = {},
         var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
@@ -258,7 +259,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(nd: uni.Enum) -> None;
-    def _build_enum_string_table(enum_name: str, entries: list) -> None;
+    def _build_enum_string_table(
+        enum_name: str, entries: list, with_values: bool = True
+    ) -> None;
+
     def _codegen_enum_value_lookup(
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);

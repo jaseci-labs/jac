@@ -827,6 +827,42 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # Check .value / .name on a direct enum member: Priority.HIGH.value.
+        # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
+        # and _get_name(nd.target) is None for the inner trailer, so this must run
+        # ahead of the target_name guard below.
+        if (right_name == "value" or right_name == "name")
+        and isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr {
+            mem_enum = self._get_name(nd.target.target);
+            mem_name = self._get_name(nd.target.right);
+            if mem_enum is not None
+            and mem_name is not None
+            and f"{mem_enum}.{mem_name}" in self.enum_values {
+                member_val = self.enum_values[f"{mem_enum}.{mem_name}"];
+                if mem_enum in self.enum_string_values {
+                    # String enum: member lowers to its ordinal; .value/.name
+                    # index the runtime string tables.
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, member_val, use_name=(right_name == "name")
+                    );
+                }
+                # Integer enum: member lowers to its assigned value, so .value
+                # is the member constant itself.
+                if right_name == "value" {
+                    return member_val;
+                }
+                # Integer enum .name: index the name table by the member's
+                # static declaration ordinal (the table is built ordinal-keyed,
+                # independent of the assigned int values).
+                ordinal = self.enum_member_ordinal.get(f"{mem_enum}.{mem_name}");
+                if ordinal is not None {
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, ir.Constant(ir.IntType(64), ordinal), use_name=True
+                    );
+                }
+            }
+        }
         if target_name is not None and right_name is not None {
             # Check native stdlib module access: sys.argv, sys.platform
             if (
