@@ -36,19 +36,43 @@ glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*");
 glob logger = logging.getLogger(__name__);
 
 
-"""Loki base URL with the env override / K8s DNS / localhost fallback."""
+"""Loki base URL with the env override / K8s DNS / localhost fallback.
+
+Resolution order:
+  1. `LOKI_URL` env var (full URL; dev / debugging override).
+  2. `K8S_APP_NAME` env var (injected by K-track on every microservice
+     pod) -> `http://<app>-loki-service:3100`. This is the runtime path
+     in K8s; we read it directly because jac.toml's `${K8S_APP_NAME}`
+     placeholder isn't expanded by the config loader.
+  3. `kubernetes.app_name` from jac.toml. May still contain a literal
+     `${VAR}` placeholder so we expand it against `os.environ`.
+  4. Last-resort `http://localhost:3100` for dev runs.
+"""
 def _loki_base_url -> str {
     env = os.getenv("LOKI_URL", "").strip();
     if env {
         return env.rstrip("/");
     }
-    try {
-        k8s_cfg = get_scale_config().get_kubernetes_config();
-        app_name = k8s_cfg.get("app_name", "jaseci");
-        return f"http://{app_name}-loki-service:3100";
-    } except Exception {
+    app_name = os.getenv("K8S_APP_NAME", "").strip();
+    if not app_name {
+        try {
+            k8s_cfg = get_scale_config().get_kubernetes_config();
+            raw = str(k8s_cfg.get("app_name", "") or "").strip();
+            expanded = os.path.expandvars(raw);
+            # Treat un-expanded placeholders (e.g. "${K8S_APP_NAME}" on
+            # a host where the var is unset) as missing so we fall back
+            # to localhost instead of building a bogus DNS name.
+            if expanded and "${" not in expanded {
+                app_name = expanded;
+            }
+        } except Exception {
+            app_name = "";
+        }
+    }
+    if not app_name {
         return "http://localhost:3100";
     }
+    return f"http://{app_name}-loki-service:3100";
 }
 
 
