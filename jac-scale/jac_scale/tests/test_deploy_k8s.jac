@@ -1673,7 +1673,7 @@ test "early exit" {
     failure_message = result.message;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
-    assert len(details) == 12;
+    assert len(details) == 13;
     assert result.success is False;
     assert failure_message is not None and "Containers restarted" in failure_message;
 }
