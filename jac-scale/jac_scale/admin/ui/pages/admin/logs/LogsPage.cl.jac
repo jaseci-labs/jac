@@ -122,6 +122,21 @@ cl {
             []
         );
 
+        # Auto-apply dropdown filters. Debounced 250ms so dragging through
+        # the <select> options doesn't fire a request per option. Search
+        # is intentionally excluded - it stays Enter-to-submit to avoid
+        # hammering Loki on every keystroke.
+        useEffect(
+            lambda -> any {
+                if traceMode {
+                    return undefined;
+                }
+                timer = setTimeout(lambda { loadLogs(); }, 250);
+                return lambda { clearTimeout(timer); };
+            },
+            [filterService, filterLevel, filterSince]
+        );
+
         useEffect(
             lambda -> any {
                 if not autoRefresh or traceMode {
@@ -130,14 +145,7 @@ cl {
                 interval = setInterval(lambda { loadLogs(); }, 10000);
                 return lambda { clearInterval(interval); };
             },
-            [
-                autoRefresh,
-                traceMode,
-                filterService,
-                filterLevel,
-                filterSearch,
-                filterSince
-            ]
+            [autoRefresh, traceMode]
         );
 
         # ---- helpers -----------------------------------------------------
@@ -396,42 +404,113 @@ cl {
                 >
                     {lines.map(
                         lambda (line: dict, idx: int) { return
-                            <div
-                                key={idx}
-                                className="flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer"
-                                onClick={lambda { expandedIdx = idx
-                                    if expandedIdx != idx
-                                    else -1; }}
-                            >
-                                <span
-                                    className="text-slate-500 text-xs whitespace-nowrap"
+                            <div key={idx} className="border-b border-slate-800/50">
+                                <div
+                                    className="flex items-start gap-3 px-3 py-1.5 hover:bg-slate-800/30 cursor-pointer"
+                                    onClick={lambda { expandedIdx = idx
+                                        if expandedIdx != idx
+                                        else -1; }}
                                 >
-                                    {shortTime(line["ts"] or "")}
-                                </span>
-                                <span
-                                    className={"text-xs font-bold whitespace-nowrap " + serviceColor(
-                                        line["service"] or ""
-                                    )}
+                                    <span
+                                        className="text-slate-500 text-xs whitespace-nowrap"
+                                    >
+                                        {shortTime(line["ts"] or "")}
+                                    </span>
+                                    <span
+                                        className={"text-xs font-bold whitespace-nowrap " + serviceColor(
+                                            line["service"] or ""
+                                        )}
+                                    >
+                                        {line["service"] or "?"}
+                                    </span>
+                                    <span
+                                        className={levelBadge(line["level"] or "INFO")}
+                                    >
+                                        {(line["level"] or "INFO").toUpperCase()}
+                                    </span>
+                                    <span className="text-slate-200 break-all flex-1">
+                                        {line["msg"] or ""}
+                                    </span>
+                                    {line["trace_id"]
+                                    and <button
+                                        className="text-xs font-mono text-purple-300 hover:text-purple-200 px-1.5 py-0.5 rounded border border-purple-500/30 hover:bg-purple-500/10 whitespace-nowrap"
+                                        onClick={lambda (e: any) {
+                                            e.stopPropagation();
+                                            loadTrace(String(line["trace_id"]));
+                                        }}
+                                        title="View full trace across all services"
+                                    >
+                                        trace:{shortTrace(String(line["trace_id"]))}
+                                    </button>}
+                                </div>
+                                {expandedIdx == idx
+                                and <div
+                                    className="bg-slate-950/60 border-t border-slate-800/50 px-6 py-3 text-xs space-y-1.5"
                                 >
-                                    {line["service"] or "?"}
-                                </span>
-                                <span className={levelBadge(line["level"] or "INFO")}>
-                                    {(line["level"] or "INFO").toUpperCase()}
-                                </span>
-                                <span className="text-slate-200 break-all flex-1">
-                                    {line["msg"] or ""}
-                                </span>
-                                {line["trace_id"]
-                                and <button
-                                    className="text-xs font-mono text-purple-300 hover:text-purple-200 px-1.5 py-0.5 rounded border border-purple-500/30 hover:bg-purple-500/10 whitespace-nowrap"
-                                    onClick={lambda (e: any) {
-                                        e.stopPropagation();
-                                        loadTrace(String(line["trace_id"]));
-                                    }}
-                                    title="View full trace across all services"
-                                >
-                                    trace:{shortTrace(String(line["trace_id"]))}
-                                </button>}
+                                    <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Timestamp</span>
+                                        <span
+                                            className="text-slate-200 font-mono break-all"
+                                        >{line["ts"] or "-"}</span>
+                                    </div>
+                                    <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Service</span>
+                                        <span
+                                            className={"font-mono break-all " + serviceColor(
+                                                line["service"] or ""
+                                            )}
+                                        >{line["service"] or "-"}</span>
+                                    </div>
+                                    <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Level</span>
+                                        <span
+                                            className="text-slate-200 font-mono"
+                                        >{(line["level"] or "INFO").toUpperCase()}</span>
+                                    </div>
+                                    {line["pod"]
+                                    and <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Pod</span>
+                                        <span
+                                            className="text-slate-200 font-mono break-all"
+                                        >{line["pod"]}</span>
+                                    </div>}
+                                    {line["trace_id"]
+                                    and <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Trace ID</span>
+                                        <span
+                                            className="text-purple-300 font-mono break-all"
+                                        >{line["trace_id"]}</span>
+                                    </div>}
+                                    <div className="flex">
+                                        <span
+                                            className="text-slate-500 w-24 shrink-0"
+                                        >Message</span>
+                                        <span
+                                            className="text-slate-200 break-all whitespace-pre-wrap"
+                                        >{line["msg"] or ""}</span>
+                                    </div>
+                                    {line["extras"]
+                                    and <div>
+                                        <div
+                                            className="text-slate-500 mb-1"
+                                        >Extras</div>
+                                        <pre
+                                            className="bg-slate-900 border border-slate-800 rounded p-2 text-slate-200 overflow-x-auto"
+                                        >{JSON.stringify(
+                                            line["extras"], None, 2
+                                        )}</pre>
+                                    </div>}
+                                </div>}
                             </div>; }
                     )}
                 </div>}
