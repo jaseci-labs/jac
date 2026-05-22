@@ -12,12 +12,17 @@ import time;
 import unittest.mock;
 import requests;
 import from pathlib { Path }
+import from typing { Any }
 import from jac_scale.scheduler.scheduler {
     JacScaleScheduler,
     MemoryJobStore,
     TriggerSpec
 }
 import from jac_scale._optdeps.pymongo { PyMongoError }
+import from jac_scale.tests.auth_test_helpers {
+    data as _data,
+    register_and_login as _get_token
+}
 
 glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures";
 
@@ -29,14 +34,7 @@ def get_free_port -> int {
     }
 }
 
-def _data(resp: dict[str, any]) -> any {
-    if isinstance(resp, dict) and "data" in resp {
-        return resp["data"];
-    }
-    return resp;
-}
-
-def _err(resp: dict[str, any]) -> dict[str, any] | None {
+def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
     if isinstance(resp, dict) and not resp.get("ok") {
         return resp.get("error") or resp;
     }
@@ -103,27 +101,7 @@ def _stop_server(proc: subprocess.Popen | None) {
     gc.collect();
 }
 
-def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> str {
-    requests.post(
-        f"{base_url}/user/register",
-        json={
-            "identities": [{"type": "username", "value": user}],
-            "credential": {"type": "password", "password": pwd}
-        },
-        timeout=5
-    );
-    resp = requests.post(
-        f"{base_url}/user/login",
-        json={
-            "identity": {"type": "username", "value": user},
-            "credential": {"type": "password", "password": pwd}
-        },
-        timeout=5
-    ).json();
-    return _data(resp)["token"];
-}
-
-def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, any] {
+def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, Any] {
     return requests.post(
         f"{base_url}/jobs", json=payload, headers=headers, timeout=5
     ).json();

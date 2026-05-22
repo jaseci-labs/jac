@@ -60,9 +60,9 @@ def:pub Sidebar(
                 >
                     <User size={22}/>
                     <span>Profile</span>
-                    {(<span className="lx-nav-badge">{str(notifCount)}</span>)
-                        if notifCount > 0
-                        else None}
+                    {if notifCount > 0 {
+                        <span className="lx-nav-badge">{str(notifCount)}</span>
+                    }}
                 </div>
             </nav>
             <button

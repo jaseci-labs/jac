@@ -300,6 +300,7 @@ impl JacAPIServerCore.start(
         }
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+    self.setup_emailer();
     self._setup_scheduler();
     self._setup_events();
     # Find an available port (may differ from requested if port is in use)

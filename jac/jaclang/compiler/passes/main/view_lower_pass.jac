@@ -2,7 +2,7 @@
 
 The parser produces a faithful `JsxSlot` for every `{...}` slot in JSX
 child position whose body is statement-form (begins with `if`/`for`/
-`while`/`match`/`switch`/`with`/`try`/`return`, or contains multiple
+`while`/`match`/`switch`/`with`/`try`/`skip`, or contains multiple
 statements separated by `;`). The body is preserved as the author's raw
 statement template so the `jac format` pipeline (which does not run this
 pass) round-trips the source verbatim.
@@ -14,9 +14,11 @@ For every `JsxSlot` this pass:
 2. Lowers the body into an accumulator pattern: `__jac_view_kids = []`,
    every JSX statement (recursively, through control flow) does
    `__jac_view_kids.append(<jsx>)`, then `return <>{__jac_view_kids}</>;`.
-   `.append` is O(1) amortized -- the accumulator is built in linear
-   time. On the client target `@jac/runtime`'s polymorphic `append`
-   lowers it to `Array.prototype.push`.
+   `skip;` inside the body is rewritten to the same `return <>{acc}</>;`
+   shape — the slot early-exit guard. `.append` is O(1) amortized --
+   the accumulator is built in linear time. On the client target
+   `@jac/runtime`'s polymorphic `append` lowers it to
+   `Array.prototype.push`.
 
 After this pass the es-codegen wraps the lowered body in an arrow
 function and invokes it inline; the slot's expression value is the
@@ -27,7 +29,16 @@ Runs first in the IR-generation schedule, before `ASTValidationPass`.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.diagnostics { E2019, E2020, E2021, E2022, W2019, W2020 }
+import from jaclang.jac0core.diagnostics {
+    E2019,
+    E2020,
+    E2021,
+    E2022,
+    E2024,
+    W2019,
+    W2020,
+    W2021
+}
 
 """Name of the synthesized child accumulator local."""
 glob VIEW_ACC: str = "__jac_view_kids";
@@ -43,10 +54,12 @@ contributes through the same push, and a final `return
 in an arrow function that's invoked inline so the slot's expression
 value is the accumulated JSX fragment.
 
-A bare `return;` inside the slot becomes the same fragment-of-kids
-return -- the early-exit guard. A value-returning `return expr;` is
-flagged by `view_body_check` (E2019); the value is discarded by the
-lowering to keep the pass robust against the diagnosed source.
+`skip;` inside the slot is rewritten to the same fragment-of-kids
+return — the slot early-exit guard ("show the empty state, stop
+here"). Bare `return;` is flagged E2020 ("use `skip;`") and a
+value-returning `return expr;` is flagged E2019; both still lower
+into the fragment-return shape so the pass stays robust against
+the diagnosed source.
 """
 obj ViewLowerPass(UniPass) {
     """Per-pass counter used to name nested slot accumulators uniquely.
@@ -101,15 +114,30 @@ obj ViewLowerPass(UniPass) {
     def _check_body(stmts: list, in_loop: bool, loop_kw: str) {
         for s in stmts {
             if isinstance(s, uni.ReturnStmt) {
+                # Any `return` in a slot body is forbidden: a slot body is
+                # an inlined IIFE, so `return;` reads like a function-exit
+                # but only exits the slot. `skip;` is the canonical
+                # slot early-exit; `return expr;` makes no sense at all
+                # since slots render template content.
                 if s.expr is not None {
                     self.emit(E2019, node_override=s);
-                } elif in_loop {
-                    self.emit(E2020, node_override=s, loop=loop_kw);
+                } else {
+                    self.emit(E2020, node_override=s);
                 }
             } elif isinstance(s, uni.CtrlStmt) {
-                if in_loop and s.ctrl.value in ["break", "skip"] {
+                # `skip;` is the slot early-exit (lowered by _lower_one to
+                # `return <>{acc}</>;`) — always allowed, including inside
+                # slot loops where it abandons remaining iterations *and*
+                # later JSX. Only `break;` remains ambiguous in a slot
+                # loop (exit-loop vs. exit-slot).
+                if in_loop and s.ctrl.value == "break" {
                     self.emit(E2021, node_override=s, kw=s.ctrl.value, loop=loop_kw);
                 }
+            } elif isinstance(s, uni.ArchHas) {
+                # `has`-fields declared inside a slot body would compile
+                # to a conditional `useState` — a rules-of-hooks violation.
+                # State belongs at the enclosing `def -> JsxElement` scope.
+                self.emit(E2024, node_override=s);
             } elif isinstance(s, uni.WhileStmt) {
                 if self._emits_keyless_jsx(s.body) {
                     self.emit(W2019, node_override=s);
@@ -117,6 +145,15 @@ obj ViewLowerPass(UniPass) {
                 self._check_body(s.body, True, "while");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.InForStmt) or isinstance(s, uni.IterForStmt) {
+                # Keyless for-loop in a slot: until the auto-fragment
+                # lowering (#6082 item 1) lands, an unkeyed loop child
+                # contributes its JSX as flat siblings into the parent's
+                # children list, and a re-render with a reordered iterable
+                # loses iteration identity. W2021 names the fix at the
+                # source site.
+                if self._emits_keyless_jsx(s.body) {
+                    self.emit(W2021, node_override=s);
+                }
                 self._check_body(s.body, True, "for");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.IfStmt) {
@@ -344,14 +381,28 @@ obj ViewLowerPass(UniPass) {
             return s;
         }
         if isinstance(s, uni.ReturnStmt) {
-            # Any `return` in a view body becomes the fragment guard return.
-            # A `return expr;` was already flagged E2019; discarding the value
-            # here keeps lowering robust and avoids a spurious type error.
+            # A bare `return;` was already flagged E2020 and a value-form
+            # `return expr;` E2019; lowering them both into the fragment-
+            # guard shape keeps the pass robust against the diagnosed
+            # source (no spurious type errors downstream). New code should
+            # use `skip;` (handled below).
             frag = self._make_fragment(anchor, acc_name_str);
             ret_uni = self._synth_tok("KW_RETURN", "return", anchor);
             s.expr = frag;
             s.set_kids([ret_uni, frag, self._synth_semi(anchor)]);
             return s;
+        }
+        if isinstance(s, uni.CtrlStmt) and s.ctrl.value == "skip" {
+            # `skip;` is the slot early-exit: rewrite to
+            # `return <>{acc}</>;` so the slot's IIFE returns the
+            # accumulated fragment up to this point. `break;` and
+            # `continue;` pass through to their normal JS lowering.
+            frag = self._make_fragment(anchor, acc_name_str);
+            ret_uni = self._synth_tok("KW_RETURN", "return", anchor);
+            ret = uni.ReturnStmt(
+                expr=frag, kid=[ret_uni, frag, self._synth_semi(anchor)]
+            );
+            return ret;
         }
         if isinstance(s, uni.IfStmt) {
             # IfStmt also matches ElseIf (a subclass).

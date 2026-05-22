@@ -142,6 +142,34 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+"""Inference-only schedule for native compilation.
+
+    The native backend (NaIRGenPass) lowers Expr.type into ir.Type instead
+    of re-deriving structure from annotation AST, so it needs the central
+    TypeEvaluator to have populated Expr.type before codegen. This schedule
+    runs only TypeCheckPass — the diagnostic-emitting passes (Static /
+    Portability / Lint) and the duplicate UniTreeEnrichPass (already run at
+    the tail of get_ir_gen_sched) are intentionally omitted: rerunning them
+    mutates AST state that NaIRGenPass and the cross-module linker depend on.
+
+    Same re-entrancy guard as get_type_check_sched.
+    """
+def get_native_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    global _typecheck_sched_loading;
+    if _typecheck_sched_loading {
+        return [];
+    }
+    _typecheck_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+        return [TypeCheckPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _typecheck_sched_loading = False;
+    }
+}
+
 """Full Python code generation schedule.
 
     Same re-entrancy guard as get_ir_gen_sched: when compiling the

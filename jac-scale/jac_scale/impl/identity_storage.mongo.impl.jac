@@ -90,11 +90,44 @@ impl MongoIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] 
 impl MongoIdentityStorage._add_identity(
     user_id: str, identity: dict[str, any]
 ) -> bool {
+    try {
+        result = self.users_col.update_one(
+            {'user_id': user_id},
+            {
+                '$push': {'identities': identity},
+                '$set': {'updated_at': datetime.now(UTC).isoformat()}
+            }
+        );
+    } except DuplicateKeyError {
+        raise IdentityTakenError();
+    }
+    return result.matched_count > 0;
+}
+
+"""Mark a single identity (matched by value_normalized) as verified.
+
+Returns True only when the verified flag actually flipped (matches SQLite
+semantics). The filter requires the identity to not already be verified, so
+matched_count > 0 implies an actual state change.
+"""
+impl MongoIdentityStorage._set_identity_verified(
+    user_id: str, value_normalized: str
+) -> bool {
     result = self.users_col.update_one(
-        {'user_id': user_id},
         {
-            '$push': {'identities': identity},
-            '$set': {'updated_at': datetime.now(UTC).isoformat()}
+            'user_id': user_id,
+            'identities': {
+                '$elemMatch': {
+                    'value_normalized': value_normalized,
+                    'verified': {'$ne': True}
+                }
+            }
+        },
+        {
+            '$set': {
+                'identities.$.verified': True,
+                'updated_at': datetime.now(UTC).isoformat()
+            }
         }
     );
     return result.matched_count > 0;

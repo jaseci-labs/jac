@@ -171,7 +171,7 @@ def:pub app -> JsxElement {
                                 )
                         )}
                     </span>
-                    {(
+                    {if activeTab == "profile" {
                         <button
                             className="lx-edit-profile-btn"
                             onClick={lambda {
@@ -183,11 +183,9 @@ def:pub app -> JsxElement {
                         >
                             {"Cancel" if editingBio else "Edit profile"}
                         </button>
-                    )
-                        if activeTab == "profile"
-                        else None}
+                    }}
                 </div>
-                {(
+                {if activeTab == "feed" {
                     <FeedTab
                         showWelcome={showWelcome}
                         onDismissWelcome={handleDismissWelcome}
@@ -203,10 +201,7 @@ def:pub app -> JsxElement {
                         onDelete={handleDelete}
                         onRepost={handleRepost}
                     />
-                )
-                    if activeTab == "feed"
-                    else None}
-                {(
+                } elif activeTab == "explore" {
                     <ExploreTab
                         allProfiles={allProfiles}
                         followingIds={followingIds}
@@ -214,10 +209,7 @@ def:pub app -> JsxElement {
                         onFollow={handleFollow}
                         onUnfollow={handleUnfollow}
                     />
-                )
-                    if activeTab == "explore"
-                    else None}
-                {(
+                } elif activeTab == "channels" {
                     <ChannelsTab
                         channels={channels}
                         channelsLoading={channelsLoading}
@@ -236,10 +228,7 @@ def:pub app -> JsxElement {
                         onDelete={handleDelete}
                         onRepost={handleRepost}
                     />
-                )
-                    if activeTab == "channels"
-                    else None}
-                {(
+                } elif activeTab == "profile" {
                     <ProfileTab
                         myProfile={myProfile}
                         displayUsername={displayUsername}
@@ -255,9 +244,7 @@ def:pub app -> JsxElement {
                         onDelete={handleDelete}
                         onRepost={handleRepost}
                     />
-                )
-                    if activeTab == "profile"
-                    else None}
+                }   }
             </main>
             <RightSidebar
                 searchQuery={searchQuery}

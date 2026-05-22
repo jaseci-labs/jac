@@ -73,7 +73,9 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
                 <p class="auth-subtitle">
                     {("Create your account" if isSignup else "Welcome back")}
                 </p>
-                {(<div class="auth-error">{error}</div>) if error else None}
+                {if error {
+                    <div class="auth-error">{error}</div>
+                }}
                 <form onSubmit={handleSubmit}>
                     <div class="form-field">
                         <label class="form-label">Username</label>

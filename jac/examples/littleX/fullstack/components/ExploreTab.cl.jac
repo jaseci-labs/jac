@@ -14,9 +14,9 @@ def:pub ExploreTab(
 
     return
         <div>
-            {(<div className="lx-loading">Loading users...</div>)
-                if not allProfiles
-                else None}{[
+            {if not allProfiles {
+                <div className="lx-loading">Loading users...</div>
+            }for u in allProfiles {
                 <div className="lx-explore-item" key={u.id}>
                     <img
                         className="lx-avatar"
@@ -38,26 +38,22 @@ def:pub ExploreTab(
                         </div>
                         <div className="lx-explore-bio">{u.bio or "No bio yet"}</div>
                     </div>
-                    {(
+                    {if u.id in followingIds {
                         <button
                             className="lx-unfollow-btn"
                             onClick={lambda { unfollowFn.call(None, u.id); }}
                         >
                             Following
                         </button>
-                    )
-                        if u.id in followingIds
-                        else (
-                            <button
-                                className="lx-follow-btn"
-                                onClick={lambda { followFn.call(None, u.id); }}
-                            >
-                                Follow
-                            </button>
-                        )
-                            if u.id != myProfileId
-                            else None}
-                </div> for u in allProfiles
-            ]}
+                    } elif u.id != myProfileId {
+                        <button
+                            className="lx-follow-btn"
+                            onClick={lambda { followFn.call(None, u.id); }}
+                        >
+                            Follow
+                        </button>
+                    } }
+                </div>
+            }}
         </div>;
 }

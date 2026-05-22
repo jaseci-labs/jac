@@ -90,7 +90,7 @@ def:pub TweetCard(
                         <Heart size={16}/>
                         <span>{like_count}</span>
                     </button>
-                    {(
+                    {if tweet.is_mine {
                         <button
                             className="lx-act-btn lx-act-delete"
                             onClick={lambda { if confirm(
@@ -101,13 +101,11 @@ def:pub TweetCard(
                         >
                             <Trash2 size={16}/>
                         </button>
-                    )
-                        if tweet.is_mine
-                        else None}
+                    }}
                 </div>
-                {(
+                {if showComments {
                     <div className="lx-comments-section">
-                        {[
+                        {for c in tweet.comments {
                             <div className="lx-comment-item" key={c["created_at"]}>
                                 <img
                                     className="lx-avatar-sm"
@@ -124,8 +122,8 @@ def:pub TweetCard(
                                         {c["content"]}
                                     </div>
                                 </div>
-                            </div> for c in tweet.comments
-                        ]}
+                            </div>
+                        }}
                         <div className="lx-comment-form">
                             <input
                                 className="lx-comment-input"
@@ -149,9 +147,7 @@ def:pub TweetCard(
                             </button>
                         </div>
                     </div>
-                )
-                    if showComments
-                    else None}
+                }}
             </div>
         </div>;
 }
