@@ -213,11 +213,51 @@ def _balanced(text: str, start: int, open_ch: str, close_ch: str) -> str | None 
 }
 
 
+"""Pull a {name, arguments} pair out of one call-shaped object, or None.
+
+Small models are wildly inconsistent in how they key a tool call, so accept
+the common spellings: name via `name`/`tool`/`tool_name`/`function` (the last
+either a plain name string or a nested `{"name", "arguments"}` object), and
+arguments via `arguments`/`parameters`/`args`/`tool_args`/`input`.
+"""
+def _call_fields(cobj: object) -> dict | None {
+    if not isinstance(cobj, dict) {
+        return None;
+    }
+    func = cobj.get("function");
+    name: object = cobj.get("name") or cobj.get("tool") or cobj.get("tool_name");
+    args: object = (
+        cobj.get("arguments")
+        or cobj.get("parameters")
+        or cobj.get("args")
+        or cobj.get("tool_args")
+        or cobj.get("input")
+    );
+    # `function` is a plain name string in some shapes, a nested
+    # `{"name", "arguments"}` object (OpenAI native) in others.
+    if isinstance(func, dict) {
+        name = name or func.get("name");
+        args = (
+            args or func.get("arguments") or func.get("args") or func.get("parameters")
+        );
+    } elif isinstance(func, str) {
+        name = name or func;
+    }
+    if isinstance(name, str) and name {
+        return {"name": name, "arguments": args or {}};
+    }
+    return None;
+}
+
+
 """Find the first JSON object in `content` that looks like a tool call.
 
 Works whether the model wrapped the call in `<tool_call>` tags, a ```json
-fence, or emitted bare JSON. When `tool_names` is non-empty, objects whose
-name is not a real tool are skipped. Returns {name, arguments, raw, pos}.
+fence, or emitted bare JSON, and whether the call is a flat
+`{"name", "arguments"}` object or sits inside a `{"tool_calls": [...]}` /
+`{"tool_call": {...}}` envelope (the shape ollama-served models stream as
+text). When `tool_names` is non-empty, objects whose name is not a real tool
+are skipped. Returns {name, arguments, raw, pos}.
 """
 def _extract_json_call(content: str, tool_names: list) -> dict | None {
     i = 0;
@@ -234,21 +274,34 @@ def _extract_json_call(content: str, tool_names: list) -> dict | None {
                 parsed = None;
             }
             if isinstance(parsed, dict) {
-                name = (
-                    parsed.get("name") or parsed.get("tool") or parsed.get("function")
-                );
-                if (
-                    isinstance(name, str)
-                    and name
-                    and (not tool_names or name in tool_names)
-                ) {
-                    args = (
-                        parsed.get("arguments")
-                        or parsed.get("parameters")
-                        or parsed.get("args")
-                        or {}
-                    );
-                    return {"name": name, "arguments": args, "raw": blob, "pos": i};
+                # Unwrap a `tool_calls`/`tool_call` envelope; otherwise treat the
+                # object itself as the candidate call.
+                wrapped = parsed.get("tool_calls") or parsed.get("tool_call");
+                candidates: list = [];
+                if isinstance(wrapped, list) {
+                    candidates = wrapped;
+                } elif isinstance(wrapped, dict) {
+                    candidates = [wrapped];
+                } else {
+                    candidates = [parsed];
+                }
+                for cand in candidates {
+                    if not isinstance(cand, dict) {
+                        continue;
+                    }
+                    fields = _call_fields(cand);
+                    if fields is None {
+                        continue;
+                    }
+                    name = str(fields.get("name"));
+                    if not tool_names or name in tool_names {
+                        return {
+                            "name": name,
+                            "arguments": fields.get("arguments"),
+                            "raw": blob,
+                            "pos": i
+                        };
+                    }
                 }
             }
             i += len(blob);
