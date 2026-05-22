@@ -88,6 +88,12 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # Handle parenthesized expressions: (expr) → AtomUnit
     } elif isinstance(nd, uni.AtomUnit) {
         _result = self._codegen_expr(nd.value);
+        # Cast (`value as T`) is type-erased: it evaluates to the inner
+        # value unchanged and only refines the static type. The narrowed
+        # type lets `.attr` on a nullable archetype compile; a None value
+        # then traps at the native deref just like any AttributeError.
+    } elif isinstance(nd, uni.CastExpr) {
+        _result = self._codegen_expr(nd.value);
         # Lambda expressions: emit an anonymous LLVM function and return
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
