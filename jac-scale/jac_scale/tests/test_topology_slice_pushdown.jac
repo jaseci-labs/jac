@@ -238,6 +238,121 @@ test "edge-ref slice bounds redis cache promotions" {
 }
 
 
+"""[?:Type, field op const] must work correctly when the backend has no pushdown
+capability — FilterSpec falls back to calling its embedded lambda per-node.
+
+This tests the path where execute_path returns None (no persistent origin or
+topology index disabled) and refs() falls through to the edge-walk, using
+FilterSpec.__call__ → func as the node filter."""
+test "field-predicate filter falls back to lambda on non-pushdown backend" {
+    orig_base = JacRuntime.get_base_path_dir();
+    cfg = JacConfig();
+    cfg.run.topology_index = False;
+    set_config(cfg);
+    JacRuntime.set_base_path("/tmp/_pushdown_fallback");
+
+    try {
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        for i in range(10) {
+            root ++> _PushdownLead(idx=i);
+        }
+
+        leads = [root-->[?:_PushdownLead, idx<5]];
+        assert len(leads) == 5 , f"Expected 5 leads with idx < 5, got {len(leads)}";
+        for lead in leads {
+            assert lead.idx < 5 , f"Lambda fallback not applied: idx={lead.idx}";
+        }
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+    }
+}
+
+
+"""Multi-predicate AND (gte + lt on the same field) and eq operator must push
+down to MongoDB as a single collection.find() call.
+
+  [?:_PushdownLead, idx >= 20, idx < 50]  → {$gte: 20, $lt: 50}   → 30 docs
+  [?:_PushdownLead, idx == 42]            → {$eq: 42}              →  1 doc
+
+Pushdown proof: execute_plan_fetch_count equals the expected result count and
+fetch_count remains 0 (batch_get / the floor path was not used)."""
+test "field-predicate range and eq operators push down to mongodb" {
+    _reset_dbs();
+    orig_base = JacRuntime.get_base_path_dir();
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    JacRuntime.set_base_path("/tmp/_pushdown_ops");
+
+    try {
+        # --- Phase 1: build 100 leads (idx 0-99), persist ---
+        (mem1, mongo1, redis1) = _make_scale_memory();
+        ctx1 = ExecutionContext();
+        ctx1.mem = mem1;
+        ctx1.mem.put(ctx1.system_root);
+        JacRuntime.set_context(ctx1);
+
+        for i in range(100) {
+            root ++> _PushdownLead(idx=i);
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: range AND (gte + lt on same field) ---
+        (mem2, mongo2, redis2) = _make_scale_memory();
+        ctx2 = ExecutionContext();
+        ctx2.mem = mem2;
+        JacRuntime.set_context(ctx2);
+
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        mongo2.reset_counters();
+        leads = [r2-->[?:_PushdownLead, idx>=20, idx<50]];
+
+        assert len(leads) == 30 , f"Expected 30 leads (20 ≤ idx < 50), got {len(
+            leads
+        )}";
+        for lead in leads {
+            assert lead.idx >= 20 and lead.idx < 50 , (
+                f"Range predicate not applied: idx={lead.idx}"
+            );
+        }
+        assert mongo2.execute_plan_fetch_count == 30 , (
+            f"Expected execute_plan to fetch 30 docs; got {mongo2.execute_plan_fetch_count}"
+        );
+        assert mongo2.fetch_count == 0 , (
+            f"fetch_count should be 0 (pushdown only); got {mongo2.fetch_count}"
+        );
+
+        # eq: idx == 42 → exactly 1 result
+        mongo2.reset_counters();
+        exact = [r2-->[?:_PushdownLead, idx==42]];
+
+        assert len(exact) == 1 , f"Expected 1 lead with idx == 42, got {len(exact)}";
+        assert exact[0].idx == 42 , f"Wrong node returned: idx={exact[0].idx}";
+        assert mongo2.execute_plan_fetch_count == 1 , (
+            f"Expected 1 doc from execute_plan; got {mongo2.execute_plan_fetch_count}"
+        );
+        assert mongo2.fetch_count == 0 , (
+            f"fetch_count should be 0 (pushdown only); got {mongo2.fetch_count}"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+    }
+}
+
+
 """[?:Type, field op const] must push predicates to MongoDB via execute_plan.
 
 Proof of pushdown: mongo.fetch_count == 0 (execute_plan uses collection.find()
