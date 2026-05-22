@@ -574,8 +574,14 @@ impl MicroserviceGateway.setup -> FastAPI {
     try {
         self._install_admin_api();
     } except Exception as e {
+        # Roll back any partial install (self.server gets assigned
+        # before any of the calls that can fail like UserManager init).
+        # Without this reset, the dispatcher would see server != None and
+        # delegate /admin/* to FastAPI even though no routes were
+        # registered, breaking the static-UI fallback.
+        self.server = None;
         logger.warning(
-            f"Admin JSON API not installed - admin UI will be read-only "
+            "Admin JSON API not installed - admin UI will be read-only "
             f"static. Cause: {type(e).__name__}: {e}"
         );
     }
@@ -652,6 +658,30 @@ impl MicroserviceGateway.setup -> FastAPI {
             } elif path == "/docs" {
                 svc_label = "__docs__";
                 resp = gw.handle_docs();
+            } elif path == "/admin" or path.startswith("/admin/") {
+                # A-05c: when the admin JSON API has been installed,
+                # JFastApiServer has registered FastAPI routes for
+                # /admin/login, /admin/me, /admin/users, /admin/logs/*,
+                # plus a catchall `/admin/{path:path}` that performs SPA
+                # asset + index.html fallback. Delegate to FastAPI's
+                # router via call_next so those routes can match. If
+                # the install failed (Mongo unreachable etc.), fall
+                # back to the static-asset handler so the UI still
+                # loads read-only.
+                svc_label = "__admin__";
+                admin_resp: Response | None = None;
+                if gw.server is not None {
+                    admin_resp = await call_next(request);
+                } else {
+                    admin_resp = gw.handle_admin(path);
+                }
+                if admin_resp is None {
+                    import from jac_scale.microservices.runtime.errors {
+                        not_found
+                    }
+                    admin_resp = not_found(path);
+                }
+                resp = admin_resp;
             } else {
                 # Prefix-match first so we can label the service name on
                 # proxy hits even before handle_proxy gets the Response.
@@ -665,13 +695,6 @@ impl MicroserviceGateway.setup -> FastAPI {
                     if builtin is not None {
                         svc_label = "__builtin__";
                         resp = builtin;
-                    }
-                }
-                if resp is None {
-                    admin = gw.handle_admin(path);
-                    if admin is not None {
-                        svc_label = "__admin__";
-                        resp = admin;
                     }
                 }
                 if resp is None {
@@ -823,10 +846,17 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.server.set_user_manager(self.user_manager);
     self._api_key_manager = ApiKeyManager();
 
-    # 3. Register the JSON endpoints. Each call walks JEndPoint specs
-    #    and calls FastAPI's add_api_route under the hood.
+    # 3. Queue the JSON endpoints. Each call appends JEndPoint specs
+    #    to self.server._endpoints (no FastAPI route is created yet).
     self.register_admin_endpoints();
     self.register_logs_endpoints();
+
+    # 4. Materialize the queued endpoints as actual FastAPI routes.
+    #    JFastApiServer.add_endpoint() only enqueues; create_server()
+    #    runs execute() which calls _create_fastapi_route() for every
+    #    queued JEndPoint. Without this step the routes never exist
+    #    on the app and the dispatcher's call_next sees only 404s.
+    self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "
