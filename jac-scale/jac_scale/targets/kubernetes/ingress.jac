@@ -546,7 +546,10 @@ obj IngressDeployer {
         }
         ingress_annotations.update(existing_tls_annotations);
 
-        main_ingress_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
+        main_ingress_spec: dict = {
+            'ingressClassName': ingress_class,
+            'rules': [main_rule]
+        };
         if existing_tls {
             main_ingress_spec['tls'] = existing_tls;
         }
@@ -688,14 +691,18 @@ obj IngressDeployer {
                 if ri_prev_tls or ri_prev_host {
                     ri_existing_tls = ri_prev_tls;
                     ri_existing_host = ri_prev_host;
-                    ri_prev_ann = ri_prev_dict.get('metadata', {}).get('annotations', {});
+                    ri_prev_ann = ri_prev_dict.get('metadata', {}).get(
+                        'annotations', {}
+                    );
                     for ri_tls_key in [
                         'cert-manager.io/issuer',
                         'nginx.ingress.kubernetes.io/ssl-redirect',
                         'nginx.ingress.kubernetes.io/force-ssl-redirect'
                     ] {
                         if ri_prev_ann.get(ri_tls_key) {
-                            ri_existing_tls_annotations[ri_tls_key] = ri_prev_ann.get(ri_tls_key);
+                            ri_existing_tls_annotations[ri_tls_key] = ri_prev_ann.get(
+                                ri_tls_key
+                            );
                         }
                     }
                 }
@@ -712,7 +719,10 @@ obj IngressDeployer {
             }
             redis_ingress_annotations.update(ri_existing_tls_annotations);
 
-            redis_ingress_spec: dict = {'ingressClassName': ingress_class, 'rules': [redis_rule]};
+            redis_ingress_spec: dict = {
+                'ingressClassName': ingress_class,
+                'rules': [redis_rule]
+            };
             if ri_existing_tls {
                 redis_ingress_spec['tls'] = ri_existing_tls;
             }
