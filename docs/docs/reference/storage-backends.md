@@ -13,7 +13,9 @@ This page covers the **query pushdown layer**: how to tell the runtime planner w
 When a Jac program traverses a graph with a type filter and field predicates:
 
 ```jac
-results = [root --> [?:Order, status == "pending", total > 1000]];
+with entry {
+    results = [root --> [?:Order, status == "pending", total > 1000]];
+}
 ```
 
 Without pushdown, the runtime has to:
@@ -121,15 +123,17 @@ def capabilities -> set[str] {
 `execute_plan` must `yield` `NodeAnchor` objects for every matching node, in any order (unless you declared `slice`, in which case order matters). The planner applies `plan.post_filter` on your output as a safety net -- you don't need to apply it yourself.
 
 ```jac
-def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
-    query, skip_n, limit_n = _plan_to_native_query(plan);
-    cursor = self.collection.find(query).skip(skip_n);
-    if limit_n is not None {
-        cursor = cursor.limit(limit_n);
-    }
-    for doc in cursor {
-        if (anchor := self._load_anchor(doc)) {
-            yield anchor;
+obj MyBackend(PersistentMemory) {
+    def execute_plan(plan: QueryPlan) -> any {
+        (query, skip_n, limit_n) = _plan_to_native_query(plan);
+        cursor = self.collection.find(query).skip(skip_n);
+        if limit_n is not None {
+            cursor = cursor.limit(limit_n);
+        }
+        for doc in cursor {
+            if (anchor := self._load_anchor(doc)) {
+                yield anchor;
+            }
         }
     }
 }
