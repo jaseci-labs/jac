@@ -6,15 +6,13 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes { UniPass }
 
-glob EXAMPLES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent), "examples"
+glob LANG_FIXTURES = os.path.join(
+         str(Path(jaclang.__file__).parent.parent), "tests", "language", "fixtures"
      );
 
 test "sub node pass" {
     out = JacProgram();
-    code_gen = out.compile(
-        file_path=os.path.join(EXAMPLES, "manual_code", "circle.jac")
-    );
+    code_gen = out.compile(file_path=os.path.join(LANG_FIXTURES, "circle.jac"));
     for i in code_gen.kid[1].kid {
         for (k, v) in i._sub_node_tab.items() {
             for n in v {
