@@ -30,6 +30,8 @@ class JacScaleConfig(PluginConfigBase) {
     def get_scheduler_config(self: JacScaleConfig) -> dict[str, any];
     def get_telemetry_config(self: JacScaleConfig) -> dict[str, any];
     def get_websocket_config(self: JacScaleConfig) -> dict[str, any];
+    def get_emailer_config(self: JacScaleConfig) -> dict[str, any];
+    def get_auth_config(self: JacScaleConfig) -> dict[str, any];
     def get_microservices_config(self: JacScaleConfig) -> dict[str, any];
 }
 

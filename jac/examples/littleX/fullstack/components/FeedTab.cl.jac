@@ -22,7 +22,9 @@ def:pub FeedTab(
 ) -> JsxElement {
     return
         <div>
-            {(<WelcomeBanner onDismiss={onDismissWelcome}/>) if showWelcome else None}
+            {if showWelcome {
+                <WelcomeBanner onDismiss={onDismissWelcome}/>
+            }}
             <Composer
                 avatar={profileAvatar}
                 avatarAlt={profileUsername}
@@ -34,32 +36,25 @@ def:pub FeedTab(
                 buttonLabel="Post"
                 showCharRing={True}
             />
-            {(<div className="lx-loading">Loading feed...</div>)
-                if feedLoading
-                else None}
-            {(
-                <div>
-                    {(
-                        <div className="lx-empty">
-                            <div className="lx-empty-title">Nothing here yet</div>
-                            <span>Follow people or post something!</span>
-                        </div>
-                    )
-                        if len(tweets) == 0
-                        else None}{[
-                        <TweetCard
-                            key={tweet.id}
-                            tweet={tweet}
-                            myUsername={profileUsername}
-                            onLike={onLike}
-                            onComment={onComment}
-                            onDelete={onDelete}
-                            onRepost={onRepost}
-                        /> for tweet in tweets
-                    ]}
+            {if feedLoading {
+                <div className="lx-loading">Loading feed...</div>
+                skip;
+            }if len(tweets) == 0 {
+                <div className="lx-empty">
+                    <div className="lx-empty-title">Nothing here yet</div>
+                    <span>Follow people or post something!</span>
                 </div>
-            )
-                if not feedLoading
-                else None}
+                skip;
+            }for tweet in tweets {
+                <TweetCard
+                    key={tweet.id}
+                    tweet={tweet}
+                    myUsername={profileUsername}
+                    onLike={onLike}
+                    onComment={onComment}
+                    onDelete={onDelete}
+                    onRepost={onRepost}
+                />
+            }}
         </div>;
 }

@@ -33,7 +33,9 @@ def:pub AuthForm(
                             if isSignup
                             else "Sign in to your account"}
                     </div>
-                    {(<div className="lx-auth-error">{error}</div>) if error else None}
+                    {if error {
+                        <div className="lx-auth-error">{error}</div>
+                    }}
                     <form onSubmit={onSubmit} className="lx-auth-form-fields">
                         <input
                             className="lx-input"

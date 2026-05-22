@@ -10,14 +10,12 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob EXAMPLES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent), "examples"
+glob LANG_FIXTURES = os.path.join(
+         str(Path(jaclang.__file__).parent.parent), "tests", "language", "fixtures"
      );
 
 test "double unparse" {
-    code_gen_pure = JacProgram().compile(
-        os.path.join(EXAMPLES, "manual_code", "circle.jac")
-    );
+    code_gen_pure = JacProgram().compile(os.path.join(LANG_FIXTURES, "circle.jac"));
     x = code_gen_pure.unparse();
     y = code_gen_pure.unparse();
     assert x == y , "Double unparse produced different results:\n" + "\n".join(

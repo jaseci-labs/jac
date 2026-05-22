@@ -104,7 +104,7 @@ declaration/implementation separation (.jac + .impl.jac split).
   jac://examples/littleX       [S] full-stack social app (real-world OSP)
 
 Available example categories (use ONLY these names with get_example):
-  chess, littleX, manual_code
+  chess, littleX
 
 ### [G] Code Organization & Project Structure
 

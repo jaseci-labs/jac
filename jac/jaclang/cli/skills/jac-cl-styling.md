@@ -1,7 +1,43 @@
 ---
 name: jac-cl-styling
-description: Tailwind styling patterns in Jac - conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens. Load when writing dynamic or theme-aware styles.
+description: Styling patterns in Jac - Tailwind conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when writing dynamic, theme-aware, or component-scoped styles.
 ---
+
+## Scoped CSS (`.style.css` annex)
+
+For plain (non-Tailwind) component CSS, write a `.style.css` file with the
+**same base name** as the component. Its classes are auto-scoped to that
+module -- no import, no global collisions. The compiler hashes each declared
+class and rewrites the matching `className` literals to agree.
+
+```jac
+# Card.cl.jac
+def:pub Card(title: str) -> JsxElement {
+    return <div className="card">
+        <h2 className="card-title">{title}</h2>
+    </div>;
+}
+```
+
+```css
+/* Card.style.css -- paired by base name; do NOT import it */
+.card { padding: 1rem; border: 1px solid #ccc; }
+.card-title { font-weight: 600; }
+
+/* :global(...) opts out of scoping (resets, element/global targets) */
+:global(body) { margin: 0; }
+```
+
+`className="card"` compiles to `className="card-1419142b"` and the CSS
+selector is hashed to match; another component can declare its own `.card`
+without conflict.
+
+Rules:
+
+- **Base name must match exactly:** `Card.cl.jac` <-> `Card.style.css`. No `import` -- the compiler pairs and injects `import "./Card.css";` itself.
+- **Only declared classes are rewritten.** Undeclared tokens (Tailwind utilities, shadcn classes) pass through untouched, so you can mix scoped + utility classes in one `className`.
+- **`:global(...)`** keeps a selector unscoped -- use it for resets, element selectors, or targeting third-party classes.
+- **Scoped vs global:** use `.style.css` for component-specific classes; use a plain shared `import "./global.css";` (or Tailwind) for app-wide styles.
 
 ## Conditional Classes
 

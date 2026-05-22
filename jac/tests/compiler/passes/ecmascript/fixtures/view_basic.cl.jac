@@ -3,8 +3,9 @@
 Exercises the unified `{...}` slot model: each top-level `{...}` slot in
 JSX child position can carry statement-form templates -- multiple JSX
 children, control flow that yields content (`if`/`for`/`while`/etc.),
-and a `return;` guard. Components are plain `def:pub -> JsxElement`
-functions whose JSX `return` value contains the slots.
+and a `skip;` guard for slot early-exit. Components are plain
+`def:pub -> JsxElement` functions whose JSX `return` value contains
+the slots.
 """
 
 obj Item {
@@ -48,7 +49,7 @@ def:pub ItemList(items: list[Item]) -> JsxElement {
             <h2 onClick={bump}>{heading}</h2>
             {if len(items) == 0 {
                 <p class="empty">Nothing here.</p>
-                return;
+                skip;
             }}
             <p class="status">Showing items.</p>
             <Divider/>

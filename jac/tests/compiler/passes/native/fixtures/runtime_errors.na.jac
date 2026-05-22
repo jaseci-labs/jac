@@ -257,20 +257,14 @@ obj SimpleObj {
     }
 }
 
-# Test 19: Field access on None.
-# NOTE: `s: SimpleObj = None` is rejected by the type checker (correctly,
-# since SimpleObj is non-Optional). This fixture intentionally retains
-# the type error to exercise native runtime AttributeError on a None
-# dereference -- the scenario itself is unsafe Jac code that the type
-# system properly disallows. Both `as`-cast workarounds and stubbed-None
-# helpers run into native-codegen gaps (CastExpr is unsupported), so the
-# residual type error is accepted as the cost of testing the runtime
-# trap. Tracked under #6058 fixture-quality notes.
+# Test 19: Field access on None. The variable is honestly typed nullable
+# and the `as` cast asserts non-None so `.val` type-checks; at runtime the
+# value is None and the native deref traps as an AttributeError.
 def test_none_field_access() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.val;
+        x: int = (s as SimpleObj).val;
         result = -1;
     } except AttributeError {
         result = 1;
@@ -278,12 +272,12 @@ def test_none_field_access() -> int {
     return result;
 }
 
-# Test 20: Method call on None -- see Test 19 note re: residual type error.
+# Test 20: Method call on None -- same nullable-plus-cast pattern as Test 19.
 def test_none_method_call() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.get_val();
+        x: int = (s as SimpleObj).get_val();
         result = -1;
     } except AttributeError {
         result = 1;

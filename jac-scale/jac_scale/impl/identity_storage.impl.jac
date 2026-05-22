@@ -199,6 +199,33 @@ impl IdentityStorage.update_password(
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
+"""Set a new password without verifying the current one.
+
+For password-reset flows where the caller has already authenticated the user
+via a single-use reset token. Replaces the existing password credential or
+creates one if none exists.
+"""
+impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, str] {
+    if not self.user_exists_by_id(user_id) {
+        return {'error': 'User not found'};
+    }
+    credentials = self._get_credentials(user_id);
+    new_hash = IdentityStorage.hash_password(new_password);
+    password_set = False;
+    for cred in credentials {
+        if cred.get('type') == 'password' {
+            cred['password_hash'] = new_hash;
+            cred.pop('algorithm', None);
+            password_set = True;
+        }
+    }
+    if not password_set {
+        credentials.append({'type': 'password', 'password_hash': new_hash});
+    }
+    self._update_credentials(user_id, credentials);
+    return {'user_id': user_id, 'message': 'Password updated successfully'};
+}
+
 """Get root_id for a user."""
 impl IdentityStorage.get_root_id(user_id: str) -> str | None {
     user = self.get_user_by_id(user_id);
@@ -246,7 +273,13 @@ impl IdentityStorage.link_sso_account(
         'linked_at': now
     };
 
-    if not self._add_identity(user_id, identity_doc) {
+    try {
+        added = self._add_identity(user_id, identity_doc);
+    } except IdentityTakenError {
+        # Lost a race with another linker for the same SSO account.
+        return {'error': 'This SSO account is already linked to another user'};
+    }
+    if not added {
         return {'error': 'User not found'};
     }
     return {

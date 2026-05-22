@@ -44,14 +44,7 @@ def:pub ProfileTab(
                 </div>
                 <div className="lx-profile-display-name">{displayUsername}</div>
                 <div className="lx-profile-handle">{"@" + displayUsername}</div>
-                {(
-                    <div className="lx-profile-bio-text">
-                        {myProfile.bio if myProfile and myProfile.bio else "No bio yet"}
-                    </div>
-                )
-                    if not editingBio
-                    else None}
-                {(
+                {if editingBio {
                     <div className="lx-bio-edit-wrap">
                         <textarea
                             className="lx-bio-input"
@@ -77,9 +70,11 @@ def:pub ProfileTab(
                             </button>
                         </div>
                     </div>
-                )
-                    if editingBio
-                    else None}
+                } else {
+                    <div className="lx-profile-bio-text">
+                        {myProfile.bio if myProfile and myProfile.bio else "No bio yet"}
+                    </div>
+                } }
                 <div className="lx-profile-stats">
                     <div className="lx-profile-stat">
                         <strong>{str(followingCount)}</strong>
@@ -95,7 +90,7 @@ def:pub ProfileTab(
                     </div>
                 </div>
             </div>
-            {[
+            {for tweet in myTweets {
                 <TweetCard
                     key={tweet.id}
                     tweet={tweet}
@@ -104,7 +99,7 @@ def:pub ProfileTab(
                     onComment={onComment}
                     onDelete={onDelete}
                     onRepost={onRepost}
-                /> for tweet in myTweets
-            ]}
+                />
+            }}
         </div>;
 }

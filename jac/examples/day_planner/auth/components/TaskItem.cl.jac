@@ -11,9 +11,9 @@ def:pub TaskItem(
             <span class={"task-title " + ("task-done" if task.done else "")}>
                 {task.title}
             </span>
-            {(<span class="category">{task.category}</span>)
-                if task.category and task.category != "other"
-                else None}
+            {if task.category and task.category != "other" {
+                <span class="category">{task.category}</span>
+            }}
             <button class="btn-delete" onClick={onDelete}>X</button>
         </div>;
 }

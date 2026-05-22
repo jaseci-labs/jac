@@ -65,36 +65,19 @@ def:pub ShoppingPanel -> JsxElement {
                     {("Generating..." if generating else "Generate")}
                 </button>
             </div>
-            {(<div class="generating-msg">Generating with AI...</div>)
-                if generating
-                else (
-                    <div>
-                        {(
-                            <div class="empty-msg">
-                                Enter a meal above to generate ingredients.
-                            </div>
-                        )
-                            if len(ingredients) == 0
-                            else (
-                                <div>
-                                    {[
-                                        <IngredientItem key={ing.name} ing={ing}/>
-                                        for ing in ingredients
-                                    ]}
-                                    <div class="shopping-footer">
-                                        <span class="total">
-                                            Total: ${f"{totalCost:.2f}"}
-                                        </span>
-                                        <button
-                                            class="btn-clear"
-                                            onClick={lambda { clearList(); }}
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                    </div>
-                )}
+            {if generating {
+                <div class="generating-msg">Generating with AI...</div>
+                skip;
+            }if len(ingredients) == 0 {
+                <div class="empty-msg">Enter a meal above to generate ingredients.</div>
+                skip;
+            }for ing in ingredients {
+                <IngredientItem key={ing.name} ing={ing}/>
+            }<div class="shopping-footer">
+                <span class="total">Total: ${f"{totalCost:.2f}"}</span>
+                <button class="btn-clear" onClick={lambda { clearList(); }}>
+                    Clear
+                </button>
+            </div>}
         </div>;
 }

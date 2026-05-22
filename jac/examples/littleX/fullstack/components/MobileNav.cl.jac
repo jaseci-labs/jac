@@ -38,9 +38,9 @@ def:pub MobileNav(activeTab: str, notifCount: int, onNavigate: any) -> JsxElemen
                 onClick={lambda { navFn.call(None, "profile"); }}
             >
                 <User size={24}/>
-                {(<span className="lx-nav-badge">{str(notifCount)}</span>)
-                    if notifCount > 0
-                    else None}
+                {if notifCount > 0 {
+                    <span className="lx-nav-badge">{str(notifCount)}</span>
+                }}
             </div>
         </nav>;
 }

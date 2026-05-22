@@ -66,6 +66,8 @@ def:pub app() -> JsxElement {
 
 There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the honest type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
+**`{name}` attribute shorthand:** when a prop's value is a variable of the same name, `<Card {title} {onClose} />` is sugar for `<Card title={title} onClose={onClose} />`. Each shorthand attribute is still validated per-prop against the component signature. This is distinct from the `{**props}` spread (above), which forwards an entire object instead of a single named attribute.
+
 ---
 
 ## Forwarding the props bundle (advanced)
@@ -343,7 +345,7 @@ def:pub Greeting(name: str) -> JsxElement {
 **Key points:**
 
 - `{...}` slots replace inline comprehensions and nested ternaries -- the same `if`/`for`/`while`/etc. you write at function-body level works as a child.
-- A bare `return;` inside a statement slot is the **guard** form: rendering stops, the children accumulated so far become the slot's value.
+- `skip;` inside a statement slot is the **guard** form: rendering stops, the children accumulated so far become the slot's value. Bare `return;` inside a slot is rejected (E2020) because it reads like a function-exit but only exits the slot.
 - A statement slot with no JSX renders to an empty fragment. Mix as needed: `<header>` and `<footer>` sit beside a `{for ... { ... }}` slot in the same parent.
 - The slot's bracketed shape is what disambiguates the keyword -- bare `for example` in JSX text remains plain text.
 
@@ -358,7 +360,7 @@ def:pub ItemList(items: list[str]) -> JsxElement {
     return <>
         {if len(items) == 0 {
             <p class="empty">Nothing here.</p>
-            return;
+            skip;
         }}
         <h2>Items</h2>
         {for (i, item) in enumerate(items) {
@@ -368,7 +370,7 @@ def:pub ItemList(items: list[str]) -> JsxElement {
 }
 ```
 
-`while` slots that emit keyless JSX get a `W2019` warning -- siblings produced by a loop need a stable `key=` so a re-render keeps their identity.
+Loop slots that emit keyless JSX get a warning -- `W2019` for a `while` loop and `W2021` for a `for` loop. Siblings produced by a loop need a stable `key=` (as in the `<li key={i}>` above) so a re-render keeps their identity.
 
 ### `has`-fields and Handlers
 
@@ -387,6 +389,8 @@ def:pub Counter() -> JsxElement {
     return <button onClick={bump}>Count: {count}</button>;
 }
 ```
+
+Declare `has`-fields at the component scope, never inside a `{...}` slot body. A slot body is a statement template that re-runs on every render, so a `has` there would compile to a conditional `useState` and violate React's rules of hooks -- the compiler rejects it with `E2024`.
 
 ### Dynamic Tags
 
@@ -570,6 +574,41 @@ def:pub app() -> JsxElement {
 }
 ```
 
+### Scoped Styles (`.style.css`)
+
+Drop a `.style.css` file with the **same base name** as a component and its
+classes are auto-scoped to that component -- no import, no naming collisions.
+The compiler hashes each declared class, rewrites the CSS, and rewrites the
+matching `className` references to agree.
+
+```jac
+# Card.cl.jac
+def:pub Card(title: str) -> JsxElement {
+    return <div className="card">
+        <h2 className="card-title">{title}</h2>
+    </div>;
+}
+```
+
+```css
+/* Card.style.css -- paired by base name, no import required */
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+.card-title { font-weight: 600; }
+
+/* :global(...) opts a selector out of scoping */
+:global(body) { margin: 0; }
+```
+
+At compile time `className="card"` becomes `className="card-1419142b"` and
+the CSS selector is hashed to match, so another component can declare its own
+`.card` without conflict. Tokens not declared in the annex (like Tailwind
+utilities) pass through unchanged. See the
+[jac-client reference](../../reference/plugins/jac-client.md#scoped-css-stylecss-annexes)
+for the full contract.
+
 ---
 
 ## Key Takeaways
@@ -578,7 +617,7 @@ def:pub app() -> JsxElement {
 |---------|--------|
 | Define component | `def:pub Name(title: str, count: int) -> JsxElement { }` |
 | Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
-| Early-exit guard | bare `return;` inside a statement slot |
+| Early-exit guard | `skip;` inside a statement slot |
 | Suspense fallback | `{try { <Resolved/> } awaiting { <Loading/> }}` (cl only) |
 | Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
 | Dynamic tag | `<@expr>...</@expr>` |
