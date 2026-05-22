@@ -21,10 +21,6 @@ def use_imported_enum() -> int {
     return 0;
 }
 
-def imported_enum_ordinals() -> int {
-    return TokenKind.EOF;
-}
-
 def imported_enum_value() -> str {
     k: TokenKind = TokenKind.PLUS;
     return k.value;

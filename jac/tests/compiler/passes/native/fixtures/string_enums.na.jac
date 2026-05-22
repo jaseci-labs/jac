@@ -20,14 +20,6 @@ enum Priority {
     HIGH = 2
 }
 
-def color_ordinal_red() -> int {
-    return Color.RED;
-}
-
-def color_ordinal_blue() -> int {
-    return Color.BLUE;
-}
-
 def color_cmp(c: int) -> int {
     if c == Color.RED {
         return 10;
@@ -52,7 +44,7 @@ def direction_value(d: Direction) -> str {
 }
 
 def int_enum_still_works() -> int {
-    return Priority.HIGH;
+    return Priority.HIGH.value;
 }
 
 with entry {
