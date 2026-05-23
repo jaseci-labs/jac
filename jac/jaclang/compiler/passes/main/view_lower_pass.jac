@@ -62,23 +62,42 @@ into the fragment-return shape so the pass stays robust against
 the diagnosed source.
 """
 obj ViewLowerPass(UniPass) {
-    """Per-pass counter used to name nested slot accumulators uniquely.
+    """Per-pass counter used to name slot accumulators uniquely.
 
-    Each `awaiting`-lowering synthesizes inner `JsxSlot`s whose bodies
-    are also lowered into IIFEs. JavaScript hoists `let`-bound names
-    by scope, so re-using `__jac_view_kids` inside nested IIFEs makes
-    them reassign the *outer* slot's accumulator instead of declaring
-    their own — clobbering the parent's children. A monotonic suffix
-    gives every nested accumulator a distinct binding."""
-    has _nested_acc_counter: int = 0;
+    Every slot lowers to its own IIFE (`(() => { acc = []; ...; return
+    <>{acc}</>; })()`), and each IIFE is a distinct JS function scope. The
+    es-codegen decides `let` vs. bare assignment from the active-scope
+    stack, so two accumulators that share a name across *separate* IIFEs —
+    whether nested (an `awaiting`-synthesized inner slot) or siblings (two
+    `{...}` slots in the same element's children) — make the second IIFE
+    reassign a name it never declared, throwing `ReferenceError:
+    __jac_view_kids is not defined` under ES-module strict mode. A
+    monotonic suffix gives every accumulator beyond the first a distinct
+    binding so each IIFE declares its own."""
+    has _nested_acc_counter: int = 0,
+        _used_base_acc: bool = False;
+
+    """Allocate a unique accumulator name for one slot's IIFE."""
+    def _next_acc_name -> str {
+        if not self._used_base_acc {
+            self._used_base_acc = True;
+            return VIEW_ACC;
+        }
+        self._nested_acc_counter += 1;
+        return f"{VIEW_ACC}_{self._nested_acc_counter}";
+    }
 
     """Lower a JSX `{...}` slot body into an accumulator IIFE shape."""
     def exit_jsx_slot(nd: uni.JsxSlot) {
         raw_body: list = list(nd.body);
         # Diagnose body rule violations (re-targeted view-body-check).
         self._check_body(raw_body, False, "");
-        # Lower the body in place.
-        lowered = self._lower_body(raw_body, anchor=nd);
+        # Lower the body in place. Each slot gets its own accumulator name
+        # so sibling IIFEs don't reassign a binding declared in a sibling's
+        # (now-popped) scope — see `_next_acc_name`.
+        lowered = self._lower_body(
+            raw_body, anchor=nd, acc_name_str=self._next_acc_name()
+        );
         nd.body = lowered;
         # Rebuild kid list: keep the `{` and `}` tokens, replace body
         # statements with their lowered counterparts.
