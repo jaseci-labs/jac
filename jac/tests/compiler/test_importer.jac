@@ -17,6 +17,7 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { JacCompiler }
 import from jaclang.jac0core.jir {
     get_module_cache_path,
+    is_module_cache_valid,
     read_bytecode_only,
     SEC_LLVM_IR,
     SECTIONS_MAGIC,
@@ -241,6 +242,54 @@ test "compiler separates internal from user modules" {
         os.unlink(user_file);
         Jac.compiler = old_compiler;
         Jac.program = old_program;
+    }
+}
+
+test "JIR cache rejected when source content changes with mtime preserved" {
+    # Regression test for the stale-cache bug Jason hit during FilterSpec work:
+    # git checkout / git stash-pop can restore files with timestamps older than
+    # the JIR, so is_module_cache_valid must also verify source_content_hash and
+    # not rely on mtime alone.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("glob x = 1;\n");
+        tmp.flush();
+        jac_file = tmp.name;
+    }
+
+    past = time.time() - 2;
+    os.utime(jac_file, (past, past));
+
+    try {
+        compiler = JacCompiler();
+        prog = JacProgram();
+        code = compiler.get_bytecode(jac_file, prog);
+        assert code is not None , "Initial compilation should succeed";
+
+        cache_path = get_module_cache_path(jac_file);
+        assert cache_path.exists() , "JIR cache should exist after compilation";
+        assert is_module_cache_valid(jac_file, cache_path) , "Fresh cache should be valid";
+
+        # Simulate git restoring the file with changed content but the same old
+        # mtime (older than the JIR).  This is the exact scenario that was
+        # silently serving stale codegen.
+        with open(jac_file, "w") as f {
+            f.write("glob x = 99;\n");
+        }
+        os.utime(jac_file, (past, past));
+
+        # Content changed but mtime is still older than JIR — mtime check alone
+        # would return True (stale hit).  Content-hash check must catch this.
+        assert not is_module_cache_valid(jac_file, cache_path) , (
+            "Cache must be rejected when source content changes even if mtime is preserved"
+        );
+    } finally {
+        os.unlink(jac_file);
+        cache_path2 = get_module_cache_path(jac_file);
+        if cache_path2.exists() {
+            cache_path2.unlink();
+        }
     }
 }
 
