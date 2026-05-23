@@ -181,57 +181,27 @@ impl Lexer.error(
     message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
 ) {
     self.error_count += 1;
-    if self?.prog and self.prog is not None and hasattr(self.prog, "errors_had") {
-        import from jaclang.jac0core.unitree { Token as UniToken, Source }
-        import from jaclang.jac0core.codeinfo { CodeLocInfo }
-        import from jaclang.jac0core.passes.transform { Alert }
-        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
-        sloc = self.make_loc(start_line, start_col, start_pos);
-        src = Source(self.source, mod_path=self.file_path);
-        tok = UniToken(
-            orig_src=src,
-            name="ERROR",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        code = DIAGNOSTICS.get(code_str) if code_str else None;
-        alrt = Alert(message, loc, Lexer, code=code);
-        self.prog.errors_had.append(alrt);
-    }
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=True
+        )
+    );
 }
 
 impl Lexer.warning(
     message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
 ) {
-    if self?.prog and self.prog is not None and hasattr(self.prog, "warnings_had") {
-        import from jaclang.jac0core.unitree { Token as UniToken, Source }
-        import from jaclang.jac0core.codeinfo { CodeLocInfo }
-        import from jaclang.jac0core.passes.transform { Alert }
-        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
-        sloc = self.make_loc(start_line, start_col, start_pos);
-        src = Source(self.source, mod_path=self.file_path);
-        tok = UniToken(
-            orig_src=src,
-            name="WARNING",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        code = DIAGNOSTICS.get(code_str) if code_str else None;
-        alrt = Alert(message, loc, Lexer, code=code);
-        self.prog.warnings_had.append(alrt);
-    }
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=False
+        )
+    );
 }
 
 impl Lexer.is_digit(ch: str) -> bool {
@@ -269,15 +239,15 @@ impl Lexer.skip_line_comment{
     }
     comment_text = self.source[start_pos:self.pos];
     self.comments.append(
-        (
-            comment_text,
-            start_line,
-            start_line,
-            start_col,
-            self.col,
-            start_pos,
-            self.pos,
-            False
+        CommentData(
+            value=comment_text,
+            line=start_line,
+            end_line=start_line,
+            col_start=start_col,
+            col_end=self.col,
+            pos_start=start_pos,
+            pos_end=self.pos,
+            is_block=False
         )
     );
 }
@@ -295,15 +265,15 @@ impl Lexer.skip_block_comment -> bool {
             self.advance();  # #
             comment_text = self.source[start_pos:self.pos];
             self.comments.append(
-                (
-                    comment_text,
-                    start_line,
-                    self.line,
-                    start_col,
-                    self.col,
-                    start_pos,
-                    self.pos,
-                    True
+                CommentData(
+                    value=comment_text,
+                    line=start_line,
+                    end_line=self.line,
+                    col_start=start_col,
+                    col_end=self.col,
+                    pos_start=start_pos,
+                    pos_end=self.pos,
+                    is_block=True
                 )
             );
             return True;

@@ -1193,6 +1193,12 @@ test "runtime errors list negative index" {
     assert f() == 1;
 }
 
+test "list valid negative index" {
+    (eng, _) = compile_native("runtime_errors.na.jac");
+    f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
+    assert f() == 30;
+}
+
 test "runtime errors list index at len" {
     (eng, _) = compile_native("runtime_errors.na.jac");
     f = get_func(eng, "test_list_index_at_len", ctypes.c_int64);

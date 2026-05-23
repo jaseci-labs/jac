@@ -92,6 +92,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
         _last_type_node_hint: (object | None) = None,
+        # True while codegen'ing the TupleVal of a `return (...)`. In that
+        # context borrowed (field-load / element-read) pointer elements must be
+        # retained so they outlive the owning local's scope-exit teardown — the
+        # returned tuple box does not own its elements (see _codegen_tuple_val).
+        _return_tuple_ctx: bool = False,
         # Inheritance / vtable support (Phase 5)
         class_hierarchy: dict[str, str] = {},
         class_parents: dict[str, list[str]] = {},

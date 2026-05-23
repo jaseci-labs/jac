@@ -9,6 +9,10 @@ This parser outputs unitree.py AST nodes directly.
 
 import from .tokens { Token, TokenKind, SourceLoc }
 import from .lexer { Lexer }
+# Module alias (not a name binding) so that, after deferred native
+# acceleration hot-swaps `tokenize_full` in the lexer module dict, parse()
+# resolves the native-backed wrapper rather than a stale Python reference.
+import jaclang.jac0core.parser.lexer as na_lexer;
 
 # Import unitree classes from Python
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
@@ -52,7 +56,8 @@ import from jaclang.jac0core.diagnostics {
     E2023,
     W0060,
     W0061,
-    W0063
+    W0063,
+    DIAGNOSTICS
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -615,25 +620,69 @@ obj Parser {
 def parse(
     source: str, file_path: str = "<input>", prog: object | None = None
 ) -> tuple[Module, bool] {
-    lexer = Lexer(source=source, file_path=file_path);
-    lexer.prog = prog;
-    tokens = lexer.tokenize();
+    # Lex via the structured surface (tokens + comments + diagnostics).
+    #
+    # When JAC_NATIVE_LEXER=1, resolve tokenize_full off the module object so a
+    # deferred-native-acceleration hot-swap takes effect (auto-when-available).
+    # This is opt-in for now: the native engine does not yet keep alive struct
+    # strings reached only through the secondary lists of a returned tuple
+    # (comments/diags), so the native path can return empty strings or crash
+    # until that native GC rooting gap is closed. The default path runs the
+    # Python lexer directly, bypassing any swapped module function.
+    import os;
+    if os.environ.get("JAC_NATIVE_LEXER") == "1" {
+        (tokens, comments, diags, lex_error_count) = na_lexer.tokenize_full(
+            source, file_path
+        );
+    } else {
+        _lx = Lexer(source=source, file_path=file_path);
+        tokens = _lx.tokenize();
+        comments = _lx.comments;
+        diags = _lx.diags;
+        lex_error_count = _lx.error_count;
+    }
+    # Replay structured lexer diagnostics into the program's alert lists. The
+    # lexer no longer constructs unitree Alerts inline (it cannot when running
+    # as native code), so reconstruction happens here on the Python side.
+    if prog is not None and diags {
+        diag_src = Source(source, mod_path=file_path);
+        for d in diags {
+            loc = d.loc;
+            dtok = UniToken(
+                orig_src=diag_src,
+                name="ERROR" if d.is_error else "WARNING",
+                value="",
+                line=loc.line,
+                end_line=loc.end_line,
+                col_start=loc.col_start,
+                col_end=loc.col_end,
+                pos_start=loc.pos_start,
+                pos_end=loc.pos_end
+            );
+            code = DIAGNOSTICS.get(d.code_str) if d.code_str else None;
+            alrt = Alert(d.message, CodeLocInfo(dtok, dtok), Lexer, code=code);
+            if d.is_error and hasattr(prog, "errors_had") {
+                prog.errors_had.append(alrt);
+            } elif (not d.is_error) and hasattr(prog, "warnings_had") {
+                prog.warnings_had.append(alrt);
+            }
+        }
+    }
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Transfer captured comments from lexer to module source
-    if module.source and lexer.comments {
-        for cdata in lexer.comments {
-            # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+    # Transfer captured comments to module source
+    if module.source and comments {
+        for cdata in comments {
             ct = CommentToken(
                 orig_src=module.source,
                 name="COMMENT",
-                value=cdata[0],
-                line=cdata[1],
-                end_line=cdata[2],
-                col_start=cdata[3],
-                col_end=cdata[4],
-                pos_start=cdata[5],
-                pos_end=cdata[6],
+                value=cdata.value,
+                line=cdata.line,
+                end_line=cdata.end_line,
+                col_start=cdata.col_start,
+                col_end=cdata.col_end,
+                pos_start=cdata.pos_start,
+                pos_end=cdata.pos_end,
                 kid=[],
                 is_inline=False
             );
@@ -657,6 +706,6 @@ def parse(
             }
         }
     }
-    had_error = parser.error_count > 0 or lexer.error_count > 0;
+    had_error = parser.error_count > 0 or lex_error_count > 0;
     return (module, had_error);
 }

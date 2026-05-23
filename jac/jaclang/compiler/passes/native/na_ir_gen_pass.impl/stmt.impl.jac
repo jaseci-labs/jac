@@ -217,7 +217,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._dict_val_type_hint = "jacval";
             }
         }
+        # Flag return-tuple context so borrowed pointer elements are retained
+        # as they are packed (the tuple box does not own its elements, and the
+        # owning local is torn down at scope exit below).
+        self._return_tuple_ctx = isinstance(nd.expr, uni.TupleVal);
         val = self._codegen_expr(nd.expr);
+        self._return_tuple_ctx = False;
         self._list_type_hint = None;
         self._dict_val_type_hint = None;
         if val is not None {

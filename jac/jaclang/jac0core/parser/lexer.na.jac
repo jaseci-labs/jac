@@ -4,7 +4,15 @@ This lexer converts source code into a stream of tokens. It is designed
 to be native-compilation friendly with no runtime reflection.
 """
 
-import from .tokens { Token, TokenKind, SourceLoc, lookup_keyword, KEYWORDS }
+import from .tokens {
+    Token,
+    TokenKind,
+    SourceLoc,
+    LexDiag,
+    CommentData,
+    lookup_keyword,
+    KEYWORDS
+}
 
 enum LexerMode {
     NORMAL = "normal",
@@ -34,7 +42,10 @@ obj Lexer {
         jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
         prev_token_kind:
             TokenKind | None = None,  # Previous token kind for JSX disambiguation
-        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [],
+        comments: list[CommentData] = [],
+        # Structured lexer diagnostics (errors + warnings), marshal-safe so the
+        # native lexer can surface them; replayed into `prog` by parser.parse().
+        diags: list[LexDiag] = [],
         # JSX `{...}` slot tracking (statement-position JSX disambiguation).
         # A slot body is a statement region: a bare `<Tag>` after `}` or a
         # sibling JSX close tag must lex as JSX, not as a `<` comparison.
@@ -120,4 +131,16 @@ def tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int]
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
     return (tokens, lexer.error_count);
+}
+
+# Full tokenization surface used by parser.parse(): returns the captured
+# comments and structured diagnostics in addition to tokens, so the entire
+# lex result crosses the native boundary as marshal-safe data (no reliance on
+# reading lexer instance state, which is unavailable for the native engine).
+def tokenize_full(
+    source: str, file_path: str = "<input>"
+) -> tuple[list[Token], list[CommentData], list[LexDiag], int] {
+    lexer = Lexer(source=source, file_path=file_path);
+    tokens = lexer.tokenize();
+    return (tokens, lexer.comments, lexer.diags, lexer.error_count);
 }
