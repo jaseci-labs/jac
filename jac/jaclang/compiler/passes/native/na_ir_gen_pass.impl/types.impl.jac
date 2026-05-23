@@ -68,9 +68,20 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in ("any", "Any", "object") {
         return self.jacval_type;
     }
-    # User-defined enum -> backing integer type.
-    if cname in self.enum_types {
-        return self.enum_types[cname];
+    # (No enum branch: _codegen_enum registers every enum name in both
+    # enum_types and type_map with the same i64 backing, and type_map is
+    # checked above -- so an enum_types lookup here could never be reached.)
+    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+    # its struct on demand so a `File` annotation lowers even before any file
+    # op has emitted the helpers.
+    if cname == "File" {
+        return self._get_file_struct_type().as_pointer();
+    }
+    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+    # its struct on demand so a `File` annotation lowers even before any file
+    # op has emitted the helpers.
+    if cname == "File" {
+        return self._get_file_struct_type().as_pointer();
     }
     # User-defined object/struct -> pointer to struct.
     if cname in self.struct_types {
@@ -207,11 +218,14 @@ impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
 
 """Resolve a Jac type expression to an LLVM type.
 
-Primary path: an annotation Expr's `.type` (TypeBase, set by TypeCheckPass)
-is mapped via _lower_type. A name-based fallback covers the two cases that
-path can't: NA-internal types the checker doesn't model (e.g. native
-`File`), and annotations in imported `.na.jac` modules, walked without
-TypeCheckPass so carrying `.type = None`. Unhandled cases default to i64.
+An annotation Expr carries a `.type` (TypeBase) populated by TypeCheckPass;
+_lower_type maps it to an LLVM type. Every native type now flows through the
+central checker -- primitives, user structs/enums, collections, and the
+runtime `File` (modeled by na_builtins.pyi) -- including annotations in
+imported .na.jac modules (type-checked on load, #6117). The former name-based
+fallback (struct_types / type_map lookups) is gone: with `File` modeled
+centrally (#6118) it was reached zero times across the native suite.
+Unhandled cases default to i64.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
@@ -222,17 +236,6 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         lowered = self._lower_type(type_expr.type);
         if lowered is not None {
             return lowered;
-        }
-    }
-    # Name-based fallback (see docstring). No enum branch needed: _codegen_enum
-    # also registers each enum in type_map (same i64), which is checked first.
-    type_name = self._get_name(type_expr);
-    if type_name is not None {
-        if type_name in self.struct_types {
-            return self.struct_types[type_name].as_pointer();
-        }
-        if type_name in self.type_map {
-            return self.type_map[type_name];
         }
     }
     return ir.IntType(64);

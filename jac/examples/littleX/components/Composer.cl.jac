@@ -32,12 +32,12 @@ def:pub Composer(
             <div className="lx-composer-body">
                 <textarea
                     className="lx-composer-textarea"
-                    placeholder={placeholder}
-                    value={value}
+                    {placeholder}
+                    {value}
                     onChange={lambda e: ChangeEvent { changeFn.call(
                         None, e.target.value
                     ); }}
-                    rows={rows}
+                    {rows}
                 />
                 <div className="lx-composer-footer">
                     {if showCharRing {

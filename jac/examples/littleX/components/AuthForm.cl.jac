@@ -36,7 +36,7 @@ def:pub AuthForm(
                     {if error {
                         <div className="lx-auth-error">{error}</div>
                     }}
-                    <form onSubmit={onSubmit} className="lx-auth-form-fields">
+                    <form {onSubmit} className="lx-auth-form-fields">
                         <input
                             className="lx-input"
                             type="text"

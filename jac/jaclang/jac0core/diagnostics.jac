@@ -775,6 +775,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "annotate one child element with 'key=' so iteration siblings "
          "keep their identity across re-renders."
      ),
+     E2025 = _err(
+         "E2025",
+         Category.SEMANTIC,
+         "A 'has'-field of type 'Ref[...]' must be constructed with an "
+         "initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' "
+         "for a value ref. It lowers to React's 'useRef', so a bare "
+         "declaration has no ref object to hold — '.current' would never be "
+         "defined. This mirrors how every other 'has'-field carries a value."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

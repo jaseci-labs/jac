@@ -3162,6 +3162,49 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     self._register_jac_runtime_import();
 }
 
+"""Auto-inject a named import from `react` (e.g. useRef).
+
+Unlike `_inject_runtime_import`, this targets `react` directly: `useRef`
+is a plain React primitive with no reactivity, so it needs no `@jac/runtime`
+shim (which exists only to bridge `useState`/`useEffect` into Jac's reactive
+core). No `_register_jac_runtime_import` — react is an ordinary dependency."""
+impl EsastGenPass._inject_react_import(name: str, nd: uni.UniNode) -> None {
+    if name in self.injected_imports or self._has_import(name) {
+        return;
+    }
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name=name), local=es.Identifier(name=name)
+        ),
+        jac_node=nd
+    );
+    source = self.sync_loc(es.Literal(value='react', raw='"react"'), jac_node=nd);
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
+    );
+    self.imports.append(import_decl);
+    self.injected_imports.add(name);
+}
+
+"""Leftmost identifier of a call/subscript chain, or None.
+
+`Ref` -> 'Ref'; `Ref[T]` / `Ref()` / `Ref[T]()` -> 'Ref' (unwrapping the
+`FuncCall` and `AtomTrailer` wrappers). Used to recognise the ambient `Ref`
+construction/annotation structurally, without the type system."""
+impl EsastGenPass._ref_head_name(expr: (uni.UniNode | None)) -> (str | None) {
+    cur = expr;
+    while True {
+        if isinstance(cur, uni.FuncCall) {
+            cur = cur.target;
+        } elif isinstance(cur, uni.AtomTrailer) {
+            cur = cur.target;
+        } else {
+            break;
+        }
+    }
+    return cur.value if isinstance(cur, uni.Name) else None;
+}
+
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Get the body statements
@@ -3260,13 +3303,74 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
         nd.gen.es_ast = None;
         return;
     }
-    # Auto-inject useState import if not already done
-    self._inject_runtime_import('useState', nd);
-    # Generate useState destructuring for each variable
-    # has count: int = 0; -> const [count, setCount] = useState(0);
+    # Generate one declaration per has-var. A `Ref[T]` field lowers to a
+    # non-reactive `useRef(...)`; every other field is reactive `useState`.
+    # has count: int = 0;            -> const [count, setCount] = useState(0);
+    # has buttonRef: Ref[T];         -> const buttonRef = useRef(null);
     statements: list[es.Statement] = [];
     for has_var in nd.vars {
         var_name = has_var.name.sym_name;
+
+        # --- Ref[T] field -> useRef (non-reactive: no setter, no reactive_vars)
+        # Detected structurally so client codegen needs no type-checker pass:
+        # a ref field is one constructed `= Ref()` / `= Ref(initial)`, or one
+        # annotated `: Ref[...]`. The construction is the canonical form; a
+        # bare annotation with no construction has no ref object to hold and is
+        # rejected (E2025), but still lowers to `useRef(null)` so the build
+        # stays usable.
+        ref_ctor = (
+            isinstance(has_var.value, uni.FuncCall)
+            and self._ref_head_name(has_var.value) == 'Ref'
+        );
+        ref_typed = (
+            has_var.type_tag is not None
+            and self._ref_head_name(has_var.type_tag.tag) == 'Ref'
+        );
+        if ref_ctor or ref_typed {
+            if ref_typed and not ref_ctor {
+                self.emit(E2025, node_override=has_var);
+            }
+            self._inject_react_import('useRef', nd);
+            # The field is constructed as `= Ref()` / `= Ref(initial)` — a
+            # Jac-only ambient with no JS counterpart. So we don't emit the
+            # `Ref(...)` call itself; we lift its sole argument (the seed for
+            # `.current`) into `useRef(seed)`, defaulting to `null` for the
+            # empty `Ref()` DOM-ref form.
+            ref_init: es.Expression = self.sync_loc(
+                es.Literal(value=None, raw='null'), jac_node=has_var
+            );
+            if isinstance(has_var.value, uni.FuncCall) and has_var.value.params {
+                seed = has_var.value.params[0];
+                seed_expr = seed.value if isinstance(seed, uni.KWPair) else seed;
+                if seed_expr.gen.es_ast {
+                    ref_init = cast(es.Expression, seed_expr.gen.es_ast);
+                }
+            }
+            use_ref_call = self.sync_loc(
+                es.CallExpression(
+                    callee=es.Identifier(name='useRef'), arguments=[ref_init]
+                ),
+                jac_node=has_var
+            );
+            ref_declarator = self.sync_loc(
+                es.VariableDeclarator(
+                    id=es.Identifier(name=var_name), `init=use_ref_call
+                ),
+                jac_node=has_var
+            );
+            statements.append(
+                self.sync_loc(
+                    es.VariableDeclaration(declarations=[ref_declarator], kind='const'),
+                    jac_node=has_var
+                )
+            );
+            self._register_declaration(var_name);
+            continue;
+        }
+
+        # --- reactive field -> useState
+        # Auto-inject useState import only when a reactive field is present.
+        self._inject_runtime_import('useState', nd);
         setter_name = self._get_setter_name(var_name);
 
         # Track this as a reactive variable for assignment transformation

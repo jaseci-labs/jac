@@ -31,7 +31,7 @@ def:pub FeedTab(
                 placeholder="What's happening?"
                 value={composerText}
                 onChange={onComposerChange}
-                onPost={onPost}
+                {onPost}
                 rows={3}
                 buttonLabel="Post"
                 showCharRing={True}
@@ -48,12 +48,12 @@ def:pub FeedTab(
             }for tweet in tweets {
                 <TweetCard
                     key={tweet.id}
-                    tweet={tweet}
+                    {tweet}
                     myUsername={profileUsername}
-                    onLike={onLike}
-                    onComment={onComment}
-                    onDelete={onDelete}
-                    onRepost={onRepost}
+                    {onLike}
+                    {onComment}
+                    {onDelete}
+                    {onRepost}
                 />
             }}
         </div>;
