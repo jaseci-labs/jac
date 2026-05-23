@@ -952,6 +952,19 @@ class JacPluginConfig {
                 - post_create: optional callable(project_path, project_name)
         """
     static def register_project_template -> (dict[(str, Any)] | None);
+
+    """Register additional jac-client build targets (web/pwa/mobile are built-in).
+
+        Plugins such as jac-desktop implement this hook to contribute targets
+        like ``desktop``. jac-client calls the hook during CLI startup (after
+        all plugins are loaded) and registers each returned target instance.
+
+        Returns:
+            A single target instance, or a list of target instances. Each
+            target must expose a ``name`` attribute (see jac-client
+            ``ClientTarget``).
+        """
+    static def get_client_targets -> (list[object] | object | None);
 }
 
 """Jac Feature."""

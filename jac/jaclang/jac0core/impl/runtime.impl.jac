@@ -2762,6 +2762,11 @@ impl JacPluginConfig.register_project_template -> (dict[(str, Any)] | None) {
     return None;
 }
 
+"""Register additional jac-client build targets via plugins."""
+impl JacPluginConfig.get_client_targets -> (list[object] | object | None) {
+    return None;
+}
+
 """Get UserManager instance (hookable for plugins).
 
     Plugins can override this to provide custom UserManager implementations.
