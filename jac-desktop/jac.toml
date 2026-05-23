@@ -1,0 +1,7 @@
+[project]
+name = "jac-desktop"
+version = "0.1.0"
+description = "Native desktop target and plugin manager for Jac (PyTauri-based)."
+# Cosmetic project entry-point (no main walker). Installed CLI hooks are registered
+# separately in pyproject.toml [project.entry-points."jac"] (desktop, desktop_plugin, …).
+entry-point = "jac_desktop/plugin.jac"
