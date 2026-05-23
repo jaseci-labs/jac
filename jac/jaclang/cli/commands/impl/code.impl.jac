@@ -60,15 +60,24 @@ def _fail(command: str, message: str, text: bool) -> int {
 Walks up to the nearest `jac.toml` (like `jac check`); with no project it
 falls back to the current directory so `jac code` still works on a loose file.
 
-`type_check` is opt-in: type inference is the bulk of compile time (≈3x on a
-small project), so the purely structural queries (`map`, `walkers`, `uses` --
-all symbol-table data, built before inference) skip it. Only the queries that
-surface types (`symbol`, `slice`) or report them (`diag`) pay for it.
+Compilation cost is a ladder, and each command pays only its rung:
+
+- `map` / `walkers` read archetype declarations straight off the AST, so they
+  run `structural` (parse-only) -- no import resolution, no symbol or type
+  passes. The cheapest rung, and the discovery commands an agent reaches for
+  first.
+- `uses` / `symbol` need the def/use chains, and those are only complete once
+  type inference has resolved member access (`x.field`, `obj.method()`) to its
+  declaration -- a parse or even a plain symbol build links bare names but
+  misses every use reached through a typed receiver. So they type-check.
+- `slice` / `diag` surface or report types directly, so they type-check too.
 """
-def _load_ci(type_check: bool) -> CodeIntelligence {
+def _load_ci(type_check: bool, structural: bool = False) -> CodeIntelligence {
     found = find_project_root();
     proj_dir = str(found[0]) if found is not None else os.getcwd();
-    ci = CodeIntelligence(proj_dir=proj_dir, type_check=type_check);
+    ci = CodeIntelligence(
+        proj_dir=proj_dir, type_check=type_check, structural=structural
+    );
     ci.load();
     return ci;
 }
@@ -298,11 +307,13 @@ impl code(
     if action in ["symbol", "uses", "walkers", "slice"] and not target {
         return _fail(action, f"`jac code {action}` needs a name argument.", text);
     }
-    # Only the type-surfacing queries pay for type inference; the structural
-    # ones (map/walkers/uses) load far faster without it.
-    wants_types = action in ["symbol", "slice", "diag"];
+    # The cost ladder (see `_load_ci`): map/walkers parse only; everything else
+    # type-checks, because the def/use chains uses/symbol report are only
+    # complete after type inference resolves member access.
+    structural = action in ["map", "walkers"];
+    wants_types = not structural;
     try {
-        ci = _load_ci(wants_types);
+        ci = _load_ci(wants_types, structural);
     } except Exception as e {
         return _fail(action, f"Failed to load the project: {e}", text);
     }

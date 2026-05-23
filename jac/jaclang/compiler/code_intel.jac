@@ -254,7 +254,13 @@ call `refresh` to rebuild. All query methods return plain `SymbolInfo` /
 """
 obj CodeIntelligence {
     has proj_dir: str,
-        type_check: bool = True;
+        type_check: bool = True,
+        # Parse-only mode: compile each file with `parse_str` rather than the
+        # full pipeline, skipping symbol/import resolution and type inference.
+        # Valid only for the structural queries (`archetypes`, `entry_points`)
+        # that read declarations straight off the AST -- name- and type-
+        # addressed queries need the symbol tables a parse alone never builds.
+        structural: bool = False;
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
@@ -338,12 +344,22 @@ obj CodeIntelligence {
         self._build_rdeps();
     }
 
-    """Compile one project file and record the resulting module."""
+    """Compile one project file and record the resulting module.
+
+    In `structural` mode the file is only parsed (`parse_str`) -- enough for the
+    AST-level structural queries and far cheaper, since it never resolves
+    imports or runs the symbol/type passes. Otherwise the full pipeline runs,
+    type-checked or not per `type_check`.
+    """
     def _compile_one(file: str) {
         try {
-            mod = self.prog.compile(
-                file_path=file, type_check=self.type_check, no_cgen=True
-            );
+            if self.structural {
+                mod = self.prog.parse_str(Path(file).read_text(), file);
+            } else {
+                mod = self.prog.compile(
+                    file_path=file, type_check=self.type_check, no_cgen=True
+                );
+            }
             # Keep the compiled module directly rather than relying on the
             # program hub: hub routing depends on the project's location.
             if mod is not None and mod.loc {
