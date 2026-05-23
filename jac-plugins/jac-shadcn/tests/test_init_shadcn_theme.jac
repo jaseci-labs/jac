@@ -13,7 +13,8 @@ import from unittest.mock { patch }
 
 import jac_shadcn.shadcn_handler as handler;
 import from jac_shadcn.shadcn_handler {
-    init_shadcn_theme, _validate_component_filename
+    init_shadcn_theme,
+    _validate_component_filename
 }
 import from jac_shadcn.lockfile { load_lockfile }
 
@@ -49,12 +50,10 @@ def _make_button_response() -> dict {
 def _scaffold(tmpdir: str, registry: str = "https://example.org") -> MockConfig {
     toml_path = Path(tmpdir) / "jac.toml";
     toml_path.write_text(
-        '[project]\nname = "test"\n\n'
-        + '[jac-shadcn]\nregistry = "' + registry + '"\n'
+        '[project]\nname = "test"\n\n' + '[jac-shadcn]\nregistry = "' + registry + '"\n'
     );
     return MockConfig(
-        project_root=tmpdir,
-        _raw_data={"jac-shadcn": {"registry": registry}}
+        project_root=tmpdir, _raw_data={"jac-shadcn": {"registry": registry}}
     );
 }
 
@@ -100,7 +99,8 @@ test "init writes global.css, syncs [jac-shadcn], vite config, default component
     with tempfile.TemporaryDirectory() as tmpdir {
         config = _scaffold(tmpdir);
         responses = {
-            "theme": _make_theme_response(), "button": _make_button_response()
+            "theme": _make_theme_response(),
+            "button": _make_button_response()
         };
         def fake_fetch(url: str, silent: bool = False) -> dict {
             if "/theme" in url {
@@ -238,9 +238,7 @@ test "init does not duplicate [plugins.client.vite] when it already exists" {
     with tempfile.TemporaryDirectory() as tmpdir {
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\n\n'
-            + '[jac-shadcn]\nregistry = "https://example.org"\n\n'
-            + '[plugins.client.vite]\nplugins = ["custom()"]\n'
+            '[project]\nname = "test"\n\n' + '[jac-shadcn]\nregistry = "https://example.org"\n\n' + '[plugins.client.vite]\nplugins = ["custom()"]\n'
         );
         config = MockConfig(
             project_root=tmpdir,
@@ -298,5 +296,67 @@ test "init refuses to write a traversal filename from default components" {
         for f in ui_dir.rglob("*") {
             assert "owned" not in str(f);
         }
+    }
+}
+
+
+# ── Regression: don't write to ancestor project when nested ──
+test "init writes to project_root in config, NOT to any ancestor jac.toml" {
+    # Reproduces the user-reported bug where `jac create myapp` from a dir
+    # that happened to live INSIDE another jac project caused jaclang's
+    # cached get_config() to return the parent's config, so init wrote
+    # there. Once the post-hook started passing force_discover=True, the
+    # right config reached init -- this test pins that behavior by feeding
+    # an explicit MockConfig pointing at the child dir.
+    with tempfile.TemporaryDirectory() as parent_root {
+        # Set up a fake parent jac project that ALSO has [jac-shadcn].
+        # If init ever writes here, the test catches it.
+        parent_toml = Path(parent_root) / "jac.toml";
+        parent_toml.write_text(
+            '[project]\nname = "parent"\n\n' + '[jac-shadcn]\nstyle = "vega"\nregistry = "https://example.org"\n\n' + '[dependencies.npm]\n'
+        );
+        # Inside the parent, create a child project (simulates `jac create
+        # myapp` run from a dir nested in the parent).
+        child = Path(parent_root) / "child-project";
+        child.mkdir();
+        child_toml = child / "jac.toml";
+        child_toml.write_text(
+            '[project]\nname = "child"\n\n' + '[jac-shadcn]\nstyle = "nova"\nregistry = "https://example.org"\n'
+        );
+        # Hand init a config that points squarely at the child. This is
+        # what the post-hook now does via get_config(start_path=child,
+        # force_discover=True).
+        config = MockConfig(
+            project_root=str(child),
+            _raw_data={
+                "jac-shadcn": {"style": "nova", "registry": "https://example.org"}
+            }
+        );
+        def fake_fetch(url: str, silent: bool = False) -> dict {
+            if "/theme" in url {
+                return _make_theme_response();
+            }
+            return _make_button_response();
+        }
+        with patch.object(handler, "_fetch_json", side_effect=fake_fetch) {
+            init_shadcn_theme(config, style="nova");
+        }
+        # Child got everything.
+        child_doc = tomlkit.parse(child_toml.read_text());
+        assert child_doc["jac-shadcn"]["style"] == "nova";
+        assert "clsx" in child_doc["dependencies"]["npm"];
+        assert (child / "components" / "ui" / "button.cl.jac").exists();
+        assert (child / "global.css").exists();
+        assert (child / "jac-shadcn.lock").exists();
+        # Parent was NOT touched.
+        parent_doc = tomlkit.parse(parent_toml.read_text());
+        assert parent_doc["jac-shadcn"]["style"] == "vega";  # untouched
+        # No deps leaked into parent's [dependencies.npm]
+        parent_npm = parent_doc.get("dependencies", {}).get("npm", {});
+        for key in parent_npm.keys() {
+            assert False;  # parent should have no npm entries (was empty)
+        }
+        assert not (Path(parent_root) / "components" / "ui").exists();
+        assert not (Path(parent_root) / "jac-shadcn.lock").exists();
     }
 }

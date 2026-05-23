@@ -168,11 +168,16 @@ def _handle_create_with_shadcn_theme(ctx: HookContext, return_code: int) -> int 
     }
 
     # Validation already ran in the pre-hook, so any value here is known
-    # good. chdir into the new project so get_config() picks up its jac.toml.
+    # good. We MUST pass force_discover=True here -- jaclang's get_config
+    # is a process-lifetime singleton, and `jac create` itself populated
+    # the cache BEFORE the new project's jac.toml existed. Without forcing
+    # re-discovery from `project_dir`, init would write to whatever
+    # ancestor jac.toml the cached config was anchored to. We also chdir
+    # so any nested relative-path resolution inside init lands locally.
     saved_cwd = os.getcwd();
     try {
         os.chdir(str(project_dir));
-        config = get_config();
+        config = get_config(start_path=project_dir, force_discover=True);
         if config is None {
             return return_code;
         }
