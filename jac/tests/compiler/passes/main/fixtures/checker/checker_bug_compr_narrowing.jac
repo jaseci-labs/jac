@@ -55,3 +55,37 @@ def use_gen(r: R | None) -> list[str] {
     if r is None { return []; }
     return list(r.parts[i] for i in range(len(r.parts)));
 }
+
+# Issue #6132: comprehension result assigned (not returned) inside if-block.
+obj F {
+    has id: str = "";
+}
+
+obj ProfileB {
+    has following: list[F] = [];
+}
+
+# Simple truthiness guard, comprehension assigned inside the if body.
+def assign_in_if(p: ProfileB | None) {
+    if p {
+        result = [f.id for f in p.following];
+    }
+}
+
+# AND condition, matching the original issue repro.
+def assign_in_if_and(p: ProfileB | None) {
+    if p and p.following {
+        result = [f.id for f in p.following];
+    }
+}
+
+# self.attr narrowing: attribute on self inside an if-body comprehension.
+obj App {
+    has myProfile: ProfileB | None = None;
+
+    def run() {
+        if self.myProfile and self.myProfile.following {
+            ids = [f.id for f in self.myProfile.following];
+        }
+    }
+}

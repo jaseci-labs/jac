@@ -826,20 +826,21 @@ impl CFGBuildPass._wire_compr_filters(
     # narrowing engine walks back through the chain to find enclosing
     # narrowing, while filter narrowing applies on its true edge.
     #
-    # When the immediately enclosing CFG node is an Assignment (the
-    # comprehension sits on its RHS), walk past it to find a non-
-    # Assignment ancestor. Otherwise narrowing for a Name on the
-    # assignment LHS that is also referenced inside the comprehension
-    # (`out = [t for t in out if ...]`) would resolve the Name through
-    # the in-progress write — a circular dependency on the comprehension
-    # being typed — and fall back to Unknown, blowing up the head
-    # expression with cascading E1032s. Skipping the Assignment lets the
-    # narrowing engine walk to the prior statement's CFG node, where
-    # the declared / last-written type for that Name is intact.
+    # Walk up to find the immediately enclosing CFG node that is neither
+    # an InnerCompr or CfgExpr.
+    # We don't skip Assignment: keeping Assignment as the
+    # enclosing node means the CFG chain is
+    #   IfStmt -> Assignment -> InnerCompr -> ...
+    # so _classify_edge(IfStmt, Assignment) returns "true" (Assignment is
+    # body[0]), and true-branch narrowing propagates correctly into the
+    # comprehension (fixes #6132: assignment-in-if-block false positives).
+    # The circular-reference case (`out = [t for t in out]`) is handled
+    # by _flow_pending_keys in the type evaluator, which returns None
+    # (the declared type) when the key is already being evaluated.
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }
