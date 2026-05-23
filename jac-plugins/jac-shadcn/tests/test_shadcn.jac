@@ -509,10 +509,15 @@ test "jacpack template has required files" {
     import from jaclang.project.template_loader { load_template_from_directory }
     template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     template = load_template_from_directory(template_dir);
+    # Files the template ships -- enough for `jac start main.jac` to render
+    # a themed page at "/" after `jac install`.
     assert "main.jac" in template.files;
     assert "global.css" in template.files;
-    # lib/utils.cl.jac is created on-demand by `jac add --shadcn` rather than
-    # scaffolded by the template -- see add_shadcn_components / init_shadcn_theme.
+    assert "pages/layout.jac" in template.files;
+    assert "pages/index.jac" in template.files;
+    assert "components/home-page.cl.jac" in template.files;
+    # lib/utils.cl.jac + components/ui/*.cl.jac are created on-demand by
+    # `jac shadcn init` / `jac shadcn add`, not scaffolded by the template.
 }
 
 

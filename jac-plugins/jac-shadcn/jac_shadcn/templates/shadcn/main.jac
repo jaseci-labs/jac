@@ -1,22 +1,33 @@
 """Main entry point for {{name}}."""
 
+cl import from react { useEffect }
 cl import ".global.css";
 
-# Client-side root component. Replace this with your own components from
-# `components/ui/` -- run `jac shadcn add button card dialog` to install
-# more from the registry.
-to cl:
+cl {
+    """App shell -- wraps every page in the shadcn theme classes.
 
-def:pub app -> JsxElement {
-    return
-        <div
-            className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4 p-8"
-        >
-            <h1 className="text-3xl font-bold">Welcome to {{name}}</h1>
-            <p className="text-muted-foreground max-w-md text-center">
-                A jac-shadcn project. Edit this file (main.jac) or pull
-                components into <code className="font-mono text-sm">components/ui/</code>
-                with <code className="font-mono text-sm">jac shadcn add &lt;name&gt;</code>.
-            </p>
-        </div>;
+    The string below is managed by `jac shadcn init` / `jac shadcn upgrade`.
+    Don't hand-edit it; use the CLI flags (--style / --base-color) instead.
+    """
+    def:pub app(children: Any = None) -> JsxElement {
+        # JAC-SHADCN-THEME-CLASSES-BEGIN
+        themeClasses = "style-nova base-color-neutral dark";
+        # JAC-SHADCN-THEME-CLASSES-END
+        useEffect(
+            lambda -> Any {
+                for cls in themeClasses.split(" ") {
+                    document.body.classList.add(cls);
+                }
+                return lambda -> None { for cls in themeClasses.split(" ") {
+                    document.body.classList.remove(cls);
+                }};
+            },
+            []
+        );
+
+        return
+            <div className="flex min-h-screen flex-col bg-background text-foreground">
+                {children}
+            </div>;
+    }
 }

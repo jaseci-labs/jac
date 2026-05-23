@@ -58,6 +58,37 @@ def _extract_user_css_block(css_path: Path) -> str {
 }
 
 
+"""Rewrite the `themeClasses = "..."` line in the project's main.jac so the
+app-shell body classes match the chosen style + baseColor. The template
+ships markers (JAC-SHADCN-THEME-CLASSES-BEGIN/END) around the line so we
+can patch in place without disturbing the rest of main.jac.
+
+No-op when main.jac is absent or the markers aren't present (user
+removed or rewrote main.jac -- we don't want to clobber their work)."""
+def _patch_main_jac_theme_classes(
+    project_root: Path, style: str, base_color: str
+) -> None {
+    import re;
+    main_path = project_root / "main.jac";
+    if not main_path.exists() {
+        return;
+    }
+    content = main_path.read_text();
+    if "JAC-SHADCN-THEME-CLASSES-BEGIN" not in content {
+        return;
+    }
+    new_line = (
+        '        themeClasses = "style-' + style + ' base-color-' + base_color + ' dark";'
+    );
+    pattern = r'(# JAC-SHADCN-THEME-CLASSES-BEGIN\n)        themeClasses = "[^"]*";';
+    replacement = r'\1' + new_line;
+    updated = re.sub(pattern, replacement, content);
+    if updated != content {
+        main_path.write_text(updated);
+    }
+}
+
+
 """Compose a managed/user-split global.css. The managed block is regenerated
 on every init/upgrade; the user block is preserved verbatim across runs."""
 def _compose_global_css(managed_css: str, user_block: str) -> str {
@@ -536,6 +567,10 @@ impl init_shadcn_theme(
     _save_toml(toml_path, doc);
     console.print("  + Synced [jac-shadcn] in jac.toml", style="green");
 
+    # Keep the app shell's body classes in sync with the chosen theme
+    # so the .style-* / .base-color-* CSS scopes match.
+    _patch_main_jac_theme_classes(project_root, style, base_color);
+
     # Update npm deps using the section patcher
     npm_deps = theme_data.get("npm_deps", {});
     if npm_deps {
@@ -804,6 +839,14 @@ impl upgrade_shadcn_components(
                 ),
                 style="muted"
             );
+            # Re-sync the app shell's body classes when style or baseColor
+            # changed -- otherwise the CSS scope on .style-* / .base-color-*
+            # won't match what the components expect.
+            if "style" in updates or "baseColor" in updates {
+                new_style = str(doc["jac-shadcn"].get("style", "nova"));
+                new_base = str(doc["jac-shadcn"].get("baseColor", "neutral"));
+                _patch_main_jac_theme_classes(project_root, new_style, new_base);
+            }
         }
     }
 
