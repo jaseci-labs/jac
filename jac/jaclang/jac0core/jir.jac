@@ -391,8 +391,15 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
 """Check whether a module's JIR cache is still valid.
 
 The cache is valid if it exists, was written by a compatible compiler
-version (same jaclang + Python), and is newer than the source file and
-all its annex files (impl, test) and variant files (sv, cl, na).
+version (same jaclang + Python), is newer than the source file and all
+its annex/variant files (mtime fast-path), AND the head source content
+matches the hash stored in the JIR header (content-hash fallback).
+
+The content-hash check catches cases where mtime is unreliable — e.g.
+git checkout / git stash-pop restoring files with timestamps older than
+the cached JIR, or sub-second edits on filesystems with coarse mtime
+resolution.  It only runs when the mtime fast-path says "valid", so the
+extra file read is paid only on a potential false-positive hit.
 """
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
     import from jaclang.jac0core.bccache {
@@ -428,6 +435,20 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         for variant in discover_variant_files(source_path) {
             try {
                 if cache_mtime <= os.path.getmtime(variant) {
+                    return False;
+                }
+            } except OSError {
+                return False;
+            }
+        }
+        # Content-hash fallback: verify the head source hasn't changed even
+        # when mtime appears fresh.  Catches git-restored timestamps and other
+        # mtime-unreliable scenarios.  Uses the same CRC32-of-raw-bytes hash
+        # that write_module stores in the header.
+        if header.source_content_hash != 0 {
+            try {
+                actual_hash = compute_content_crc32(source_path);
+                if actual_hash != header.source_content_hash {
                     return False;
                 }
             } except OSError {

@@ -35,12 +35,26 @@ impl JirWriter.write_module(
         jac_ver = "0.0.0";
     }
 
-    # Compute source hash
+    # Compute source hash: CRC32 of the raw file bytes so the write-side
+    # hash matches what is_module_cache_valid recomputes from disk.
     source_hash = 0;
     if module?.source and module.source is not None {
-        src_str = module.source.code;
-        if src_str {
-            source_hash = zlib.crc32(src_str.encode()) & 0xFFFFFFFF;
+        src_path = module.source?.file_path;
+        if src_path {
+            try {
+                import from pathlib { Path as _Path }
+                source_hash = zlib.crc32(_Path(src_path).read_bytes()) & 0xFFFFFFFF;
+            } except Exception {
+                src_str = module.source.code;
+                if src_str {
+                    source_hash = zlib.crc32(src_str.encode()) & 0xFFFFFFFF;
+                }
+            }
+        } else {
+            src_str = module.source.code;
+            if src_str {
+                source_hash = zlib.crc32(src_str.encode()) & 0xFFFFFFFF;
+            }
         }
     }
 
