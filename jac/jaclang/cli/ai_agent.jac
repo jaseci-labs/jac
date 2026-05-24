@@ -446,8 +446,19 @@ def start_app(entry_file: str) -> str {
         return f"ERROR launching `jac start {entry_path}`: {e}";
     }
     # Let it boot, then stop it -- we only want the startup diagnostics, not a
-    # server left running after the tool returns.
-    time.sleep(12);
+    # server left running after the tool returns. The boot window defaults to
+    # 12s but can be shortened via JAC_AI_START_TIMEOUT (seconds), mainly so
+    # tests need not wait the full default.
+    boot_wait = 12.0;
+    try {
+        raw = os.environ.get("JAC_AI_START_TIMEOUT");
+        if raw {
+            boot_wait = float(raw);
+        }
+    } except Exception as e {
+        _ = e;
+    }
+    time.sleep(boot_wait);
     proc.terminate();
     try {
         output = proc.communicate(timeout=10)[0];
