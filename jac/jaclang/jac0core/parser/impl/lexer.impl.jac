@@ -108,30 +108,129 @@ impl Lexer.prev_is_value -> bool {
     ];
 }
 
+# --- UTF-8 byte-offset cursor (rune-aware) -------------------------------
+# `pos`/`_source_len` are byte offsets into the UTF-8 source. For pure-ASCII
+# source (`_ascii`) byte offset == code-point index, so these stay on the
+# plain `str` path (no encode/decode work). For source containing non-ASCII
+# code points they decode runes out of the cached `_enc` byte view. Both
+# branches are portable: they produce identical results in the Python and
+# native backends (where `str` is code-point-indexed vs UTF-8 i8* respectively).
+impl Lexer._width_of(lead: int) -> int {
+    # UTF-8 byte width from a lead byte value.
+    if lead < 0x80 {
+        return 1;
+    }
+    if lead < 0xE0 {
+        return 2;
+    }
+    if lead < 0xF0 {
+        return 3;
+    }
+    return 4;
+}
+
+impl Lexer._rune_width(byte_idx: int) -> int {
+    # Byte width of the UTF-8 code point whose lead byte is at byte_idx.
+    return self._width_of(int.from_bytes(self._enc[byte_idx:byte_idx + 1], "big"));
+}
+
+impl Lexer._char_at(byte_idx: int) -> str {
+    # The single code point starting at byte offset byte_idx, or "" if out of
+    # range or if byte_idx lands on a continuation byte (mid-rune — only the
+    # ASCII-prefix backscan steps one byte at a time, where a mid-rune hit is
+    # simply treated as non-alnum and stops the scan).
+    if byte_idx < 0 or byte_idx >= self._source_len {
+        return "";
+    }
+    if self._ascii {
+        return self.source[byte_idx];
+    }
+    one = self._enc[byte_idx:byte_idx + 1];
+    lead = int.from_bytes(one, "big");
+    if lead < 0x80 {
+        # ASCII byte — the overwhelming majority even in a non-ASCII file;
+        # decode the single byte directly and skip the width computation.
+        return one.decode("utf-8");
+    }
+    if lead < 0xC0 {
+        return "";  # continuation byte: mid-rune
+    }
+    w = self._width_of(lead);
+    return self._enc[byte_idx:byte_idx + w].decode("utf-8", errors="replace");
+}
+
+impl Lexer._slice(a: int, c: int) -> str {
+    # Decode the byte range [a, c) to a string.
+    if self._ascii {
+        return self.source[a:c];
+    }
+    return self._enc[a:c].decode("utf-8");
+}
+
 impl Lexer.current -> str {
+    # Hot path: inline the ASCII case (called once per character) so the
+    # common pure-ASCII source pays only a single extra branch vs. the
+    # pre-UTF-8 lexer.
     if self.pos >= self._source_len {
         return "";
     }
-    return self.source[self.pos];
+    if self._ascii {
+        return self.source[self.pos];
+    }
+    return self._char_at(self.pos);
 }
 
 impl Lexer.peek(offset: int = 1) -> str {
-    idx = self.pos + offset;
-    if idx >= self._source_len {
-        return "";
+    if self._ascii {
+        idx = self.pos + offset;
+        if idx >= self._source_len {
+            return "";
+        }
+        return self.source[idx];
     }
-    return self.source[idx];
+    # Walk `offset` code points forward from the current byte position.
+    bi = self.pos;
+    k = 0;
+    while k < offset and bi < self._source_len {
+        bi += self._rune_width(bi);
+        k += 1;
+    }
+    return self._char_at(bi);
 }
 
 impl Lexer.advance -> str {
-    ch = self.current();
+    if self._ascii {
+        ch = self.current();
+        if ch == "\n" {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+        self.pos += 1;
+        return ch;
+    }
+    # Non-ASCII path: read the lead byte once to derive both the code point
+    # and its width (avoids a second byte read via current()+_rune_width()).
+    if self.pos >= self._source_len {
+        return "";
+    }
+    one = self._enc[self.pos:self.pos + 1];
+    lead = int.from_bytes(one, "big");
+    if lead < 0x80 {
+        ch = one.decode("utf-8");
+        w = 1;
+    } else {
+        w = self._width_of(lead);
+        ch = self._enc[self.pos:self.pos + w].decode("utf-8", errors="replace");
+    }
     if ch == "\n" {
         self.line += 1;
         self.col = 1;
     } else {
         self.col += 1;
     }
-    self.pos += 1;
+    self.pos += w;
     return ch;
 }
 
@@ -148,7 +247,24 @@ impl Lexer.match_char(expected: str) -> bool {
 }
 
 impl Lexer.match_string(expected: str) -> bool {
-    if self.source[self.pos:self.pos + len(expected)] == expected {
+    if self._ascii {
+        # Fast path: byte == code point, so slice the str directly.
+        if self.source[self.pos:self.pos + len(expected)] == expected {
+            for _ in range(len(expected)) {
+                self.advance();
+            }
+            return True;
+        }
+        return False;
+    }
+    # `expected` is ASCII (operators/keywords). Compare raw bytes so a probe
+    # that straddles a multi-byte rune boundary never decodes a partial rune;
+    # ASCII bytes (<0x80) are never part of a multi-byte sequence, so a byte
+    # match is exact. Advance one code point per char of `expected`.
+    exp = expected.encode("utf-8");
+    exp_bytes = len(exp);
+    if self.pos + exp_bytes <= self._source_len
+    and self._enc[self.pos:self.pos + exp_bytes] == exp {
         for _ in range(len(expected)) {
             self.advance();
         }
@@ -181,57 +297,27 @@ impl Lexer.error(
     message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
 ) {
     self.error_count += 1;
-    if self?.prog and self.prog is not None and hasattr(self.prog, "errors_had") {
-        import from jaclang.jac0core.unitree { Token as UniToken, Source }
-        import from jaclang.jac0core.codeinfo { CodeLocInfo }
-        import from jaclang.jac0core.passes.transform { Alert }
-        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
-        sloc = self.make_loc(start_line, start_col, start_pos);
-        src = Source(self.source, mod_path=self.file_path);
-        tok = UniToken(
-            orig_src=src,
-            name="ERROR",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        code = DIAGNOSTICS.get(code_str) if code_str else None;
-        alrt = Alert(message, loc, Lexer, code=code);
-        self.prog.errors_had.append(alrt);
-    }
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=True
+        )
+    );
 }
 
 impl Lexer.warning(
     message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
 ) {
-    if self?.prog and self.prog is not None and hasattr(self.prog, "warnings_had") {
-        import from jaclang.jac0core.unitree { Token as UniToken, Source }
-        import from jaclang.jac0core.codeinfo { CodeLocInfo }
-        import from jaclang.jac0core.passes.transform { Alert }
-        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
-        sloc = self.make_loc(start_line, start_col, start_pos);
-        src = Source(self.source, mod_path=self.file_path);
-        tok = UniToken(
-            orig_src=src,
-            name="WARNING",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        code = DIAGNOSTICS.get(code_str) if code_str else None;
-        alrt = Alert(message, loc, Lexer, code=code);
-        self.prog.warnings_had.append(alrt);
-    }
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=False
+        )
+    );
 }
 
 impl Lexer.is_digit(ch: str) -> bool {
@@ -267,17 +353,17 @@ impl Lexer.skip_line_comment{
     while not self.at_end() and self.current() != "\n" {
         self.advance();
     }
-    comment_text = self.source[start_pos:self.pos];
+    comment_text = self._slice(start_pos, self.pos);
     self.comments.append(
-        (
-            comment_text,
-            start_line,
-            start_line,
-            start_col,
-            self.col,
-            start_pos,
-            self.pos,
-            False
+        CommentData(
+            value=comment_text,
+            line=start_line,
+            end_line=start_line,
+            col_start=start_col,
+            col_end=self.col,
+            pos_start=start_pos,
+            pos_end=self.pos,
+            is_block=False
         )
     );
 }
@@ -293,17 +379,17 @@ impl Lexer.skip_block_comment -> bool {
         if self.current() == "*" and self.peek() == "#" {
             self.advance();  # *
             self.advance();  # #
-            comment_text = self.source[start_pos:self.pos];
+            comment_text = self._slice(start_pos, self.pos);
             self.comments.append(
-                (
-                    comment_text,
-                    start_line,
-                    self.line,
-                    start_col,
-                    self.col,
-                    start_pos,
-                    self.pos,
-                    True
+                CommentData(
+                    value=comment_text,
+                    line=start_line,
+                    end_line=self.line,
+                    col_start=start_col,
+                    col_end=self.col,
+                    pos_start=start_pos,
+                    pos_end=self.pos,
+                    is_block=True
                 )
             );
             return True;
@@ -354,10 +440,10 @@ impl Lexer.scan_identifier -> Token {
         }
         # Check for "in" - making it "not in"
         if not self.at_end() and self.current() == "i" {
-            if self.source[self.pos:self.pos + 2] == "in"
+            if self._slice(self.pos, self.pos + 2) == "in"
             and (
                 self.pos + 2 >= self._source_len
-                or not self.is_alnum(self.source[self.pos + 2])
+                or not self.is_alnum(self._char_at(self.pos + 2))
             ) {
                 self.advance();  # i
                 self.advance();  # n
@@ -382,10 +468,10 @@ impl Lexer.scan_identifier -> Token {
         }
         # Check for "not" - making it "is not"
         if not self.at_end() and self.current() == "n" {
-            if self.source[self.pos:self.pos + 3] == "not"
+            if self._slice(self.pos, self.pos + 3) == "not"
             and (
                 self.pos + 3 >= self._source_len
-                or not self.is_alnum(self.source[self.pos + 3])
+                or not self.is_alnum(self._char_at(self.pos + 3))
             ) {
                 self.advance();  # n
                 self.advance();  # o
@@ -525,8 +611,8 @@ impl Lexer.scan_string(quote: str) -> Token {
     # backslashes literal, so an unknown escape there is intentional.
     prefix = "";
     pp = start_pos - 1;
-    while pp >= 0 and self.is_alnum(self.source[pp]) {
-        prefix = self.source[pp] + prefix;
+    while pp >= 0 and self.is_alnum(self._char_at(pp)) {
+        prefix = self._char_at(pp) + prefix;
         pp -= 1;
     }
     is_raw = prefix.lower() in ["r", "rb", "br"];
@@ -1077,7 +1163,7 @@ impl Lexer.scan_jsx_content -> Token {
             # JsxComment AST node owns it now, so leaving it in the sidecar
             # would cause CommentInjectionPass to emit it twice on reformat.
             self.comments = self.comments[:saved_comments_len];
-            value = self.source[start_pos:self.pos];
+            value = self._slice(start_pos, self.pos);
             return self.make_token(
                 TokenKind.JSX_COMMENT, value, start_line, start_col, start_pos
             );
@@ -1809,7 +1895,11 @@ impl Lexer.next_token -> Token {
 }
 
 impl Lexer.tokenize -> list[Token] {
-    self._source_len = len(self.source);
+    # Set up the UTF-8 byte view. `pos`/`_source_len` are byte offsets; the
+    # ASCII fast-path keeps scanning on the plain `str` (byte == code point).
+    self._enc = self.source.encode("utf-8");
+    self._source_len = len(self._enc);
+    self._ascii = self.source.isascii();
     tokens: list[Token] = [];
     last_pos = -1;
     while True {
