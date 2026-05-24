@@ -236,6 +236,43 @@ test "strings concat" {
     assert f(b"hello ", b"world") == b"hello world";
 }
 
+# UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
+# previously unimplemented in native (returned empty); these lock in that
+# `s.encode()[a:b].decode()` round-trips and that byte access is portable.
+test "bytes utf8 byte_len" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
+    assert f("café".encode("utf-8")) == 5;
+    assert f("日本語".encode("utf-8")) == 9;
+    assert f(b"ascii") == 5;
+}
+
+test "bytes utf8 byte_at portable" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
+    enc = "café".encode("utf-8");  # 63 61 66 C3 A9
+    for i in range(len(enc)) {
+        assert f(enc, i) == enc[i] , f"byte_at({i}) native={f(enc, i)} py={enc[i]}";
+    }
+}
+
+test "bytes utf8 decode roundtrip and slice" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    rt = get_func(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
+    assert rt("café".encode("utf-8")) == "café".encode("utf-8");
+    sd = get_func(
+        eng,
+        "slice_decode",
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    enc = "café".encode("utf-8");
+    assert sd(enc, 0, 3) == b"caf";
+    assert sd(enc, 3, 5) == "é".encode("utf-8");
+}
+
 test "strings fstring int" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "format_int", ctypes.c_char_p, ctypes.c_int64);

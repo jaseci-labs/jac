@@ -1266,6 +1266,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "partition",
         "rpartition",
         "encode",
+        "decode",
         "format"
     ) {
         str_val = self._codegen_expr(trailer.target);
