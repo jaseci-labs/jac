@@ -92,6 +92,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
         _last_type_node_hint: (object | None) = None,
+        # True while codegen'ing the TupleVal of a `return (...)`. In that
+        # context borrowed (field-load / element-read) pointer elements must be
+        # retained so they outlive the owning local's scope-exit teardown — the
+        # returned tuple box does not own its elements (see _codegen_tuple_val).
+        _return_tuple_ctx: bool = False,
         # Inheritance / vtable support (Phase 5)
         class_hierarchy: dict[str, str] = {},
         class_parents: dict[str, list[str]] = {},
@@ -274,6 +279,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
+    def _codegen_match(nd: uni.MatchStmt) -> None;
+    def _match_pattern_cond(
+        pat: uni.MatchPattern, subj: ir.Value
+    ) -> (ir.Value | None);
+
+    def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
+    def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);

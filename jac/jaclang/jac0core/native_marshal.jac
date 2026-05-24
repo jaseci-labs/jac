@@ -196,12 +196,22 @@ def marshal_value(
     # Simple scalars
     if llvm_type in ("i64", "i32", "i16", "i8") {
         val = int(raw);
-        # Check if this field is enum-typed
+        # Enum-typed struct field: map ordinal -> Python enum member.
         if (field_info and field_info.enum_type) {
             emap = enum_maps.get(field_info.enum_type);
             if (emap and 0 <= val < len(emap) and emap[val] is not None) {
                 return emap[val];
             }
+        }
+        # Enum-typed function return: map ordinal -> enum member; an
+        # out-of-range value is the -1 None sentinel for a `T | None` return.
+        _ret_enum = func_layout?.ret_enum_type if func_layout else None;
+        if _ret_enum {
+            emap = enum_maps.get(_ret_enum);
+            if (emap and 0 <= val < len(emap) and emap[val] is not None) {
+                return emap[val];
+            }
+            return None;
         }
         return val;
     }
@@ -396,6 +406,37 @@ def wrap_native_function(
 
 
 # -- Module-level installation --
+"""Run a freshly-compiled native module's global initializers.
+
+A native function that reads module globals (e.g. the lexer's KEYWORDS dict)
+segfaults if the globals were never initialized. The codegen emits a
+`__jac_glob_init` for the module's own globals and a renamed
+`__jac_glob_init_<safe_name>` for each imported native module; imported
+modules must be initialized before the importer. `manifest` is the compiled
+module's InteropManifest (ir.gen.interop_manifest); its
+`native_transitive_sources` lists the imported native modules in dependency
+order.
+"""
+def init_native_globals(engine: any, manifest: any) {
+    import ctypes;
+    import re;
+    srcs = manifest.native_transitive_sources if manifest is not None else [];
+    for src in (srcs or []) {
+        if not src {
+            continue;
+        }
+        safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
+        addr = engine.get_function_address(f"__jac_glob_init_{safe}");
+        if addr {
+            ctypes.CFUNCTYPE(None)(addr)();
+        }
+    }
+    main_addr = engine.get_function_address("__jac_glob_init");
+    if main_addr {
+        ctypes.CFUNCTYPE(None)(main_addr)();
+    }
+}
+
 """Install native-backed function wrappers on a Python module.
 
 Args:
