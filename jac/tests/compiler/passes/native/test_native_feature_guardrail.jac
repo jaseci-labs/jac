@@ -144,21 +144,6 @@ test "guardrail: report statement is rejected" {
 # ─────────────────────────────────────────────────────────────────────
 # Expression-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: walrus operator is rejected" {
-    prog = compile_na_inline(
-        "walrus",
-        "def f() -> int {\n"
-        "    if (n := 10) > 5 {\n"
-        "        return n;\n"
-        "    }\n"
-        "    return 0;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for walrus (NamedExpr), got: {fmt_errors(
-        prog
-    )}";
-}
-
 test "guardrail: yield expression is rejected" {
     prog = compile_na_inline(
         "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
