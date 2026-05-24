@@ -52,7 +52,12 @@ glob yolo_mode: bool = True,
      # reasoning-less models, per-step/tool timings, and multi-line tool-result
      # snippets. Cleared by `--quiet`/`-q`; toggled with `/verbose`. When off,
      # only tool-call lines, one-line results, and the final answer are shown.
-     verbose: bool = True;
+     verbose: bool = True,
+     # Whether write_file/edit_file append inline compiler feedback (the
+     # recompile-and-diff that surfaces errors the write introduced). On by
+     # default and now incremental, so it costs an LSP-save; toggle off with
+     # `/feedback` for sessions that would rather rely on explicit `jac_check`.
+     inline_feedback: bool = True;
 
 # Tool names grouped for the turn-stat breakdown: tools that mutate files,
 # and tools that execute code or shell commands. Everything else is a read.
@@ -192,7 +197,12 @@ introduced nothing (or no code intelligence is available).
 """
 def write_feedback(path: str) -> str {
     global agent_ci_dirty;
-    if agent_ci is None {
+    if agent_ci is None or not inline_feedback {
+        # When inline feedback is off the project model is still stale after a
+        # write; flag it so the next semantic query (or `jac_check`) refreshes.
+        if agent_ci is not None and not inline_feedback {
+            agent_ci_dirty = True;
+        }
         return "";
     }
     # The write changed the project; mark dirty up front so a failed refresh
@@ -848,6 +858,9 @@ def print_help {
     console.print(
         "  /verbose  toggle live reasoning, timings, and step detail", style="muted"
     );
+    console.print(
+        "  /feedback toggle inline compiler feedback after each write", style="muted"
+    );
     console.print("  /exit     quit the session", style="muted");
 }
 
@@ -1054,6 +1067,33 @@ def _result_snippet(text: str, max_lines: int) -> list[str] {
 """Format a millisecond duration compactly: '820ms', '1.8s', '13.0s'."""
 def _fmt_ms(ms: float) -> str {
     return f"{int(ms)}ms" if ms < 1000 else f"{ms / 1000:.1f}s";
+}
+
+
+"""Render a code-intelligence compile, set as `CodeIntelligence.on_event`.
+
+Fires whenever the compiler-backed project model rebuilds -- the initial load,
+and the incremental recompile after each write or the first query following one.
+Printed inline with the tool stream (it runs inside a tool's execution) so the
+hidden compiler work behind write_file/find_symbol/etc. is visible: which file,
+how many modules were recompiled out of the project, and how long it took.
+"""
+def _ci_event(info: any) {
+    op = str(info.get("op", "?"));
+    recompiled = int(info.get("recompiled", 0));
+    total = int(info.get("total", 0));
+    raw_ms = info.get("ms", 0.0);
+    ms = raw_ms if isinstance(raw_ms, float) else 0.0;
+    fname: str = str(info.get("file", ""));
+    name = os.path.basename(fname);
+    if op == "load" {
+        what = f"load · compiled {recompiled} files";
+    } else {
+        # create / edit / delete: show the recompiled count against the project
+        # size so an incremental refresh is visibly cheaper than a full build.
+        what = f"{op} {name} · recompiled {recompiled}/{total}";
+    }
+    console.print(f"      ⚙ code intel · {what} · {_fmt_ms(ms)}", style="dim");
 }
 
 # Upper bound on the live "thinking..." line, used to erase it cleanly.
@@ -1327,7 +1367,7 @@ otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
 failed turn reports its error but does not abort the session.
 """
 def run_agent(req: object) -> int {
-    global agent_model,yolo_mode,agent_ci,show_stats,verbose;
+    global agent_model,yolo_mode,agent_ci,show_stats,verbose,inline_feedback;
     # `req` is an AgentRequest; access it untyped so attribute reads
     # type-check without importing the class into this byLLM-only module.
     r: any = req;
@@ -1336,8 +1376,12 @@ def run_agent(req: object) -> int {
     yolo_mode = not r.safe;
     # Rich live view unless `--quiet`/`-q` asks for compact output.
     verbose = not bool(getattr(r, "quiet", False));
-    # The compiler-backed project model the semantic tools navigate.
+    # The compiler-backed project model the semantic tools navigate. Surface its
+    # recompiles in the live view so the work behind writes and queries is visible.
     agent_ci = r.code_intel;
+    if agent_ci is not None {
+        agent_ci.on_event = _ci_event;
+    }
     initial_prompt = str(r.prompt);
     # The import-time `agent_model` already covers jac.toml/default; only
     # rebuild when a flag actually changes the model or its context window.
@@ -1397,6 +1441,15 @@ def run_agent(req: object) -> int {
                 "Verbose: streaming reasoning, timings, and step detail."
                     if verbose
                     else "Quiet: tool calls and the answer only."
+            );
+            continue;
+        }
+        if line == "/feedback" {
+            inline_feedback = not inline_feedback;
+            console.success(
+                "Inline compiler feedback on: writes report errors they introduce."
+                    if inline_feedback
+                    else "Inline compiler feedback off: use jac_check to compile."
             );
             continue;
         }
