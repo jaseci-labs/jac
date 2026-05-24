@@ -901,7 +901,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1029,7 +1029,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
         if not has_native_tool_calls and not isinstance(message, dict) {
             message = {"role": "assistant", "content": content_buf};
         }
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1066,7 +1066,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);

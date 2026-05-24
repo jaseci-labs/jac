@@ -1522,3 +1522,82 @@ test "async by llm() end-to-end with mocked acall_llm" {
         f"Expected mocked acall_llm result 'summary', got: {result!r}"
     );
 }
+
+
+"""Text tool protocol: a reply object carrying a tool call as plain text must
+be recovered into a structured `tool_calls` field.
+
+Regression for the ollama/gemma loop: `recover_tool_calls` only handled dict
+replies, so the litellm path (which yields a `Message` *object*) silently
+no-opped -- the model's `<tool_call>` text was never executed and the agent
+re-issued the same call forever. The fix coerces object replies to a dict and
+returns it, so callers pick up the recovered call.
+"""
+test "recover_tool_calls handles an object-shaped reply" {
+    import from byllm.tool_protocol { recover_tool_calls }
+    import from types { SimpleNamespace }
+    # Mimics a litellm Message object: attribute access, no dict-ness.
+    msg = SimpleNamespace(
+        role="assistant",
+        content="<tool_call>{\"name\": \"get_count\", \"arguments\": {}}</tool_call>",
+        tool_calls=None
+    );
+    out = recover_tool_calls(msg, ["get_count", "finish_tool"]);
+    assert isinstance(out, dict) , "must return a dict the ReAct loop can read";
+    tcs = out.get("tool_calls");
+    assert tcs , "the text tool call must be recovered into tool_calls";
+    assert tcs[0].function.name == "get_count";
+    assert "<tool_call>" not in (out.get("content") or "") , (
+        "the consumed call text must be stripped from content"
+    );
+}
+
+
+"""Text tool protocol: tool-call and tool-result history must linearise to text
+for models whose chat template has no `tool` role (e.g. gemma)."""
+test "linearize_tool_messages renders calls and results as text" {
+    import from byllm.tool_protocol { linearize_tool_messages }
+    import from types { SimpleNamespace }
+    msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "how many?"},
+        # assistant tool-call message (object-shaped tool_calls, content stripped)
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                SimpleNamespace(
+                    function=SimpleNamespace(name="get_count", arguments="{}")
+                )
+            ]
+        },
+        # tool result (identified by tool_call_id)
+        {"role": "tool", "tool_call_id": "abc", "name": "get_count", "content": "7"}
+    ];
+    out = linearize_tool_messages(msgs);
+    # System + user pass through untouched.
+    assert out[0]["role"] == "system";
+    assert out[1]["role"] == "user";
+    # Assistant tool call becomes <tool_call> text.
+    assert out[2]["role"] == "assistant";
+    assert "<tool_call>" in out[2]["content"];
+    assert "get_count" in out[2]["content"];
+    # Tool result becomes a readable user message (no dropped tool role).
+    assert out[3]["role"] == "user";
+    assert "<tool_response>" in out[3]["content"];
+    assert "7" in out[3]["content"];
+}
+
+
+"""Gemma-family models route through the text tool protocol automatically,
+since their chat template cannot consume `role:tool` results."""
+test "gemma models default to the text tool protocol" {
+    m = Model(model_name="ollama/gemma4:31b");
+    assert m.supports_native_tools == False;
+    # An explicit override still wins.
+    m2 = Model(model_name="ollama/gemma4:31b", config={"native_tools": True});
+    assert m2.supports_native_tools == True;
+    # A model without the gemma template keeps native tools.
+    m3 = Model(model_name="gpt-4o");
+    assert m3.supports_native_tools == True;
+}
