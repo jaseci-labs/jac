@@ -98,6 +98,13 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)

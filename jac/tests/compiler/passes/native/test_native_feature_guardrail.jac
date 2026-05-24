@@ -181,20 +181,6 @@ test "guardrail: await expression is rejected" {
     )}";
 }
 
-test "guardrail: flow / wait concurrent expression is rejected" {
-    prog = compile_na_inline(
-        "flow_wait",
-        "def task() -> int { return 7; }\n"
-        "def driver() -> int {\n"
-        "    h = flow task();\n"
-        "    return wait h;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ConcurrentExpr, got: {fmt_errors(
-        prog
-    )}";
-}
-
 # ─────────────────────────────────────────────────────────────────────
 # Negative controls — supported features must NOT trigger E5090
 # ─────────────────────────────────────────────────────────────────────
