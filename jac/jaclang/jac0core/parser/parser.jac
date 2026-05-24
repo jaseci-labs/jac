@@ -622,24 +622,27 @@ def parse(
 ) -> tuple[Module, bool] {
     # Lex via the structured surface (tokens + comments + diagnostics).
     #
-    # When JAC_NATIVE_LEXER=1, resolve tokenize_full off the module object so a
-    # deferred-native-acceleration hot-swap takes effect (auto-when-available).
-    # This is opt-in for now: the native engine does not yet keep alive struct
-    # strings reached only through the secondary lists of a returned tuple
-    # (comments/diags), so the native path can return empty strings or crash
-    # until that native GC rooting gap is closed. The default path runs the
-    # Python lexer directly, bypassing any swapped module function.
+    # Always resolve tokenize_full off the lexer module object so that whenever
+    # deferred native acceleration has hot-swapped it, parses transparently use
+    # the native-compiled lexer. Until (or unless) that swap happens,
+    # tokenize_full is the Python-compiled `.na.jac` lexer, which is the same
+    # Lexer used here directly — so routing through it is perf-neutral and the
+    # native and Python paths are verified to produce identical tokens,
+    # byte-offset positions, comments and diagnostics (incl. non-ASCII source).
+    #
+    # Set JAC_NATIVE_LEXER=0 to force the in-module Python Lexer (escape hatch
+    # for debugging a suspected native-lexer divergence).
     import os;
-    if os.environ.get("JAC_NATIVE_LEXER") == "1" {
-        (tokens, comments, diags, lex_error_count) = na_lexer.tokenize_full(
-            source, file_path
-        );
-    } else {
+    if os.environ.get("JAC_NATIVE_LEXER") == "0" {
         _lx = Lexer(source=source, file_path=file_path);
         tokens = _lx.tokenize();
         comments = _lx.comments;
         diags = _lx.diags;
         lex_error_count = _lx.error_count;
+    } else {
+        (tokens, comments, diags, lex_error_count) = na_lexer.tokenize_full(
+            source, file_path
+        );
     }
     # Replay structured lexer diagnostics into the program's alert lists. The
     # lexer no longer constructs unitree Alerts inline (it cannot when running
