@@ -290,6 +290,30 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
 """Generate walrus `:=` expression.
 
 Binds `nd.left` (always a simple Name — the parser only accepts a Name
@@ -358,8 +382,7 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return self._codegen_walrus(nd);
     }
     if op == Tok.PIPE_FWD {
-        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
-        return None;
+        return self._codegen_pipe_fwd(nd);
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);

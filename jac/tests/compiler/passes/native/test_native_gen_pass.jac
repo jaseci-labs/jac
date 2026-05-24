@@ -3201,6 +3201,30 @@ test "nested function can read a module global" {
     assert f(7) == 107;
 }
 
+# ─── Pipe-forward operator `|>` ──────────────────────────────────────────
+test "pipe-forward feeds lhs as the sole argument" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_single", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 6;
+    assert f(-1) == 0;
+}
+
+test "pipe-forward chains left-associatively" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
+    # inc(inc(5)) == 7
+    assert f(5) == 7;
+    assert f(0) == 2;
+}
+
+test "pipe-forward spreads a tuple lhs into multiple args" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # add(3, 4) == 7
+    assert f(3, 4) == 7;
+    assert f(10, -2) == 8;
+}
+
 # ─── Walrus operator `:=` ────────────────────────────────────────────────
 test "walrus operator binds inside an if-condition" {
     (eng, _) = compile_native("walrus.na.jac");
