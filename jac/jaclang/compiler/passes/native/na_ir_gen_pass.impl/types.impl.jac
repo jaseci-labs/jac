@@ -1368,12 +1368,25 @@ impl NaIRGenPass._emit_comparison(
     if isinstance(left.type, ir.PointerType)
     and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
-        # String comparison: both operands must be i8* (char pointers)
+        # String comparison: both operands must be i8* (char pointers).
+        # Null-safe: replace null pointer with "" (empty string) so that
+        # strcmp never receives a NULL argument.
         if left.type == i8_ptr and right.type == i8_ptr {
+            _sc_empty = self._make_global_string("", ".sc.empty");
+            _sc_nl = ir.Constant(i8_ptr, None);
+            _sc_nr = ir.Constant(i8_ptr, None);
+            _sc_isnl = self.builder.icmp_unsigned("==", left, _sc_nl, name="sc.lnull");
+            _sc_isnr = self.builder.icmp_unsigned("==", right, _sc_nr, name="sc.rnull");
+            _sc_safel = self.builder.select(_sc_isnl, _sc_empty, left, name="sc.safel");
+            _sc_safer = self.builder.select(
+                _sc_isnr, _sc_empty, right, name="sc.safer"
+            );
             strcmp_fn = self._get_or_declare_extern(
                 "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
             );
-            cmp_result = self.builder.call(strcmp_fn, [left, right], name="strcmp");
+            cmp_result = self.builder.call(
+                strcmp_fn, [_sc_safel, _sc_safer], name="strcmp"
+            );
             zero = ir.Constant(ir.IntType(32), 0);
             if op == Tok.EE {
                 return self.builder.icmp_signed("==", cmp_result, zero, name="streq");
