@@ -236,6 +236,43 @@ test "strings concat" {
     assert f(b"hello ", b"world") == b"hello world";
 }
 
+# UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
+# previously unimplemented in native (returned empty); these lock in that
+# `s.encode()[a:b].decode()` round-trips and that byte access is portable.
+test "bytes utf8 byte_len" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
+    assert f("café".encode("utf-8")) == 5;
+    assert f("日本語".encode("utf-8")) == 9;
+    assert f(b"ascii") == 5;
+}
+
+test "bytes utf8 byte_at portable" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
+    enc = "café".encode("utf-8");  # 63 61 66 C3 A9
+    for i in range(len(enc)) {
+        assert f(enc, i) == enc[i] , f"byte_at({i}) native={f(enc, i)} py={enc[i]}";
+    }
+}
+
+test "bytes utf8 decode roundtrip and slice" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    rt = get_func(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
+    assert rt("café".encode("utf-8")) == "café".encode("utf-8");
+    sd = get_func(
+        eng,
+        "slice_decode",
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    enc = "café".encode("utf-8");
+    assert sd(enc, 0, 3) == b"caf";
+    assert sd(enc, 3, 5) == "é".encode("utf-8");
+}
+
 test "strings fstring int" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "format_int", ctypes.c_char_p, ctypes.c_int64);
@@ -1191,6 +1228,19 @@ test "runtime errors list negative index" {
     (eng, _) = compile_native("runtime_errors.na.jac");
     f = get_func(eng, "test_list_negative_index", ctypes.c_int64);
     assert f() == 1;
+}
+
+test "list valid negative index" {
+    (eng, _) = compile_native("runtime_errors.na.jac");
+    f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "list method on object field (pop)" {
+    (eng, _) = compile_native("list_field_methods.na.jac");
+    # pop() on a field list must shrink it: depth 2 -> 1 encodes as 21.
+    f = get_func(eng, "field_pop_shrinks", ctypes.c_int64);
+    assert f() == 21;
 }
 
 test "runtime errors list index at len" {
@@ -3198,6 +3248,48 @@ test "multiple flow handles waited independently" {
     f = get_func(eng, "run_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     # task(3)+task(4) = 6+8 = 14
     assert f(3, 4) == 14;
+}
+
+# ─── Match statements ────────────────────────────────────────────────────
+test "match dispatches on literal value patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "classify", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 100;
+    assert f(1) == 200;
+    assert f(5) == 300;
+}
+
+test "match supports OR patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_or", ctypes.c_int64, ctypes.c_int64);
+    assert f(1) == 1;
+    assert f(2) == 1;
+    assert f(3) == 1;
+    assert f(4) == 0;
+}
+
+test "match capture pattern binds the subject" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_capture", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;
+    assert f(7) == 14;
+}
+
+test "match honors case guards" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_guard", ctypes.c_int64, ctypes.c_int64);
+    assert f(20) == 1;
+    assert f(11) == 1;
+    assert f(5) == 2;
+    assert f(-1) == 3;
+}
+
+test "match dispatches on string patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "match_str", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"hi") == 1;
+    assert f(b"bye") == 2;
+    assert f(b"nope") == 0;
 }
 
 # ─── Pipe-forward operator `|>` ──────────────────────────────────────────

@@ -52,17 +52,20 @@ def fmt_errors(prog: JacProgram) -> str {
 # ─────────────────────────────────────────────────────────────────────
 # Statement-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: match statement is rejected" {
+# Value / OR / capture / wildcard / guard match patterns are supported
+# (see test_native_gen_pass.jac). Structural patterns (sequence/mapping/
+# class) are not yet lowered and must still raise E5090.
+test "guardrail: structural match pattern is rejected" {
     prog = compile_na_inline(
-        "match_stmt",
-        "def classify(x: int) -> int {\n"
+        "match_seq",
+        "def classify(x: list[int]) -> int {\n"
         "    match x {\n"
-        "        case 0: return 100;\n"
-        "        case _: return 300;\n"
+        "        case [1, 2]: return 1;\n"
+        "        case _: return 0;\n"
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchStmt, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchSequence, got: {fmt_errors(
         prog
     )}";
 }
