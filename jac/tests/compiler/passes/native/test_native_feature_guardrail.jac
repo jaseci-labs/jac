@@ -70,22 +70,6 @@ test "guardrail: structural match pattern is rejected" {
     )}";
 }
 
-test "guardrail: C-style iter-for is rejected" {
-    prog = compile_na_inline(
-        "iter_for",
-        "def sum_n(n: int) -> int {\n"
-        "    total: int = 0;\n"
-        "    for i = 0 to i < n by i += 1 {\n"
-        "        total = total + i;\n"
-        "    }\n"
-        "    return total;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for IterForStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
 # Non-capturing nested functions are supported (see test_native_gen_pass.jac).
 # A nested function that captures an enclosing-function local is still
 # rejected, since closure capture is not yet implemented.

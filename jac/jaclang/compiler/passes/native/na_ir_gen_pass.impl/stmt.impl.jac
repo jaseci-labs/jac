@@ -70,6 +70,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_while(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self._codegen_for(nd);
+    } elif isinstance(nd, uni.IterForStmt) {
+        self._codegen_iter_for(nd);
     } elif isinstance(nd, uni.MatchStmt) {
         self._codegen_match(nd);
     } elif isinstance(nd, uni.Ability) {
@@ -472,6 +474,68 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     }
     self.loop_stack.pop();
     # Continue after loop
+    self.builder.position_at_end(end_bb);
+}
+
+"""Generate a C-style iter-for loop.
+
+`for <init> to <cond> by <step> { body }` lowers to:
+
+    <init>                  ; in the current block, runs once
+  iterfor.cond:
+    if <cond> goto body else goto end
+  iterfor.body:
+    <body>
+    goto step               ; fallthrough back-edge
+  iterfor.step:
+    <step>
+    goto cond
+  iterfor.end:
+
+`break` targets end and `continue` targets step (so the counter still
+advances), matching the InForStmt loop_stack convention of
+(continue_target, break_target).
+"""
+impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
+    # init runs once in the current block.
+    self._codegen_assignment(nd.iter);
+    func = self.builder.function;
+    cond_bb = func.append_basic_block(name="iterfor.cond");
+    body_bb = func.append_basic_block(name="iterfor.body");
+    step_bb = func.append_basic_block(name="iterfor.step");
+    end_bb = func.append_basic_block(name="iterfor.end");
+    self.builder.branch(cond_bb);
+    # Condition block.
+    self.builder.position_at_end(cond_bb);
+    cond = self._codegen_expr(nd.condition);
+    if cond is not None {
+        cond = self._to_bool(cond);
+        self.builder.cbranch(cond, body_bb, end_bb);
+    } else {
+        self.builder.branch(end_bb);
+    }
+    # Body block — continue lands on the step block so the counter advances.
+    self.loop_stack.append((step_bb, end_bb));
+    self.builder.position_at_end(body_bb);
+    _saved_locals = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        if nd.loc
+        else 0}";
+    if not self.builder.block.is_terminated {
+        self._emit_loop_iter_cleanup(_saved_locals, loc=_loc);
+        self.builder.branch(step_bb);
+    }
+    self.loop_stack.pop();
+    # Step block — run the count_by update, then re-check the condition.
+    self.builder.position_at_end(step_bb);
+    if not self.builder.block.is_terminated {
+        self._codegen_assignment(nd.count_by);
+        self.builder.branch(cond_bb);
+    }
+    # Continue after the loop.
     self.builder.position_at_end(end_bb);
 }
 
