@@ -67,22 +67,6 @@ test "guardrail: match statement is rejected" {
     )}";
 }
 
-test "guardrail: C-style iter-for is rejected" {
-    prog = compile_na_inline(
-        "iter_for",
-        "def sum_n(n: int) -> int {\n"
-        "    total: int = 0;\n"
-        "    for i = 0 to i < n by i += 1 {\n"
-        "        total = total + i;\n"
-        "    }\n"
-        "    return total;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for IterForStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
 test "guardrail: nested function definition is rejected" {
     prog = compile_na_inline(
         "nested_def",

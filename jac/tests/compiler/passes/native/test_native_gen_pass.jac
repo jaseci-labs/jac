@@ -3178,3 +3178,33 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
         "pointer-bitcast escape hatch must not apply outside .na.jac modules."
     );
 }
+
+# ─── C-style iter-for loop ───────────────────────────────────────────────
+test "iter-for sums a counted range" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "sum_n", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;  # 0+1+2+3+4
+    assert f(0) == 0;
+    assert f(1) == 0;
+}
+
+test "iter-for counts down with a decrementing step" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "count_down", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 5;  # i = 5,4,3,2,1
+    assert f(0) == 0;
+}
+
+test "iter-for honors break" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_break", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 3;  # 0+1+2, break at i==3
+    assert f(2) == 1;  # 0+1
+}
+
+test "iter-for honors continue and still advances the counter" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_continue", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 8;  # 0+1+3+4 (skip 2)
+    assert f(2) == 1;  # 0+1
+}

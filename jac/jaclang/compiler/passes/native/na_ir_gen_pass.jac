@@ -271,6 +271,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    def _codegen_iter_for(nd: uni.IterForStmt) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
