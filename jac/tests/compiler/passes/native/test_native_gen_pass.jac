@@ -3178,3 +3178,32 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
         "pointer-bitcast escape hatch must not apply outside .na.jac modules."
     );
 }
+
+# ─── Walrus operator `:=` ────────────────────────────────────────────────
+test "walrus operator binds inside an if-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_if", ctypes.c_int64, ctypes.c_int64);
+    # x=10 -> n=20 (>5) -> 21
+    assert f(10) == 21;
+    # x=1 -> n=2 (not >5) -> returns n=2
+    assert f(1) == 2;
+}
+
+test "walrus operator rebinds inside a while-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_while", ctypes.c_int64, ctypes.c_int64);
+    # sum(0..4) = 10
+    assert f(5) == 10;
+    assert f(0) == 0;
+    # sum(0..9) = 45
+    assert f(10) == 45;
+}
+
+test "walrus expression evaluates to the assigned value" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_value", ctypes.c_int64, ctypes.c_int64);
+    # m = a+10 = 15, y = 15, y+m = 30
+    assert f(5) == 30;
+    # m = 10, y = 10, 20
+    assert f(0) == 20;
+}
