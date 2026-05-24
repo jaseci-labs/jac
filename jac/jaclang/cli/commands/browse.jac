@@ -1,4 +1,4 @@
-"""Browser automation command: `jac browser <action> [args...]`.
+"""Browser automation command: `jac browse <action> [args...]`.
 
 Thin registration layer over jaclang.cli.browser_engine, a zero-dependency
 driver that controls headless Chrome/Chromium via the Chrome DevTools Protocol.
@@ -12,7 +12,7 @@ glob registry = get_registry();
 
 """Drive a headless browser over CDP: navigate, interact, snapshot, screenshot."""
 @registry.command(
-    name="browser",
+    name="browse",
     help="Headless browser automation over CDP (open, click, snapshot, ...)",
     args=[
         Arg.create(
@@ -35,16 +35,16 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac browser open example.com", "Launch a browser and navigate"),
-        ("jac browser snapshot", "Accessibility tree with @e1/@e2 refs"),
-        ("jac browser click @e5", "Click an element by snapshot ref (real input)"),
-        ("jac browser fill '#email' you@example.com", "Clear and fill a field"),
-        ("jac browser get title", "Read the page title"),
-        ("jac browser -s work open example.com", "Use an isolated 'work' session"),
-        ("jac browser state save auth.json", "Save cookies + localStorage"),
-        ("jac browser close", "Close the browser"),
+        ("jac browse open example.com", "Launch a browser and navigate"),
+        ("jac browse snapshot", "Accessibility tree with @e1/@e2 refs"),
+        ("jac browse click @e5", "Click an element by snapshot ref (real input)"),
+        ("jac browse fill '#email' you@example.com", "Clear and fill a field"),
+        ("jac browse get title", "Read the page title"),
+        ("jac browse -s work open example.com", "Use an isolated 'work' session"),
+        ("jac browse state save auth.json", "Save cookies + localStorage"),
+        ("jac browse close", "Close the browser"),
 
     ],
     group="tools"
 )
-def browser(action: str, args: list = [], session: str = "default") -> int;
+def browse(action: str, args: list = [], session: str = "default") -> int;

@@ -1,4 +1,4 @@
-"""Implementation of the `jac browser` command.
+"""Implementation of the `jac browse` command.
 
 Dispatches the action positional to the matching engine command. Output is
 printed raw (so it pipes cleanly); errors go to the console and return exit 1.
@@ -25,7 +25,7 @@ import from jaclang.cli.browser_engine {
     cmd_close
 }
 
-impl browser(action: str, args: list = [], session: str = "default") -> int {
+impl browse(action: str, args: list = [], session: str = "default") -> int {
     sess = os.environ.get("JACBROWSER_SESSION", session);
     out: any = "";
     try {
