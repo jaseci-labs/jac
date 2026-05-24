@@ -201,6 +201,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
+    def _codegen_nested_ability(nd: uni.Ability) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;

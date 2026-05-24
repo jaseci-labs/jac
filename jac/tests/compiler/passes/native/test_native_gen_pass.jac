@@ -3259,6 +3259,28 @@ test "iter-for honors continue and still advances the counter" {
     assert f(2) == 1;  # 0+1
 }
 
+# ─── Nested function definitions ─────────────────────────────────────────
+test "nested function helper is callable from its enclosing function" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(5) + double(6) = 10 + 12 = 22
+    assert f(5) == 22;
+    assert f(0) == 2;
+}
+
+test "nested function can recurse" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 120;
+    assert f(1) == 1;
+}
+
+test "nested function can read a module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 107;
+}
+
 # ─── Match statements ────────────────────────────────────────────────────
 test "match dispatches on literal value patterns" {
     (eng, _) = compile_native("match_stmt.na.jac");
