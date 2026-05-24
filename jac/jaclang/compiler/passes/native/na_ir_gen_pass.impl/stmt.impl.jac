@@ -225,7 +225,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             # borrow-retain path below (retain before returning a borrowed ref).
             skip_var: (str | None) = None;
             if isinstance(nd.expr, uni.Name)
-            and nd.expr.sym_name not in self.param_vars {
+            and nd.expr.sym_name not in self.param_vars
+            and nd.expr.sym_name in self.local_vars {
+                # Only "donate" ownership for true local variables: scope_exit
+                # nulls the alloca so RC is unchanged (ownership transferred).
+                # Globals have no alloca to null — returning a global is a borrow
+                # and must fall through to the retain-before-return path below.
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
                 # Null allocas for any pointer-typed local variables that were
