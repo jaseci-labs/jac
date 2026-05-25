@@ -47,7 +47,8 @@ def get_jac_command -> list[str] {
     import sys;
     jac_path = shutil.which("jac");
     if jac_path {
-        return [jac_path];
+        # Always absolute so subprocess works after os.chdir into temp dirs.
+        return [str(Path(jac_path).resolve())];
     }
     return [sys.executable, "-m", "jaclang"];
 }
