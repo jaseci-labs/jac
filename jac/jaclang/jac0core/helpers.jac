@@ -181,50 +181,66 @@ def pretty_print_source_location(
     colors: bool = False
 ) -> str {
     line_num_width: int = 5;
-    idx: int = pos_start;
     if ((file_source == '') or (file_path == '')) {
         return '';
+    }
+    # pos_start/pos_end are UTF-8 BYTE offsets (matching the lexer's byte-offset
+    # spans). Operate on the byte view so indexing never lands mid-rune or runs
+    # past the (code-point) string length on lines containing non-ASCII; decode
+    # slices for display and count code points for caret alignment.
+    fb = file_source.encode("utf-8");
+    flen: int = len(fb);
+    NL: int = 10;  # ord('\n')
+    idx: int = pos_start;
+    if (idx > flen) {
+        idx = flen;
     }
     start_line: int = error_line - 2;
     if (start_line < 1) {
         start_line = 1;
     }
     end_line: int = start_line + 5;
-    file_source.splitlines(True)[(start_line - 1)];
     curr_line: int = error_line;
     while ((idx >= 0) and (curr_line >= start_line)) {
         idx -= 1;
         if (idx < 0) {
             break;
         }
-        if (file_source[idx] == '\n') {
+        if (fb[idx] == NL) {
             curr_line -= 1;
         }
     }
     idx += 1;
-    assert ((idx == 0) or (file_source[(idx - 1)] == '\n'));
     pretty_dump = '';
     curr_line = start_line;
     while (curr_line < end_line) {
         pretty_dump += f"%{line_num_width}d | " % curr_line;
         idx_line_start = idx;
-        while ((idx < len(file_source)) and (file_source[idx] != '\n')) {
+        while ((idx < flen) and (fb[idx] != NL)) {
             idx += 1;
         }
         if (colors and (curr_line == error_line)) {
-            pretty_dump += file_source[idx_line_start:pos_start] + f"{ANSIColors.RED}{file_source[pos_start:pos_end]}{ANSIColors.END}" + file_source[pos_end:idx];
+            pre = fb[idx_line_start:pos_start].decode("utf-8", errors="replace");
+            mid = fb[pos_start:pos_end].decode("utf-8", errors="replace");
+            post = fb[pos_end:idx].decode("utf-8", errors="replace");
+            pretty_dump += pre + f"{ANSIColors.RED}{mid}{ANSIColors.END}" + post;
         } else {
-            pretty_dump += file_source[idx_line_start:idx];
+            pretty_dump += fb[idx_line_start:idx].decode("utf-8", errors="replace");
         }
         pretty_dump += '\n';
         if (curr_line == error_line) {
             pretty_dump += f"%{line_num_width}s | " % ' ';
+            # Align the caret by display columns (one cell per code point),
+            # preserving tabs, and size the underline in code points.
+            prefix = fb[idx_line_start:pos_start].decode("utf-8", errors="replace");
             spaces = '';
-            for idx_pre in range(idx_line_start, pos_start) {
-                spaces += '\t' if (file_source[idx_pre] == '\t') else ' ';
+            for ch in prefix {
+                spaces += '\t' if (ch == '\t') else ' ';
             }
-            err_token_len = pos_end - pos_start;
-            line_remaining = idx - pos_start;
+            err_token_len = len(
+                fb[pos_start:pos_end].decode("utf-8", errors="replace")
+            );
+            line_remaining = len(fb[pos_start:idx].decode("utf-8", errors="replace"));
             if (line_remaining > 0 and err_token_len > line_remaining) {
                 err_token_len = line_remaining;
             }
@@ -237,7 +253,7 @@ def pretty_print_source_location(
             }
             pretty_dump += spaces + underline + '\n';
         }
-        if (idx == len(file_source)) {
+        if (idx == flen) {
             break;
         }
         curr_line += 1;

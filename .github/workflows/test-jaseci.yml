@@ -218,6 +218,15 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_restspec.jac
 
+    - name: Install jac-scale[aws] and moto
+      run: |
+        pip install -e "jac-scale[aws]"
+        pip install "moto[s3]>=5.0.0"
+
+    - name: Run Storage tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_s3_storage.jac
+
     - name: Run Microservice interop tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac

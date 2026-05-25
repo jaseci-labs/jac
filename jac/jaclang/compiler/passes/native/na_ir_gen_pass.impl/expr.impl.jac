@@ -88,10 +88,23 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # Handle parenthesized expressions: (expr) → AtomUnit
     } elif isinstance(nd, uni.AtomUnit) {
         _result = self._codegen_expr(nd.value);
+        # Cast (`value as T`) is type-erased: it evaluates to the inner
+        # value unchanged and only refines the static type. The narrowed
+        # type lets `.attr` on a nullable archetype compile; a None value
+        # then traps at the native deref just like any AttributeError.
+    } elif isinstance(nd, uni.CastExpr) {
+        _result = self._codegen_expr(nd.value);
         # Lambda expressions: emit an anonymous LLVM function and return
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)
@@ -166,8 +179,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if sig is not None and sig.params {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
-            p_type = self._resolve_jac_type(p.type_tag)
-                if p?.type_tag and p.type_tag
+            # Pass the annotation Expr inside the SubTag (not the SubTag
+            # wrapper); SubTag has no `.type`, so the unified-path lowering
+            # in _resolve_jac_type only kicks in when given .tag.
+            p_type = self._resolve_jac_type(p.type_tag.tag)
+                if p?.type_tag and p.type_tag and p.type_tag?.tag
                 else ir.IntType(64);
             param_types.append(p_type);
             param_names.append(p_name);
@@ -281,6 +297,85 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
+"""Generate walrus `:=` expression.
+
+Binds `nd.left` (always a simple Name — the parser only accepts a Name
+on the left of `:=`) to the value of `nd.right`, then evaluates to that
+value so the enclosing expression can consume it, e.g. `if (n := f()) > 5`.
+
+The binding is stored into the name's local alloca, created in the entry
+block on first use. Pointer-typed values follow the same retain/release
+discipline as a normal assignment: retain a borrowed value before storing,
+release any prior occupant of an existing slot.
+"""
+impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    var_name = self._get_name(nd.left);
+    if var_name is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        return None;
+    }
+    value = self._codegen_expr(nd.right);
+    if value is None {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    if var_name in self.local_vars {
+        # Rebind an existing local: coerce to the slot type, then release
+        # the prior occupant (pointer slots only) after retaining the new one.
+        alloca = self.local_vars[var_name];
+        slot_type = alloca.type.pointee;
+        value = self._coerce_type(value, slot_type);
+        if isinstance(slot_type, ir.PointerType) {
+            if not self._is_owned(value) {
+                self._emit_rc_retain(value, op="walrus", loc=_loc);
+            }
+            old_val = self.builder.load(alloca, name=f"{var_name}.old");
+            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+    } else {
+        # First binding: allocate a slot in the entry block. The store
+        # below always runs before any scope cleanup, so the slot is never
+        # read uninitialized.
+        var_type = value.type;
+        alloca = self._entry_alloca(var_type, var_name);
+        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
+            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+        self.local_vars[var_name] = alloca;
+    }
+    # Evaluate to the bound value. This is a borrowed read of the slot the
+    # local now owns — matching _codegen_name's borrow semantics.
+    return self.builder.load(alloca, name=var_name);
+}
+
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
@@ -290,9 +385,11 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     # Trying to evaluate `nd.left` first would return None, and the
     # function would silently exit returning None — masking the real
     # gap. Catch known-unsupported ops here so the error is loud.
-    if op in (Tok.WALRUS_EQ, Tok.PIPE_FWD) {
-        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
-        return None;
+    if op == Tok.WALRUS_EQ {
+        return self._codegen_walrus(nd);
+    }
+    if op == Tok.PIPE_FWD {
+        return self._codegen_pipe_fwd(nd);
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
@@ -818,6 +915,42 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # Check .value / .name on a direct enum member: Priority.HIGH.value.
+        # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
+        # and _get_name(nd.target) is None for the inner trailer, so this must run
+        # ahead of the target_name guard below.
+        if (right_name == "value" or right_name == "name")
+        and isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr {
+            mem_enum = self._get_name(nd.target.target);
+            mem_name = self._get_name(nd.target.right);
+            if mem_enum is not None
+            and mem_name is not None
+            and f"{mem_enum}.{mem_name}" in self.enum_values {
+                member_val = self.enum_values[f"{mem_enum}.{mem_name}"];
+                if mem_enum in self.enum_string_values {
+                    # String enum: member lowers to its ordinal; .value/.name
+                    # index the runtime string tables.
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, member_val, use_name=(right_name == "name")
+                    );
+                }
+                # Integer enum: member lowers to its assigned value, so .value
+                # is the member constant itself.
+                if right_name == "value" {
+                    return member_val;
+                }
+                # Integer enum .name: index the name table by the member's
+                # static declaration ordinal (the table is built ordinal-keyed,
+                # independent of the assigned int values).
+                ordinal = self.enum_member_ordinal.get(f"{mem_enum}.{mem_name}");
+                if ordinal is not None {
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, ir.Constant(ir.IntType(64), ordinal), use_name=True
+                    );
+                }
+            }
+        }
         if target_name is not None and right_name is not None {
             # Check native stdlib module access: sys.argv, sys.platform
             if (

@@ -10,7 +10,7 @@ into the enclosing function's CFG. A name reference inside the slot's
 loop header (e.g. `recipe.ingredients` in `{for ing in recipe.ingredients
 { ... }}`) found the surrounding `InForStmt` via `_find_cfg_node_for`,
 discovered an empty `bb_in`, and dead-ended - losing any narrowing
-established by an enclosing `if recipe is None { return; }` guard.
+established by an enclosing `if recipe is None { return ...; }` guard.
 
 After the fix, every attribute access below must type-check.
 """
@@ -51,7 +51,7 @@ def use_if_cond(recipe: Recipe | None) -> JsxElement {
         <section>
             {if len(recipe.ingredients) == 0 {
                 <p>none</p>
-                return;
+                skip;
             }}
             <h2>{recipe.title}</h2>
         </section>;

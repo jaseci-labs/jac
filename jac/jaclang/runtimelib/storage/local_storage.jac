@@ -41,4 +41,7 @@ class LocalStorage(Storage) {
     override def get_metadata(self: LocalStorage, path: str) -> dict[str, any];
     override def copy(self: LocalStorage, source: str, destination: str) -> bool;
     override def move(self: LocalStorage, source: str, destination: str) -> bool;
+    override def get_url(
+        self: LocalStorage, path: str, expires_in: (int | None) = 3600
+    ) -> str;
 }

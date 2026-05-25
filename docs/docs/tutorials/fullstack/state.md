@@ -258,6 +258,35 @@ def:pub DataFetcher() -> JsxElement {
 
 ---
 
+## Refs with `Ref[T]`
+
+Just as `has` declares reactive state (`useState`) and `can with entry` declares effects (`useEffect`), a `has`-field typed `Ref[T]` declares a **ref** -- a mutable container that persists across renders but, unlike state, does **not** trigger a re-render when its `.current` changes. It compiles to React's `useRef`:
+
+```jac
+to cl:
+
+def:pub FocusableInput() -> JsxElement {
+    has inputRef: Ref[HTMLInputElement] = Ref();  # -> const inputRef = useRef(null)
+
+    def focus() -> None {
+        if inputRef.current { inputRef.current.focus(); }
+    }
+
+    return <div>
+        <input ref={inputRef} type="text" />
+        <button onClick={lambda -> None { focus(); }}>Focus</button>
+    </div>;
+}
+```
+
+- `has r: Ref[T] = Ref()` compiles to `const r = useRef(null)` -- an empty DOM ref. Wire it to an element with `ref={r}`; React fills in `r.current` on mount.
+- `has r: Ref[T] = Ref(initial)` compiles to `const r = useRef(initial)` -- a value ref seeded with `initial`, for mutable values that should survive re-renders without causing one.
+- `useRef` is auto-imported from React; you do not import it yourself.
+
+The field must be constructed (`= Ref()` / `= Ref(initial)`); a bare `has r: Ref[T];` is rejected ([E2025](../../reference/diagnostics.md)) because, like every other `has`-field, it needs a value. `.current` is typed `T | None`, so null-check it before use.
+
+---
+
 ## useContext - Global State
 
 ### Creating Context

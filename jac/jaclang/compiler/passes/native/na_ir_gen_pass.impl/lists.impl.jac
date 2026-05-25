@@ -263,14 +263,20 @@ impl NaIRGenPass._codegen_index(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
-    # IndexError: check index < 0
+    # Python negative indexing: a < 0 index counts from the end (idx += len).
+    # Bounds are then checked on the normalized index, so an out-of-range value
+    # (in either direction) still raises IndexError.
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="idx.neg.chk"
     );
-    self._emit_runtime_raise(is_neg, "IndexError", "list index out of range");
-    # IndexError: check index >= len
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
-    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
+    adjusted = self.builder.add(index_val, len_val, name="idx.adj");
+    index_val = self.builder.select(is_neg, adjusted, index_val, name="idx.norm");
+    below = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="idx.below"
+    );
+    above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
+    is_oob = self.builder.or_(below, above, name="idx.range.chk");
     self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
     return self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
 }
@@ -285,16 +291,19 @@ impl NaIRGenPass._codegen_index_set(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
-    # IndexError: check index < 0
+    # Python negative indexing (idx += len), then bounds-check the normalized
+    # index in both directions.
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
     );
-    self._emit_runtime_raise(
-        is_neg, "IndexError", "list assignment index out of range"
+    adjusted = self.builder.add(index_val, len_val, name="setidx.adj");
+    index_val = self.builder.select(is_neg, adjusted, index_val, name="setidx.norm");
+    below = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="setidx.below"
     );
-    # IndexError: check index >= len
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
-    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
+    above = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
+    is_oob = self.builder.or_(below, above, name="setidx.range.chk");
     self._emit_runtime_raise(
         is_oob, "IndexError", "list assignment index out of range"
     );

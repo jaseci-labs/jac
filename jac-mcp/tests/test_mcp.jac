@@ -303,7 +303,7 @@ test "list examples returns results when repo root is None (PyPI install)" {
     # Mock find_repo_root to return None, simulating a PyPI (non-editable) install,
     # and stub the GitHub API fetch so the test does not depend on live network
     # access (which is rate-limited and flaky in CI).
-    fake_categories = ["chess", "manual_code", "littleX"];
+    fake_categories = ["chess", "littleX"];
     with patch("jac_mcp.resources.find_repo_root", return_value=None) {
         with patch(
             "jac_mcp.resources.ResourceProvider._fetch_github_categories",

@@ -138,7 +138,18 @@ jac scale stop orders_app                # stop one service
 jac scale restart cart_app               # restart one service
 jac scale logs products_app              # view logs
 jac scale destroy                        # stop everything
+
+# Preview before applying (no cluster contact, no docker build)
+jac start main.jac --scale --dry-run               # per-service plan + lint
+jac start main.jac --scale --dry-run --show-yaml   # + raw multi-doc YAML
 ```
+
+`--dry-run` runs the same manifest generation as the real deploy but
+exits before any side effect. Sub-second. Default output is a
+per-service summary (image, replicas, cpu/mem, HPA bounds, route, PDB)
+with inline lint findings - errors block the apply (exit 2), warnings
+are advisory. Add `--show-yaml` for the raw multi-doc stream you can
+pipe into `kubectl diff` or `kubectl apply -f -`.
 
 ## Inter-Service Communication
 
