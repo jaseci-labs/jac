@@ -139,7 +139,7 @@ with entry {
     a = 4 if True else 4;
 }
 
-import from typing { Any, Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
+import from typing { Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
 
 import from jaclang.jac0core.constant {
     JacSemTokenModifier as SemTokMod,
@@ -430,7 +430,7 @@ cl {
 
     # Handle liking a tweet - calls server walker directly
     # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> Any {
+    async def like_tweet_action(tweet_id: str) -> any {
         try {
             result = await like_tweet(tweet_id);
             print("Tweet liked:", result);

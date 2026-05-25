@@ -84,7 +84,11 @@ obj NativeFuncLayout {
         param_names: list[str] = field(default_factory=`list),
         ret_type: str = "i64",
         ret_struct_name: (str | None) = None,
-        ret_tuple_layout: (NativeTupleLayout | None) = None;
+        ret_tuple_layout: (NativeTupleLayout | None) = None,
+        # Enum type name when the function returns an enum (lowered to i64), so
+        # the marshaller can map the ordinal back to the Python enum member
+        # instead of leaking a raw int to Python callers.
+        ret_enum_type: (str | None) = None;
 }
 
 """Resolve a module name to a .na.jac file path.
@@ -160,7 +164,7 @@ obj InteropBinding {
         ret_type: str = 'int',
         param_types: list[str] = [],
         param_names: list[str] = [],
-        ast_node: Any = None,
+        ast_node: any = None,
         route: list[InteropContext] = [],
         source_module: (str | None) = None,
         # Kind of provider symbol this binding stubs out: 'function' for
@@ -225,6 +229,7 @@ obj CodeGenTarget {
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
+        css: str = '',
         client_manifest: ClientManifest = field(default_factory=ClientManifest),
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
@@ -234,10 +239,10 @@ obj CodeGenTarget {
         native_bitcode: (bytes | None) = None,
         interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
-        _interop_callbacks: list[Any] = field(default_factory=`list),
+        _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
         native_compat: bool = False,
-        layout_registry: Any = None,
+        layout_registry: any = None,
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.

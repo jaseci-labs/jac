@@ -1,8 +1,5 @@
 """Identity/credential auth request models for the jaclang HTTP server."""
 
-import from typing { Any }
-
-
 """Supported identity types. jaclang's user store only handles usernames today."""
 enum IdentityType {
     USERNAME = 'username'
@@ -20,7 +17,7 @@ obj IdentityInput {
     has type: str,
         value: str;
 
-    static def from_dict(data: Any) -> IdentityInput {
+    static def from_dict(data: any) -> IdentityInput {
         if not isinstance(data, dict) {
             raise ValueError('identity must be an object');
         }
@@ -42,7 +39,7 @@ obj CredentialInput {
     has type: str,
         password: str;
 
-    static def from_dict(data: Any) -> CredentialInput {
+    static def from_dict(data: any) -> CredentialInput {
         if not isinstance(data, dict) {
             raise ValueError('credential must be an object');
         }
@@ -64,7 +61,7 @@ obj LoginRequest {
     has identity: IdentityInput,
         credential: CredentialInput;
 
-    static def from_dict(data: Any) -> LoginRequest {
+    static def from_dict(data: any) -> LoginRequest {
         if not isinstance(data, dict) {
             raise ValueError('request body must be an object');
         }
@@ -87,7 +84,7 @@ obj RegisterRequest {
     has identities: list[IdentityInput],
         credential: CredentialInput;
 
-    static def from_dict(data: Any) -> RegisterRequest {
+    static def from_dict(data: any) -> RegisterRequest {
         if not isinstance(data, dict) {
             raise ValueError('request body must be an object');
         }

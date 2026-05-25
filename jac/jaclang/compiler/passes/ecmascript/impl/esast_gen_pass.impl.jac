@@ -192,6 +192,11 @@ impl EsastGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.es_ast = await_expr;
 }
 
+"""Process type-cast expression — type-erased, forward the operand."""
+impl EsastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.es_ast = nd.value.gen.es_ast;
+}
+
 """Process ternary expression."""
 impl EsastGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     `test = cast(
@@ -727,7 +732,22 @@ impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
 impl EsastGenPass.exit_list_val(nd: uni.ListVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
-        if item.gen.es_ast {
+        # `[*xs, y]` — a star-unary element is an array spread, not a `!`
+        # unary. Emit a SpreadElement over the operand.
+        if (
+            isinstance(item, uni.UnaryExpr)
+            and item.op.name == Tok.STAR_MUL.value
+            and item.operand.gen.es_ast
+        ) {
+            elements.append(
+                self.sync_loc(
+                    es.SpreadElement(
+                        argument=cast(es.Expression, item.operand.gen.es_ast)
+                    ),
+                    jac_node=item
+                )
+            );
+        } elif item.gen.es_ast {
             elements.append(cast(es.Expression, item.gen.es_ast));
         }
     }
@@ -1071,7 +1091,7 @@ to the AST so codegen still handles unanalyzed call paths (e.g. local
 ``def`` calls in ``.cl.jac`` that never crossed the interop boundary).
 """
 impl EsastGenPass._extract_return_type(
-    ability_node: uni.Ability, func_name: str, manifest: Any
+    ability_node: uni.Ability, func_name: str, manifest: any
 ) -> str {
     if manifest {
         for b in manifest.server_exports_to_client {
@@ -1539,14 +1559,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
-    # Auto-caching effects analysis (idempotent — only run once per func)
-    effect_key = f"func:{func_name}";
-    if effect_key not in self.client_manifest.endpoint_effects {
-        if ability_node.body and isinstance(ability_node.body, list) {
-            effects = self._analyze_body_effects(ability_node.body);
-            self.client_manifest.endpoint_effects[effect_key] = effects;
-        }
-    }
+    # Endpoint effects for func:<func_name> are precomputed by WalkerEffectsPass.
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
         ability_node
@@ -1904,7 +1917,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                 value_expr
                 or self._get_ast_or_default(
                     nd.value,
-                    default_factory=lambda _src: Any : es.Identifier(name='undefined')
+                    default_factory=lambda _src: any : es.Identifier(name='undefined')
                 )
             )
         );
@@ -1955,7 +1968,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
             value_expr
             or self._get_ast_or_default(
                 nd.value,
-                default_factory=lambda _src: Any : es.Identifier(name='undefined')
+                default_factory=lambda _src: any : es.Identifier(name='undefined')
             )
         )
     );
@@ -2208,7 +2221,7 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     operand = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.operand, default_factory=lambda _src: Any : es.Literal(value=0)
+            nd.operand, default_factory=lambda _src: any : es.Literal(value=0)
         )
     );
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
@@ -2243,7 +2256,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Identifier(name='left')
@@ -2254,7 +2267,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             es.Expression,
             self._get_ast_or_default(
                 right_node,
-                default_factory=lambda src: Any :
+                default_factory=lambda src: any :
                     es.Identifier(name=src.sym_name)
                         if isinstance(src, uni.Name)
                         else es.Identifier(name='right')
@@ -2290,18 +2303,55 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
                 continue;
             }
         }
-        operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None;
-        operator = operator or '===';
-        comparison: (es.UnaryExpression | es.BinaryExpression);
-        if (op_tok == Tok.KW_NIN) {
-            in_expr = self.sync_loc(
-                es.BinaryExpression(operator='in', left=left, right=right), jac_node=nd
-            );
-            comparison = self.sync_loc(
-                es.UnaryExpression(operator='!', prefix=True, argument=in_expr),
+        comparison: es.Expression;
+        if (op_tok in (Tok.KW_IN, Tok.KW_NIN)) {
+            # The container type could not be resolved statically. A raw JS
+            # `in` is not a valid translation of Jac's `in`: it throws a
+            # TypeError on string operands and tests array indices rather
+            # than element values. Route through the runtime-polymorphic
+            # `_jac.poly.contains`, which dispatches on the value at runtime.
+            contains_callee = self.sync_loc(
+                es.MemberExpression(
+                    object=self.sync_loc(
+                        es.MemberExpression(
+                            object=self.sync_loc(
+                                es.Identifier(name='_jac'), jac_node=nd
+                            ),
+                            property=self.sync_loc(
+                                es.Identifier(name='poly'), jac_node=nd
+                            ),
+                            computed=False
+                        ),
+                        jac_node=nd
+                    ),
+                    property=self.sync_loc(es.Identifier(name='contains'), jac_node=nd),
+                    computed=False
+                ),
                 jac_node=nd
             );
+            self.needs_jac_runtime = True;
+            contains_call = self.sync_loc(
+                es.CallExpression(
+                    callee=cast(es.Expression, contains_callee),
+                    arguments=[cast(es.Expression, right), cast(es.Expression, left)]
+                ),
+                jac_node=nd
+            );
+            if (op_tok == Tok.KW_NIN) {
+                comparison = self.sync_loc(
+                    es.UnaryExpression(
+                        operator='!',
+                        prefix=True,
+                        argument=cast(es.Expression, contains_call)
+                    ),
+                    jac_node=nd
+                );
+            } else {
+                comparison = cast(es.Expression, contains_call);
+            }
         } else {
+            operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None;
+            operator = operator or '===';
             comparison = self.sync_loc(
                 es.BinaryExpression(operator=operator, left=left, right=right),
                 jac_node=nd
@@ -2341,14 +2391,14 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     result: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.values[0], default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.values[0], default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
     for val in nd.values[1:] {
         right = cast(
             es.Expression,
             self._get_ast_or_default(
-                val, default_factory=lambda _src: Any : es.Literal(value=None)
+                val, default_factory=lambda _src: any : es.Literal(value=None)
             )
         );
         result = self.sync_loc(
@@ -2365,7 +2415,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Literal(value=0)
@@ -2375,7 +2425,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.right,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Literal(value=0)
@@ -2387,41 +2437,9 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         spawn_parts = self._prepare_spawn_call(nd, left, right);
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
-            # Analyze walker effects for auto-caching
-            walker_name = spawn_parts.walker.walker_name;
-            effect_key = f"walker:{walker_name}";
-            if effect_key not in self.client_manifest.endpoint_effects {
-                import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
-                walker_sym = resolve_expr_symbol(
-                    spawn_parts.walker.call_node.target, self.get_main_mod()
-                );
-                # Follow sv-import chains: when the resolved symbol is the
-                # imported alias (sym_type=VAR, declared inside a ModuleItem),
-                # the type evaluator has already pointed ModuleItem.name.sym at
-                # the target walker archetype in the source module. Chain
-                # through so the effect analysis runs against the real body.
-                if (
-                    walker_sym
-                    and walker_sym.sym_type != SymbolType.WALKER_ARCH
-                    and walker_sym.decl
-                    and isinstance(walker_sym.decl.parent, uni.ModuleItem)
-                ) {
-                    mi_name = walker_sym.decl.parent.name;
-                    if (isinstance(mi_name, uni.Name) and mi_name.sym) {
-                        walker_sym = mi_name.sym;
-                    }
-                }
-                if (walker_sym and walker_sym.sym_type == SymbolType.WALKER_ARCH) {
-                    arch_node = walker_sym.decl.parent;
-                    if isinstance(arch_node, uni.Archetype) {
-                        resolved_body = arch_node._get_impl_resolved_body();
-                        if resolved_body {
-                            effects = self._analyze_body_effects(resolved_body);
-                            self.client_manifest.endpoint_effects[effect_key] = effects;
-                        }
-                    }
-                }
-            }
+            # Endpoint effects for walker:<name> are precomputed (at the
+            # walker's declaration, in its own module) by WalkerEffectsPass and
+            # propagated into this manifest via _populate_client_manifest.
         }
         return;
     }
@@ -2486,7 +2504,7 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
     case_test: (es.Expression | None) = None;
     if (nd.pattern and isinstance(nd.pattern, uni.MatchValue)) {
         case_test = self._get_ast_or_default(
-            nd.pattern.value, default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.pattern.value, default_factory=lambda _src: any : es.Literal(value=None)
         );
     }
     body_stmts = self._collect_stmt_body(nd.body);
@@ -2498,7 +2516,7 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
 """Process switch statement."""
 impl EsastGenPass.exit_switch_stmt(nd: uni.SwitchStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.target, default_factory=lambda _src: Any : es.Literal(value=None)
+        nd.target, default_factory=lambda _src: any : es.Literal(value=None)
     );
     cases: list[es.SwitchCase] = [];
     for stmt in nd.cases {
@@ -2517,15 +2535,30 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.expr, default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
+    # Inside a JSX `{...}` slot body, a bare JSX element statement is a
+    # template child: accumulate it into the slot's children array instead
+    # of emitting a discarded expression statement.
+    acc = self._cur_view_acc();
+    if acc is not None and isinstance(nd.expr, uni.JsxElement) {
+        nd.gen.es_ast = self._view_push_stmt(acc, expr, nd);
+        return;
+    }
     expr_stmt = self.sync_loc(es.ExpressionStatement(expression=expr), jac_node=nd);
     nd.gen.es_ast = expr_stmt;
 }
 
 """Process control statement (break/continue)."""
 impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
+    # `skip;` inside a slot is the early-exit guard: return the fragment of
+    # everything accumulated so far, abandoning the rest of the slot body.
+    acc = self._cur_view_acc();
+    if acc is not None and nd.ctrl.value == "skip" {
+        nd.gen.es_ast = self._view_fragment_return(acc, nd);
+        return;
+    }
     stmt: (es.BreakStatement | es.ContinueStatement);
     if (nd.ctrl.name == Tok.KW_BREAK) {
         stmt = self.sync_loc(es.BreakStatement(), jac_node=nd);
@@ -2537,6 +2570,14 @@ impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
 
 """Process return statement."""
 impl EsastGenPass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
+    # A `return` inside a slot body is diagnosed (E2019/E2020) by the
+    # validation pass; lower it to the fragment-return guard so the slot's
+    # IIFE stays well-formed regardless.
+    acc = self._cur_view_acc();
+    if acc is not None {
+        nd.gen.es_ast = self._view_fragment_return(acc, nd);
+        return;
+    }
     argument: (es.Expression | None) = None;
     if (nd.expr and nd.expr.gen.es_ast) {
         argument = cast(es.Expression, nd.expr.gen.es_ast);
@@ -2651,10 +2692,158 @@ impl EsastGenPass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
 
 """Process except clause — builds handler body as BlockStatement for exit_try_stmt."""
 impl EsastGenPass.exit_except(nd: uni.Except) -> None {
+    # In a slot `try`/`awaiting` lowering the except arm is not a JS catch
+    # body: it renders the error-boundary fallback. Close its accumulator
+    # scope (opened in enter_except) and expose its content as an IIFE
+    # expression for exit_try_stmt to gather into the boundary fallback.
+    parent_try = nd.find_parent_of_type(uni.TryStmt);
+    if parent_try is not None and id(parent_try) in self._view_awaiting_tries {
+        acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
+        nd.gen.es_ast = self._build_view_iife(
+            nd.body, acc if isinstance(acc, str) else VIEW_ACC, nd
+        );
+        return;
+    }
     # Build the handler body as a BlockStatement.
     # exit_try_stmt will consume this to build the multi-handler dispatch.
     body = self._build_block_statement(nd, nd.body);
     nd.gen.es_ast = body;
+}
+
+"""Open the try-body accumulator scope for a slot `try`/`awaiting`.
+
+A `try { ... } awaiting { ... }` inside a slot on the cl target renders
+the try body as the `<JacAwaiting>` children. Mark the node and push a
+fresh accumulator so the try body's JSX accumulates into its own scope
+(not the enclosing slot's). Non-awaiting `try`s in a slot stay ordinary
+JS try/catch and let their body accumulate into the enclosing slot."""
+impl EsastGenPass.enter_try_stmt(nd: uni.TryStmt) -> None {
+    if self._cur_view_acc() is not None and nd.awaiting_body is not None {
+        self._view_awaiting_tries.add(id(nd));
+        self._push_view_acc();
+    }
+}
+
+"""Open the awaiting-clause accumulator scope (slot `try`/`awaiting`)."""
+impl EsastGenPass.enter_awaiting_clause(nd: uni.AwaitingClause) -> None {
+    parent_try = nd.find_parent_of_type(uni.TryStmt);
+    if parent_try is not None and id(parent_try) in self._view_awaiting_tries {
+        self._push_view_acc();
+    }
+}
+
+"""Close the awaiting-clause scope, exposing its content as an IIFE for
+exit_try_stmt to use as the `<JacAwaiting>` suspense fallback."""
+impl EsastGenPass.exit_awaiting_clause(nd: uni.AwaitingClause) -> None {
+    parent_try = nd.find_parent_of_type(uni.TryStmt);
+    if parent_try is not None and id(parent_try) in self._view_awaiting_tries {
+        acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
+        nd.gen.es_ast = self._build_view_iife(
+            nd.body, acc if isinstance(acc, str) else VIEW_ACC, nd
+        );
+    }
+}
+
+"""Open an except-arm accumulator scope for a slot `try`/`awaiting`."""
+impl EsastGenPass.enter_except(nd: uni.Except) -> None {
+    parent_try = nd.find_parent_of_type(uni.TryStmt);
+    if parent_try is not None and id(parent_try) in self._view_awaiting_tries {
+        self._push_view_acc();
+    }
+}
+
+"""Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
+slot `try { ... } awaiting { ... } except { ... }` on the cl target.
+
+Emits (pushed into the enclosing slot's accumulator):
+
+  <JacClientErrorBoundary fallback={<>{...except IIFEs...}</>}>
+    <JacAwaiting fallback={<>{awaiting IIFE}</>}>
+      {try IIFE}
+    </JacAwaiting>
+  </JacClientErrorBoundary>
+
+The error boundary is omitted when there are no except arms. Each clause
+body is an inline accumulator IIFE built by the clause's exit handler."""
+impl EsastGenPass._build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None {
+    try_iife = self._build_view_iife(nd.body, try_acc, nd);
+    # Awaiting body IIFE was built in exit_awaiting_clause.
+    awaiting_iife: es.Expression = (
+        cast(es.Expression, nd.awaiting_body.gen.es_ast)
+            if (nd.awaiting_body is not None and nd.awaiting_body.gen.es_ast)
+            else self._build_view_iife([], VIEW_ACC, nd)
+    );
+    self._inject_runtime_import('JacAwaiting', nd);
+    fallback_prop = self.sync_loc(
+        es.Property(
+            key=self.sync_loc(es.Literal(value='fallback'), jac_node=nd),
+            value=self._jsx_fragment([awaiting_iife], nd),
+            kind='init',
+            method=False,
+            shorthand=False,
+            computed=False
+        ),
+        jac_node=nd
+    );
+    wrapper: es.Expression = self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=nd),
+            arguments=[
+                self.sync_loc(es.Identifier(name='JacAwaiting'), jac_node=nd),
+                self.sync_loc(
+                    es.ObjectExpression(properties=[fallback_prop]), jac_node=nd
+                ),
+                self.sync_loc(es.ArrayExpression(elements=[try_iife]), jac_node=nd)
+            ]
+        ),
+        jac_node=nd
+    );
+    # except arms (if any) become the error-boundary fallback wrapping the
+    # awaiting node, so a throw in the resolved try body is caught.
+    if nd.excepts {
+        self._inject_runtime_import('JacClientErrorBoundary', nd);
+        except_iifes: list[es.Expression] = [
+            cast(es.Expression, ex.gen.es_ast)
+            for ex in nd.excepts
+            if ex.gen.es_ast is not None
+        ];
+        eb_fallback_prop = self.sync_loc(
+            es.Property(
+                key=self.sync_loc(es.Literal(value='fallback'), jac_node=nd),
+                value=self._jsx_fragment(except_iifes, nd),
+                kind='init',
+                method=False,
+                shorthand=False,
+                computed=False
+            ),
+            jac_node=nd
+        );
+        wrapper = self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=nd),
+                arguments=[
+                    self.sync_loc(
+                        es.Identifier(name='JacClientErrorBoundary'), jac_node=nd
+                    ),
+                    self.sync_loc(
+                        es.ObjectExpression(properties=[eb_fallback_prop]), jac_node=nd
+                    ),
+                    self.sync_loc(es.ArrayExpression(elements=[wrapper]), jac_node=nd)
+                ]
+            ),
+            jac_node=nd
+        );
+    }
+    # Push the wrapper into the enclosing slot accumulator (always present:
+    # `awaiting` is only valid inside a slot body).
+    outer = self._cur_view_acc();
+    if outer is not None {
+        nd.gen.es_ast = self._view_push_stmt(outer, wrapper, nd);
+    } else {
+        nd.gen.es_ast = self.sync_loc(
+            es.ExpressionStatement(expression=wrapper), jac_node=nd
+        );
+    }
 }
 
 """Process try statement with multi-handler instanceof dispatch.
@@ -2669,6 +2858,19 @@ Generates:
   finally { ... }
 """
 impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
+    # A slot `try { ... } awaiting { ... }` on the cl target is not a JS
+    # try/catch: it lowers to a `<JacAwaiting>` (React Suspense) wrapper,
+    # optionally inside a `<JacClientErrorBoundary>` when except arms are
+    # present. The clause bodies were accumulated into their own scopes by
+    # the enter/exit clause handlers.
+    if id(nd) in self._view_awaiting_tries {
+        self._view_awaiting_tries.discard(id(nd));
+        try_acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
+        self._build_awaiting_wrapper(
+            nd, try_acc if isinstance(try_acc, str) else VIEW_ACC
+        );
+        return;
+    }
     block = self._build_block_statement(nd, nd.body);
     handler: (es.CatchClause | None) = None;
     if nd.excepts and len(nd.excepts) > 0 {
@@ -2914,7 +3116,7 @@ impl EsastGenPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
 """Process while statement."""
 impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     body = self._build_block_statement(nd, nd.body);
     while_stmt = self.sync_loc(es.WhileStatement(`test=`test, body=body), jac_node=nd);
@@ -2932,7 +3134,7 @@ impl EsastGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
 """Process else-if clause."""
 impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -2949,7 +3151,7 @@ impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
 """Process if statement."""
 impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -2966,6 +3168,141 @@ impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
 """Process JSX expression child."""
 impl EsastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
+}
+
+"""Open a JSX `{...}` slot's accumulator scope.
+
+The surface AST keeps the author's `{ stmt; stmt; ... }` template intact
+(no pre-codegen lowering pass mutates it). The accumulator-IIFE shape is
+synthesized here at codegen time: a fresh `__jac_view_kids` scope is
+pushed so every JSX statement traversed inside the body lowers to a
+`push` into this slot's accumulator (see `exit_expr_stmt`)."""
+impl EsastGenPass.enter_jsx_slot(nd: uni.JsxSlot) -> None {
+    self._push_view_acc();
+}
+
+"""Close a JSX statement-form slot, wrapping its lowered body in an IIFE.
+
+By the time we exit, every body statement has been lowered against this
+slot's accumulator (`<acc>.push(<jsx>)`, control flow preserved, `skip;`
+turned into the fragment-return guard). Wrap the resulting block in an
+inline arrow function and call it: the slot's value is the accumulated
+JSX fragment."""
+impl EsastGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
+    acc_name = acc if isinstance(acc, str) else VIEW_ACC;
+    nd.gen.es_ast = self._build_view_iife(nd.body, acc_name, nd);
+}
+
+# ----- JSX `{...}` slot view-lowering helpers ------------------------------
+"""Return the accumulator name of the innermost enclosing slot scope, or
+None when not directly inside a slot body (stack empty or a nested-`def`
+barrier on top)."""
+impl EsastGenPass._cur_view_acc -> (str | None) {
+    if self._view_stack and isinstance(self._view_stack[-1], str) {
+        return self._view_stack[-1];
+    }
+    return None;
+}
+
+"""Push a fresh accumulator scope and return its local name.
+
+Every slot lowers to its own IIFE — a distinct JS function scope — and
+`_build_view_iife` always declares the accumulator with `let`. The first
+slot in the module keeps the bare `__jac_view_kids` name (preserved for
+diagnostics that grep the bundle); every later slot, whether a sibling or
+a nested try/awaiting/except arm, draws a unique `__jac_view_kids_N`
+suffix. Distinct names keep the emitted source unambiguous and match the
+sibling-slot regression guard (#6128)."""
+impl EsastGenPass._push_view_acc -> str {
+    if not self._view_used_base {
+        self._view_used_base = True;
+        name = VIEW_ACC;
+    } else {
+        self._view_acc_counter += 1;
+        name = f"{VIEW_ACC}_{self._view_acc_counter}";
+    }
+    self._view_stack.append(name);
+    return name;
+}
+
+"""Build `<acc>.push(<value>);`."""
+impl EsastGenPass._view_push_stmt(
+    acc_name: str, value: es.Expression, anchor: uni.UniNode
+) -> es.ExpressionStatement {
+    member = self.sync_loc(
+        es.MemberExpression(
+            object=self.sync_loc(es.Identifier(name=acc_name), jac_node=anchor),
+            property=self.sync_loc(es.Identifier(name='push'), jac_node=anchor),
+            computed=False,
+            optional=False
+        ),
+        jac_node=anchor
+    );
+    call = self.sync_loc(
+        es.CallExpression(callee=member, arguments=[value]), jac_node=anchor
+    );
+    return self.sync_loc(es.ExpressionStatement(expression=call), jac_node=anchor);
+}
+
+"""Build `<>{children...}</>` — a fragment `__jacJsx(null, {}, [children])`."""
+impl EsastGenPass._jsx_fragment(
+    children: list[es.Expression], anchor: uni.UniNode
+) -> es.CallExpression {
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=anchor),
+            arguments=[
+                self.sync_loc(es.Literal(value=None), jac_node=anchor),
+                self.sync_loc(es.ObjectExpression(properties=[]), jac_node=anchor),
+                self.sync_loc(es.ArrayExpression(elements=children), jac_node=anchor)
+            ]
+        ),
+        jac_node=anchor
+    );
+}
+
+"""Build `return <>{acc}</>;` — the fragment of all content accumulated."""
+impl EsastGenPass._view_fragment_return(
+    acc_name: str, anchor: uni.UniNode
+) -> es.ReturnStatement {
+    frag = self._jsx_fragment(
+        [self.sync_loc(es.Identifier(name=acc_name), jac_node=anchor)], anchor
+    );
+    return self.sync_loc(es.ReturnStatement(argument=frag), jac_node=anchor);
+}
+
+"""Wrap a lowered slot body in `(() => { let acc = []; ...; return <>{acc}</>; })()`."""
+impl EsastGenPass._build_view_iife(
+    body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
+) -> es.CallExpression {
+    init = self.sync_loc(
+        es.VariableDeclaration(
+            declarations=[
+                self.sync_loc(
+                    es.VariableDeclarator(
+                        id=self.sync_loc(es.Identifier(name=acc_name), jac_node=anchor),
+                        `init=self.sync_loc(
+                            es.ArrayExpression(elements=[]), jac_node=anchor
+                        )
+                    ),
+                    jac_node=anchor
+                )
+            ],
+            kind='let'
+        ),
+        jac_node=anchor
+    );
+    stmts: list[es.Statement] = [init];
+    stmts.extend(self._collect_stmt_body(body_nodes));
+    stmts.append(self._view_fragment_return(acc_name, anchor));
+    block = self.sync_loc(es.BlockStatement(body=stmts), jac_node=anchor);
+    arrow = self.sync_loc(
+        es.ArrowFunctionExpression(params=[], body=block, async_=False), jac_node=anchor
+    );
+    return self.sync_loc(
+        es.CallExpression(callee=arrow, arguments=[]), jac_node=anchor
+    );
 }
 
 """Process JSX text node."""
@@ -2995,6 +3332,20 @@ impl EsastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
 
 """Process JSX element."""
 impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
+    # The slot `try`/`awaiting`/`except` lowering builds its
+    # `<JacAwaiting>`/`<JacClientErrorBoundary>` wrappers as direct
+    # `__jacJsx` calls (see `_build_awaiting_wrapper`) and injects their
+    # imports there. This guard covers the case where author code names
+    # either runtime component literally in JSX: both live in
+    # `@jac/runtime`, so auto-inject the import so the name resolves.
+    if (
+        nd.name is not None
+        and nd.name.parts
+        and isinstance(nd.name.parts[0], uni.Name)
+        and nd.name.parts[0].value in ("JacAwaiting", "JacClientErrorBoundary")
+    ) {
+        self._inject_runtime_import(nd.name.parts[0].value, nd);
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
 }
 
@@ -3058,6 +3409,49 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     self.injected_imports.add(name);
     # Register in client manifest so bundler knows to inline the runtime
     self._register_jac_runtime_import();
+}
+
+"""Auto-inject a named import from `react` (e.g. useRef).
+
+Unlike `_inject_runtime_import`, this targets `react` directly: `useRef`
+is a plain React primitive with no reactivity, so it needs no `@jac/runtime`
+shim (which exists only to bridge `useState`/`useEffect` into Jac's reactive
+core). No `_register_jac_runtime_import` — react is an ordinary dependency."""
+impl EsastGenPass._inject_react_import(name: str, nd: uni.UniNode) -> None {
+    if name in self.injected_imports or self._has_import(name) {
+        return;
+    }
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name=name), local=es.Identifier(name=name)
+        ),
+        jac_node=nd
+    );
+    source = self.sync_loc(es.Literal(value='react', raw='"react"'), jac_node=nd);
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
+    );
+    self.imports.append(import_decl);
+    self.injected_imports.add(name);
+}
+
+"""Leftmost identifier of a call/subscript chain, or None.
+
+`Ref` -> 'Ref'; `Ref[T]` / `Ref()` / `Ref[T]()` -> 'Ref' (unwrapping the
+`FuncCall` and `AtomTrailer` wrappers). Used to recognise the ambient `Ref`
+construction/annotation structurally, without the type system."""
+impl EsastGenPass._ref_head_name(expr: (uni.UniNode | None)) -> (str | None) {
+    cur = expr;
+    while True {
+        if isinstance(cur, uni.FuncCall) {
+            cur = cur.target;
+        } elif isinstance(cur, uni.AtomTrailer) {
+            cur = cur.target;
+        } else {
+            break;
+        }
+    }
+    return cur.value if isinstance(cur, uni.Name) else None;
 }
 
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
@@ -3158,13 +3552,74 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
         nd.gen.es_ast = None;
         return;
     }
-    # Auto-inject useState import if not already done
-    self._inject_runtime_import('useState', nd);
-    # Generate useState destructuring for each variable
-    # has count: int = 0; -> const [count, setCount] = useState(0);
+    # Generate one declaration per has-var. A `Ref[T]` field lowers to a
+    # non-reactive `useRef(...)`; every other field is reactive `useState`.
+    # has count: int = 0;            -> const [count, setCount] = useState(0);
+    # has buttonRef: Ref[T];         -> const buttonRef = useRef(null);
     statements: list[es.Statement] = [];
     for has_var in nd.vars {
         var_name = has_var.name.sym_name;
+
+        # --- Ref[T] field -> useRef (non-reactive: no setter, no reactive_vars)
+        # Detected structurally so client codegen needs no type-checker pass:
+        # a ref field is one constructed `= Ref()` / `= Ref(initial)`, or one
+        # annotated `: Ref[...]`. The construction is the canonical form; a
+        # bare annotation with no construction has no ref object to hold and is
+        # rejected (E2025), but still lowers to `useRef(null)` so the build
+        # stays usable.
+        ref_ctor = (
+            isinstance(has_var.value, uni.FuncCall)
+            and self._ref_head_name(has_var.value) == 'Ref'
+        );
+        ref_typed = (
+            has_var.type_tag is not None
+            and self._ref_head_name(has_var.type_tag.tag) == 'Ref'
+        );
+        if ref_ctor or ref_typed {
+            if ref_typed and not ref_ctor {
+                self.emit(E2025, node_override=has_var);
+            }
+            self._inject_react_import('useRef', nd);
+            # The field is constructed as `= Ref()` / `= Ref(initial)` — a
+            # Jac-only ambient with no JS counterpart. So we don't emit the
+            # `Ref(...)` call itself; we lift its sole argument (the seed for
+            # `.current`) into `useRef(seed)`, defaulting to `null` for the
+            # empty `Ref()` DOM-ref form.
+            ref_init: es.Expression = self.sync_loc(
+                es.Literal(value=None, raw='null'), jac_node=has_var
+            );
+            if isinstance(has_var.value, uni.FuncCall) and has_var.value.params {
+                seed = has_var.value.params[0];
+                seed_expr = seed.value if isinstance(seed, uni.KWPair) else seed;
+                if seed_expr.gen.es_ast {
+                    ref_init = cast(es.Expression, seed_expr.gen.es_ast);
+                }
+            }
+            use_ref_call = self.sync_loc(
+                es.CallExpression(
+                    callee=es.Identifier(name='useRef'), arguments=[ref_init]
+                ),
+                jac_node=has_var
+            );
+            ref_declarator = self.sync_loc(
+                es.VariableDeclarator(
+                    id=es.Identifier(name=var_name), `init=use_ref_call
+                ),
+                jac_node=has_var
+            );
+            statements.append(
+                self.sync_loc(
+                    es.VariableDeclaration(declarations=[ref_declarator], kind='const'),
+                    jac_node=has_var
+                )
+            );
+            self._register_declaration(var_name);
+            continue;
+        }
+
+        # --- reactive field -> useState
+        # Auto-inject useState import only when a reactive field is present.
+        self._inject_runtime_import('useState', nd);
         setter_name = self._get_setter_name(var_name);
 
         # Track this as a reactive variable for assignment transformation
@@ -3242,6 +3697,12 @@ impl EsastGenPass.exit_func_signature(nd: uni.FuncSignature) -> None {
 
 """Process ability (function/method) declaration."""
 impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
+    # Pop the nested-`def` view barrier pushed in enter_ability so a JSX
+    # statement in a slot never accumulates into an enclosing slot across a
+    # function boundary. Must run before any early return below.
+    if self._view_stack {
+        self._view_stack.pop();
+    }
     # Restore reactive_vars to parent scope
     if self.reactive_vars_stack {
         self.reactive_vars = self.reactive_vars_stack.pop();
@@ -3395,6 +3856,11 @@ impl EsastGenPass.enter_ability(nd: uni.Ability) -> None {
         nd.body.parent = nd;
         nd.kid.append(nd.body);
     }
+    # Push a view barrier: a nested `def` inside a slot body has its own
+    # `return`/JSX semantics and must not feed the enclosing slot's
+    # accumulator. A nested slot inside this `def` re-opens accumulation by
+    # pushing its own acc above the barrier.
+    self._view_stack.append(None);
     self.reactive_vars_stack.append(self.reactive_vars);
     self.reactive_vars = dict(self.reactive_vars);
 }
@@ -3774,10 +4240,16 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                 ret_type_name = self._extract_return_type(
                     ability_node, func_name, nd.gen.interop_manifest
                 );
-                # Analyze function body for auto-caching effects
-                if ability_node.body and isinstance(ability_node.body, list) {
-                    effects = self._analyze_body_effects(ability_node.body);
-                    self.client_manifest.endpoint_effects[f"func:{func_name}"] = effects;
+                # Carry the source module's precomputed effect (from
+                # WalkerEffectsPass) into this client bundle's manifest so the
+                # sv-imported endpoint self-registers with the right effects.
+                src_effect = source_mod.gen.client_manifest.endpoint_effects.get(
+                    f"func:{func_name}"
+                );
+                if src_effect is not None {
+                    self.client_manifest.endpoint_effects[f"func:{func_name}"] = (
+                        src_effect
+                    );
                 }
             }
         }
@@ -4486,6 +4958,27 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 
 """Process module node."""
 impl EsastGenPass.exit_module(nd: uni.Module) -> None {
+    # Scoped-style annex: emit the selector-rewritten CSS as a sidecar
+    # artifact and prepend a side-effect import so the styles load with the
+    # module. Duplicate imports from impl/variant modules are deduped below.
+    if (self.scoped_styles is not None and self.scoped_styles.class_map) {
+        import os;
+        nd.gen.css = self.scoped_styles.scoped_css;
+        base = os.path.basename(self.scoped_styles.css_path);
+        if base.endswith('.style.css') {
+            base = base[:-len('.style.css')];
+        }
+        css_import = f"./{base}.css";
+        css_source = self.sync_loc(
+            es.Literal(value=css_import, raw=f'"{css_import}"'), jac_node=nd
+        );
+        self.imports.insert(
+            0,
+            self.sync_loc(
+                es.ImportDeclaration(specifiers=[], source=css_source), jac_node=nd
+            )
+        );
+    }
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
     # Include stubs for def:pub functions imported via sv import
@@ -4657,112 +5150,6 @@ impl EsastGenPass._collect_stmt_body(
         }
     }
     return statements;
-}
-
-"""Analyze a code body to classify it as reader or writer and extract touched node types.
-
-Recursively scans descendant AST nodes for write-indicating operations
-(edge creation, node deletion, field mutation, sub-walker spawns).
-Returns dict with 'is_writer' (bool) and 'touches' (list of node type names).
-"""
-impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> dict {
-    is_writer = False;
-    touches: set[str] = set();
-    """Recursively scan a node and its descendants for effects.""";
-    def _scan(nd: uni.UniNode) {
-        nonlocal is_writer;
-
-        # Edge creation: BinaryExpr with ConnectOp operator (++>, <++, <++>)
-        if isinstance(nd, uni.BinaryExpr) and isinstance(nd.op, uni.ConnectOp) {
-            is_writer = True;
-            # Try to extract edge type from ConnectOp
-            if nd.op.conn_type and isinstance(nd.op.conn_type, uni.Name) {
-                touches.add(nd.op.conn_type.sym_name);
-            }
-        }
-
-        # Edge deletion: BinaryExpr with DisconnectOp operator
-        if isinstance(nd, uni.BinaryExpr) and isinstance(nd.op, uni.DisconnectOp) {
-            is_writer = True;
-        }
-
-        # Node/edge deletion: DeleteStmt
-        if isinstance(nd, uni.DeleteStmt) {
-            is_writer = True;
-        }
-
-        # Spawn sub-walker: BinaryExpr with KW_SPAWN
-        if (
-            isinstance(nd, uni.BinaryExpr)
-            and isinstance(nd.op, uni.Token)
-            and nd.op.name == Tok.KW_SPAWN
-        ) {
-            is_writer = True;
-        }
-
-        # Field mutation on non-self targets: Assignment with AtomTrailer target
-        if isinstance(nd, uni.Assignment) {
-            for tgt in nd.target {
-                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-                    # Check if the target root is NOT self/here (those are walker state writes)
-                    root_expr = tgt.target;
-                    while isinstance(root_expr, uni.AtomTrailer) {
-                        root_expr = root_expr.target;
-                    }
-                    is_self = (
-                        isinstance(root_expr, uni.SpecialVarRef)
-                        and root_expr.sym_name == 'self'
-                    );
-                    if not is_self {
-                        is_writer = True;
-                    }
-                }
-            }
-        }
-
-        # Node type touched: FuncCall targeting a node/edge archetype
-        if isinstance(nd, uni.FuncCall) {
-            import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
-            target_sym = resolve_expr_symbol(nd.target, self.get_main_mod());
-            if target_sym {
-                if target_sym.sym_type in [
-                    SymbolType.NODE_ARCH,
-                    SymbolType.EDGE_ARCH
-                ] {
-                    touches.add(target_sym.sym_name);
-                    # Constructing a node/edge is a write
-                    is_writer = True;
-                }
-            }
-        }
-
-        # Node types from EventSignature (can foo with NodeType entry)
-        if isinstance(nd, uni.EventSignature) and nd.arch_tag_info {
-            if isinstance(nd.arch_tag_info, uni.Name) {
-                touches.add(nd.arch_tag_info.sym_name);
-            } elif isinstance(nd.arch_tag_info, uni.BoolExpr) {
-                # Union type: NodeA | NodeB
-                for val in nd.arch_tag_info.values {
-                    if isinstance(val, uni.Name) {
-                        touches.add(val.sym_name);
-                    }
-                }
-            }
-        }
-
-        # Recurse into children
-        for child in nd.kid {
-            if child {
-                _scan(child);
-            }
-        }
-    }
-    for nd in body_nodes {
-        _scan(nd);
-    }
-    # If no specific node types were determined, use catch-all
-    touches_list = sorted(touches) if touches else ["*"];
-    return {"is_writer": is_writer, "touches": touches_list};
 }
 
 """Emit the await __jacSpawn(...) expression for a spawn call."""
@@ -4979,7 +5366,7 @@ impl EsastGenPass._expr_from_node(
     nd: (uni.UniNode | None), `default: LiteralValue = None
 ) -> es.Expression {
     generated = self._get_ast_or_default(
-        nd, default_factory=lambda src: Any : es.Literal(value=`default)
+        nd, default_factory=lambda src: any : es.Literal(value=`default)
     );
     if isinstance(generated, es.Expression) {
         return generated;
@@ -5252,13 +5639,40 @@ impl EsastGenPass.before_pass -> None {
     self.scope_stack: list[ScopeInfo] = [];
     self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
     self.client_manifest = ClientManifest();
+    # Endpoint effects are computed by WalkerEffectsPass (which runs before
+    # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
+    # it so the registration emit and cross-module merge carry them through;
+    # this pass no longer classifies effects itself.
+    self.client_manifest.endpoint_effects = dict(
+        self.ir_in.gen.client_manifest.endpoint_effects
+    );
     self.jsx_processor = EsJsxProcessor(self);
+    # Load the `.style.css` scoped-style annex (if any) keyed off the head
+    # module path, so every variant/impl module shares one class map and
+    # JSX `className` literals can be rewritten during traversal.
+    self.scoped_styles: (ScopedStyleSheet | None) = load_style_annex(
+        self.ir_in.annexable_by or self.ir_in.loc.mod_path
+    );
     # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
     self.reactive_vars: dict[str, str] = {};
     # Stack to save/restore reactive_vars per function boundary
     self.reactive_vars_stack: list[dict[str, str]] = [];
     # Track which runtime imports have been auto-injected to avoid duplicates
     self.injected_imports: set[str] = set();
+    # JSX `{...}` slot view-lowering state. `_view_stack` holds the
+    # accumulator name of each enclosing slot scope (a `str`), or `None` for
+    # a nested-`def` barrier that suspends lowering. The topmost `str` is the
+    # accumulator a JSX statement pushes into; a `None` on top means we are
+    # inside a nested function and JSX should NOT be accumulated. The counter
+    # gives nested slot scopes (try/awaiting/except arms) unique local names.
+    self._view_stack: list[(str | None)] = [];
+    # The first slot keeps the bare `__jac_view_kids` name; every later slot
+    # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
+    self._view_used_base: bool = False;
+    self._view_acc_counter: int = 0;
+    # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
+    # the clause handlers know to scope their own accumulators.
+    self._view_awaiting_tries: set[int] = set();
     # Accumulate JS function stubs for def:pub functions imported via sv import
     self.sv_import_stubs: list[es.Statement] = [];
     # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)

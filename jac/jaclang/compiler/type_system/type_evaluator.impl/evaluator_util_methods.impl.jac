@@ -40,6 +40,11 @@ impl TypeEvaluator._build_field_params(
             if skip_deferred and has_var.defer {
                 continue;
             }
+            # Property declarations (`has x: T { get; set; }`) are not dataclass
+            # fields — they synthesize accessor methods, not init parameters.
+            if has_var.accessors is not None {
+                continue;
+            }
             param_type: TypeBase | None = None;
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
@@ -64,8 +69,15 @@ impl TypeEvaluator._create_dataclass_init_method(
 ) -> types.FunctionType {
     param_map = self._build_field_params(class_type, skip_deferred=True);
     parameters = list(param_map.values());
+    # `__init__` returns None. Synthesizing UnknownType here used to cascade
+    # into W1051 on every `super.init(...)` call to a dataclass-synthesized
+    # parent, and into E1001 when the call result was assigned to a typed slot.
+    ret_type: TypeBase = types.UnknownType();
+    if self.prefetch and self.prefetch.none_type_class {
+        ret_type = self._convert_to_instance(self.prefetch.none_type_class);
+    }
     return types.FunctionType(
-        func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
+        func_name="__init__", return_type=ret_type, parameters=parameters,
     );
 }
 
@@ -187,7 +199,7 @@ from the receiver argument — `object.__new__(self.__class__)` must resolve
 `Self -> type(self.__class__)`, not the lookup-time class.
 """
 impl TypeEvaluator.get_type_of_member(
-    member: Any, class_type: types.ClassType
+    member: any, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, types.FunctionType) {
@@ -376,7 +388,7 @@ impl TypeEvaluator._get_enclosing_return_scope(
     return None;
 }
 
-"""Get the resolved return type from an Ability or LambdaExpr, or None if unresolvable."""
+
 impl TypeEvaluator._get_declared_return_type(
     scope: uni.Ability | uni.LambdaExpr
 ) -> TypeBase | None {
@@ -392,6 +404,27 @@ impl TypeEvaluator._get_declared_return_type(
             );
         }
         return None;
+    }
+    # Property accessors without an explicit return type inherit the property's
+    # declared type. Inline `get { ... }` and inline impl bodies for `get` whose
+    # declaration was sig-less both hit this path.
+    if (
+        isinstance(scope, uni.Ability)
+        and (scope.accessor_kind == "property")
+        and (
+            (scope.signature is None)
+            or (
+                isinstance(scope.signature, uni.FuncSignature)
+                and (scope.signature.return_type is None)
+            )
+        )
+    ) {
+        hv = scope.find_parent_of_type(uni.HasVar);
+        if hv and hv.type_tag {
+            return self._convert_to_instance(
+                self.get_type_of_expression(hv.type_tag.tag)
+            );
+        }
     }
     # Ability path — resolve via get_type_of_ability (handles both annotated
     # and unannotated cases; unannotated defaults to NoneType).
@@ -758,6 +791,16 @@ impl TypeEvaluator._classify_property_symbol(
 ) -> type_utils.PropertyWriteKind {
     import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
+    # Native property syntax: `has x: T { get; set; }` etc.
+    # Read-only iff there's no `set` accessor in the bundle.
+    if isinstance(node_, uni.HasVar) and (node_.accessors is not None) {
+        for acc in node_.accessors {
+            if acc.accessor_kind == "setter" {
+                return PropertyWriteKind.WRITABLE;
+            }
+        }
+        return PropertyWriteKind.READ_ONLY;
+    }
     if not isinstance(node_, uni.Ability) {
         return PropertyWriteKind.NOT_PROPERTY;
     }
@@ -822,6 +865,25 @@ impl TypeEvaluator.get_property_write_type(
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
+    }
+
+    # Native HasVar property (`has x: T { get; set; }`): write type = declared type.
+    node_decl = symbol.decl.name_of;
+    if isinstance(node_decl, uni.HasVar) and (node_decl.accessors is not None) {
+        if kind == PropertyWriteKind.READ_ONLY {
+            return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+        }
+        if node_decl.type_tag {
+            decl_ty = self._convert_to_instance(
+                self.get_type_of_expression(node_decl.type_tag.tag)
+            );
+            return PropertyWriteResult(
+                kind=PropertyWriteKind.WRITABLE, write_type=decl_ty
+            );
+        }
+        return PropertyWriteResult(
+            kind=PropertyWriteKind.WRITABLE, write_type=types.UnknownType()
+        );
     }
 
     # @cached_property (WRITABLE from classifier): write type = getter return type.

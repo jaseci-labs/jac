@@ -222,13 +222,13 @@ def parse_and_validate(source: str, file_path: str) -> bool {
     }
 }
 
-def strictness_test(name_snippet: tuple) {
+def strictness_test(name_snippet: tuple[str, str]) {
     (name, snippet) = name_snippet;
     rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac");
     assert rd_ast is None , f"RD parser must reject '{name}': {snippet}";
 }
 
-def validation_strictness_test(name_snippet: tuple) {
+def validation_strictness_test(name_snippet: tuple[str, str]) {
     (name, snippet) = name_snippet;
     has_errors = parse_and_validate(snippet, "/tmp/strictness_test.jac");
     assert has_errors , f"Parser + ASTValidationPass must reject '{name}': {snippet}";

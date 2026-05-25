@@ -19,7 +19,6 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
@@ -235,9 +234,7 @@ test "sem decorator" {
 }
 
 test "circle py ast" {
-    code_gen = (out := JacProgram()).compile(
-        os.path.join(EXAMPLES, "manual_code", "circle.jac")
-    );
+    code_gen = (out := JacProgram()).compile(os.path.join(LANG_FIXTURES, "circle.jac"));
     if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) {
         prog = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
         captured_output = io.StringIO();
@@ -315,7 +312,7 @@ with entry {
     prog = JacProgram();
     prog.compile(file_path="test_match.jac", use_str=code);
     assert not prog.errors_had , (
-        f"Match with empty wildcard body should compile cleanly, "
+        "Match with empty wildcard body should compile cleanly, "
         f"got: {[str(e) for e in prog.errors_had]}"
     );
 }

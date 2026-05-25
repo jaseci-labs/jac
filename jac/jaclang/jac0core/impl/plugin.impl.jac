@@ -61,7 +61,7 @@ impl HookCaller.__call__(**kwargs: object) -> object {
         }
         return None;
     }
-    results: list[Any] = [];
+    results: list[any] = [];
     for hi in reversed(self._hookimpls) {
         result = self._call_impl(hi, kwargs);
         if result is not None {

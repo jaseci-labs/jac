@@ -962,8 +962,26 @@ impl JacBuiltin.printgraph(
 """Create Jac CLI cmds."""
 impl JacCmd.create_cmd -> None { }
 
-"""Set Class References."""
-impl JacBasics.setup -> None { }
+"""Run the `jac ai` coding agent -- the built-in byLLM implementation.
+
+This is the default hook implementation: it lazily imports the bundled
+byLLM-powered agent so the core CLI keeps no hard dependency on byLLM. A
+plugin that registers its own `run_ai_agent` hook outranks this one and
+replaces the agent entirely.
+"""
+impl JacCmd.run_ai_agent(req: object) -> int {
+    try {
+        import from jaclang.cli.ai_agent { run_agent }
+    } except ImportError {
+        import from jaclang.cli.console { console }
+        console.error(
+            "`jac ai` needs the byLLM plugin, which is not installed.",
+            hint="Install it with:  pip install byllm"
+        );
+        return 1;
+    }
+    return run_agent(req);
+}
 
 """Get current execution context (request-scoped if available, else global)."""
 impl JacBasics.get_context -> ExecutionContext {
@@ -1430,7 +1448,7 @@ impl JacBasics.field(
 }
 
 """Jac's report stmt feature."""
-impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
+impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
     ctx = JacRuntimeInterface.get_context();
     if custom {
         ctx.custom = expr;
@@ -1459,51 +1477,24 @@ impl JacBasics.refs(
             last.nd = post_filter;
         } else {
             orig_nd = last.nd;
-            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+            last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
-    # Try topology index optimization for non-edge-only queries
+    # Try the storage-aware planner for non-edge-only queries. The planner
+    # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
+    # predicates) → topology_index narrowing → batch_get materialization. It
+    # returns NodeAnchors when a fast path applies, or None to signal that
+    # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
-        import from jaclang.runtimelib.topo_utils {
-            plan_query,
-            plan_query_ordered,
-            batch_load_nodes,
-            batch_load_nodes_by_ids
-        }
-        # Storage-layer pagination: when a slice is requested and the chain is
-        # pushdown-eligible, the planner returns the bounded ordered UUID list
-        # so we only batch_get the sliced subset.
-        if slc is not None {
-            planned_ordered = plan_query_ordered(path, slc);
-            if planned_ordered is not None {
-                return batch_load_nodes_by_ids(planned_ordered);
-            }
-        }
-        planned_ids = plan_query(path);
-        if planned_ids is not None {
-            # Index resolved which nodes survive type filters.
-            # For single-hop, preserve edge-list order via origin walk.
-            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
-            destinations = path.destinations[:-1]
-                if path.edge_only
-                else path.destinations;
-            use_origin = path.origin if len(destinations) <= 1 else None;
-            nodes = batch_load_nodes(planned_ids, origin=use_origin);
-            destinations = path.destinations;
-            if destinations {
-                last_dest = destinations[-1];
-                if last_dest.nd {
-                    nodes = [
-                        n
-                        for n in nodes
-                        if last_dest.node_filter(n)
-                    ];
-                }
-            }
-            if slc is not None {
-                nodes = nodes[slc];
-            }
-            return nodes;
+        import from jaclang.runtimelib.planner { execute_path }
+        ctx = JacRuntimeInterface.get_context();
+        planned = execute_path(ctx.mem, path, slc);
+        if planned is not None {
+            return [
+                a.archetype
+                for a in planned
+                if a.archetype is not None
+            ];
         }
     }
     # Fallback: original approach
@@ -1640,7 +1631,7 @@ impl JacBasics.disconnect(
 
 """Jac's assign comprehension feature."""
 impl JacBasics.assign_all(
-    target: list[T], attr_val: tuple[(tuple[str], tuple[Any])]
+    target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
 ) -> list[T] {
     for `obj in target {
         (attrs, values) = attr_val;
@@ -1652,7 +1643,7 @@ impl JacBasics.assign_all(
 }
 
 """Jac's safe subscript feature."""
-impl JacBasics.safe_subscript(`obj: Any, key: Any) -> Any {
+impl JacBasics.safe_subscript(`obj: any, key: any) -> any {
     try {
         return `obj[key];
     } except (KeyError, IndexError, TypeError) {
@@ -1930,7 +1921,7 @@ Two response shapes are honoured:
     of a str-ified generator object. See jac/jaclang/runtimelib/
     sv_sse.jac for the framing contract.
 """
-impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
 
@@ -2012,8 +2003,8 @@ Plugins override this method to add auth, retries, circuit breakers,
 or tracing the same way they override sv_service_call.
 """
 impl JacAPIServer.sv_walker_call(
-    module_name: str, walker_name: str, args: dict, stub_cls: Any
-) -> Any {
+    module_name: str, walker_name: str, args: dict, stub_cls: any
+) -> any {
     import from jaclang.runtimelib { sv_client }
 
     label = f"{module_name}.{walker_name}";
@@ -2075,8 +2066,8 @@ the TestClient instance is owned by sv_client._test_clients and lives
 beyond the call.
 """
 def _wrap_sse_keepalive(
-    stream_cm: Any, resp: Any, client: Any, func_label: str
-) -> Any {
+    stream_cm: any, resp: any, client: any, func_label: str
+) -> any {
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     try {
         for ev in consume_sse_stream(resp, func_label) {
@@ -2263,11 +2254,43 @@ impl JacByLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 }
 
 """Call the LLM model."""
-impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
+impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> any {
     import from jaclang.utils { NonGPT }
     try {
         random_value_for_type = cast(
-            Callable[([Any], Any)], NonGPT.random_value_for_type
+            Callable[([any], Any)], NonGPT.random_value_for_type
+        );
+    } except AttributeError {
+        def random_value_for_type(_t: object) -> object {
+            return None;
+        }
+    }
+    try {
+        type_hints = get_type_hints(
+            mt_run.caller,
+            globalns=getattr(mt_run.caller, '__globals__', {}),
+            localns=None,
+            include_extras=True
+        );
+    } except Exception {
+        type_hints = getattr(mt_run.caller, '__annotations__', {});
+    }
+    return_type = type_hints.get('return', Any);
+    return random_value_for_type(return_type);
+}
+
+"""Base stub for acall_llm — returns random value. byllm overrides with native async dispatch.
+
+Uses await so this impl compiles to an async def, matching the static async def declaration
+and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
+"""
+impl JacByLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
+    import asyncio;
+    import from jaclang.utils { NonGPT }
+    await asyncio.sleep(0);
+    try {
+        random_value_for_type = cast(
+            Callable[([any], Any)], NonGPT.random_value_for_type
         );
     } except AttributeError {
         def random_value_for_type(_t: object) -> object {
@@ -2344,7 +2367,7 @@ allowed
     Currently not implemented - raises NotImplementedError.
     Plugins like byllm can override this via the plugin hook system.
     """
-impl JacByLLM.by_operator(lhs: Any, rhs: Any) -> Any {
+impl JacByLLM.by_operator(lhs: any, rhs: any) -> any {
     raise NotImplementedError(
         "The 'by' operator is not yet implemented. This feature is reserved for future use."
     );
@@ -2401,12 +2424,21 @@ impl JacByLLM.get_mtir_from_map(scope: str) -> (Info | None) {
                    Pass user's root ID for authenticated server requests.
 
     Storage backend is configured via plugins/environment, not per-context.
-    For file backend: auto-generates path from JacRuntime.base_path_dir.
+    For file backend: the new ctx's L3 path is derived from its own
+    `base_path_dir` / `full_target_path` (passed explicitly, or seeded
+    from `Jac.get_base_path_dir()` / `Jac.get_full_target_path()` for
+    bootstrap callers that haven't been migrated to explicit args).
     For database backends (jac-scale): configured via environment variables.
     """
-impl JacUtils.create_j_context(user_root: (str | None)) -> ExecutionContext {
+impl JacUtils.create_j_context(
+    user_root: (str | None),
+    base_path_dir: (str | None) = None,
+    full_target_path: (str | None) = None
+) -> ExecutionContext {
     import from jaclang.runtimelib.context { ExecutionContext }
-    ctx = ExecutionContext();
+    ctx = ExecutionContext(
+        base_path_dir=base_path_dir, full_target_path=full_target_path
+    );
     if (user_root is not None) {
         ctx.set_user_root(user_root);
     }
@@ -2509,7 +2541,7 @@ impl JacUtils.create_archetype_from_source(
     keep_temporary_files: bool = False
 ) -> (types.ModuleType | None) {
     if not base_path {
-        base_path = JacRuntime.base_path_dir or os.getcwd();
+        base_path = JacRuntime.get_base_path_dir() or os.getcwd();
     }
     if (base_path and not os.path.exists(base_path)) {
         os.makedirs(base_path);
@@ -2557,7 +2589,7 @@ impl JacUtils.update_walker(
             old_module = JacRuntime.loaded_modules[module_name];
             result = JacRuntimeInterface.jac_import(
                 target=module_name,
-                base_path=(JacRuntime.base_path_dir or os.getcwd()),
+                base_path=(JacRuntime.get_base_path_dir() or os.getcwd()),
                 items=items,
                 reload_module=True,
                 lng='jac'
@@ -2635,7 +2667,7 @@ impl JacUtils.thread_run(func: Callable, *args: object) -> Future {
 }
 
 """Wait for a thread to finish."""
-impl JacUtils.thread_wait(future: Any) -> None {
+impl JacUtils.thread_wait(future: any) -> None {
     return future.result();
 }
 
@@ -2760,7 +2792,7 @@ impl JacRuntimeInterface.get_user_manager(base_path: str) -> UserManager {
     """
 impl JacRuntimeInterface.store(
     base_path: str = './storage', create_dirs: bool = True
-) -> Any {
+) -> any {
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
 }
@@ -2770,7 +2802,7 @@ impl JacRuntimeInterface.store(
     The compiler is separate from the program and handles all compilation
     operations. It persists across program resets and can be reused.
     """
-impl JacRuntime.get_compiler(cls: Any) -> JacCompiler {
+impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
     if (cls.compiler is None) {
         import from jaclang.jac0core.compiler { JacCompiler }
         cls.compiler = JacCompiler();
@@ -2779,7 +2811,7 @@ impl JacRuntime.get_compiler(cls: Any) -> JacCompiler {
 }
 
 """Get or create the JacProgram instance."""
-impl JacRuntime.get_program(cls: Any) -> JacProgram {
+impl JacRuntime.get_program(cls: any) -> JacProgram {
     if (cls.program is None) {
         import from jaclang.jac0core.program { JacProgram }
         cls.program = JacProgram();
@@ -2787,18 +2819,38 @@ impl JacRuntime.get_program(cls: Any) -> JacProgram {
     return cls.program;
 }
 
-"""Set the base path for the machine.
+"""Return the seed base path for new contexts."""
+impl JacRuntime.get_base_path_dir -> (str | None) {
+    return _default_base_path_dir[0];
+}
+
+"""Return the seed target path for new contexts."""
+impl JacRuntime.get_full_target_path -> (str | None) {
+    return _default_full_target_path[0];
+}
+
+"""Set the seed base path used to bootstrap new contexts.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
+    Already-constructed contexts are unaffected — they carry their own
+    `base_path_dir` captured at postinit time.
     """
 impl JacRuntime.set_base_path(base_path: (str | None)) -> None {
     if (base_path is None) {
-        JacRuntime.base_path_dir = None;
+        _default_base_path_dir[0] = None;
     } else {
-        JacRuntime.base_path_dir = base_path
+        _default_base_path_dir[0] = base_path
             if os.path.isdir(base_path)
             else os.path.dirname(base_path);
     }
+}
+
+"""Set the seed target path used to bootstrap new contexts.
+
+    Already-constructed contexts are unaffected.
+    """
+impl JacRuntime.set_full_target_path(target_path: (str | None)) -> None {
+    _default_full_target_path[0] = target_path;
 }
 
 """Set the context for the machine."""
@@ -2806,26 +2858,12 @@ impl JacRuntime.set_context(context: ExecutionContext) -> None {
     JacRuntime.exec_ctx = context;
 }
 
-"""Set request-scoped execution context (for web servers)."""
-impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
-    _request_context.set(context);
-}
-
 """Push a request-scoped execution context; returns a reset token."""
-impl JacRuntime.push_request_context(context: ExecutionContext) -> Any {
+impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
     return _request_context.set(context);
 }
 
 """Reset the request-scoped context using a push token."""
-impl JacRuntime.reset_request_context(token: Any) -> None {
+impl JacRuntime.reset_request_context(token: any) -> None {
     _request_context.reset(token);
-}
-
-"""Clear request-scoped context and commit changes."""
-impl JacRuntime.clear_request_context -> None {
-    ctx = _request_context.get();
-    if ctx is not None {
-        ctx.close();
-        _request_context.set(None);
-    }
 }

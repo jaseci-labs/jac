@@ -34,6 +34,7 @@ obj ProjectConfig {
         license: str = "",
         readme: str = "README.md",
         keywords: list[str] = [],
+        classifiers: list[str] = [],
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
@@ -142,7 +143,13 @@ obj PluginsConfig {
 obj StorageConfig {
     has storage_type: str = "local",  # local, s3, gcs, azure
         base_path: str = "./storage",
-        create_dirs: bool = True;
+        create_dirs: bool = True,
+        # S3 specific configuration
+        bucket: str = "",
+        prefix: str = "",
+        region: str = "us-east-1",
+        endpoint_url: (str | None) = None,
+        public_read: bool = False;
 }
 
 """Environment configuration from [environment] section."""
@@ -173,6 +180,13 @@ def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 # Check if currently in a Jac project.
 def is_in_project -> bool;
 
+# Serialize a config dict to TOML text. Hand-rolled; does not preserve comments.
+# This is the single canonical TOML writer -- do not reintroduce ad-hoc copies.
+def serialize_toml(data: dict[str, any], prefix: str = "") -> str;
+
+# Render a single Python value as a TOML value literal.
+def toml_value(value: any) -> str;
+
 """Central configuration class for Jac projects.
 
 This class manages all configuration from jac.toml files, including:
@@ -200,17 +214,20 @@ obj JacConfig {
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},
         git_dependencies: dict[str, dict[str, str]] = {},
-        plugin_dependencies: dict[str, dict[str, Any]] = {},
+        plugin_dependencies: dict[str, dict[str, any]] = {},
         scripts: dict[str, str] = {},
-        plugins: dict[str, dict[str, Any]] = {},
-        environments: dict[str, dict[str, Any]] = {},
+        plugins: dict[str, dict[str, any]] = {},
+        environments: dict[str, dict[str, any]] = {},
         project_root: Path | None = None,
         toml_path: Path | None = None,
         config_files: list[Path] | None = None,
         active_profile: str = "",
-        _raw_data: dict[str, Any] = {},
+        _raw_data: dict[str, any] = {},
         entrypoints: dict[str, dict[str, str]] = {},
-        optional_dependencies: dict[str, dict[str, str]] = {};
+        optional_dependencies: dict[str, dict[str, str]] = {},
+        # True when this config was discovered by climbing into a parent
+        # directory (no jac.toml in the cwd). Used to warn before writes.
+        discovered_from_ancestor: bool = False;
 
     static def discover(
         start_path: Path | None = None, profile: str | None = None
@@ -225,8 +242,8 @@ obj JacConfig {
     def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
-    def get_plugin_deps(dep_type: str) -> dict[str, Any];
-    def get_plugin_config(plugin_name: str) -> dict[str, Any];
+    def get_plugin_deps(dep_type: str) -> dict[str, any];
+    def get_plugin_config(plugin_name: str) -> dict[str, any];
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
     def get_venv_dir -> Path;
@@ -234,6 +251,8 @@ obj JacConfig {
     def get_client_dir -> Path;
     def is_valid -> bool;
     def save -> None;
+    # Serialize `doc` to self.toml_path; the single jac.toml write chokepoint.
+    def persist_doc(doc: dict[str, any]) -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"
     ) -> None;
@@ -252,7 +271,7 @@ def discover_config_files(
 ) -> list[Path];
 
 # Parse TOML data into JacConfig object
-def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
+def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
 # Parse a raw list of author/maintainer entries (dicts or strings) into PersonConfig objects.
 def _parse_persons(raw: list[any]) -> list[PersonConfig];
@@ -261,7 +280,7 @@ def _parse_persons(raw: list[any]) -> list[PersonConfig];
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
 # Recursively apply environment variable interpolation
-def _interpolate_recursive(`obj: Any) -> Any;
+def _interpolate_recursive(`obj: any) -> any;
 
 glob _config: JacConfig | None = None;
 

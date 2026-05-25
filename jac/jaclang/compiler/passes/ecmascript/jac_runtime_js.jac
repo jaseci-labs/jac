@@ -342,6 +342,18 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         return a.splice(idx, 1)[0];
       }
       return i === undefined ? a.pop() : a.pop(i);
+    },
+    contains(c, x) {
+      // Python-equivalent membership for a value of unknown static type.
+      // string -> substring; array (list/tuple/range) -> element;
+      // Set/Map -> key/element; plain object (dict) -> own key.
+      if (typeof c === "string") return c.includes(x);
+      if (Array.isArray(c)) return c.includes(x);
+      if (c instanceof Set || c instanceof Map) return c.has(x);
+      if (c !== null && typeof c === "object") {
+        return Object.prototype.hasOwnProperty.call(c, x);
+      }
+      return false;
     }
   },
 
@@ -988,6 +1000,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         );
       }
       return obj._jac_id;
+    },
+    // unsafe_html(x) returns a sentinel object that the JSX flattener
+    // recognises and renders as raw HTML via dangerouslySetInnerHTML.
+    // Named "unsafe" so the security implication is visible at the use site.
+    unsafe_html(html) {
+      return { __jacUnsafeHtml: String(html == null ? "" : html) };
     },
     hash(obj) { return _jac.builtin.id(obj); },
     repr(obj) { return JSON.stringify(obj); },

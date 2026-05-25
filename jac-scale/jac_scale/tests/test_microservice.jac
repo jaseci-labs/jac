@@ -15,7 +15,6 @@ import shutil;
 import glob;
 import tempfile;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib { sv_client as __jac_sv }
@@ -58,7 +57,7 @@ def setup_env -> str {
     return tmp;
 }
 
-def xd(resp: Any) -> Any {
+def xd(resp: any) -> any {
     j = resp.json();
     if isinstance(j, dict) and j.get("ok") and j.get("data") is not None {
         return j["data"];

@@ -3,6 +3,14 @@ cl import from ...components.Card.tsx { Card }
 sv import from ...main { ping_server, get_server_message, create_todo }
 
 cl {
+    def:pub UndefChildProbe(props: any) -> JsxElement {
+        return
+            <div data-testid="undef-child-probe" style={{"display": "none"}}>
+                {props.maybe}
+                <span data-testid="undef-child-probe-ok">ok</span>
+            </div>;
+    }
+
     def:pub page -> JsxElement {
         has count: int = 0,
             pingResult: str = "",
@@ -46,7 +54,7 @@ cl {
         useEffect(
             lambda -> None {
                 workerRef.current = Reflect.construct(Worker, ["/workers/worker.js"]);
-                workerRef.current.onmessage = lambda event: Any {
+                workerRef.current.onmessage = lambda event: any {
                     print("Message received from worker:", event.data);
                     message = event.data;
                 };
@@ -63,6 +71,7 @@ cl {
                     "fontFamily": "system-ui, -apple-system, sans-serif"
                 }}
             >
+                <UndefChildProbe/>
                 <h1>🍔 Router + Styling + Assets Demo</h1>
                 <p>
                     This home page combines
@@ -138,7 +147,7 @@ cl {
                         times.
                     </p>
                     <button
-                        onClick={lambda e: Any { count = count + 1; }}
+                        onClick={lambda e: any { count = count + 1; }}
                         style={{
                             "padding": "0.6rem 1.4rem",
                             "fontSize": "1rem",
@@ -165,7 +174,7 @@ cl {
                         <code>get_server_message</code>
                     </p>
                     <button
-                        onClick={lambda e: Any { handlePing(); }}
+                        onClick={lambda e: any { handlePing(); }}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "marginRight": "0.75rem",
@@ -179,7 +188,7 @@ cl {
                         Ping Backend
                     </button>
                     <button
-                        onClick={lambda e: Any { handleCreateSampleTodo(); }}
+                        onClick={lambda e: any { handleCreateSampleTodo(); }}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "backgroundColor": "#10b981",

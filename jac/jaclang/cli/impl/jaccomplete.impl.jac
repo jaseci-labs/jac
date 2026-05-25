@@ -2,7 +2,7 @@
 import from typing { cast }
 
 impl static_shellcode(
-    commands: list[dict[str, Any]], executable: str = "jac", shell: str = "bash"
+    commands: list[dict[str, any]], executable: str = "jac", shell: str = "bash"
 ) -> str {
     if shell == "fish" {
         return _static_fish(commands, executable);
@@ -13,7 +13,7 @@ impl static_shellcode(
     return _static_bash(commands, executable);
 }
 
-impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
+impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
     cmd_names = " ".join(c["name"] for c in commands);
     # Build per-command value-option cases
     value_cases: list = [];
@@ -72,7 +72,7 @@ impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
     );
 }
 
-impl _static_zsh(commands: list[dict[str, Any]], exe: str) -> str {
+impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
     cmd_descs: list = [];
     for c in commands {
         h = c["help"].replace("'", "'\\''");
@@ -131,7 +131,7 @@ impl _static_zsh(commands: list[dict[str, Any]], exe: str) -> str {
     return _ZSH_TEMPLATE % (exe, exe, "\n".join(cmd_descs), "\n".join(subcases), exe);
 }
 
-impl _static_fish(commands: list[dict[str, Any]], exe: str) -> str {
+impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
     lines: list = ["# Fish completions for " + exe];
     lines.append("complete -c %s -f" % exe);
     # Subcommand completions

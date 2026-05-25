@@ -410,9 +410,20 @@ impl TypeEvaluator._import_module_from_path(
                             sections = {SEC_BYTECODE: bc};
                         }
                         jir_bytes = writer.write_module(mod, sections=sections);
-                        tmp_path = cache_path.with_suffix('.tmp');
-                        tmp_path.write_bytes(jir_bytes);
-                        tmp_path.rename(cache_path);
+                        # Write to a process-unique temp then atomically rename.
+                        # A shared `.tmp` name lets two concurrent compiles of the
+                        # same module (the agent's parallel tools, or CLI + LSP)
+                        # clobber each other mid-write and rename a corrupt file
+                        # whose header still validates -- read fails later on the
+                        # truncated body.
+                        import os as _os;
+                        tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                        try {
+                            tmp_path.write_bytes(jir_bytes);
+                            tmp_path.rename(cache_path);
+                        } finally {
+                            tmp_path.unlink(missing_ok=True);
+                        }
                     }
                 } except Exception {
                     ;
@@ -463,6 +474,7 @@ impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None)
 impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None) {
     import from jaclang.jac0core.jir { get_module_cache_path, is_module_cache_valid }
     import from jaclang.jac0core.jir_passes { JirReader }
+    import os;
     import traceback;
     try {
         cache_path = get_module_cache_path(resolved_path);
@@ -483,8 +495,20 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
 
         return mod;
     } except Exception {
-        # Log but don't crash — fall back to full compile
-        traceback.print_exc();
+        # A cache miss or a stale/incompatible entry is an expected, recoverable
+        # condition: returning None falls back to a full compile. Printing the
+        # traceback would spam every CLI and `jac ai` turn that recompiles, so it
+        # is gated behind JAC_JIR_DEBUG for diagnosing genuine reader bugs.
+        if os.environ.get("JAC_JIR_DEBUG") {
+            traceback.print_exc();
+        }
+        # Drop the unreadable entry so the next compile rebuilds it fresh,
+        # instead of failing this read on every recompile of an importer.
+        try {
+            get_module_cache_path(resolved_path).unlink(missing_ok=True);
+        } except Exception {
+            ;
+        }
         return None;
     }
 }
