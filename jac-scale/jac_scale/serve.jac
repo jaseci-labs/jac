@@ -4,8 +4,7 @@ import mimetypes;
 import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from pydantic { BaseModel, Field }
-import from typing { Any }
+import from pydantic { BaseModel, Field, ValidationError }
 import jwt;
 import json;
 import from os { getenv }
@@ -28,6 +27,7 @@ import from jac_scale.utils { generate_random_password, _extract_path_param_name
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.abstractions.metrics { MetricsCollector }
+import from jac_scale.events.broker { EventStreamBroker }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -43,13 +43,21 @@ import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
 import from urllib.parse { quote }
-import from jac_scale.utils { extract_bearer_token }
+import from jac_scale.utils { authenticate_or_fail }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
-    UpdatePasswordRequest
+    UpdatePasswordRequest,
+    AddIdentityRequest,
+    VerifyIdentityRequest,
+    SendVerificationRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    UpdateProfileRequest,
+    UpdateProfileResponse,
+    MeResponse
 }
-import from pydantic { ValidationError }
+import from jac_scale.abstractions.emailer { Emailer }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -79,6 +87,16 @@ obj JacAPIServerAuth {
     def register_refresh_token_endpoint -> None;
     # Update password
     def register_update_password_endpoint -> None;
+    # Identity management
+    def register_add_identity_endpoint -> None;
+    def register_send_verification_endpoint -> None;
+    def register_verify_identity_endpoint -> None;
+    # Password reset
+    def register_forgot_password_endpoint -> None;
+    def register_reset_password_endpoint -> None;
+    # Current user
+    def register_me_endpoint -> None;
+    def register_update_me_endpoint -> None;
     # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
@@ -94,6 +112,12 @@ obj JacAPIServerAuth {
     ) -> TransportResponse;
 
     def register_api_key_endpoints -> None;
+}
+
+"""Emailer mixin: lazy singleton initialised at startup from jac.toml config."""
+obj JacAPIServerEmailer {
+    def setup_emailer -> Emailer | None;
+    def get_emailer -> Emailer | None;
 }
 
 """Core server lifecycle: start/postinit, health, HMR, scheduler, metrics."""
@@ -112,14 +136,15 @@ obj JacAPIServerCore {
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
-    def enable_hmr(hot_reloader: Any) -> None;
+    def enable_hmr(hot_reloader: any) -> None;
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
+    def _setup_events -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
-        original_handler: Callable[..., Any]
-    ) -> Callable[..., Any];
+        original_handler: Callable[..., any]
+    ) -> Callable[..., any];
 }
 
 """Walker, function, webhook, WebSocket endpoint registration and callbacks."""
@@ -186,11 +211,13 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _hot_reloader: Any | None = None,
+        _hot_reloader: any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
-        _ws_manager: WebSocketConnectionManager | None = None;
+        _ws_manager: WebSocketConnectionManager | None = None,
+        _broker: EventStreamBroker | None = None,
+        _emailer: Emailer | None = None;
 }

@@ -6,13 +6,7 @@ for native/Python interop.
 import ctypes;
 import logging;
 import from collections.abc { Callable }
-import from typing { TYPE_CHECKING }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.codeinfo { InteropManifest }
-    }
-}
+import type from jaclang.jac0core.codeinfo { InteropManifest }
 
 glob logger = logging.getLogger(__name__),
      JAC_TO_CTYPES: dict[(str, type)] = {

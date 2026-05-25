@@ -19,15 +19,15 @@ import from jaclang.runtimelib.builtin { printgraph }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
-     _template_state = {"initialized": False};
+     _template_state = {"initialized": False},
+     _CONFIG_TOML = (
+         '[project]\nname = "test-project"\nversion = "1.0.0"\n'
+         'description = "A test project"\n\n'
+         '[run]\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\nverbose = true\n'
+     );
 
 def fixture_path(filename: str) -> str {
     return os.path.join(FIXTURES, filename);
-}
-
-def examples_path(path: str) -> str {
-    return os.path.join(EXAMPLES, path);
 }
 
 def _assert_error_pretty_found(needle: str, haystack: str) {
@@ -142,7 +142,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined = captured_out.getvalue() + captured_err.getvalue();
-    assert "'new' is not supported in Jac" in combined , (
+    assert "`new(target, ...args)`" in combined , (
         "Detailed errors should appear by default"
     );
     assert result == 1 , "Should return exit code 1 on errors";
@@ -159,7 +159,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined2 = captured_out2.getvalue() + captured_err2.getvalue();
-    assert "'new' is not supported in Jac" in combined2 , (
+    assert "`new(target, ...args)`" in combined2 , (
         "Detailed errors should appear with diagnostics=all"
     );
     assert result2 == 1 , "Should return exit code 1 on errors";
@@ -176,7 +176,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined3 = captured_out3.getvalue() + captured_err3.getvalue();
-    assert "'new' is not supported in Jac" not in combined3 , (
+    assert "`new(target, ...args)`" not in combined3 , (
         "Errors should not appear with diagnostics=none"
     );
     assert result3 == 0 , "Should return exit code 0 with diagnostics=none";
@@ -284,7 +284,7 @@ test "jac cli error output has no raw ansi codes" {
     }
     output = captured_output.getvalue();
     # Ensure the error was actually reported
-    assert "'new' is not supported in Jac" in output;
+    assert "`new(target, ...args)`" in output;
     # Raw ANSI escape codes (\x1b[) must not appear in error output.
     # The console layer handles styling; pretty_print should not inject raw codes.
     assert "\x1b[" not in output , f"Raw ANSI escape codes found in error output:\n{repr(
@@ -470,9 +470,9 @@ test "run test" {
 }
 
 test "run test with directory filter" {
-    examples_dir = examples_path("");
+    fixtures_dir = fixture_path("");
     process = subprocess.Popen(
-        ["jac", "test", "-d", examples_dir, "-f", "circle*", "-x"],
+        ["jac", "test", "-d", fixtures_dir, "-f", "circle*", "-x"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True
@@ -533,7 +533,11 @@ test "graph" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        tools.dot(f"{examples_path('micro/simple_walk.jac')}");
+        tools.dot(
+            os.path.join(
+                JAC_ROOT, "tests", "compiler", "fixtures", "micro", "simple_walk.jac"
+            )
+        );
     } finally {
         sys.stdout = old_stdout;
     }
@@ -911,7 +915,7 @@ test "format tracks changed files" {
 test "format -s preserves bracketed Jac syntax through Rich console" {
     # Regression: `jac format -s` prints formatted source via `console.print`.
     # Under the jac-super (Rich-backed) console — which is what real users see
-    # when they run the `jac` CLI — bracketed Jac syntax like `[root()-->]` or
+    # when they run the `jac` CLI — bracketed Jac syntax like `[root-->]` or
     # `todos + [t]` looks like Rich markup and gets silently stripped unless
     # the call passes `markup=False, highlight=False`. This test must invoke
     # the `jac` binary via subprocess so that the jac-super plugin's console
@@ -926,7 +930,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
             "    t: Todo = Todo(title=\"x\");\n"
             "    todos: list[Todo] = [];\n"
             "    todos = todos + [t];\n"
-            "    ancestors = [root()-->];\n"
+            "    ancestors = [root-->];\n"
             "}\n"
         );
         with open(src_path, "w") as f {
@@ -944,7 +948,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
         # markup interpretation ever leaks back in, these get stripped
         # (producing `todos = todos + ;` and `ancestors = ;`) and this test
         # fails loudly.
-        assert "[root()-->]" in combined , (
+        assert "[root-->]" in combined , (
             f"edge-walk literal was stripped by Rich markup parser:\n{combined}"
         );
         assert "+ [t]" in combined , (
@@ -1132,6 +1136,80 @@ test "jac create default name jactastic" {
         assert project.create() == 0;
         assert (cli_dir / "jactastic2").is_dir();
     } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "install editable resolves config from target package when outside project dir" {
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        pkg_dir = (Path(_tmpdir) / "my-lib").resolve();
+        pkg_dir.mkdir();
+        (pkg_dir / "jac.toml").write_text(
+            '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
+        );
+        # cwd has no jac.toml — install must not fall back to cwd
+        os.chdir(_tmpdir);
+
+        captured_src_dir = [];
+        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+            captured_src_dir.append(src_dir);
+        }
+
+        with patch(
+            "jaclang.publish.builder.WheelBuilder.install_editable",
+            fake_install_editable
+        ) {
+            result = project.install(editable=str(pkg_dir));
+        }
+
+        assert result == 0 , f"Expected success, got exit code {result}";
+        assert len(captured_src_dir) == 1 , "install_editable should be called once";
+        assert captured_src_dir[0] == pkg_dir , (
+            f"Expected src_dir={pkg_dir}, got {captured_src_dir[0]}"
+        );
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "install editable resolves config from cwd when given dot path" {
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        resolved_tmpdir = Path(_tmpdir).resolve();
+        (resolved_tmpdir / "jac.toml").write_text(
+            '[project]\nname = "dot-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+
+        captured_src_dir = [];
+        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+            captured_src_dir.append(src_dir);
+        }
+
+        with patch(
+            "jaclang.publish.builder.WheelBuilder.install_editable",
+            fake_install_editable
+        ) {
+            result = project.install(editable=".");
+        }
+
+        assert result == 0 , f"Expected success, got exit code {result}";
+        assert len(captured_src_dir) == 1 , "install_editable should be called once";
+        assert captured_src_dir[0] == resolved_tmpdir , (
+            f"Expected src_dir={resolved_tmpdir}, got {captured_src_dir[0]}"
+        );
+    } finally {
+        _reset_config();
         os.chdir(original_cwd);
         shutil.rmtree(_tmpdir, ignore_errors=True);
     }
@@ -1676,7 +1754,9 @@ test "syntax error pretty print" {
     program = JacProgram();
     program.compile(fixture_path("test_syntax_err.jac"));
     assert len(program.errors_had) == 3 , (
-        f"Expected 3 errors with improved error reporting, got {len(program.errors_had)}"
+        f"Expected 3 errors with improved error reporting, got {len(
+            program.errors_had
+        )}"
     );
     _assert_error_pretty_found(
         """
@@ -2174,5 +2254,74 @@ test "jir cache preserves code context for cl jac files" {
                 f"JIR cache lost code_context."
             );
         }
+    }
+}
+
+# ===== install --extras CLI tests =====
+glob _EXTRAS_JAC_TOML = (
+         '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n'
+         '[dependencies]\n\n'
+         '[optional-dependencies.data]\npymongo = ">=4.0,<5.0"\nredis = ">=7.0,<8.0"\n\n'
+         '[optional-dependencies.monitoring]\nprometheus-client = ">=0.21.0,<1.0.0"\n\n'
+         '[optional-dependencies.all]\n"mypkg[data,monitoring]" = "*"\n'
+     );
+
+def _make_extras_cli_project(tmpdir: str) -> str {
+    project_path = os.path.join(tmpdir, "mypkg");
+    os.makedirs(project_path, exist_ok=True);
+    with open(os.path.join(project_path, "jac.toml"), "w") as f {
+        f.write(_EXTRAS_JAC_TOML);
+    }
+    return project_path;
+}
+
+test "jac install --extras unknown group exits non-zero with helpful message" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "doesnotexist"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert result.returncode != 0 , "Expected non-zero exit for unknown extras group";
+        assert "doesnotexist" in combined , f"Error should name the bad group; got: {combined}";
+        assert "Available:" in combined , f"Error should list available groups; got: {combined}";
+    }
+}
+
+test "jac install --extras valid group prints Extras line" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "data", "monitoring"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert "Extras: data, monitoring" in combined , (
+            f"Expected 'Extras: data, monitoring' in output; got:\n{combined}"
+        );
+    }
+}
+
+test "jac install --extras all expands groups in output" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "all"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert "Extras: all" in combined , (
+            f"Expected 'Extras: all' in output; got:\n{combined}"
+        );
     }
 }

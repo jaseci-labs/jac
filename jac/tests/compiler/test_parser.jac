@@ -16,7 +16,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
@@ -134,24 +134,23 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
-    # Parser emits 'Missing ;' (treats 'new' as identifier, so 'new car(...)' is
-    # two expressions). ASTValidationPass then catches 'new' as a banned keyword.
+    # `new` is an ambient builtin in Jac (callable as `new(Cls, ...args)`),
+    # so JS-style `new Cls(args)` usage no longer parses. The parser detects
+    # the offending shape ("bare `new` followed by another atom in
+    # statement-terminator position") and emits the migration-friendly
+    # `E0012` instead of the cascade of `Missing ';'` errors users used to
+    # see. Each of the two offending lines in the fixture should produce
+    # one `E0012`.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 4;
-    expected_substrings = [
-        "Missing ';'",
-        "Missing ';'",
-        "'new' is not supported in Jac",
-        "'new' is not supported in Jac",
-
-    ];
-    for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
+    assert len(prog.errors_had) == 2;
+    for alrt in prog.errors_had {
+        assert alrt.code is not None and alrt.code.code == "E0012";
         pretty = alrt.pretty_print();
-        assert expected in pretty;
+        assert "`new(target, ...args)`" in pretty;
     }
 }
 
@@ -196,6 +195,36 @@ test "multiple syntax errors" {
         pretty = alrt.pretty_print();
         assert expected in pretty;
     }
+}
+
+test "connect_disconnect_missing_rhs" {
+    # Issue #5885 gap 10: connect/disconnect operators that are missing the
+    # right operand previously surfaced a misleading 'Unexpected token' or
+    # 'Missing ;' chain. The fixture has 5 such positions; each should emit
+    # exactly one E0026, and all of them must point at the operator span.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURES, "connect_disconnect_missing_rhs.jac"));
+    sys.stdout = sys.__stdout__;
+    e0026 = [
+        e
+        for e in prog.errors_had
+        if e.code and e.code.code == "E0026"
+    ];
+    assert len(e0026) == 5 , f"Expected 5 E0026 (missing RHS), got {len(e0026)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e0026
+    );
+    # Sanity: the misleading "Unexpected token in expression" diagnostic
+    # must no longer appear for these inputs.
+    bad = [
+        e
+        for e in prog.errors_had
+        if e.code and e.code.code == "E0004"
+    ];
+    assert len(bad) == 0 , "E0004 leaked through after E0026 fix:\n" + "\n---\n".join(
+        e.pretty_print() for e in bad
+    );
 }
 
 test "jsx comprehensive fixture" {
@@ -463,8 +492,63 @@ to cl:
     assert len(mod.body[1].body) == 0;
 }
 
-test "cl/sv/na braced-block deprecation warning" {
-    # Braced block form emits W0064 for each block
+test "docstring before context prefix" {
+    # Regression: a """docstring""" placed before a `cl`/`sv`/`na` prefix used
+    # to fail with E0005 because the docstring-prefix dispatcher in
+    # parse_element_stmt only knew about the bare declaration keywords
+    # (def/can/obj/node/...) — not the context prefixes. With the fix in
+    # parse_element_stmt + parse_docstring_target, the docstring attaches to
+    # the inner declaration and the prefix tags its code_context.
+    source = """
+def first -> int { return 0; }
+
+\"\"\"Task row docstring.\"\"\"
+cl def cl_fn -> int { return 1; }
+
+\"\"\"Server helper docstring.\"\"\"
+sv def sv_fn -> int { return 2; }
+
+\"\"\"Native fn docstring.\"\"\"
+na def na_fn -> int { return 3; }
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    # body[0] is the bare `def first` (no docstring, server context by default).
+    # body[1..3] are the three docstring-prefixed prefixed defs.
+    assert len(mod.body) == 4;
+    expected = [
+        (None, CodeContext.SERVER, "first"),
+        ('"""Task row docstring."""', CodeContext.CLIENT, "cl_fn"),
+        ('"""Server helper docstring."""', CodeContext.SERVER, "sv_fn"),
+        ('"""Native fn docstring."""', CodeContext.NATIVE, "na_fn"),
+
+    ];
+    for (stmt, (exp_doc, exp_ctx, exp_name)) in zip(mod.body, expected) {
+        assert isinstance(stmt, uni.Ability) , (
+            f"expected Ability, got {type(stmt).__name__} for {exp_name}"
+        );
+        actual_doc = stmt.doc.value if stmt.doc else None;
+        assert actual_doc == exp_doc , (
+            f"{exp_name}: doc mismatch (got {actual_doc!r}, want {exp_doc!r})"
+        );
+        assert stmt.code_context == exp_ctx , (
+            f"{exp_name}: code_context mismatch "
+            f"(got {stmt.code_context}, want {exp_ctx})"
+        );
+        # And the docstring must appear in the kid chain — confirms it was
+        # actually wired in (not just stashed on .doc).
+        if exp_doc is not None {
+            kid_values = [k?.value for k in stmt.kid];
+            assert exp_doc in kid_values , (
+                f"{exp_name}: docstring not found in kid chain: {kid_values}"
+            );
+        }
+    }
+}
+
+test "cl/sv/na block and section-header forms parse without warning" {
+    # Braced block form parses cleanly -- it is no longer deprecated
     source = """
 cl { def a() -> int { return 1; } }
 sv { def b() -> int { return 2; } }
@@ -480,9 +564,9 @@ na { def c() -> int { return 3; } }
             w_codes.append(c.code);
         }
     }
-    assert w_codes.count("W0064") == 3;
+    assert "W0064" not in w_codes;
 
-    # Section headers and single-statement prefix forms do not warn
+    # Section headers and single-statement prefix forms also parse cleanly
     source = """
 to cl:
 def a() -> int { return 1; }
@@ -754,6 +838,134 @@ test "bracket vs paren filter produce same AST" {
 test "bracket filter on list" {
     (mod, err) = rd_parse('with entry { print(my_list[?:MyObj, a<4]); }', "");
     assert not err , "Failed to parse list bracket filter";
+}
+
+test "typed edge ref after start expr - no filter" {
+    # BUG: `[root()->:Type:->]` failed to parse because parse_list_or_compr
+    # only checked for ARROW_R/ARROW_L/ARROW_BI/ARROW_R_P1/ARROW_L_P1 after
+    # the first expression, missing the (RETURN_HINT, COLON, ...) form the
+    # lexer actually produces for `->:`. The bare-start form `[->:Type:->]`
+    # already parsed because that path went through parse_edge_ref_chain
+    # directly. (Reproduces the docs example in the Part 2 'Advanced:
+    # Custom Edges' section of the AI day planner tutorial.)
+    src = (
+        'edge Scheduled { has time: str; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(time="9:00am") :+> Task(title="Run");'
+        '    x = [root()->:Scheduled:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:->] (typed edge ref after "
+        "explicit start expression)"
+    );
+}
+
+test "typed edge ref after start expr - with filter condition" {
+    # Same root cause as the test above, plus continue_edge_ref_chain
+    # was using a stripped-down inline branch that did not accept the
+    # `:cond` filter clause that parse_edge_op_ref already supports.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(priority=3) :+> Task(title="A");'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:priority>=3:->] (typed edge "
+        "ref with a filter condition after an explicit start expression)"
+    );
+}
+
+test "typed edge ref bare start with filter still parses" {
+    # Sanity check: the bare-start form (no explicit start expression)
+    # was already parsing before the fix and must keep working — the
+    # parser routes it through parse_edge_ref_chain which uses the rich
+    # parse_edge_op_ref helper.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'walker W { can go with entry { '
+        '    visit [->:Scheduled:priority>=3:->]; '
+        '} }'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , ("Failed to parse bare-start [->:Scheduled:priority>=3:->]");
+}
+
+test "typed edge ref produces FilterCompr with compares" {
+    # Structural check: the AST produced for the fixed form must include
+    # a FilterCompr that actually carries the filter compare conditions
+    # (otherwise downstream traversal cannot evaluate the filter).
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err;
+
+    def find_filter_compr_with_compares(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) and nd.compares {
+            return nd;
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_filter_compr_with_compares(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    fc = find_filter_compr_with_compares(mod);
+    assert fc is not None , (
+        "Typed edge ref `[root()->:Scheduled:priority>=3:->]` must produce "
+        "a FilterCompr carrying the `priority>=3` condition; an EdgeOpRef "
+        "with an empty FilterCompr means the filter clause was silently "
+        "dropped."
+    );
+}
+
+test "decorated class in code block parses as archetype" {
+    (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
+    assert not err , "Parser reported errors for decorated declarations in code blocks";
+
+    def collect(nd: uni.UniNode) -> list[uni.Archetype] {
+        results: list[uni.Archetype] = [];
+        if isinstance(nd, uni.Archetype) {
+            results.append(nd);
+        }
+        for k in (nd.kid) {
+            results.extend(collect(k));
+        }
+        return results;
+    }
+
+    archetype_names = [a.name.sym_name for a in collect(mod)];
+
+    for name in [
+        "A_TopClass",
+        "A_InEntryClass",
+        "A_InEntryObj",
+        "A_StackedDec",
+        "A_InDefBodyClass",
+        "A_InDefBodyObj",
+        "A_Container",
+        "A_InMethodClass"
+    ] {
+        assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
 }
 
 with entry {

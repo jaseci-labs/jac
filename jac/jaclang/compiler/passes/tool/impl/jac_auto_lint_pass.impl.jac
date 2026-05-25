@@ -52,6 +52,7 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     self._check_unnecessary_none_return(
         ability_node, ability_node.body, ability_node.signature, name
     );
+    self._check_stale_has_read(ability_node);
 }
 
 """Remove @staticmethod decorator tokens and add static keyword to ability's kid list.
@@ -626,7 +627,7 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
 """Remove backtick escaping from SpecialVarRef's underlying name.
 
 SpecialVarRef wraps special keywords like init, postinit, self, super,
-here, visitor. The underlying Name should never have backtick escaping
+root, here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
@@ -799,25 +800,212 @@ impl JacAutoLintPass._bool_expr_has_matching_access(
     return False;
 }
 
-"""Process FuncCall to convert hasattr(obj, "attr") to null-safe access.
+"""Convert getattr(obj, "attr", None) to null-safe access.
 
-This replaces hasattr calls in the parent node's children with
-the equivalent null-safe access expression.
+Matches the 3-arg form with explicit `None` default, which is exactly the
+runtime behavior of `obj?.attr` (missing attribute or None base both yield
+None). The 2-arg form `getattr(obj, "attr")` raises AttributeError on miss,
+so it is not rewritten.
 
-Only converts in semantically safe patterns:
-- IfElseExpr: obj.attr if hasattr(obj, "attr") else default
-- BoolExpr: hasattr(obj, "attr") and obj.attr (guard-then-use with matching access)
+Requirements:
+- First arg: any expression (the object)
+- Second arg: a string literal that is a valid Python identifier and not a keyword
+- Third arg: the literal `None`
 
-Does NOT convert standalone boolean checks (IfStmt, WhileStmt, UnaryExpr, BinaryExpr,
-or BoolExpr without matching attr access) because hasattr() returns True/False
-while obj?.attr returns the attribute value which may be falsy ([], 0, "", None).
+Unlike hasattr, getattr(obj, "attr", None) returns the attribute value (not
+a bool), so `obj?.attr` is a drop-in replacement in every expression context.
+No parent-type guard is needed.
+"""
+impl JacAutoLintPass._convert_getattr_to_null_ok(
+    nd: uni.FuncCall
+) -> (uni.AtomTrailer | None) {
+    if not isinstance(nd.target, uni.Name) {
+        return None;
+    }
+    if nd.target.value != "getattr" {
+        return None;
+    }
+    if nd.params is None or len(nd.params) != 3 {
+        return None;
+    }
+    obj_expr = nd.params[0];
+    attr_expr = nd.params[1];
+    default_expr = nd.params[2];
+    if isinstance(obj_expr, uni.KWPair)
+    or isinstance(attr_expr, uni.KWPair)
+    or isinstance(default_expr, uni.KWPair) {
+        return None;
+    }
+    if not isinstance(default_expr, uni.Null) {
+        return None;
+    }
+    attr_value: str | None = None;
+    string_node: uni.String | None = None;
+    if isinstance(attr_expr, uni.String) {
+        attr_value = attr_expr.value;
+        string_node = attr_expr;
+    } elif isinstance(attr_expr, uni.MultiString) {
+        if len(attr_expr.strings) == 1
+        and isinstance(attr_expr.strings[0], uni.String) {
+            attr_value = attr_expr.strings[0].value;
+            string_node = attr_expr.strings[0];
+        }
+    }
+    if attr_value is None or string_node is None {
+        return None;
+    }
+    if (attr_value.startswith('"') and attr_value.endswith('"'))
+    or (attr_value.startswith("'") and attr_value.endswith("'")) {
+        attr_name = attr_value[1:-1];
+    } else {
+        return None;
+    }
+    if not attr_name.isidentifier() or keyword.iskeyword(attr_name) {
+        return None;
+    }
+    attr_name_node = uni.Name(
+        orig_src=string_node.loc.orig_src,
+        name=Tok.NAME.name,
+        value=attr_name,
+        line=string_node.loc.first_line,
+        end_line=string_node.loc.last_line,
+        col_start=string_node.loc.col_start,
+        col_end=string_node.loc.col_end,
+        pos_start=string_node.loc.pos_start,
+        pos_end=string_node.loc.pos_end,
+        is_kwesc=False
+    );
+    null_ok_access = uni.AtomTrailer(
+        target=obj_expr,
+        right=attr_name_node,
+        is_attr=True,
+        is_null_ok=True,
+        kid=[obj_expr, attr_name_node]
+    );
+    new_kid: list[uni.UniNode] = [obj_expr];
+    new_kid.append(null_ok_access.gen_token(Tok.NULL_OK));
+    new_kid.append(null_ok_access.gen_token(Tok.DOT));
+    new_kid.append(attr_name_node);
+    null_ok_access.set_kids(nodes=new_kid);
+    return null_ok_access;
+}
+
+"""Replace child `old` with `new` inside `parent`.
+
+Updates both `parent.kid` (authoritative for pretty-printing and DocIR) and
+the typed fields for common parent node types so later passes that read the
+typed fields see the rewrite. Parent types not covered here fall through to
+just the kid update, which is sufficient for formatter output.
+"""
+impl JacAutoLintPass._replace_child_in_parent(
+    parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
+) -> None {
+    new_kid: list[uni.UniNode] = [];
+    for k in parent.kid {
+        new_kid.append(new if k is old else k);
+    }
+    parent.kid = new_kid;
+    if isinstance(parent, uni.CfgExpr) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.Assignment) {
+        if parent.value is old {
+            parent.value = new;
+        }
+        new_targets: list[uni.Expr] = [];
+        for t in parent.target {
+            new_targets.append(new if t is old else t);
+        }
+        parent.target = new_targets;
+    } elif isinstance(parent, uni.ExprStmt) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.ReturnStmt) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.BinaryExpr) {
+        if parent.left is old {
+            parent.left = new;
+        }
+        if parent.right is old {
+            parent.right = new;
+        }
+    } elif isinstance(parent, uni.UnaryExpr) {
+        if parent.operand is old {
+            parent.operand = new;
+        }
+    } elif isinstance(parent, uni.CompareExpr) {
+        if parent.left is old {
+            parent.left = new;
+        }
+        new_rights: list[uni.Expr] = [];
+        for r in parent.rights {
+            new_rights.append(new if r is old else r);
+        }
+        parent.rights = new_rights;
+    } elif isinstance(parent, uni.AtomTrailer) {
+        if parent.target is old {
+            parent.target = new;
+        }
+        if parent.right is old {
+            parent.right = new;
+        }
+    } elif isinstance(parent, uni.FuncCall) {
+        if parent.target is old {
+            parent.target = new;
+        }
+        if parent.params is not None {
+            new_params: list[(uni.Expr | uni.KWPair)] = [];
+            for p in parent.params {
+                new_params.append(new if p is old else p);
+            }
+            parent.params = new_params;
+        }
+    } elif isinstance(parent, uni.KWPair) {
+        if parent.value is old {
+            parent.value = new;
+        }
+    }
+}
+
+"""Process FuncCall to convert hasattr/getattr to null-safe access.
+
+Handles two rewrites at the FuncCall exit:
+- hasattr(obj, "attr")         -> obj?.attr  (W3007; restricted to safe patterns)
+- getattr(obj, "attr", None)   -> obj?.attr  (W3039; safe in any expr context)
+
+hasattr is only safe to rewrite in IfElseExpr / BoolExpr guard patterns
+because hasattr() returns bool while obj?.attr returns the value (may be
+falsy). getattr's 3-arg form already returns the value, so it rewrites
+unconditionally.
 """
 impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     if not self.lint_enabled {
         return;
     }
     self._check_no_print(nd);
-    if self.report_only or self._is_suppressed(W3007) {
+    if self.report_only {
+        return;
+    }
+    # W3042: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
+    if self._convert_map_to_comprehension(nd) {
+        return;
+    }
+    if not self._is_suppressed(W3039) {
+        getattr_replacement = self._convert_getattr_to_null_ok(nd);
+        if getattr_replacement is not None {
+            parent = nd.parent;
+            if parent is not None and self.emit(W3039, node_override=nd) {
+                getattr_replacement.parent = parent;
+                self._replace_child_in_parent(parent, nd, getattr_replacement);
+                return;
+            }
+        }
+    }
+    if self._is_suppressed(W3007) {
         return;
     }
     replacement = self._convert_hasattr_to_null_ok(nd);
@@ -1796,6 +1984,177 @@ impl JacAutoLintPass._check_is_with_literal(nd: uni.CompareExpr) -> None {
     }
 }
 
+"""W3040: Warn when a filter comparison has identical LHS and RHS names.
+
+In a filter expression like [?:Type, field == field], the LHS is resolved
+as a node field and the RHS — intended to reference an enclosing-scope
+variable — silently rebinds to the same node field, making the comparison
+a tautology (always true).
+"""
+impl JacAutoLintPass._check_filter_compare_tautology(nd: uni.CompareExpr) -> None {
+    import from jaclang.jac0core.diagnostics { W3040 }
+    if self._is_suppressed(W3040) {
+        return;
+    }
+    # Only applies inside a FilterCompr context
+    if not nd.find_parent_of_type(uni.FilterCompr) {
+        return;
+    }
+    left = nd.left;
+    for (i, right) in enumerate(nd.rights) {
+        if (
+            isinstance(left, uni.Name)
+            and isinstance(right, uni.Name)
+            and left.value == right.value
+        ) {
+            self.emit(W3040, node_override=nd, name=left.value);
+        }
+        # For chained comparisons, next left is the current right
+        left = right;
+    }
+}
+
+"""W3041: Warn when a reactive `has` field is read after assignment in the same `can with entry` body.
+
+The body lowers (in client codespace) to a useEffect callback whose closure
+captures `has` field values at render time. After an assignment to a reactive
+field within the body, the field's setter is queued for the next render — but
+reads of that field within the same effect run still resolve to the captured
+pre-update value. Branching on the just-assigned value silently does the wrong
+thing. This is the textbook React stale-closure bug; it has historically been
+the most expensive client-code failure mode for AI-generated Jac because it
+compiles cleanly and only manifests at runtime.
+
+Only entry abilities in client context are checked: `can with exit` runs at
+unmount with no re-render scheduling, and server-side `has` is a real mutable
+property where reads after writes return the new value.
+"""
+impl JacAutoLintPass._check_stale_has_read(ability_node: uni.Ability) -> None {
+    if self._is_suppressed(W3041) {
+        return;
+    }
+    sig = ability_node.signature;
+    if not isinstance(sig, uni.EventSignature) {
+        return;
+    }
+    if not sig.event or sig.event.name != Tok.KW_ENTRY {
+        return;
+    }
+    if not ability_node.in_client_context() {
+        return;
+    }
+    body = ability_node.body;
+    if body is None or not isinstance(body, list) {
+        return;
+    }
+    reactive = self._collect_reactive_has_names(ability_node);
+    if not reactive {
+        return;
+    }
+    writes: list[tuple[int, int, str]] = [];
+    reads: list[tuple[int, int, str, uni.Name]] = [];
+    for stmt in body {
+        self._walk_for_has_uses(stmt, reactive, writes, reads);
+    }
+    if not writes or not reads {
+        return;
+    }
+    flagged: set[tuple[int, int, str]] = set();
+    for read_entry in reads {
+        rline = read_entry[0];
+        rcol = read_entry[1];
+        rname = read_entry[2];
+        rnode = read_entry[3];
+        key = (rline, rcol, rname);
+        if key in flagged {
+            continue;
+        }
+        for write_entry in writes {
+            wline = write_entry[0];
+            wcol = write_entry[1];
+            wname = write_entry[2];
+            if wname == rname and ((wline, wcol) < (rline, rcol)) {
+                self.emit(W3041, node_override=rnode, name=rname);
+                flagged.add(key);
+                break;
+            }
+        }
+    }
+}
+
+"""Collect the set of `has` field names that are reactive in the enclosing client scope.
+
+Reactive fields are `has` declarations on the nearest enclosing client-context
+container — either a `def:pub` function (cl component) or an Archetype.
+"""
+impl JacAutoLintPass._collect_reactive_has_names(
+    ability_node: uni.Ability
+) -> set[str] {
+    names: set[str] = set();
+    container: (uni.UniNode | None) = ability_node.parent;
+    while container is not None {
+        if isinstance(container, (uni.Archetype, uni.Ability)) {
+            body = container.body;
+            if body is not None and isinstance(body, list) {
+                for stmt in body {
+                    if isinstance(stmt, uni.ArchHas) and stmt.in_client_context() {
+                        for hv in stmt.vars {
+                            names.add(hv.name.sym_name);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        container = container.parent;
+    }
+    return names;
+}
+
+"""Recursively collect (write, read) sites for reactive `has` fields.
+
+Skips nested deferred-execution scopes (lambdas, nested abilities, archetypes):
+their bodies execute in their own contexts and aren't subject to the same
+closure capture as the enclosing effect run.
+"""
+impl JacAutoLintPass._walk_for_has_uses(
+    nd: uni.UniNode,
+    reactive: set[str],
+    writes: list[tuple[int, int, str]],
+    reads: list[tuple[int, int, str, uni.Name]]
+) -> None {
+    import ast as ast3;
+    if isinstance(nd, (uni.LambdaExpr, uni.Ability, uni.Archetype)) {
+        return;
+    }
+    if isinstance(nd, uni.Assignment) {
+        if (
+            len(nd.target) == 1
+            and isinstance(nd.target[0], uni.Name)
+            and nd.target[0].sym_name in reactive
+        ) {
+            tgt = nd.target[0];
+            writes.append((tgt.loc.first_line, tgt.loc.col_start, tgt.sym_name));
+        }
+        if nd.value {
+            self._walk_for_has_uses(nd.value, reactive, writes, reads);
+        }
+        return;
+    }
+    if isinstance(nd, uni.Name) {
+        if nd.value in reactive and nd._py_ctx_func == ast3.Load {
+            parent = nd.parent;
+            if not (isinstance(parent, uni.AtomTrailer) and parent.is_attr) {
+                reads.append((nd.loc.first_line, nd.loc.col_start, nd.value, nd));
+            }
+        }
+        return;
+    }
+    for kid in nd.kid {
+        self._walk_for_has_uses(kid, reactive, writes, reads);
+    }
+}
+
 """W3036: Warn on mutable default argument (list, dict, set)."""
 impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {
     if self._is_suppressed(W3036) {
@@ -1841,6 +2200,7 @@ impl JacAutoLintPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         return;
     }
     self._check_is_with_literal(nd);
+    self._check_filter_compare_tautology(nd);
 }
 
 """Visitor: check function signatures for too many params."""
@@ -2356,4 +2716,199 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
 """W3038: drop useState from imports after all useState hooks have been converted."""
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
     self._strip_usestate_imports(nd);
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# map-lambda-to-comprehension conversion (W3042)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""Build a synthetic Name node anchored to ref_node's source location."""
+impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name {
+    return uni.Name(
+        orig_src=ref_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=value,
+        line=ref_node.loc.first_line,
+        end_line=ref_node.loc.last_line,
+        col_start=ref_node.loc.col_start,
+        col_end=ref_node.loc.col_start + len(value),
+        pos_start=ref_node.loc.pos_start,
+        pos_end=ref_node.loc.pos_end,
+        is_kwesc=False
+    );
+}
+
+"""Match <expr>.map(lambda item -> JSX) and return (item, jsx, collection), or None."""
+impl JacAutoLintPass._detect_map_lambda_jsx(
+    nd: uni.FuncCall
+) -> (tuple[str, uni.JsxElement, uni.Expr] | None) {
+    if not isinstance(nd.target, uni.AtomTrailer) {
+        return None;
+    }
+    trailer = nd.target;
+    if not trailer.is_attr
+    or not isinstance(trailer.right, uni.Name)
+    or trailer.right.value != "map"
+    or nd.params is None
+    or len(nd.params) != 1
+    or not isinstance(nd.params[0], uni.LambdaExpr) {
+        return None;
+    }
+    lam: uni.LambdaExpr = nd.params[0];
+    if not isinstance(lam.body, list) {
+        return None;
+    }
+    real_stmts = [
+        s
+        for s in lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(real_stmts) != 1 or not isinstance(real_stmts[0], uni.ReturnStmt) {
+        return None;
+    }
+    # Unwrap `return (<jsx>)` — parentheses produce AtomUnit(value=JsxElement)
+    jsx: uni.Expr = real_stmts[0].expr;
+    if isinstance(jsx, uni.AtomUnit) and isinstance(jsx.value, uni.JsxElement) {
+        jsx = jsx.value;
+    }
+    if jsx is None or not isinstance(jsx, uni.JsxElement) {
+        return None;
+    }
+
+    sig = lam.signature;
+    if sig is None {
+        return None;
+    }
+    all_params: list[uni.ParamVar] = list(sig.posonly_params or []) + list(
+        sig.params or []
+    );
+    if len(all_params) != 1 {
+        return None;
+    }
+
+    item_name: str = all_params[0].name.value;
+    return (item_name, jsx, trailer.target);
+}
+
+"""Check whether collection is arr.filter(lambda -> bool { return <cond>; }).
+Returns (cond_expr, real_collection) when the pattern matches, else None.
+"""
+impl JacAutoLintPass._extract_filter_cond(
+    collection: uni.Expr
+) -> (tuple[uni.Expr, uni.Expr] | None) {
+    if not isinstance(collection, uni.FuncCall)
+    or not isinstance(collection.target, uni.AtomTrailer) {
+        return None;
+    }
+    ft = collection.target;
+    if not ft.is_attr
+    or not isinstance(ft.right, uni.Name)
+    or ft.right.value != "filter"
+    or collection.params is None
+    or len(collection.params) != 1
+    or not isinstance(collection.params[0], uni.LambdaExpr) {
+        return None;
+    }
+    filter_lam: uni.LambdaExpr = collection.params[0];
+    if not isinstance(filter_lam.body, list) {
+        return None;
+    }
+    filter_stmts = [
+        s
+        for s in filter_lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(filter_stmts) != 1
+    or not isinstance(filter_stmts[0], uni.ReturnStmt)
+    or filter_stmts[0].expr is None {
+        return None;
+    }
+    return (filter_stmts[0].expr, ft.target);
+}
+
+"""W3042: Replace arr.map(lambda -> JSX) with a list comprehension.
+
+Detect-and-validate first, emit second, mutate last — so a warning is never
+reported for a case the auto-fix can't actually rewrite.
+"""
+impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
+    if self._is_suppressed(W3042) {
+        return False;
+    }
+    detected = self._detect_map_lambda_jsx(nd);
+    if detected is None {
+        return False;
+    }
+    (item_name, jsx_expr, collection) = detected;
+
+    filter_result = self._extract_filter_cond(collection);
+    filter_cond: (uni.Expr | None) = None;
+    if filter_result is not None {
+        (filter_cond, collection) = filter_result;
+    }
+
+    # Verify the parent slot we'd write into supports the rewrite *before*
+    # emitting, so we never warn without fixing.
+    parent = nd.parent;
+    if parent is None {
+        return False;
+    }
+    if not (
+        isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr))
+        or (isinstance(parent, uni.Assignment) and parent.value is nd)
+        or (isinstance(parent, uni.ReturnStmt) and parent.expr is nd)
+    ) {
+        return False;
+    }
+
+    if not self.emit(W3042, node_override=nd, name=item_name) {
+        return False;
+    }
+
+    target_node: uni.Expr = self._make_name_node(nd, item_name);
+    compr_kid: list = [
+        nd.gen_token(Tok.KW_FOR),
+        target_node,
+        nd.gen_token(Tok.KW_IN),
+        collection
+    ];
+    if filter_cond is not None {
+        compr_kid.extend([nd.gen_token(Tok.KW_IF), filter_cond]);
+    }
+    inner_compr = uni.InnerCompr(
+        is_async=False,
+        target=target_node,
+        collection=collection,
+        conditional=[filter_cond] if filter_cond is not None else None,
+        kid=compr_kid
+    );
+    list_compr = uni.ListCompr(
+        out_expr=jsx_expr,
+        compr=[inner_compr],
+        kid=[
+            nd.gen_token(Tok.LSQUARE),
+            jsx_expr,
+            inner_compr,
+            nd.gen_token(Tok.RSQUARE)
+        ]
+    );
+
+    jsx_expr.parent = list_compr;
+    inner_compr.parent = list_compr;
+    target_node.parent = inner_compr;
+    collection.parent = inner_compr;
+    if filter_cond is not None {
+        filter_cond.parent = inner_compr;
+    }
+
+    list_compr.parent = parent;
+    if isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr)) {
+        parent.expr = list_compr;
+    } elif isinstance(parent, uni.Assignment) {
+        parent.value = list_compr;
+    } else {
+        # uni.ReturnStmt — only reachable case left
+        parent.expr = list_compr;
+    }
+    parent.kid = [list_compr if k is nd else k for k in parent.kid];
+    return True;
 }

@@ -10,11 +10,9 @@ jaclang dependency".
 """
 
 import shutil;
-import tomllib;
 import json;
 import re;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.cli.console { console }
 
 # Python imports in the ejected backend that pull in a jaclang "companion"
@@ -77,13 +75,8 @@ def load_eject_project_metadata(src: Path) -> dict {
     if not toml_path.exists() {
         raise FileNotFoundError(f"No jac.toml found in {src}");
     }
-    try {
-        with open(toml_path, "rb") as f {
-            toml_data = tomllib.load(f);
-        }
-    } except Exception as e {
-        raise RuntimeError(f"Failed to parse {toml_path}: {e}");
-    }
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    toml_data = read_toml_with_encoding(str(toml_path));
     project_section = toml_data.get("project", {});
     raw_name = project_section.get("name", "") or "";
     # Fall back to the source directory name if jac.toml has the unrendered
@@ -390,21 +383,21 @@ pre-computed access sets classify walkers and abilities exactly the way
 the normal `jac start` path would — otherwise a walker that's public in
 source would end up gated at runtime.
 """
-def _has_pub_access(ast_item: Any) -> bool {
+def _has_pub_access(ast_item: any) -> bool {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { Tokens as Tok }
     if not isinstance(ast_item, uni.AstAccessNode) {
         return False;
     }
-    access = getattr(ast_item, "access", None);
+    access = ast_item?.access;
     if access is None {
         return False;
     }
-    tag = getattr(access, "tag", None);
+    tag = access?.tag;
     if tag is None {
         return False;
     }
-    return getattr(tag, "name", None) == Tok.KW_PUB;
+    return tag?.name == Tok.KW_PUB;
 }
 
 
@@ -1025,25 +1018,9 @@ createRoot against <div id="root">. Without this, `vite dev` serves the
 files and 200s cleanly, but the page stays blank.
 """
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
-    lines: list[str] = [
-        'import React from "react";',
-        'import { createRoot } from "react-dom/client";',
-        f'import {{ app as App }} from "./{entry_module}.js";',
-        'import { JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers } from "@jac/runtime";',
-        '',
-        '__jacInstallErrorHandlers();',
-        'const root = createRoot(document.getElementById("root"));',
-        'root.render(',
-        '  React.createElement(',
-        '    JacClientErrorBoundary,',
-        '    { FallbackComponent: ErrorFallback },',
-        '    React.createElement(App, null)',
-        '  )',
-        ');',
-        ''
-    ];
+    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
     (frontend_src_dir / "__jac_entry.js").write_text(
-        "\n".join(lines), encoding="utf-8"
+        build_simple_react_entry_script(entry_module), encoding="utf-8"
     );
 }
 

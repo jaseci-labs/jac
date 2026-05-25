@@ -9,11 +9,14 @@ This tutorial covers declaring reactive state, handling user input, sharing stat
 > - Completed: [React-Style Components](components.md)
 > - Time: ~30 minutes
 
+!!! note "Reactive state, hooks, and `jac check`"
+    Some blocks below mix reactive `has` state with React-flavored helpers (`createContext`, `useContext`, async effect blocks). Jac's bundler wires all of this up at build time, but the static checker has not yet shipped typed stubs for every React import, so isolated `jac check` runs flag the corresponding accesses as Unknown. The patterns work as written under `jac start`.
+
 ---
 
 ## Reactive State with `has`
 
-Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`). Declaring `has count: int = 0;` inside a component function creates a stateful variable that persists across re-renders and triggers a UI update whenever its value changes:
+Inside client-side code (a `.cl.jac` file or a `to cl:` section), `has` creates reactive state (like React's `useState`). Declaring `has count: int = 0;` inside a component function creates a stateful variable that persists across re-renders and triggers a UI update whenever its value changes:
 
 ```jac
 to cl:
@@ -191,25 +194,43 @@ def:pub SearchResults() -> JsxElement {
 
 ### Cleanup Effects
 
-Use `can with exit` for cleanup logic (runs on unmount):
+`can with exit` generates a standalone cleanup `useEffect` -- use it for teardown that does **not** depend on a handle created at mount:
 
 ```jac
 to cl:
 
-def:pub Timer() -> JsxElement {
-    has seconds: int = 0;
+def:pub Subscriber() -> JsxElement {
+    has events: list = [];
 
-    # Setup interval on mount
     can with entry {
-        intervalId = setInterval(lambda -> None {
-            seconds = seconds + 1;
-        }, 1000);
+        subscribe_to_events();
     }
 
     # Cleanup on unmount
     can with exit {
-        clearInterval(intervalId);
+        cleanup_subscriptions();
     }
+
+    return <p>{len(events)} events</p>;
+}
+```
+
+!!! warning "Sharing a handle between setup and cleanup"
+    `can with entry` and `can with exit` compile to *separate* `useEffect` closures, so a variable created in `entry` is not visible from `exit`. When setup produces a handle that cleanup needs -- an interval id, a subscription, an event listener -- do the setup and teardown in a **single** `useEffect` whose callback *returns* the cleanup function:
+
+```jac
+to cl:
+
+import from react { useEffect }
+
+def:pub Timer() -> JsxElement {
+    has seconds: int = 0;
+
+    useEffect(lambda {
+        intervalId = setInterval(lambda { seconds = seconds + 1; }, 1000);
+        # The returned function is the cleanup -- it runs on unmount
+        return lambda { clearInterval(intervalId); };
+    }, []);
 
     return <p>Seconds: {seconds}</p>;
 }
@@ -237,6 +258,35 @@ def:pub DataFetcher() -> JsxElement {
 
 ---
 
+## Refs with `Ref[T]`
+
+Just as `has` declares reactive state (`useState`) and `can with entry` declares effects (`useEffect`), a `has`-field typed `Ref[T]` declares a **ref** -- a mutable container that persists across renders but, unlike state, does **not** trigger a re-render when its `.current` changes. It compiles to React's `useRef`:
+
+```jac
+to cl:
+
+def:pub FocusableInput() -> JsxElement {
+    has inputRef: Ref[HTMLInputElement] = Ref();  # -> const inputRef = useRef(null)
+
+    def focus() -> None {
+        if inputRef.current { inputRef.current.focus(); }
+    }
+
+    return <div>
+        <input ref={inputRef} type="text" />
+        <button onClick={lambda -> None { focus(); }}>Focus</button>
+    </div>;
+}
+```
+
+- `has r: Ref[T] = Ref()` compiles to `const r = useRef(null)` -- an empty DOM ref. Wire it to an element with `ref={r}`; React fills in `r.current` on mount.
+- `has r: Ref[T] = Ref(initial)` compiles to `const r = useRef(initial)` -- a value ref seeded with `initial`, for mutable values that should survive re-renders without causing one.
+- `useRef` is auto-imported from React; you do not import it yourself.
+
+The field must be constructed (`= Ref()` / `= Ref(initial)`); a bare `has r: Ref[T];` is rejected ([E2025](../../reference/diagnostics.md)) because, like every other `has`-field, it needs a value. `.current` is typed `T | None`, so null-check it before use.
+
+---
+
 ## useContext - Global State
 
 ### Creating Context
@@ -249,8 +299,8 @@ import from react { createContext, useContext }
 # Create context
 glob AppContext = createContext(None);
 
-# Provider component
-def:pub AppProvider(props: dict) -> JsxElement {
+# Provider component -- `children` is the nested JSX passed between its tags
+def:pub AppProvider(children: any = None) -> JsxElement {
     has user: any = None;
     has theme: str = "light";
 
@@ -262,7 +312,7 @@ def:pub AppProvider(props: dict) -> JsxElement {
     };
 
     return <AppContext.Provider value={value}>
-        {props.children}
+        {children}
     </AppContext.Provider>;
 }
 

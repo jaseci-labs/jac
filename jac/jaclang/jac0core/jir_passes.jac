@@ -10,7 +10,6 @@ kid/parent, scope chains, symbol tables, and CFG edges.
 import struct;
 import sys;
 import zlib;
-import from typing { Any, TYPE_CHECKING }
 
 import from jaclang.jac0core.jir_registry {
     FieldKind,
@@ -19,20 +18,15 @@ import from jaclang.jac0core.jir_registry {
     NodeSpec,
     get_class_mapping
 }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.unitree {
-            Module,
-            UniNode,
-            UniScopeNode,
-            UniCFGNode,
-            NameAtom,
-            Symbol,
-            Source,
-            Token
-        }
-    }
+import type from jaclang.jac0core.unitree {
+    Module,
+    UniNode,
+    UniScopeNode,
+    UniCFGNode,
+    NameAtom,
+    Symbol,
+    Source,
+    Token
 }
 
 # --- Constants ---
@@ -162,7 +156,6 @@ obj JirWriter {
 
     def _write_link_table(buf: bytearray) -> None;
     def _count_symbols(module: Module) -> int;
-    def _serialize_type_tags -> bytes;
 }
 
 # =============================================================================
@@ -180,8 +173,7 @@ obj JirReader {
         bytecode_section: (bytes | None) = None,
         mtir_section: (bytes | None) = None,
         llvm_ir_section: (bytes | None) = None,
-        interop_section: (bytes | None) = None,
-        type_tags_section: (bytes | None) = None;
+        interop_section: (bytes | None) = None;
 
     def postinit {
         self._nodes = [];
@@ -208,5 +200,4 @@ obj JirReader {
     ) -> int;
 
     def _read_link_table(data: (bytes | memoryview), pos: int) -> int;
-    def _apply_type_tags(data: bytes) -> None;
 }

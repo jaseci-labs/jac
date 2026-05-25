@@ -20,7 +20,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: Any) {
+        def handleLogout(e: any) {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -114,7 +114,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: Any) -> None {
+        async def handleLogin(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -129,11 +129,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) {
+        def handleUsernameChange(e: any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) {
+        def handlePasswordChange(e: any) {
             password = e.target.value;
         }
 
@@ -236,7 +236,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleSignup(e: Any) -> None {
+        async def handleSignup(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -245,17 +245,23 @@ cl {
             }
             result = await jacSignup(username, password);
             if result["success"] {
-                navigate("/dashboard");
+                # /user/register does not return a token, sign in to start a session
+                logged_in = await jacLogin(username, password);
+                if logged_in {
+                    navigate("/dashboard");
+                } else {
+                    error = "Account created but login failed";
+                }
             } else {
                 error = result["error"] if result["error"] else "Signup failed";
             }
         }
 
-        def handleUsernameChange(e: Any) {
+        def handleUsernameChange(e: any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) {
+        def handlePasswordChange(e: any) {
             password = e.target.value;
         }
 

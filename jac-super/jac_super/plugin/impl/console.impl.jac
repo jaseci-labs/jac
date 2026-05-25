@@ -34,15 +34,36 @@ obj JacSuperConsole(BaseJacConsole) {
         _console_stderr: RichConsole by postinit;
 
     def postinit {
+        # Use Rich's `stderr=True` (not `file=sys.stderr`) so the stream is
+        # resolved per call. Passing `file=` would freeze the stream object at
+        # construction, breaking `sys.stderr = io.StringIO()` redirection that
+        # in-process CLI tests rely on (issue #5995, Bug 1).
         self._console = RichConsole(theme=self.JAC_THEME);
-        self._console_stderr = RichConsole(theme=self.JAC_THEME, file=sys.stderr);
+        self._console_stderr = RichConsole(theme=self.JAC_THEME, stderr=True);
     }
 
-    """Override print to use Rich console."""
-    def print(*args: Any, **kwargs: Any) {
+    """Override print to use Rich console.
+
+    Rich's `Console.print` parses bracket-delimited markup like `[red]...[/red]`
+    by default. User-supplied content (file paths, source-line snippets,
+    f-string output) routinely contains square brackets that look like
+    markup — e.g. a diagnostic snippet for `[root()-->][?:Task]` would have
+    the `[root()-->]` interpreted as a malformed tag and stripped, leaving a
+    misleading `[?:Task]` underneath the carets. Disable markup parsing by
+    default; callers that want Rich markup must opt in explicitly via
+    `markup=True`. Auto-highlighting (`highlight`) is left at Rich's default
+    so numbers, strings, paths, and keywords still get their accent colors.
+    """
+    def print(*args: any, **kwargs: any) {
         # Extract style if provided, otherwise use default
         style = kwargs.pop('style', None);
         file = kwargs.pop('file', None);
+        kwargs.setdefault('markup', False);
+        # Default to soft-wrap on so user content (long paths, JSON, code
+        # snippets) passes through unchanged. Rich's default reflows to the
+        # detected terminal width, violating the base `JacConsole.print`
+        # "pass through unchanged" contract (issue #5995, Bug 2).
+        kwargs.setdefault('soft_wrap', True);
         # Use appropriate console based on file
         console = self._console_stderr if (file == sys.stderr) else self._console;
         if style {
@@ -53,36 +74,42 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override status to use Rich console status."""
-    def status(*args: Any, **kwargs: Any) -> object {
+    def status(*args: any, **kwargs: any) -> object {
         return self._console.status(*args, **kwargs);
     }
 
     """Override success to use Rich styling."""
     def success(message: str, emoji: bool = True) {
         prefix = '✔' if (emoji and self.use_emoji) else '[SUCCESS]';
-        self._console.print(f"{prefix} {message}", style='success');
+        self._console.print(f"{prefix} {message}", style='success', markup=False);
     }
 
     """Override error to use Rich styling with stderr."""
     def error(message: str, hint: (str | None) = None, emoji: bool = True) {
         prefix = '✖' if (emoji and self.use_emoji) else '[ERROR]';
-        self._console_stderr.print(f"{prefix} Error: {message}", style='error');
+        self._console_stderr.print(
+            f"{prefix} Error: {message}", style='error', markup=False
+        );
         if hint {
             hint_prefix = '💡' if self.use_emoji else 'HINT:';
-            self._console_stderr.print(f"{hint_prefix} {hint}", style='info');
+            self._console_stderr.print(
+                f"{hint_prefix} {hint}", style='info', markup=False
+            );
         }
     }
 
     """Override warning to use Rich styling."""
     def warning(message: str, emoji: bool = True) {
         prefix = '⚠' if (emoji and self.use_emoji) else '[WARNING]';
-        self._console_stderr.print(f"{prefix} {message}", style='warning');
+        self._console_stderr.print(
+            f"{prefix} {message}", style='warning', markup=False
+        );
     }
 
     """Override info to use Rich styling."""
     def info(message: str, emoji: bool = True) {
         prefix = 'ℹ' if (emoji and self.use_emoji) else '[INFO]';
-        self._console.print(f"{prefix} {message}", style='info');
+        self._console.print(f"{prefix} {message}", style='info', markup=False);
     }
 
     """Override print_header to use Rich styling."""
@@ -95,7 +122,7 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override print_urls to use Rich URL styling."""
-    def print_urls(urls: Any, symbol: str = '➜') {
+    def print_urls(urls: any, symbol: str = '➜') {
         items = urls.items() if isinstance(urls, dict) else urls;
         for (label, url) in items {
             padded_label = f"{label}:".ljust(10);

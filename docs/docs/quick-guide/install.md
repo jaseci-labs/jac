@@ -218,9 +218,12 @@ With the `jac-client` plugin installed, scaffold a complete full-stack project i
 ```bash
 jac create example --use fullstack
 cd example
-jac add
-jac start main.jac
+jac install
+jac start
 ```
+
+!!! note
+    `main.jac` is the default entry point. All `jac start` commands in this guide omit the filename. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
 
 This creates a project with a Jac backend and a React frontend, ready to go at `http://localhost:8000`.
 
@@ -233,8 +236,8 @@ This creates a project with a Jac backend and a React frontend, ready to go at `
 ```bash
 jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
 cd my-todo
-jac add
-jac start main.jac
+jac install
+jac start
 ```
 
 Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI integration features to generate smart shopping lists with costs and nutritional info. It works out of the box with an Anthropic API key:
@@ -243,8 +246,8 @@ Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI 
 export ANTHROPIC_API_KEY="your-key-here"
 jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
 cd meals-app
-jac add
-jac start main.jac
+jac install
+jac start
 ```
 
 To use any of the other jacpacks, just swap the URL:
@@ -289,7 +292,7 @@ jac create my-app --use client
 
 # Start the development server
 cd my-app
-jac start main.jac
+jac start
 ```
 
 The `--use client` template sets up a complete project with:

@@ -1,5 +1,6 @@
 """REST API Server for Jac Programs."""
 import asyncio;
+import dataclasses;
 import hashlib;
 import html;
 import inspect;
@@ -12,16 +13,16 @@ import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
 import from typing {
-    TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Generator,
     Literal,
     TypeAlias,
     get_type_hints
 }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
-import from jaclang.runtimelib.context { CallState }
+import from jaclang.runtimelib.context { CallState, ExecutionContext }
 import from jaclang.runtimelib.transport {
     BaseTransport,
     TransportRequest,
@@ -33,12 +34,7 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
-    }
-}
+import type from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
@@ -59,11 +55,22 @@ obj UserData {
         root_id: str;
 }
 
-"""Manage users and their persistent roots (SQLite-backed)."""
+"""Manage users and their persistent roots (SQLite-backed).
+
+The `_lock` serializes access to `_conn`. Under the async server we now
+dispatch UserManager reads through `asyncio.to_thread`, which means
+multiple worker threads can hit the same sqlite3 Connection object
+concurrently. Even with `check_same_thread=False`, Python's sqlite3
+module can raise `InterfaceError: bad parameter or other API misuse`
+when cursor state is touched concurrently. The lock serializes cursor
+creation so readers don't trample each other. Long-term, a native async
+driver (aiosqlite) or per-thread connection pool would obviate this.
+"""
 obj UserManager {
     has base_path: str,
         _db_path: str by postinit,
-        _conn: Any by postinit;
+        _conn: any by postinit,
+        _lock: any by postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -79,36 +86,73 @@ obj UserManager {
     ) -> dict[str, str];
 
     def close -> None;
+    # Async hot-path mirror: `get_root_id` touches a blocking SQLite read
+    # on every request and runs under async handlers, so offload it.
+    async def aget_root_id(username: str) -> (str | None);
 }
 
-"""Manages execution contexts for user operations."""
+"""Manages execution contexts for user operations.
+
+Exposes two execution surfaces per call kind:
+
+- `*_sync` variants: for sync user code (functions / walkers without
+  `__jac_async__`). Run the user code via `asyncio.to_thread` so blocking
+  IO inside it (sleep, requests, byllm, SQLite writes) does not stall the
+  event loop. Surrounding context setup, report collection, and commit
+  stay on the loop.
+- `*_async` variants: for async user code. `await` the coroutine on the
+  loop directly — no thread hop.
+
+`spawn_walker` and `execute_function` remain as thin dispatchers that pick
+the right variant based on walker metadata / function kind. They are
+preserved for backwards compatibility with external callers (jac-scale).
+"""
 obj ExecutionManager {
     has base_path: str,
         user_manager: UserManager;
 
     async def execute_function(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
+
+    async def execute_function_sync(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
+
+    async def execute_function_async(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
+
+    async def spawn_walker_sync(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
+
+    async def spawn_walker_async(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
+    async def _finalize_call_response(
+        call_state: CallState, result: any
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 
 """Introspects and caches module metadata."""
 obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
-        _module: Any = None,
+        _module: any = None,
         _functions: dict[(str, Callable[(..., Any)])] = {},
         _walkers: dict[(str, type[WalkerArchetype])] = {},
         _client_functions: dict[(str, Callable[(..., Any)])] = {},
         _client_manifest: dict[(str, Any)] = {},
-        _bundle: Any = None,
+        _bundle: any = None,
         _bundle_error: (str | None) = None,
-        _bundle_builder: Any by postinit,
+        _bundle_builder: any by postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {};
 
@@ -116,23 +160,23 @@ obj ModuleIntrospector {
     def load(force_reload: bool = False) -> None;
     def _load_manifest -> None;
     def _extract_access_levels -> None;
-    def _analyze_endpoint_effects -> None;
+    def _fill_endpoint_effect_defaults -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def get_client_functions -> dict[str, Callable[(..., Any)]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
+    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
+    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;
     def render_page(
         function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, Any];
+    def _collect_client_globals -> dict[str, any];
 }
 
 """Build and send HTTP responses."""
@@ -226,7 +270,7 @@ obj JacAPIServer {
         introspection_handler: IntrospectionHandler by postinit,
         execution_handler: ExecutionHandler by postinit,
         transport: BaseTransport by postinit,
-        server: Any by postinit,
+        server: any by postinit,
         scheduler: Scheduler by postinit;
 
     obj RestSpecs {
@@ -244,11 +288,11 @@ obj JacAPIServer {
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
+    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
+    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def render_client_page(
         function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;

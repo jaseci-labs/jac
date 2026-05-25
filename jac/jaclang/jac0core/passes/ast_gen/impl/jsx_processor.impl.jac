@@ -9,10 +9,16 @@ impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
 """Process JSX element into __jacJsx(tag, props, children) call."""
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
     es = self.es;
-    if (nd.is_fragment or not nd.name) {
-        tag_expr: Expression = self.pass_ref.sync_loc(
-            es.Literal(value=None), jac_node=nd
+    if nd.dynamic_tag is not None {
+        # Dynamic tag `<@expr ...>` — the tag is the expression's value
+        # (a host-tag string, a view reference, or a `str | type`).
+        tag_expr: Expression = cast(
+            'Expression',
+            nd.dynamic_tag.gen.es_ast
+            or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd)
         );
+    } elif (nd.is_fragment or not nd.name) {
+        tag_expr = self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd);
     } else {
         tag_expr = cast(
             'Expression',
@@ -90,6 +96,18 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     }
     children_elements: list[Expression | SpreadElement | None] = [];
     for child in (nd.children or []) {
+        # Drop JsxText nodes whose normalized text is empty (structural
+        # whitespace such as the newline+indent between `}` and the next
+        # `{`). Same-line whitespace ` ` between adjacent expressions is
+        # NOT empty after normalization and is preserved as a child.
+        if isinstance(child, uni.JsxText) and not child.get_normalized_text() {
+            continue;
+        }
+        # JsxComment nodes render nothing — they exist only so the formatter
+        # can round-trip `{#* ... *#}` source.
+        if isinstance(child, uni.JsxComment) {
+            continue;
+        }
         child_expr = child.gen.es_ast;
         if (child_expr is None) {
             continue;
@@ -175,8 +193,17 @@ impl EsJsxProcessor.normal_attribute(
     if (nd.value is None) {
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
+        import html;
+        attr_value = html.unescape(nd.value.lit_value);
+        # Rewrite `className`/`class` literals against the module's scoped
+        # `.style.css` annex (if any): declared class tokens are hashed to
+        # match the rewritten CSS selectors.
+        sheet = self.pass_ref.scoped_styles;
+        if (sheet is not None and nd.name.value in ('className', 'class')) {
+            attr_value = sheet.rewrite_class_value(attr_value);
+        }
         value_expr = self.pass_ref.sync_loc(
-            es.Literal(value=nd.value.lit_value), jac_node=nd.value
+            es.Literal(value=attr_value), jac_node=nd.value
         );
     } else {
         value_expr = nd.value.gen.es_ast
@@ -199,9 +226,10 @@ impl EsJsxProcessor.normal_attribute(
 
 """Process JSX text node."""
 impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
+    import html;
     es = self.es;
     expr = self.pass_ref.sync_loc(
-        es.Literal(value=nd.get_normalized_text()), jac_node=nd
+        es.Literal(value=html.unescape(nd.get_normalized_text())), jac_node=nd
     );
     nd.gen.es_ast = expr;
     return expr;
@@ -227,8 +255,10 @@ impl PyJsxProcessor.init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None {
 impl PyJsxProcessor.element(
     self: PyJsxProcessor, nd: uni.JsxElement
 ) -> list[ast3.AST] {
-    if (nd.is_fragment or not nd.name) {
-        tag_arg: ast3.expr = self.pass_ref.sync(ast3.Constant(value=None), nd);
+    if nd.dynamic_tag is not None {
+        tag_arg: ast3.expr = cast(ast3.expr, nd.dynamic_tag.gen.py_ast[0]);
+    } elif (nd.is_fragment or not nd.name) {
+        tag_arg = self.pass_ref.sync(ast3.Constant(value=None), nd);
     } else {
         tag_arg = cast(ast3.expr, nd.name.gen.py_ast[0]);
     }
@@ -268,9 +298,19 @@ impl PyJsxProcessor.element(
         attrs_expr = self.pass_ref.sync(ast3.Dict(keys=keys, values=values), nd);
     }
     if nd.children {
+        # Drop JsxText nodes whose normalized text is empty (structural
+        # whitespace) and JsxComment nodes (Jac-native JSX block comments
+        # render nothing), matching the client-side codegen behavior so
+        # server-rendered JSX produces the same children list.
+        kept_children = [
+            c
+            for c in nd.children
+            if not isinstance(c, uni.JsxComment)
+            and not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
+        ];
         children_arg = self.pass_ref.sync(
             ast3.List(
-                elts=[cast(ast3.expr, c.gen.py_ast[0]) for c in nd.children],
+                elts=[cast(ast3.expr, c.gen.py_ast[0]) for c in kept_children],
                 ctx=ast3.Load()
             ),
             nd
@@ -323,7 +363,12 @@ impl PyJsxProcessor.normal_attribute(
     }
     key_ast = self.pass_ref.sync(ast3.Constant(value=nd.name.value), nd.name);
     value_ast: ast3.expr;
-    if (nd.value and nd.value.gen.py_ast) {
+    if (nd.value and isinstance(nd.value, uni.String)) {
+        import html;
+        value_ast = self.pass_ref.sync(
+            ast3.Constant(value=html.unescape(nd.value.lit_value)), nd.value
+        );
+    } elif (nd.value and nd.value.gen.py_ast) {
         value_ast = cast(ast3.expr, nd.value.gen.py_ast[0]);
     } else {
         value_ast = self.pass_ref.sync(ast3.Constant(value=True), nd);
@@ -336,7 +381,10 @@ impl PyJsxProcessor.normal_attribute(
 
 """Generate Python AST for JSX text nodes."""
 impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST] {
-    expr = self.pass_ref.sync(ast3.Constant(value=nd.get_normalized_text()), nd);
+    import html;
+    expr = self.pass_ref.sync(
+        ast3.Constant(value=html.unescape(nd.get_normalized_text())), nd
+    );
     nd.gen.py_ast = [expr];
     return nd.gen.py_ast;
 }

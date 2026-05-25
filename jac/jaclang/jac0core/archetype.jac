@@ -56,6 +56,27 @@ obj Permission {
         roots: Access = field(default_factory=Access);
 }
 
+"""Diagnostic for a denied permission check.
+
+Emitted by the runtime when a write-class operation (edge create, field
+mutation, or delete) is rejected because the actor's root lacks
+sufficient access to the target anchor. Accumulated on the request-scoped
+ExecutionContext.diagnostics list and surfaced in the API response
+envelope so callers can see why their write silently no-opped.
+"""
+@dataclass
+obj PermissionDenied {
+    has operation: str,
+        target_id: str,
+        target_type: str,
+        target_owner: (str | None),
+        required: AccessLevel,
+        actual: AccessLevel;
+
+    def to_dict -> dict[(str, Any)];
+    def message -> str;
+}
+
 """Report Handler."""
 obj AnchorReport {
     has id: str,
@@ -92,8 +113,9 @@ obj NodeAnchor(Anchor) {
 
     def __getstate__ -> dict[(str, object)];
     def is_populated -> bool;
-    def get_topology_index -> Any;
-    def set_topology_index(index: Any) -> None;
+    def get_topology_index -> any;
+    def set_topology_index(index: any) -> None;
+    def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
 }
 
 """Edge Anchor."""
@@ -132,8 +154,9 @@ obj Archetype {
     @cached_property
     def __jac__ -> Anchor;
 
-    def __init_subclass__(cls: Any, **kwargs: object) -> None;
-    def __setattr__(name: str, value: Any) -> None;
+    def __init_subclass__(cls: any, **kwargs: object) -> None;
+    def __setattr__(name: str, value: any) -> None;
+    def postinit -> None;
     def __repr__ -> str;
     def __jac_access__ -> (AccessLevel | str | int | None);
 }
@@ -163,7 +186,7 @@ class WalkerArchetype(Archetype) {
     with entry {
         __jac_async__: ClassVar[bool] = False;
         __jac_base__: ClassVar[bool] = True;
-        reports: list[Any] = field(default_factory=`list);
+        reports: list[any] = field(default_factory=`list);
     }
 
     @cached_property
@@ -208,7 +231,7 @@ obj Root(NodeArchetype) {
 """Object-Spatial Function."""
 obj ObjectSpatialFunction {
     has name: str,
-        func: Callable[([Any, Any], Any)];
+        func: Callable[([any, any], Any)];
 
     @cached_property
     def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);

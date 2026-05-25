@@ -15,52 +15,44 @@ impl cfg_dot_from_file(file_name: str) -> str {
 
 """Generate dot graph for CFG."""
 impl CoalesceBBPass.printgraph_cfg -> str {
-    cfg: dict = {};
-    # Save tail/head nodes before bb_stmts gets mutated to strings below.
-    bb_tails: dict = {};
-    bb_heads: dict = {};
+    bb_tails: dict[int, (uni.UniCFGNode | None)] = {};
+    bb_heads: dict[int, (uni.UniCFGNode | None)] = {};
+    cfg_outs: dict[int, list[int]] = {};
+    cfg_labels: dict[int, list[str]] = {};
     for (key, bb) in self.basic_blocks.items() {
-        bb_tails[key] = bb['bb_stmts'][-1] if bb['bb_stmts'] else None;
-        bb_heads[key] = bb['bb_stmts'][0] if bb['bb_stmts'] else None;
+        stmts = bb['bb_stmts'];
+        bb_tails[key] = stmts[-1] if stmts else None;
+        bb_heads[key] = stmts[0] if stmts else None;
     }
     dot = 'digraph G {\n';
     for (key, bb) in self.basic_blocks.items() {
-        cfg[key] = {
-            'bb_stmts': bb['bb_stmts'],
-            'bb_out': [0 for _ in range(len(bb['bb_out']))] if bb['bb_out'] else None
-        };
-
-        if bb['bb_out'] {
-            for out_obj in bb['bb_out'] {
+        bb_out = bb['bb_out'];
+        cfg_labels[key] = [self._node_label(s) for s in bb['bb_stmts']];
+        if bb_out {
+            out_ids: list[int] = [0 for _ in range(len(bb_out))];
+            for out_obj in bb_out {
                 for (k, v) in self.basic_blocks.items() {
                     if (out_obj == v['bb_stmts'][0]) {
-                        cfg[key]['bb_out'][bb['bb_out'].index(out_obj)] = k;
+                        out_ids[bb_out.index(out_obj)] = k;
                         break;
                     }
                 }
             }
+            cfg_outs[key] = out_ids;
         }
     }
-    for (key, bb) in cfg.items() {
-        for (i, bbs) in enumerate(bb['bb_stmts']) {
-            cfg[key]['bb_stmts'][i] = self._node_label(bbs);
-        }
-    }
-    for (key, value) in cfg.items() {
-        if value.get('bb_stmts') {
-            stmts = '\\n'.join(
-                [stmt.replace('"', '\\"') for stmt in value['bb_stmts']]
-            );
-            dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];' + "\n";
+    for (key, labels) in cfg_labels.items() {
+        if labels {
+            stmts_str = '\\n'.join([stmt.replace('"', '\\"') for stmt in labels]);
+            dot += f'  {key} [label="BB{key}\\n{stmts_str}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
         }
     }
-    for (key, value) in cfg.items() {
-        if value.get('bb_out') {
-            # Use saved tail/head nodes (bb_stmts was mutated to strings above).
+    for (key, outs) in cfg_outs.items() {
+        if outs {
             tail = bb_tails[key];
-            for out_id in value['bb_out'] {
+            for out_id in outs {
                 label = "";
                 if isinstance(tail, uni.CfgExpr) {
                     out_head = bb_heads[out_id];
@@ -74,12 +66,12 @@ impl CoalesceBBPass.printgraph_cfg -> str {
                     if tail.body and out_head is tail.body[0] {
                         label = ' [label="T"]';
                     } elif tail.else_body {
-                        if isinstance(tail.else_body, uni.ElseIf)
-                        and out_head is tail.else_body {
+                        eb = tail.else_body;
+                        if isinstance(eb, uni.ElseIf) and out_head is eb {
                             label = ' [label="F"]';
-                        } elif isinstance(tail.else_body, uni.ElseStmt)
-                        and tail.else_body.body
-                        and out_head is tail.else_body.body[0] {
+                        } elif isinstance(eb, uni.ElseStmt)
+                        and eb.body
+                        and out_head is eb.body[0] {
                             label = ' [label="F"]';
                         }
                     }
@@ -200,7 +192,7 @@ impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
             is_cfg_node = True;
         }
     }
-    if (is_cfg_node) {
+    if is_cfg_node and isinstance(nd, uni.UniCFGNode) {
         for bbs in self.basic_blocks.values() {
             if (nd in bbs['bb_stmts']) {
                 return;
@@ -236,8 +228,8 @@ impl CoalesceBBPass.get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode] {
 
 """Before pass."""
 impl CoalesceBBPass.before_pass -> None {
-    self.basic_blocks: dict = {};
-    self.bb_counter: int = 0;
+    self.basic_blocks = {};
+    self.bb_counter = 0;
 }
 
 # ============================================================================
@@ -297,7 +289,7 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
         if self._is_terminal(prev) {
             continue;
         }
-        has_else = prev?.else_body and prev.else_body is not None;
+        has_else = isinstance(prev, uni.AstElseBodyNode) and prev.else_body is not None;
         # Did the exit handler already wire a short-circuit chain? Peel
         # parentheses so `(a and b)` matches `a and b`.
         has_bool_sc = False;
@@ -311,14 +303,14 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             # Exit paths covered -- no direct prev→next edge, unless an
             # empty true body or empty ElseStmt body creates a fall-through.
             self._connect_tails(prev, next);
-            if isinstance(prev, uni.IfStmt)
-            and (
-                not prev.body
-                or (
-                    isinstance(prev.else_body, uni.ElseStmt) and not prev.else_body.body
-                )
-            ) {
-                self.link_bbs(prev, next);
+            if isinstance(prev, uni.IfStmt) {
+                # Fall-through if true body is empty or else body is empty
+                empty_true = not prev.body;
+                eb = prev.else_body;
+                empty_else = isinstance(eb, uni.ElseStmt) and not eb.body;
+                if empty_true or empty_else {
+                    self.link_bbs(prev, next);
+                }
             }
         } elif has_bool_sc {
             # Short-circuit wiring handled false path via BoolExpr chain -- no direct prev→next.
@@ -341,9 +333,10 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
             continue;
         }
         # Skip structural Assignment fields of IterForStmt (iter, count_by)
-        if isinstance(parent, uni.IterForStmt)
-        and (k is parent.iter or k is parent.count_by) {
-            continue;
+        if isinstance(parent, uni.IterForStmt) {
+            if k is parent.iter or k is parent.count_by {
+                continue;
+            }
         }
         if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             # Scope boundary -- don't recurse into nested scopes
@@ -575,9 +568,11 @@ impl CFGBuildPass._find_parent_of_types(
     cur = nd.parent;
     while cur {
         if isinstance(cur, types) {
-            return cur;
+            # isinstance with a runtime tuple can't be statically narrowed,
+            # but the types param guarantees UniCFGNode subtypes.
+            return cast(uni.UniCFGNode, cur);
         }
-        cur = cur.parent;
+        cur = cur?.parent;
     }
     return None;
 }
@@ -586,9 +581,10 @@ impl CFGBuildPass._find_parent_of_types(
 impl CFGBuildPass._find_next_cfg_stmt_after(
     parent: uni.UniNode, child: uni.UniNode
 ) -> (uni.UniCFGNode | None) {
-    if parent?.body and isinstance(parent.body, Sequence) {
+    body = parent?.body;
+    if body is not None and isinstance(body, Sequence) {
         found = False;
-        for stmt in parent.body {
+        for stmt in body {
             if found and isinstance(stmt, uni.CodeBlockStmt) {
                 return stmt;
             }
@@ -787,6 +783,111 @@ impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
 }
 
 # ============================================================================
+# Edge building (exit handlers) -- Comprehension head
+# ============================================================================
+"""ListCompr / SetCompr / GenCompr / DictCompr: wire each `if` filter as a
+CfgExpr predecessor of the comprehension itself, so the existing CFG
+narrowing engine threads filter narrowing into the head expression
+(out_expr / kv_pair). The comprehension is the flow_node that
+`_find_cfg_node_for` returns for anything inside the head, so its bb_in
+chain is what the narrowing walker visits. Each filter's true edge
+points back at the comprehension (head context); the false edge is
+left dangling (skip-iteration has no AST representation)."""
+impl CFGBuildPass.exit_list_compr(nd: uni.ListCompr) -> None {
+    self._wire_compr_filters(nd, nd.compr);
+}
+
+impl CFGBuildPass.exit_set_compr(nd: uni.SetCompr) -> None {
+    self._wire_compr_filters(nd, nd.compr);
+}
+
+impl CFGBuildPass.exit_gen_compr(nd: uni.GenCompr) -> None {
+    self._wire_compr_filters(nd, nd.compr);
+}
+
+impl CFGBuildPass.exit_dict_compr(nd: uni.DictCompr) -> None {
+    self._wire_compr_filters(nd, nd.compr);
+}
+
+impl CFGBuildPass._wire_compr_filters(
+    target_node: uni.UniCFGNode, comprs: list[uni.InnerCompr]
+) -> None {
+    import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
+    if not comprs {
+        return;
+    }
+    # Splice the comprehension into the enclosing CFG flow so narrowing
+    # established by an outer guard (`if r is None { return; }`)
+    # continues to reach the comprehension. The chain is
+    #     enclosing -> InnerCompr_1 -> ... -> InnerCompr_n -> ...
+    #                  -> CfgExpr_filter_1 -> ... -> CfgExpr_filter_m -> target
+    # so the head's bb_in is just the final CFG node in the chain
+    # (filter true-edge if any filter, last InnerCompr otherwise). The
+    # narrowing engine walks back through the chain to find enclosing
+    # narrowing, while filter narrowing applies on its true edge.
+    #
+    # When the immediately enclosing CFG node is an Assignment (the
+    # comprehension sits on its RHS), walk past it to find a non-
+    # Assignment ancestor. Otherwise narrowing for a Name on the
+    # assignment LHS that is also referenced inside the comprehension
+    # (`out = [t for t in out if ...]`) would resolve the Name through
+    # the in-progress write — a circular dependency on the comprehension
+    # being typed — and fall back to Unknown, blowing up the head
+    # expression with cascading E1032s. Skipping the Assignment lets the
+    # narrowing engine walk to the prior statement's CFG node, where
+    # the declared / last-written type for that Name is intact.
+    encl: uni.UniNode | None = target_node.parent;
+    while encl is not None {
+        if isinstance(encl, uni.UniCFGNode)
+        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+            self.link_bbs(encl, comprs[0]);
+            break;
+        }
+        encl = encl.parent;
+    }
+    prev_node: uni.UniCFGNode | None = None;
+    for compr in comprs {
+        if prev_node is not None {
+            self.link_bbs(prev_node, compr);
+        }
+        prev_node = compr;
+        if not compr.conditional {
+            continue;
+        }
+        new_conditional: list[uni.Expr] = [];
+        for cond in compr.conditional {
+            # Wrap in a CfgExpr if the parser didn't already (BoolExpr
+            # operands are CfgExpr-wrapped at parse time; simple
+            # conditions like `x is not None` are bare Exprs). Splice
+            # the wrapper into both compr.conditional and compr.kid so
+            # parent-chain walks (sym_tab lookup, _resolve_symbols_in_subtree)
+            # find the proper ancestor through the new CfgExpr.
+            cfg_pred: uni.CfgExpr;
+            if isinstance(cond, uni.CfgExpr) {
+                cfg_pred = cond;
+            } else {
+                cfg_pred = uni.CfgExpr(expr=cond, kid=[cond]);
+                cfg_pred.parent = compr;
+                idx = compr.kid.index(cond);
+                compr.kid[idx] = cfg_pred;
+            }
+            cfg_pred.affected_symbols.update(collect_narrowing_symbols(cfg_pred.expr));
+            self.link_bbs(prev_node, cfg_pred);
+            self._set_and_link(cfg_pred, target_node, None);
+            prev_node = cfg_pred;
+            new_conditional.append(cfg_pred);
+        }
+        compr.conditional = new_conditional;
+    }
+    # Final link from the last node in the chain to the head context.
+    # When the last node is a CfgExpr, this is the same edge already
+    # wired by `_set_and_link` (link_bbs is idempotent).
+    if prev_node is not None and prev_node is not target_node {
+        self.link_bbs(prev_node, target_node);
+    }
+}
+
+# ============================================================================
 # Edge building (exit handlers) -- Control flow
 # ============================================================================
 """CtrlStmt: break -> next after loop, continue -> loop header."""
@@ -910,6 +1011,37 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
         self._link_sequential(nd.body);
+    }
+}
+
+"""JsxSlot: wire the slot body into the enclosing function's CFG.
+
+The slot lives in expression position inside a `CodeBlockStmt` (e.g. a
+`return <jsx>;` or an assignment). Its body is the author's faithful
+`{ stmt; stmt; ... }` template — the cl-target accumulator lowering
+happens later, in EsastGenPass, so the control-flow shape the CFG cares
+about (the `if`/`for`/`skip`/`return` guards) is exactly the author's.
+Those statements need their own intra-body sequential linking;
+additionally, the first body statement must inherit incoming flow from
+the slot's enclosing `CodeBlockStmt` so backward narrowing walks from
+inside the slot pick up guards established earlier in the surrounding
+function (e.g. an `if x is None { return; }` before the JSX). Without
+this link the slot body is an island in the CFG and any narrowing
+established outside is silently dropped at the boundary."""
+impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    if nd.body and isinstance(nd.body, Sequence) {
+        body = [
+            s
+            for s in nd.body
+            if isinstance(s, uni.CodeBlockStmt)
+        ];
+        if body {
+            enclosing = nd.find_parent_of_type(uni.CodeBlockStmt);
+            if enclosing is not None {
+                self.link_bbs(enclosing, body[0]);
+            }
+            self._link_sequential(body);
+        }
     }
 }
 

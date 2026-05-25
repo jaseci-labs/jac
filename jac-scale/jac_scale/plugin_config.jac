@@ -1,12 +1,11 @@
 """Plugin configuration hooks for jac-scale."""
-import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-scale."""
 class JacScalePluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "scale",
             "version": "0.1.0",
@@ -16,7 +15,7 @@ class JacScalePluginConfig {
 
     """Return the plugin's configuration schema for [plugins.scale]."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "scale",
             "options": {
@@ -190,85 +189,190 @@ class JacScalePluginConfig {
                         }
                     }
                 },
-                "sandbox": {
+                "microservices": {
                     "type": "dict",
                     "default": {},
-                    "description": "Sandbox configuration for ephemeral isolated preview environments",
+                    "description": "Microservice mode - run declared Jac files as independent service processes behind an API gateway",
                     "nested": {
                         "enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable sandbox system for preview environments"
+                            "description": "Enable microservice mode (off by default). Use `jac setup microservice` to configure."
                         },
-                        "type": {
-                            "type": "string",
-                            "default": "local",
-                            "description": "Sandbox provider type: 'kubernetes', 'docker', or 'local'"
-                        },
-                        "namespace": {
-                            "type": "string",
-                            "default": "jac-sandboxes",
-                            "description": "K8s namespace for sandbox pods"
-                        },
-                        "max_per_user": {
+                        "gateway_port": {
                             "type": "int",
-                            "default": 3,
-                            "description": "Maximum concurrent sandboxes per user"
+                            "default": 8000,
+                            "description": "Gateway port (external-facing)"
                         },
-                        "ttl_seconds": {
-                            "type": "int",
-                            "default": 3600,
-                            "description": "Sandbox time-to-live in seconds before auto-cleanup"
-                        },
-                        "cpu_limit": {
+                        "gateway_host": {
                             "type": "string",
-                            "default": "500m",
-                            "description": "CPU limit per sandbox (K8s format)"
+                            "default": "0.0.0.0",
+                            "description": "Gateway host"
                         },
-                        "memory_limit": {
-                            "type": "string",
-                            "default": "512Mi",
-                            "description": "Memory limit per sandbox (K8s format)"
+                        "drain_timeout_seconds": {
+                            "type": "float",
+                            "default": 10.0,
+                            "description": "Graceful shutdown window (seconds). On SIGTERM, gateway + services flip a drain flag (503s on new requests) and wait up to this many seconds for in-flight requests to finish before uvicorn force-closes. Mirrors K8s `terminationGracePeriodSeconds`."
                         },
-                        "base_image": {
-                            "type": "string",
-                            "default": "python:3.12-slim",
-                            "description": "Base Docker image for sandbox containers"
+                        "http_forward_timeout": {
+                            "type": "float",
+                            "default": 30.0,
+                            "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[plugins.scale.microservices.services.NAME].http_forward_timeout`."
                         },
-                        "storage_limit": {
-                            "type": "string",
-                            "default": "256Mi",
-                            "description": "Scratch storage limit per sandbox"
+                        "ingress": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. Subkeys: `enabled` (bool, opt-in), `host` (str, omitted means match-any-host), `ingress_class_name` (str, e.g. \"nginx\", \"alb\", \"gce\"), `annotations` (dict[str,str], controller-specific knobs like nginx.ingress.kubernetes.io/proxy-body-size). HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches /api/{svc}/* internally."
                         },
-                        "domain_template": {
-                            "type": "string",
-                            "default": "{sandbox_id}.preview.example.com",
-                            "description": "URL template for sandbox preview routing"
+                        "routes": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Module-name -> gateway-prefix map. Services are discovered via `sv import`; this only controls client-facing URL routing."
                         },
-                        "security_context": {
-                            "type": "bool",
-                            "default": True,
-                            "description": "Enable security context (non-root, read-only FS)"
+                        "services": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70). `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). Gateway uses the `__gateway__` key. Example: [plugins.scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [plugins.scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
                         },
-                        "network_isolation": {
-                            "type": "bool",
-                            "default": True,
-                            "description": "Enable network isolation between sandboxes"
+                        "rate_limit": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Gateway rate limiting (token bucket). Disabled unless `enabled = true`.",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Master switch."
+                                },
+                                "per_ip_rpm": {
+                                    "type": "int",
+                                    "default": 60,
+                                    "description": "Requests per minute per client IP. 0 disables per-IP limit."
+                                },
+                                "per_user_rpm": {
+                                    "type": "int",
+                                    "default": 0,
+                                    "description": "Additional requests per minute per authenticated user (keyed by Authorization header hash). 0 disables per-user limit."
+                                },
+                                "burst_multiplier": {
+                                    "type": "float",
+                                    "default": 2.0,
+                                    "description": "Bucket capacity = rpm * burst_multiplier / 60 (allows short bursts above the steady rate)."
+                                },
+                                "exempt_paths": {
+                                    "type": "list",
+                                    "default": ["/health", "/healthz", "/metrics"],
+                                    "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
+                                }
+                            }
                         },
-                        "ingress_class": {
-                            "type": "string",
-                            "default": "nginx",
-                            "description": "K8s Ingress class (nginx, alb, traefik)"
+                        "cors": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "CORS middleware on the gateway. Open by default (any origin). Set `allow_origins = []` to disable, or provide a concrete list to restrict.",
+                            "nested": {
+                                "allow_origins": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "Origins that may access the gateway. Default [\"*\"] allows any. Empty list disables CORS."
+                                },
+                                "allow_methods": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "HTTP methods allowed on cross-origin requests."
+                                },
+                                "allow_headers": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "Request headers allowed on cross-origin requests."
+                                },
+                                "allow_credentials": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Allow cookies / Authorization on cross-origin requests. Incompatible with allow_origins = [\"*\"] per spec."
+                                },
+                                "expose_headers": {
+                                    "type": "list",
+                                    "default": [],
+                                    "description": "Response headers the browser is allowed to read across origins."
+                                },
+                                "max_age": {
+                                    "type": "int",
+                                    "default": 600,
+                                    "description": "How long (seconds) the browser may cache a preflight response."
+                                }
+                            }
                         },
-                        "tls_enabled": {
+                        "client": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Client UI build settings (optional)",
+                            "nested": {
+                                "entry": {
+                                    "type": "string",
+                                    "default": "",
+                                    "description": "jac-client entry point (e.g., client/main.jac)"
+                                },
+                                "dist_dir": {
+                                    "type": "string",
+                                    "default": ".jac/client/dist",
+                                    "description": "Build output directory for static assets"
+                                },
+                                "base_route": {
+                                    "type": "string",
+                                    "default": "/",
+                                    "description": "SPA base route"
+                                }
+                            }
+                        }
+                    }
+                },
+                "events": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Event-streaming broker configuration. Off by default. When enabled, jac-scale exposes publish() / @subscribe via the active broker (RedisBroker if a redis URL resolves, otherwise LocalBroker in-memory).",
+                    "nested": {
+                        "enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable TLS via cert-manager"
+                            "description": "Enable the event-streaming broker. When false, all publish() calls become no-ops."
                         },
-                        "tls_issuer": {
+                        "url": {
                             "type": "string",
-                            "default": "letsencrypt-prod",
-                            "description": "cert-manager ClusterIssuer name"
+                            "default": None,
+                            "description": "Redis connection URL. If unset, falls back to [plugins.scale.database].redis_url. If neither is set or `redis` extra is missing, LocalBroker (in-memory) is used."
+                        },
+                        "consumer_group": {
+                            "type": "string",
+                            "default": "jac-scale",
+                            "description": "Default consumer group name used when @subscribe does not specify one."
+                        },
+                        "serializer": {
+                            "type": "string",
+                            "default": "json",
+                            "description": "Payload serializer: 'json' (default) or 'msgpack' (requires extra)."
+                        },
+                        "retry": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Default retry policy applied when a subscription does not provide its own.",
+                            "nested": {
+                                "max_attempts": {
+                                    "type": "int",
+                                    "default": 3,
+                                    "description": "Number of delivery attempts before the message is sent to the dead-letter topic."
+                                },
+                                "backoff_seconds": {
+                                    "type": "list",
+                                    "default": [1.0, 5.0, 30.0],
+                                    "description": "Backoff delays per attempt index, clamped to the last value."
+                                },
+                                "dead_letter_suffix": {
+                                    "type": "string",
+                                    "default": ".dlq",
+                                    "description": "Suffix appended to the topic name to form its dead-letter topic."
+                                }
+                            }
                         }
                     }
                 },

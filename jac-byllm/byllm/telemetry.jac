@@ -5,10 +5,14 @@ Consumers (e.g., jac-scale) register callbacks to receive these events.
 No data is stored in byllm — this is purely a publish mechanism.
 """
 import from typing { Callable }
+import from contextvars { ContextVar }
 import logging;
 
 glob _agent_callbacks: list = [],
-     logger = logging.getLogger(__name__);
+     logger = logging.getLogger(__name__),
+     _current_invocation_id: ContextVar = ContextVar(
+         'byllm_invocation_id', default=None
+     );
 
 """Register a callback to receive agent invocation completion events."""
 def:pub register_agent_callback(callback: Callable) -> None;

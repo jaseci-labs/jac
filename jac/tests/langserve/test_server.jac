@@ -196,16 +196,52 @@ test "test_go_to_definition" {
     }
 }
 
+test "test_go_to_definition_any_keyword" {
+    setup_test();
+    try {
+        lsp = create_server();
+        f = uris.from_fs_path(fixture_path("any_goto_def_tests.jac"));
+        lsp.type_check_file(f);
+
+        # Backtick-escaped `` `any `` (function form) → typeshed builtins.pyi
+        bt_any = str(lsp.get_definition(f, lspt.Position(1, 13)));
+        assert "builtins.pyi" in bt_any , f"Unexpected: {bt_any}";
+
+        # Bare `any` keyword in type annotation → typeshed typing.pyi (Any)
+        bare_any = str(lsp.get_definition(f, lspt.Position(4, 8)));
+        assert "typing.pyi" in bare_any , f"Unexpected: {bare_any}";
+
+        # Bare `Any` without import → unresolved (not in jac_builtins.pyi __all__)
+        bare_Any = lsp.get_definition(f, lspt.Position(5, 8));
+        assert bare_Any is None , f"Expected None, got: {bare_Any}";
+
+        # Bare `final` without import → same — guards __all__ discipline.
+        bare_final = lsp.get_definition(f, lspt.Position(6, 8));
+        assert bare_final is None , f"Expected None, got: {bare_final}";
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_go_to_definition_method_manual_impl" {
     setup_test();
     try {
         lsp = create_server("");
         decldef_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.impl.jac")
+            os.path.join(
+                JAC_ROOT,
+                "tests",
+                "compiler",
+                "fixtures",
+                "micro",
+                "decl_defs_main.impl.jac"
+            )
         );
         lsp.type_check_file(decldef_file);
         decldef_main_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.jac")
+            os.path.join(
+                JAC_ROOT, "tests", "compiler", "fixtures", "micro", "decl_defs_main.jac"
+            )
         );
         lsp.type_check_file(decldef_main_file);
         lsp.type_check_file(decldef_file);
@@ -235,7 +271,7 @@ test "test_go_to_definition_md_path" {
             (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:66:4-66:12"),
+            (18, 5, "compiler/type_system/types.jac:61:4-61:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),

@@ -173,3 +173,45 @@ Always = "always_available"
     # Future should NOT be found (requires Python 3.15+)
     assert future_sym is None , "Future should NOT be found on Python < 3.15";
 }
+
+"""Regression test: module-level symbols inside `if sys.version_info` guards
+must be flattened into the top-level scope by proc_module.
+
+Before fix: `import from datetime { UTC }` → Unknown
+After fix:  `import from datetime { UTC }` → timezone
+"""
+test "module-level stub symbol inside version guard resolves correctly" {
+    import ast as py_ast;
+    import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+    import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
+
+    code = """
+import sys
+
+MINYEAR = 1
+
+if sys.version_info >= (3, 11):
+    UTC = "timezone_utc"
+
+if sys.version_info >= (3, 15):
+    FUTURE_CONST = "not_yet"
+""";
+
+    prog = JacProgram();
+    source = uni.Source(code, "test_stub_module.py");
+    py_ast_node = py_ast.parse(code);
+    mod = PyastBuildPass(
+        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
+    ).ir_out;
+    SymTabBuildPass(ir_in=mod, prog=prog);
+
+    # top-level symbol — always found
+    assert mod.lookup("MINYEAR") is not None , "MINYEAR should be at top-level scope";
+
+    # version guard (>= 3.11) is true on Python 3.12 — must be flattened to top-level
+    # lookup() with no args only checks top-level scope, not inside IfStmt nodes
+    assert mod.lookup("UTC") is not None , "UTC should be at top-level scope after version guard flattening";
+
+    # version guard (>= 3.15) is false — must not appear
+    assert mod.lookup("FUTURE_CONST") is None , "FUTURE_CONST should not be found (>= 3.15 guard is false)";
+}

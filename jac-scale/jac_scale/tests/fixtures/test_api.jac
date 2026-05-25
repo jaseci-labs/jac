@@ -15,6 +15,10 @@ def multiply(x: int, y: int) -> int {
     return x * y;
 }
 
+def:pub public_status -> dict {
+    return {"status": "ok", "public": True};
+}
+
 # ============================================================================
 # Test Data Models
 # ============================================================================
@@ -84,6 +88,22 @@ walker:priv PrivateCreateTask {
 walker:pub PublicInfo {
     can get_info with Root entry {
         report {"message": "This is a public endpoint", "auth_required": False};
+    }
+}
+
+# Walker with a defaulted-list `has` field. Compiles to a dataclass with
+# field(default_factory=list); this exercises the introspector's handling of
+# the dataclasses._HAS_DEFAULT_FACTORY sentinel during request-body schema
+# generation.
+walker:pub CollectWithDefault {
+    has tags: list[str] = [],
+        seen: dict[str, int] = {};
+
+    can collect with Root entry {
+        for tag in self.tags {
+            self.seen[tag] = self.seen.get(tag, 0) + 1;
+        }
+        report {"tags": self.tags, "seen": self.seen};
     }
 }
 

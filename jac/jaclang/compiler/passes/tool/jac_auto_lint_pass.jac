@@ -10,6 +10,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Removing empty parentheses from function/method declarations (def foo() -> def foo)
 - Removing unnecessary backtick escaping from names that are not actual keywords
 - Converting hasattr(obj, "attr") to null-safe access
+- Converting getattr(obj, "attr", None) to null-safe access
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
 - Removing `import from __future__ { annotations }` (not needed in Jac)
@@ -46,7 +47,11 @@ import from jaclang.jac0core.diagnostics {
     W3035,
     W3036,
     W3037,
-    W3038
+    W3038,
+    W3039,
+    W3040,
+    W3041,
+    W3042
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -84,6 +89,11 @@ obj JacAutoLintPass(UniPass) {
     def enter_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_func_call(nd: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _replace_child_in_parent(
+        parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
+    ) -> None;
+
     def _is_matching_attr_access(
         trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
     ) -> bool;
@@ -125,6 +135,7 @@ obj JacAutoLintPass(UniPass) {
     def _check_identical_branches(nd: uni.IfStmt) -> None;
     def _check_too_many_params(nd: uni.FuncSignature) -> None;
     def _check_is_with_literal(nd: uni.CompareExpr) -> None;
+    def _check_filter_compare_tautology(nd: uni.CompareExpr) -> None;
     def _check_mutable_default(nd: uni.ParamVar) -> None;
     def _check_unnecessary_none_return(
         nd: (uni.Ability | uni.LambdaExpr),
@@ -160,6 +171,26 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
+    # Stale-`has`-read detection (W3041)
+    def _check_stale_has_read(ability_node: uni.Ability) -> None;
+    def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
+    def _walk_for_has_uses(
+        nd: uni.UniNode,
+        reactive: set[str],
+        writes: list[tuple[int, int, str]],
+        reads: list[tuple[int, int, str, uni.Name]]
+    ) -> None;
+    # map-lambda-to-comprehension conversion (W3042)
+    def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
+    def _detect_map_lambda_jsx(
+        nd: uni.FuncCall
+    ) -> (tuple[str, uni.JsxElement, uni.Expr] | None);
+
+    def _extract_filter_cond(
+        collection: uni.Expr
+    ) -> (tuple[uni.Expr, uni.Expr] | None);
+
+    def _convert_map_to_comprehension(nd: uni.FuncCall) -> bool;
 }
 
 """Report-only lint pass for use in the standard compile/LSP pipeline.

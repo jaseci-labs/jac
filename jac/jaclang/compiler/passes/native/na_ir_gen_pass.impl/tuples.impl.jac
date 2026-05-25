@@ -17,6 +17,26 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         if v is None {
             return None;
         }
+        # In a `return (...)` context, a borrowed pointer element (a field load
+        # such as `obj.field`, a container read, etc.) is owned by some local
+        # that scope-exit will tear down — and the tuple box does not own its
+        # elements. Retain it so it survives into the returned tuple. Named
+        # locals are skipped: the return path nulls their alloca to transfer
+        # their single ref into the tuple, and owned temporaries already hold a
+        # ref that scope cleanup leaves alone.
+        if (
+            self._return_tuple_ctx
+            and isinstance(v.type, ir.PointerType)
+            and not self._is_owned(v)
+        ) {
+            is_named_local = isinstance(val, uni.Name)
+            and val.sym_name in self.local_vars
+            and val.sym_name not in self.param_vars;
+            if not is_named_local {
+                self._emit_rc_retain(v, op="return_tuple_elem");
+                self._mark_owned(v);
+            }
+        }
         elem_vals.append(v);
         elem_types.append(v.type);
     }
@@ -109,14 +129,25 @@ Returns the value unchanged if it's already a pointer. Use this when
 a value tuple needs to be stored in a container or passed to a function
 that expects a pointer.
 """
-impl NaIRGenPass._box_value_tuple(val: ir.Value) -> ir.Value {
+impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType) {
         return val;
     }
     size = ir.Constant(ir.IntType(64), self._get_struct_size(val.type));
-    raw = self.builder.call(self.rc_alloc_fn, [size], name="tuple.box");
+    # Prefer the jac_loc stamped on the value (set by _codegen_tuple_val) over
+    # the caller-supplied loc so attribution is always as specific as possible.
+    _box_loc = val?.jac_loc or loc;
+    raw = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [size], op="box", loc=_box_loc, name="tuple.box"
+    );
     ptr = self.builder.bitcast(raw, val.type.as_pointer(), name="tuple.box.ptr");
     self.builder.store(val, ptr);
+    # RC: fresh __rc_alloc result is owned (RC=1). Mark it so callers that
+    # check is_owned (field stores, list appends, etc.) skip the extra retain
+    # that would push RC to 2 and create a permanent leak.
+    self._mark_owned(ptr);
+    # Set type tag so RC debug log shows "tuple" instead of "raw".
+    self._emit_set_type_tag(self.builder, raw, "tuple");
     return ptr;
 }
 

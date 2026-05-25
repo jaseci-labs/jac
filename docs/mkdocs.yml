@@ -13,11 +13,12 @@ nav:
   - Get Started:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
+      - Agent Skills and MCP: "quick-guide/agent-skills-and-mcp.md"
       - Core Concepts: "quick-guide/what-makes-jac-different.md"
       - Build to Learn - AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
+      - Import Anything: "quick-guide/import-anything.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
-      - MCP Server: "quick-guide/mcp.md"
       - FAQ: "quick-guide/faq.md"
 
   - Full Reference:
@@ -56,6 +57,7 @@ nav:
               - Authentication: "tutorials/fullstack/auth.md"
               - Routing: "tutorials/fullstack/routing.md"
               - Desktop App: "tutorials/fullstack/desktop.md"
+              - Mobile App: "tutorials/fullstack/mobile.md"
       - Deployment & Scaling:
           - jac-scale Reference: "reference/plugins/jac-scale.md"
           - Learn by Doing:
@@ -64,8 +66,10 @@ nav:
               - Kubernetes: "tutorials/production/kubernetes.md"
       - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
+          - MCP Server: "reference/mcp.md"
           - Plugin Authoring: "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
+          - Publishing Packages: "reference/publishing.md"
           - Persistence & Schema Migration: "reference/persistence.md"
           - Errors & Warnings: "reference/diagnostics.md"
           - Code Organization: "reference/code-organization.md"
@@ -83,6 +87,8 @@ nav:
       - Codebase Guide: "community/codebase-guide.md"
       - Breaking Changes: "community/breaking-changes.md"
       - PR Leaderboard: "community/contributors.md"
+      - Jac Playground: https://playground.jaseci.org/cl/app
+      - Jac GPT: https://jac-gpt.jaseci.org
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
@@ -90,12 +96,12 @@ nav:
           - jac-scale: "community/release_notes/jac-scale.md"
           - jac-super: "community/release_notes/jac-super.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
-      - Internals:
-          - Import Patterns: "community/internals/jac_import_patterns.md"
-          - UniIR Nodes: "community/internals/uniir_node.md"
-          - JSX Client Architecture: "community/internals/jsx_client_serv_design.md"
 
-  - Showcase: "community/showcase.md"
+  - Internals:
+      - Abstractions Inventory: "internals/abstractions.md"
+      - Import Patterns: "internals/jac_import_patterns.md"
+      - UniIR Nodes: "internals/uniir_node.md"
+      - Compiler Architecture: "internals/compiler_architecture.md"
 
 theme:
   logo: "assets/logo.png"
@@ -212,6 +218,9 @@ plugins:
         # Main landing page
         index.md: quick-guide/index.md
 
+        # README.md contribution guide link
+        internals/contrib.md: community/contributing.md
+
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
         quick-guide/hello-world.md: quick-guide/install.md
@@ -277,7 +286,8 @@ plugins:
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md
-        reference/tools/mcp.md: quick-guide/mcp.md
+        reference/tools/mcp.md: reference/mcp.md
+        quick-guide/mcp.md: reference/mcp.md
 
         # Nav reorganization - merged pages redirects
         reference/language/ai-integration.md: reference/plugins/byllm.md
@@ -287,6 +297,12 @@ plugins:
         reference/language/ecosystem.md: reference/index.md
         reference/plugins/index.md: reference/index.md
         tutorials/index.md: reference/index.md
+
+        # Internals promoted to top-level tab
+        community/internals/jac_import_patterns.md: internals/jac_import_patterns.md
+        community/internals/uniir_node.md: internals/uniir_node.md
+        community/internals/jsx_client_serv_design.md: internals/compiler_architecture.md
+        internals/jsx_client_serv_design.md: internals/compiler_architecture.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

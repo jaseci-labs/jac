@@ -289,7 +289,9 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     );
     file_size = self.builder.ptrtoint(size_gep, i64, name="file.size");
     # Allocate via rc_alloc (RC-managed)
+    self._set_rc_ctx("file_read", "");
     raw = self.builder.call(self.rc_alloc_fn, [file_size], name="file.raw");
+    self._clear_rc_ctx();
     file_obj = self.builder.bitcast(raw, file_ptr_type, name="file.obj");
     # Store fields
     # handle

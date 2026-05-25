@@ -35,7 +35,7 @@ obj Runtime {
 obj NodeAnchor {
     has id: int = 0,
         edges: list[int] = [],
-        root: int | None = None;
+        `root: int | None = None;
 }
 
 obj Context {
@@ -330,21 +330,21 @@ def fail_nullable_attr_archetype(ctx: Context) -> int {
 }
 
 def fail_nullable_ternary_then_access(
-    root: NodeAnchor | None,
+    `root: NodeAnchor | None,
     ctx: Context
 ) -> int {
     # Ternary where one branch is T|None — result is T|None
     # Subsequent access without guard fails
-    ranchor = root if root else ctx.user_root;
+    ranchor = `root if `root else ctx.user_root;
     # ranchor is NodeAnchor|None — accessing without guard
     return ranchor.id;              # E1099: NodeAnchor|None
 }
 
 def fail_nullable_ternary_edges(
-    root: NodeAnchor | None,
+    `root: NodeAnchor | None,
     ctx: Context
 ) -> list[int] {
-    ranchor = root if root else ctx.user_root;
+    ranchor = `root if `root else ctx.user_root;
     return ranchor.edges;           # E1099: NodeAnchor|None
 }
 

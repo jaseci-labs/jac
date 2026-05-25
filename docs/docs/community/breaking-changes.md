@@ -7,6 +7,126 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### jac-scale 0.2.15
+
+#### 1. Identity-Based Authentication System
+
+The flat `username` / `password` user model has been replaced with a flexible **identity + credential** architecture. A user can now register multiple identities (e.g. `username`, `email`) and authenticate with any of them. SSO accounts are stored as `type: sso` identities inside the user document instead of a separate `sso_accounts` collection.
+
+**Impact:** The `/user/register` and `/user/login` request payloads have changed shape. JWT tokens now carry a `user_id` (UUID) claim instead of `username`. Any client, test, or integration that constructs these requests, inspects JWT claims, or reads the `sso_accounts` collection must be updated.
+
+##### Register / Login Payloads
+
+**Before:**
+
+```http
+POST /user/register
+Content-Type: application/json
+
+{
+  "username": "alice",
+  "password": "secret"
+}
+```
+
+```http
+POST /user/login
+Content-Type: application/json
+
+{
+  "username": "alice",
+  "password": "secret"
+}
+```
+
+**After:**
+
+```http
+POST /user/register
+Content-Type: application/json
+
+{
+  "identities": [
+    { "type": "username", "value": "alice" },
+    { "type": "email",    "value": "alice@example.com" }
+  ],
+  "credential": { "type": "password", "password": "secret" }
+}
+```
+
+```http
+POST /user/login
+Content-Type: application/json
+
+{
+  "identity":   { "type": "username", "value": "alice" },
+  "credential": { "type": "password", "password": "secret" }
+}
+```
+
+- At least one identity is required at registration; additional identities can be added later.
+- Login accepts any identity the user has registered (`username` **or** `email`); the server resolves it to the same account.
+- `identity.value` and `credential.password` enforce `min_length=1`; empty strings are rejected with `VALIDATION_ERROR`.
+
+##### JWT `user_id` Claim
+
+JWT tokens previously encoded `username` as the subject. They now encode `user_id` (a UUID that is stable across identity changes).
+
+**Before:**
+
+```json
+{ "username": "alice", "exp": 1734567890 }
+```
+
+**After:**
+
+```json
+{ "user_id": "8f2d…-…-…-…", "exp": 1734567890 }
+```
+
+**Migration:**
+
+- Any middleware or downstream service that reads `username` from the decoded JWT must read `user_id` instead and resolve it to a user record via the user manager if the username is still required.
+- Existing tokens issued before the upgrade are no longer valid; users must log in again to receive a new token.
+
+##### Password Hashing Switched to bcrypt
+
+Stored password hashes are now produced with **bcrypt** (previously raw `hashlib`). Legacy users are **progressively rehashed** on their next successful login, so no manual migration is required.
+
+##### SSO Accounts Unified Into Identities
+
+SSO linkages previously lived in a dedicated `sso_accounts` collection keyed by `username`. They are now stored as identities on the user document, keyed by `user_id`:
+
+```json
+{
+  "user_id": "8f2d…",
+  "identities": [
+    { "type": "username", "value": "alice" },
+    { "type": "sso", "provider": "google", "external_id": "1098…" }
+  ]
+}
+```
+
+**Migration:** A built-in legacy user migration runs at startup to convert pre-existing flat `username`/`password` records into the identity-based shape. Case-colliding legacy accounts are kept for the first insertion and marked disabled for the rest; review disabled accounts after the upgrade.
+
+##### Update Password Request Shape
+
+`PUT /user/password` now requires a typed `UpdatePasswordRequest` body with both fields non-empty:
+
+**Before:**
+
+```json
+{ "old_password": "…", "new_password": "…" }
+```
+
+**After:**
+
+```json
+{ "current_password": "…", "new_password": "…" }
+```
+
+---
+
 ### jac-scale 0.2.14
 
 #### 1. Heavy Dependencies Moved to Optional Install Groups
@@ -40,103 +160,142 @@ No code changes are required - the same APIs, configuration, and behavior apply.
 
 ---
 
-### Version 0.13.6
+### Version 0.14.2
 
-#### 1. `cl { }` / `sv { }` / `na { }` Module-Level Braced Blocks Deprecated
+#### 1. Strict `any` Semantics in `.jac` Modules
 
-Module-level braced codespace blocks (`cl { ... }`, `sv { ... }`, `na { ... }`) are now discouraged in favor of `to cl:` / `to sv:` / `to na:` section headers. A section header applies until the next header or end of file, which flattens cl/sv/na-heavy modules and eliminates the wrapping brace pair. The single-statement prefix form (`cl stmt`, `sv stmt`, `na stmt`) is unchanged.
+`.jac` source no longer treats `any` as bidirectionally compatible with concrete types. A value of type `any` cannot be silently assigned to a destination with a declared non-`any`, non-`object` type. The check fires at every site where the destination has a declared type:
 
-The braced block form still parses and compiles, but emits deprecation warning **W0064** when used at module scope. Inner-scope uses (inside a function or class body) do not emit W0064 and remain the recommended way to locally override the active codespace.
+- annotated assignment (`x: T = src;`)
+- `has`-var initializer (`has x: T = src;`)
+- function argument (`f(src)` against a declared `param: T`)
+- return statement (`return src` from `def f -> T`)
+- yield expression in a typed generator
+- edge-connection assignment (`a ++>:Edge:val=src`)
 
-**Impact:** Existing module-level `cl { ... }` / `sv { ... }` / `na { ... }` blocks keep working but will produce W0064 diagnostics. Migrate to the section-header form to silence the warning and reduce indentation.
+The check recurses element-wise into containers, so `list[any] -> list[Task]` is rejected the same way `any -> Task` is.
+
+**Permissive cases that still work without ceremony:**
+
+- Inferred locals: `x = py_call();` keeps `x: any` (no annotation, no error).
+- Explicit `any` annotation: `x: any = py_call();` opts in to permissive flow.
+- `any -> object` and `any -> TypeVar`: needed for `print(x)` and generic-bound calls.
+
+`.py` and `.pyi` files keep PEP 484 semantics -- `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site.
+
+**Impact:** Code that flowed `any` into typed locals through a typed annotation now produces a type error. The most common trigger is the default `Walker.reports: list[Any]` channel -- `tasks: list[Task] = result.reports;` now errors.
 
 **Before:**
 
 ```jac
-cl {
-    def:pub Greeting(props: dict) -> JsxElement {
-        return <h1>Hello, {props.name}!</h1>;
-    }
+node Task { has title: str; }
 
-    def:pub Counter() -> JsxElement {
-        has count: int = 0;
-        return <button onClick={lambda -> None { count = count + 1; }}>{count}</button>;
+walker ListTasks {
+    can collect with Root entry {
+        report [-->][?:Task];
     }
+}
+
+with entry {
+    result = root spawn ListTasks();
+    tasks: list[Task] = result.reports[0];   # silently widened pre-0.14.2,
+                                             # now: Cannot assign list[any] to list[Task]
 }
 ```
 
-**After:**
+**After (preferred): type the source.** Declare `has reports: list[T]` on the walker so the report channel is typed end-to-end:
 
 ```jac
-to cl:
+walker ListTasks {
+    has reports: list[list[Task]];   # typed at the source
 
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
+    can collect with Root entry {
+        report [-->][?:Task];
+    }
 }
 
-def:pub Counter() -> JsxElement {
-    has count: int = 0;
-    return <button onClick={lambda -> None { count = count + 1; }}>{count}</button>;
+with entry {
+    result = root spawn ListTasks();
+    tasks: list[Task] = result.reports[0];   # type-safe
 }
 ```
 
-`jac format` automatically rewrites module-level braced blocks to section headers.
+For Python utilities, ship a `.pyi` stub alongside the module so the imported names arrive typed at the boundary.
+
+**After (escape valve): accept `any` explicitly.** Keep the source untyped and annotate the receiving local as `any`, then narrow before flowing into typed destinations:
+
+```jac
+with entry {
+    result = root spawn ListTasks();
+    raw: any = result.reports[0];
+    if isinstance(raw, list) {
+        tasks: list[Task] = raw;   # narrowed -- no error
+    }
+}
+```
+
+**Migration:** For each strict-`any` error, choose one of three responses:
+
+1. **Type the source** -- add `has reports: list[T]` (walkers), a `-> T` annotation (functions), or a `.pyi` stub (Python utilities). Preferred for stable APIs.
+2. **Drop the annotation** -- `x = src();` makes `x` inferred-`any` and no check fires.
+3. **Annotate `any` explicitly** -- `x: any = src();` documents the boundary.
+
+See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
 
 ---
 
-### Version 0.12.3
+### Version 0.12.4
 
-#### 1. Automatic `TYPE_CHECKING` Import Guards
+#### 1. `root` Is a Reserved Keyword Again (`SpecialVarRef`)
 
-The compiler now automatically detects imports that are only used in type annotations (parameter types, return types, field types) and wraps them in `if typing.TYPE_CHECKING:` guards in the generated Python output.
+`root` is again a reserved keyword (`KW_ROOT`) and parses as a `SpecialVarRef`, mirroring how `here` and `visitor` are bound. The type checker resolves it directly to `Root`, the binder rejects local rebinding, and codegen lowers it to `Jac.root()`. This reverses the brief window in 0.12.3 where `root` was an ambient builtin resolved through `jac_builtins.pyi`.
 
-**Impact:** Existing `if TYPE_CHECKING { ... }` blocks in Jac source still work, but are no longer necessary. You can simplify your code by replacing them with plain imports.
+**Impact:** Bare `root` is the canonical form in `.jac` source and continues to work as before in walkers, graph operations, and edge expressions. However:
 
-#### 2. `root` Is No Longer a Language Keyword
+- **Backtick escaping is required to shadow it.** Use `` `root `` to declare a parameter, field, or local named `root`.
+- **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` in a `.jac` file and lowers it to the same `Jac.root()` call so existing code keeps working.
+- **AST introspection sees `SpecialVarRef` with `KW_ROOT` again.** Code that special-cased the post-0.12.3 `Name` shape needs to update.
+- **Bytecode cache must be cleared.** The AST shape for `root` changes from `Name` to `SpecialVarRef`. Run `rm -rf ~/.cache/jac/bytecode/ .jac/cache/` (or your project's configured cache dir) after upgrading.
 
-`root` has been removed as a reserved keyword (`KW_ROOT`) from the Jac grammar. It is now an ambient built-in name, resolved at runtime through the builtin module's lazy `__getattr__` mechanism (the same way `jid`, `jobj`, `save`, `commit`, etc. are resolved).
+!!! note "`.jac` source vs library mode"
+    The deprecation applies to `.jac` source only. In **library mode** (Python files using `from jaclang.lib import root, connect, spawn, ...`), `root` is a Python function and **must be called as `root()`** -- it is not a keyword in that context. See [Library Mode](../reference/language/library-mode.md) for the full Python-side surface.
 
-**Impact:** Most code is **unaffected**. `root` still resolves to `Jac.root()` and works identically in walkers, graph operations, and edge expressions. However:
-
-- **Backtick escaping is no longer needed.** If you were writing `` `root` `` to use `root` as a variable or field name, you can now write `root` without backticks. Existing backtick-escaped uses still work.
-- **Code that introspects AST nodes** for `SpecialVarRef` with `KW_ROOT` will no longer find it. `root` now parses as a regular `Name` node.
-
-**Before:**
+**Before (0.12.3 `.jac` source):**
 
 ```jac
-import from typing { TYPE_CHECKING }
+# root was an ambient builtin; backtick escaping not needed
+has root: str = "default";
 
 with entry {
-    if TYPE_CHECKING {
-        import from mymodule { MyClass }
-    }
+    r = root();              # ambient-builtin call, valid in 0.12.3
+    root() ++> Item();       # valid in 0.12.3
+}
+```
+
+**After (`.jac` source):**
+
+```jac
+node Item { has name: str = ""; }
+
+# root is a keyword again; backtick to shadow as a field
+obj Settings {
+    has `root: str = "default";
 }
 
-def process(item: MyClass) -> None { ... }
+with entry {
+    r = root;                # bare reference, canonical
+    root ++> Item();         # works, no warning
+    r2 = root();             # still works but emits W0062
+}
 ```
 
-**After:**
+**In library mode (Python):**
 
-```jac
-import from mymodule { MyClass }
+```python
+from jaclang.lib import root, connect
 
-def process(item: MyClass) -> None { ... }
-```
-
-The compiler detects that `MyClass` is only used in type annotation positions and automatically generates the `TYPE_CHECKING` guard. If `MyClass` is also used at runtime (e.g., `MyClass()`, `isinstance(x, MyClass)`), it remains a regular import.
-
-**Before:**
-
-```jac
-# root was a keyword, backtick needed to use as identifier
-has `root`: str = "default";
-```
-
-**After:**
-
-```jac
-# root is a regular name, no backtick needed
-has root: str = "default";
+# root() is the canonical call form in Python
+connect(left=root(), right=Item())
 ```
 
 ---
@@ -286,7 +445,7 @@ obj Foo {
 myobj = otherobj.`walker.`type;
 ```
 
-**Note:** Builtin type names (`list`, `dict`, `set`, `tuple`, `any`, `type`, `bytes`, `int`, `float`, `str`, `bool`) do **not** need backtick escaping when used in expression contexts (function calls, type annotations, isinstance arguments). Backtick is only needed when using them as field, variable, or parameter names:
+**Note:** Builtin type names (`any`, `list`, `dict`, `set`, `tuple`, `type`, `bytes`, `int`, `float`, `str`, `bool`) do **not** need backtick escaping when used in expression contexts (function calls, type annotations, isinstance arguments). Backtick is only needed when using them as field, variable, or parameter names:
 
 ```jac
 # No backtick needed (expression context)

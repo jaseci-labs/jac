@@ -1,10 +1,10 @@
 """Guarded re-exports for pymongo and bson (install group: [data])."""
 
 try:
-    from pymongo import MongoClient, UpdateOne
+    from pymongo import AsyncMongoClient, MongoClient, UpdateOne
     from pymongo.collection import Collection
     from pymongo.cursor import Cursor
-    from pymongo.errors import ConnectionFailure
+    from pymongo.errors import ConnectionFailure, DuplicateKeyError
     from pymongo.results import (
         DeleteResult as PyMongoDeleteResult,
     )
@@ -21,6 +21,7 @@ try:
     HAS_PYMONGO = True
 except ImportError:
     MongoClient = None
+    AsyncMongoClient = None
     UpdateOne = None
     PyMongoInsertOneResult = None
     PyMongoInsertManyResult = None
@@ -29,6 +30,7 @@ except ImportError:
     Cursor = None
     Collection = None
     ConnectionFailure = Exception
+    DuplicateKeyError = Exception
 
     HAS_PYMONGO = False
 

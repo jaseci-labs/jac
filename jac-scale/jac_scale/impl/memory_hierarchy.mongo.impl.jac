@@ -13,14 +13,18 @@ impl MongoBackend.postinit -> None {
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if self.client is None and self.mongo_url {
-        try {
-            self.client = MongoClient(self.mongo_url);
+    if self.mongo_url {
+        if 'mongo_client' not in _process_cache {
+            try {
+                _process_cache['mongo_client'] = MongoClient(self.mongo_url);
+            } except Exception as e {
+                logger.warning(f"MongoDB connection failed: {e}");
+            }
+        }
+        self.client = _process_cache.get('mongo_client');
+        if self.client {
             self.db = self.client[self.db_name];
             self.collection = self.db[self.collection_name];
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed: {e}");
-            self.client = None;
         }
     }
     if self.client is not None {
@@ -29,17 +33,101 @@ impl MongoBackend.postinit -> None {
         } except Exception as e {
             logger.debug(f"MongoBackend: alias preload skipped: {e}");
         }
+        try {
+            self.ensure_indexes();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: index creation skipped: {e}");
+        }
     }
 }
 
+
+"""Create indexes that make type-based pushdown queries efficient.
+
+Idempotent — `create_index` is a no-op when an index of the same shape and
+name already exists, so this can be called on every connect without cost.
+
+The compound `(arch_type, type)` index is what makes `execute_plan`
+worthwhile: queries that filter by archetype type (the common case, e.g.
+"all `User` nodes connected to root R") become IXSCAN instead of COLLSCAN.
+A descending `updated_at` index supports recency-based ops without forcing
+a full sort.
+"""
+impl MongoBackend.ensure_indexes -> None {
+    if self.collection is None {
+        return;
+    }
+    import from pymongo { ASCENDING, DESCENDING }
+    self.collection.create_index(
+        [('arch_type', ASCENDING), ('type', ASCENDING)],
+        name='arch_type_1_type_1',
+        background=True
+    );
+    self.collection.create_index(
+        [('updated_at', DESCENDING)], name='updated_at_-1', background=True
+    );
+}
+
 """Get the `_quarantine` companion collection."""
-def _mongo_q_collection(backend: MongoBackend) -> Any {
+def _mongo_q_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_quarantine'];
 }
 
 """Get the `_aliases` companion collection."""
-def _mongo_a_collection(backend: MongoBackend) -> Any {
+def _mongo_a_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_aliases'];
+}
+
+"""Return True when the anchor's outer document must be fully rewritten."""
+def _anchor_has_structural_change(anchor: Anchor) -> bool {
+    return anchor.hash == 0;
+}
+
+"""Stable hash of any serialized field value (dict, list, or scalar)."""
+def _field_hash(val: object) -> int {
+    import from json { dumps }
+    try {
+        return hash(dumps(val, sort_keys=True, default=str));
+    } except Exception {
+        return hash(str(val));
+    }
+}
+
+"""Snapshot per-field hashes onto the archetype after a successful save or load."""
+def _snapshot_field_hashes(anchor: Anchor) -> None {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return;
+    }
+    arch = anchor.archetype;
+    known = Serializer._get_field_types(type(arch)).keys();
+    _seen: tuple[set, set] = (set(), set());
+    hashes: dict[str, int] = {};
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        hashes[name] = _field_hash(serialized);
+    }
+    object.__setattr__(arch, '__jac_field_hashes__', hashes);
+}
+
+"""Derive the dirty field set by comparing current field hashes to the stored snapshot."""
+def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return set();
+    }
+    arch = anchor.archetype;
+    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
+    known = Serializer._get_field_types(type(arch)).keys();
+    dirty: set[str] = set();
+    _seen: tuple[set, set] = (set(), set());
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        if _field_hash(serialized) != stored.get(name) {
+            dirty.add(name);
+        }
+    }
+    return dirty;
 }
 
 """Build a stored document for an anchor, including Layer 2 fingerprint
@@ -55,7 +143,7 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return {
@@ -73,6 +161,11 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
+whose data.source or data.target references this node, then strip those
+edge IDs from all remaining live NodeAnchor data.edges arrays. This
+prevents dangling edge references after schema drift removes a node type.
 """
 def _mongo_quarantine(
     backend: MongoBackend,
@@ -81,12 +174,14 @@ def _mongo_quarantine(
     arch_module: (str | None),
     arch_type: (str | None),
     fingerprint: (str | None),
-    data: Any,
+    data: any,
     error: str,
     from_format_version: (int | None) = None
 ) {
     try {
-        _mongo_q_collection(backend).update_one(
+        q_col = _mongo_q_collection(backend);
+        now_ts = datetime.now(timezone.utc).isoformat();
+        q_col.update_one(
             {'_id': id_str},
             {
                 '$set': {
@@ -96,13 +191,56 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
-                    'quarantined_at': datetime.now(timezone.utc).isoformat(),
+                    'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
             },
             upsert=True
         );
         backend.collection.delete_one({'_id': id_str});
+        # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
+        if anchor_type == 'NodeAnchor' {
+            orphaned_edges = list(
+                backend.collection.find(
+                    {
+                        'type': 'EdgeAnchor',
+                        '$or': [{'data.source': id_str}, {'data.target': id_str}]
+                    }
+                )
+            );
+            if orphaned_edges {
+                orphan_edge_ids = [e['_id'] for e in orphaned_edges];
+                cascade_error = f"cascade quarantine: connected node {id_str} was quarantined";
+                cascade_ops = [
+                    UpdateOne(
+                        {'_id': edge_doc['_id']},
+                        {
+                            '$set': {
+                                'type': edge_doc.get('type'),
+                                'arch_module': edge_doc.get('arch_module'),
+                                'arch_type': edge_doc.get('arch_type'),
+                                'fingerprint': edge_doc.get('fingerprint'),
+                                'data': edge_doc.get('data'),
+                                'error': cascade_error,
+                                'quarantined_at': now_ts,
+                                'from_format_version': edge_doc.get('format_version')
+                            }
+                        },
+                        upsert=True
+                    ) for edge_doc in orphaned_edges
+                ];
+                q_col.bulk_write(cascade_ops, ordered=False);
+                backend.collection.delete_many({'_id': {'$in': orphan_edge_ids}});
+                backend.collection.update_many(
+                    {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
+                    {'$pullAll': {'data.edges': orphan_edge_ids}}
+                );
+                logger.info(
+                    f"MongoBackend: cascade-quarantined {len(orphan_edge_ids)} edge(s) "
+                    f"connected to quarantined node {id_str}."
+                );
+            }
+        }
     } except Exception as e {
         logger.error(f"MongoBackend: failed to quarantine {id_str}: {e}");
     }
@@ -115,28 +253,29 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
+    # Only cache a confirmed True — caching False would prevent later contexts
+    # (e.g. test files that configure MongoDB after others that don't) from ever
+    # reaching MongoDB in the same process.
+    if _process_cache.get('mongo_available') is True {
+        return True;
+    }
     if not self.mongo_url {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if not self.mongo_url {
+    if not self.mongo_url or self.client is None {
         return False;
     }
-    client = None;
     try {
-        client = MongoClient(self.mongo_url);
-        client.admin.command('ping', maxTimeMS=100);
+        self.client.admin.command('ping', maxTimeMS=100);
+        _process_cache['mongo_available'] = True;
         return True;
     } except ConnectionFailure {
+        _process_cache['mongo_available'] = False;
         return False;
     } except Exception as e {
         logger.debug(f"MongoDB availability check failed: {e}");
+        _process_cache['mongo_available'] = False;
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -151,6 +290,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     if self.client is None {
         return None;
     }
+    self.fetch_count += 1;
     _id = to_uuid(id);
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
@@ -170,7 +310,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     # Fingerprint drift check (INFO-only; best-effort load proceeds below).
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
-        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        current_fp = cls?.__jac_fingerprint__ if cls else None;
         if current_fp and current_fp != fingerprint {
             logger.info(
                 f"MongoBackend: schema drift on {arch_module}.{arch_type} "
@@ -218,21 +358,59 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         return None;
     }
+    _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
-"""Store anchor in MongoDB with fingerprint and archetype identity fields."""
-impl MongoBackend.put(anchor: Anchor) -> None {
+"""Stage anchor for persistence — all writes are deferred to sync()."""
+impl MongoBackend.put(anchor: Anchor) -> None { }
+
+"""Full document upsert for an anchor. Used by sync() when no partial or
+atomic-edge path applies (first insert, or non-NodeAnchor full rewrite)."""
+impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
+    self.put_count += 1;
     _id = to_uuid(anchor.id);
+    arch = anchor.archetype if anchor.is_populated() else None;
     try {
         doc = _anchor_to_doc(anchor);
         self.collection.update_one({'_id': str(_id)}, {'$set': doc}, upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
+        _snapshot_field_hashes(anchor);
     } except Exception as e {
-        logger.error(f"MongoDB put failed: {e}");
+        logger.error(f"MongoDB _write_to_db failed: {e}");
+    }
+}
+
+"""Persist only the specified archetype fields without replacing the full document."""
+impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
+    if self.client is None or not anchor.persistent or not field_names {
+        return;
+    }
+    _id = to_uuid(anchor.id);
+    try {
+        partial_data = Serializer.serialize_fields(anchor, field_names);
+        if not partial_data {
+            return;
+        }
+        update: dict[str, object] = {
+            f"data.archetype.{k}": v for (k, v) in partial_data.items()
+        };
+        update['updated_at'] = datetime.now(timezone.utc).isoformat();
+        self.collection.update_one({'_id': str(_id)}, {'$set': update});
+        anchor.hash = Serializer._compute_hash(anchor);
+        arch = anchor.archetype if anchor.is_populated() else None;
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
+        _snapshot_field_hashes(anchor);
+    } except Exception as e {
+        logger.error(f"MongoDB put_partial failed: {e}");
     }
 }
 
@@ -249,16 +427,15 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close MongoDB connection."""
+"""Flush pending writes and release local reference to the shared client."""
 impl MongoBackend.close -> None {
-    if self.client {
-        try {
-            self.client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing MongoDB connection: {e}");
-        }
-        self.client = None;
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"MongoBackend.close sync failed: {e}");
     }
+    # Don't close the shared process-level client; just drop local reference.
+    self.client = None;
     self._mem_ref = None;
 }
 
@@ -295,12 +472,127 @@ impl MongoBackend.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors using an indexed type filter (no full collection scan).
+
+Uses the `(arch_type, type)` compound index — IXSCAN, not COLLSCAN. The
+Python-side `isinstance` check is kept as a defense-in-depth filter in case
+schema drift left a non-Root archetype with `arch_type='Root'`.
+"""
 impl MongoBackend.get_roots -> Generator[Root, None, None] {
-    for anchor in self.query() {
-        if isinstance(anchor.archetype, Root) {
-            yield cast(Root, anchor.archetype);
+    if self.client is None {
+        return;
+    }
+    try {
+        for doc in self.collection.find({'arch_type': 'Root', 'type': 'NodeAnchor'}) {
+            if (anchor := self._load_anchor(doc)) {
+                if isinstance(anchor.archetype, Root) {
+                    yield cast(Root, anchor.archetype);
+                }
+            }
         }
+    } except Exception as e {
+        logger.debug(f"MongoDB get_roots failed: {e}");
+    }
+}
+
+
+"""Declare MongoDB's native pushdown capabilities.
+
+MongoDB can apply: archetype-type filter (compound index), arbitrary
+declarative field predicates (`data.archetype.<f>` paths), `_id IN (...)`
+narrowing (primary index), and contiguous slicing (`skip`+`limit`).
+
+The planner combines these with the topology_index narrowing automatically
+— see `jaclang.runtimelib.planner` for the strategy chooser.
+"""
+impl MongoBackend.capabilities -> set[str] {
+    return {'type_pushdown','field_pushdown','id_in','slice'};
+}
+
+
+"""Translate a QueryPlan into the MongoDB filter dict + cursor options.
+
+Filter shape (only includes keys the plan actually populates):
+  - `arch_type`: archetype class name (final hop's `node_type` or `node_type_final`)
+  - `type`: 'NodeAnchor' (we only push down node queries — edges are handled
+            via the source/target subdoc separately, not by execute_plan)
+  - `_id`:  `{'$in': [...]}` when the planner narrowed via topology_index
+  - `data.archetype.<f>`: each archetype-field predicate, value passed through
+                          verbatim (MongoDB operator dicts like `{'$lt': 28}`
+                          work as-is)
+
+Returns (filter_dict, skip, limit). When slc has a step != 1 we leave skip/
+limit at None and let the planner slice the result list (Mongo can't apply
+strided slicing natively).
+"""
+def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
+    filt: dict = {};
+    # Prefer the explicit `node_type_final`; otherwise pick the final hop's
+    # node_type so single-hop plans like `[root -->User]` push down cleanly.
+    type_name = plan.node_type_final;
+    if type_name is None and plan.chain {
+        type_name = plan.chain[-1].node_type;
+    }
+    if type_name {
+        filt['arch_type'] = type_name;
+        filt['type'] = 'NodeAnchor';
+    }
+    if plan.id_in is not None {
+        filt['_id'] = {'$in': [str(u) for u in plan.id_in]};
+    }
+    for (k, v) in plan.field_predicates.items() {
+        filt[f'data.archetype.{k}'] = v;
+    }
+    skip_n: int = 0;
+    limit_n: (int | None) = None;
+    if plan.slc is not None {
+        step = plan.slc.step;
+        if step is None or step == 1 {
+            start = plan.slc.start or 0;
+            stop = plan.slc.stop;
+            skip_n = start;
+            if stop is not None {
+                limit_n = max(0, stop - start);
+            }
+        }
+    }
+    return (filt, skip_n, limit_n);
+}
+
+
+"""Native MongoDB execution of a QueryPlan.
+
+This is the backend's pushdown entry point. The planner only calls us when
+`plan.needs() <= self.capabilities()`, so we can assume:
+  - any chain in the plan has been already narrowed (`plan.id_in` carries
+    the candidate UUIDs) OR there is no chain (a pure type/field query)
+  - `field_predicates` use cross-backend operators (`$eq`, `$lt`, `$in`...)
+  - `slc` is either absent or contiguous-step (we early-rejected stepped
+    slices by leaving skip/limit as None — caller applies them)
+
+We never raise to the caller: any error logs at debug and returns an empty
+generator so the planner can fall back if it wants to.
+"""
+impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.client is None {
+        return;
+    }
+    (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
+    try {
+        cursor = self.collection.find(filt);
+        if skip_n {
+            cursor = cursor.skip(skip_n);
+        }
+        if limit_n is not None {
+            cursor = cursor.limit(limit_n);
+        }
+        for doc in cursor {
+            if (anchor := self._load_anchor(doc)) {
+                yield anchor;
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB execute_plan failed ({filt}): {e}");
     }
 }
 
@@ -358,10 +650,105 @@ impl MongoBackend.sync -> None {
             continue;
         }
         try {
-            self.put(anchor);
+            if isinstance(anchor, NodeAnchor) {
+                delta = anchor.edge_delta();
+                if delta is not None {
+                    added = [str(eid) for eid in delta[0]];
+                    removed = [str(eid) for eid in delta[1]];
+                    if added or removed {
+                        self._put_node_atomic(anchor, added, removed);
+                        continue;
+                    }
+                }
+            }
+            # Union __setattr__-tracked fields (direct assignments) with
+            # field-hash-derived fields (in-place mutations) to get the complete
+            # dirty set. Both must be combined — running only one silently drops
+            # the other category (e.g. direct + in-place in the same request).
+            if anchor.hash != 0 {
+                arch = anchor.archetype if anchor.is_populated() else None;
+                setattr_dirty: set[str] = (
+                    arch.__dict__.get('__jac_dirty_fields__') or set()
+                ).copy()
+                    if arch is not None
+                    else set();
+                derived = _derive_dirty_from_field_hashes(anchor);
+                dirty = setattr_dirty | derived;
+                if dirty {
+                    self.put_partial(anchor, dirty);
+                    continue;
+                }
+            }
+            # First insert (hash == 0) or no field changes found — full upsert.
+            self._write_to_db(anchor);
         } except Exception as e {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+    }
+}
+
+"""Atomically update a NodeAnchor, merging only dirty archetype fields and
+edge delta with DB state."""
+impl MongoBackend._put_node_atomic(
+    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+) -> None {
+    if self.client is None {
+        return;
+    }
+    _id = str(to_uuid(anchor.id));
+    try {
+        arch = anchor.archetype if anchor.is_populated() else None;
+
+        # Compute dirty archetype fields: union of __setattr__-tracked writes
+        # and hash-derived in-place mutations (mirrors sync() → put_partial).
+        setattr_dirty: set[str] = (
+            arch.__dict__.get('__jac_dirty_fields__') or set()
+        ).copy()
+            if arch is not None
+            else set();
+        hash_dirty = _derive_dirty_from_field_hashes(anchor);
+        dirty = setattr_dirty | hash_dirty;
+
+        # Serialize only the dirty archetype fields.
+        partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
+
+        # Non-archetype, non-edge top-level data fields (e.g. access control).
+        full = dict(Serializer.serialize(anchor, include_type=True));
+        non_arch_top = {
+            k: v
+            for (k, v) in full.items()
+            if k not in ('edges', 'archetype')
+        };
+
+        # Build a flat $set document:
+        #   data.<k>               — non-arch top-level fields (e.g. access)
+        #   data.archetype.<field> — only dirty scalar fields (concurrent-safe)
+        #   data.edges             — atomic $setUnion/$setDifference expression
+        set_doc: dict[str, object] = {
+            'type': 'NodeAnchor',
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        };
+        for (k, v) in non_arch_top.items() {
+            set_doc[f"data.{k}"] = v;
+        }
+        for (k, v) in partial_data.items() {
+            set_doc[f"data.archetype.{k}"] = v;
+        }
+        set_doc['data.edges'] = {
+            '$setUnion': [
+                {'$setDifference': [{'$ifNull': ['$data.edges', []]}, edges_removed]},
+                edges_added
+            ]
+        };
+
+        self.collection.update_one({'_id': _id}, [{'$set': set_doc}], upsert=True);
+        anchor.hash = Serializer._compute_hash(anchor);
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
+        _snapshot_field_hashes(anchor);
+    } except Exception as e {
+        logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
 }
 
@@ -398,6 +785,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     if self.client is None or not ids {
         return result;
     }
+    self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
@@ -410,6 +798,12 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         logger.debug(f"MongoDB batch_get failed: {e}");
     }
     return result;
+}
+
+"""Reset get/put counters (for instrumentation/tests)."""
+impl MongoBackend.reset_counters -> None {
+    self.fetch_count = 0;
+    self.put_count = 0;
 }
 
 """Load anchor from raw MongoDB document, quarantining on failure."""
@@ -463,6 +857,7 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         );
         return None;
     }
+    _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
@@ -495,6 +890,35 @@ def _mongo_attempt_recover(backend: MongoBackend, doc: dict) -> tuple {
         _mongo_q_collection(backend).delete_one({'_id': doc_id});
     } except Exception as e {
         return (False, f"write-back failed: {type(e).__name__}: {e}");
+    }
+    # Re-link: when recovering an EdgeAnchor that was cascade-quarantined, the
+    # connected node(s)' data.edges was stripped. Re-add the edge ID to the
+    # source (always) and also to the target for undirected edges.
+    if doc.get('type') == 'EdgeAnchor' and isinstance(data, dict) {
+        source_id = data.get('source');
+        target_id = data.get('target');
+        is_undirected = bool(data.get('is_undirected', False));
+        relink_ids: list = [
+            n
+            for n in [source_id]
+            if n
+        ];
+        if is_undirected and target_id and target_id != source_id {
+            relink_ids.append(target_id);
+        }
+        for node_id in relink_ids {
+            try {
+                backend.collection.update_one(
+                    {'_id': node_id, 'type': 'NodeAnchor'},
+                    {'$addToSet': {'data.edges': doc_id}}
+                );
+            } except Exception as relink_err {
+                logger.warning(
+                    f"MongoBackend: recover re-link of edge {doc_id} "
+                    f"to node {node_id} failed: {relink_err}"
+                );
+            }
+        }
     }
     return (True, "recovered");
 }
@@ -733,6 +1157,66 @@ impl MongoBackend.remove_alias(old_name: str) -> bool {
     return removed;
 }
 
+
+"""Get anchor by UUID using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        return await super.aget(id);
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    try {
+        db_obj = await coll.find_one({'_id': str(to_uuid(id))});
+        if not db_obj {
+            return None;
+        }
+        return self._load_anchor(db_obj);
+    } except Exception as e {
+        logger.debug(f"Async aget failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aput(anchor: Anchor) -> None { }
+
+"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if self._mem_ref is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    dirty = [];
+    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
+    for a in targets {
+        if a.persistent and Jac.check_write_access(a) {
+            dirty.append(a);
+        }
+    }
+    if dirty {
+        ops = [
+            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
+            for a in dirty
+        ];
+        try {
+            await coll.bulk_write(ops, ordered=False);
+        } except Exception as e {
+            logger.warning(f"Async acommit bulk_write failed: {e}");
+        }
+    }
+}
 
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {

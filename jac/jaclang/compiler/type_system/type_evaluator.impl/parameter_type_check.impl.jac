@@ -17,7 +17,12 @@ impl TypeEvaluator.validate_arg_types(
             arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
-        if not self.assign_type(arg_type, param.param_type) {
+        # Layer 2 strict-Any dispatch: the call site's containing module
+        # decides strictness (see `_is_strict_site`). A leak across a
+        # Python -> Jac boundary gets caught at the Jac call site.
+        if not self.assign_type(
+            arg_type, param.param_type, strict=self._is_strict_site(arg)
+        ) {
             has_errors = True;
             if not checking_overload {
                 self.emit_diag(
@@ -42,6 +47,23 @@ a diagnostic and sets argumentErrors to true.
 """
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
+
+    # `super()` in a method behaves like bare `super` — a proxy for the
+    # parent class. Attribute access (`super().method(...)`) dispatches
+    # through the parent's MRO; there is no __init__/__call__ to validate.
+    if self._is_expr_super(expr.target) {
+        return caller_type;
+    }
+
+    # Deprecated `root()` form: bare `root` is the graph anchor; the call
+    # form would resolve to `Jac.root()()` in codegen. Emit W0062 and reuse
+    # the Root instance type already resolved for the target.
+    if isinstance(expr.target, uni.SpecialVarRef)
+    and expr.target.name == Tok.KW_ROOT
+    and (not expr.params or len(expr.params) == 0) {
+        self.emit_diag(W0062, expr);
+        return caller_type;
+    }
 
     # Special-form handling for enum.auto() -> int
     if isinstance(caller_type, types.ClassType)
@@ -130,13 +152,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 if isinstance(first_arg, uni.KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
-            if isinstance(cast_target_type, types.ClassType)
-            and cast_target_type.is_instantiable_class() {
-                return cast_target_type.clone_as_instance();
-            }
-            # For non-class types (e.g. cast(str, x)), return the type directly
             if not isinstance(cast_target_type, types.UnknownType) {
-                return cast_target_type;
+                return self._convert_to_instance(cast_target_type);
             }
         }
     }
@@ -453,7 +470,6 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             and caller_type.shared == self.prefetch.any_class.shared
         ) {
             return caller_type;  # Any() -> Any
-
         }
         magic_call_ret = self.get_type_of_magic_method_call(
             caller_type, "__call__", expr.params, expr
@@ -656,7 +672,7 @@ with the caller's class type. Returns an OverloadedType when multiple signatures
 exist, otherwise returns the base FunctionType.
 """
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: Any, caller_type: types.ClassType
+    method_member: any, caller_type: types.ClassType
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);
@@ -1196,7 +1212,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             return p.param_type;
         }
         if p.is_self {
-            return types.TypeVarType(name="Self", is_self=True);
+            return type_utils.synthesize_self_type_var();
         }
         if (
             p.is_cls
@@ -1204,7 +1220,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             and self.prefetch.type_class is not None
         ) {
             synth = self.prefetch.type_class.clone_as_instance();
-            synth.private.type_args = [types.TypeVarType(name="Self", is_self=True)];
+            synth.private.type_args = [type_utils.synthesize_self_type_var()];
             return synth;
         }
         return p.param_type;

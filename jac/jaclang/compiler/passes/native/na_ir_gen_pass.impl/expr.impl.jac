@@ -1,9 +1,18 @@
 """Expression codegen: binary, unary, comparisons, bool expressions."""
-"""Generate IR for an expression, returning the resulting value."""
+import os;
+"""Generate IR for an expression, returning the resulting value.
+
+Sets val.jac_loc = "file:line" on every non-None result so that downstream
+helpers (_coerce_type, _box_value_tuple, etc.) can attribute RC allocations
+to the originating source line without needing a loc parameter.
+"""
 impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
+    _jac_loc: str = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
     if isinstance(nd, uni.Int) {
         # Handle hex, octal, binary literals based on name attribute
         tok_name = nd?.name;
@@ -27,75 +36,107 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if isinstance(nd, uni.Null) {
         return ir.Constant(ir.IntType(8).as_pointer(), None);
     }
-    if isinstance(nd, uni.Name) {
-        return self._codegen_name(nd);
-    }
-    if isinstance(nd, uni.BinaryExpr) {
-        return self._codegen_binary(nd);
-    }
-    if isinstance(nd, uni.CompareExpr) {
-        return self._codegen_compare(nd);
-    }
-    if isinstance(nd, uni.UnaryExpr) {
-        return self._codegen_unary(nd);
-    }
-    if isinstance(nd, uni.FuncCall) {
-        return self._codegen_call(nd);
-    }
-    if isinstance(nd, uni.AtomTrailer) {
-        return self._codegen_atom_trailer(nd);
-    }
+    # Unwrap CfgExpr (CFG-participating wrapper) to its inner expression.
+    # CfgExpr nodes are introduced by cfg_build_pass to wrap BoolExpr operands
+    # and IfElseExpr branches; native codegen treats them transparently.
     if isinstance(nd, uni.CfgExpr) {
         return self._codegen_expr(nd.expr);
     }
-    if isinstance(nd, uni.BoolExpr) {
-        return self._codegen_bool_expr(nd);
+    _result: (ir.Value | None) = None;
+    if isinstance(nd, uni.Name) {
+        _result = self._codegen_name(nd);
+    } elif isinstance(nd, uni.BinaryExpr) {
+        _result = self._codegen_binary(nd);
+    } elif isinstance(nd, uni.CompareExpr) {
+        _result = self._codegen_compare(nd);
+    } elif isinstance(nd, uni.UnaryExpr) {
+        _result = self._codegen_unary(nd);
+    } elif isinstance(nd, uni.FuncCall) {
+        _call_result = self._codegen_call(nd);
+        if _call_result is not None and isinstance(_call_result.type, ir.PointerType) {
+            self._mark_owned(_call_result);
+        }
+        _result = _call_result;
+    } elif isinstance(nd, uni.AtomTrailer) {
+        _result = self._codegen_atom_trailer(nd);
+    } elif isinstance(nd, uni.BoolExpr) {
+        _result = self._codegen_bool_expr(nd);
+    } elif isinstance(nd, uni.IfElseExpr) {
+        _result = self._codegen_if_else_expr(nd);
+    } elif isinstance(nd, uni.MultiString) {
+        _result = self._codegen_multistring(nd);
+    } elif isinstance(nd, uni.String) {
+        _result = self._codegen_string(nd);
+    } elif isinstance(nd, uni.FString) {
+        _result = self._codegen_fstring(nd);
+    } elif isinstance(nd, uni.ListVal) {
+        _result = self._codegen_list_val(nd);
+        # Check dict and set comprehensions BEFORE list comprehension
+        # (DictCompr and SetCompr do NOT inherit from ListCompr)
+    } elif isinstance(nd, uni.DictCompr) {
+        _result = self._codegen_dict_compr(nd);
+    } elif isinstance(nd, uni.SetCompr) {
+        _result = self._codegen_set_compr(nd);
+    } elif isinstance(nd, uni.ListCompr) {
+        _result = self._codegen_list_compr(nd);
+    } elif isinstance(nd, uni.TupleVal) {
+        _result = self._codegen_tuple_val(nd);
+    } elif isinstance(nd, uni.DictVal) {
+        _result = self._codegen_dict_val(nd);
+    } elif isinstance(nd, uni.SetVal) {
+        _result = self._codegen_set_val(nd);
+        # Handle parenthesized expressions: (expr) → AtomUnit
+    } elif isinstance(nd, uni.AtomUnit) {
+        _result = self._codegen_expr(nd.value);
+        # Cast (`value as T`) is type-erased: it evaluates to the inner
+        # value unchanged and only refines the static type. The narrowed
+        # type lets `.attr` on a nullable archetype compile; a None value
+        # then traps at the native deref just like any AttributeError.
+    } elif isinstance(nd, uni.CastExpr) {
+        _result = self._codegen_expr(nd.value);
+        # Lambda expressions: emit an anonymous LLVM function and return
+        # a function pointer to it.
+    } elif isinstance(nd, uni.LambdaExpr) {
+        _result = self._codegen_lambda(nd);
+        # `await e`: native has no event loop, so an awaited coroutine has
+        # already run in this synchronous model — await evaluates to the
+        # value of its target. Correct for sequential async code; it does
+        # not provide concurrency.
+    } elif isinstance(nd, uni.AwaitExpr) {
+        _result = self._codegen_expr(nd.target);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
+    } elif (
+        isinstance(nd, uni.Slice)
+        or isinstance(nd, uni.IndexSlice)
+        or isinstance(nd, uni.KVPair)
+        or isinstance(nd, uni.KWPair)
+        or isinstance(nd, uni.InnerCompr)
+        or isinstance(nd, uni.FormattedValue)
+    ) {
+        # Container/wrapper nodes — callers walk into them and call
+        # _codegen_expr on the inner pieces (e.g. slice.start). When
+        # one of these flows in directly, the convention is to return
+        # None so the caller can fall back. NOT an error.
+    } else {
+        # Catch-all: any expression node we didn't recognize is a real
+        # gap, not a no-op. Emit a structured error so silent-failure
+        # bugs (yield, await, flow/wait, edge refs, JSX, ...) become
+        # loud at compile time instead of returning 0 at runtime.
+        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
     }
-    if isinstance(nd, uni.IfElseExpr) {
-        return self._codegen_if_else_expr(nd);
+    # Stamp source location on every produced value so downstream helpers
+    # (_coerce_type clib.box path, _box_value_tuple) can attribute RC
+    # allocations without needing a loc parameter threaded through.
+    if _result is not None {
+        _result.jac_loc = _jac_loc;
     }
-    if isinstance(nd, uni.MultiString) {
-        return self._codegen_multistring(nd);
-    }
-    if isinstance(nd, uni.String) {
-        return self._codegen_string(nd);
-    }
-    if isinstance(nd, uni.FString) {
-        return self._codegen_fstring(nd);
-    }
-    if isinstance(nd, uni.ListVal) {
-        return self._codegen_list_val(nd);
-    }
-    # Check dict and set comprehensions BEFORE list comprehension
-    # (DictCompr and SetCompr do NOT inherit from ListCompr)
-    if isinstance(nd, uni.DictCompr) {
-        return self._codegen_dict_compr(nd);
-    }
-    if isinstance(nd, uni.SetCompr) {
-        return self._codegen_set_compr(nd);
-    }
-    if isinstance(nd, uni.ListCompr) {
-        return self._codegen_list_compr(nd);
-    }
-    if isinstance(nd, uni.TupleVal) {
-        return self._codegen_tuple_val(nd);
-    }
-    if isinstance(nd, uni.DictVal) {
-        return self._codegen_dict_val(nd);
-    }
-    if isinstance(nd, uni.SetVal) {
-        return self._codegen_set_val(nd);
-    }
-    # Handle parenthesized expressions: (expr) → AtomUnit
-    if isinstance(nd, uni.AtomUnit) {
-        return self._codegen_expr(nd.value);
-    }
-    # Lambda expressions: emit an anonymous LLVM function and return
-    # a function pointer to it.
-    if isinstance(nd, uni.LambdaExpr) {
-        return self._codegen_lambda(nd);
-    }
-    return None;
+    return _result;
 }
 
 """Collect free variable names referenced in a lambda body that are not
@@ -144,8 +185,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if sig is not None and sig.params {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
-            p_type = self._resolve_jac_type(p.type_tag)
-                if p?.type_tag and p.type_tag
+            # Pass the annotation Expr inside the SubTag (not the SubTag
+            # wrapper); SubTag has no `.type`, so the unified-path lowering
+            # in _resolve_jac_type only kicks in when given .tag.
+            p_type = self._resolve_jac_type(p.type_tag.tag)
+                if p?.type_tag and p.type_tag and p.type_tag?.tag
                 else ir.IntType(64);
             param_types.append(p_type);
             param_names.append(p_name);
@@ -259,15 +303,126 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
+"""Generate walrus `:=` expression.
+
+Binds `nd.left` (always a simple Name — the parser only accepts a Name
+on the left of `:=`) to the value of `nd.right`, then evaluates to that
+value so the enclosing expression can consume it, e.g. `if (n := f()) > 5`.
+
+The binding is stored into the name's local alloca, created in the entry
+block on first use. Pointer-typed values follow the same retain/release
+discipline as a normal assignment: retain a borrowed value before storing,
+release any prior occupant of an existing slot.
+"""
+impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    var_name = self._get_name(nd.left);
+    if var_name is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        return None;
+    }
+    value = self._codegen_expr(nd.right);
+    if value is None {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    if var_name in self.local_vars {
+        # Rebind an existing local: coerce to the slot type, then release
+        # the prior occupant (pointer slots only) after retaining the new one.
+        alloca = self.local_vars[var_name];
+        slot_type = alloca.type.pointee;
+        value = self._coerce_type(value, slot_type);
+        if isinstance(slot_type, ir.PointerType) {
+            if not self._is_owned(value) {
+                self._emit_rc_retain(value, op="walrus", loc=_loc);
+            }
+            old_val = self.builder.load(alloca, name=f"{var_name}.old");
+            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+    } else {
+        # First binding: allocate a slot in the entry block. The store
+        # below always runs before any scope cleanup, so the slot is never
+        # read uninitialized.
+        var_type = value.type;
+        alloca = self._entry_alloca(var_type, var_name);
+        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
+            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+        self.local_vars[var_name] = alloca;
+    }
+    # Evaluate to the bound value. This is a borrowed read of the slot the
+    # local now owns — matching _codegen_name's borrow semantics.
+    return self.builder.load(alloca, name=var_name);
+}
+
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    # Inspect the op before recursing into operands. Some operators
+    # (walrus `:=`, pipe-forward `|>`) have non-standard evaluation
+    # semantics: their left side is a binding target, not an rvalue.
+    # Trying to evaluate `nd.left` first would return None, and the
+    # function would silently exit returning None — masking the real
+    # gap. Catch known-unsupported ops here so the error is loud.
+    if op == Tok.WALRUS_EQ {
+        return self._codegen_walrus(nd);
+    }
+    if op == Tok.PIPE_FWD {
+        return self._codegen_pipe_fwd(nd);
+    }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
     if left is None or right is None {
         return None;
     }
-    op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
-    return self._emit_binary_op(op, left, right);
+    result = self._emit_binary_op(op, left, right);
+    # RC: for string concatenation (i8* + i8*), _emit_binary_op creates a new
+    # owned buffer and returns it.  The input operands are borrowed — if the
+    # caller owns them (e.g. freshly-allocated fstring or prior concat result),
+    # release them here.  Mirrors the same release pattern in _codegen_multistring.
+    if result is not None {
+        i8p = ir.IntType(8).as_pointer();
+        if op == Tok.PLUS and left.type == i8p and right.type == i8p {
+            if self._is_owned(left) {
+                self._emit_rc_release_typed(
+                    left, op="binop_lhs", loc=getattr(left, 'jac_loc', '')
+                );
+            }
+            if self._is_owned(right) {
+                self._emit_rc_release_typed(
+                    right, op="binop_rhs", loc=getattr(right, 'jac_loc', '')
+                );
+            }
+        }
+    }
+    return result;
 }
 
 """Generate comparison expression."""
@@ -280,6 +435,9 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     if right is None {
         return None;
     }
+    # Save originals before any type coercions (bitcast/promote) for cleanup.
+    _cmp_left_orig = left;
+    _cmp_right_orig = right;
     op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
     # Handle "in" operator for dicts and sets: left in right
     if op == Tok.KW_IN or op == Tok.KW_NIN {
@@ -509,7 +667,24 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             if left.type != right.type {
                 right = self.builder.bitcast(right, left.type);
             }
-            return self.builder.icmp_unsigned("==", left, right, name="is.eq");
+            _is_result = self.builder.icmp_unsigned("==", left, right, name="is.eq");
+            if isinstance(_cmp_left_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_left_orig) {
+                self._emit_rc_release_simple(
+                    _cmp_left_orig,
+                    op="cmp_is",
+                    loc=getattr(_cmp_left_orig, 'jac_loc', '')
+                );
+            }
+            if isinstance(_cmp_right_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_right_orig) {
+                self._emit_rc_release_simple(
+                    _cmp_right_orig,
+                    op="cmp_is",
+                    loc=getattr(_cmp_right_orig, 'jac_loc', '')
+                );
+            }
+            return _is_result;
         }
         # i64 is None: compare against -1 sentinel (for optional enum/int)
         if isinstance(left.type, ir.IntType)
@@ -525,7 +700,24 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             if left.type != right.type {
                 right = self.builder.bitcast(right, left.type);
             }
-            return self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+            _isn_result = self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+            if isinstance(_cmp_left_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_left_orig) {
+                self._emit_rc_release_simple(
+                    _cmp_left_orig,
+                    op="cmp_isn",
+                    loc=getattr(_cmp_left_orig, 'jac_loc', '')
+                );
+            }
+            if isinstance(_cmp_right_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_right_orig) {
+                self._emit_rc_release_simple(
+                    _cmp_right_orig,
+                    op="cmp_isn",
+                    loc=getattr(_cmp_right_orig, 'jac_loc', '')
+                );
+            }
+            return _isn_result;
         }
         # i64 is not None: compare against -1 sentinel (for optional enum/int)
         if isinstance(left.type, ir.IntType)
@@ -540,7 +732,20 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     if is_float {
         (left, right) = self._promote_to_float(left, right);
     }
-    return self._emit_comparison(op, left, right, is_float);
+    _cmp_result = self._emit_comparison(op, left, right, is_float);
+    if isinstance(_cmp_left_orig.type, ir.PointerType)
+    and self._is_owned(_cmp_left_orig) {
+        self._emit_rc_release_simple(
+            _cmp_left_orig, op="cmp_op", loc=getattr(_cmp_left_orig, 'jac_loc', '')
+        );
+    }
+    if isinstance(_cmp_right_orig.type, ir.PointerType)
+    and self._is_owned(_cmp_right_orig) {
+        self._emit_rc_release_simple(
+            _cmp_right_orig, op="cmp_op", loc=getattr(_cmp_right_orig, 'jac_loc', '')
+        );
+    }
+    return _cmp_result;
 }
 
 """Generate unary expression."""
@@ -716,6 +921,42 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # Check .value / .name on a direct enum member: Priority.HIGH.value.
+        # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
+        # and _get_name(nd.target) is None for the inner trailer, so this must run
+        # ahead of the target_name guard below.
+        if (right_name == "value" or right_name == "name")
+        and isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr {
+            mem_enum = self._get_name(nd.target.target);
+            mem_name = self._get_name(nd.target.right);
+            if mem_enum is not None
+            and mem_name is not None
+            and f"{mem_enum}.{mem_name}" in self.enum_values {
+                member_val = self.enum_values[f"{mem_enum}.{mem_name}"];
+                if mem_enum in self.enum_string_values {
+                    # String enum: member lowers to its ordinal; .value/.name
+                    # index the runtime string tables.
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, member_val, use_name=(right_name == "name")
+                    );
+                }
+                # Integer enum: member lowers to its assigned value, so .value
+                # is the member constant itself.
+                if right_name == "value" {
+                    return member_val;
+                }
+                # Integer enum .name: index the name table by the member's
+                # static declaration ordinal (the table is built ordinal-keyed,
+                # independent of the assigned int values).
+                ordinal = self.enum_member_ordinal.get(f"{mem_enum}.{mem_name}");
+                if ordinal is not None {
+                    return self._codegen_enum_value_lookup(
+                        mem_enum, ir.Constant(ir.IntType(64), ordinal), use_name=True
+                    );
+                }
+            }
+        }
         if target_name is not None and right_name is not None {
             # Check native stdlib module access: sys.argv, sys.platform
             if (

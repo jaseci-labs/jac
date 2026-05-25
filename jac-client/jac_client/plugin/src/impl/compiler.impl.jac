@@ -69,6 +69,7 @@ impl ViteCompiler.compile_and_bundle(
 
 """Create the main entry file for Vite bundling."""
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
+    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
     # Use _entry.js to avoid conflict with compiled modules that may be named main.js
     entry_file = self.compiled_dir / '_entry.js';
     if self._has_pages {
@@ -76,8 +77,7 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
         entry_content = self._create_pages_entry_content(module_path);
     } else {
         # Explicit routing mode: import app from entry module (original behavior)
-        app_module_name = module_path.stem;
-        entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{app_module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers }} from "@jac/runtime";\n\n__jacInstallErrorHandlers();\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+        entry_content = build_simple_react_entry_script(module_path.stem);
     }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
@@ -106,7 +106,7 @@ impl ViteCompiler._create_pages_entry_content(
     lines.append('import { createRoot } from "react-dom/client";');
     lines.append('import { BrowserRouter, Routes, Route } from "react-router-dom";');
     lines.append(
-        'import { JacClientErrorBoundary, ErrorFallback, AuthGuard, __jacInstallErrorHandlers } from "@jac/runtime";'
+        'import { JacClientErrorBoundary, ErrorFallback, AuthGuard, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";'
     );
     lines.append('import { routes, layouts } from "./_routes.js";');
     lines.append('');
@@ -174,7 +174,7 @@ impl ViteCompiler._create_pages_entry_content(
     lines.append('const root = createRoot(document.getElementById("root"));');
     lines.append('root.render(');
     lines.append(
-        '\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback }, appElement)'
+        '\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler }, appElement)'
     );
     lines.append(');');
     lines.append('');
@@ -533,24 +533,13 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func:
-        (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
-    extract_exports_func: (Callable[([Any], list[str])] | None) = None,
-    extract_globals_func:
-        (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
+    compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
+    extract_exports_func: Callable[([any], list[str])],
+    extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])]
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
             'Vite package.json not found. Set vite_package_json when using ViteCompiler'
-        );
-    }
-    if (
-        (compile_to_js_func is None)
-        or (extract_exports_func is None)
-        or (extract_globals_func is None)
-    ) {
-        raise ClientBundleError(
-            'compile_to_js_func, extract_exports_func, and extract_globals_func are required'
         );
     }
     self.vite_package_json = vite_package_json;

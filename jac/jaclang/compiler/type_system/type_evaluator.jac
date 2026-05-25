@@ -9,26 +9,22 @@ PyrightReference:
 import ast as py_ast;
 import os;
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, cast }
+import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import from jaclang.jac0core.helpers { read_file_with_encoding }
+import type from jaclang.jac0core.program { JacProgram }
 
 # FIXME: Conver the bellow to dot import (from . import ...)
 # Currently its not possible with jac+python hybrid repos.
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system { properties }
+import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
@@ -86,7 +82,11 @@ import from jaclang.jac0core.diagnostics {
     E1102,
     E1103,
     E1104,
+    E1110,
+    E1111,
+    W0062,
     W1050,
+    W1051,
     W1100,
     W1101,
     W1102
@@ -129,6 +129,7 @@ obj PrefetchedTypes {
         root_class: types.ClassType | None = None,
         node_class: types.ClassType | None = None,
         walker_class: types.ClassType | None = None,
+        path_class: types.ClassType | None = None,
         jsx_element_class: types.ClassType | None = None,
         # Intrinsic element prop types (from dom_types.pyi)
         html_common_props_class: types.ClassType | None = None,
@@ -167,11 +168,19 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
-"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression).
+
+`deps` is the set of identifier names the key textually depends on
+beyond the key itself -- the base name plus any Name indices for
+subscript expressions (`x[r]` depends on `{x, r}`). The CFG
+assignment barrier consults this set so reassigning an index
+invalidates the narrowing without re-parsing the key string.
+"""
 obj NarrowingTarget {
     has key: str,  # "x" or "bmw.speed"
         declared_type: TypeBase,
-        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+        symbol: uni.Symbol | None = None,  # None for expression-based narrowing
+        deps: frozenset[str] = frozenset();
 }
 
 """Represents a narrowing operation from a conditional predicate."""
@@ -213,6 +222,16 @@ obj TypeEvaluator {
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
+        # Names made ambient by typing_ambient.pyi's __all__, keyed by the
+        # source module the stub re-exports them from (typing /
+        # collections.abc). Built once in postinit by parsing the stub's
+        # `from <module> import (...)` blocks and intersecting with __all__,
+        # so this stays in lockstep with the merged builtins and the
+        # PyastGenPass codegen preamble. Lint passes (e.g.
+        # StaticAnalysisPass) consume this to detect redundant imports.
+        ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",
@@ -237,12 +256,24 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
+        # when the module is Jac source (Layer 2 strict-Any applies),
+        # False when it is Python source (PEP 484 stays permissive).
+        _strict_site_cache: dict[int, bool] = {},
+        # Temporary type overrides for isinstance narrowing within AND conditions.
+        # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
+        # that RHS operands see the narrowed type from LHS isinstance checks.
+        _and_narrowing_overrides: dict[int, TypeBase] = {},
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
         jac_builtins_module: uni.Module by postinit,
-        dom_types_module: uni.Module by postinit;
+        dom_types_module: uni.Module by postinit,
+        # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
+        # into builtins: its names (File, native open) resolve only in native
+        # context via a gated lookup, so they never leak into regular .jac.
+        na_builtins_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -257,8 +288,26 @@ obj TypeEvaluator {
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
-    def _import_module_from_path(path: str) -> uni.Module;
+    def _import_module_from_path(
+        path: str, importer_path: (str | None) = None
+    ) -> uni.Module;
+
+    """Resolve the file path of the Module that contains the given AST
+    node, if any. Used by the import resolver to record reverse-dependency
+    edges (importer -> target). Returns None when no parent Module is
+    reachable or its source carries no file path (e.g. anonymous stub
+    modules)."""
+    def _resolve_importer_path(ast_node: uni.UniNode) -> (str | None);
+
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
+    """Drop per-module entries from the evaluator's caches.
+
+    Called by `JacProgram.invalidate_module` so the evaluator does not
+    keep returning stale `ModuleType` objects (or stale cached attribute
+    types pinned to the old module's symbol table) after the underlying
+    file changes."""
+    def forget_module(resolved_path: str) -> None;
+
     def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
@@ -288,6 +337,13 @@ obj TypeEvaluator {
     ) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    def is_explicit_any(ty: TypeBase) -> bool;
+    # Check if a type is `NoneType` (the type of the literal `None`),
+    # in either its class or instance form.
+    def is_none_type(ty: TypeBase) -> bool;
+    def _is_strict_site(nd: uni.UniNode) -> bool;
+    """True when the pass is currently checking a native (.na.jac) module."""
+    def _in_native_context -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
     # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
@@ -305,7 +361,9 @@ obj TypeEvaluator {
     # // and added to the map.
     #
     # dest_type = src_type;
-    def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
+    def assign_type(
+        src_type: TypeBase, dest_type: TypeBase, strict: bool = False
+    ) -> bool;
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
@@ -317,7 +375,9 @@ obj TypeEvaluator {
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     # --- Callable assignment compatibility ---
     def _assign_callable(
-        src_func: types.FunctionType, dest_func: types.FunctionType
+        src_func: types.FunctionType,
+        dest_func: types.FunctionType,
+        strict: bool = False
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
@@ -336,7 +396,9 @@ obj TypeEvaluator {
         symbol: uni.Symbol, prop_name: str
     ) -> (TypeBase | None);
 
-    def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
+    def _assign_class(
+        src_type: types.ClassType, dest_type: types.ClassType, strict: bool = False
+    ) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
     #  - getTypeForDeclaration
@@ -346,8 +408,14 @@ obj TypeEvaluator {
     # type and inferred type, we're going to unify them (if it's required
     # in the future, we can refactor this).
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Return EnumMemberType if `node_` is the Name of an enum member
+    # declaration (either `RED = 1` target or bare `RED,` inside enum body).
+    # Returns None when the Name is not an enum member declaration.
+    def _get_enum_member_type_for_decl(
+        node_: uni.Name
+    ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
-    def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
+    def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
     # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
@@ -366,6 +434,7 @@ obj TypeEvaluator {
 
     def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
+    def _resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None;
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
     def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
@@ -390,6 +459,7 @@ obj TypeEvaluator {
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
     def _extract_tuple_element_type_path(
@@ -475,7 +545,7 @@ obj TypeEvaluator {
 
     def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
-        method_member: Any, caller_type: types.ClassType
+        method_member: any, caller_type: types.ClassType
     ) -> TypeBase;
 
     # -------------------------------------------------------------------------

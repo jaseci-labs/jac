@@ -1,6 +1,6 @@
 # Microservices with `sv import`
 
-A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `sv import` keyword: when both the importer and the importee are server-context modules, the compiler generates an HTTP client stub for the imported function instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import.
+A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `sv import` keyword: when both the importer and the importee are server-context modules, the compiler generates an HTTP client stub for the imported symbol instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import. Both `def:pub` functions and `walker:pub` archetypes are supported -- functions translate to `POST /function/<name>`, walkers to `POST /walker/<name>` plus a return-side rehydration that hands the consumer back a real walker instance with `reports` populated.
 
 This tutorial walks through splitting a tiny app into two services, running the whole thing from one command, watching the round-trip happen over real HTTP, and then covers testing and multi-host production deployment.
 
@@ -183,6 +183,56 @@ curl -X POST http://localhost:8002/function/safe_divide \
 
 Both error and success cases survive the boundary intact. The `_jac_type` metadata lets the consumer's runtime hand the caller a real `DivResult` instance, not a raw dict; `_jac_id` and `_jac_archetype` are envelope bookkeeping the runtime uses to hydrate the object on the other side.
 
+### Walker Imports
+
+`def:pub` is one of two shapes that can cross the sv boundary; the other is `walker:pub`. A walker imported through `sv import` becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, fires off a `POST /walker/<name>` over the wire, and returns the executed walker with its fields and `reports` populated -- the same shape you'd get from a local spawn.
+
+Add a walker to `math_service.jac`:
+
+```jac
+walker:pub Greet {
+    has name: str;
+    can greet with Root entry {
+        report f"hello, {self.name}";
+    }
+}
+```
+
+Then in `calculator_service.jac`, list `Greet` alongside the functions and use it from one of the consumer's own walkers:
+
+```jac
+sv import from math_service { add, multiply, divide, Greet, DivResult }
+
+walker:pub TriggerGreet {
+    has who: str;
+    can run with Root entry {
+        rg = Greet(name=self.who);   # POST /walker/Greet on the provider
+        report rg.reports[0];        # "hello, <who>"
+    }
+}
+```
+
+Hit it the same way you'd hit any walker endpoint:
+
+```bash
+curl -X POST http://localhost:8002/walker/TriggerGreet \
+  -H "Content-Type: application/json" \
+  -d '{"who":"world"}'
+```
+
+```json
+{"ok":true,"type":"response","data":{"result":{"_jac_type":"TriggerGreet","_jac_id":"...","_jac_archetype":"walker","reports":[],"who":"world"},"reports":["hello, world"]},"error":null,"meta":{"extra":{"http_status":200}}}
+```
+
+The provider log shows the cross-service hop: `POST /walker/Greet 200`. The consumer's `Greet(name=self.who)` call site reads exactly like a local construction; the compiler swaps it for an HTTP spawn at compile time.
+
+A few things to know:
+
+- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a sv-imported walker is **spawn-and-execute** and always returns a post-execution instance.
+- **`walker:pub` only.** Private walkers don't get an endpoint. The same 404 you'd see for non-public functions also fires for non-public walkers.
+- **Boundary types still flow through.** A walker that emits an `obj` value via `report` comes back as that type, not as a raw dict, as long as the type is also listed in the `sv import`.
+- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [jac-scale reference](../../reference/plugins/jac-scale.md#walker-imports) for the full contract.
+
 ---
 
 ## 6. Test the Boundary In-Process
@@ -279,15 +329,117 @@ Hyphens in module names become underscores in the env var name; dots stay as dot
 
 For the full Kubernetes deployment story (image building, ingress, autoscaling), see the [Kubernetes tutorial](kubernetes.md) -- it applies here unchanged, you just deploy each service separately and wire them with env vars.
 
+### Microservice Mode + Gateway
+
+For projects with more than a handful of services, `jac-scale` ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac start` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
+
+The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every `sv` RPC hop. The following knobs all live under `[plugins.scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
+
+| Concern | Config | Default |
+|---------|--------|---------|
+| Graceful shutdown | `drain_timeout_seconds = 10` | 10s |
+| Per-service RPC timeout | `[...services.NAME] rpc_timeout = 120.0` | 10s |
+| Boot-time per-service /healthz wait | `boot_health_timeout = 60.0` | 60s |
+| Boot-time overall startup window | `boot_max_wait = 90` | 90s |
+| Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
+| CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
+| Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
+
+WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
+
+The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/microservices/docs.md) in the jac-scale source tree.
+
+### Kubernetes (microservice mode)
+
+When `[plugins.scale.microservices].enabled = true`, `jac start --scale` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[plugins.scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in `--scale` K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
+
+```text
+JAC_SV_INVENTORY_SERVICE_URL=http://inventory-service.<namespace>.svc.cluster.local:<port>
+```
+
+The env-var name follows the same convention as the manual setup above (raw module name from `sv import from <name>`, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[plugins.scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
+
+If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor SaaS), wire it like the [Kubernetes section](#kubernetes) above by editing the Deployment's env spec directly; the value you set wins for that one service. Most apps never need to.
+
+For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
+
+### Previewing a deploy with `--dry-run`
+
+`jac start --scale` builds an image, pushes it to a registry, and applies manifests to your cluster. That is 5-10 minutes of work and several side effects (registry tags, rolling pod restarts, namespace state). If your config is wrong, you find out at the end.
+
+`jac start --scale --dry-run` does the same planning step in under a second, lints the config, and prints a per-service summary of what would be applied. Nothing is built, pushed, or applied.
+
+```bash
+jac start main.jac --scale --dry-run
+```
+
+Output (default, card view):
+
+```text
+=== jac scale plan: dry-run ===
+Cluster:    minikube    Namespace: my-app
+check: no errors or warnings
+
+Microservices (3)
+
+  orders_app
+    image:     my-app:v1.0
+    replicas:  2  (HPA: 2 -> 10 @ 70% CPU)
+    resources: cpu 100m -> 500m    mem 128Mi -> 256Mi
+    port:      8000
+    route:     /api/orders  (via gateway)
+    pdb:       maxUnavailable=1
+
+  users_app
+    image:     my-app:v1.0
+    replicas:  1  (HPA: 1 -> 3 @ 70% CPU)
+    resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
+    port:      8000
+    route:     /api/users  (via gateway)
+
+  __gateway__
+    image:     my-app:v1.0
+    replicas:  1
+    resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
+    port:      8000
+
+Totals
+  3 deployments, 3 services, 2 HPAs, 3 PDBs
+
+To see the raw YAML manifests, re-run with --show-yaml
+```
+
+The summary line at the top tells you whether the plan is deployable:
+
+- `check: no errors or warnings` - safe to apply
+- `! N warnings` - advisory; deploy still works
+- `X N errors` - errors block the apply; exit code is 2
+
+Errors and warnings appear inline on the service card they belong to, so you don't have to hunt for the offending block. The validator catches things like HPA `min > max`, `cpu_request > cpu_limit`, missing image resolution, PDB `minAvailable` that would block node drains, and invalid Kubernetes resource units (`500MB` instead of `500Mi`).
+
+**Use `--dry-run` whenever you:**
+
+- Edit `jac.toml` (routes, resources, ingress, secrets, HPA, PDB)
+- Add or remove a service from `routes`
+- Deploy to a shared/staging/prod cluster
+- Want a reviewer to see the plan in a PR
+
+For the raw YAML stream (e.g. to pipe into `kubectl diff`), add `--show-yaml`:
+
+```bash
+jac start main.jac --scale --dry-run --show-yaml | sed -n '/^---$/,$p' > planned.yaml
+diff <(kubectl get -n my-app deployment,service,hpa,pdb,ingress -o yaml) planned.yaml
+```
+
 ---
 
 ## Common Pitfalls
 
 - **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchor data persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to sv-to-sv; any `def:pub` call can hit this after a schema change.
 - **Consumer crashes at startup with `ModuleNotFoundError: No module named '<provider>'`.** Automatic startup could not find the provider source in the directory you ran `jac start` from. Either move all services into the same project directory and run `jac start` from there, or set `JAC_SV_<MODULE>_URL` to point at a provider already running elsewhere.
-- **Cross-service call returns 404.** The provider function is not declared `def:pub`. Walkers similarly need `walker:pub`.
+- **Cross-service call returns 404.** The provider function is not declared `def:pub`, or the walker is not declared `walker:pub`. Only public symbols are exposed at the HTTP boundary.
 - **`Error: No jac.toml found`.** `jac start <relative-path>` requires a `jac.toml` in the current directory. Run `jac create` (or just create an empty one), or pass an absolute path.
-- **Cross-service errors raise an exception.** Network failures, missing services, and error responses from the provider all surface at the call site as an exception with the message `sv-to-sv RPC '<module>.<func>' failed: <reason>`. Catch at the boundaries where you want graceful degradation.
+- **Cross-service errors raise an exception.** Network failures, missing services, and error responses from the provider all surface at the call site as an exception. Function-call failures use the message `sv-to-sv RPC '<module>.<func>' failed: <reason>`; walker-spawn failures use `sv-to-sv walker spawn '<module>.<walker>' failed: <reason>`. Catch at the boundaries where you want graceful degradation.
 
 ---
 

@@ -14,8 +14,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      );
 
 """Collect every ESTree node in a depth-first traversal."""
-def walk_es_nodes(nd: es.Node) -> list {
-    result: list = [nd];
+def walk_es_nodes(nd: es.Node) -> list[es.Node] {
+    result: list[es.Node] = [nd];
     for value in vars(nd).values() {
         if isinstance(value, es.Node) {
             result.extend(walk_es_nodes(value));
@@ -232,7 +232,12 @@ test "export semantics for pub declarations" {
 
     # All :pub items in export, private items excluded
     pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"];
-    priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"];
+    priv_items = [
+        "PRIVATE_SECRET",
+        "PrivateClass",
+        "private_function",
+        "PrivateStatus"
+    ];
     assert all(item in last_line for item in pub_items) , (
         "All :pub items should be exported"
     );
@@ -416,5 +421,403 @@ test "jsx comprehension with filter" {
     # Check that filter is chained with map
     assert ".filter(" in js_code and ".map(" in js_code , (
         "Filtered JSX comprehension should chain .filter().map()"
+    );
+}
+
+test "jsx html entity decoding in text and attributes" {
+    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Attribute value: &amp; must be decoded to &
+    assert '"A & B"' in js_code , (
+        "HTML entity &amp; in attribute should be decoded to & in emitted JS"
+    );
+    assert '"A &amp; B"' not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS attribute value"
+    );
+
+    # Text children: named entities must be decoded
+    assert "Before > After & More" in js_code , (
+        "HTML entities &gt; and &amp; in text content should be decoded"
+    );
+    assert "&gt;" not in js_code , (
+        "Raw &gt; should NOT appear in emitted JS text content"
+    );
+    assert "&amp;" not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS text content"
+    );
+
+    # Decimal and hex numeric references must be decoded
+    assert "Decimal > and Hex > refs" in js_code , (
+        "Decimal &#62; and hex &#x3e; references should both decode to >"
+    );
+    assert "&#62;" not in js_code , (
+        "Raw decimal entity should NOT appear in emitted JS"
+    );
+    assert "&#x3e;" not in js_code , ("Raw hex entity should NOT appear in emitted JS");
+}
+
+test "jsx block comment is a no-op child" {
+    # `{#* ... *#}` inside JSX children must compile cleanly and produce no
+    # rendered output — the comment body must not leak into the generated JS,
+    # and surrounding sibling elements must render normally.
+    es_ast = compile_to_esast(fixture_path("jsx_block_comment.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "JSX_COMMENT_PROBE" not in js_code , (
+        "Block-comment body must not appear in emitted JS"
+    );
+    assert "__jacJsx" in js_code , "Surrounding JSX should still compile to __jacJsx";
+    assert "Hello" in js_code , "Sibling text before the comment should render";
+    assert "Click" in js_code , "Sibling text after the comment should render";
+}
+
+test "stale has read emits W3041" {
+    # Compile with type_check=True so the lint schedule (JacLintCheckPass)
+    # runs and W3041 surfaces in prog.warnings_had.
+    prog = JacProgram();
+    _ir = prog.compile(
+        file_path=fixture_path("stale_has_read.jac"), no_cgen=True, type_check=True
+    );
+    assert not prog.errors_had , (
+        "Compilation errors: " + str([str(e) for e in prog.errors_had])
+    );
+    w3041_hits = [
+        w
+        for w in prog.warnings_had
+        if w.code and w.code.code == "W3041"
+    ];
+    assert len(w3041_hits) >= 1 , (
+        "Expected W3041 diagnostic for stale `has` field read, got: " + str(
+            [(w.code.code if w.code else "?") for w in prog.warnings_had]
+        )
+    );
+}
+
+test "single-`props` component definition warns W5015" {
+    fixture = fixture_path("component_props_idiom.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
+    );
+    EsastGenPass(ir_in=ir, prog=prog);
+
+    w5015 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W5015"
+    ];
+    msgs = [str(w) for w in w5015];
+
+    # Only the JS-idiomatic single-`props` shape sacrifices per-prop call-site
+    # validation, so JsPropsStyle is the one and only component that warns.
+    assert len(w5015) == 1 , (
+        f"Expected exactly one W5015 (JsPropsStyle), got {len(w5015)}: {msgs}"
+    );
+    assert any("JsPropsStyle" in m for m in msgs) , (
+        f"W5015 should name the offending component 'JsPropsStyle', got: {msgs}"
+    );
+
+    # The Jac-idiomatic shapes (direct named params, or a typed single-key
+    # bundle whose name isn't the `props` keyword) must not warn — both
+    # preserve per-prop validation at JSX call sites.
+    assert not any("DirectStyle" in m for m in msgs) , (
+        f"DirectStyle (multi-param) should not warn, got: {msgs}"
+    );
+    assert not any("SingleKeyStyle" in m for m in msgs) , (
+        f"SingleKeyStyle (typed single-key bundle) should not warn, got: {msgs}"
+    );
+}
+
+test "components with JSX slots compile to function declarations" {
+    # `def:pub Name(...) -> JsxElement { return ... }` is the universal
+    # component shape. JSX `{...}` slots in child position with statement
+    # bodies lower to an IIFE that accumulates JSX into a fragment.
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "Badge" in func_names;
+    assert "ItemRow" in func_names;
+    assert "ItemList" in func_names;
+    assert "Divider" in func_names;
+
+    # The slot bodies lower to a children accumulator IIFE.
+    assert "__jac_view_kids" in js_code , (
+        "slot bodies should lower to a `__jac_view_kids` accumulator IIFE:\n" + js_code
+    );
+    assert "__jac_view_kids = []" in js_code , "accumulator should be initialized";
+    assert "__jac_view_kids.push(" in js_code , (
+        "each JSX statement should append to the accumulator in O(1)"
+    );
+    assert "__jacJsx" in js_code , "JSX should still lower to __jacJsx calls";
+
+    # `has` fields inside a component keep the existing auto-`useState` wiring.
+    assert 'const [heading, setHeading] = useState("Items")' in js_code , (
+        "has field in a component should generate useState"
+    );
+    assert "setHeading(" in js_code , (
+        "assignment to a has-field should use the generated setter"
+    );
+
+    # Public components are exported.
+    assert "export {" in js_code , "components should be exported";
+    export_line = js_code.strip().split("\n")[-1];
+    assert "Badge" in export_line
+    and "ItemRow" in export_line
+    and "ItemList" in export_line
+    and "Divider" in export_line , "all four components should be exported";
+}
+
+test "JSX slot statement-position control flow lowers to statements" {
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # `if`/`else` slot yields content in both branches.
+    assert "Nothing here." in js_code , "the if-branch content should render";
+    assert "Showing items." in js_code , "the else-branch content should render";
+
+    # A statement `for` over the params lowers to a real loop (not a .map
+    # comprehension) that appends each element to the accumulator.
+    assert "items" in js_code , "the for loop should iterate the items param";
+    has_loop = ("for (" in js_code) or ("for(" in js_code);
+    assert has_loop , "a statement `for` in a slot should emit a JS loop";
+}
+
+test "try/awaiting in JSX slot lowers to <JacAwaiting> wrapper on cl" {
+    # `try { ... } awaiting { ... }` inside a slot is the cl-target surface
+    # for React Suspense: ViewLowerPass replaces the TryStmt with a single
+    # `<JacAwaiting fallback={<>{...awaiting...}</>}>{...try...}</JacAwaiting>`
+    # element. The runtime wrapper lives in `@jac/runtime` and is auto-
+    # imported when the synthesized element shows up in the bundle.
+    es_ast = compile_to_esast(fixture_path("view_awaiting.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "UserCardSkeleton" in func_names
+    and "UserCardView" in func_names
+    and "UserPanel" in func_names;
+
+    # The wrapper component is referenced as a JSX tag (the cl lowering
+    # synthesizes the element with `JacAwaiting` as the identifier).
+    assert "__jacJsx(JacAwaiting," in js_code , (
+        "the cl-target try/awaiting lowering should emit a "
+        "<JacAwaiting> wrapper element:\n" + js_code
+    );
+    # The wrapper must be auto-imported from @jac/runtime so user code
+    # doesn't have to know the runtime export name.
+    assert "JacAwaiting" in js_code , (
+        "JacAwaiting should be referenced in the emitted bundle"
+    );
+    import re;
+    assert re.search(
+        r'import\s*\{[^}]*\bJacAwaiting\b[^}]*\}\s*from\s*[\'"]@jac/runtime[\'"]',
+        js_code
+    ) , ("JacAwaiting should be auto-imported from @jac/runtime:\n" + js_code);
+    # `fallback` is the prop carrying the awaiting-clause's rendered
+    # fragment — must appear in the JSX element's props object literal.
+    assert '"fallback":' in js_code , (
+        "the synthesized JSX element should carry a `fallback` prop:\n" + js_code
+    );
+    # Both branch bodies' user content survive into the bundle.
+    assert "Loading user" in js_code , (
+        "the awaiting body's text content should appear in the bundle"
+    );
+    assert "UserCardView" in js_code , (
+        "the try body should still reference UserCardView"
+    );
+    # Each branch is wrapped in an inline IIFE that accumulates its JSX
+    # into a fragment — the same shape as ordinary slot lowering.
+    assert "__jac_view_kids" in js_code , (
+        "branch bodies should reuse the slot accumulator pattern"
+    );
+    # The Suspense-shaped wrapper means children are passed positionally
+    # (the try-body's fragment is the wrapper's child), not lifted into
+    # the `children` prop of the JacAwaiting element.
+    for (op, cl) in [("{", "}"), ("(", ")"), ("[", "]")] {
+        assert js_code.count(op) == js_code.count(cl) , (
+            f"unbalanced {op}{cl} pairs in view_awaiting.cl.jac output"
+        );
+    }
+}
+
+test "dynamic JSX tags resolve at runtime" {
+    # Phase 2: `<@expr />` — the JSX tag is an expression, not a static name.
+    es_ast = compile_to_esast(fixture_path("view_dynamic_tag.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "Box" in func_names
+    and "Icon" in func_names
+    and "Panel" in func_names
+    and "Demo" in func_names;
+
+    # A dynamic tag lowers to `__jacJsx(<expr>, ...)` — the tag is the value
+    # of the expression, never a quoted string of the identifier itself.
+    assert "__jacJsx(as_," in js_code , (
+        "<@as_> should pass the `as_` value as the tag"
+    );
+    assert '__jacJsx("as_"' not in js_code , (
+        "the dynamic tag identifier must not be emitted as a string literal"
+    );
+    assert "__jacJsx(tag," in js_code , "<@tag> should pass the `tag` value";
+    assert "__jacJsx(glyph," in js_code , (
+        "the brace-wrapped dynamic tag <@{glyph}> should pass the `glyph` value"
+    );
+
+    # Static tags around the dynamic one are unaffected.
+    assert '__jacJsx("div",' in js_code , "static host tags stay string tags";
+    assert "__jacJsx(Box," in js_code , (
+        "a view used as a normal element stays a component reference"
+    );
+}
+
+test "unsafe_html builtin emits a raw-HTML marker call" {
+    # Phase 1 deferral: `unsafe_html(x)` is the ambient builtin opt-in for
+    # raw-HTML insertion. It must lower to a recognised client-runtime
+    # call so the runtime can wrap the value in a sentinel object that the
+    # JSX flattener turns into `dangerouslySetInnerHTML`. The bare global
+    # `unsafe_html(...)` would be undefined at runtime.
+    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Each component lowers to a plain function declaration.
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "CommentCard" in func_names;
+    assert "MixedRender" in func_names;
+
+    # The builtin must be routed through the runtime namespace -- not
+    # emitted as a bare global (which would be `ReferenceError: unsafe_html
+    # is not defined` in the browser).
+    assert "_jac.builtin.unsafe_html(" in js_code , (
+        "unsafe_html(x) should lower to `_jac.builtin.unsafe_html(x)` "
+        "(matching the `jid` and other ambient-builtin lowerings):\n" + js_code
+    );
+    # The bare-global form must not appear -- it would be undefined.
+    # Both call sites in the fixture must be routed.
+    assert "_jac.builtin.unsafe_html(c.body_html)" in js_code , (
+        "first call site should be routed through the runtime:\n" + js_code
+    );
+    assert "_jac.builtin.unsafe_html(raw)" in js_code , (
+        "second call site should be routed through the runtime:\n" + js_code
+    );
+    # The runtime body returns a marker -- the sentinel key must appear in
+    # the embedded `_jac` prelude so client code can branch on it.
+    assert "__jacUnsafeHtml" in js_code , (
+        "runtime must define the `__jacUnsafeHtml` marker key:\n" + js_code
+    );
+    # The identifier must not be emitted as a string literal.
+    assert '"unsafe_html"' not in js_code;
+
+    # The marker call sits inside the parent element's children list -- the
+    # parent is a regular __jacJsx element. The wrap-in-span step happens
+    # in the runtime __jacJsx, not at compile time, so the compiled call
+    # site is just `_jac.builtin.unsafe_html(...)` as a child expression.
+    parent_call = '__jacJsx("div"';
+    parent_idx = js_code.find(parent_call);
+    assert parent_idx >= 0 , (
+        "compiled JS should contain the parent <div> element call\n" + js_code
+    );
+    parent_window = js_code[parent_idx:parent_idx + 250];
+    assert "_jac.builtin.unsafe_html(c.body_html)" in parent_window , (
+        "the unsafe_html() result must be passed as a normal child of "
+        "its enclosing element, unmodified at compile time:\n" + parent_window
+    );
+
+    # The static JSX siblings (article / section / footer) keep their
+    # plain `__jacJsx("tag", ...)` shape unchanged.
+    assert '__jacJsx("article",' in js_code;
+    assert '__jacJsx("section",' in js_code;
+    assert '__jacJsx("footer",' in js_code;
+}
+
+test "JSX child position accepts statement-form control flow" {
+    # Phase 1 deferral: statement-position `if` / `for` / `while` / `match` /
+    # `switch` / `with` / `try` can appear directly as JSX children. Each
+    # branch's JSX statements contribute to the enclosing element's
+    # rendered children list -- no wrapping `{[... for x in xs]}`
+    # comprehension and no nested ternaries required.
+    es_ast = compile_to_esast(fixture_path("jsx_child_control_flow.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "ItemList" in func_names;
+    assert "Greeting" in func_names;
+    assert "Mixed" in func_names;
+    assert "Conditional" in func_names;
+
+    # Statement-form slots lower to an IIFE that uses an accumulator -- a
+    # local kids array gets pushed to by each control-flow branch, then
+    # the IIFE returns the accumulated fragment. The accumulator name is
+    # the same `__jac_view_kids` convention shared with body-level templates.
+    has_for_loop = ("for (" in js_code) or ("for(" in js_code);
+    assert has_for_loop , (
+        "ItemList's statement-position `for` should lower to a JS `for` "
+        "loop driving the children accumulator (not a `.map()`):\n" + js_code
+    );
+
+    # ItemList: the <ul> element's children come from the loop, so the
+    # generated JS must push <li> elements imperatively rather than emit a
+    # comprehension `[...for]`. There must be no spread-of-comprehension
+    # leftover in the ul's children list.
+    ul_idx = js_code.find('__jacJsx("ul"');
+    assert ul_idx >= 0 , "<ul> call should be present:\n" + js_code;
+    ul_window = js_code[ul_idx:ul_idx + 300];
+    # The <li> child should appear after a `.push(` call somewhere upstream
+    # of the <ul> call -- not nested inline as a list comprehension.
+    assert ".push(" in js_code , (
+        "statement-position children must use a `.push(...)` accumulator:\n" + js_code
+    );
+
+    # Greeting: both branches of the if/else contribute. The generated JS
+    # must contain both "Hello, stranger" and "Welcome back."
+    assert "Hello, stranger" in js_code;
+    assert "Welcome back" in js_code;
+
+    # Mixed: static <header>/<footer> siblings around a dynamic loop --
+    # they must still appear, in source order, in the same parent.
+    assert '__jacJsx("header"' in js_code;
+    assert '__jacJsx("footer"' in js_code;
+    assert '__jacJsx("article"' in js_code;
+
+    # Conditional: nested `for` inside `if` -- both must lower to JS
+    # statements (not nested comprehensions or ternaries).
+    assert '__jacJsx("span"' in js_code;
+}
+
+test "unsafe_html marker has the correct shape" {
+    # The runtime function lives inside the `_jac` prelude; verify the
+    # shape so the jac-client and bare-serve adapters can rely on it.
+    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # The prelude defines `unsafe_html(html)` that returns
+    # `{ __jacUnsafeHtml: String(html == null ? "" : html) }`. Both runtime
+    # adapters branch on the `__jacUnsafeHtml` key.
+    assert "unsafe_html(html)" in js_code;
+    assert "__jacUnsafeHtml: String(html" in js_code , (
+        "runtime must coerce the argument with String() so non-string\n"
+        "values (e.g. numbers from a walker) don't blow up:\n" + js_code
     );
 }

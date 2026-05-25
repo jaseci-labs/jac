@@ -238,15 +238,18 @@ impl sys_path_context(path: str) -> Iterator[None] {
 }
 
 """Get project name from jac.toml if exists, None otherwise."""
-impl get_name -> str | None {
+impl get_name(target_path: (str | None) = None) -> str | None {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.jac0core.runtime { JacRuntime }
 
-    if not JacRuntime.full_target_path {
+    # Per-context target wins; fall back to the bootstrap seed only when
+    # no caller-supplied identity is available.
+    effective_target = target_path or JacRuntime.get_full_target_path();
+    if not effective_target {
         return None;
     }
-    file_path = Path(JacRuntime.full_target_path);
+    file_path = Path(effective_target);
 
     try {
         # Check ONLY the same directory as the entry file (not parent directories)
@@ -270,7 +273,7 @@ impl get_name -> str | None {
 - Standalone files (no jac.toml) → .jac/data/filename.db
 - Override via JAC_DATA_PATH env var (for AppImage/sidecar mode)
 """
-impl get_db_path(base_path: str) -> (str | None) {
+impl get_db_path(base_path: str, target_path: (str | None) = None) -> (str | None) {
     import os;
     import from pathlib { Path }
     # Check for data path override (used in AppImage/sidecar mode where base_path is read-only)
@@ -282,7 +285,7 @@ impl get_db_path(base_path: str) -> (str | None) {
         data_dir = Path(base_path) / ".jac" / "data";
     }
     # Get project name (either from jac.toml in same dir, or filename stem)
-    if (project_name := get_name()) {
+    if (project_name := get_name(target_path=target_path)) {
         return str(data_dir / f"{project_name}.db");
     }
 

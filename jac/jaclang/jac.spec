@@ -2,13 +2,16 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
 walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
+
+cast ::= concurrent_expr ("as" pipe)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
@@ -44,12 +47,7 @@ factor ::= ("~" | "-" | "+") factor | connect
 
 connect ::= atomic_pipe (connect_op atomic_pipe)*
 
-edge_op_ref_inline ::=
-    "-->"
-    | "<--"
-    | "<-->"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"?
-    | "<-:" ((NAME | KWESC_NAME) atom)? ":<-"?
+edge_op_ref_inline ::= edge_op_ref
 
 connect_op ::=
     "del" edge_op_ref_inline
@@ -135,6 +133,7 @@ special_ref ::=
     "self"
     | "super"
     | "here"
+    | "root"
     | "visitor"
     | "props"
     | "init"
@@ -177,12 +176,14 @@ fstring ::= ("{{" | "}}" | "{" expression CONV? (":" ("{" expression CONV? "}")*
 list_or_compr ::= "]" | expression (comprehension_clauses "]" | ("," expression)* "]")
 
 edge_ref_chain ::=
-    "async"? ("edge" | "node")?
-    ((NAME | KWESC_NAME | "self" | "here" | "super" | "visitor" | "[") atomic_chain)? (
+    "async"? ("edge" | "node")? (
+        (NAME | KWESC_NAME | "root" | "self" | "here" | "super" | "visitor" | "[")
+        atomic_chain
+    )? (
         edge_op_ref (
             "[" filter_compr_bracket
             | "(" (filter_compr_inner | expression ")")
-            | (NAME | KWESC_NAME | "self" | "here" | "super") atomic_chain
+            | (NAME | KWESC_NAME | "self" | "root" | "here" | "super") atomic_chain
         )?
     )* "]"
 
@@ -190,9 +191,8 @@ edge_op_ref ::=
     "-->"
     | "<--"
     | "<-->"
-    | "->" atom? (":" (compare ("," compare)*)?)? ":->"
+    | "->:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":->"
     | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"
 
 dict_or_set ::=
     "}"
@@ -221,13 +221,16 @@ lambda_expr ::=
 lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
     "<>" jsx_children "</>"
-    | JSX_OPEN_START JSX_NAME ("." JSX_NAME)* jsx_attributes
-      ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
+    | JSX_OPEN_START ("@" | JSX_NAME ("." JSX_NAME)*) jsx_attributes (
+          "/>"
+          | JSX_TAG_END jsx_children "</" ("@" | JSX_NAME ("." JSX_NAME)*) JSX_TAG_END
+      )
 
 jsx_attributes ::=
     (
@@ -237,7 +240,24 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
+jsx_child ::=
+    JSX_TEXT jsx_child?
+    | JSX_COMMENT
+    | "{" (
+          (
+              "for"
+              | "while"
+              | "if"
+              | "match"
+              | "switch"
+              | "with"
+              | "try"
+              | "return"
+              | "skip"
+          ) code_block_stmts "}"
+          | expression (";"? code_block_stmts "}" | "}")
+      )
+    | jsx_element
 
 element_stmt ::=
     ";"
@@ -266,6 +286,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | ("cl" | "sv" | "na") element_stmt
     )?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
@@ -283,6 +304,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 
 statement ::=
     ";"
+    | jsx_element ";"?
     | import_stmt
     | if_stmt
     | while_stmt
@@ -325,8 +347,8 @@ for_stmt ::=
     )
 
 try_stmt ::=
-    "try" "{" code_block_stmts "}" except_handler* else_stmt?
-    ("finally" "{" code_block_stmts "}")?
+    "try" "{" code_block_stmts "}" ("awaiting" "{" code_block_stmts "}")?
+    except_handler* else_stmt? ("finally" "{" code_block_stmts "}")?
 
 except_handler ::=
     "except" expression ("as" (NAME | KWESC_NAME))? "{" code_block_stmts "}"
@@ -408,7 +430,7 @@ assignment_with_target ::=
     ) ";" ";"?
 
 import_stmt ::=
-    ("include" | "import") ("from" from_path)? (
+    ("include" | "import") "type"? ("from" from_path)? (
         import_items
         | (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)?
           ("as" (NAME | KWESC_NAME))?
@@ -447,7 +469,11 @@ archetype_member ::=
 
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 
-has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+has_var ::=
+    (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+    ("{" accessor* "}")?
+
+accessor ::= func_signature ("{" code_block_stmts "}" | ";")
 
 ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
@@ -459,12 +485,13 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain | ("(" (atomic_chain ("," atomic_chain)*)? ")")?)
     ("{" (enum_member ","? | PYNLINE | module_code)* "}" | ";")
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?

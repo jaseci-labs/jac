@@ -18,10 +18,12 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 
 import logging;
 import sqlite3;
+import threading;
 import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
      __all__ = [
@@ -66,6 +68,37 @@ obj Memory {
     def get_gc -> list[Anchor] abs;
     def remove_from_gc(anchor: Anchor) -> None abs;
     def get_mem -> dict[UUID, Anchor] abs;
+    # ---- Pushdown protocol ----
+    # Backends opt into native query pushdown by declaring `capabilities()` and
+    # implementing `execute_plan()`. The runtime planner consults
+    # `capabilities()` against a `QueryPlan.needs()` set and routes accordingly:
+    #   - all needs covered → backend's `execute_plan` is authoritative
+    #   - partial coverage → planner narrows via topology_index, hands a
+    #     reduced plan (typically with `id_in` populated) to the backend
+    #   - no coverage      → universal floor (topology_index → batch_get)
+    # See `jaclang.runtimelib.query_plan` for the capability vocabulary and
+    # `jaclang.runtimelib.planner` for the strategy chooser. Defaults below
+    # mean a backend that does nothing extra still gets the floor for free.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
+    # Convenience surface that delegates to execute_plan. Lifted here from
+    # the Mongo-only API so every backend with `type_pushdown` capability
+    # gets ergonomic type+field queries for free; backends without it return
+    # an empty result (callers should fall back to `query()` + Python filter).
+    def query_by_type(
+        arch_type_name: str, field_filter: (dict | None) = None
+    ) -> Generator[Anchor, None, None];
+    # ---- Async hot-path mirrors ----
+    # Non-abstract: default implementations delegate to the sync variant via
+    # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)
+    # gets non-blocking behavior under an event loop without a rewrite. Native
+    # async backends (aiosqlite, asyncpg, motor) can override these to drop
+    # the thread hop entirely.
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
+    async def adelete(id: UUID) -> None;
+    async def ahas(id: UUID) -> bool;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
 """Cache Memory Interface.
@@ -215,6 +248,7 @@ obj SqliteMemory(PersistentMemory) {
         __mem__: dict[UUID, Anchor] by postinit,
         __gc__: set[Anchor] by postinit,
         __conn__: (sqlite3.Connection | None) by postinit,
+        __lock__: threading.RLock by postinit,
         l3_fetch_count: int by postinit;
 
     def postinit -> None;
@@ -270,6 +304,13 @@ jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
     has base_path: (str | None) = None,
+        # App identity used to derive the L3 SQLite filename. When None,
+        # `get_db_path` falls back to `Jac.get_full_target_path()` (the
+        # bootstrap seed) for compatibility with CLI flows. The
+        # ExecutionContext that owns this memory passes its own captured
+        # `full_target_path` here so the filename is decided at this
+        # memory's construction time, not by later seed mutations.
+        target_path: (str | None) = None,
         l2: (CacheMemory | None) by postinit,
         l3: (PersistentMemory | None) by postinit,
         use_cache: bool = False;
@@ -280,9 +321,13 @@ obj TieredMemory(VolatileMemory) {
     # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
+    def get_roots -> Generator[Root, None, None];
     def delete(id: UUID) -> None;
     def close -> None;
     def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    # Pushdown protocol — delegate to L3 (the only tier that can push down).
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
 }

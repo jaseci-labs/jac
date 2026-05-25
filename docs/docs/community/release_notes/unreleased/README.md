@@ -49,6 +49,10 @@ Every PR that changes package code must include a release note fragment file.
 - **Docs: Brief title**: Description of the documentation update.
 ```
 
+## Example PR
+
+See [#5573](https://github.com/jaseci-labs/jaseci/pull/5573) for a real example of a PR with a release note fragment.
+
 ## Skipping
 
 To skip this check, add the `skip-release-notes-check` label to your PR.

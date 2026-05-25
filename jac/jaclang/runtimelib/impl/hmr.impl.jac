@@ -9,7 +9,6 @@ import sys;
 import time;
 import shutil;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.cli.console { console }
@@ -41,7 +40,7 @@ impl HotReloader.stop -> None {
 }
 
 """Callback for file change events from the watcher."""
-impl HotReloader.on_file_change(event: Any) -> None {
+impl HotReloader.on_file_change(event: any) -> None {
     if not self._running {
         return;
     }
@@ -397,10 +396,15 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
 
 """Update the entry point to reflect changes in modules."""
 impl HotReloader._update_entry_point -> None {
+    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
     output_base = Path(self.base_path) / self._client_output_dir;
     output_base.mkdir(parents=True, exist_ok=True);
     output_path = output_base / "_entry.js";
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+    # Skip __jacInstallErrorHandlers — handlers were bound to window during the
+    # initial mount and persist across HMR re-renders.
+    entry_content = build_simple_react_entry_script(
+        self.module_name, install_global_handlers=False
+    );
     output_path.write_text(entry_content, encoding='utf-8');
     self._overlay_entry = False;
 }

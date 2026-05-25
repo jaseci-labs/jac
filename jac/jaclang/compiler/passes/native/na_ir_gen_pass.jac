@@ -12,7 +12,33 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5060 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
+
+# ── Sentinel refcount value for static (immortal) strings.
+# INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
+glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
+
+# ── 32-byte allocation header layout (offsets from user_ptr) ──────────────
+# malloc'd block starts at user_ptr - HDR_TOTAL. Every offset below is
+# relative to user_ptr, so the values are negative for header fields.
+glob HDR_ALLOC_ID_OFF: int = -32,  # i64 alloc_id (with HDR_MAGIC in upper 32 bits)
+     HDR_TAG_OFF: int = -24,  # i8*  type_tag string
+     HDR_RC_OFF: int = -16,  # i64  refcount    (UNCHANGED — also valid for static-string 16-byte hdr)
+     HDR_DTOR_OFF: int = -8,  # i64  dtor_fn_ptr (UNCHANGED — 0 = plain free)
+     HDR_TOTAL: int = 32;
+
+# ── live-objects linked-list node layout (offsets from node start) ────────
+glob LIVE_NODE_ID_OFF: int = 0,  # i64  node id (matches header alloc_id)
+     LIVE_NODE_USER_OFF: int = 8,  # i8*  user pointer being tracked
+     LIVE_NODE_TAG_OFF: int = 16,  # i8*  cached type_tag (mirrors header)
+     LIVE_NODE_RC_OFF: int = 24,  # i64  rc_snap — last observed refcount
+     LIVE_NODE_NEXT_OFF: int = 32,  # i8*  next node in the list
+     LIVE_NODE_SIZE: int = 40;
+
+# Magic value embedded in the upper 32 bits of alloc_id so retain/release
+# can detect external (e.g. ctypes-passed) pointers and skip them.
+glob HDR_MAGIC: int = 44061,  # 0xAC1D
+     HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;  # HDR_MAGIC << 32
 
 """Compile na-context Jac AST to LLVM IR using llvmlite.
 
@@ -31,6 +57,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
+        param_vars: set[str] = set(),
         has_native_code: bool = False,
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         # External function cache (Phase 0)
@@ -44,6 +71,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         enum_string_values: dict[str, list] = {},
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
+        enum_member_ordinal: dict[str, int] = {},
         var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
@@ -64,6 +92,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
         _last_type_node_hint: (object | None) = None,
+        # True while codegen'ing the TupleVal of a `return (...)`. In that
+        # context borrowed (field-load / element-read) pointer elements must be
+        # retained so they outlive the owning local's scope-exit teardown — the
+        # returned tuple box does not own its elements (see _codegen_tuple_val).
+        _return_tuple_ctx: bool = False,
         # Inheritance / vtable support (Phase 5)
         class_hierarchy: dict[str, str] = {},
         class_parents: dict[str, list[str]] = {},
@@ -110,11 +143,27 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_emitters: (dict[str, object] | None) = None,
         _native_builtin_emitter: (object | None) = None,
         # Reference counting support (Phase RC)
+        # Phase R2: compile-time gate on debug-only RC machinery (live-list,
+        # ctx attribution, leak dump). Read from JAC_RC_DEBUG_CODEGEN env var
+        # in postinit. When False (default), every Jac allocation skips the
+        # malloc(LIVE_NODE_SIZE) live-list insert and the corresponding
+        # release-time list walk — recovering the per-allocation overhead.
+        _rc_debug_codegen: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
+        rc_set_type_fn: (ir.Function | None) = None,
+        rc_gc_disable_fn: (ir.Function | None) = None,
+        rc_gc_enable_fn: (ir.Function | None) = None,
+        rc_gc_disabled_gv: object = None,
+        rc_debug_gv: object = None,
+        rc_alloc_id_gv: object = None,
+        rc_live_head_gv: object = None,
+        rc_ctx_op_gv: object = None,
+        rc_ctx_loc_gv: object = None,
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
+        rc_safe_free_fn: (ir.Function | None) = None,
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -122,8 +171,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _native_emit_ctx_class: (type | None) = None,
+        # Per-function tracking for borrowed-param promotion: entry-block store instruction
+        # per param (for position_after retain insertion) and set of already-promoted params.
+        # Both are reset at the start of each function/method.
+        _param_store_instr: dict[str, object] = {},
+        _param_promoted: set[str] = set(),
+        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
+        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
+        # (_declared_globals) may rebind a module global. A bare function-scope
+        # assignment to a glob-named variable allocates a function-local
+        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
+        # reset per function.
+        _declared_globals: set[str] = set(),
+        _in_module_scope: bool = False,
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
@@ -138,6 +201,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
+    def _codegen_nested_ability(nd: uni.Ability) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
@@ -150,6 +214,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
@@ -178,14 +244,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    def _llvm_to_spec(t: Any) -> str;
-    def _resolve_callable_type(slice: uni.IndexSlice) -> ir.Type;
-    def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
+    # Unified TypeBase -> LLVM lowering (consumes the central type checker's
+    # result; returns None when a type category is not yet handled).
+    def _lower_type(t: any) -> (ir.Type | None);
+    def _lower_class_type(t: any) -> (ir.Type | None);
+    def _lower_function_type(t: any) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _promote_to_float(
         left: ir.Value, right: ir.Value
     ) -> tuple[(ir.Value, ir.Value)];
@@ -198,7 +267,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(nd: uni.Enum) -> None;
-    def _build_enum_string_table(enum_name: str, entries: list) -> None;
+    def _build_enum_string_table(
+        enum_name: str, entries: list, with_values: bool = True
+    ) -> None;
+
     def _codegen_enum_value_lookup(
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);
@@ -207,6 +279,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    def _codegen_iter_for(nd: uni.IterForStmt) -> None;
+    def _codegen_match(nd: uni.MatchStmt) -> None;
+    def _match_pattern_cond(
+        pat: uni.MatchPattern, subj: ir.Value
+    ) -> (ir.Value | None);
+
+    def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
+    def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
@@ -223,7 +303,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
-    def _register_imported_globals(nd: uni.GlobalVars) -> None;
+    def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;
@@ -278,7 +358,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> ir.IRBuilder;
 
     def _emit_container_new_fn(
-        fn_name: str, container_ptr_type: ir.Type, data_types: list
+        fn_name: str,
+        container_ptr_type: ir.Type,
+        data_types: list,
+        dtor_fn: (ir.Function | None) = None
     ) -> ir.Function;
 
     def _emit_container_len_fn(
@@ -364,7 +447,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
-    def _box_value_tuple(val: ir.Value) -> ir.Value;
+    def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     # Phase 10: Comprehensions
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
     def _codegen_compr_loops(
@@ -513,12 +596,93 @@ obj NaIRGenPass(ModuleCodegenPass) {
         size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
     ) -> ir.Value;
 
-    def _emit_rc_retain(ptr: ir.Value) -> None;
-    def _emit_rc_release_simple(ptr: ir.Value) -> None;
-    def _emit_rc_release_typed(val: ir.Value) -> None;
-    def _emit_scope_cleanup(skip_var: (str | None) = None) -> None;
+    def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
+    def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
+    def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
+    def _emit_set_type_tag(b: ir.IRBuilder, ptr_i8: ir.Value, type_name: str) -> None;
+    def _emit_magic_check(
+        b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
+    ) -> ir.Value;
+    # Ownership tracking: an owned ir.Value is one whose pointee has rc=1
+    # already (fresh allocation, function-call result, constructor) and the
+    # caller must therefore release on drop / not retain on store.
+    # Stored as `is_owned: bool` attribute on the ir.Value instance itself;
+    # propagated through _coerce_type so bitcasts/inttoptr keep the marker.
+    def _mark_owned(val: ir.Value) -> ir.Value;
+    def _is_owned(val: ir.Value) -> bool;
+    def _rc_call_with_ctx(
+        fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
+    ) -> ir.Value;
+
+    def _emit_scope_cleanup(
+        skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
+    ) -> None;
+
+    def _emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None;
+    def _set_rc_ctx(op: str, loc: str) -> None;
+    def _clear_rc_ctx -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
+    def _emit_live_list_remove(
+        b: object,
+        target_ptr: object,
+        i8_ptr: object,
+        i64_ptr: object,
+        done_bb: object,
+        free_bb: object
+    ) -> None;
+
+    def _emit_rc_live_dump -> None;
+    # GC debug helpers (gc_debug.impl.jac — R3 extracted)
+    def _emit_rc_debug_globals -> None;
+    def _emit_ctx_load(b: ir.IRBuilder) -> tuple;
+    def _emit_live_node_insert(
+        b: ir.IRBuilder, aid: ir.Value, user: ir.Value, tag_raw: ir.Value
+    ) -> None;
+
+    def _emit_alloc_log_bb(
+        func: ir.Function,
+        ret_bb: ir.Block,
+        aid: ir.Value,
+        user: ir.Value,
+        size_arg: ir.Value,
+        tag_raw: ir.Value
+    ) -> ir.Block;
+
+    def _emit_retain_log_bb(
+        func: ir.Function,
+        done_bb: ir.Block,
+        ptr: ir.Value,
+        old_rc: ir.Value,
+        new_rc: ir.Value
+    ) -> ir.Block;
+
+    def _emit_dbl_free_log_bb(
+        func: ir.Function, done_bb: ir.Block, ptr: ir.Value
+    ) -> ir.Block;
+
+    def _emit_release_log_bb(
+        func: ir.Function,
+        done_bb: ir.Block,
+        ptr: ir.Value,
+        old_rc: ir.Value,
+        new_rc: ir.Value
+    ) -> ir.Block;
+
+    def _emit_raw_free_bbs(
+        func: ir.Function, done_bb: ir.Block, ptr: ir.Value
+    ) -> ir.Block;
+
+    def _emit_struct_free_log(
+        func: ir.Function,
+        log_free_struct_bb: ir.Block,
+        actual_free_struct_bb: ir.Block,
+        obj_i8: ir.Value,
+        obj_raw: ir.Value,
+        aid: ir.Value,
+        tag: ir.Value
+    ) -> None;
+
     def _emit_glob_init_func -> None;
     # DWARF debug helpers (JAC_NATIVE_DEBUG=1)
     def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;

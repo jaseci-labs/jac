@@ -58,9 +58,9 @@ The most common way to use native compilation is to tag elements of a regular `.
 
 There are three ways to select the native codespace inside a file:
 
-- **`to na:` section header** (preferred at module scope) -- every following module-level element compiles native until the next `to X:` header or end of file.
+- **`na { ... }` braced block** (recommended) -- every element inside the braces compiles native; the braces bracket exactly the tagged region. Also works inside inner scopes.
+- **`to na:` section header** -- every following module-level element compiles native until the next `to X:` header or end of file. Convenient for a module that is mostly native.
 - **`na` single-statement prefix** -- tags one declaration.
-- **`na { ... }` braced block** -- still valid inside inner scopes or small mixed fragments, but emits **W0064** at module scope pointing at the header form.
 
 ```jac
 # app.jac
@@ -293,6 +293,7 @@ Collections are represented as LLVM struct types:
 | Sets | `s: set[int] = {1, 2, 3};` |
 | Tuples | `t: tuple[int, str] = (1, "a");` |
 | Enums | `enum Color { RED=0, BLUE=1 }` |
+| Typed-base enums | `enum HttpStatus: int { OK=200, NOT_FOUND=404 }` (members are real `int`) |
 | Objects | `obj Point { has x: int; }` |
 
 ### Control Flow
@@ -504,15 +505,17 @@ The same mechanism works with any C-compatible shared library. For example, usin
 <!-- jac-skip -->
 ```jac
 import from "libraylib.so" {
-    def InitWindow(width: i32, height: i32, title: i8*) -> c_void;
+    def InitWindow(width: i32, height: i32, title: str) -> c_void;
     def WindowShouldClose() -> i32;
     def BeginDrawing() -> c_void;
     def EndDrawing() -> c_void;
     def CloseWindow() -> c_void;
     def ClearBackground(color: i32) -> c_void;
-    def DrawText(text: i8*, x: i32, y: i32, fontSize: i32, color: i32) -> c_void;
+    def DrawText(text: str, x: i32, y: i32, fontSize: i32, color: i32) -> c_void;
 }
 ```
+
+C-string parameters use `str` in the declaration; the compiler lowers `str` to the `i8*` ABI shape shown in the [primitive-type table](#primitive-type-mappings) above. The `i8*` form is an internal LLVM type and is not part of Jac's surface syntax.
 
 Any library that exposes a C ABI can be called this way -- just point to the shared library path and declare the function signatures.
 
@@ -703,7 +706,7 @@ HELLO, WORLD!
 # mixed.jac
 
 # Python side -- full ecosystem access
-import:py from json { dumps }
+import from json { dumps }
 
 def serialize(data: dict) -> str {
     return dumps(data);

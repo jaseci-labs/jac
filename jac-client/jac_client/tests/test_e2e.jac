@@ -18,7 +18,7 @@ import from .test_helpers {
 
 # ---- Helper functions (replacing fixtures) ----
 """Fill username and password fields."""
-def _fill_auth_form(page: Page, username: str, password: str) -> None {
+def _fill_auth_form(page: Page, username: str, password: str) {
     page.locator('input[type="text"], input[placeholder="Username" i]').first.fill(
         username
     );
@@ -26,13 +26,13 @@ def _fill_auth_form(page: Page, username: str, password: str) -> None {
 }
 
 """Click submit button and wait for navigation."""
-def _submit_form(page: Page) -> None {
+def _submit_form(page: Page) {
     page.locator('button[type="submit"]').first.click();
     page.wait_for_timeout(2000);
 }
 
 """Navigate to signup, fill form, and submit."""
-def _signup(page: Page, base_url: str, username: str, password: str) -> None {
+def _signup(page: Page, base_url: str, username: str, password: str) {
     page.goto(f"{base_url}/signup", wait_until="load", timeout=60000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
@@ -40,7 +40,7 @@ def _signup(page: Page, base_url: str, username: str, password: str) -> None {
 }
 
 """Navigate to login, fill form, and submit."""
-def _login(page: Page, base_url: str, username: str, password: str) -> None {
+def _login(page: Page, base_url: str, username: str, password: str) {
     page.goto(f"{base_url}/login", wait_until="load", timeout=60000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
@@ -48,7 +48,7 @@ def _login(page: Page, base_url: str, username: str, password: str) -> None {
 }
 
 """Click logout button if visible."""
-def _logout(page: Page) -> None {
+def _logout(page: Page) {
     logout_btn = page.locator('button:has-text("Logout")').first;
     if logout_btn.is_visible() {
         logout_btn.click();
@@ -56,17 +56,13 @@ def _logout(page: Page) -> None {
     }
 }
 
-"""Start the all-in-one jac server and return (process, port, url, temp_dir, original_cwd)."""
-def _start_running_server -> tuple {
-    tests_dir = os.path.dirname(__file__);
-    jac_client_root = os.path.dirname(tests_dir);
-    all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one");
-
-    if not os.path.isdir(all_in_one_path) {
-        pytest.skip("all-in-one example directory not found");
+"""Start a jac server from a fixture/example path. Returns
+(process, port, url, temp_dir, original_cwd)."""
+def _start_server_from(app_src: str, app_name: str) -> tuple {
+    if not os.path.isdir(app_src) {
+        pytest.skip(f"fixture directory not found: {app_src}");
     }
 
-    app_name = "e2e-browser-test-app";
     jac_cmd = get_jac_command();
     env = get_env_with_npm();
 
@@ -74,10 +70,11 @@ def _start_running_server -> tuple {
     original_cwd = os.getcwd();
     os.chdir(temp_dir);
 
-    # Create jacpack file from all-in-one example
-    jacpack_path = os.path.join(temp_dir, "all-in-one.jacpack");
+    # Create jacpack file from the source directory
+    pack_name = os.path.basename(os.path.normpath(app_src));
+    jacpack_path = os.path.join(temp_dir, f"{pack_name}.jacpack");
     pack_result = run(
-        [*jac_cmd, "jacpack", "pack", all_in_one_path, "-o", jacpack_path],
+        [*jac_cmd, "jacpack", "pack", app_src, "-o", jacpack_path],
         capture_output=True,
         text=True,
         env=env,
@@ -115,8 +112,16 @@ def _start_running_server -> tuple {
     );
 }
 
+"""Start the all-in-one jac server and return (process, port, url, temp_dir, original_cwd)."""
+def _start_running_server -> tuple {
+    tests_dir = os.path.dirname(__file__);
+    jac_client_root = os.path.dirname(tests_dir);
+    app_src = os.path.join(jac_client_root, "examples", "all-in-one");
+    return _start_server_from(app_src, "e2e-browser-test-app");
+}
+
 """Stop the running server and clean up."""
-def _stop_running_server(server: Popen, temp_dir: str, original_cwd: str) -> None {
+def _stop_running_server(server: Popen, temp_dir: str, original_cwd: str) {
     server.terminate();
     try {
         server.wait(timeout=15);
@@ -217,6 +222,86 @@ test "login with invalid credentials" {
     }
 }
 
+# Click a testid'd button and return the final status text.
+def _click_and_wait_status(
+    page: Page, username: str, password: str, button_testid: str
+) -> str {
+    page.locator('[data-testid="username-input"]').fill(username);
+    page.locator('[data-testid="password-input"]').fill(password);
+    page.locator(f'[data-testid="{button_testid}"]').click();
+    page.wait_for_function(
+        """() => {
+            const el = document.querySelector('[data-testid="status"]');
+            return el && el.textContent && el.textContent.trim() !== 'pending';
+        }""",
+        timeout=15000,
+    );
+    return page.locator('[data-testid="status"]').inner_text();
+}
+
+# Exercises jacSignup/jacLogin in both string and identity/credential forms.
+test "jacSignup and jacLogin round trip: old and new calling forms" {
+    tests_dir = os.path.dirname(__file__);
+    jac_client_root = os.path.dirname(tests_dir);
+    app_src = os.path.join(jac_client_root, "examples", "auth-calling-forms");
+    (server, port, url, temp_dir, original_cwd) = _start_server_from(
+        app_src, "e2e-auth-calling-forms-app"
+    );
+    try {
+        with sync_playwright() as p {
+            browser = p.chromium.launch(headless=True);
+            context = browser.new_context();
+            page = context.new_page();
+            try {
+                page.goto(url, wait_until="load", timeout=60000);
+                page.wait_for_selector('[data-testid="signup-old"]', timeout=30000);
+
+                ts = int(time.time());
+                user_old = f"old_{ts}";
+                user_new = f"new_{ts}";
+                password = "roundtrip_pass_123";
+
+                # 1. Signup via backward-compat form: jacSignup(user, pw)
+                status = _click_and_wait_status(page, user_old, password, "signup-old");
+                assert status == "signup_old_ok" , (
+                    f"signup (old form) failed: {status}"
+                );
+
+                # 2. Logout then log back in via old form: jacLogin(user, pw)
+                page.locator('[data-testid="logout-btn"]').click();
+                page.wait_for_timeout(500);
+                status = _click_and_wait_status(page, user_old, password, "login-old");
+                assert status == "login_old_ok" , (
+                    f"login (old form) failed: {status}"
+                );
+
+                # 3. Register a different user via new form:
+                #    jacSignup([{type,value}], password)
+                page.locator('[data-testid="logout-btn"]').click();
+                page.wait_for_timeout(500);
+                status = _click_and_wait_status(page, user_new, password, "signup-new");
+                assert status == "signup_new_ok" , (
+                    f"signup (new form) failed: {status}"
+                );
+
+                # 4. Log that user in via new form:
+                #    jacLogin({type,value}, password)
+                page.locator('[data-testid="logout-btn"]').click();
+                page.wait_for_timeout(500);
+                status = _click_and_wait_status(page, user_new, password, "login-new");
+                assert status == "login_new_ok" , (
+                    f"login (new form) failed: {status}"
+                );
+            } finally {
+                context.close();
+                browser.close();
+            }
+        }
+    } finally {
+        _stop_running_server(server, temp_dir, original_cwd);
+    }
+}
+
 test "logout functionality" {
     (server, port, url, temp_dir, original_cwd) = _start_running_server();
     try {
@@ -297,7 +382,7 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                 # ---- Track walker HTTP requests ----
                 walker_requests: list = [];
 
-                def _track_request(request: Any) -> None {
+                def _track_request(request: any) {
                     if "/walker/" in request.url {
                         walker_requests.append(request.url);
                     }
@@ -385,6 +470,36 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                     f"request (expected 2 total), got "
                     f"{ping_hits_after_invalidation}"
                 );
+            } finally {
+                context.close();
+                browser.close();
+            }
+        }
+    } finally {
+        _stop_running_server(server, temp_dir, original_cwd);
+    }
+}
+
+test "undefined JSX child does not crash render" {
+    (server, port, url, temp_dir, original_cwd) = _start_running_server();
+    try {
+        with sync_playwright() as p {
+            browser = p.chromium.launch(headless=True);
+            context = browser.new_context();
+            page = context.new_page();
+            try {
+                username = f"e2e_undef_child_{int(time.time())}";
+                _signup(page, url, username, "undef_pass_123");
+                page.wait_for_load_state("load");
+                page.wait_for_selector(
+                    '[data-testid="undef-child-probe-ok"]',
+                    state="attached",
+                    timeout=30000
+                );
+                marker = page.locator(
+                    '[data-testid="undef-child-probe-ok"]'
+                ).first.text_content();
+                assert marker == "ok" , (f"expected probe marker 'ok', got {marker!r}");
             } finally {
                 context.close();
                 browser.close();

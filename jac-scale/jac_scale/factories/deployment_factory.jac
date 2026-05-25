@@ -3,14 +3,14 @@
 Supports both built-in targets (kubernetes) and plugin-registered targets.
 External packages can register custom targets via DeploymentTargetFactory.register().
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale._optdeps.optional_deps { require_optional }
 
 """Type alias for target factory callables.""" type TargetFactory = Callable[
-    [dict[str, Any], Logger | None],
+    [dict[str, any], Logger | None],
     DeploymentTarget
 ];
 
@@ -61,7 +61,7 @@ class DeploymentTargetFactory {
         NotImplementedError: If target is not yet implemented
     """
     static def create(
-        target_type: str, config: dict[str, Any], logger: (Logger | None) = None
+        target_type: str, config: dict[str, any], logger: (Logger | None) = None
     ) -> DeploymentTarget {
         # Check plugin registry first
         if target_type in DeploymentTargetFactory._registry {
@@ -79,6 +79,21 @@ class DeploymentTargetFactory {
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
+        } elif target_type == 'kubernetes-microservice' {
+            # Microservice-mode K8s target: one image fanned out to one pod
+            # per `sv import`-discovered service. Selected automatically by
+            # _scale_pre_hook when [plugins.scale.microservices].enabled is
+            # true; users don't normally pass --target=kubernetes-microservice
+            # directly.
+            require_optional("kubernetes", "deploy");
+            import from jac_scale.targets.kubernetes.kubernetes_config {
+                KubernetesConfig
+            }
+            import from jac_scale.targets.kubernetes.microservice.target {
+                KubernetesMicroserviceTarget
+            }
+            k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
+            return KubernetesMicroserviceTarget(config=k8s_config, logger=logger);
         } elif target_type == 'aws' {
             raise NotImplementedError("AWS target not yet implemented");
         } elif target_type == 'gcp' {
