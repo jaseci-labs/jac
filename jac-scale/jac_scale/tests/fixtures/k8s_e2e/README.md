@@ -47,12 +47,14 @@ for the full config reference.
 The fixture's `jac.toml` has `[plugins.scale.microservices.logs].enabled = true`,
 so [`../../../scripts/k8s_microservice_real_e2e.sh`](../../../scripts/k8s_microservice_real_e2e.sh)
 will additionally deploy Prometheus + Grafana + Loki + Alloy + node-exporter
+
 + kube-state-metrics, wait for them to be Ready, and run a LogQL probe
 to confirm Alloy is shipping pod logs to Loki.
 
 ### EC2 sizing
 
 The full stack is **~12 pods** (gateway + 3 services + Mongo + Redis
+
 + 6 observability). Minimum:
 
 | Resource | Min | Comfortable |
