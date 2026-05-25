@@ -739,11 +739,11 @@ impl TypeCheckPass._check_event_trigger_archetype(
     );
     err = E1116 if walker_owner else E1117;
     for arg in targets {
-        if isinstance(arg, uni.SpecialVarRef) and arg.name == Tok.KW_ROOT {
-            self.emit(err, node_override=arg, type="root");
+        ty = self.evaluator.get_type_of_expression(arg);
+        if isinstance(ty, types.ClassType) and ty.is_instance() {
+            self.emit(err, node_override=arg, type=arg.value);
             continue;
         }
-        ty = self.evaluator.get_type_of_expression(arg);
         if not is_valid(ty) {
             self.emit(err, node_override=arg, type=str(ty));
         }

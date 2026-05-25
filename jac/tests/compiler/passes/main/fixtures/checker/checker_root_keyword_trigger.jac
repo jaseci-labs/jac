@@ -1,5 +1,7 @@
 node N {}
 
+glob my_node: N = N();
+
 walker GoodWalker {
     can visit with Root entry {
         ;
@@ -14,7 +16,7 @@ walker GoodWalker {
 walker BadWalker {
     can visit with root entry {
         ;
-    }  # E1116 - root is a runtime instance
+    }  # E1116 - root keyword is a runtime instance
 
 }
 
@@ -29,5 +31,26 @@ walker BadTuple {
     can visit with (Root, root) entry {
         ;
     }  # E1116 - root inside tuple form
+
+}
+
+walker BadVarInstance {
+    can visit with my_node entry {
+        ;
+    }  # E1116 - my_node is a variable holding an instance, not a class
+
+}
+
+walker BadVarUnion {
+    can visit with Root | my_node entry {
+        ;
+    }  # E1116 - my_node inside | union
+
+}
+
+walker BadVarTuple {
+    can visit with (Root, my_node) entry {
+        ;
+    }  # E1116 - my_node inside tuple form
 
 }

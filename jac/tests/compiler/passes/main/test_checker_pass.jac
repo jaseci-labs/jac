@@ -1082,10 +1082,13 @@ test "root_keyword_as_walker_trigger" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 3 , f"Expected 3 E1116 for `root` keyword trigger (bare, union, tuple), got {len(
+    assert len(e1116) == 6 , f"Expected 6 E1116 (3 root keyword + 3 variable instance, bare/union/tuple), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
-    assert all("root" in e.pretty_print() for e in e1116) , "E1116 messages should mention 'root'";
+    var_errors = [e for e in e1116 if "my_node" in e.pretty_print()];
+    root_errors = [e for e in e1116 if e not in var_errors];
+    assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
+    assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
 }
 
 test "undefined_osp_position" {
