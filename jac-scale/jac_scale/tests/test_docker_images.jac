@@ -34,7 +34,9 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 # ---------------------------------------------------------------------------
 test "end to end build and push produces correct image url and side effects" {
     with tempfile.TemporaryDirectory() as tmpdir {
-        with unittest.mock.patch("jac_scale._optdeps.docker.docker_module.from_env") as mock_docker {
+        with unittest.mock.patch(
+            "jac_scale._optdeps.docker.docker_module.from_env"
+        ) as mock_docker {
             mock_client = unittest.mock.MagicMock();
             mock_docker.return_value = mock_client;
             # Simulate docker build returning an image object + streaming log lines
@@ -145,21 +147,18 @@ test "build_platform propagates from kubernetes config through registry to docke
     registry = ImageRegistryFactory.create("dockerhub", registry_config);
     assert registry.build_platform == "linux/arm64";
 
-    # Now verify the platform reaches docker.images.build
+    # Now verify the platform reaches docker.images.build.
+    # registry._client was set at postinit (before any mock), so we replace it
+    # directly — patching from_env after the fact would not affect the stored client.
     with tempfile.TemporaryDirectory() as tmpdir {
-        with unittest.mock.patch("jac_scale._optdeps.docker.docker_module.from_env") as mock_docker {
-            mock_client = unittest.mock.MagicMock();
-            mock_docker.return_value = mock_client;
-            mock_client.images.build.return_value = (
-                unittest.mock.MagicMock(),
-                iter([])
-            );
-            registry.build_image(tmpdir, image_name="platform-test:latest");
-            build_kwargs = mock_client.images.build.call_args[1];
-            assert build_kwargs["platform"] == "linux/arm64" , (
-                f"Expected linux/arm64 but got {build_kwargs['platform']}"
-            );
-        }
+        mock_client = unittest.mock.MagicMock();
+        mock_client.images.build.return_value = (unittest.mock.MagicMock(), iter([]));
+        registry._client = mock_client;
+        registry.build_image(tmpdir, image_name="platform-test:latest");
+        build_kwargs = mock_client.images.build.call_args[1];
+        assert build_kwargs["platform"] == "linux/arm64" , (
+            f"Expected linux/arm64 but got {build_kwargs['platform']}"
+        );
     }
 }
 
