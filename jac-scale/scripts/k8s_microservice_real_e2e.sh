@@ -97,6 +97,15 @@ fi
 
 echo "=== deploy via KubernetesMicroserviceTarget ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+# Belt-and-suspenders: M-14.a's _deploy_observability also labels the
+# namespace privileged at the API layer, but doing it here means the
+# label lands before any DaemonSet manifest hits the API server even
+# on cluster configs where the python step is delayed (slow image
+# pull, etc.). Required because node-exporter + Alloy mount /proc,
+# /sys, and /var/log/pods, which PodSecurity `baseline` rejects.
+kubectl label namespace "${NAMESPACE}" \
+    pod-security.kubernetes.io/enforce=privileged \
+    --overwrite
 
 cd "${PROJECT_DIR}"
 python - <<PYEOF

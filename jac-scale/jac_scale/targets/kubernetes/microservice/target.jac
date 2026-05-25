@@ -208,6 +208,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         cluster_env: str = cluster_type();
 
         obs_config = self._build_observability_config();
+        # node-exporter + Alloy DaemonSets need hostPath volumes
+        # (`/proc`, `/sys`, `/var/log/pods`). Pod Security Admission
+        # `baseline` enforcement blocks hostPath, so namespaces that
+        # default to baseline (vanilla minikube, fresh EKS, etc.) reject
+        # the DaemonSet pods and the deploy stalls with `FailedCreate`.
+        # Stamp the `privileged` label up-front so the operator doesn't
+        # have to `kubectl label namespace ...` manually. Scoped to the
+        # opt-in `logs.enabled` path so we never mutate user namespaces
+        # that aren't explicitly asking for hostPath workloads.
+        self._ensure_privileged_namespace(core_v1, obs_config.namespace);
         if self.logger {
             self.logger.info(
                 f"Deploying observability stack (Prometheus + Grafana + "
@@ -219,6 +229,47 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         monitoring.deploy(
             app_name, obs_config.namespace, apps_v1, core_v1, cluster_env
         );
+    }
+
+    """Label namespace `pod-security.kubernetes.io/enforce=privileged` so
+    hostPath-using DaemonSets (node-exporter, Alloy) can schedule.
+    Idempotent + non-fatal: existing label is preserved (we overwrite
+    only when missing or set to something stricter), and any API error
+    surfaces as a warning so a sealed-namespace cluster doesn't break
+    the deploy - the operator will see the FailedCreate event anyway
+    and can label the namespace by hand."""
+    def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
+        try {
+            ns = core_v1.read_namespace(name=namespace);
+            labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
+            current: str = labels.get("pod-security.kubernetes.io/enforce", "");
+            if current == "privileged" {
+                return;
+            }
+            patch = {
+                "metadata": {
+                    "labels": {"pod-security.kubernetes.io/enforce": "privileged"}
+                }
+            };
+            core_v1.patch_namespace(name=namespace, body=patch);
+            if self.logger {
+                self.logger.info(
+                    f"Labeled namespace '{namespace}' with "
+                    "pod-security.kubernetes.io/enforce=privileged "
+                    "(required for hostPath DaemonSets)"
+                );
+            }
+        } except Exception as e {
+            if self.logger {
+                self.logger.warning(
+                    f"Could not label namespace '{namespace}' privileged - "
+                    f"hostPath DaemonSets may be rejected by PodSecurity. "
+                    f"Run `kubectl label namespace {namespace} "
+                    f"pod-security.kubernetes.io/enforce=privileged "
+                    f"--overwrite` manually. Cause: {e}"
+                );
+            }
+        }
     }
 
     """Clone `self.k8s_config` with `monitoring_enabled` and `loki_enabled`
