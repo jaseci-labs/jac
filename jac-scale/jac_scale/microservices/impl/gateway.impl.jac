@@ -693,9 +693,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                     admin_resp = gw.handle_admin(path);
                 }
                 if admin_resp is None {
-                    import from jac_scale.microservices.runtime.errors {
-                        not_found
-                    }
+                    import from jac_scale.microservices.runtime.errors { not_found }
                     admin_resp = not_found(path);
                 }
                 resp = admin_resp;
