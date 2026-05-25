@@ -140,6 +140,39 @@ def _scale_pre_hook(context: HookContext) -> None {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
+        # --dry-run cancels execution before the deploy. auto_build and
+        # guard_fallback_image stay at their defaults (False) so
+        # generate_manifests never tries to build an image.
+        dry_run = context.get_arg("dry-run", False);
+        if dry_run {
+            if target != "kubernetes-microservice" {
+                console.print(
+                    f"\n[yellow]--dry-run only supported with "
+                    f"kubernetes-microservice target (got {target!r}).[/yellow]"
+                );
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            show_yaml: bool = bool(context.get_arg("show_yaml", False));
+            try {
+                import from jac_scale.microservices.cli.plan { print_plan }
+                import from jac_scale.microservices.cli.diagnostics { has_errors }
+                (bundle, diagnostics) = print_plan(
+                    deployment_target, app_config, show_yaml=show_yaml
+                );
+                exit_code = 2 if has_errors(diagnostics) else 0;
+            } except Exception as e {
+                console.print(f"\n[red]--dry-run failed:[/red] {e}");
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", exit_code);
+            return;
+        }
+
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
         # build=False for manifest-shape assertions construct the
@@ -300,6 +333,20 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
+                    short=""
+                ),
+                Arg.create(
+                    "dry-run",
+                    typ=bool,
+                    default=False,
+                    help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+                    short=""
+                ),
+                Arg.create(
+                    "show-yaml",
+                    typ=bool,
+                    default=False,
+                    help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
                     short=""
                 ),
 

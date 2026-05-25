@@ -70,6 +70,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_while(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self._codegen_for(nd);
+    } elif isinstance(nd, uni.IterForStmt) {
+        self._codegen_iter_for(nd);
+    } elif isinstance(nd, uni.MatchStmt) {
+        self._codegen_match(nd);
+    } elif isinstance(nd, uni.Ability) {
+        self._codegen_nested_ability(nd);
     } elif isinstance(nd, uni.Assignment) {
         self._codegen_assignment(nd);
     } elif isinstance(nd, uni.CtrlStmt) {
@@ -217,7 +223,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._dict_val_type_hint = "jacval";
             }
         }
+        # Flag return-tuple context so borrowed pointer elements are retained
+        # as they are packed (the tuple box does not own its elements, and the
+        # owning local is torn down at scope exit below).
+        self._return_tuple_ctx = isinstance(nd.expr, uni.TupleVal);
         val = self._codegen_expr(nd.expr);
+        self._return_tuple_ctx = False;
         self._list_type_hint = None;
         self._dict_val_type_hint = None;
         if val is not None {
@@ -464,6 +475,236 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.pop();
     # Continue after loop
     self.builder.position_at_end(end_bb);
+}
+
+"""Generate a C-style iter-for loop.
+
+`for <init> to <cond> by <step> { body }` lowers to:
+
+    <init>                  ; in the current block, runs once
+  iterfor.cond:
+    if <cond> goto body else goto end
+  iterfor.body:
+    <body>
+    goto step               ; fallthrough back-edge
+  iterfor.step:
+    <step>
+    goto cond
+  iterfor.end:
+
+`break` targets end and `continue` targets step (so the counter still
+advances), matching the InForStmt loop_stack convention of
+(continue_target, break_target).
+"""
+impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
+    # init runs once in the current block.
+    self._codegen_assignment(nd.iter);
+    func = self.builder.function;
+    cond_bb = func.append_basic_block(name="iterfor.cond");
+    body_bb = func.append_basic_block(name="iterfor.body");
+    step_bb = func.append_basic_block(name="iterfor.step");
+    end_bb = func.append_basic_block(name="iterfor.end");
+    self.builder.branch(cond_bb);
+    # Condition block.
+    self.builder.position_at_end(cond_bb);
+    cond = self._codegen_expr(nd.condition);
+    if cond is not None {
+        cond = self._to_bool(cond);
+        self.builder.cbranch(cond, body_bb, end_bb);
+    } else {
+        self.builder.branch(end_bb);
+    }
+    # Body block — continue lands on the step block so the counter advances.
+    self.loop_stack.append((step_bb, end_bb));
+    self.builder.position_at_end(body_bb);
+    _saved_locals = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        if nd.loc
+        else 0}";
+    if not self.builder.block.is_terminated {
+        self._emit_loop_iter_cleanup(_saved_locals, loc=_loc);
+        self.builder.branch(step_bb);
+    }
+    self.loop_stack.pop();
+    # Step block — run the count_by update, then re-check the condition.
+    self.builder.position_at_end(step_bb);
+    if not self.builder.block.is_terminated {
+        self._codegen_assignment(nd.count_by);
+        self.builder.branch(cond_bb);
+    }
+    # Continue after the loop.
+    self.builder.position_at_end(end_bb);
+}
+
+"""Generate a match statement.
+
+The subject is evaluated once into a temp slot, then each case is lowered
+to an if/elif chain: test the pattern, optionally bind captures and check
+the guard, then run the body and jump to the shared end block. Supported
+patterns are literal value, singleton, wildcard, capture (`as`), and OR of
+those. Structural patterns (sequence/mapping/class) emit E5090.
+"""
+impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
+    subj = self._codegen_expr(nd.target);
+    if subj is None {
+        return;
+    }
+    # Evaluate the subject exactly once and read it from a slot per test.
+    subj_alloca = self._entry_alloca(subj.type, "match.subj");
+    self.builder.store(subj, subj_alloca);
+    func = self.builder.function;
+    end_bb = func.append_basic_block(name="match.end");
+    n = len(nd.cases);
+    for (ci, case) in enumerate(nd.cases) {
+        subj_val = self.builder.load(subj_alloca, name="match.subj.l");
+        cond = self._match_pattern_cond(case.pattern, subj_val);
+        body_bb = func.append_basic_block(name=f"match.c{ci}.body");
+        next_bb = func.append_basic_block(name=f"match.c{ci}.next")
+            if ci < n - 1
+            else end_bb;
+        if cond is None {
+            # Unsupported pattern — E5090 already emitted. Keep the IR valid
+            # by skipping straight to the next test.
+            self.builder.branch(next_bb);
+            if next_bb is not end_bb {
+                self.builder.position_at_end(next_bb);
+            }
+            continue;
+        }
+        if case.guard is not None {
+            # Bind captures before the guard so the guard can reference them,
+            # then gate the body on the guard result.
+            bind_bb = func.append_basic_block(name=f"match.c{ci}.bind");
+            self.builder.cbranch(cond, bind_bb, next_bb);
+            self.builder.position_at_end(bind_bb);
+            self._bind_match_pattern(case.pattern, subj_val);
+            gval = self._codegen_expr(case.guard);
+            if gval is not None {
+                self.builder.cbranch(self._to_bool(gval), body_bb, next_bb);
+            } else {
+                self.builder.branch(next_bb);
+            }
+        } else {
+            self.builder.cbranch(cond, body_bb, next_bb);
+        }
+        # Case body — bind captures (the guard path already did, a repeat
+        # store is harmless) then emit the statements.
+        self.builder.position_at_end(body_bb);
+        self._bind_match_pattern(case.pattern, subj_val);
+        if isinstance(case.body, (list, tuple)) {
+            self._codegen_body(case.body);
+        }
+        if not self.builder.block.is_terminated {
+            self.builder.branch(end_bb);
+        }
+        if next_bb is not end_bb {
+            self.builder.position_at_end(next_bb);
+        }
+    }
+    self.builder.position_at_end(end_bb);
+}
+
+"""Compute an i1 condition for whether `pat` matches `subj`.
+
+Returns None for unsupported pattern kinds (after emitting E5090). Does
+not perform capture binding — see _bind_match_pattern.
+"""
+impl NaIRGenPass._match_pattern_cond(
+    pat: uni.MatchPattern, subj: ir.Value
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    if isinstance(pat, uni.MatchWild) {
+        return ir.Constant(i1, 1);
+    }
+    if isinstance(pat, uni.MatchAs) {
+        # `case x:` (no sub-pattern) matches anything; `case <p> as x:`
+        # matches iff the sub-pattern matches.
+        if pat.pattern is None {
+            return ir.Constant(i1, 1);
+        }
+        return self._match_pattern_cond(pat.pattern, subj);
+    }
+    if isinstance(pat, uni.MatchValue) {
+        return self._match_value_eq(subj, pat.value);
+    }
+    if isinstance(pat, uni.MatchSingleton) {
+        return self._match_value_eq(subj, pat.value);
+    }
+    if isinstance(pat, uni.MatchOr) {
+        # OR is restricted to non-capturing alternatives so there is no
+        # ambiguity about which names a matched alternative binds.
+        result: (ir.Value | None) = None;
+        for sub in pat.patterns {
+            if not isinstance(
+                sub, (uni.MatchValue, uni.MatchSingleton, uni.MatchWild, uni.MatchOr)
+            ) {
+                self.emit(
+                    E5090,
+                    node_override=sub,
+                    kind="match pattern",
+                    name=f"{type(sub).__name__} inside OR pattern"
+                );
+                return None;
+            }
+            sub_cond = self._match_pattern_cond(sub, subj);
+            if sub_cond is None {
+                return None;
+            }
+            result = sub_cond
+                if result is None
+                else self.builder.or_(result, sub_cond, name="match.or");
+        }
+        return result;
+    }
+    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet lowered.
+    self.emit(E5090, node_override=pat, kind="match pattern", name=type(pat).__name__);
+    return None;
+}
+
+"""Emit an i1 equality test between `subj` and the value of `value_node`."""
+impl NaIRGenPass._match_value_eq(
+    subj: ir.Value, value_node: uni.UniNode
+) -> (ir.Value | None) {
+    pat = self._codegen_expr(value_node);
+    if pat is None {
+        return None;
+    }
+    # Reconcile integer widths (e.g. i1 singleton vs i64 subject, enum widths).
+    if isinstance(subj.type, ir.IntType)
+    and isinstance(pat.type, ir.IntType)
+    and subj.type != pat.type {
+        pat = self._coerce_type(pat, subj.type);
+    }
+    is_float = isinstance(subj.type, ir.DoubleType)
+    or isinstance(pat.type, ir.DoubleType);
+    (lhs, rhs) = (subj, pat);
+    if is_float {
+        (lhs, rhs) = self._promote_to_float(subj, pat);
+    }
+    cmp = self._emit_comparison(Tok.EE, lhs, rhs, is_float);
+    if cmp is None {
+        return None;
+    }
+    return self._to_bool(cmp);
+}
+
+"""Bind capture names introduced by `pat` to `subj` (Python `case x:` /
+`case <p> as x:`). Non-capturing patterns bind nothing."""
+impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None {
+    if isinstance(pat, uni.MatchAs) {
+        cap_name = self._get_name(pat.name) if pat.name else None;
+        if cap_name is not None {
+            alloca = self._entry_alloca(subj.type, cap_name);
+            self.builder.store(subj, alloca);
+            self.local_vars[cap_name] = alloca;
+        }
+        if pat.pattern is not None {
+            self._bind_match_pattern(pat.pattern, subj);
+        }
+    }
 }
 
 """Generate assignment statement."""

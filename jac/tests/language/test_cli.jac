@@ -19,7 +19,6 @@ import from jaclang.runtimelib.builtin { printgraph }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      _template_state = {"initialized": False},
      _CONFIG_TOML = (
          '[project]\nname = "test-project"\nversion = "1.0.0"\n'
@@ -29,10 +28,6 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 
 def fixture_path(filename: str) -> str {
     return os.path.join(FIXTURES, filename);
-}
-
-def examples_path(path: str) -> str {
-    return os.path.join(EXAMPLES, path);
 }
 
 def _assert_error_pretty_found(needle: str, haystack: str) {
@@ -475,9 +470,9 @@ test "run test" {
 }
 
 test "run test with directory filter" {
-    examples_dir = examples_path("");
+    fixtures_dir = fixture_path("");
     process = subprocess.Popen(
-        ["jac", "test", "-d", examples_dir, "-f", "circle*", "-x"],
+        ["jac", "test", "-d", fixtures_dir, "-f", "circle*", "-x"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True

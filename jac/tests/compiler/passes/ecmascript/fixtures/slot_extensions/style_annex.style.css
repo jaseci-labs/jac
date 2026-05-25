@@ -1,0 +1,20 @@
+/* Annex CSS for `style_annex.cl.jac` — rec 9.
+ *
+ * When the auto-scoping feature lands, the compiler should hash each
+ * selector below per-module and rewrite matching JSX `className=`
+ * literals in `style_annex.cl.jac` to use the hashed form. `:global(...)`
+ * escape hatch should preserve the inner selector verbatim.
+ */
+
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+
+.card-title {
+    font-weight: 600;
+}
+
+:global(html) {
+    box-sizing: border-box;
+}

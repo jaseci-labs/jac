@@ -1283,6 +1283,7 @@ cl import from react { useState }
 # .na.jac        Native variant
 # .impl.jac      Implementation annex (method bodies)
 # .test.jac      Test annex
+# .style.css     Scoped CSS annex (auto-scopes classes for the matching .cl.jac)
 
 
 # ============================================================
@@ -1305,12 +1306,12 @@ def:pub Counter() -> JsxElement {
 
 # JSX `{...}` slots accept statement-form control flow as children.
 # Inside the slot, JSX statements push into the enclosing element's
-# children list; a bare `return;` ends the slot with whatever was emitted.
+# children list; `skip;` ends the slot with whatever was emitted.
 def:pub Greeting(name: str) -> JsxElement {
     return <div>
         {if name == "" {
             <p>(no name given)</p>
-            return;                   # bare return; = early-exit guard
+            skip;                     # skip; = slot early-exit guard
         }}
         <h1>Hello, {name}!</h1>
     </div>;
@@ -1327,9 +1328,11 @@ def:pub Greeting(name: str) -> JsxElement {
 # {#* comment *#}               JSX comment (renders nothing)
 # {unsafe_html(x)}              Raw HTML opt-in (escapes off)
 # <@expr />                     Dynamic tag (resolves expr at runtime)
-# <div {...props}>              Spread props
+# <div {**props}>               Spread props ({...props} also works but warns W0063)
+# <Box {title} {count} />       Attribute shorthand ({title} -> title={title})
 # <div className="cls">         Class name (not "class")
 # <div style={{"color": "red"}} Inline styles
+#   (classes declared in a same-base-name <Comp>.style.css are auto-scoped)
 # <@expr>...</@expr>            Dynamic tag (tag chosen by expression)
 
 

@@ -84,7 +84,11 @@ obj NativeFuncLayout {
         param_names: list[str] = field(default_factory=`list),
         ret_type: str = "i64",
         ret_struct_name: (str | None) = None,
-        ret_tuple_layout: (NativeTupleLayout | None) = None;
+        ret_tuple_layout: (NativeTupleLayout | None) = None,
+        # Enum type name when the function returns an enum (lowered to i64), so
+        # the marshaller can map the ordinal back to the Python enum member
+        # instead of leaking a raw int to Python callers.
+        ret_enum_type: (str | None) = None;
 }
 
 """Resolve a module name to a .na.jac file path.
@@ -225,6 +229,7 @@ obj CodeGenTarget {
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
+        css: str = '',
         client_manifest: ClientManifest = field(default_factory=ClientManifest),
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,

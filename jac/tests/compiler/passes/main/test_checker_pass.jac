@@ -2067,6 +2067,23 @@ test "impl_body_type_checking" {
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
 }
 
+"""Reassigning a module global from an impl-file body keeps the global's
+declared type. Without decl/impl-aware `global x;` binding the assignment
+would shadow `_rand_state` with an inferred local, dropping its `int` type and
+tripping `__mul__`/`__add__`/`__mod__` overload-resolution errors."""
+test "impl_body_global_reassignment_keeps_declared_type" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_impl_global_reassign.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , (
+        "Expected no type errors for an impl-body global reassignment, but got " + f"{len(
+            program.errors_had
+        )}:\n" + "\n".join([err.pretty_print() for err in program.errors_had])
+    );
+}
+
 """Test that self.x = value in impl files creates valid archetype attributes."""
 test "impl_self_member_assignment" {
     program = JacProgram();
@@ -2102,6 +2119,31 @@ test "super_init_with_has_vars" {
         """Not all required parameters were provided in the function call: 'shape_type'""",
         program.errors_had[2].pretty_print()
     );
+}
+
+test "super_init_dataclass_no_w1051" {
+    # Regression: `super.init(...)` on a parent whose constructor is
+    # dataclass-synthesized from `has` fields was emitting a spurious W1051
+    # (Unknown expression type) and an E1001 when the call result was assigned
+    # to a None-annotated slot. Root cause: _create_dataclass_init_method
+    # returned a FunctionType with return_type=UnknownType. Since an implicit
+    # __init__ returns None, the synthesized init must reflect that so member
+    # calls through `super.init(...)` type cleanly.
+    path = os.path.join(CHECKER_FIXTURES, "checker_super_init_dataclass_no_w1051.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on super.init() with synthesized parent init, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
 }
 
 test "super_init_with_explicit_init" {
@@ -4022,6 +4064,33 @@ test "explicit_any_annotations_emit_w1037" {
     #   4. `list[any]`       nested any in a generic param
     #   5. `any | None`      any branch of a union return type
     #   6. `payload: any`    field annotation
+    assert len(explicit_any_warnings) == 6 , f"Expected 6 W1037 warnings, got {len(
+        explicit_any_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);
+}
+
+test "explicit_typing_any_annotations_emit_w1037" {
+    # `typing.Any` is the same gradual-typing escape hatch as the Jac `any`
+    # keyword and must warn identically. Without this, `from typing { Any }`
+    # would be a silent loophole around W1037.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_typing_any.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    explicit_any_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1037" in w.pretty_print()
+    ];
+    # Expected sites (6 total), mirroring checker_explicit_any.jac:
+    #   1. `x: Any`          param type on `takes_any`
+    #   2. `-> Any`          return type on `takes_any`
+    #   3. `y: Any = 5`      annotated assignment
+    #   4. `list[Any]`       nested Any in a generic param
+    #   5. `Any | None`      Any branch of a union return type
+    #   6. `payload: Any`    field annotation
     assert len(explicit_any_warnings) == 6 , f"Expected 6 W1037 warnings, got {len(
         explicit_any_warnings
     )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);

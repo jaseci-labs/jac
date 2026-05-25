@@ -66,26 +66,20 @@ def:pub TasksPanel -> JsxElement {
                 />
                 <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
             </div>
-            {(<div class="loading-msg">Loading tasks...</div>)
-                if tasksLoading
-                else (
-                    <div>
-                        {(<div class="empty-msg">No tasks yet. Add one above!</div>)
-                            if len(tasks) == 0
-                            else (
-                                <div>
-                                    {[
-                                        <TaskItem
-                                            key={jid(t)}
-                                            task={t}
-                                            onToggle={lambda { toggleTask(jid(t)); }}
-                                            onDelete={lambda { deleteTask(jid(t)); }}
-                                        /> for t in tasks
-                                    ]}
-                                </div>
-                            )}
-                    </div>
-                )}
+            {if tasksLoading {
+                <div class="loading-msg">Loading tasks...</div>
+                skip;
+            }if len(tasks) == 0 {
+                <div class="empty-msg">No tasks yet. Add one above!</div>
+                skip;
+            }for t in tasks {
+                <TaskItem
+                    key={jid(t)}
+                    task={t}
+                    onToggle={lambda { toggleTask(jid(t)); }}
+                    onDelete={lambda { deleteTask(jid(t)); }}
+                />
+            }}
             <div class="count">
                 {remaining} {("task" if remaining == 1 else "tasks")} remaining
             </div>

@@ -1,9 +1,11 @@
 """Fixture: JSX-slot body rule violations caught by ViewLowerPass.
 
 Exercises the slot-body diagnostics (`{...}` JSX child slots):
-  - E2019: a slot cannot `return` a value.
-  - E2020: bare `return;` is not allowed inside a template loop.
-  - E2021: `break` / `skip` are not allowed inside a template loop.
+  - E2019: a slot cannot `return` a value (any position).
+  - E2020: bare `return;` is not allowed anywhere in a slot body — use
+           `skip;` for the slot early-exit.
+  - E2021: `break;` is not allowed inside a template loop.
+  - E2023: redundant `{...}` slot wrapping inside a slot body.
   - W2019: a `while` loop renders JSX without a `key` attribute.
 
 Each rule is exercised at both a shallow position and at least one nested
@@ -26,6 +28,18 @@ def:pub ReturnInLoop(items: list) -> JsxElement {
     </ul>;
 }
 
+def:pub ReturnAtTopLevel(items: list) -> JsxElement {
+    # Bare `return;` outside any loop now also drives E2020 — the
+    # "use `skip;` for slot early-exit" message applies regardless
+    # of loop position.
+    return <ul>
+        {if len(items) == 0 {
+            <li>empty</li>
+            return;
+        }}
+    </ul>;
+}
+
 def:pub BreakInLoop(items: list) -> JsxElement {
     return <ul>
         {for it in items {
@@ -41,6 +55,24 @@ def:pub KeylessWhile(n: int) -> JsxElement {
             <span>tick</span>
         }}
     </div>;
+}
+
+def:pub RedundantSlotWrap(items: list) -> JsxElement {
+    # Inside a slot body, an inner `{...}` slot is redundant — the body
+    # is already in slot mode. E2023 fires for the inner `{if ...}`
+    # below and for the inner `{for ...}` further down.
+    return <ul>
+        {if len(items) == 0 {
+            <li>empty</li>
+            skip;
+        }
+        {if len(items) > 5 {
+            <li>too many</li>
+        }}
+        {for it in items {
+            <li key={it}>{it}</li>
+        }}}
+    </ul>;
 }
 
 # --- Nested-recursion coverage --------------------------------------------
