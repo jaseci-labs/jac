@@ -1868,9 +1868,21 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if scope := self._resolution_scope_for(expr) {
-                if symbol := type_utils.lookup_symtab(
+                symbol = type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
-                ) {
+                );
+                # Native (.na.jac) ambient names: `File` and the native `open`
+                # (-> File) override the Python builtins of the same name but
+                # never shadow a user-defined symbol. Gated on native context
+                # so they stay invisible to regular .jac modules.
+                if self._in_native_context()
+                and (symbol is None or symbol.parent_tab is self.builtins_module) {
+                    na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
+                    if na_sym is not None {
+                        symbol = na_sym;
+                    }
+                }
+                if symbol {
                     symbol = self.resolve_imported_symbols(symbol);
                     symbol.add_use(expr);
                     # Only set sym if not already set (preserves existing symbol info for declarations)
@@ -3564,6 +3576,9 @@ impl TypeEvaluator.postinit -> None {
     self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "dom_types.pyi"
     );
+    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "na_builtins.pyi"
+    );
     self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "typing_ambient.pyi"
     );
@@ -3593,6 +3608,10 @@ impl TypeEvaluator.postinit -> None {
         self._JAC_BUILTINS_STUB_FILE_PATH
     );
     self.dom_types_module = self._load_stub_module(self._DOM_TYPES_STUB_FILE_PATH);
+    # Native ambient stub. Deliberately NOT merged into builtins: its names
+    # (File, native open) are resolved by a native-context-gated lookup in
+    # get_type_of_expression so they stay invisible to regular .jac modules.
+    self.na_builtins_module = self._load_stub_module(self._NA_BUILTINS_STUB_FILE_PATH);
     # Read jac_builtins.pyi's __all__ as the declarative public surface.
     # Names not listed there (e.g. typing imports used only for this stub's
     # own annotations) stay private; user code must import them explicitly.

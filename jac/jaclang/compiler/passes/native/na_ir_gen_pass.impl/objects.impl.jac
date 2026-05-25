@@ -1266,6 +1266,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "partition",
         "rpartition",
         "encode",
+        "decode",
         "format"
     ) {
         str_val = self._codegen_expr(trailer.target);
@@ -1297,50 +1298,35 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         obj_val = self._codegen_expr(trailer.target);
         if obj_val is not None {
             type_name = self._infer_type_name(obj_val);
-            # Handle list methods on complex targets (e.g. g.items.append(x))
+            # Handle list methods on complex targets (e.g. g.items.append(x),
+            # self.stack.pop()). Route through the same primitive-method
+            # dispatch as simple-name targets so every list method (append,
+            # pop, ...) works on field/chained lists, not just append.
             if type_name is None {
                 elem_type_name = self._infer_list_elem_type(obj_val);
-                if elem_type_name is not None and method_name == "append" {
-                    helpers = self.list_helpers.get(elem_type_name);
-                    if helpers is not None {
-                        params = nd.params or [];
-                        if params {
-                            val = self._codegen_expr(params[0]);
-                            if val is not None {
-                                val = self._box_value_tuple(
-                                    val,
-                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                        if nd.loc
-                                        else 0}"
-                                );
-                                elem_type = helpers["elem_type"];
-                                val = self._coerce_type(val, elem_type);
-                                # __list_append_ptr internally retains; ctx makes the
-                                # retain log show op="append" + the source line.
-                                self._rc_call_with_ctx(
-                                    helpers["append"],
-                                    [obj_val, val],
-                                    op="append",
-                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                        if nd.loc
-                                        else 0}"
-                                );
-                                # RC: __list_append_ptr retained the element.
-                                # Release the caller's ownership if the value was owned
-                                # (fresh alloc / call result) to keep refcount at 1.
-                                if isinstance(elem_type, ir.PointerType)
-                                and self._is_owned(val) {
-                                    self._emit_rc_release_simple(
-                                        val,
-                                        op="append",
-                                        loc=f"{os.path.basename(
-                                            self.ir_in.loc.mod_path
-                                        )}:{nd.loc.first_line if nd.loc else 0}"
-                                    );
-                                }
-                            }
+                if elem_type_name is not None {
+                    params = nd.params or [];
+                    arg_vals: list[ir.Value] = [];
+                    for param in params {
+                        v = self._codegen_expr(param);
+                        if v is not None {
+                            arg_vals.append(v);
                         }
-                        return ir.Constant(ir.IntType(64), 0);
+                    }
+                    if method_name == "append" {
+                        self._set_rc_ctx(
+                            "append",
+                            f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
+                    result = self._dispatch_primitive_method(
+                        "list", method_name, obj_val, arg_vals, elem_type_name
+                    );
+                    self._clear_rc_ctx();
+                    if result is not None {
+                        return result;
                     }
                 }
             }

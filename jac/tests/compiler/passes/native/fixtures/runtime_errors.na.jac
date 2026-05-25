@@ -84,17 +84,25 @@ def test_list_index_oob() -> int {
     return result;
 }
 
-# Test 7: List negative index (out of bounds)
+# Test 7: Negative index out of range (|idx| > len) raises. A plain `nums[-1]`
+# is NOT out of bounds — it is Python's last element (see
+# test_list_negative_valid) — so use a clearly out-of-range negative index.
 def test_list_negative_index() -> int {
     result: int = 0;
     nums: list[int] = [10, 20, 30];
     try {
-        x: int = nums[-1];
+        x: int = nums[-10];
         result = -1;
     } except IndexError {
         result = 1;
     }
     return result;
+}
+
+# Test 7b: Valid negative indexing (Python semantics: idx += len).
+def test_list_negative_valid() -> int {
+    nums: list[int] = [10, 20, 30];
+    return nums[-1];
 }
 
 # Test 8: List index at exact length (off-by-one)
@@ -257,20 +265,14 @@ obj SimpleObj {
     }
 }
 
-# Test 19: Field access on None.
-# NOTE: `s: SimpleObj = None` is rejected by the type checker (correctly,
-# since SimpleObj is non-Optional). This fixture intentionally retains
-# the type error to exercise native runtime AttributeError on a None
-# dereference -- the scenario itself is unsafe Jac code that the type
-# system properly disallows. Both `as`-cast workarounds and stubbed-None
-# helpers run into native-codegen gaps (CastExpr is unsupported), so the
-# residual type error is accepted as the cost of testing the runtime
-# trap. Tracked under #6058 fixture-quality notes.
+# Test 19: Field access on None. The variable is honestly typed nullable
+# and the `as` cast asserts non-None so `.val` type-checks; at runtime the
+# value is None and the native deref traps as an AttributeError.
 def test_none_field_access() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.val;
+        x: int = (s as SimpleObj).val;
         result = -1;
     } except AttributeError {
         result = 1;
@@ -278,12 +280,12 @@ def test_none_field_access() -> int {
     return result;
 }
 
-# Test 20: Method call on None -- see Test 19 note re: residual type error.
+# Test 20: Method call on None -- same nullable-plus-cast pattern as Test 19.
 def test_none_method_call() -> int {
     result: int = 0;
-    s: SimpleObj = None;
+    s: SimpleObj | None = None;
     try {
-        x: int = s.get_val();
+        x: int = (s as SimpleObj).get_val();
         result = -1;
     } except AttributeError {
         result = 1;

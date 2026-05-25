@@ -12,4 +12,4 @@ exclude = [
 ]
 
 [plugins.byllm.model]
-default_model = "anthropic/claude-opus-4-7"
+default_model = "ollama/gemma4:31b"

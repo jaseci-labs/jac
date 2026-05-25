@@ -313,8 +313,7 @@ are evaluated to produce a value.
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit,
-        backend_type_tag: (str | None) by postinit;
+        attached_tokens: (list[Token] | None) by postinit;
 
     def postinit -> None;
     @property
@@ -1306,10 +1305,16 @@ obj JsxSpreadAttribute(JsxAttribute) {
     def postinit -> None;
 }
 
-"""JsxNormalAttribute node type for Jac Ast."""
+"""JsxNormalAttribute node type for Jac Ast.
+
+The `is_shorthand` flag marks attributes parsed from the `{name}` JSX
+attribute shorthand — semantically identical to `name={name}` but the
+formatter must round-trip the shorter spelling. Both `name` and `value`
+point at the same identifier when this flag is set."""
 obj JsxNormalAttribute(JsxAttribute) {
     has name: (Name | Token),
-        value: String | Expr | None;
+        value: String | Expr | None,
+        is_shorthand: bool = False;
 
     def postinit -> None;
 }
@@ -1349,7 +1354,10 @@ Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
 """
 obj JsxSlot(JsxChild) {
     has body: list[UniNode];
-
+    # The body holds the author's faithful `{ stmt; ... }` statement
+    # template. No pre-codegen pass mutates it — the cl-target accumulator
+    # IIFE is synthesized at codegen time (EsastGenPass), so the surface
+    # tokens round-trip through the formatter/unparser unchanged.
     def postinit -> None;
 }
 

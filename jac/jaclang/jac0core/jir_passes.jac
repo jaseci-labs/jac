@@ -156,7 +156,6 @@ obj JirWriter {
 
     def _write_link_table(buf: bytearray) -> None;
     def _count_symbols(module: Module) -> int;
-    def _serialize_type_tags -> bytes;
 }
 
 # =============================================================================
@@ -174,8 +173,7 @@ obj JirReader {
         bytecode_section: (bytes | None) = None,
         mtir_section: (bytes | None) = None,
         llvm_ir_section: (bytes | None) = None,
-        interop_section: (bytes | None) = None,
-        type_tags_section: (bytes | None) = None;
+        interop_section: (bytes | None) = None;
 
     def postinit {
         self._nodes = [];
@@ -202,5 +200,4 @@ obj JirReader {
     ) -> int;
 
     def _read_link_table(data: (bytes | memoryview), pos: int) -> int;
-    def _apply_type_tags(data: bytes) -> None;
 }

@@ -251,6 +251,29 @@ obj Token {
     def __str__ -> str;
 }
 
+# Marshal-safe lexer diagnostic record. The native lexer cannot call back
+# into the Python `prog` to append unitree `Alert`s, so it accumulates these
+# flat records instead; `parser.parse()` replays them into `prog` (see
+# native-lexer-parser-pathway).
+obj LexDiag {
+    has message: str,
+        code_str: str,
+        loc: SourceLoc,
+        is_error: bool = True;
+}
+
+# Marshal-safe captured-comment record (was an 8-tuple in lexer state).
+obj CommentData {
+    has value: str,
+        line: int,
+        end_line: int,
+        col_start: int,
+        col_end: int,
+        pos_start: int,
+        pos_end: int,
+        is_block: bool = False;
+}
+
 glob KEYWORDS: dict[str, TokenKind] = {
          # Built-in types
          "str": TokenKind.TYP_STRING,

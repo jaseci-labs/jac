@@ -17,6 +17,26 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         if v is None {
             return None;
         }
+        # In a `return (...)` context, a borrowed pointer element (a field load
+        # such as `obj.field`, a container read, etc.) is owned by some local
+        # that scope-exit will tear down — and the tuple box does not own its
+        # elements. Retain it so it survives into the returned tuple. Named
+        # locals are skipped: the return path nulls their alloca to transfer
+        # their single ref into the tuple, and owned temporaries already hold a
+        # ref that scope cleanup leaves alone.
+        if (
+            self._return_tuple_ctx
+            and isinstance(v.type, ir.PointerType)
+            and not self._is_owned(v)
+        ) {
+            is_named_local = isinstance(val, uni.Name)
+            and val.sym_name in self.local_vars
+            and val.sym_name not in self.param_vars;
+            if not is_named_local {
+                self._emit_rc_retain(v, op="return_tuple_elem");
+                self._mark_owned(v);
+            }
+        }
         elem_vals.append(v);
         elem_types.append(v.type);
     }
