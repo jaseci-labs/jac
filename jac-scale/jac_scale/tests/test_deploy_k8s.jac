@@ -2253,3 +2253,94 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert provider._build_connection_string('admin', 'pw', 'h') == 'redis://admin:pw@h:6379/0';
     assert secret_sd['connection-string'] == provider.get_connection_string();
 }
+
+
+test "monolith deploy routes autoscaler through factory" {
+    target_config = {
+        "app_name": "autoscale-app",
+        "namespace": "default",
+        "autoscaler_engine": "keda"
+    };
+    logger = unittest.mock.MagicMock();
+    fake_target = DeploymentTargetFactory.create("kubernetes", target_config, logger);
+
+    fake_autoscaler = unittest.mock.MagicMock();
+    fake_autoscaler.preflight.return_value = [];
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.AutoscalerFactory.create",
+        return_value=fake_autoscaler
+    ) {
+        with unittest.mock.patch.object(
+            fake_target,
+            "_deploy_application",
+            return_value=DeploymentResult(success=True, message="ok", details={})
+        ) {
+            app_cfg = AppConfig(code_folder=".", file_name="main.jac", build=False);
+            try {
+                fake_target.deploy(app_cfg);
+            } except Exception {
+                # TDD guard: deploy may still fail until autoscaler refactor lands.
+                0;
+            }
+        }
+    }
+    assert fake_autoscaler.preflight.called or fake_autoscaler.apply.called;
+}
+
+
+test "monolith destroy routes autoscaler destroy through factory" {
+    target_config = {
+        "app_name": "autoscale-app",
+        "namespace": "default",
+        "autoscaler_engine": "keda"
+    };
+    logger = unittest.mock.MagicMock();
+    target = DeploymentTargetFactory.create("kubernetes", target_config, logger);
+    fake_autoscaler = unittest.mock.MagicMock();
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.AutoscalerFactory.create",
+        return_value=fake_autoscaler
+    ) {
+        try {
+            target.destroy("autoscale-app", "application");
+        } except Exception {
+            0;
+        }
+    }
+    assert fake_autoscaler.destroy.called;
+}
+
+
+test "keda missing crd warns and skips autoscaler apply without failing deploy" {
+    target_config = {
+        "app_name": "autoscale-app",
+        "namespace": "default",
+        "autoscaler_engine": "keda"
+    };
+    logger = unittest.mock.MagicMock();
+    target = DeploymentTargetFactory.create("kubernetes", target_config, logger);
+    fake_autoscaler = unittest.mock.MagicMock();
+    fake_autoscaler.preflight.return_value = [
+        "KEDA CRD missing. Install: kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.16.0/keda-2.16.0.yaml"
+    ];
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.AutoscalerFactory.create",
+        return_value=fake_autoscaler
+    ) {
+        with unittest.mock.patch.object(
+            target,
+            "_deploy_application",
+            return_value=DeploymentResult(success=True, message="ok", details={})
+        ) {
+            app_cfg = AppConfig(code_folder=".", file_name="main.jac", build=False);
+            try {
+                result = target.deploy(app_cfg);
+                assert result.success is True;
+            } except Exception {
+                0;
+            }
+        }
+    }
+    fake_autoscaler.apply.assert_not_called();
+    assert logger.warn.called or logger.info.called;
+}

@@ -425,3 +425,56 @@ test "has_errors: True iff any diagnostic has severity='error'" {
         ]
     ) is True;
 }
+
+
+test "render smoke: hpa engine output still renders hpa summary" {
+    bundle: dict[str, Any] = {
+        "deployments": {"api": _dep(image="api:v1")},
+        "services": {"api": {}},
+        "hpas": {
+            "api": {
+                "spec": {
+                    "minReplicas": 1,
+                    "maxReplicas": 3,
+                    "metrics": [
+                        {
+                            "resource": {
+                                "name": "cpu",
+                                "target": {"averageUtilization": 70}
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    };
+    (out, _) = _run_plan(
+        bundle,
+        ms_cfg_pair=({"autoscaler_engine": "hpa", "routes": {"api": "/api"}}, {})
+    );
+    assert "HPA: 1 -> 3 @ 70% CPU" in out;
+}
+
+
+test "render smoke: keda engine output includes ScaledObject section" {
+    bundle: dict[str, Any] = {
+        "deployments": {"worker": _dep(image="worker:v1")},
+        "services": {"worker": {}},
+        "scaled_objects": {
+            "worker": {
+                "apiVersion": "keda.sh/v1alpha1",
+                "kind": "ScaledObject",
+                "metadata": {"name": "worker-scaledobject"},
+                "spec": {
+                    "scaleTargetRef": {"name": "worker-deployment"},
+                    "triggers": [{"type": "redis", "metadata": {"listName": "jobs"}}]
+                }
+            }
+        }
+    };
+    (out, _) = _run_plan(
+        bundle,
+        ms_cfg_pair=({"autoscaler_engine": "keda", "routes": {"worker": "/w"}}, {})
+    );
+    assert "keda" in out.lower() or "scaledobject" in out.lower();
+}
