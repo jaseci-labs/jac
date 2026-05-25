@@ -25,18 +25,15 @@ def test_try_no_exception() -> int {
 }
 
 # Test 3: Exception with "as" binding — bind exception message.
-# NOTE: native runtime represents Exception as a bare char* message
-# pointer, so `msg = e` produces the message directly. Python semantics
-# would expect `str(e)` here, but the native runtime doesn't yet
-# implement Exception.__str__, so the residual E1001 (`Cannot assign
-# Exception to str`) is accepted as a native-specific divergence —
-# same class as the runtime_errors None-dereference tests.
+# `str(e)` yields the exception's message. The native runtime represents
+# an exception as a char* message pointer, so str() of it is the message
+# string itself; this matches Jac-proper semantics where str(e) is a str.
 def test_except_as_binding() -> str {
     msg: str = "none";
     try {
         raise Exception("caught me");
     } except Exception as e {
-        msg = e;
+        msg = str(e);
     }
     return msg;
 }

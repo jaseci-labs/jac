@@ -108,8 +108,22 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     }
 }
 
-"""Infer the LLVM type from an initializer AST node (e.g., Game() → Game*)."""
+"""Infer the LLVM type of an un-annotated global from its initializer.
+
+Primary path: consume the initializer Expr's `.type` (set by TypeCheckPass)
+via _lower_type, the same seam annotated globals use. Falls back to
+initializer-shape inference for nodes the checker did not type (e.g. globals
+in imported .na.jac modules, until those modules are themselves type-checked).
+Returns None when nothing resolves.
+"""
 impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None) {
+    # Unified path: lower the central checker's resolved type.
+    if isinstance(value_node, uni.Expr) and value_node?.type is not None {
+        lowered = self._lower_type(value_node.type);
+        if lowered is not None {
+            return lowered;
+        }
+    }
     # FuncCall whose target is a known archetype name → constructor
     if isinstance(value_node, uni.FuncCall) {
         call_name = self._get_name(value_node.target);

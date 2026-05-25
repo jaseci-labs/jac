@@ -111,6 +111,40 @@ class UpdatePasswordRequest(BaseModel) {
         new_password: str = Field(..., min_length=1, description='New password');
 }
 
+class AddIdentityRequest(BaseModel) {
+    has identity: IdentityInput = Field(
+        ..., description='Identity to attach to the user'
+    ),
+        is_recovery: bool = Field(
+            False,
+            description='Mark this identity as a recovery channel (e.g. used for password reset)'
+        );
+}
+
+class VerifyIdentityRequest(BaseModel) {
+    has token: str = Field(
+        ..., min_length=1, description='Verification token from email'
+    );
+}
+
+class SendVerificationRequest(BaseModel) {
+    has identity: IdentityInput = Field(
+        ...,
+        description='Identity (email) on the current user to send a verification mail for'
+    );
+}
+
+class ForgotPasswordRequest(BaseModel) {
+    has identity: IdentityInput = Field(
+        ..., description='Identity (username or email) to start password reset for'
+    );
+}
+
+class ResetPasswordRequest(BaseModel) {
+    has token: str = Field(..., min_length=1, description='Reset token from email'),
+        new_password: str = Field(..., min_length=1, description='New password');
+}
+
 class UpdateProfileRequest(BaseModel) {
     has profile: RequiredValidatedProfile = Field(
         ...,

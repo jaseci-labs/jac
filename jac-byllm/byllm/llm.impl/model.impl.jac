@@ -37,7 +37,38 @@ impl Model.postinit -> None {
             _disable_debugging();
         }
         litellm.drop_params = _litellm_config.get("drop_params", True);
+        # Some served models emit tool calls natively but cannot consume tool
+        # *results*: their chat template has no `tool` role, so a `role:"tool"`
+        # message is silently dropped and the model re-issues the same call
+        # forever. Route them through byLLM's text tool protocol instead, where
+        # results come back as readable `<tool_response>` text. An explicit
+        # `config["native_tools"]` overrides the heuristic either way.
+        native_override = self.config.get(
+            "native_tools", _model_config.get("native_tools")
+        );
+        if native_override is not None {
+            self.supports_native_tools = bool(native_override);
+        } elif _model_lacks_tool_role(self.model_name) {
+            self.supports_native_tools = False;
+        }
     }
+}
+
+
+# Model families whose chat template has no `tool` role, so tool *results* must
+# be fed back as ordinary text. Matched case-insensitively as a substring of the
+# model name, so it covers every provider/tag (ollama/gemma4:31b, gemma-2-9b, ...).
+glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"];
+
+"""Whether a model's chat template lacks a usable `tool` role for results."""
+def _model_lacks_tool_role(model_name: str) -> bool {
+    lowered = model_name.lower();
+    for fam in _NO_TOOL_ROLE_FAMILIES {
+        if fam in lowered {
+            return True;
+        }
+    }
+    return False;
 }
 
 """Invoke the LLM, delegating to MockLLM if applicable.

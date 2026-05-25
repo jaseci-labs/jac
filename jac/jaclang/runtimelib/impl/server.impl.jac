@@ -545,7 +545,7 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     self._extract_access_levels();
     self._functions = self._collect_functions();
     self._walkers = self._collect_walkers();
-    self._analyze_endpoint_effects();
+    self._fill_endpoint_effect_defaults();
     self._bundle = None;
     self._bundle_error = None;
 }
@@ -555,6 +555,7 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
+    base: dict = {};
     mod_path = self._module?.__file__;
     if mod_path {
         mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub);
@@ -566,18 +567,29 @@ impl ModuleIntrospector._load_manifest -> None {
         }
         if (mod and mod.gen.client_manifest) {
             manifest = mod.gen.client_manifest;
-            self._client_manifest = {
+            base = {
                 'exports': manifest.exports,
                 'globals': manifest.globals,
                 'params': manifest.params,
                 'globals_values': manifest.globals_values,
-                'has_client': manifest.has_client,
-                'endpoint_effects': manifest.endpoint_effects
+                'has_client': manifest.has_client
             };
-            return;
         }
     }
-    self._client_manifest = {};
+    # Aggregate endpoint effects across every compiled module. A walker or
+    # public function spawned from the client may be declared in any imported
+    # module; WalkerEffectsPass records each endpoint's effects in its own
+    # module's manifest, so the authoritative set is the union over the hub.
+    aggregated: dict = {};
+    for hub_mod in Jac.program.mod.hub.values() {
+        if hub_mod and hub_mod.gen.client_manifest {
+            for (ekey, eeff) in hub_mod.gen.client_manifest.endpoint_effects.items() {
+                aggregated[ekey] = eeff;
+            }
+        }
+    }
+    base['endpoint_effects'] = aggregated;
+    self._client_manifest = base;
 }
 
 """Extract access level information from module AST.
@@ -675,205 +687,36 @@ impl ModuleIntrospector._extract_access_levels -> None {
 }
 
 
-"""Analyze walker and function bodies to classify as reader or writer.
+"""Conservatively default the effect of any registered endpoint the compiler
+did not classify.
 
-Populates endpoint_effects in _client_manifest when the ES pass couldn't
-determine effects (e.g., walkers defined in a different module than where
-they're spawned from). Uses AST-level analysis to detect write operations
-(ConnectOp, DisconnectOp, DeleteStmt, spawn).
+Endpoint effects are computed at compile time by WalkerEffectsPass and loaded
+(aggregated across all modules) by `_load_manifest`. This fills only the gaps:
+a runtime-registered walker / function with no compiled entry -- e.g. a
+Python-defined endpoint -- gets a conservative default (a walker is assumed a
+writer so caches still invalidate; a bare function is assumed a reader, matching
+the prior behavior). It performs no body analysis of its own.
 """
-impl ModuleIntrospector._analyze_endpoint_effects -> None {
-    # Skip if endpoint_effects already populated by ES pass
-    existing = self._client_manifest.get('endpoint_effects', {});
-    if existing {
-        return;
-    }
-    if not self._module {
-        return;
-    }
-    import jaclang.jac0core.unitree as uni;
-    import from jaclang.jac0core.constructs { WalkerArchetype }
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    endpoint_effects: dict = {};
-    # Find a module-level ability (a `def`) by name within a module AST.
-    def find_ability_in_ast(ast_mod: any, fname: str) -> any {
-        if not ast_mod {
-            return None;
-        }
-        for item in ast_mod.body {
-            if (
-                isinstance(item, uni.Ability)
-                and item.name_ref is not None
-                and item.name_ref.sym_name == fname
-            ) {
-                return item;
-            }
-        }
-        return None;
-    }
-    # Recursively check if an AST subtree contains write operations. Follows
-    # calls into module-level helper defs (interprocedural) so a graph
-    # mutation hidden behind a helper still marks the caller as a writer.
-    def has_write_ops(`node: any, ast_mod: any, seen: set) -> bool {
-        if isinstance(`node, uni.DeleteStmt) {
-            return True;
-        }
-        if isinstance(`node, uni.BinaryExpr) {
-            if isinstance(`node.op, (uni.ConnectOp, uni.DisconnectOp)) {
-                return True;
-            }
-            if `node.op?.name and `node.op.name == Tok.KW_SPAWN {
-                return True;
-            }
-        }
-        # Field mutation on a non-self target (`n.attr = ...`) writes to a
-        # node/edge attribute. `self.x` is walker-local state, so excluded.
-        if isinstance(`node, uni.Assignment) and `node.target {
-            for tgt in `node.target {
-                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-                    root_expr = tgt.target;
-                    while isinstance(root_expr, uni.AtomTrailer) {
-                        root_expr = root_expr.target;
-                    }
-                    if not (
-                        isinstance(root_expr, uni.SpecialVarRef)
-                        and root_expr.sym_name == 'self'
-                    ) {
-                        return True;
-                    }
-                }
-            }
-        }
-        # Interprocedural: follow a call into a module-level helper def.
-        if isinstance(`node, uni.FuncCall) and isinstance(`node.target, uni.Name) {
-            fname = `node.target.sym_name;
-            if fname not in seen {
-                seen.add(fname);
-                callee = find_ability_in_ast(ast_mod, fname);
-                if callee and callee.body and hasattr(callee.body, '__iter__') {
-                    for stmt in callee.body {
-                        if has_write_ops(stmt, ast_mod, seen) {
-                            return True;
-                        }
-                    }
-                }
-            }
-        }
-        # Recurse into children
-        if `node?.kid and `node.kid {
-            for child in `node.kid {
-                if has_write_ops(child, ast_mod, seen) {
-                    return True;
-                }
-            }
-        }
-        return False;
-    }
-    # Get module AST from compilation hub
-    def get_module_ast(mod_path: str) -> any {
-        ast_mod = Jac.program.mod.hub.get(mod_path);
-        if not ast_mod {
-            ast_mod = Jac.program.compile(mod_path);
-        }
-        return ast_mod;
-    }
-    # Analyze a walker archetype AST node for read/write effects
-    def analyze_walker_in_ast(mod_ast: any, walker_name: str) -> (dict | None) {
-        for item in mod_ast.body {
-            if not isinstance(item, uni.Archetype) {
-                continue;
-            }
-            if item.name.sym_name != walker_name {
-                continue;
-            }
-            # Get resolved body (handles .impl.jac)
-            body = item._get_impl_resolved_body();
-            is_writer = False;
-            for body_item in body {
-                if has_write_ops(body_item, mod_ast, set()) {
-                    is_writer = True;
-                    break;
-                }
-            }
-            return {"is_writer": is_writer, "touches": ["*"]};
-        }
-        return None;
-    }
-    # Get main module AST
-    mod_path = self._module?.__file__;
-    if not mod_path {
-        return;
-    }
-    mod_ast = get_module_ast(mod_path);
-    # Process all walkers
-    for (name, cls) in self._walkers.items() {
-        effect_key = f"walker:{name}";
-        # Try main module first
-        if mod_ast {
-            effects = analyze_walker_in_ast(mod_ast, name);
-            if effects is not None {
-                endpoint_effects[effect_key] = effects;
-                continue;
-            }
-        }
-        # Try source module (for imported walkers)
-        try {
-            source_file = inspect.getfile(cls);
-        } except (TypeError, OSError) {
-            # Default: conservative (assume writer)
-            endpoint_effects[effect_key] = {"is_writer": True, "touches": ["*"]};
-            continue;
-        }
-        if source_file != mod_path {
-            source_ast = get_module_ast(source_file);
-            if source_ast {
-                effects = analyze_walker_in_ast(source_ast, name);
-                if effects is not None {
-                    endpoint_effects[effect_key] = effects;
-                    continue;
-                }
-            }
-        }
-        # Default: conservative (assume writer)
-        endpoint_effects[effect_key] = {"is_writer": True, "touches": ["*"]};
-    }
-    # Process public functions
-    for (name, func) in self._functions.items() {
-        effect_key = f"func:{name}";
-        if mod_ast {
-            for item in mod_ast.body {
-                if (
-                    isinstance(item, uni.Ability)
-                    and item.name_ref is not None
-                    and item.name_ref.sym_name == name
-                ) {
-                    is_writer = False;
-                    if item.body and hasattr(item.body, '__iter__') {
-                        for body_item in item.body {
-                            if has_write_ops(body_item, mod_ast, set()) {
-                                is_writer = True;
-                                break;
-                            }
-                        }
-                    }
-                    endpoint_effects[effect_key] = {
-                        "is_writer": is_writer,
-                        "touches": ["*"]
-                    };
-                    break;
-                }
-            }
-        }
-        if effect_key not in endpoint_effects {
-            endpoint_effects[effect_key] = {"is_writer": False, "touches": ["*"]};
-        }
-    }
-    # Update client manifest
+impl ModuleIntrospector._fill_endpoint_effect_defaults -> None {
     if not self._client_manifest {
         self._client_manifest = {};
     }
-    self._client_manifest['endpoint_effects'] = endpoint_effects;
+    effects = self._client_manifest.get('endpoint_effects', {});
+    for name in self._walkers.keys() {
+        key = f"walker:{name}";
+        if key not in effects {
+            effects[key] = {"is_writer": True, "touches": ["*"]};
+        }
+    }
+    for name in self._functions.keys() {
+        key = f"func:{name}";
+        if key not in effects {
+            effects[key] = {"is_writer": False, "touches": ["*"]};
+        }
+    }
+    self._client_manifest['endpoint_effects'] = effects;
 }
+
 
 """Collect callable functions from module."""
 impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
@@ -935,7 +778,7 @@ impl ModuleIntrospector._check_module_freshness -> None {
         self._extract_access_levels();
         self._functions = self._collect_functions();
         self._walkers = self._collect_walkers();
-        self._analyze_endpoint_effects();
+        self._fill_endpoint_effect_defaults();
         self._bundle = None;
         self._bundle_error = None;
         return;

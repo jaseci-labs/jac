@@ -67,7 +67,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
     _ir_sched_loading = True;
     try {
-        import from jaclang.compiler.passes.main.view_lower_pass { ViewLowerPass }
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
@@ -77,10 +76,12 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
-        # ViewLowerPass runs first: it desugars `view` declarators into plain
-        # `def:pub -> JsxElement` abilities before any other pass sees them.
+        # JSX `{...}` slot bodies are NOT desugared here: the surface AST is
+        # kept faithful through analysis (ASTValidationPass enforces the slot
+        # body rules) and the accumulator-IIFE lowering happens at cl codegen
+        # time in EsastGenPass, so the formatter/unparser round-trip the
+        # author's template verbatim from real tokens.
         return [
-            ViewLowerPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -142,6 +143,34 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+"""Inference-only schedule for native compilation.
+
+    The native backend (NaIRGenPass) lowers Expr.type into ir.Type instead
+    of re-deriving structure from annotation AST, so it needs the central
+    TypeEvaluator to have populated Expr.type before codegen. This schedule
+    runs only TypeCheckPass — the diagnostic-emitting passes (Static /
+    Portability / Lint) and the duplicate UniTreeEnrichPass (already run at
+    the tail of get_ir_gen_sched) are intentionally omitted: rerunning them
+    mutates AST state that NaIRGenPass and the cross-module linker depend on.
+
+    Same re-entrancy guard as get_type_check_sched.
+    """
+def get_native_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    global _typecheck_sched_loading;
+    if _typecheck_sched_loading {
+        return [];
+    }
+    _typecheck_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+        return [TypeCheckPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _typecheck_sched_loading = False;
+    }
+}
+
 """Full Python code generation schedule.
 
     Same re-entrancy guard as get_ir_gen_sched: when compiling the
@@ -155,11 +184,15 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     _codegen_sched_loading = True;
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main.walker_effects_pass {
+            WalkerEffectsPass
+        }
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
         passes: list[type[Transform[uni.Module, uni.Module]]] = [
             InteropAnalysisPass,
+            WalkerEffectsPass,
             EsastGenPass
         ];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }

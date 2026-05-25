@@ -52,46 +52,36 @@ def fmt_errors(prog: JacProgram) -> str {
 # ─────────────────────────────────────────────────────────────────────
 # Statement-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: match statement is rejected" {
+# Value / OR / capture / wildcard / guard match patterns are supported
+# (see test_native_gen_pass.jac). Structural patterns (sequence/mapping/
+# class) are not yet lowered and must still raise E5090.
+test "guardrail: structural match pattern is rejected" {
     prog = compile_na_inline(
-        "match_stmt",
-        "def classify(x: int) -> int {\n"
+        "match_seq",
+        "def classify(x: list[int]) -> int {\n"
         "    match x {\n"
-        "        case 0: return 100;\n"
-        "        case _: return 300;\n"
+        "        case [1, 2]: return 1;\n"
+        "        case _: return 0;\n"
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchStmt, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchSequence, got: {fmt_errors(
         prog
     )}";
 }
 
-test "guardrail: C-style iter-for is rejected" {
+# Non-capturing nested functions are supported (see test_native_gen_pass.jac).
+# A nested function that captures an enclosing-function local is still
+# rejected, since closure capture is not yet implemented.
+test "guardrail: nested function capturing an enclosing local is rejected" {
     prog = compile_na_inline(
-        "iter_for",
-        "def sum_n(n: int) -> int {\n"
-        "    total: int = 0;\n"
-        "    for i = 0 to i < n by i += 1 {\n"
-        "        total = total + i;\n"
-        "    }\n"
-        "    return total;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for IterForStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: nested function definition is rejected" {
-    prog = compile_na_inline(
-        "nested_def",
-        "def outer() -> int {\n"
-        "    def inner(x: int) -> int { return x * 2; }\n"
+        "nested_def_capture",
+        "def outer(y: int) -> int {\n"
+        "    def inner(x: int) -> int { return x * y; }\n"
         "    return inner(5);\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for nested Ability, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for capturing nested Ability, got: {fmt_errors(
         prog
     )}";
 }
@@ -144,21 +134,6 @@ test "guardrail: report statement is rejected" {
 # ─────────────────────────────────────────────────────────────────────
 # Expression-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: walrus operator is rejected" {
-    prog = compile_na_inline(
-        "walrus",
-        "def f() -> int {\n"
-        "    if (n := 10) > 5 {\n"
-        "        return n;\n"
-        "    }\n"
-        "    return 0;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for walrus (NamedExpr), got: {fmt_errors(
-        prog
-    )}";
-}
-
 test "guardrail: yield expression is rejected" {
     prog = compile_na_inline(
         "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
@@ -177,20 +152,6 @@ test "guardrail: await expression is rejected" {
         "}\n"
     );
     assert has_error_code(prog, "E5090") , f"Expected E5090 for AwaitExpr, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: flow / wait concurrent expression is rejected" {
-    prog = compile_na_inline(
-        "flow_wait",
-        "def task() -> int { return 7; }\n"
-        "def driver() -> int {\n"
-        "    h = flow task();\n"
-        "    return wait h;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ConcurrentExpr, got: {fmt_errors(
         prog
     )}";
 }

@@ -222,6 +222,7 @@ obj TypeEvaluator {
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         # Names made ambient by typing_ambient.pyi's __all__, keyed by the
         # source module the stub re-exports them from (typing /
@@ -268,7 +269,11 @@ obj TypeEvaluator {
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
         jac_builtins_module: uni.Module by postinit,
-        dom_types_module: uni.Module by postinit;
+        dom_types_module: uni.Module by postinit,
+        # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
+        # into builtins: its names (File, native open) resolve only in native
+        # context via a gated lookup, so they never leak into regular .jac.
+        na_builtins_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
