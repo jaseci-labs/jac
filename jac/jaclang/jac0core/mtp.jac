@@ -26,9 +26,7 @@ obj MTIR {
         call_params: dict[(str, object)],
         ir_info: (Info | None) = None;
 
-    """Convert to runtime context."""
-    @property
-    def runtime -> MTRuntime;
+    has runtime: MTRuntime { getter; }
 }
 
 obj Info {

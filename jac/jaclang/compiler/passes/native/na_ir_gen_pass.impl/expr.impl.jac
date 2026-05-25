@@ -98,6 +98,12 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `await e`: native has no event loop, so an awaited coroutine has
+        # already run in this synchronous model — await evaluates to the
+        # value of its target. Correct for sequential async code; it does
+        # not provide concurrency.
+    } elif isinstance(nd, uni.AwaitExpr) {
+        _result = self._codegen_expr(nd.target);
         # `flow e` / `wait e`: native has no threading runtime, so
         # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
         # its value acts as the handle; `wait h` reads that already-computed

@@ -226,7 +226,7 @@ impl TextDocument.postinit -> None {
     self._position_codec = PositionCodec();
 }
 
-impl TextDocument.source -> str {
+impl TextDocument.source.getter -> str {
     if self._source is None {
         with io.open(self.path, "r", encoding="utf-8") as f {
             return f.read();
@@ -235,7 +235,7 @@ impl TextDocument.source -> str {
     return self._source;
 }
 
-impl TextDocument.lines -> list[str] {
+impl TextDocument.lines.getter -> list[str] {
     return self.source.splitlines(True);
 }
 
@@ -354,14 +354,14 @@ impl LanguageServer.postinit -> None {
     self._write_lock = threading.Lock();
 }
 
-impl LanguageServer.workspace -> Workspace {
+impl LanguageServer.workspace.getter -> Workspace {
     if self._workspace is None {
         self._workspace = Workspace();
     }
     return self._workspace;
 }
 
-impl LanguageServer.lsp -> LanguageServer {
+impl LanguageServer.lsp.getter -> LanguageServer {
     return self;
 }
 
