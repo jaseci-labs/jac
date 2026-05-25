@@ -30,17 +30,9 @@ obj CommentInfo {
         token: uni.CommentToken,
         anchor_token_id: (int | None);
 
-    has is_inline: bool {
-        getter;
-    }
-
-    has first_line: int {
-        getter;
-    }
-
-    has last_line: int {
-        getter;
-    }
+    has is_inline: bool { getter; }
+    has first_line: int { getter; }
+    has last_line: int { getter; }
 }
 
 """Efficient bookkeeping for inline and standalone comments."""

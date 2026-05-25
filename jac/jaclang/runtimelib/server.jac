@@ -284,9 +284,7 @@ obj JacAPIServer {
     def create_handler -> type[BaseHTTPRequestHandler];
     def load_module(force_reload: bool = False) -> None;
 
-    has module: object {
-        getter;
-    }
+    has module: object { getter; }
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];

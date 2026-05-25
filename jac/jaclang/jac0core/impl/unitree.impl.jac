@@ -2584,3 +2584,38 @@ impl PythonModuleAst.init(ast: ast3.Module, orig_src: Source) -> None {
     self.orig_src = orig_src;
     self.file_path = orig_src.file_path;
 }
+
+impl UniNode.gen.getter -> CodeGenTarget {
+    if (self._gen is None) {
+        self._gen = CodeGenTarget();
+    }
+    return self._gen;
+}
+
+impl UniNode.gen.setter(value: CodeGenTarget) {
+    self._gen = value;
+}
+
+impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
+    return self._type_sym_tab;
+}
+
+impl Expr.type_sym_tab.setter(type_sym_tab: UniScopeNode) {
+    self._type_sym_tab = type_sym_tab;
+}
+
+impl NameAtom.sym.getter -> (Symbol | None) {
+    return self._sym;
+}
+
+impl NameAtom.sym.setter(sym: Symbol) {
+    self._sym = sym;
+}
+
+impl NameAtom.py_ctx_func.getter -> type[ast3.expr_context] {
+    return self._py_ctx_func;
+}
+
+impl NameAtom.py_ctx_func.setter(py_ctx_func: type[ast3.expr_context]) {
+    self._py_ctx_func = py_ctx_func;
+}

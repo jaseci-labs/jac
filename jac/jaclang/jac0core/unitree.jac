@@ -43,27 +43,12 @@ obj UniNode {
 
     def postinit -> None;
 
-    has gen: CodeGenTarget {
-        getter {
-            if (self._gen is None) {
-                self._gen = CodeGenTarget();
-            }
-            return self._gen;
-        }
-        setter(value: CodeGenTarget) {
-            self._gen = value;
-        }
-    }
-
-    has _sub_node_tab: dict[(type, list[UniNode])] {
-        getter;
-    }
+    has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
+    has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _construct_sub_node_tab -> None;
 
-    has sym_tab: UniScopeNode {
-        getter;
-    }
+    has sym_tab: UniScopeNode { getter; }
 
     def add_kids_left(
         nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
@@ -109,25 +94,11 @@ obj Symbol {
         imported: bool = False
     ) -> None;
 
-    has decl: NameAtom {
-        getter;
-    }
-
-    has sym_name: str {
-        getter;
-    }
-
-    has sym_type: SymbolType {
-        getter;
-    }
-
-    has sym_dotted_name: str {
-        getter;
-    }
-
-    has symbol_table: (UniScopeNode | None) {
-        getter;
-    }
+    has decl: NameAtom { getter; }
+    has sym_name: str { getter; }
+    has sym_type: SymbolType { getter; }
+    has sym_dotted_name: str { getter; }
+    has symbol_table: (UniScopeNode | None) { getter; }
 
     def add_defn(nd: NameAtom) -> None;
     def add_use(nd: NameAtom) -> None;
@@ -201,25 +172,11 @@ obj AstSymbolNode(UniNode) {
         sym_name: str, name_spec: NameAtom, sym_category: SymbolType
     ) -> None;
 
-    has sym: (Symbol | None) {
-        getter;
-    }
-
-    has sym_name: str {
-        getter;
-    }
-
-    has sym_category: SymbolType {
-        getter;
-    }
-
-    has py_ctx_func: type[ast3.AST] {
-        getter;
-    }
-
-    has type_sym_tab: (UniScopeNode | None) {
-        getter;
-    }
+    has sym: (Symbol | None) { getter; }
+    has sym_name: str { getter; }
+    has sym_category: SymbolType { getter; }
+    has py_ctx_func: type[ast3.AST] { getter; }
+    has type_sym_tab: (UniScopeNode | None) { getter; }
 }
 
 """Nodes that have link to a symbol in symbol table."""
@@ -230,13 +187,8 @@ obj AstSymbolStubNode(AstSymbolNode) {
 """Nodes that have access."""
 obj AstAccessNode(UniNode) {
     has access: (SubTag[Token] | None) = None;
-    has access_type: SymbolAccess {
-        getter;
-    }
-
-    has public_access: bool {
-        getter;
-    }
+    has access_type: SymbolAccess { getter; }
+    has public_access: bool { getter; }
 }
 
 """Base class for nodes that can be marked with execution context
@@ -332,12 +284,8 @@ obj Expr(UniNode) {
     def postinit -> None;
 
     has type_sym_tab: (UniScopeNode | None) {
-        getter {
-            return self._type_sym_tab;
-        }
-        setter(type_sym_tab: UniScopeNode) {
-            self._type_sym_tab = type_sym_tab;
-        }
+        getter;
+        setter(type_sym_tab: UniScopeNode);
     }
 }
 
@@ -372,9 +320,7 @@ obj CodeBlockStmt(UniCFGNode) {
 """AstImplNeedingNode node type for Jac Ast."""
 obj AstImplNeedingNode[T](AstSymbolNode) {
     has body: (T | None);
-    has needs_impl: bool {
-        getter;
-    }
+    has needs_impl: bool { getter; }
 }
 
 """NameAtom node type for Jac Ast."""
@@ -388,22 +334,9 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
 
     def postinit -> None;
 
-    has sym: (Symbol | None) {
-        getter {
-            return self._sym;
-        }
-        setter(sym: Symbol) {
-            self._sym = sym;
-        }
-    }
-
-    has sym_name: str {
-        getter;
-    }
-
-    has sym_category: SymbolType {
-        getter;
-    }
+    has sym: (Symbol | None) { getter; setter(sym: Symbol); }
+    has sym_name: str { getter; }
+    has sym_category: SymbolType { getter; }
 
     def create_symbol(
         access: SymbolAccess,
@@ -411,22 +344,13 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
         imported: bool = False
     ) -> Symbol;
 
-    has clean_type: str {
-        getter;
-    }
-
+    has clean_type: str { getter; }
     has py_ctx_func: type[ast3.expr_context] {
-        getter {
-            return self._py_ctx_func;
-        }
-        setter(py_ctx_func: type[ast3.expr_context]) {
-            self._py_ctx_func = py_ctx_func;
-        }
+        getter;
+        setter(py_ctx_func: type[ast3.expr_context]);
     }
 
-    has sem_token: (tuple[(SemTokType, SemTokMod)] | None) {
-        getter;
-    }
+    has sem_token: (tuple[(SemTokType, SemTokMod)] | None) { getter; }
 }
 
 """ArchSpec node type for Jac Ast."""
@@ -461,9 +385,7 @@ obj Module(AstDocNode, UniScopeNode) {
 
     def postinit -> None;
 
-    has annexable_by: (str | None) {
-        getter;
-    }
+    has annexable_by: (str | None) { getter; }
 
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
@@ -597,17 +519,9 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 
     def postinit -> None;
 
-    has is_py: bool {
-        getter;
-    }
-
-    has is_jac: bool {
-        getter;
-    }
-
-    has __jac_detected: bool {
-        getter;
-    }
+    has is_py: bool { getter; }
+    has is_jac: bool { getter; }
+    has __jac_detected: bool { getter; }
 }
 
 """ModulePath node type for Jac Ast."""
@@ -619,13 +533,8 @@ obj ModulePath(UniNode) {
 
     def postinit -> None;
 
-    has is_import_from: bool {
-        getter;
-    }
-
-    has dot_path_str: str {
-        getter;
-    }
+    has is_import_from: bool { getter; }
+    has dot_path_str: str { getter; }
 
     def resolve_relative_path(target_item: (str | None) = None) -> str;
     def resolve_relative_path_list -> list[str];
@@ -645,13 +554,8 @@ obj ModuleItem(UniNode) {
 
     def postinit -> None;
 
-    has from_parent: Import {
-        getter;
-    }
-
-    has from_mod_path: ModulePath {
-        getter;
-    }
+    has from_parent: Import { getter; }
+    has from_mod_path: ModulePath { getter; }
 
     def resolve_relative_path -> str;
 }
@@ -666,9 +570,7 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
     def postinit -> None;
     def _get_impl_resolved_body -> list;
 
-    has is_abstract: bool {
-        getter;
-    }
+    has is_abstract: bool { getter; }
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];
@@ -725,25 +627,11 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
 
     def postinit -> None;
 
-    has is_method: bool {
-        getter;
-    }
-
-    has is_cls_method: bool {
-        getter;
-    }
-
-    has is_def: bool {
-        getter;
-    }
-
-    has method_owner: Archetype | Enum | None {
-        getter;
-    }
-
-    has is_genai_ability: bool {
-        getter;
-    }
+    has is_method: bool { getter; }
+    has is_cls_method: bool { getter; }
+    has is_def: bool { getter; }
+    has method_owner: Archetype | Enum | None { getter; }
+    has is_genai_ability: bool { getter; }
 
     def get_pos_argc_range -> tuple[(int, int)];
     def py_resolve_name -> str;
@@ -761,13 +649,8 @@ obj FuncSignature(UniNode) {
     def postinit -> None;
     def get_parameters -> list[ParamVar];
 
-    has is_static: bool {
-        getter;
-    }
-
-    has is_in_py_class: bool {
-        getter;
-    }
+    has is_static: bool { getter; }
+    has is_in_py_class: bool { getter; }
 }
 
 """EventSignature node type for Jac Ast."""
@@ -798,13 +681,8 @@ obj ParamVar(AstSymbolNode, AstTypedVarNode) {
 
     def postinit -> None;
 
-    has is_vararg: bool {
-        getter;
-    }
-
-    has is_kwargs: bool {
-        getter;
-    }
+    has is_vararg: bool { getter; }
+    has is_kwargs: bool { getter; }
 }
 
 """ArchHas node type for Jac Ast."""
@@ -972,9 +850,7 @@ obj DeleteStmt(CodeBlockStmt) {
 
     def postinit -> None;
 
-    has py_ast_targets: list[ast3.AST] {
-        getter;
-    }
+    has py_ast_targets: list[ast3.AST] { getter; }
 }
 
 """ReportStmt node type for Jac Ast."""
@@ -1225,9 +1101,7 @@ obj AtomTrailer(Expr) {
 
     def postinit -> None;
 
-    has as_attr_list: list[AstSymbolNode] {
-        getter;
-    }
+    has as_attr_list: list[AstSymbolNode] { getter; }
 }
 
 """AtomUnit node type for Jac Ast."""
@@ -1627,8 +1501,7 @@ obj Literal(Token, AtomExpr) {
         pos_end: int
     ) -> None;
 
-    has lit_value:
-        int | str | float | bool | None | Callable[([], Any)] | EllipsisType {
+    has lit_value: int | str | float | bool | None | Callable[([], Any)] | EllipsisType {
         getter;
     }
 }
@@ -1639,9 +1512,7 @@ obj BuiltinType(Name, Literal) {
         SYMBOL_TYPE = SymbolType.VAR;
     }
 
-    has lit_value: Callable[([], Any)] {
-        getter;
-    }
+    has lit_value: Callable[([], Any)] { getter; }
 }
 
 """Float node type for Jac Ast."""
@@ -1650,9 +1521,7 @@ obj Float(Literal) {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
 
-    has lit_value: float {
-        getter;
-    }
+    has lit_value: float { getter; }
 }
 
 """Int node type for Jac Ast."""
@@ -1661,9 +1530,7 @@ obj Int(Literal) {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
 
-    has lit_value: int {
-        getter;
-    }
+    has lit_value: int { getter; }
 }
 
 """String node type for Jac Ast."""
@@ -1672,9 +1539,7 @@ obj String(Literal) {
         SYMBOL_TYPE = SymbolType.STRING;
     }
 
-    has lit_value: str {
-        getter;
-    }
+    has lit_value: str { getter; }
 }
 
 """Bool node type for Jac Ast."""
@@ -1683,9 +1548,7 @@ obj Bool(Literal) {
         SYMBOL_TYPE = SymbolType.BOOL;
     }
 
-    has lit_value: bool {
-        getter;
-    }
+    has lit_value: bool { getter; }
 }
 
 """Null node type for Jac Ast."""
@@ -1694,9 +1557,7 @@ obj Null(Literal) {
         SYMBOL_TYPE = SymbolType.NULL;
     }
 
-    has lit_value: None {
-        getter;
-    }
+    has lit_value: None { getter; }
 }
 
 """Ellipsis node type for Jac Ast."""
@@ -1705,9 +1566,7 @@ obj Ellipsis(Literal) {
         SYMBOL_TYPE = SymbolType.NULL;
     }
 
-    has lit_value: EllipsisType {
-        getter;
-    }
+    has lit_value: EllipsisType { getter; }
 }
 
 """EmptyToken node type for Jac Ast."""
@@ -1746,13 +1605,8 @@ obj CommentToken(Token) {
         is_inline: bool = False
     ) -> None;
 
-    has left_node: (UniNode | None) {
-        getter;
-    }
-
-    has right_node: (UniNode | None) {
-        getter;
-    }
+    has left_node: (UniNode | None) { getter; }
+    has right_node: (UniNode | None) { getter; }
 }
 
 """SourceString node type for Jac Ast."""
@@ -1763,9 +1617,7 @@ obj Source(EmptyToken) {
 
     def init(source: str, mod_path: str) -> None;
 
-    has code: str {
-        getter;
-    }
+    has code: str { getter; }
 }
 
 """SourceString node type for Jac Ast."""

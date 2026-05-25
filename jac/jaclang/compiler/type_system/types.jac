@@ -66,9 +66,7 @@ obj TypeBase(ABC) {
         CATEGORY: ClassVar[TypeCategory];
     }
 
-    has category: TypeCategory {
-        getter;
-    }
+    has category: TypeCategory { getter; }
 
     static def unknown -> UnknownType;
     def is_instantiable -> bool;
@@ -180,9 +178,7 @@ obj ClassType(TypeBase) {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
 
-    has shared: ClassType.ClassDetailsShared {
-        getter;
-    }
+    has shared: ClassType.ClassDetailsShared { getter; }
 
     """
 Holds the shared details of class type.

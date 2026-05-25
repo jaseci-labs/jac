@@ -12,18 +12,11 @@ obj Boxes {
         _b: int = 2,
         _c: int = 3;
 
-    has a: int {
-        getter;
-        setter(value: int);
-    }
+    has a: int { getter; setter(value: int); }
 
-    has b: int {
-        getter;
-    }
+    has b: int { getter; }
 
-    has c: int {
-        getter;
-    }
+    has c: int { getter; }
 }
 
 impl Boxes.a.getter -> int {

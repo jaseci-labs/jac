@@ -362,15 +362,8 @@ class SymbolTree {
     ) -> None;
 
     has parent: (SymbolTree | None) {
-        getter {
-            return self.__parent;
-        }
-        setter(self: SymbolTree, parent_node: (SymbolTree | None)) {
-            if parent_node {
-                self.__parent = parent_node;
-                parent_node.kid.append(self);
-            }
-        }
+        getter;
+        setter(self: SymbolTree, parent_node: (SymbolTree | None));
     }
 }
 

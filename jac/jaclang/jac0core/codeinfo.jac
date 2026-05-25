@@ -173,17 +173,9 @@ obj InteropBinding {
         # codegen and runtime dispatch for sv-to-sv imports.
         kind: str = 'function';
 
-    has is_direct: bool {
-        getter;
-    }
-
-    has is_composed: bool {
-        getter;
-    }
-
-    has is_cross_module: bool {
-        getter;
-    }
+    has is_direct: bool { getter; }
+    has is_composed: bool { getter; }
+    has is_cross_module: bool { getter; }
 }
 
 """All cross-boundary function bindings for a module.
@@ -210,25 +202,11 @@ obj InteropManifest {
                 }
         );
 
-    has native_imports: list[InteropBinding] {
-        getter;
-    }
-
-    has native_exports: list[InteropBinding] {
-        getter;
-    }
-
-    has native_cross_module_imports: list[InteropBinding] {
-        getter;
-    }
-
-    has server_exports_to_client: list[InteropBinding] {
-        getter;
-    }
-
-    has server_exports_to_server: list[InteropBinding] {
-        getter;
-    }
+    has native_imports: list[InteropBinding] { getter; }
+    has native_exports: list[InteropBinding] { getter; }
+    has native_cross_module_imports: list[InteropBinding] { getter; }
+    has server_exports_to_client: list[InteropBinding] { getter; }
+    has server_exports_to_server: list[InteropBinding] { getter; }
 }
 
 """Code generation target."""
@@ -256,18 +234,7 @@ obj CodeGenTarget {
         # and nacompile CLI for transitive .so loading and AOT linking.
         _clib_paths: list[str] = field(default_factory=`list);
 
-    has doc_ir: Doc {
-        getter {
-            if (self._doc_ir is None) {
-                import jaclang.compiler.passes.tool.doc_ir as doc;
-                self._doc_ir = doc.Text('');
-            }
-            return self._doc_ir;
-        }
-        setter(value: Doc) {
-            self._doc_ir = value;
-        }
-    }
+    has doc_ir: Doc { getter; setter(value: Doc); }
 }
 
 """Code location info."""
@@ -275,71 +242,17 @@ obj CodeLocInfo {
     has first_tok: Token,
         last_tok: Token;
 
-    has orig_src: Source {
-        getter {
-            return self.first_tok.orig_src;
-        }
-    }
-
-    has mod_path: str {
-        getter {
-            return self.first_tok.orig_src.file_path;
-        }
-    }
-
-    has first_line: int {
-        getter {
-            return self.first_tok.line_no;
-        }
-    }
-
-    has last_line: int {
-        getter {
-            return self.last_tok.end_line;
-        }
-    }
-
-    has col_start: int {
-        getter {
-            return self.first_tok.c_start;
-        }
-    }
-
-    has col_end: int {
-        getter {
-            return self.last_tok.c_end;
-        }
-    }
-
-    has pos_start: int {
-        getter {
-            return self.first_tok.pos_start;
-        }
-    }
-
-    has pos_end: int {
-        getter {
-            return self.last_tok.pos_end;
-        }
-    }
-
-    has tok_range: tuple[(Token, Token)] {
-        getter {
-            return (self.first_tok, self.last_tok);
-        }
-    }
-
-    has first_token: Token {
-        getter {
-            return self.first_tok;
-        }
-    }
-
-    has last_token: Token {
-        getter {
-            return self.last_tok;
-        }
-    }
+    has orig_src: Source { getter; }
+    has mod_path: str { getter; }
+    has first_line: int { getter; }
+    has last_line: int { getter; }
+    has col_start: int { getter; }
+    has col_end: int { getter; }
+    has pos_start: int { getter; }
+    has pos_end: int { getter; }
+    has tok_range: tuple[(Token, Token)] { getter; }
+    has first_token: Token { getter; }
+    has last_token: Token { getter; }
 
     def update_token_range(first_tok: Token, last_tok: Token) {
         self.first_tok = first_tok;

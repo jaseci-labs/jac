@@ -77,13 +77,8 @@ obj TextDocument {
 
     def postinit -> None;
 
-    has source: str {
-        getter;
-    }
-
-    has lines: list[str] {
-        getter;
-    }
+    has source: str { getter; }
+    has lines: list[str] { getter; }
 
     def apply_change(change: any) -> None;
     def _apply_incremental_change(
@@ -131,13 +126,8 @@ obj LanguageServer {
 
     def postinit -> None;
 
-    has workspace: Workspace {
-        getter;
-    }
-
-    has lsp: LanguageServer {
-        getter;
-    }
+    has workspace: Workspace { getter; }
+    has lsp: LanguageServer { getter; }
 
     def feature(method: str, options: any = None) -> Callable;
     def start_io -> None;

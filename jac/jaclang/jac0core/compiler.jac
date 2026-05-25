@@ -273,9 +273,7 @@ obj _SetupProgress {
     def _atexit_handler -> None;
     def on_internal_compile(file_path: str) -> None;
 
-    has is_active: bool {
-        getter;
-    }
+    has is_active: bool { getter; }
 }
 
 glob setup_progress = _SetupProgress();
@@ -374,9 +372,7 @@ obj JacCompiler {
     }
 
     has _internal_program: (JacProgram | None) = None;
-    has internal_program: JacProgram {
-        getter;
-    }
+    has internal_program: JacProgram { getter; }
 
     @classmethod
     def _get_jaclang_root(cls: any) -> str;

@@ -62,9 +62,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def postinit -> None;
     def dispatcher -> None;
 
-    has diagnostics: dict[str, list] {
-        getter;
-    }
+    has diagnostics: dict[str, list] { getter; }
 
     def _clear_alerts_for_file(file_path: str) -> None;
     def get_ir(file_path: str) -> Optional[uni.Module];

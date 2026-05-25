@@ -26,9 +26,7 @@ obj MTIR {
         call_params: dict[(str, object)],
         ir_info: (Info | None) = None;
 
-    has runtime: MTRuntime {
-        getter;
-    }
+    has runtime: MTRuntime { getter; }
 }
 
 obj Info {

@@ -76,3 +76,59 @@ impl InteropManifest.server_exports_to_server.getter -> list[InteropBinding] {
         )
     ];
 }
+
+impl CodeGenTarget.doc_ir.getter -> Doc {
+    if (self._doc_ir is None) {
+        import jaclang.compiler.passes.tool.doc_ir as doc;
+        self._doc_ir = doc.Text('');
+    }
+    return self._doc_ir;
+}
+
+impl CodeGenTarget.doc_ir.setter(value: Doc) {
+    self._doc_ir = value;
+}
+
+impl CodeLocInfo.orig_src.getter -> Source {
+    return self.first_tok.orig_src;
+}
+
+impl CodeLocInfo.mod_path.getter -> str {
+    return self.first_tok.orig_src.file_path;
+}
+
+impl CodeLocInfo.first_line.getter -> int {
+    return self.first_tok.line_no;
+}
+
+impl CodeLocInfo.last_line.getter -> int {
+    return self.last_tok.end_line;
+}
+
+impl CodeLocInfo.col_start.getter -> int {
+    return self.first_tok.c_start;
+}
+
+impl CodeLocInfo.col_end.getter -> int {
+    return self.last_tok.c_end;
+}
+
+impl CodeLocInfo.pos_start.getter -> int {
+    return self.first_tok.pos_start;
+}
+
+impl CodeLocInfo.pos_end.getter -> int {
+    return self.last_tok.pos_end;
+}
+
+impl CodeLocInfo.tok_range.getter -> tuple[(Token, Token)] {
+    return (self.first_tok, self.last_tok);
+}
+
+impl CodeLocInfo.first_token.getter -> Token {
+    return self.first_tok;
+}
+
+impl CodeLocInfo.last_token.getter -> Token {
+    return self.last_tok;
+}

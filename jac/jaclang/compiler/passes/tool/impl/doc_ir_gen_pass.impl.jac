@@ -1743,12 +1743,15 @@ impl DocIRGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 """Generate DocIR for has variable declarations.
 
 A plain `has x: T = v` emits inline. A property `has x: T { getter; setter;
-deleter; }` emits its accessor block like an ability body: each accessor on
-its own hard line, indented one level inside the braces.
+deleter; }` emits its accessor block as a group with soft lines: a block of
+signature-only stubs collapses to one line when it fits, while any accessor
+carrying a body (whose own DocIR contains hard lines) forces the block to
+break onto indented lines.
 """
 impl DocIRGenPass.exit_has_var(nd: uni.HasVar) -> None {
     parts: list[doc.DocType] = [];
-    acc_parts: list[doc.DocType] = [];
+    acc_docs: list[doc.DocType] = [];
+    lbrace_doc: (doc.DocType | None) = None;
     in_acc = False;
     for i in nd.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ)) {
@@ -1761,19 +1764,27 @@ impl DocIRGenPass.exit_has_var(nd: uni.HasVar) -> None {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
-            parts.append(self.space());
-            parts.append(i.gen.doc_ir);
-            acc_parts.append(self.hard_line());
+            lbrace_doc = i.gen.doc_ir;
             in_acc = True;
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_acc = False;
-            self.trim_trailing_line(acc_parts);
-            parts.append(self.indent(self.concat(acc_parts), ast_node=nd));
-            parts.append(self.hard_line());
-            parts.append(i.gen.doc_ir);
+            inner: list[doc.DocType] = [];
+            for ad in acc_docs {
+                inner.append(self.line());
+                inner.append(ad);
+            }
+            block = self.concat(
+                [
+                    lbrace_doc,
+                    self.indent(self.concat(inner), ast_node=nd),
+                    self.line(),
+                    i.gen.doc_ir
+                ]
+            );
+            parts.append(self.space());
+            parts.append(self.group(block, ast_node=nd));
         } elif in_acc {
-            acc_parts.append(i.gen.doc_ir);
-            acc_parts.append(self.hard_line());
+            acc_docs.append(i.gen.doc_ir);
         } else {
             parts.append(i.gen.doc_ir);
         }
@@ -2265,7 +2276,12 @@ impl DocIRGenPass.exit_ability(nd: uni.Ability) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
-            parts.append(self.space());
+            # Property accessor stubs (`getter;`) are laid out by the enclosing
+            # has-var group, which supplies its own separators; a trailing space
+            # here would double up when the block collapses to one line.
+            if (nd.accessor_kind == "") {
+                parts.append(self.space());
+            }
         } elif isinstance(i, uni.SubTag) {
             parts.pop();
             parts.append(i.gen.doc_ir);

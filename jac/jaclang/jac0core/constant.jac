@@ -113,23 +113,11 @@ enum CodeContext {
             return self.value;
         }
 
-        has is_server: bool {
-            getter {
-                return (self == CodeContext.SERVER);
-            }
-        }
+        has is_server: bool { getter; }
 
-        has is_client: bool {
-            getter {
-                return (self == CodeContext.CLIENT);
-            }
-        }
+        has is_client: bool { getter; }
 
-        has is_native: bool {
-            getter {
-                return (self == CodeContext.NATIVE);
-            }
-        }
+        has is_native: bool { getter; }
     }
 }
 
