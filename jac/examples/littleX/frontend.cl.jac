@@ -106,7 +106,7 @@ def:pub app -> JsxElement {
     if not isLoggedIn {
         return
             <AuthForm
-                isSignup={isSignup}
+                {isSignup}
                 username={authUsername}
                 password={authPassword}
                 error={authError}
@@ -134,9 +134,9 @@ def:pub app -> JsxElement {
         else profileUsername;
     profileAvatar = "https://i.pravatar.cc/150?u=fake@" + profileUsername;
     myProfileId = myProfile.id if myProfile else "";
-    followingIds = [f.id for f in myProfile.following]
-        if myProfile and myProfile.following
-        else [];
+    followingIds = [
+        f.id for f in (myProfile.following if myProfile and myProfile.following else [])
+    ];
     toFollow = [
         u
         for u in allProfiles
@@ -146,11 +146,11 @@ def:pub app -> JsxElement {
     return
         <div className="lx-root">
             <Sidebar
-                activeTab={activeTab}
-                displayUsername={displayUsername}
-                profileUsername={profileUsername}
-                profileAvatar={profileAvatar}
-                notifCount={notifCount}
+                {activeTab}
+                {displayUsername}
+                {profileUsername}
+                {profileAvatar}
+                {notifCount}
                 onNavigate={navigate}
                 onLogout={handleLogout}
             />
@@ -187,15 +187,15 @@ def:pub app -> JsxElement {
                 </div>
                 {if activeTab == "feed" {
                     <FeedTab
-                        showWelcome={showWelcome}
+                        {showWelcome}
                         onDismissWelcome={handleDismissWelcome}
-                        profileAvatar={profileAvatar}
-                        profileUsername={profileUsername}
-                        composerText={composerText}
+                        {profileAvatar}
+                        {profileUsername}
+                        {composerText}
                         onComposerChange={lambda v: str { composerText = v; }}
                         onPost={postTweet}
-                        feedLoading={feedLoading}
-                        tweets={tweets}
+                        {feedLoading}
+                        {tweets}
                         onLike={handleLike}
                         onComment={handleComment}
                         onDelete={handleDelete}
@@ -203,20 +203,20 @@ def:pub app -> JsxElement {
                     />
                 } elif activeTab == "explore" {
                     <ExploreTab
-                        allProfiles={allProfiles}
-                        followingIds={followingIds}
-                        myProfileId={myProfileId}
+                        {allProfiles}
+                        {followingIds}
+                        {myProfileId}
                         onFollow={handleFollow}
                         onUnfollow={handleUnfollow}
                     />
                 } elif activeTab == "channels" {
                     <ChannelsTab
-                        channels={channels}
-                        channelsLoading={channelsLoading}
-                        selectedChannel={selectedChannel}
-                        channelPosts={channelPosts}
-                        profileAvatar={profileAvatar}
-                        profileUsername={profileUsername}
+                        {channels}
+                        {channelsLoading}
+                        {selectedChannel}
+                        {channelPosts}
+                        {profileAvatar}
+                        {profileUsername}
                         onCreateChannel={handleCreateChannel}
                         onJoinChannel={handleJoinChannel}
                         onLeaveChannel={handleLeaveChannel}
@@ -230,12 +230,12 @@ def:pub app -> JsxElement {
                     />
                 } elif activeTab == "profile" {
                     <ProfileTab
-                        myProfile={myProfile}
-                        displayUsername={displayUsername}
-                        profileAvatar={profileAvatar}
-                        profileUsername={profileUsername}
-                        editingBio={editingBio}
-                        bioText={bioText}
+                        {myProfile}
+                        {displayUsername}
+                        {profileAvatar}
+                        {profileUsername}
+                        {editingBio}
+                        {bioText}
                         onBioChange={lambda v: str { bioText = v; }}
                         onSaveBio={handleSaveBio}
                         onCancelEditBio={lambda { editingBio = False; }}
@@ -247,24 +247,20 @@ def:pub app -> JsxElement {
                 }   }
             </main>
             <RightSidebar
-                searchQuery={searchQuery}
+                {searchQuery}
                 onSearchChange={lambda v: str { searchQuery = v; }}
                 onSearch={handleSearch}
                 onClearSearch={lambda {
                     searchQuery = "";
                     handleSearch("");
                 }}
-                trendingTags={trendingTags}
+                {trendingTags}
                 onTrendClick={handleTrendClick}
-                toFollow={toFollow}
+                {toFollow}
                 onFollow={handleFollow}
                 onShowMore={lambda { navigate("explore"); }}
             />
-            <MobileNav
-                activeTab={activeTab}
-                notifCount={notifCount}
-                onNavigate={navigate}
-            />
+            <MobileNav {activeTab} {notifCount} onNavigate={navigate}/>
             <button className="lx-mobile-fab" onClick={lambda { navigate("feed"); }}>
                 <Feather size={22}/>
             </button>

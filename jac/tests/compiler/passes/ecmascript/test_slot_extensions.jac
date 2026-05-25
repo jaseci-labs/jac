@@ -186,3 +186,34 @@ test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" 
         "a side-effect import of the rewritten CSS should be injected:\n" + js_code
     );
 }
+
+test "sibling slots: each accumulator IIFE declares its own `let` binding" {
+    # Two `{...}` statement slots side by side in one element's children
+    # lower to two separate accumulator IIFEs. Each IIFE is its own JS
+    # function scope, so each must DECLARE its accumulator with `let`. The
+    # earlier lowering gave every author slot the same `__jac_view_kids`
+    # name and the codegen, seeing it "already declared" in the enclosing
+    # scope, emitted a bare reassignment for the second IIFE -- which
+    # throws `ReferenceError: __jac_view_kids is not defined` under
+    # ES-module strict mode (the whole authenticated littleX app crashed
+    # on render). Every accumulator init must now be a `let`.
+    es_ast = compile_to_esast("sibling_slots.cl.jac");
+    js_code = es_to_js(es_ast);
+    import re;
+
+    # No accumulator may be initialised via a bare (non-`let`) assignment.
+    bare = re.findall(r'(?<![\w])(?<!let )__jac_view_kids\w* = \[\]', js_code);
+    assert not bare , (
+        "every slot accumulator must be declared with `let`; found a bare "
+        "reassignment that throws ReferenceError in a sibling IIFE:\n" + js_code
+    );
+    # Two sibling slots => two distinct accumulator bindings, the first
+    # keeping the bare `__jac_view_kids` name (preserved for diagnostics)
+    # and the second drawing a unique suffix.
+    assert "let __jac_view_kids = [];" in js_code , (
+        "the first slot should keep the unsuffixed accumulator name:\n" + js_code
+    );
+    assert "let __jac_view_kids_1 = [];" in js_code , (
+        "the second sibling slot needs its own suffixed accumulator:\n" + js_code
+    );
+}

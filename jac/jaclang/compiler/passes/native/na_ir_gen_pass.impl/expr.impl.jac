@@ -98,6 +98,13 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)
@@ -290,6 +297,85 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
+"""Generate walrus `:=` expression.
+
+Binds `nd.left` (always a simple Name — the parser only accepts a Name
+on the left of `:=`) to the value of `nd.right`, then evaluates to that
+value so the enclosing expression can consume it, e.g. `if (n := f()) > 5`.
+
+The binding is stored into the name's local alloca, created in the entry
+block on first use. Pointer-typed values follow the same retain/release
+discipline as a normal assignment: retain a borrowed value before storing,
+release any prior occupant of an existing slot.
+"""
+impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    var_name = self._get_name(nd.left);
+    if var_name is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        return None;
+    }
+    value = self._codegen_expr(nd.right);
+    if value is None {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    if var_name in self.local_vars {
+        # Rebind an existing local: coerce to the slot type, then release
+        # the prior occupant (pointer slots only) after retaining the new one.
+        alloca = self.local_vars[var_name];
+        slot_type = alloca.type.pointee;
+        value = self._coerce_type(value, slot_type);
+        if isinstance(slot_type, ir.PointerType) {
+            if not self._is_owned(value) {
+                self._emit_rc_retain(value, op="walrus", loc=_loc);
+            }
+            old_val = self.builder.load(alloca, name=f"{var_name}.old");
+            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+    } else {
+        # First binding: allocate a slot in the entry block. The store
+        # below always runs before any scope cleanup, so the slot is never
+        # read uninitialized.
+        var_type = value.type;
+        alloca = self._entry_alloca(var_type, var_name);
+        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
+            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+        self.local_vars[var_name] = alloca;
+    }
+    # Evaluate to the bound value. This is a borrowed read of the slot the
+    # local now owns — matching _codegen_name's borrow semantics.
+    return self.builder.load(alloca, name=var_name);
+}
+
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
@@ -299,9 +385,11 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     # Trying to evaluate `nd.left` first would return None, and the
     # function would silently exit returning None — masking the real
     # gap. Catch known-unsupported ops here so the error is loud.
-    if op in (Tok.WALRUS_EQ, Tok.PIPE_FWD) {
-        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
-        return None;
+    if op == Tok.WALRUS_EQ {
+        return self._codegen_walrus(nd);
+    }
+    if op == Tok.PIPE_FWD {
+        return self._codegen_pipe_fwd(nd);
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);

@@ -8,12 +8,9 @@ def:pub Sidebar(
     profileUsername: str,
     profileAvatar: str,
     notifCount: int,
-    onNavigate: any,
-    onLogout: any,
+    onNavigate: Callable[[str], None],
+    onLogout: Callable[[], None],
 ) -> JsxElement {
-    navFn = onNavigate;
-    logoutFn = onLogout;
-
     return
         <aside className="lx-sidebar-left">
             <div className="lx-brand">
@@ -29,7 +26,7 @@ def:pub Sidebar(
                     className={"lx-nav-item" + (
                         " lx-nav-item-active" if activeTab == "feed" else ""
                     )}
-                    onClick={lambda { navFn.call(None, "feed"); }}
+                    onClick={lambda { onNavigate("feed"); }}
                 >
                     <Home size={22}/>
                     <span>Home</span>
@@ -38,7 +35,7 @@ def:pub Sidebar(
                     className={"lx-nav-item" + (
                         " lx-nav-item-active" if activeTab == "explore" else ""
                     )}
-                    onClick={lambda { navFn.call(None, "explore"); }}
+                    onClick={lambda { onNavigate("explore"); }}
                 >
                     <Compass size={22}/>
                     <span>Explore</span>
@@ -47,7 +44,7 @@ def:pub Sidebar(
                     className={"lx-nav-item" + (
                         " lx-nav-item-active" if activeTab == "channels" else ""
                     )}
-                    onClick={lambda { navFn.call(None, "channels"); }}
+                    onClick={lambda { onNavigate("channels"); }}
                 >
                     <Hash size={22}/>
                     <span>Channels</span>
@@ -56,7 +53,7 @@ def:pub Sidebar(
                     className={"lx-nav-item" + (
                         " lx-nav-item-active" if activeTab == "profile" else ""
                     )}
-                    onClick={lambda { navFn.call(None, "profile"); }}
+                    onClick={lambda { onNavigate("profile"); }}
                 >
                     <User size={22}/>
                     <span>Profile</span>
@@ -65,10 +62,7 @@ def:pub Sidebar(
                     }}
                 </div>
             </nav>
-            <button
-                className="lx-compose-btn"
-                onClick={lambda { navFn.call(None, "feed"); }}
-            >
+            <button className="lx-compose-btn" onClick={lambda { onNavigate("feed"); }}>
                 <Feather size={18}/>
                 <span>Post</span>
             </button>
@@ -81,10 +75,7 @@ def:pub Sidebar(
                         {"@" + displayUsername}
                     </div>
                 </div>
-                <button
-                    className="lx-logout-icon-btn"
-                    onClick={lambda { logoutFn.call(None); }}
-                >
+                <button className="lx-logout-icon-btn" onClick={lambda { onLogout(); }}>
                     <LogOut size={18}/>
                 </button>
             </div>

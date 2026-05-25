@@ -3510,7 +3510,7 @@ impl Parser.parse_jsx_child -> Expr {
         # and statement-form slot. Statement keywords ALWAYS mean a slot:
         # `for`/`while`/`if`/`match`/`switch`/`with`/`try` -- plus `skip`
         # (the slot early-exit) and `return` (legacy, now diagnosed by
-        # ViewLowerPass).
+        # ASTValidationPass's slot body rules).
         if self.check_any(
             TokenKind.KW_FOR,
             TokenKind.KW_WHILE,
@@ -4585,7 +4585,8 @@ impl Parser.parse_try_stmt -> TryStmt {
     # Canonical clause order: try -> awaiting -> except -> else -> finally.
     # `awaiting` is the clause keyword; it binds the dispatched-but-not-
     # joined window of any `flow`/`wait` work inside the `try` body.
-    # Lowered per target by view_lower_pass.
+    # In a JSX slot it lowers to a `<JacAwaiting>` wrapper at cl codegen
+    # time (EsastGenPass); diagnosed by ASTValidationPass's slot rules.
     awaiting_body = None;
     if self.check(TokenKind.KW_AWAITING) {
         awaiting_uni = self.make_uni_token(self.advance());

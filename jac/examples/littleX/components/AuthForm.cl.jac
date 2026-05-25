@@ -6,10 +6,10 @@ def:pub AuthForm(
     password: str,
     error: str,
     loading: bool,
-    onUsernameChange: any,
-    onPasswordChange: any,
-    onSubmit: any,
-    onToggleMode: any,
+    onUsernameChange: Callable[[ChangeEvent], None],
+    onPasswordChange: Callable[[ChangeEvent], None],
+    onSubmit: Callable[[FormEvent], None],
+    onToggleMode: Callable[[], None],
 ) -> JsxElement {
     return
         <div className="lx-auth-root">
@@ -36,7 +36,7 @@ def:pub AuthForm(
                     {if error {
                         <div className="lx-auth-error">{error}</div>
                     }}
-                    <form onSubmit={onSubmit} className="lx-auth-form-fields">
+                    <form {onSubmit} className="lx-auth-form-fields">
                         <input
                             className="lx-input"
                             type="text"

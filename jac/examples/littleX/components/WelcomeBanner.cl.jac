@@ -1,8 +1,6 @@
 """First-run welcome banner for Little X."""
 
-def:pub WelcomeBanner(onDismiss: any) -> JsxElement {
-    dismissFn = onDismiss;
-
+def:pub WelcomeBanner(onDismiss: Callable[[], None]) -> JsxElement {
     return
         <div className="lx-welcome-banner">
             <div className="lx-welcome-content">
@@ -19,10 +17,7 @@ def:pub WelcomeBanner(onDismiss: any) -> JsxElement {
                     </span>
                 </div>
             </div>
-            <button
-                className="lx-welcome-dismiss"
-                onClick={lambda { dismissFn.call(None); }}
-            >
+            <button className="lx-welcome-dismiss" onClick={lambda { onDismiss(); }}>
                 {"Got it"}
             </button>
         </div>;

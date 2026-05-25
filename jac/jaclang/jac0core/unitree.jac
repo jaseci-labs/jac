@@ -1354,7 +1354,10 @@ Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
 """
 obj JsxSlot(JsxChild) {
     has body: list[UniNode];
-
+    # The body holds the author's faithful `{ stmt; ... }` statement
+    # template. No pre-codegen pass mutates it — the cl-target accumulator
+    # IIFE is synthesized at codegen time (EsastGenPass), so the surface
+    # tokens round-trip through the formatter/unparser unchanged.
     def postinit -> None;
 }
 

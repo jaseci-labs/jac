@@ -124,6 +124,15 @@ def:pub TextInput() -> JsxElement {
 }
 ```
 
+!!! tip "Prefer the `Ref[T]` field form for component refs"
+    For a ref you hold for the life of a component, declare it as a typed
+    `has`-field instead of a manual import: `has inputRef: Ref[HTMLInputElement] = Ref();`
+    compiles to the same `useRef(null)`, auto-imports `useRef`, and gives
+    `.current` a real type (`HTMLInputElement | None`). See
+    [Refs with `Ref[T]`](state.md). The manual `import from react { useRef }`
+    form shown here is still useful for inline locals and value refs created
+    mid-function.
+
 Common uses for `useRef`:
 
 <!-- jac-skip -->

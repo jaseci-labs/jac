@@ -39,6 +39,7 @@ import from jaclang.jac0core.modresolver {
     resolve_relative_path
 }
 import from jaclang.jac0core.diagnostics {
+    E2025,
     E5010,
     E5011,
     E5012,
@@ -143,6 +144,12 @@ glob _T = TypeVar('_T', bound=es.Node),
      POLYMORPHIC_METHODS: set[str] = {"lower","upper","strip","lstrip","rstrip","append","extend","pop"},
      LiteralValue = str | bool | int | float | None;
 
+"""Name of the synthesized children accumulator local for a JSX `{...}`
+slot. The outermost slot in a given scope uses this name; nested slot
+scopes (a `try`/`awaiting`/`except` arm's own accumulator) get a unique
+`__jac_view_kids_N` suffix so hoisted `let` bindings never collide."""
+glob VIEW_ACC: str = "__jac_view_kids";
+
 """Track declarations within a lexical scope."""
 obj ScopeInfo {
     has nd: uni.UniScopeNode,
@@ -232,7 +239,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
-    def _analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> dict;
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
         nd: (uni.UniNode | None),
@@ -263,6 +269,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _get_setter_name(var_name: str) -> str;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
+    def _inject_react_import(name: str, nd: uni.UniNode) -> None;
+    def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _register_jac_runtime_import -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
@@ -271,8 +279,45 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def enter_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
+    def enter_try_stmt(nd: uni.TryStmt) -> None;
+    def enter_except(nd: uni.Except) -> None;
+    def enter_awaiting_clause(nd: uni.AwaitingClause) -> None;
+    def exit_awaiting_clause(nd: uni.AwaitingClause) -> None;
+    # ----- JSX `{...}` slot view-lowering (direct es_ast) ------------------
+    """Name of the slot accumulator currently in scope, or None when not
+    directly inside a slot body (e.g. inside a nested `def` barrier)."""
+    def _cur_view_acc -> (str | None);
+
+    """Push a fresh slot-accumulator scope and return its local name."""
+    def _push_view_acc -> str;
+
+    """Build `acc.push(<value>);` — accumulate one template element."""
+    def _view_push_stmt(
+        acc_name: str, value: es.Expression, anchor: uni.UniNode
+    ) -> es.ExpressionStatement;
+
+    """Build `<>{children...}</>` as a `__jacJsx(null, {}, [children])` call."""
+    def _jsx_fragment(
+        children: list[es.Expression], anchor: uni.UniNode
+    ) -> es.CallExpression;
+
+    """Build `return <>{acc}</>;` — the fragment of all content so far."""
+    def _view_fragment_return(
+        acc_name: str, anchor: uni.UniNode
+    ) -> es.ReturnStatement;
+
+    """Wrap a lowered slot body in an inline accumulator IIFE expression."""
+    def _build_view_iife(
+        body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
+    ) -> es.CallExpression;
+
+    """Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
+    slot `try { ... } awaiting { ... } except { ... }` on the cl target."""
+    def _build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None;
+
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;

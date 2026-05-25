@@ -2,16 +2,16 @@
 
 import from "lucide-react" { Home, Compass, Hash, User }
 
-def:pub MobileNav(activeTab: str, notifCount: int, onNavigate: any) -> JsxElement {
-    navFn = onNavigate;
-
+def:pub MobileNav(
+    activeTab: str, notifCount: int, onNavigate: Callable[[str], None]
+) -> JsxElement {
     return
         <nav className="lx-mobile-nav">
             <div
                 className={"lx-mobile-nav-item" + (
                     " lx-mobile-nav-item-active" if activeTab == "feed" else ""
                 )}
-                onClick={lambda { navFn.call(None, "feed"); }}
+                onClick={lambda { onNavigate("feed"); }}
             >
                 <Home size={24}/>
             </div>
@@ -19,7 +19,7 @@ def:pub MobileNav(activeTab: str, notifCount: int, onNavigate: any) -> JsxElemen
                 className={"lx-mobile-nav-item" + (
                     " lx-mobile-nav-item-active" if activeTab == "explore" else ""
                 )}
-                onClick={lambda { navFn.call(None, "explore"); }}
+                onClick={lambda { onNavigate("explore"); }}
             >
                 <Compass size={24}/>
             </div>
@@ -27,7 +27,7 @@ def:pub MobileNav(activeTab: str, notifCount: int, onNavigate: any) -> JsxElemen
                 className={"lx-mobile-nav-item" + (
                     " lx-mobile-nav-item-active" if activeTab == "channels" else ""
                 )}
-                onClick={lambda { navFn.call(None, "channels"); }}
+                onClick={lambda { onNavigate("channels"); }}
             >
                 <Hash size={24}/>
             </div>
@@ -35,7 +35,7 @@ def:pub MobileNav(activeTab: str, notifCount: int, onNavigate: any) -> JsxElemen
                 className={"lx-mobile-nav-item" + (
                     " lx-mobile-nav-item-active" if activeTab == "profile" else ""
                 )}
-                onClick={lambda { navFn.call(None, "profile"); }}
+                onClick={lambda { onNavigate("profile"); }}
             >
                 <User size={24}/>
                 {if notifCount > 0 {

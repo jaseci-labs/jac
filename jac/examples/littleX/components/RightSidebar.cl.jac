@@ -5,22 +5,15 @@ sv import from ..server { UserView, TrendingTag }
 
 def:pub RightSidebar(
     searchQuery: str,
-    onSearchChange: any,
-    onSearch: any,
-    onClearSearch: any,
+    onSearchChange: Callable[[str], None],
+    onSearch: Callable[[str], None],
+    onClearSearch: Callable[[], None],
     trendingTags: list[TrendingTag],
-    onTrendClick: any,
+    onTrendClick: Callable[[str], None],
     toFollow: list[UserView],
-    onFollow: any,
-    onShowMore: any,
+    onFollow: Callable[[str], None],
+    onShowMore: Callable[[], None],
 ) -> JsxElement {
-    searchChangeFn = onSearchChange;
-    searchFn = onSearch;
-    clearFn = onClearSearch;
-    trendFn = onTrendClick;
-    followFn = onFollow;
-    showMoreFn = onShowMore;
-
     return
         <aside className="lx-sidebar-right">
             <div className="lx-sidebar-right-inner">
@@ -32,25 +25,25 @@ def:pub RightSidebar(
                         className="lx-search-input"
                         placeholder="Search Little-X"
                         value={searchQuery}
-                        onChange={lambda e: ChangeEvent { searchChangeFn.call(
-                            None, e.target.value
+                        onChange={lambda e: ChangeEvent { onSearchChange(
+                            e.target.value
                         ); }}
                         onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter" {
-                            searchFn.call(None, e.target.value);
+                            onSearch(searchQuery);
                         }}}
                     />
                     {if searchQuery {
                         <button
                             className="lx-search-clear"
                             title="Clear search"
-                            onClick={lambda { clearFn.call(None); }}
+                            onClick={lambda { onClearSearch(); }}
                         >
                             <X size={16}/>
                         </button>
                     }}
                     <button
                         className="lx-search-btn"
-                        onClick={lambda { searchFn.call(None, searchQuery); }}
+                        onClick={lambda { onSearch(searchQuery); }}
                     >
                         Search
                     </button>
@@ -62,7 +55,7 @@ def:pub RightSidebar(
                             <div
                                 className="lx-trend-item"
                                 key={t.tag}
-                                onClick={lambda { trendFn.call(None, t.tag); }}
+                                onClick={lambda { onTrendClick(t.tag); }}
                             >
                                 <span className="lx-trend-tag">{t.tag}</span>
                                 <span className="lx-trend-count">
@@ -100,7 +93,7 @@ def:pub RightSidebar(
                                 </div>
                                 <button
                                     className="lx-follow-btn"
-                                    onClick={lambda { followFn.call(None, u.id); }}
+                                    onClick={lambda { onFollow(u.id); }}
                                 >
                                     Follow
                                 </button>
@@ -109,7 +102,7 @@ def:pub RightSidebar(
                         {if len(toFollow) > 5 {
                             <div
                                 className="lx-widget-show-more"
-                                onClick={lambda { showMoreFn.call(None); }}
+                                onClick={lambda { onShowMore(); }}
                             >
                                 Show more
                             </div>

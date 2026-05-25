@@ -67,7 +67,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
     _ir_sched_loading = True;
     try {
-        import from jaclang.compiler.passes.main.view_lower_pass { ViewLowerPass }
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
@@ -77,10 +76,12 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
-        # ViewLowerPass runs first: it desugars `view` declarators into plain
-        # `def:pub -> JsxElement` abilities before any other pass sees them.
+        # JSX `{...}` slot bodies are NOT desugared here: the surface AST is
+        # kept faithful through analysis (ASTValidationPass enforces the slot
+        # body rules) and the accumulator-IIFE lowering happens at cl codegen
+        # time in EsastGenPass, so the formatter/unparser round-trip the
+        # author's template verbatim from real tokens.
         return [
-            ViewLowerPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -183,11 +184,15 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     _codegen_sched_loading = True;
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main.walker_effects_pass {
+            WalkerEffectsPass
+        }
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
         passes: list[type[Transform[uni.Module, uni.Module]]] = [
             InteropAnalysisPass,
+            WalkerEffectsPass,
             EsastGenPass
         ];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }

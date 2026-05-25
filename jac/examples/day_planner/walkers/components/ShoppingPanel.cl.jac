@@ -72,7 +72,7 @@ def:pub ShoppingPanel -> JsxElement {
                 <div class="empty-msg">Enter a meal above to generate ingredients.</div>
                 skip;
             }for ing in ingredients {
-                <IngredientItem key={ing.name} ing={ing}/>
+                <IngredientItem key={ing.name} {ing}/>
             }<div class="shopping-footer">
                 <span class="total">Total: ${f"{totalCost:.2f}"}</span>
                 <button class="btn-clear" onClick={lambda { clearList(); }}>

@@ -5,15 +5,12 @@ def:pub Composer(
     avatarAlt: str,
     placeholder: str,
     value: str,
-    onChange: any,
-    onPost: any,
+    onChange: Callable[[str], None],
+    onPost: Callable[[], None],
     rows: int = 3,
     buttonLabel: str = "Post",
     showCharRing: bool = False,
 ) -> JsxElement {
-    changeFn = onChange;
-    postFn = onPost;
-
     charsLeft = 280 - len(value);
     ring_progress = min(1.0, (280 - charsLeft) / 280.0);
     ring_offset = str(62.83 * (1.0 - ring_progress));
@@ -32,12 +29,10 @@ def:pub Composer(
             <div className="lx-composer-body">
                 <textarea
                     className="lx-composer-textarea"
-                    placeholder={placeholder}
-                    value={value}
-                    onChange={lambda e: ChangeEvent { changeFn.call(
-                        None, e.target.value
-                    ); }}
-                    rows={rows}
+                    {placeholder}
+                    {value}
+                    onChange={lambda e: ChangeEvent { onChange(e.target.value); }}
+                    {rows}
                 />
                 <div className="lx-composer-footer">
                     {if showCharRing {
@@ -75,7 +70,7 @@ def:pub Composer(
                     <button
                         className="lx-post-btn"
                         disabled={not value.strip() or over_limit}
-                        onClick={lambda { postFn.call(None); }}
+                        onClick={lambda { onPost(); }}
                     >
                         {buttonLabel}
                     </button>
