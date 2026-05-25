@@ -156,3 +156,15 @@ introduce a local in the nearest Python scope. Used both during
 SymTabBuildPass and, for impl bodies, re-run after DeclImplMatchPass has
 connected the body to its declaration so decl-scope HasVars are reachable."""
 def bind_assignment_targets(nd: uni.Assignment) -> None;
+
+"""Pull the module-level symbols named by a `global x;` statement into the
+enclosing Python scope so a subsequent `x = ...` rebinds the global instead of
+shadowing it with a fresh inferred local (which would drop the global's
+declared type).
+
+The global lives in the module that owns the *declaration*. For an inline body
+that is the enclosing module; for an impl body it is the decl module reached
+via `decl_link`. `decl_link` is unset during SymTabBuildPass, so this is a
+no-op for impl bodies there and is re-run by DeclImplMatchPass.connect_impls
+once the link is wired."""
+def bind_global_stmt(nd: uni.GlobalStmt) -> None;

@@ -113,6 +113,26 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'collection': 'scheduled_jobs'
         },
         'telemetry': {'max_traces': 1000},
+        'emailer': {
+            'provider': '',  # 'smtp', a registered name, or 'pkg.module:ClassName'
+            'enabled': True,
+            'from_address': '',
+            'smtp': {
+                'host': 'localhost',
+                'port': 25,
+                'username': '',
+                'password': '',
+                'use_tls': True,
+                'timeout': 10.0
+            }
+        },
+        'auth': {
+            'reset_token_ttl_seconds': 1800,
+            'verify_token_ttl_seconds': 86400,
+            'reset_url_template': '',
+            'verify_url_template': '',
+            'token_collection': 'auth_tokens'
+        },
         'microservices': {
             'enabled': False,
             'gateway_port': 8000,
@@ -356,6 +376,60 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
         'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
         or scheduler_config.get('system_user_password', 'system_secret'),
         'collection': scheduler_config.get('collection', 'scheduled_jobs')
+    };
+}
+
+"""Get emailer configuration from jac.toml.
+
+Returns the full [plugins.scale.emailer] section so EmailerFactory.create()
+can pass it through to whichever provider is configured. SMTP password may
+be supplied via env var override (EMAILER_SMTP_PASSWORD).
+"""
+impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    emailer_config = config.get('emailer', {}) or {};
+    smtp_config = dict(emailer_config.get('smtp', {}) or {});
+    smtp_password_env = os.environ.get('EMAILER_SMTP_PASSWORD');
+    if smtp_password_env {
+        smtp_config['password'] = smtp_password_env;
+    }
+    return {
+        'provider': emailer_config.get('provider', ''),
+        'enabled': bool(emailer_config.get('enabled', True)),
+        'from_address': emailer_config.get('from_address', ''),
+        'smtp': {
+            'host': smtp_config.get('host', 'localhost'),
+            'port': int(smtp_config.get('port', 25)),
+            'username': smtp_config.get('username', ''),
+            'password': smtp_config.get('password', ''),
+            'use_tls': bool(smtp_config.get('use_tls', True)),
+            'timeout': float(smtp_config.get('timeout', 10.0))
+        }
+    };
+}
+
+"""Get auth flow configuration (password-reset + email-verify)."""
+impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    auth_config = config.get('auth', {}) or {};
+    return {
+        'reset_token_ttl_seconds': int(
+            auth_config.get('reset_token_ttl_seconds', 1800)
+        ),
+        'verify_token_ttl_seconds': int(
+            auth_config.get('verify_token_ttl_seconds', 86400)
+        ),
+        'reset_url_template': auth_config.get('reset_url_template', ''),
+        'verify_url_template': auth_config.get('verify_url_template', ''),
+        'token_collection': auth_config.get('token_collection', 'auth_tokens'),
+        'forgot_password_rate_per_hour': int(
+            auth_config.get('forgot_password_rate_per_hour', 3)
+        ),
+        'forgot_password_burst': int(auth_config.get('forgot_password_burst', 3)),
+        'send_verification_rate_per_hour': int(
+            auth_config.get('send_verification_rate_per_hour', 5)
+        ),
+        'send_verification_burst': int(auth_config.get('send_verification_burst', 5))
     };
 }
 

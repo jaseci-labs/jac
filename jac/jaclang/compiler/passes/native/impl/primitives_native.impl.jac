@@ -2473,6 +2473,18 @@ impl NativeStrEmitter.emit_encode(
     return target;
 }
 
+impl NativeStrEmitter.emit_decode(
+    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # decode(): the result of `.encode()` is an i8* the type system tracks as
+    # `str`, so `.decode()` dispatches here. Native strings are already a
+    # UTF-8 i8* buffer — return as-is (mirrors emit_encode). Makes
+    # `s.encode("utf-8")[a:b].decode("utf-8")` a portable byte-range -> str
+    # slice, matching the Python backend, which the rune-aware lexer uses for
+    # token-value extraction.
+    return target;
+}
+
 # Translation
 impl NativeStrEmitter.emit_translate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
@@ -2490,7 +2502,11 @@ impl NativeStrEmitter.emit_maketrans(
 impl NativeBytesEmitter.emit_decode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    # decode(): native bytes are already a UTF-8 i8* buffer — return as-is,
+    # mirroring emit_encode. This makes `s.encode("utf-8")[a:b].decode("utf-8")`
+    # a portable byte-range -> str slice (identical to the Python backend),
+    # which the rune-aware lexer relies on for token-value extraction.
+    return target;
 }
 
 impl NativeBytesEmitter.emit_hex(
@@ -5825,6 +5841,16 @@ impl NativeBuiltinEmitter.emit_str(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
+    # str() of something already a string (char*) is the string itself.
+    # Native strings and bound exception messages are both i8*, so str(e)
+    # in `except E as e` returns the message rather than formatting the
+    # pointer address.
+    if isinstance(arg_val.type, ir.PointerType) {
+        if arg_val.type != i8p {
+            return b.bitcast(arg_val, i8p, name="str.identity");
+        }
+        return arg_val;
+    }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
     snprintf = p._get_or_declare_extern(

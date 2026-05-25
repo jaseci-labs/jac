@@ -17,7 +17,7 @@ import time;
 import subprocess;
 import from pathlib { Path }
 
-import from byllm.lib { Model }
+import from byllm.lib { Model, IterationAction }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.parallel { mark_serialize }
 
@@ -47,12 +47,25 @@ glob yolo_mode: bool = True,
      agent_model_source: str = "default",
      # Whether to print the one-line turn summary (duration, tool calls, files
      # changed, tokens, project health) after each turn. Toggled with `/stats`.
-     show_stats: bool = True;
+     show_stats: bool = True,
+     # Rich live view: stream the model's reasoning, a `thinking... Ns` line for
+     # reasoning-less models, per-step/tool timings, and multi-line tool-result
+     # snippets. Cleared by `--quiet`/`-q`; toggled with `/verbose`. When off,
+     # only tool-call lines, one-line results, and the final answer are shown.
+     verbose: bool = True,
+     # Whether write_file/edit_file append inline compiler feedback (the
+     # recompile-and-diff that surfaces errors the write introduced). On by
+     # default and now incremental, so it costs an LSP-save; toggle off with
+     # `/feedback` for sessions that would rather rely on explicit `jac_check`.
+     inline_feedback: bool = True;
 
 # Tool names grouped for the turn-stat breakdown: tools that mutate files,
 # and tools that execute code or shell commands. Everything else is a read.
 glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
-     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app"};
+     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app"},
+     # Set True by `run_turn` when the turn issued a file-writing tool call, so
+     # the one-shot verify-and-continue guard only kicks in when code changed.
+     _turn_wrote: bool = False;
 
 # The shared CodeIntelligence handle for this session, set by `run_agent` from
 # the AgentRequest. The semantic tools (find_symbol, find_uses, ...) query it
@@ -184,7 +197,12 @@ introduced nothing (or no code intelligence is available).
 """
 def write_feedback(path: str) -> str {
     global agent_ci_dirty;
-    if agent_ci is None {
+    if agent_ci is None or not inline_feedback {
+        # When inline feedback is off the project model is still stale after a
+        # write; flag it so the next semantic query (or `jac_check`) refreshes.
+        if agent_ci is not None and not inline_feedback {
+            agent_ci_dirty = True;
+        }
         return "";
     }
     # The write changed the project; mark dirty up front so a failed refresh
@@ -428,8 +446,19 @@ def start_app(entry_file: str) -> str {
         return f"ERROR launching `jac start {entry_path}`: {e}";
     }
     # Let it boot, then stop it -- we only want the startup diagnostics, not a
-    # server left running after the tool returns.
-    time.sleep(12);
+    # server left running after the tool returns. The boot window defaults to
+    # 12s but can be shortened via JAC_AI_START_TIMEOUT (seconds), mainly so
+    # tests need not wait the full default.
+    boot_wait = 12.0;
+    try {
+        raw = os.environ.get("JAC_AI_START_TIMEOUT");
+        if raw {
+            boot_wait = float(raw);
+        }
+    } except Exception as e {
+        _ = e;
+    }
+    time.sleep(boot_wait);
     proc.terminate();
     try {
         output = proc.communicate(timeout=10)[0];
@@ -718,6 +747,62 @@ def reset_history {
 }
 
 
+# A turn that rewrites one file more than this many times is not converging --
+# typically a weaker model re-emitting a whole file on each compile error. The
+# progress guard ends the turn rather than burning the iteration budget.
+glob _REWRITE_LIMIT = 5;
+
+
+"""Stop a turn that keeps rewriting the same file without making progress.
+
+byLLM calls this before each ReAct iteration. It counts how often each file has
+been written so far this turn (from the assistant tool-call history); once any
+single file crosses `_REWRITE_LIMIT`, the model is looping on an error it cannot
+fix, so end the turn with a summary instead of spending the whole budget.
+"""
+def _progress_guard(ctx: any) -> str {
+    import json;
+    counts: dict[str, int] = {};
+    for m in ctx.messages {
+        tcs = m.get("tool_calls") if isinstance(m, dict) else m?.tool_calls;
+        if not tcs {
+            continue;
+        }
+        for tc in tcs {
+            fn = tc?.function;
+            if fn is None and isinstance(tc, dict) {
+                fn = tc.get("function");
+            }
+            name = fn?.name;
+            if name is None and isinstance(fn, dict) {
+                name = fn.get("name");
+            }
+            if name not in _WRITE_TOOLS {
+                continue;
+            }
+            raw = fn?.arguments;
+            if raw is None and isinstance(fn, dict) {
+                raw = fn.get("arguments");
+            }
+            try {
+                parsed = json.loads(raw) if isinstance(raw, str) else (raw or {});
+                path = str(parsed.get("path", "")) if isinstance(parsed, dict) else "";
+            } except Exception {
+                path = "";
+            }
+            if path {
+                counts[path] = counts.get(path, 0) + 1;
+            }
+        }
+    }
+    worst = max(counts.values()) if counts else 0;
+    if worst > _REWRITE_LIMIT {
+        return IterationAction.ABORT_WITH_SUMMARY;
+    }
+    return IterationAction.CONTINUE;
+}
+
+
 """Address the user's latest message, using tools as needed."""
 def ask(message: str) -> str by agent_model(
     tools=[
@@ -743,7 +828,8 @@ def ask(message: str) -> str by agent_model(
     temperature=agent_temperature,
     max_tokens=8192,
     parallelize=True,
-    max_react_iterations=80
+    max_react_iterations=80,
+    on_iteration=_progress_guard
     # A generous output ceiling: without it the provider default (~4096 for
     # Anthropic) truncates large `write_file` tool-call arguments mid-stream,
     # so the `content` argument never arrives intact.
@@ -776,11 +862,17 @@ def print_banner {
 
 
 def print_help {
-    console.print("  /help    show this help", style="muted");
-    console.print("  /clear   reset the conversation", style="muted");
-    console.print("  /guides  list the bundled Jac reference guides", style="muted");
-    console.print("  /stats   toggle the per-turn stat line", style="muted");
-    console.print("  /exit    quit the session", style="muted");
+    console.print("  /help     show this help", style="muted");
+    console.print("  /clear    reset the conversation", style="muted");
+    console.print("  /guides   list the bundled Jac reference guides", style="muted");
+    console.print("  /stats    toggle the per-turn stat line", style="muted");
+    console.print(
+        "  /verbose  toggle live reasoning, timings, and step detail", style="muted"
+    );
+    console.print(
+        "  /feedback toggle inline compiler feedback after each write", style="muted"
+    );
+    console.print("  /exit     quit the session", style="muted");
 }
 
 
@@ -797,22 +889,6 @@ def fmt_tool_call(tool: str, args: object) -> str {
         }
     }
     return f"{tool}(" + ", ".join(parts) + ")";
-}
-
-
-"""Condense a tool result to a single clipped line for the activity log."""
-def preview_result(text: str) -> str {
-    stripped = text.strip();
-    if not stripped {
-        return "(no output)";
-    }
-    lines = stripped.splitlines();
-    head = lines[0];
-    if len(head) > 100 {
-        head = head[:100] + "...";
-    }
-    rest = len(lines) - 1;
-    return head + (f"  (+{rest} more lines)" if rest > 0 else "");
 }
 
 
@@ -924,6 +1000,13 @@ def print_stats(
     if tokens {
         parts.append(tokens);
     }
+    # Generation throughput: completion tokens over the wall-clock turn time.
+    # Reported alongside the token totals so the speed of the model (local or
+    # cloud) is visible per turn.
+    completion = int(usage.get("completion_tokens", 0) or 0);
+    if completion > 0 and elapsed > 0 {
+        parts.append(f"{completion / elapsed:.1f} tok/s");
+    }
     health = _format_health();
     if health {
         parts.append(health);
@@ -932,13 +1015,112 @@ def print_stats(
 }
 
 
-"""Run one agent turn, rendering the full byLLM event stream to the terminal.
+"""Strip a model's stray control tokens from streamed reasoning prose.
 
-`ask` runs with `stream=True, logging=True`, so it yields a StreamEvent for
-every step of the ReAct loop. Both the model's reasoning (`thought`) and its
-final answer (`chunk`) arrive as token-level events and are written straight
-to stdout as they land, so the whole turn streams live; `tool_call` and
-`tool_result` events punctuate it.
+Some local templates wrap tool syntax in `<|channel>`/`<token|>` markers and
+render quotes as `<|"|>`; clear them so only clean prose reaches the terminal.
+The tool-call JSON itself is excluded upstream by `_split_reasoning`.
+"""
+def _strip_control(text: str) -> str {
+    import re;
+    t = text.replace("<|\"|>", "\"").replace("<|'|>", "'");
+    t = re.sub("<\\|[a-z_]+>[a-z]*", "", t);
+    t = re.sub("<[a-z_]+\\|>", "", t);
+    return t;
+}
+
+
+"""Split accumulated reasoning into the prose safe to show and a hit flag.
+
+A reply is reasoning prose followed by the `<tool_call>` JSON the protocol
+recovers into a structured event. Return only the prose before the marker, and
+hold back a trailing partial `<tool_call` so a marker split across stream tokens
+is never shown. `hit` is True once the marker has appeared.
+"""
+def _split_reasoning(raw: str) -> tuple[str, bool] {
+    mark = "<tool_call>";
+    idx = raw.find(mark);
+    if idx >= 0 {
+        return (raw[:idx], True);
+    }
+    hold = 0;
+    k = min(len(raw), len(mark) - 1);
+    while k > 0 {
+        if mark.startswith(raw[len(raw) - k:]) {
+            hold = k;
+            break;
+        }
+        k -= 1;
+    }
+    return (raw[:len(raw) - hold], False);
+}
+
+
+"""Up to `max_lines` lines of a tool result, each clipped, with a more-marker."""
+def _result_snippet(text: str, max_lines: int) -> list[str] {
+    stripped = text.strip();
+    if not stripped {
+        return ["(no output)"];
+    }
+    lines = stripped.splitlines();
+    shown: list[str] = [];
+    for ln in lines[:max_lines] {
+        shown.append(ln[:100] + "..." if len(ln) > 100 else ln);
+    }
+    rest = len(lines) - min(len(lines), max_lines);
+    if rest > 0 {
+        shown.append(f"(+{rest} more lines)");
+    }
+    return shown;
+}
+
+
+"""Format a millisecond duration compactly: '820ms', '1.8s', '13.0s'."""
+def _fmt_ms(ms: float) -> str {
+    return f"{int(ms)}ms" if ms < 1000 else f"{ms / 1000:.1f}s";
+}
+
+
+"""Render a code-intelligence compile, set as `CodeIntelligence.on_event`.
+
+Fires whenever the compiler-backed project model rebuilds -- the initial load,
+and the incremental recompile after each write or the first query following one.
+Printed inline with the tool stream (it runs inside a tool's execution) so the
+hidden compiler work behind write_file/find_symbol/etc. is visible: which file,
+how many modules were recompiled out of the project, and how long it took.
+"""
+def _ci_event(info: any) {
+    op = str(info.get("op", "?"));
+    recompiled = int(info.get("recompiled", 0));
+    total = int(info.get("total", 0));
+    raw_ms = info.get("ms", 0.0);
+    ms = raw_ms if isinstance(raw_ms, float) else 0.0;
+    fname: str = str(info.get("file", ""));
+    name = os.path.basename(fname);
+    if op == "load" {
+        what = f"load · compiled {recompiled} files";
+    } else {
+        # create / edit / delete: show the recompiled count against the project
+        # size so an incremental refresh is visibly cheaper than a full build.
+        what = f"{op} {name} · recompiled {recompiled}/{total}";
+    }
+    console.print(f"      ⚙ code intel · {what} · {_fmt_ms(ms)}", style="dim");
+}
+
+# Upper bound on the live "thinking..." line, used to erase it cleanly.
+glob _THINK_WIDTH = 40;
+
+
+"""Run one agent turn, rendering the byLLM event stream live to the terminal.
+
+`ask` runs with `stream=True, logging=True`, yielding a StreamEvent per step of
+the ReAct loop. In the default (verbose) view the model's reasoning streams live
+(only the prose before the `<tool_call>` JSON, so the protocol text never
+leaks), a `thinking... Ns` line marks generation for models that emit no prose,
+and each step carries its model/tool latency with a multi-line result snippet.
+`--quiet` drops the reasoning, timings, and the live line, leaving tool calls,
+one-line results, and the final answer. The final answer (`chunk`) always
+streams live.
 """
 def run_turn(message: str) {
     console.print("");
@@ -947,9 +1129,12 @@ def run_turn(message: str) {
     # `any`-typed handle so attribute access type-checks.
     event_stream: any = ask(message);
     out: any = sys.stdout;
-    # True while raw model tokens have been written since the last newline,
-    # so structured lines (tool calls, results) start cleanly.
-    streamed = False;
+    # Animated `thinking...` rewrites the line with \r, which only makes sense
+    # on a terminal; piped output gets the static lines without it.
+    is_tty = bool(out?.isatty) and bool(out.isatty());
+    # Reset the per-turn write flag the verify-and-continue guard reads.
+    global _turn_wrote;
+    _turn_wrote = False;
     # Turn-stat accumulators -- declared before the try so the `finally` can
     # render them even if the stream errors out partway through.
     started = time.time();
@@ -958,28 +1143,98 @@ def run_turn(message: str) {
     n_run = 0;
     files: set[str] = set();
     usage: dict[str, object] = {};
+    # Live-render state.
+    streamed = False;  # raw reasoning/answer tokens on the current line
+    thought_raw = "";  # this step's accumulated reasoning tokens
+    prose_shown = 0;  # chars of this step's prose already streamed
+    step_t0 = 0.0;  # when this step's generation began
+    think_on = False;  # a live `thinking...` line is on screen
+    last_llm_ms = 0.0;  # model gen time of the step just finished
+    pend_result: any = None;  # a tool result awaiting its timing event
+    def clear_think {
+        nonlocal think_on;
+        if think_on and is_tty {
+            out.write("\r" + (" " * _THINK_WIDTH) + "\r");
+            out.flush();
+        }
+        think_on = False;
+    }
+    def end_line {
+        nonlocal streamed;
+        if streamed {
+            out.write("\n");
+            out.flush();
+            streamed = False;
+        }
+    }
+    def flush_result {
+        nonlocal pend_result;
+        if pend_result is None {
+            return;
+        }
+        (result, ms) = (pend_result["result"], pend_result["ms"]);
+        pend_result = None;
+        lines = _result_snippet(result, 3 if verbose else 1);
+        tail = f"   {_fmt_ms(ms)}" if (verbose and ms is not None) else "";
+        console.print(f"      ↳ {lines[0]}{tail}", style="dim");
+        for ln in lines[1:] {
+            console.print(f"        {ln}", style="dim");
+        }
+    }
     try {
         for event in event_stream {
             kind = event.event_type;
             data = event.data;
-            if kind == "thought" or kind == "chunk" {
-                # Stream every model token live -- reasoning and answer alike.
-                # console.print buffers and takes no flush arg, so write direct.
+            if kind == "thought" {
+                # Reasoning is shown only in the verbose view; quiet hides it.
+                if not verbose {
+                    continue;
+                }
+                tok = str(data.get("content", ""));
+                if not tok {
+                    continue;
+                }
+                if step_t0 == 0.0 {
+                    step_t0 = time.time();
+                }
+                thought_raw += tok;
+                (prose, hit) = _split_reasoning(thought_raw);
+                new_raw = prose[prose_shown:];
+                prose_shown = len(prose);
+                cleaned = _strip_control(new_raw);
+                if cleaned {
+                    clear_think();
+                    out.write(cleaned);
+                    out.flush();
+                    streamed = True;
+                }
+                # No prose yet but generating (the call is streaming as JSON):
+                # show a live, ticking activity line so a slow model is not silent.
+                if hit and not streamed and is_tty {
+                    out.write(f"\r  ● thinking… {time.time() - step_t0:.1f}s");
+                    out.flush();
+                    think_on = True;
+                }
+            } elif kind == "chunk" {
+                # Final answer: never a tool call, so stream live in both views.
+                clear_think();
+                flush_result();
                 out.write(str(data.get("content", "")));
                 out.flush();
                 streamed = True;
+            } elif kind == "llm_timing" {
+                last_llm_ms = float(data.get("duration_ms", 0) or 0);
             } elif kind == "tool_call" {
-                if streamed {
-                    out.write("\n");
-                    out.flush();
-                    streamed = False;
-                }
+                clear_think();
+                end_line();
+                flush_result();
                 tool = str(data.get("tool", "?"));
                 args = data.get("args", {});
                 # Tally the call for the turn stats: writes (and the files they
                 # touch), code/shell runs, and everything else as a read.
                 if tool in _WRITE_TOOLS {
                     n_write += 1;
+                    _turn_wrote = True;
                     if isinstance(args, dict) {
                         path = args.get("path");
                         if path {
@@ -991,7 +1246,25 @@ def run_turn(message: str) {
                 } else {
                     n_read += 1;
                 }
-                console.print(f"  ⏺ {fmt_tool_call(tool, args)}", style="cyan");
+                gen = f"   ({_fmt_ms(last_llm_ms)})"
+                    if (verbose and last_llm_ms > 0)
+                    else "";
+                console.print(f"  ⏺ {fmt_tool_call(tool, args)}{gen}", style="cyan");
+                last_llm_ms = 0.0;
+                # Next step's reasoning starts fresh.
+                thought_raw = "";
+                prose_shown = 0;
+                step_t0 = 0.0;
+            } elif kind == "tool_result" {
+                clear_think();
+                end_line();
+                flush_result();
+                pend_result = {"result": str(data.get("result", "")), "ms": None};
+            } elif kind == "tool_timing" {
+                if pend_result is not None {
+                    pend_result["ms"] = float(data.get("duration_ms", 0) or 0);
+                }
+                flush_result();
             } elif kind == "usage" {
                 # byLLM emits one `usage` event at stream end with token totals
                 # aggregated across every LLM call in the turn.
@@ -999,28 +1272,16 @@ def run_turn(message: str) {
                 if isinstance(total, dict) {
                     usage = total;
                 }
-            } elif kind == "tool_result" {
-                if streamed {
-                    out.write("\n");
-                    out.flush();
-                    streamed = False;
-                }
-                console.print(
-                    f"    {preview_result(str(data.get('result', '')))}", style="dim"
-                );
             } elif kind == "steps_done" {
-                if streamed {
-                    out.write("\n");
-                    out.flush();
-                    streamed = False;
-                }
+                clear_think();
+                end_line();
+                flush_result();
                 console.print("");
             }
         }
-        if streamed {
-            out.write("\n");
-            out.flush();
-        }
+        clear_think();
+        end_line();
+        flush_result();
     } except KeyboardInterrupt {
         console.print("\n  [interrupted]", style="yellow");
     } except Exception as e {
@@ -1040,6 +1301,74 @@ def run_turn(message: str) {
 }
 
 
+"""The project's current error diagnostics, or [] if no model is built yet."""
+def _project_errors -> list {
+    ci = code_intel();
+    if ci is None or not ci.is_loaded() {
+        return [];
+    }
+    try {
+        return [
+            d
+            for d in ci.diagnostics()
+            if d.severity == "error"
+        ];
+    } except Exception {
+        return [];
+    }
+}
+
+
+"""After a one-shot build, keep going until the project compiles.
+
+A weaker model often declares a multi-file task done while the project still
+has compile errors. Rather than accept broken code, feed the outstanding
+errors back and let the agent fix them -- bounded by `max_rounds`, and stopping
+as soon as a round fails to reduce the error count, so a model that cannot make
+progress exits instead of looping. No-op when the initial turn changed no code
+(e.g. a read-only query) or the project already compiles.
+"""
+def verify_and_continue(max_rounds: int = 3) {
+    if not _turn_wrote {
+        return;
+    }
+    rnd = 0;
+    prev_count = -1;
+    while rnd < max_rounds {
+        errs = _project_errors();
+        if not errs {
+            break;
+        }
+        # The last round did not shrink the error count -- the model is stuck,
+        # so stop nudging rather than burn another round on the same wall.
+        if prev_count >= 0 and len(errs) >= prev_count {
+            break;
+        }
+        prev_count = len(errs);
+        rnd += 1;
+        shown = errs[:12];
+        lines = [f"  {d.file}:{d.line}: {d.message}" for d in shown];
+        more = (
+            f"\n  ... and {len(errs) - len(shown)} more"
+                if len(errs) > len(shown)
+                else ""
+        );
+        console.print("");
+        console.print(
+            f"  build left {len(errs)} compile error(s); continuing to fix "
+            f"(round {rnd}/{max_rounds})",
+            style="yellow"
+        );
+        msg = (
+            f"The project does not compile yet -- {len(errs)} error(s):\n" + "\n".join(
+                lines
+            ) + more + "\n\nFix these. Read each failing file, correct it, and re-run " + "jac_check until the whole project compiles cleanly. Do not finish " + "while errors remain."
+        );
+        run_turn(msg);
+    }
+}
+
+
 """Entry point for `jac ai` -- the default `run_ai_agent` hook implementation.
 
 `req` is an `AgentRequest`: the resolved `--model`, `--n_ctx`, and `--safe`
@@ -1049,15 +1378,21 @@ otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
 failed turn reports its error but does not abort the session.
 """
 def run_agent(req: object) -> int {
-    global agent_model,yolo_mode,agent_ci,show_stats;
+    global agent_model,yolo_mode,agent_ci,show_stats,verbose,inline_feedback;
     # `req` is an AgentRequest; access it untyped so attribute reads
     # type-check without importing the class into this byLLM-only module.
     r: any = req;
     # File writes and code execution run without prompting unless `--safe`
     # asks to confirm each one.
     yolo_mode = not r.safe;
-    # The compiler-backed project model the semantic tools navigate.
+    # Rich live view unless `--quiet`/`-q` asks for compact output.
+    verbose = not bool(getattr(r, "quiet", False));
+    # The compiler-backed project model the semantic tools navigate. Surface its
+    # recompiles in the live view so the work behind writes and queries is visible.
     agent_ci = r.code_intel;
+    if agent_ci is not None {
+        agent_ci.on_event = _ci_event;
+    }
     initial_prompt = str(r.prompt);
     # The import-time `agent_model` already covers jac.toml/default; only
     # rebuild when a flag actually changes the model or its context window.
@@ -1069,6 +1404,8 @@ def run_agent(req: object) -> int {
 
     if initial_prompt {
         run_turn(initial_prompt);
+        # Don't let a one-shot build exit on code that doesn't compile.
+        verify_and_continue();
         return 0;
     }
 
@@ -1107,6 +1444,24 @@ def run_agent(req: object) -> int {
         if line == "/stats" {
             show_stats = not show_stats;
             console.success("Turn stats on." if show_stats else "Turn stats off.");
+            continue;
+        }
+        if line == "/verbose" {
+            verbose = not verbose;
+            console.success(
+                "Verbose: streaming reasoning, timings, and step detail."
+                    if verbose
+                    else "Quiet: tool calls and the answer only."
+            );
+            continue;
+        }
+        if line == "/feedback" {
+            inline_feedback = not inline_feedback;
+            console.success(
+                "Inline compiler feedback on: writes report errors they introduce."
+                    if inline_feedback
+                    else "Inline compiler feedback off: use jac_check to compile."
+            );
             continue;
         }
         run_turn(line);

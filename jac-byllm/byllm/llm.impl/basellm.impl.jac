@@ -901,7 +901,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1014,10 +1014,22 @@ impl BaseLLM.dispatch_streaming_with_tools(
     if message is None {
         message = {"role": "assistant", "content": content_buf};
     }
-    # For backends without native tool calling, lift any tool call emitted as
-    # plain text into the structured `tool_calls` field (see dispatch_no_streaming).
-    if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    # Lift any tool call emitted as plain text into the structured `tool_calls`
+    # field (see dispatch_no_streaming). Some native providers (e.g. ollama)
+    # stream a tool call as plain content text that litellm.stream_chunk_builder
+    # cannot reassemble into `tool_calls`, so the native path silently drops it.
+    # When tools were offered but no structured tool_calls came back, rebuild the
+    # message as a plain dict from the accumulated text -- recover_tool_calls
+    # requires a dict and `message` here is a litellm `Message` object -- then
+    # recover the call. recover_tool_calls is idempotent and name-filtered, so it
+    # is a no-op for a genuine native tool_calls field or a plain-text answer.
+    has_native_tool_calls = bool((message or {}).get("tool_calls"));
+    if (not self.supports_native_tools)
+    or (mt_run.tools and not has_native_tool_calls) {
+        if not has_native_tool_calls and not isinstance(message, dict) {
+            message = {"role": "assistant", "content": content_buf};
+        }
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1054,7 +1066,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);

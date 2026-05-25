@@ -981,13 +981,15 @@ test "view body check flags a value-returning return (E2019)" {
     );
 }
 
-test "view body check flags return inside a template loop (E2020)" {
+test "view body check flags bare return; in any slot position (E2020)" {
     (program, _) = compile_and_check("view_body_rules.jac");
-    # Shallow `for { return; }` AND nested `for { match { case _: return; } }`
-    # should both fire — verifies `_check_body` recurses through `match`.
+    # Bare `return;` is now forbidden ANYWHERE inside a slot body — the
+    # "use `skip;`" guidance applies in loops, outside loops, and nested
+    # under control flow (`match` / `try` / etc.). Fixture has three
+    # call sites: ReturnInLoop, ReturnAtTopLevel, ReturnInLoopUnderMatch.
     n = count_diagnostic_code(program, "E2020");
-    assert n >= 2 , (
-        f"E2020 should fire for both shallow and nested `return;` in loops, got {n}"
+    assert n >= 3 , (
+        f"E2020 should fire for each bare `return;` in a slot body (loop, top-level, and nested), got {n}"
     );
 }
 
@@ -995,9 +997,27 @@ test "view body check flags break inside a template loop (E2021)" {
     (program, _) = compile_and_check("view_body_rules.jac");
     # Shallow `for { break; }` AND nested `for { try { break; } except: ... }`
     # should both fire — verifies `_check_body` recurses through `try`.
+    # `skip;` is NO LONGER in E2021 (it's the slot early-exit now).
     n = count_diagnostic_code(program, "E2021");
     assert n >= 2 , (
         f"E2021 should fire for both shallow and nested `break;` in loops, got {n}"
+    );
+}
+
+test "redundant `{...}` slot wrapping inside slot body raises E2023" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # `RedundantSlotWrap` has two redundant `{...}` slots inside the
+    # outer slot body (`{if ... }}` and `{for ... }}`) — each drives
+    # E2023, and no cascade of E0001/E0002 parse errors should fire.
+    n = count_diagnostic_code(program, "E2023");
+    assert n >= 2 , (
+        f"E2023 should fire once per redundant inner `{{...}}` slot, got {n}"
+    );
+    # Critically, the recovery path must NOT produce a parse-error
+    # cascade — the redundant-slot diagnostic replaces it.
+    parse_cascade = count_diagnostic_code(program, "E0002");
+    assert parse_cascade == 0 , (
+        f"E2023 recovery must avoid the E0001/E0002 parse cascade, got {parse_cascade} E0002 errors"
     );
 }
 

@@ -10,6 +10,30 @@ clientX, innerHTML) — this is intentional, not a Python naming violation.
 """
 
 from collections.abc import Callable
+from typing import Generic, TypeVar
+
+_RefT = TypeVar("_RefT")
+
+# ---------------------------------------------------------------------------
+# React ref handle
+# ---------------------------------------------------------------------------
+# Ambient generic modelling React's ref object (the result of `useRef`).
+# A client-context `has`-field typed `Ref[T]` lowers to `useRef(null)` (or
+# `useRef(initial)` when an initializer is given) instead of the usual
+# `useState`, and `useRef` is auto-imported from `react`. `.current` is the
+# mutable handle; it is `None` until React attaches the node (or until the
+# field is first written), so it is typed `T | None` and must be null-checked
+# before use — mirroring React's `RefObject<T>.current: T | null`.
+
+class Ref(Generic[_RefT]):
+    """A mutable ref container; `.current` holds the referenced value.
+
+    Construct with `Ref()` (an empty DOM ref, `.current` is None until React
+    attaches the node) or `Ref(initial)` (a value ref seeded with `initial`).
+    """
+
+    current: _RefT | None
+    def __init__(self, initial: _RefT | None = ...) -> None: ...
 
 # ---------------------------------------------------------------------------
 # DOM Element types
