@@ -60,6 +60,18 @@ optimized code on cache reload. Includes a platform header:
 """
 glob SEC_NATIVE_OBJ: int = 0x06;
 
+"""Section type: json.dumps(module_structural_index).encode() bytes.
+
+A flat, parse-only structural index of one module -- its archetypes (with
+fields, member signatures, base classes) and walker entry points -- with no
+cross-module pointers. Lets `CodeIntelligence` serve `project_map` / structural
+queries on a cold start without re-running the semantic pipeline. Self-keyed by
+the source's content hash (the JIR header's `source_content_hash`), so it needs
+no transitive-dependency tracking: a parse-only index depends only on its own
+source and spliced annex files. See `jaclang.compiler.code_intel`.
+"""
+glob SEC_SYMINDEX: int = 0x07;
+
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
 

@@ -1301,13 +1301,19 @@ how many modules were recompiled out of the project, and how long it took.
 def _ci_event(info: any) {
     op = str(info.get("op", "?"));
     recompiled = int(info.get("recompiled", 0));
+    cached = int(info.get("cached", 0));
     total = int(info.get("total", 0));
     raw_ms = info.get("ms", 0.0);
     ms = raw_ms if isinstance(raw_ms, float) else 0.0;
     fname: str = str(info.get("file", ""));
     name = os.path.basename(fname);
     if op == "load" {
+        # In structural mode some modules are served from the on-disk index
+        # rather than re-parsed; surface that so the cross-run win is visible.
         what = f"load · compiled {recompiled} files";
+        if cached {
+            what += f" · {cached} from cache";
+        }
     } else {
         # create / edit / delete: show the recompiled count against the project
         # size so an incremental refresh is visibly cheaper than a full build.
