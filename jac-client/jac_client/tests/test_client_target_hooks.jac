@@ -8,10 +8,21 @@ glob _plugin_dir = Path(__file__).parent.parent / "plugin",
 
 test "register.jac collects plugin targets via get_client_targets hook" {
     content = _register_jac.read_text().replace("\r\n", "\n");
-    assert "JacRuntime.get_client_targets()" in content;
+    assert "JacClientRuntime.get_client_targets()" in content;
+    assert "load_client_plugins()" in content;
     assert "_register_plugin_client_targets" in content;
     assert "sync_client_target_choices" in content;
     assert "with entry" not in content;
+}
+
+test "client_plugin.jac defines JacClientPluginSpec and jac_client manager" {
+    plugin_jac = _plugin_dir / "client_plugin.jac";
+    content = plugin_jac.read_text().replace("\r\n", "\n");
+    assert "class JacClientPluginSpec" in content;
+    assert "client_plugin_manager" in content;
+    assert "JacClientRuntime" in content;
+    assert "load_setuptools_entrypoints('jac_client')" in content;
+    assert "list[ClientTarget] | ClientTarget | None" in content;
 }
 
 test "cli create_cmd registers targets before syncing choices" {

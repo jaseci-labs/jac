@@ -15,8 +15,8 @@ import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
 # The impl files in impl/ directory should be loaded when the base classes are imported
 """Register targets returned by the ``get_client_targets`` plugin hook."""
 def _register_plugin_client_targets(registry: TargetRegistry) -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
-    results = JacRuntime.get_client_targets();
+    import from jac_client.plugin.client_plugin { JacClientRuntime }
+    results = JacClientRuntime.get_client_targets();
     if results is None {
         return;
     }
@@ -31,9 +31,11 @@ def _register_plugin_client_targets(registry: TargetRegistry) -> None {
 
 """Register built-in and plugin-provided client build targets.
 
-Called from ``JacCmd.create_cmd`` after pluggy has loaded all plugins.
+Called from ``JacCmd.create_cmd`` after jac-client runtime plugins are loaded.
 """
 def register_targets {
+    import from jac_client.plugin.client_plugin { load_client_plugins }
+    load_client_plugins();
     registry = get_target_registry();
     registry.register(WebTarget());
     registry.register(PWATarget());
