@@ -243,6 +243,11 @@ obj OspHost {
     """Close a report scope: when the token marks the outermost spawn, collect
         the accumulated reports onto the walker and tear the scope down."""
     def close_walk_scope(scope: object, warch: WalkerArchetype) -> None;
+
+    """Finalize persistence at the outermost spawn boundary (truthy scope), on
+        success only. Server: flush the L1 buffer via commit; native/client:
+        no-op."""
+    def on_spawn_complete(scope: object, succeeded: bool) -> None;
 }
 
 """Active object-spatial host. Defaults to the server-backed behavior; a

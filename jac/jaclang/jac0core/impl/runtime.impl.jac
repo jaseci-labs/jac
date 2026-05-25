@@ -520,7 +520,6 @@ impl JacWalker.spawn_call(
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
     walker_succeeded = False;
     report_scope = _osp_host.open_walk_scope();
     try {
@@ -558,17 +557,11 @@ impl JacWalker.spawn_call(
         walker_succeeded = True;
         return warch;
     } finally {
-        # Outermost spawn: collect reports onto the walker and tear the scope
-        # down (server-side this drains the CallState contextvar).
+        # Outermost spawn: collect reports onto the walker, then flush deferred
+        # persistence — both no-ops for a nested spawn. (Server-side these drain
+        # the CallState contextvar and commit the L1 buffer.)
         _osp_host.close_walk_scope(report_scope, warch);
-        # Flush deferred persistence at the outermost spawn boundary, on
-        # success only — mirrors ExecutionManager.spawn_walker so direct
-        # `walker spawn node` flows (tests, `jac run`, CLI) persist without
-        # callers having to call Jac.commit() manually. Skipped on exception so
-        # partial walker state is dropped with the L1 buffer.
-        if (report_scope is not None) and walker_succeeded {
-            ctx.mem.commit();
-        }
+        _osp_host.on_spawn_complete(report_scope, walker_succeeded);
     }
 }
 
@@ -718,7 +711,6 @@ impl JacWalker.async_spawn_call(
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
     walker_succeeded = False;
     report_scope = _osp_host.open_walk_scope();
     try {
@@ -765,10 +757,7 @@ impl JacWalker.async_spawn_call(
         return warch;
     } finally {
         _osp_host.close_walk_scope(report_scope, warch);
-        # See spawn_call: flush deferred persistence on success only.
-        if (report_scope is not None) and walker_succeeded {
-            ctx.mem.commit();
-        }
+        _osp_host.on_spawn_complete(report_scope, walker_succeeded);
     }
 }
 
@@ -1475,6 +1464,20 @@ impl OspHost.close_walk_scope(scope: object, warch: WalkerArchetype) -> None {
         warch.reports = reports;
     }
     ctx.call_state.reset(scope);
+}
+
+"""Finalize persistence at the outermost spawn boundary.
+
+    Server behavior: on the outermost spawn (truthy scope) and on success only,
+    flush the deferred L1 buffer to durable storage — mirrors
+    ExecutionManager.spawn_walker so direct `walker spawn node` flows (tests,
+    `jac run`, CLI) persist without callers calling Jac.commit() manually.
+    Skipped on a nested spawn or on failure so partial state drops with L1.
+    """
+impl OspHost.on_spawn_complete(scope: object, succeeded: bool) -> None {
+    if (scope is not None) and succeeded {
+        JacRuntimeInterface.get_context().mem.commit();
+    }
 }
 
 """Jac's report stmt feature."""
