@@ -190,7 +190,28 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
         src_index = bundled_dist / "index.html";
 
         if not (bundled_dist.exists() and src_index.exists()) {
-            logger.debug("No pre-built admin UI found in package");
+            # Editable install path: jac-scale was installed via
+            # `pip install -e`, so the release pipeline that pre-builds
+            # `_dist/` never ran. If the destination already has an
+            # index.html (test fixture, previous boot, manual build),
+            # respect it; otherwise fall back to the inherited
+            # `build_admin_client` which invokes `jac build main.jac`
+            # in `admin/ui/`. Drops the need for jacBuilder-style
+            # `RUN jac run scripts/build_admin_ui.jac` workarounds.
+            if dest_index.exists() {
+                return;
+            }
+            logger.info(
+                "No pre-built admin _dist - building from source via "
+                "JacAPIServerAdmin.build_admin_client"
+            );
+            if not self.build_admin_client() {
+                logger.warning(
+                    "Admin UI build failed - the static UI will be "
+                    "unavailable. Install bun + jac-client, or use a "
+                    "wheel install of jac-scale."
+                );
+            }
             return;
         }
 
