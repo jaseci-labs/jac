@@ -34,7 +34,12 @@ test "build_env keeps per-service overrides but never shadows the K8S_* vars" {
     # The base injection is still there - the user override is appended,
     # not substituted, so K_APP_NAME appears at least once with our value.
     first_app_name = next(
-        (e["value"] for e in env if e["name"] == "K8S_APP_NAME"), None
+        (
+            e["value"]
+            for e in env
+            if e["name"] == "K8S_APP_NAME"
+        ),
+        None
     );
     assert first_app_name == "jac-shop";
 }
