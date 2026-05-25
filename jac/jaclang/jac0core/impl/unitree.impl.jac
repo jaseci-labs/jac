@@ -12,8 +12,7 @@ impl UniNode.postinit -> None {
 
 
 """Lazy initialization of sub node table."""
-@property
-impl UniNode._sub_node_tab -> dict[(type, list[UniNode])] {
+impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
     if (self.__sub_node_tab is None) {
         self.__sub_node_tab = {};
         self._construct_sub_node_tab();
@@ -47,8 +46,7 @@ impl UniNode._construct_sub_node_tab -> None {
 For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
 We skip unlinked scopes and return the first linked scope (or Module root).
 """
-@property
-impl UniNode.sym_tab -> UniScopeNode {
+impl UniNode.sym_tab.getter -> UniScopeNode {
     nd: (UniNode | None) = self;
     # TODO: Refactor this wile doing JS symtab
     while nd is not None {
@@ -307,26 +305,22 @@ impl Symbol.init(
 }
 
 """Get decl."""
-@property
-impl Symbol.decl -> NameAtom {
+impl Symbol.decl.getter -> NameAtom {
     return self.defn[0];
 }
 
 """Get name."""
-@property
-impl Symbol.sym_name -> str {
+impl Symbol.sym_name.getter -> str {
     return self.decl.sym_name;
 }
 
 """Get sym_type."""
-@property
-impl Symbol.sym_type -> SymbolType {
+impl Symbol.sym_type.getter -> SymbolType {
     return self.decl.sym_category;
 }
 
 """Return a full path of the symbol."""
-@property
-impl Symbol.sym_dotted_name -> str {
+impl Symbol.sym_dotted_name.getter -> str {
     out = [self.defn[0].sym_name];
     current_tab: (UniScopeNode | None) = self.parent_tab;
     while (current_tab is not None) {
@@ -338,8 +332,7 @@ impl Symbol.sym_dotted_name -> str {
 }
 
 """Get symbol table."""
-@property
-impl Symbol.symbol_table -> (UniScopeNode | None) {
+impl Symbol.symbol_table.getter -> (UniScopeNode | None) {
     if self.parent_tab {
         return self.parent_tab.find_scope(self.sym_name);
     }
@@ -631,29 +624,24 @@ impl AstSymbolNode._init_symbol(
 }
 
 
-@property
-impl AstSymbolNode.sym -> (Symbol | None) {
+impl AstSymbolNode.sym.getter -> (Symbol | None) {
     return self.name_spec.sym;
 }
 
-@property
-impl AstSymbolNode.sym_name -> str {
+impl AstSymbolNode.sym_name.getter -> str {
     return self.name_spec.sym_name;
 }
 
-@property
-impl AstSymbolNode.sym_category -> SymbolType {
+impl AstSymbolNode.sym_category.getter -> SymbolType {
     return self.name_spec.sym_category;
 }
 
-@property
-impl AstSymbolNode.py_ctx_func -> type[ast3.AST] {
+impl AstSymbolNode.py_ctx_func.getter -> type[ast3.AST] {
     return self.name_spec.py_ctx_func;
 }
 
 """Get type symbol table."""
-@property
-impl AstSymbolNode.type_sym_tab -> (UniScopeNode | None) {
+impl AstSymbolNode.type_sym_tab.getter -> (UniScopeNode | None) {
     return self.name_spec.type_sym_tab;
 }
 
@@ -667,8 +655,7 @@ impl AstSymbolStubNode._init_stub(sym_type: SymbolType) -> None {
 }
 
 
-@property
-impl AstAccessNode.access_type -> SymbolAccess {
+impl AstAccessNode.access_type.getter -> SymbolAccess {
     return SymbolAccess.PRIVATE
         if (self.access and (self.access.tag.name == Tok.KW_PRIV))
         else SymbolAccess.PROTECTED
@@ -676,8 +663,7 @@ impl AstAccessNode.access_type -> SymbolAccess {
             else SymbolAccess.PUBLIC;
 }
 
-@property
-impl AstAccessNode.public_access -> bool {
+impl AstAccessNode.public_access.getter -> bool {
     return (self.access_type == SymbolAccess.PUBLIC);
 }
 
@@ -784,8 +770,7 @@ impl CodeBlockStmt.postinit -> None {
 }
 
 
-@property
-impl AstImplNeedingNode.needs_impl -> bool {
+impl AstImplNeedingNode.needs_impl.getter -> bool {
     return (self.body is None);
 }
 
@@ -799,13 +784,11 @@ impl NameAtom.postinit -> None {
 }
 
 
-@property
-impl NameAtom.sym_name -> str {
+impl NameAtom.sym_name.getter -> str {
     return self._sym_name;
 }
 
-@property
-impl NameAtom.sym_category -> SymbolType {
+impl NameAtom.sym_category.getter -> SymbolType {
     return self._sym_category;
 }
 
@@ -819,8 +802,7 @@ impl NameAtom.create_symbol(
     return sym;
 }
 
-@property
-impl NameAtom.clean_type -> str {
+impl NameAtom.clean_type.getter -> str {
     if self.type {
         return str(self.type).replace('builtins.', '');
     }
@@ -828,8 +810,7 @@ impl NameAtom.clean_type -> str {
 }
 
 """Resolve semantic token."""
-@property
-impl NameAtom.sem_token -> (tuple[(SemTokType, SemTokMod)] | None) {
+impl NameAtom.sem_token.getter -> (tuple[(SemTokType, SemTokMod)] | None) {
     if isinstance(self.name_of, BuiltinType) {
         return (SemTokType.CLASS, SemTokMod.DECLARATION);
     }
@@ -907,8 +888,7 @@ impl Module.postinit -> None {
         - Module-specific folder: foo.impl/bar.impl.jac -> foo.jac
         - Shared folder: impl/foo.impl.jac -> foo.jac
         """
-@property
-impl Module.annexable_by -> (str | None) {
+impl Module.annexable_by.getter -> (str | None) {
     if self.stub_only {
         return None;
     }
@@ -1054,8 +1034,7 @@ impl Import.postinit -> None {
 
 
 """Check if import is python."""
-@property
-impl Import.is_py -> bool {
+impl Import.is_py.getter -> bool {
     if (self.hint and (self.hint.tag.value == 'py')) {
         return True;
     }
@@ -1066,8 +1045,7 @@ impl Import.is_py -> bool {
 }
 
 """Check if import is jac."""
-@property
-impl Import.is_jac -> bool {
+impl Import.is_jac.getter -> bool {
     if (self.hint and (self.hint.tag.value == 'jac')) {
         return True;
     }
@@ -1078,8 +1056,7 @@ impl Import.is_jac -> bool {
 }
 
 """Check if import is jac."""
-@property
-impl Import.__jac_detected -> bool {
+impl Import.__jac_detected.getter -> bool {
     if self.from_loc {
         if self.from_loc.resolve_relative_path().endswith(('.jac', '.cl.jac')) {
             return True;
@@ -1122,8 +1099,7 @@ impl ModulePath.postinit -> None {
 
 
 """Check if this modulepath is from import."""
-@property
-impl ModulePath.is_import_from -> bool {
+impl ModulePath.is_import_from.getter -> bool {
     if (self.parent and isinstance(self.parent, Import)) {
         return (self.parent.from_loc == self);
     }
@@ -1131,8 +1107,7 @@ impl ModulePath.is_import_from -> bool {
 }
 
 """Get path string."""
-@property
-impl ModulePath.dot_path_str -> str {
+impl ModulePath.dot_path_str.getter -> str {
     if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
         return (('.' * self.level) + self.path[0].lit_value);
     }
@@ -1207,8 +1182,7 @@ impl ModuleItem.postinit -> None {
 
 
 """Get import parent."""
-@property
-impl ModuleItem.from_parent -> Import {
+impl ModuleItem.from_parent.getter -> Import {
     if (not self.parent or not isinstance(self.parent, Import)) {
         raise ValueError('Import parent not found. Not Possible.');
     }
@@ -1216,8 +1190,7 @@ impl ModuleItem.from_parent -> Import {
 }
 
 """Get relevant module path."""
-@property
-impl ModuleItem.from_mod_path -> ModulePath {
+impl ModuleItem.from_mod_path.getter -> ModulePath {
     if not self.from_parent.from_loc {
         raise ValueError('Module items should have module path. Not Possible.');
     }
@@ -1268,8 +1241,7 @@ impl Archetype._get_impl_resolved_body -> list {
             else [];
 }
 
-@property
-impl Archetype.is_abstract -> bool {
+impl Archetype.is_abstract.getter -> bool {
     body = self._get_impl_resolved_body();
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
 }
@@ -1420,14 +1392,12 @@ impl Ability.postinit -> None {
 }
 
 
-@property
-impl Ability.is_method -> bool {
+impl Ability.is_method.getter -> bool {
     return (self.method_owner is not None);
 }
 
 """Check if this ability is a class method."""
-@property
-impl Ability.is_cls_method -> bool {
+impl Ability.is_cls_method.getter -> bool {
     return (
         self.is_classmethod
         or (
@@ -1440,13 +1410,11 @@ impl Ability.is_cls_method -> bool {
     );
 }
 
-@property
-impl Ability.is_def -> bool {
+impl Ability.is_def.getter -> bool {
     return (not self.signature or isinstance(self.signature, FuncSignature));
 }
 
-@property
-impl Ability.method_owner -> Archetype | Enum | None {
+impl Ability.method_owner.getter -> Archetype | Enum | None {
     found = (
         self.parent
             if (self.parent and isinstance(self.parent, (Archetype, Enum)))
@@ -1473,8 +1441,7 @@ impl Ability.method_owner -> Archetype | Enum | None {
     return found;
 }
 
-@property
-impl Ability.is_genai_ability -> bool {
+impl Ability.is_genai_ability.getter -> bool {
     return isinstance(self.body, Expr);
 }
 
@@ -1539,8 +1506,7 @@ impl FuncSignature.get_parameters -> list[ParamVar] {
     return params;
 }
 
-@property
-impl FuncSignature.is_static -> bool {
+impl FuncSignature.is_static.getter -> bool {
     return (
         (isinstance(self.parent, Ability) and self.parent.is_static)
         or (
@@ -1551,8 +1517,7 @@ impl FuncSignature.is_static -> bool {
     );
 }
 
-@property
-impl FuncSignature.is_in_py_class -> bool {
+impl FuncSignature.is_in_py_class.getter -> bool {
     is_archi = self.find_parent_of_type(Archetype);
     is_class = (is_archi is not None) and (is_archi.arch_type.name == Tok.KW_CLASS);
     return (
@@ -1585,13 +1550,11 @@ impl ParamVar.postinit -> None {
 }
 
 
-@property
-impl ParamVar.is_vararg -> bool {
+impl ParamVar.is_vararg.getter -> bool {
     return bool((self.unpack and (self.unpack.name == Tok.STAR_MUL.name)));
 }
 
-@property
-impl ParamVar.is_kwargs -> bool {
+impl ParamVar.is_kwargs.getter -> bool {
     return bool((self.unpack and (self.unpack.name == Tok.STAR_POW.name)));
 }
 
@@ -1737,8 +1700,7 @@ impl DeleteStmt.postinit -> None {
 
 
 """Get Python AST targets (without setting ctx)."""
-@property
-impl DeleteStmt.py_ast_targets -> list[ast3.AST] {
+impl DeleteStmt.py_ast_targets.getter -> list[ast3.AST] {
     return [i.gen.py_ast[0] for i in self.target.values]
         if (isinstance(self.target, TupleVal) and self.target.values)
         else self.target.gen.py_ast;
@@ -1936,8 +1898,7 @@ impl AtomTrailer.postinit -> None {
 }
 
 
-@property
-impl AtomTrailer.as_attr_list -> list[AstSymbolNode] {
+impl AtomTrailer.as_attr_list.getter -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
     trag_list: list[AstSymbolNode] = [right]
@@ -2393,34 +2354,29 @@ impl Literal.init(
 }
 
 """Return literal value in its python type."""
-@property
-impl Literal.lit_value -> int | str | float | bool | None | Callable[
+impl Literal.lit_value.getter -> int | str | float | bool | None | Callable[
     ([], Any)
 ] | EllipsisType {
     raise NotImplementedError;
 }
 
 """Return literal value in its python type."""
-@property
-impl BuiltinType.lit_value -> Callable[([], Any)] {
+impl BuiltinType.lit_value.getter -> Callable[([], Any)] {
     if (self.value not in Literal.type_map) {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
     }
     return Literal.type_map[self.value];
 }
 
-@property
-impl Float.lit_value -> float {
+impl Float.lit_value.getter -> float {
     return float(self.value);
 }
 
-@property
-impl Int.lit_value -> int {
+impl Int.lit_value.getter -> int {
     return int(self.value, 0);
 }
 
-@property
-impl String.lit_value -> str {
+impl String.lit_value.getter -> str {
     if isinstance(self.value, `bytes) {
         return self.value;
     }
@@ -2508,18 +2464,15 @@ impl String.lit_value -> str {
     }
 }
 
-@property
-impl Bool.lit_value -> bool {
+impl Bool.lit_value.getter -> bool {
     return (self.value == 'True');
 }
 
-@property
-impl Null.lit_value -> None {
+impl Null.lit_value.getter -> None {
     return None;
 }
 
-@property
-impl Ellipsis.lit_value -> EllipsisType {
+impl Ellipsis.lit_value.getter -> EllipsisType {
     return ...;
 }
 
@@ -2594,16 +2547,14 @@ impl CommentToken.init(
     self.loc = CodeLocInfo(*self.resolve_tok_range());
 }
 
-@property
-impl CommentToken.left_node -> (UniNode | None) {
+impl CommentToken.left_node.getter -> (UniNode | None) {
     if (self.parent and ((idx := self.parent.kid.index(self)) > 0)) {
         return self.parent.kid[(idx - 1)];
     }
     return None;
 }
 
-@property
-impl CommentToken.right_node -> (UniNode | None) {
+impl CommentToken.right_node.getter -> (UniNode | None) {
     if (
         self.parent
         and ((idx := self.parent.kid.index(self)) < (len(self.parent.kid) - 1))
@@ -2623,8 +2574,7 @@ impl Source.init(source: str, mod_path: str) -> None {
 }
 
 """Return the source code as string."""
-@property
-impl Source.code -> str {
+impl Source.code.getter -> str {
     return self.value;
 }
 
@@ -2633,4 +2583,39 @@ impl PythonModuleAst.init(ast: ast3.Module, orig_src: Source) -> None {
     self.ast = ast;
     self.orig_src = orig_src;
     self.file_path = orig_src.file_path;
+}
+
+impl UniNode.gen.getter -> CodeGenTarget {
+    if (self._gen is None) {
+        self._gen = CodeGenTarget();
+    }
+    return self._gen;
+}
+
+impl UniNode.gen.setter(value: CodeGenTarget) {
+    self._gen = value;
+}
+
+impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
+    return self._type_sym_tab;
+}
+
+impl Expr.type_sym_tab.setter(type_sym_tab: UniScopeNode) {
+    self._type_sym_tab = type_sym_tab;
+}
+
+impl NameAtom.sym.getter -> (Symbol | None) {
+    return self._sym;
+}
+
+impl NameAtom.sym.setter(sym: Symbol) {
+    self._sym = sym;
+}
+
+impl NameAtom.py_ctx_func.getter -> type[ast3.expr_context] {
+    return self._py_ctx_func;
+}
+
+impl NameAtom.py_ctx_func.setter(py_ctx_func: type[ast3.expr_context]) {
+    self._py_ctx_func = py_ctx_func;
 }

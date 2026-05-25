@@ -1,8 +1,7 @@
 """Implementation for MTP constructs."""
 
 """Convert to runtime context."""
-@property
-impl MTIR.runtime -> MTRuntime {
+impl MTIR.runtime.getter -> MTRuntime {
     return MTRuntime.factory(self.caller, self.args, self.call_params);
 }
 

@@ -879,6 +879,14 @@ test "native property getter/setter/deleter with impl separation" {
     assert output == "ok\n";
 }
 
+test "multiple impl-separated property accessors in one class resolve independently" {
+    # Each property's getter/setter is registered under the same bare accessor
+    # name in the class scope; the decl/impl resolver must scope each
+    # `impl Cls.prop.getter` to its own property rather than collapsing them.
+    output = run_jac(os.path.join(FIXTURES, "prop_multi.jac"));
+    assert output == "ok\n";
+}
+
 test "as cast is type erased" {
     output = run_jac(os.path.join(FIXTURES, "as_cast.jac"));
     assert output == "42\n7\n6\n43\n";
