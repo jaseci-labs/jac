@@ -6,12 +6,13 @@ glob _plugin_jac = Path(__file__).parent.parent / "plugin.jac",
      _plugin_impl = Path(__file__).parent.parent / "impl" / "plugin.impl.jac",
      _cli_jac = Path(__file__).parent.parent / "cli.jac";
 
-test "plugin.jac registers JacDesktopPlugin and get_client_targets hook" {
+test "plugin.jac implements JacClientPluginSpec get_client_targets hook" {
     content = _plugin_jac.read_text().replace("\r\n", "\n");
     assert "class JacDesktopPlugin" in content;
-    assert "@hookimpl\n    static def get_client_targets" in content;
-    assert "with entry" in content;
-    assert "plugin_manager.register(JacDesktopPlugin())" in content;
+    assert "@client_hookimpl\n    static def get_client_targets" in content;
+    assert "list[ClientTarget] | ClientTarget" in content;
+    assert "client_hookimpl" in content;
+    assert "plugin_manager.register" not in content;
     assert "extend_client_choices" not in content;
     assert "register_desktop_target" not in content;
 }

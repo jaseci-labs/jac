@@ -32,7 +32,9 @@ Issues = "https://github.com/jaseci-labs/jaseci/issues"
 [project.entry-points."jac"]
 desktop = "jac_desktop.cli:JacCmd"
 desktop_plugin_config = "jac_desktop.plugin_config:JacDesktopPluginConfig"
-desktop_plugin = "jac_desktop.plugin:JacDesktopPlugin"
+
+[project.entry-points."jac_client"]
+desktop = "jac_desktop.plugin:JacDesktopPlugin"
 
 [project.optional-dependencies]
 dev = [
