@@ -194,8 +194,16 @@ impl EsJsxProcessor.normal_attribute(
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
         import html;
+        attr_value = html.unescape(nd.value.lit_value);
+        # Rewrite `className`/`class` literals against the module's scoped
+        # `.style.css` annex (if any): declared class tokens are hashed to
+        # match the rewritten CSS selectors.
+        sheet = self.pass_ref.scoped_styles;
+        if (sheet is not None and nd.name.value in ('className', 'class')) {
+            attr_value = sheet.rewrite_class_value(attr_value);
+        }
         value_expr = self.pass_ref.sync_loc(
-            es.Literal(value=html.unescape(nd.value.lit_value)), jac_node=nd.value
+            es.Literal(value=attr_value), jac_node=nd.value
         );
     } else {
         value_expr = nd.value.gen.es_ast

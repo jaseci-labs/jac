@@ -9,19 +9,6 @@ name: K8s Microservice Real E2E
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'jac-scale/jac_scale/targets/kubernetes/microservice/**'
-      - 'jac-scale/jac_scale/microservices/**'
-      - 'jac-scale/jac_scale/abstractions/service_deployer.jac'
-      - 'jac-scale/jac_scale/abstractions/image_distributor.jac'
-      - 'jac-scale/jac_scale/abstractions/models/deploy_context.jac'
-      - 'jac-scale/jac_scale/factories/deployment_factory.jac'
-      - 'jac-scale/jac_scale/plugin.jac'
-      - 'jac-scale/scripts/k8s_microservice_real_e2e.sh'
-      - 'jac-scale/scripts/Dockerfile.microservice'
-      - 'jac-scale/scripts/dockerignore.microservice'
-      - 'jac-scale/jac_scale/tests/fixtures/k8s_e2e/**'
-      - '.github/workflows/k8s-microservice-real-e2e.yml'
 
 jobs:
   real-e2e:

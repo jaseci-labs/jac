@@ -160,7 +160,7 @@ obj ModuleIntrospector {
     def load(force_reload: bool = False) -> None;
     def _load_manifest -> None;
     def _extract_access_levels -> None;
-    def _analyze_endpoint_effects -> None;
+    def _fill_endpoint_effect_defaults -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;
@@ -283,8 +283,8 @@ obj JacAPIServer {
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
     def load_module(force_reload: bool = False) -> None;
-    @property
-    def module -> object;
+
+    has module: object { getter; }
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];

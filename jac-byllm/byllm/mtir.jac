@@ -30,10 +30,7 @@ obj MTIR {
         call_params: dict[(str, object)],
         ir_info: Info;
 
-    @property
-    def runtime -> MTRuntime {
-        return MTRuntime.factory(self);
-    }
+    has runtime: MTRuntime { getter; }
 }
 
 """Runtime context for LLM interactions.

@@ -32,7 +32,15 @@ import from jaclang.jac0core.diagnostics {
     E0066,
     E0071,
     E0075,
-    E0076
+    E0076,
+    E2019,
+    E2020,
+    E2021,
+    E2022,
+    E2024,
+    W2019,
+    W2020,
+    W2021
 }
 
 """Validates structural AST invariants after parsing."""
@@ -56,4 +64,27 @@ class ASTValidationPass(UniPass) {
     def enter_non_local_stmt(self: ASTValidationPass, nd: uni.NonLocalStmt) -> None;
     def enter_func_call(self: ASTValidationPass, nd: uni.FuncCall) -> None;
     def enter_archetype(self: ASTValidationPass, nd: uni.Archetype) -> None;
+    # ----- JSX `{...}` slot body rules ------------------------------------
+    """Validate a JSX statement-form slot body (E2019-E2024, W2019-W2021)."""
+    def enter_jsx_slot(self: ASTValidationPass, nd: uni.JsxSlot) -> None;
+
+    """Walk a slot body emitting view-body rule diagnostics.
+
+    `in_loop` is True inside a template `for`/`while`; `loop_kw` names it.
+    Nested `def` handlers are not descended into — their `return`s are
+    their own."""
+    def _check_slot_body(
+        self: ASTValidationPass, stmts: list, in_loop: bool, loop_kw: str
+    ) -> None;
+
+    """Recurse slot-body checks into an optional `else`/`elif` clause."""
+    def _check_slot_else(
+        self: ASTValidationPass, else_body: object, in_loop: bool, loop_kw: str
+    ) -> None;
+
+    """True when `stmts` (recursively) render a JSX element with no `key`."""
+    def _slot_emits_keyless_jsx(self: ASTValidationPass, stmts: list) -> bool;
+
+    """True when a JSX element carries a `key=` attribute."""
+    def _slot_has_key_attr(self: ASTValidationPass, el: uni.JsxElement) -> bool;
 }

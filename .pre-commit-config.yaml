@@ -66,7 +66,7 @@ repos:
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
-              ^jac/examples/littleX/fullstack/assets/littlex-logo\.png$
+              ^jac/examples/littleX/assets/littlex-logo\.png$
           )
 
       - id: validate-fragments

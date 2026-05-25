@@ -61,9 +61,14 @@ impl CommandSpec.add_post_hook(hook: Callable, source: str) -> None {
 # ===============================================================================
 # HookContext Implementation
 # ===============================================================================
-"""Get an argument value with optional default."""
+"""Get an argument value with optional default. Falls back to the
+underscored form so get_arg("dry-run") and get_arg("dry_run") both
+resolve (issue #6115)."""
 impl HookContext.get_arg(name: str, `default: any = None) -> any {
-    return self.args.get(name, `default);
+    if name in self.args {
+        return self.args[name];
+    }
+    return self.args.get(name.replace("-", "_"), `default);
 }
 
 """Set a value in the hook data context."""
