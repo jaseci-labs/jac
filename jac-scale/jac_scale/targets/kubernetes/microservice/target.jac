@@ -16,8 +16,10 @@ import from jac_scale._optdeps.kubernetes {
 }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
-    create_k8s_secret
+    create_k8s_secret,
+    cluster_type
 }
+import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder,
     GATEWAY_NAME,
@@ -26,6 +28,8 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
 import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
+import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
+import from jac_scale.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
 
@@ -153,6 +157,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
+        # Observability stack (M-14.a): opt-in centralised logs via
+        # `[plugins.scale.microservices.logs].enabled`. Surfaces a failure
+        # in `details` but does not fail the deploy - the app is healthy
+        # without logs; the operator can re-run once Loki settles.
+        try {
+            self._deploy_observability(app_name);
+        } except Exception as e {
+            bundle["observability_error"] = str(e);
+            if self.logger {
+                self.logger.warning(
+                    f"Observability stack deploy reported a non-fatal error: {e}",
+                    {"app_name": app_name}
+                );
+            }
+        }
+
         svc_count = len(bundle["pod_specs"]) - 1;
         return DeploymentResult(
             success=True,
@@ -162,6 +182,72 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             ),
             details=bundle
         );
+    }
+
+    """M-14.a: deploy Loki + Grafana Alloy (+ the surrounding Prometheus
+    / Grafana stack the Pod Logs dashboard depends on) when
+    `[plugins.scale.microservices.logs].enabled = true`. No-op otherwise.
+
+    Reuses the same `MonitoringDeployer` the monolith target uses, so
+    microservice mode is the second caller of one builder. The
+    monitoring stack is gated on `KubernetesConfig.monitoring_enabled`
+    and Loki specifically on `loki_enabled`; the deploy path hands
+    `MonitoringDeployer` a fresh `KubernetesConfig` clone with both
+    flags set (see `_build_observability_config`). The destroy path
+    deletes resources by name unconditionally so it stays idempotent
+    regardless of the toggle state at teardown time."""
+    def _deploy_observability(app_name: str) -> None {
+        logs_cfg = self._read_microservices_logs_config();
+        if not logs_cfg.get("enabled", False) {
+            return;
+        }
+
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        cluster_env: str = cluster_type();
+
+        obs_config = self._build_observability_config();
+        if self.logger {
+            self.logger.info(
+                f"Deploying observability stack (Prometheus + Grafana + "
+                f"Loki + Alloy) for '{app_name}'",
+                {"namespace": obs_config.namespace, "cluster_env": cluster_env}
+            );
+        }
+        monitoring = MonitoringDeployer(obs_config, self.logger);
+        monitoring.deploy(
+            app_name, obs_config.namespace, apps_v1, core_v1, cluster_env
+        );
+    }
+
+    """Clone `self.k8s_config` with `monitoring_enabled` and `loki_enabled`
+    forced to True. logs.enabled implies the full monitoring stack so
+    Grafana can host the Pod Logs dashboard; cloning preserves user-set
+    knobs (probes, replicas, dashboard creds, ...) without mutating the
+    shared config object for the rest of the deploy() call path."""
+    def _build_observability_config -> KubernetesConfig {
+        overrides: dict[str, Any] = dict(self.k8s_config.to_dict());
+        overrides["monitoring_enabled"] = True;
+        overrides["loki_enabled"] = True;
+        return KubernetesConfig.from_dict(KubernetesConfig, overrides);
+    }
+
+    """Read `[plugins.scale.microservices.logs]`. Empty dict on any
+    failure (missing block, malformed TOML, loader exception)."""
+    def _read_microservices_logs_config -> dict[str, Any] {
+        try {
+            ms_cfg = get_scale_config().get_microservices_config();
+            return dict(ms_cfg.get("logs", {}));
+        } except Exception as e {
+            if self.logger {
+                self.logger.warning(
+                    f"Could not read [plugins.scale.microservices.logs] - "
+                    f"observability stack will not be deployed: {e}"
+                );
+            }
+            return {};
+        }
     }
 
     """Delegates to MicroserviceManifestBuilder. deploy() populates
@@ -557,6 +643,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status != 404 {
                 raise;
+            }
+        }
+
+        # M-14.a: tear down the observability stack symmetrically to
+        # `_deploy_observability`. Unconditional (mirroring the monolith
+        # destroy at kubernetes_target.jac) because MonitoringDeployer
+        # treats every API not-found as a no-op; calling it on a stack
+        # that was never deployed is harmless.
+        try {
+            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+            monitoring.destroy(app_name, namespace, apps_v1, core_v1);
+        } except Exception as e {
+            if self.logger {
+                self.logger.info(
+                    f"Observability stack destroy reported a non-fatal error: {e}",
+                    {"app_name": app_name}
+                );
             }
         }
     }
