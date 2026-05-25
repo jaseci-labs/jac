@@ -35,17 +35,9 @@ Called from ``JacCmd.create_cmd`` after pluggy has loaded all plugins.
 """
 def register_targets {
     registry = get_target_registry();
-
-    if not registry.has("web") {
-        registry.register(WebTarget());
-    }
-    if not registry.has("pwa") {
-        registry.register(PWATarget());
-    }
-    if not registry.has("mobile") {
-        registry.register(MobileTarget());
-    }
-
+    registry.register(WebTarget());
+    registry.register(PWATarget());
+    registry.register(MobileTarget());
     _register_plugin_client_targets(registry);
 }
 
