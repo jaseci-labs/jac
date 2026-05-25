@@ -1540,14 +1540,7 @@ obj MonitoringDeployer {
             'rules': [
                 {
                     'apiGroups': [''],
-                    'resources': [
-                        'nodes',
-                        'nodes/proxy',
-                        'pods',
-                        'namespaces',
-                        'services',
-                        'endpoints'
-                    ],
+                    'resources': ['pods', 'namespaces'],
                     'verbs': ['get', 'watch', 'list']
                 }
             ]
@@ -1620,6 +1613,7 @@ obj MonitoringDeployer {
                                 'securityContext': {
                                     'runAsUser': 0,
                                     'allowPrivilegeEscalation': False,
+                                    'readOnlyRootFilesystem': True,
                                     'capabilities': {'drop': ['ALL']}
                                 },
                                 'args': ['-config.file=/etc/promtail/promtail.yaml'],
