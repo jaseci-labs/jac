@@ -2,12 +2,12 @@
 
 Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
-This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
+This tutorial prioritizes deploying to a local Kubernetes cluster with MicroK8s on Ubuntu (recommended). Docker Desktop, Minikube, and cloud providers (EKS, GKE, AKS) are also supported when `kubectl` is properly configured.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
-> - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
+> - Kubernetes cluster running (MicroK8s recommended; Docker Desktop, Minikube, or cloud provider also supported)
 > - `kubectl` configured
 > - jac-scale installed and enabled:
 >
@@ -15,7 +15,7 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 >   pip install jac-scale
 >   ```
 >
-> - Time: ~10 minutes
+> - Time: ~10 to 20 minutes (depends on internet speed and machine resources)
 
 ---
 
@@ -26,7 +26,7 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 - Deploys your application to Kubernetes
 - Auto-provisions Redis (caching) and MongoDB (persistence)
 - Creates all necessary Kubernetes resources
-- Exposes your application via NodePort
+- Exposes your application through NGINX ingress NodePort on local clusters
 
 ```mermaid
 graph TD
@@ -41,7 +41,7 @@ graph TD
         P1 --> R
         P1 --> M
     end
-    LB["NodePort :30001"] --> P1
+    LB["Ingress NodePort :30080"] --> P1
 ```
 
 ---
@@ -91,10 +91,10 @@ jac start --scale
 
 That's it. Your application is now running on Kubernetes.
 
-**Access your application:**
+**Access your application (default local setup):**
 
-- API: http://localhost:30001
-- Swagger docs: http://localhost:30001/docs
+- API: http://localhost:30080
+- Swagger docs: http://localhost:30080/docs
 
 ---
 
@@ -129,15 +129,22 @@ DOCKER_PASSWORD=your-dockerhub-password-or-token
 
 ## Configuration
 
-Configure deployment via environment variables in `.env`:
+Configure deployment in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+app_name = "jaseci"
+namespace = "default"
+ingress_node_port = 30080
+```
 
 ### Application Settings
 
-| Variable | Description | Default |
+| Key | Description | Default |
 |----------|-------------|---------|
-| `APP_NAME` | Name of your application | `jaseci` |
-| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `K8s_NODE_PORT` | Port for accessing the app | `30001` |
+| `app_name` | Name of your application | `jaseci` |
+| `namespace` | Kubernetes namespace | `default` |
+| `ingress_node_port` | Local ingress NodePort for app access | `30080` |
 
 ### Resource Limits
 
@@ -297,14 +304,41 @@ Subsequent deployments only update the application - databases persist across de
 
 ## Setting Up Kubernetes
 
-### Option A: Docker Desktop (Easiest)
+### Option A: MicroK8s (Ubuntu Recommended)
+
+Official docs:
+
+- [MicroK8s Home](https://microk8s.io/)
+- [MicroK8s Getting Started](https://microk8s.io/docs/getting-started)
+
+```bash
+# Install MicroK8s from snap.
+sudo snap install microk8s --classic
+
+# Add current user to the microk8s group (needed to run microk8s without sudo).
+sudo usermod -a -G microk8s $USER
+
+# Apply new group membership in the current shell (or log out and back in).
+newgrp microk8s
+
+# Wait until MicroK8s reports the cluster as ready.
+microk8s status --wait-ready
+
+# Enable DNS and default storage addons used by typical jac-scale deployments.
+microk8s enable dns storage
+
+# Optional convenience alias: use kubectl commands through MicroK8s.
+alias kubectl='microk8s kubectl'
+```
+
+### Option B: Docker Desktop
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 2. Open Settings > Kubernetes
 3. Check "Enable Kubernetes"
 4. Click "Apply & Restart"
 
-### Option B: Minikube
+### Option C: Minikube
 
 ```bash
 # Install minikube
@@ -314,16 +348,10 @@ brew install minikube  # macOS
 # Start cluster
 minikube start
 
-# For minikube, access via:
+# For minikube, access via service helper:
 minikube service jaseci -n default
-```
-
-### Option C: MicroK8s (Linux)
-
-```bash
-sudo snap install microk8s --classic
-microk8s enable dns storage
-alias kubectl='microk8s kubectl'
+# Or use the same ingress entry used in this guide:
+# http://localhost:30080
 ```
 
 ---
@@ -337,11 +365,11 @@ alias kubectl='microk8s kubectl'
 jac status main.jac
 
 # Or use kubectl for more detail
-kubectl get pods
-kubectl get svc
+microk8s kubectl get pods
+microk8s kubectl get svc
 
-# For minikube, use tunnel
-minikube service jaseci
+# Default local ingress access
+# http://localhost:30080
 ```
 
 ### Database connection issues
@@ -395,9 +423,9 @@ jac start --scale
 
 Access:
 
-- Frontend: http://localhost:30001/cl/app
-- Backend API: http://localhost:30001
-- Swagger docs: http://localhost:30001/docs
+- Frontend: http://localhost:30080/cl/app
+- Backend API: http://localhost:30080
+- Swagger docs: http://localhost:30080/docs
 
 ---
 

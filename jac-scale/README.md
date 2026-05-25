@@ -225,8 +225,8 @@ jac start main.jac --scale
 
 **Access your application:**
 
-- Application: http://localhost:30001
-- Swagger Documentation: http://localhost:30001/docs
+- Application: http://localhost:30080
+- Swagger Documentation: http://localhost:30080/docs
 
 **Use this when:**
 
@@ -264,8 +264,8 @@ jac start main.jac --scale --build
 
 **Access your application:**
 
-- Application: http://localhost:30001
-- Swagger Documentation: http://localhost:30001/docs
+- Application: http://localhost:30080
+- Swagger Documentation: http://localhost:30080/docs
 
 **Use this when:**
 
@@ -404,9 +404,9 @@ jac start app.jac --scale
 
 **Access your application:**
 
-- Frontend: http://localhost:30001/cl/app
-- Backend: http://localhost:30001
-- Swagger Documentation: http://localhost:30001/docs
+- Frontend: http://localhost:30080/cl/app
+- Backend: http://localhost:30080
+- Swagger Documentation: http://localhost:30080/docs
 
 **Use this when:**
 
@@ -424,9 +424,9 @@ jac start app.jac --scale --build
 
 **Access your application:**
 
-- Frontend: http://localhost:30001/cl/app
-- Backend: http://localhost:30001
-- Swagger Documentation: http://localhost:30001/docs
+- Frontend: http://localhost:30080/cl/app
+- Backend: http://localhost:30080
+- Swagger Documentation: http://localhost:30080/docs
 
 **Use this when:**
 
@@ -489,7 +489,7 @@ async walker FetchData {
 | `DOCKER_USERNAME` | DockerHub username for pushing the image | - |
 | `DOCKER_PASSWORD` | DockerHub password or access token | - |
 | `K8s_NAMESPACE` | Kubernetes namespace to deploy the application | `default` |
-| `K8s_NODE_PORT` | Port in which your local kubernetes application will run on| `30001` |
+| `ingress_node_port` | NodePort for the NGINX ingress controller used by local Kubernetes access | `30080` |
 | `K8s_CPU_REQUEST` | CPU request for the application container | - |
 | `K8s_CPU_LIMIT` | CPU limit for the application container | - |
 | `K8s_MEMORY_REQUEST` | Memory request for the application container | - |
@@ -677,7 +677,7 @@ When you run `jac start --scale`, the following steps are executed:
 
 - Check service exposure: `kubectl get svc -n <namespace>`
 - Verify NodePort is not blocked by firewall
-- For Minikube, use: `minikube service <service-name> -n <namespace>`
+- For Minikube/local clusters, access through ingress NodePort: `http://localhost:30080`
 
 **Build failures:**
 
@@ -724,7 +724,7 @@ Each example includes complete source code and can be run with `jac start`.
 After successfully running the demo:
 
 - **For local development (`jac start`)**: Access your application at http://localhost:8000 and explore the Swagger documentation at http://localhost:8000/docs
-- **For Kubernetes (`jac start --scale`)**: Access your application at http://localhost:30001 and explore the Swagger documentation at http://localhost:30001/docs
+- **For Kubernetes (`jac start --scale`)**: Access your application at http://localhost:30080 and explore the Swagger documentation at http://localhost:30080/docs
 - Modify the JAC application and redeploy
 - Experiment with different configuration options
 - Try deploying to a production Kubernetes cluster

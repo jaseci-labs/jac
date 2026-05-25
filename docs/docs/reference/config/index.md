@@ -777,17 +777,20 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 
 ### jac-scale: Kubernetes
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_NAME` | Application name for K8s resources | `jaseci` |
-| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `K8s_NODE_PORT` | External NodePort | `30001` |
-| `K8s_CPU_REQUEST` | CPU resource request | None |
-| `K8s_CPU_LIMIT` | CPU resource limit | None |
-| `K8s_MEMORY_REQUEST` | Memory resource request | None |
-| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
-| `DOCKER_USERNAME` | DockerHub username | None |
-| `DOCKER_PASSWORD` | DockerHub password/token | None |
+Use `jac.toml` as the primary configuration source under `[plugins.scale.kubernetes]`.
+Legacy env-style names are shown for migration clarity.
+
+| `jac.toml` Key | Legacy Env-Style Name | Description | Default |
+|----------------|------------------------|-------------|---------|
+| `app_name` | `APP_NAME` | Application name for K8s resources | `jaseci` |
+| `namespace` | `K8s_NAMESPACE` | Kubernetes namespace | `default` |
+| `ingress_node_port` | `K8s_NODE_PORT` | Local ingress NodePort for app access | `30080` |
+| `cpu_request` | `K8s_CPU_REQUEST` | CPU resource request | None |
+| `cpu_limit` | `K8s_CPU_LIMIT` | CPU resource limit | None |
+| `memory_request` | `K8s_MEMORY_REQUEST` | Memory resource request | None |
+| `memory_limit` | `K8s_MEMORY_LIMIT` | Memory resource limit | None |
+| `docker_username` | `DOCKER_USERNAME` | DockerHub username | None |
+| `docker_password` | `DOCKER_PASSWORD` | DockerHub password/token | None |
 
 ---
 

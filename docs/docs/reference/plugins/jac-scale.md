@@ -2627,7 +2627,7 @@ cert_manager_email = "you@example.com"
 ```
 
 ```bash
-jac start app.jac --scale
+jac start --scale
 ```
 
 After deploy, the NLB hostname is printed:
@@ -3342,36 +3342,75 @@ hpa = { enabled = false }
 
 ## Setting Up Kubernetes
 
-### Docker Desktop (Easiest)
+### MicroK8s (Ubuntu Recommended)
+
+Official docs:
+
+- https://microk8s.io/
+- https://microk8s.io/docs/getting-started
+
+```bash
+# Install MicroK8s
+sudo snap install microk8s --classic
+
+# Allow current user to run microk8s without sudo (re-login required)
+sudo usermod -a -G microk8s $USER
+newgrp microk8s
+
+# Wait until cluster is ready
+microk8s status --wait-ready
+
+# Enable required addons
+microk8s enable dns storage
+
+# Optional convenience alias for this shell
+alias kubectl='microk8s kubectl'
+```
+
+Deploy your app:
+
+```bash
+jac start --scale
+```
+
+Access your app:
+
+- `http://localhost:30080`
+- `http://localhost:30080/docs`
+
+If first deployment is slow, tune Kubernetes liveness probes in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+liveness_initial_delay = 600
+liveness_failure_threshold = 80
+liveness_period = 20
+```
+
+Why this is needed:
+
+- First deploy often spends significant time installing dependencies in the container.
+- Startup speed depends on internet latency/bandwidth, machine CPU and memory, and disk throughput.
+- If probes are too aggressive, Kubernetes can restart the pod before startup finishes.
+
+Typical failure symptoms:
+
+- `Failed to connect to http://localhost:30080/docs: HTTPConnectionPool(host='localhost', port=30080): Max retries exceeded ... Failed to establish a new connection: [Errno 111] Connection refused`
+- `Error deploying application 'jaseci': Deployment failed: Timeout reached`
+
+Recommended flow:
+
+1. Apply the probe settings above in `jac.toml`.
+2. Deploy with `jac start --scale`.
+3. Wait for pod readiness: `microk8s kubectl get pods -n <namespace> -w`.
+4. Open `http://localhost:30080/docs` only after the app pod is `Running` and `Ready`.
+
+### Docker Desktop (Alternative)
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 2. Open Settings > Kubernetes
 3. Check "Enable Kubernetes"
 4. Click "Apply & Restart"
-
-### Minikube
-
-```bash
-# Install
-brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
-
-# Start cluster
-minikube start
-
-# Access your app via minikube service
-minikube service jaseci -n default
-```
-
-### MicroK8s (Linux)
-
-```bash
-sudo snap install microk8s --classic
-microk8s enable dns storage
-alias kubectl='microk8s kubectl'
-```
-
----
 
 ## Troubleshooting
 
@@ -3379,13 +3418,15 @@ alias kubectl='microk8s kubectl'
 
 ```bash
 # Check pod status
-kubectl get pods
+microk8s kubectl get pods
 
 # Check service
-kubectl get svc
+microk8s kubectl get svc
 
-# For minikube, use tunnel
-minikube service jaseci
+# For MicroK8s, verify ingress/controller service and use the ingress NodePort
+microk8s kubectl get svc -n default
+# Then open:
+# http://localhost:30080
 ```
 
 ### Database Connection Issues
