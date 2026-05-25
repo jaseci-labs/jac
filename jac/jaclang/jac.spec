@@ -244,8 +244,17 @@ jsx_child ::=
     JSX_TEXT jsx_child?
     | JSX_COMMENT
     | "{" (
-          ("for" | "while" | "if" | "match" | "switch" | "with" | "try" | "return")
-          code_block_stmts "}"
+          (
+              "for"
+              | "while"
+              | "if"
+              | "match"
+              | "switch"
+              | "with"
+              | "try"
+              | "return"
+              | "skip"
+          ) code_block_stmts "}"
           | expression (";"? code_block_stmts "}" | "}")
       )
     | jsx_element

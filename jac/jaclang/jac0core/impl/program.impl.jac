@@ -16,6 +16,10 @@ impl JacProgram.init(
     self._hub_cache_times: dict[str, float] = {};
     # See `record_dependency` / `transitive_dependents`.
     self._dependents: dict[str, set[str]] = {};
+    # When set, `compile`/`parse_str` call `record_module_dependencies` so the
+    # rdep map is complete (survives cache hits). Off for one-shot runs that
+    # never query dependents; on for long-lived clients (LSP, CodeIntelligence).
+    self._track_dependencies: bool = False;
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -76,6 +80,44 @@ impl JacProgram.record_dependency(
         self._dependents[target_path] = bucket;
     }
     bucket.add(importer_path);
+}
+
+impl JacProgram.record_module_dependencies(self: JacProgram, mod: uni.Module) -> None {
+    import from pathlib { Path }
+    if mod.loc is None {
+        return;
+    }
+    mod_path = mod.loc.mod_path;
+    # Only Jac modules participate in the project rdep graph; .pyi/.py targets
+    # are never recompiled incrementally, so recording them is wasted work.
+    if not mod_path.endswith(".jac") {
+        return;
+    }
+    try {
+        importer = str(Path(mod_path).resolve());
+    } except Exception {
+        return;
+    }
+    for imp in mod.get_all_sub_nodes(uni.Import) {
+        paths: list[uni.ModulePath] = [];
+        if imp.from_loc is not None {
+            paths.append(imp.from_loc);
+        } else {
+            for item in imp.items {
+                if isinstance(item, uni.ModulePath) {
+                    paths.append(item);
+                }
+            }
+        }
+        for mp in paths {
+            try {
+                target = str(Path(mp.resolve_relative_path()).resolve());
+            } except Exception {
+                continue;
+            }
+            self.record_dependency(importer, target);
+        }
+    }
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
@@ -169,7 +211,15 @@ impl JacProgram.parse_str(
     file_path: str,
     cancel_token: (Event | None) = None
 ) -> uni.Module {
-    return self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
+    mod = self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
+    if self._track_dependencies {
+        try {
+            self.record_module_dependencies(mod);
+        } except Exception {
+            ;
+        }
+    }
+    return mod;
 }
 
 impl JacProgram.compile(
@@ -190,9 +240,17 @@ impl JacProgram.compile(
             cancel_token=cancel_token
         );
     }
-    return self._get_compiler().compile(
+    mod = self._get_compiler().compile(
         file_path=file_path, target_program=self, use_str=use_str, options=options
     );
+    if self._track_dependencies {
+        try {
+            self.record_module_dependencies(mod);
+        } except Exception {
+            ;
+        }
+    }
+    return mod;
 }
 
 impl JacProgram.build(

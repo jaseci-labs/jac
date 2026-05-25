@@ -775,7 +775,6 @@ impl Expr.postinit -> None {
     self._type_sym_tab = None;
     self.type = None;
     self.attached_tokens = None;
-    self.backend_type_tag = None;
 }
 
 

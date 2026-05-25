@@ -228,6 +228,10 @@ def run_setup(project_root: str = ".") -> None {
         console.print(f"  - {'client':18s} -> {client_entry}");
     }
     console.print(f"\nRun `jac start main.jac` to launch locally.");
+    console.print(
+        "Preview a K8s deploy without applying anything: "
+        "`jac start main.jac --scale --dry-run`"
+    );
 }
 
 """Add a single service to existing config."""
