@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5060 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
 
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
@@ -71,6 +71,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         enum_string_values: dict[str, list] = {},
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
+        enum_member_ordinal: dict[str, int] = {},
         var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
@@ -91,6 +92,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
         _last_type_node_hint: (object | None) = None,
+        # True while codegen'ing the TupleVal of a `return (...)`. In that
+        # context borrowed (field-load / element-read) pointer elements must be
+        # retained so they outlive the owning local's scope-exit teardown — the
+        # returned tuple box does not own its elements (see _codegen_tuple_val).
+        _return_tuple_ctx: bool = False,
         # Inheritance / vtable support (Phase 5)
         class_hierarchy: dict[str, str] = {},
         class_parents: dict[str, list[str]] = {},
@@ -157,6 +163,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_ctx_loc_gv: object = None,
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
+        rc_safe_free_fn: (ir.Function | None) = None,
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -164,8 +171,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _native_emit_ctx_class: (type | None) = None,
+        # Per-function tracking for borrowed-param promotion: entry-block store instruction
+        # per param (for position_after retain insertion) and set of already-promoted params.
+        # Both are reset at the start of each function/method.
+        _param_store_instr: dict[str, object] = {},
+        _param_promoted: set[str] = set(),
+        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
+        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
+        # (_declared_globals) may rebind a module global. A bare function-scope
+        # assignment to a glob-named variable allocates a function-local
+        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
+        # reset per function.
+        _declared_globals: set[str] = set(),
+        _in_module_scope: bool = False,
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
@@ -180,6 +201,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
+    def _codegen_nested_ability(nd: uni.Ability) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
@@ -192,6 +214,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
@@ -220,9 +244,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    def _llvm_to_spec(t: Any) -> str;
-    def _resolve_callable_type(slice: uni.IndexSlice) -> ir.Type;
-    def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
+    # Unified TypeBase -> LLVM lowering (consumes the central type checker's
+    # result; returns None when a type category is not yet handled).
+    def _lower_type(t: any) -> (ir.Type | None);
+    def _lower_class_type(t: any) -> (ir.Type | None);
+    def _lower_function_type(t: any) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
@@ -241,7 +267,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(nd: uni.Enum) -> None;
-    def _build_enum_string_table(enum_name: str, entries: list) -> None;
+    def _build_enum_string_table(
+        enum_name: str, entries: list, with_values: bool = True
+    ) -> None;
+
     def _codegen_enum_value_lookup(
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);
@@ -250,6 +279,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    def _codegen_iter_for(nd: uni.IterForStmt) -> None;
+    def _codegen_match(nd: uni.MatchStmt) -> None;
+    def _match_pattern_cond(
+        pat: uni.MatchPattern, subj: ir.Value
+    ) -> (ir.Value | None);
+
+    def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
+    def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
@@ -266,7 +303,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
-    def _register_imported_globals(nd: uni.GlobalVars) -> None;
+    def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;

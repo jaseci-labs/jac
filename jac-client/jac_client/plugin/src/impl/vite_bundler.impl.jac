@@ -264,7 +264,7 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-"""Get a valid JavaScript variable name from plugin module name."""
+
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
     name = name.replace('-', '_').replace('.', '_');
@@ -283,7 +283,7 @@ Example: To replace `APP_NAME` with the string "MyApp" in source code:
   - JS parses '"MyApp"' as the string: "MyApp"
   - Replacement in source: APP_NAME -> "MyApp" (valid JS!)
 """
-def _to_js_expr(value: Any) -> str {
+def _to_js_expr(value: any) -> str {
     # Handle None -> JS null literal
     if value is None {
         return "null";
@@ -341,6 +341,7 @@ impl ViteBundler._generate_vite_config_content(
     is_dev: bool,
     entry_file: Path,
     api_base_url: str,
+    base_path: str,
     api_port: int = 8000,
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
@@ -549,6 +550,7 @@ function jacErrorReporter() {{
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
+  base: "{base_path}",
   define: {{
 {define_str}
   }},
@@ -714,6 +716,7 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  base: "{base_path}",
   define: {{
 {define_str}
   }},
@@ -780,10 +783,12 @@ impl ViteBundler.create_vite_config(
     api_base_url = self._resolve_api_base_url(api_base_url_override);
     config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
     config_path = configs_dir / config_filename;
+    base_path = self.config_loader.get_base_path();
     config_content = self._generate_vite_config_content(
         is_dev=is_dev,
         entry_file=entry_file,
         api_base_url=api_base_url,
+        base_path=base_path,
         api_port=api_port,
         for_mobile_dev=for_mobile_dev,
         mobile_hmr_host=mobile_hmr_host,
@@ -1113,7 +1118,7 @@ This runs in a separate thread to avoid blocking the main thread.
 Buffers output before ready so errors can be shown if startup fails.
 """
 def _forward_vite_output(
-    proc: Any, ready_event: "threading.Event", sys_module: Any, output_buffer: list[str]
+    proc: any, ready_event: "threading.Event", sys_module: any, output_buffer: list[str]
 ) {
     try {
         for line in iter(proc.stdout.readline, '') {
@@ -1146,7 +1151,7 @@ impl ViteBundler.start_dev_server(
     port: int = 3000,
     suppress_initial_output: bool = False,
     host: str = ""
-) -> Any {
+) -> any {
     import sys;
     import time;
     import threading;
@@ -1277,8 +1282,8 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
 
 """Start Vite with output capture for clean startup messaging."""
 impl ViteBundler._start_vite_with_output_capture(
-    self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
-) -> Any {
+    self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
+) -> any {
     import threading;
     process = subprocess.Popen(
         command,

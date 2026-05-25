@@ -1,5 +1,4 @@
 """Kubernetes-specific configuration."""
-import from typing { Any }
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 
 """Configuration for Kubernetes deployments."""
@@ -86,7 +85,7 @@ obj KubernetesConfig(BaseConfig) {
         # with whatever RoleBindings / ClusterRoleBindings the app needs.
         service_account_name: str = "";
 
-    override def to_dict -> dict[str, Any] {
+    override def to_dict -> dict[str, any] {
         base = super.to_dict();
         base.update(
             {
@@ -160,7 +159,7 @@ obj KubernetesConfig(BaseConfig) {
         return base;
     }
 
-    static def from_dict(cls: type, config: dict[str, Any]) -> KubernetesConfig {
+    static def from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
         return cls(
             app_name=config.get('app_name', 'jaseci'),
             namespace=config.get('namespace', 'default'),

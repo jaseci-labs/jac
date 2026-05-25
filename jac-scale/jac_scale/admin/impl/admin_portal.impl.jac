@@ -1,7 +1,6 @@
 """Admin Portal Implementation for JAC-Scale."""
 import logging;
 import from collections.abc { Callable }
-import from typing { Any }
 import from fastapi { Request }
 import from fastapi.responses {
     HTMLResponse,

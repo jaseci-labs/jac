@@ -313,8 +313,7 @@ are evaluated to produce a value.
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit,
-        backend_type_tag: (str | None) by postinit;
+        attached_tokens: (list[Token] | None) by postinit;
 
     def postinit -> None;
     @property
@@ -690,7 +689,8 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         is_abstract: bool,
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -777,7 +777,8 @@ obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
 obj HasVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         value: (Expr | None),
-        defer: bool;
+        defer: bool,
+        accessors: (Sequence[Ability] | None) = None;
 
     def postinit -> None;
 }
@@ -820,7 +821,22 @@ obj ExprStmt(CodeBlockStmt) {
 obj TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     has body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
+        awaiting_body: (AwaitingClause | None),
         finally_body: (FinallyStmt | None);
+
+    def postinit -> None;
+}
+
+"""AwaitingClause node type for Jac Ast.
+
+Holds the `awaiting { ... }` arm of a `try` statement. Renders/produces
+a value during the dispatched-but-not-joined window of any `flow`/`wait`
+work inside the `try` body. In a JSX slot on the `cl` target, lowered
+into the React `Suspense` fallback of the synthesized `<JacAwaiting>`
+wrapper. On `sv`/`na` the clause is currently ignored with W2020 until
+the streaming-SSR and native-thread lowerings land."""
+obj AwaitingClause(CodeBlockStmt, UniScopeNode) {
+    has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
 }
@@ -946,6 +962,16 @@ obj DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
 """AwaitExpr node type for Jac Ast."""
 obj AwaitExpr(Expr) {
     has target: Expr;
+
+    def postinit -> None;
+}
+
+"""CastExpr node type for Jac Ast.
+Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
+it evaluates to `value` unchanged; statically its type is `cast_type`."""
+obj CastExpr(Expr) {
+    has value: Expr,
+        cast_type: Expr;
 
     def postinit -> None;
 }
@@ -1111,8 +1137,15 @@ obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     def postinit -> None;
 }
 
-"""ListCompr node type for Jac Ast."""
-obj ListCompr(AtomExpr, UniScopeNode) {
+"""ListCompr node type for Jac Ast.
+
+Inherits UniCFGNode so the comprehension is a flow-sensitive node:
+cfg_build_pass wires each `if` filter as a CfgExpr predecessor whose
+true edge feeds back into the comprehension itself, so the existing
+CFG narrowing engine threads filter narrowing into the head expression
+without any side-channel state on the type evaluator.
+"""
+obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has out_expr: Expr,
         compr: list[InnerCompr];
 
@@ -1125,8 +1158,12 @@ obj GenCompr(ListCompr) {}
 """SetCompr node type for Jac Ast."""
 obj SetCompr(ListCompr) {}
 
-"""DictCompr node type for Jac Ast."""
-obj DictCompr(AtomExpr, UniScopeNode) {
+"""DictCompr node type for Jac Ast.
+
+Same UniCFGNode rationale as ListCompr -- the conditional filters wire
+through the CFG so narrowing flows into the head key/value expressions.
+"""
+obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has kv_pair: KVPair,
         compr: list[InnerCompr];
 
@@ -1241,7 +1278,8 @@ obj JsxElement(AtomExpr) {
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
         is_self_closing: bool,
-        is_fragment: bool;
+        is_fragment: bool,
+        dynamic_tag: (Expr | None) = None;
 
     def postinit -> None;
     def get_body_start_line -> (int | None);
@@ -1267,10 +1305,16 @@ obj JsxSpreadAttribute(JsxAttribute) {
     def postinit -> None;
 }
 
-"""JsxNormalAttribute node type for Jac Ast."""
+"""JsxNormalAttribute node type for Jac Ast.
+
+The `is_shorthand` flag marks attributes parsed from the `{name}` JSX
+attribute shorthand — semantically identical to `name={name}` but the
+formatter must round-trip the shorter spelling. Both `name` and `value`
+point at the same identifier when this flag is set."""
 obj JsxNormalAttribute(JsxAttribute) {
     has name: (Name | Token),
-        value: String | Expr | None;
+        value: String | Expr | None,
+        is_shorthand: bool = False;
 
     def postinit -> None;
 }
@@ -1292,6 +1336,28 @@ obj JsxText(JsxChild) {
 obj JsxExpression(JsxChild) {
     has expr: Expr;
 
+    def postinit -> None;
+}
+
+"""JsxSlot: a `{...}` JSX child whose body is a sequence of statements.
+
+When a `{...}` slot in JSX child position contains anything other than a
+single expression -- a JSX statement, control flow yielding JSX, an
+assignment followed by an expression, an explicit `return` guard -- the
+parser emits a `JsxSlot` instead of `JsxExpression`. The slot lowers to
+an IIFE that runs the body and returns either the accumulated JSX
+children fragment (if any JSX was emitted statement-by-statement) or the
+value of the last expression.
+
+Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
+`JsxExpression` so the cheap path (no IIFE) is preserved.
+"""
+obj JsxSlot(JsxChild) {
+    has body: list[UniNode];
+    # The body holds the author's faithful `{ stmt; ... }` statement
+    # template. No pre-codegen pass mutates it — the cl-target accumulator
+    # IIFE is synthesized at codegen time (EsastGenPass), so the surface
+    # tokens round-trip through the formatter/unparser unchanged.
     def postinit -> None;
 }
 

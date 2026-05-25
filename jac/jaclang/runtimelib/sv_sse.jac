@@ -32,7 +32,7 @@ propagate as httpx exceptions out of the iterator.
 
 import json;
 import logging;
-import from typing { Any, Iterator }
+import from typing { Iterator }
 
 
 glob _logger: logging.Logger = logging.getLogger("jaclang.runtimelib.sv_sse");
@@ -48,7 +48,7 @@ joining with newlines, matching the spec.
 
 Yields: (event_name: str, data_text: str)
 """
-def _parse_sse(line_iter: Any) -> Iterator[tuple[str, str]] {
+def _parse_sse(line_iter: any) -> Iterator[tuple[str, str]] {
     event: str = "message";
     data_lines: list[str] = [];
     for raw in line_iter {
@@ -114,7 +114,7 @@ Yields: parsed event dicts as they arrive.
 Raises: RuntimeError with the producer's error payload if the stream
     closes with `event: error`; httpx exceptions for transport issues.
 """
-def consume_sse_stream(resp: Any, func_label: str) -> Iterator[dict] {
+def consume_sse_stream(resp: any, func_label: str) -> Iterator[dict] {
     for (event_name, data_text) in _parse_sse(resp.iter_lines()) {
         if event_name == "end" {
             return;

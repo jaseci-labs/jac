@@ -17,7 +17,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 
 import redis;
 import requests;
@@ -35,7 +35,7 @@ def get_free_port -> int {
     }
 }
 
-def extract(resp: Any) -> Any {
+def extract(resp: any) -> any {
     if isinstance(resp, list) and len(resp) == 2 {
         resp = resp[1];
     }
@@ -57,7 +57,7 @@ def register_user(base_url: str, username: str) -> str {
 
 def call_walker(
     base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> Any {
+) -> any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},

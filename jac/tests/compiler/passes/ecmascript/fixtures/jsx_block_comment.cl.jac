@@ -1,7 +1,7 @@
 """Test that `{#* ... *#}` works as a Jac-native JSX comment (no rendered output)."""
 
 cl {
-    def:pub App() -> Any {
+    def:pub App() -> any {
         return <div>
             <h1>
                 Hello

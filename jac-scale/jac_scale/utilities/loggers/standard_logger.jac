@@ -1,12 +1,11 @@
 """Standard logger implementation using jac console."""
-import from typing { Any }
 import from jac_scale.abstractions.logger { Logger }
 import from jaclang.cli.console { console }
 
 """Standard logger using jac console for Rich-styled output."""
 class StandardLogger(Logger) {
-    def init(self: StandardLogger, config: dict[str, Any] = {}) { }
-    def info(self: StandardLogger, message: str, context: dict[str, Any] = {}) {
+    def init(self: StandardLogger, config: dict[str, any] = {}) { }
+    def info(self: StandardLogger, message: str, context: dict[str, any] = {}) {
         if context {
             console.info(f"{message} | Context: {context}");
         } else {
@@ -14,7 +13,7 @@ class StandardLogger(Logger) {
         }
     }
 
-    def error(self: StandardLogger, message: str, context: dict[str, Any] = {}) {
+    def error(self: StandardLogger, message: str, context: dict[str, any] = {}) {
         if context {
             console.error(f"{message} | Context: {context}");
         } else {
@@ -22,7 +21,7 @@ class StandardLogger(Logger) {
         }
     }
 
-    def warn(self: StandardLogger, message: str, context: dict[str, Any] = {}) {
+    def warn(self: StandardLogger, message: str, context: dict[str, any] = {}) {
         if context {
             console.warning(f"{message} | Context: {context}");
         } else {
@@ -30,7 +29,7 @@ class StandardLogger(Logger) {
         }
     }
 
-    def debug(self: StandardLogger, message: str, context: dict[str, Any] = {}) {
+    def debug(self: StandardLogger, message: str, context: dict[str, any] = {}) {
         if context {
             console.print(f"[DEBUG] {message} | Context: {context}", style="muted");
         } else {

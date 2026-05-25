@@ -7,12 +7,8 @@ import marshal;
 import os;
 import sys;
 import types;
-import from typing { Any }
 import from jaclang.cli.console { console }
-import from jaclang.cli.commands.cli_helpers {
-    ensure_jac_runtime as _ensure_jac_runtime,
-    proc_file as _proc_file
-}
+import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 """Discover jac.toml from the file's directory when an absolute/relative path is given.
 
@@ -28,8 +24,8 @@ def _discover_config_from_file(filename: str) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
-    # Store entry file path for runtime utilities (called before _proc_file)
-    Jac.full_target_path = str(file_path);
+    # Seed the bootstrap target so new contexts get the right L3 identity.
+    Jac.set_full_target_path(str(file_path));
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that
@@ -93,11 +89,22 @@ impl run(
     diagnostics: str = "",
     args: list = []
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
+    # --no-cache: wipe all .jac_ir/ cache directories under the file's source tree.
+    if not cache {
+        import glob as _glob;
+        import shutil;
+        _src_root = os.path.dirname(os.path.abspath(filename)) or ".";
+        cache_dirs = _glob.glob(
+            os.path.join(_src_root, "**", ".jac_ir"), recursive=True
+        );
+        for cache_dir in cache_dirs {
+            shutil.rmtree(cache_dir, ignore_errors=True);
+        }
+    }
     # Resolve diagnostics level: CLI flag > jac.toml > default ("error")
     if not diagnostics {
         cfg = get_config();
@@ -235,7 +242,6 @@ impl enter(
     `root: str = '',
     nd: str = ''
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.constructs { WalkerArchetype }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -285,7 +291,6 @@ impl start(
     api_port: int = 0,
     no_client: bool = False
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
     if not Path(filename).exists() {
@@ -575,7 +580,7 @@ def _print_startup_message(
 }
 
 """Start Vite dev server for HMR mode."""
-def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any {
+def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {
     import from pathlib { Path }
 
     try {

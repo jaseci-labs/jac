@@ -26,14 +26,20 @@ glob registry = get_registry();
             default="",
             help="Output binary path (defaults to filename without extension)"
         ),
+        Arg.create(
+            "scrub",
+            kind=ArgKind.FLAG,
+            help="Scrub build: wipe cached IR and recompile everything from scratch"
+        ),
 
     ],
     examples=[
         ("jac nacompile program.na.jac", "Compile to ./program"),
         ("jac nacompile program.jac", "Auto-promote and compile to ./program"),
         ("jac nacompile program.na.jac -o mybin", "Compile to ./mybin"),
+        ("jac nacompile program.na.jac --scrub", "Clean rebuild (wipe IR cache)"),
 
     ],
     group="transform"
 )
-def nacompile(filename: str, output: str = "") -> int;
+def nacompile(filename: str, output: str = "", scrub: bool = False) -> int;

@@ -94,6 +94,23 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                             self.method_funcs[full_name] = func;
                             self.has_native_code = True;
                         }
+                    } else {
+                        # Walker `can ... with N entry/exit` abilities use
+                        # EventSignature — NA can't lower the OSP traversal
+                        # model yet, so the body would silently be skipped.
+                        # Surface a clear error instead of dropping it.
+                        _sig_kind = (
+                            type(stmt.signature).__name__
+                                if stmt.signature is not None
+                                else "no-signature"
+                        );
+                        _m_name = stmt.name_ref.sym_name if stmt.name_ref else "?";
+                        self.emit(
+                            E5090,
+                            node_override=stmt,
+                            kind="archetype method",
+                            name=f"{arch_name}.{_m_name} ({_sig_kind})"
+                        );
                     }
                 }
             }
@@ -457,6 +474,11 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    # Reset per-function borrowed-param promotion state.
+    saved_param_store_instr = self._param_store_instr;
+    saved_param_promoted = self._param_promoted;
+    self._param_store_instr = {};
+    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -483,9 +505,10 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i + 1];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        self.builder.store(arg_val, alloca);
+        _store_instr = self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
         self.param_vars.add(param_name);
+        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
         # Track type info for struct pointer parameters
         if isinstance(arg_val.type, ir.PointerType) {
             for (sname, stype) in self.struct_types.items() {
@@ -557,6 +580,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
+    self._param_store_instr = saved_param_store_instr;
+    self._param_promoted = saved_param_promoted;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""
@@ -578,6 +603,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
+    saved_param_store_instr = self._param_store_instr;
+    saved_param_promoted = self._param_promoted;
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
@@ -586,6 +613,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    self._param_store_instr = {};
+    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -633,6 +662,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
+    self._param_store_instr = saved_param_store_instr;
+    self._param_promoted = saved_param_promoted;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""
@@ -1235,6 +1266,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "partition",
         "rpartition",
         "encode",
+        "decode",
         "format"
     ) {
         str_val = self._codegen_expr(trailer.target);
@@ -1266,50 +1298,35 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         obj_val = self._codegen_expr(trailer.target);
         if obj_val is not None {
             type_name = self._infer_type_name(obj_val);
-            # Handle list methods on complex targets (e.g. g.items.append(x))
+            # Handle list methods on complex targets (e.g. g.items.append(x),
+            # self.stack.pop()). Route through the same primitive-method
+            # dispatch as simple-name targets so every list method (append,
+            # pop, ...) works on field/chained lists, not just append.
             if type_name is None {
                 elem_type_name = self._infer_list_elem_type(obj_val);
-                if elem_type_name is not None and method_name == "append" {
-                    helpers = self.list_helpers.get(elem_type_name);
-                    if helpers is not None {
-                        params = nd.params or [];
-                        if params {
-                            val = self._codegen_expr(params[0]);
-                            if val is not None {
-                                val = self._box_value_tuple(
-                                    val,
-                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                        if nd.loc
-                                        else 0}"
-                                );
-                                elem_type = helpers["elem_type"];
-                                val = self._coerce_type(val, elem_type);
-                                # __list_append_ptr internally retains; ctx makes the
-                                # retain log show op="append" + the source line.
-                                self._rc_call_with_ctx(
-                                    helpers["append"],
-                                    [obj_val, val],
-                                    op="append",
-                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                        if nd.loc
-                                        else 0}"
-                                );
-                                # RC: __list_append_ptr retained the element.
-                                # Release the caller's ownership if the value was owned
-                                # (fresh alloc / call result) to keep refcount at 1.
-                                if isinstance(elem_type, ir.PointerType)
-                                and self._is_owned(val) {
-                                    self._emit_rc_release_simple(
-                                        val,
-                                        op="append",
-                                        loc=f"{os.path.basename(
-                                            self.ir_in.loc.mod_path
-                                        )}:{nd.loc.first_line if nd.loc else 0}"
-                                    );
-                                }
-                            }
+                if elem_type_name is not None {
+                    params = nd.params or [];
+                    arg_vals: list[ir.Value] = [];
+                    for param in params {
+                        v = self._codegen_expr(param);
+                        if v is not None {
+                            arg_vals.append(v);
                         }
-                        return ir.Constant(ir.IntType(64), 0);
+                    }
+                    if method_name == "append" {
+                        self._set_rc_ctx(
+                            "append",
+                            f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
+                    result = self._dispatch_primitive_method(
+                        "list", method_name, obj_val, arg_vals, elem_type_name
+                    );
+                    self._clear_rc_ctx();
+                    if result is not None {
+                        return result;
                     }
                 }
             }

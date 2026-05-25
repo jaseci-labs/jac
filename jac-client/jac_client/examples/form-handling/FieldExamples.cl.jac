@@ -1,7 +1,7 @@
 cl import from "@jac/runtime" { JacForm, JacSchema }
 cl import ".assets.jacform-default.css";
 
-def:pub FieldExamples -> Any {
+def:pub FieldExamples -> any {
     schema = JacSchema(
         {
             # Text inputs

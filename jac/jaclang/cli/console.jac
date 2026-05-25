@@ -11,7 +11,7 @@ Plugins (like jac-super) can override this to provide Rich-enhanced output.
 import os;
 import sys;
 import from contextlib { contextmanager }
-import from typing { Any, cast }
+import from typing { cast }
 
 """Console utility class for terminal output in Jac CLI.
 
@@ -26,14 +26,14 @@ obj JacConsole {
     def init -> None;
     static def _should_use_emoji -> bool;
     static def _should_use_color -> bool;
-    def print(*args: Any, **kwargs: Any) -> None;
-    def status(*args: Any, **kwargs: Any) -> object;
+    def print(*args: any, **kwargs: any) -> None;
+    def status(*args: any, **kwargs: any) -> object;
     def success(message: str, emoji: bool = True) -> None;
     def error(message: str, hint: str | None = None, emoji: bool = True) -> None;
     def warning(message: str, emoji: bool = True) -> None;
     def info(message: str, emoji: bool = True) -> None;
     def print_header(title: str, version: str | None = None) -> None;
-    def print_urls(urls: Any, symbol: str = '') -> None;
+    def print_urls(urls: any, symbol: str = '') -> None;
     def print_next_steps(steps: list[str], title: str = 'Next Steps') -> None;
     def print_list(items: list[str], style: str = 'success', symbol: str = '') -> None;
     def print_table(
@@ -56,7 +56,7 @@ def _get_console -> JacConsole;
 # Basic proxy class that lazily initializes the console on first access
 # This allows plugins to override via the hook system while avoiding circular imports
 class _ConsoleProxy {
-    def __getattr__(self: _ConsoleProxy, name: str) -> Any {
+    def __getattr__(self: _ConsoleProxy, name: str) -> any {
         return getattr(_get_console(), name);
     }
 }

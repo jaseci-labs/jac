@@ -489,7 +489,7 @@ Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose
 !!! note "When to use `obj` vs `class`"
     Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
 
-    If you need Python-specific class machinery like metaclasses or `@property` decorators, use a Python `class` instead. Jac provides `static def` for static methods, `class def` for class methods (with `Self`), and `static has` for class-level fields.
+    If you need Python-specific class machinery like metaclasses, use a Python `class` instead. Jac provides `static def` for static methods, `class def` for class methods (with `Self`), `static has` for class-level fields, and native `has x: T { getter; setter; deleter; }` property syntax (see §6 below).
 
 ```jac
 obj Person {
@@ -727,21 +727,67 @@ enum HttpStatus {
 
 ### 6 Properties and Encapsulation
 
+Properties expose computed or validated access to data while looking like plain field access at the call site. Declare them with a `has` binding followed by an accessor block containing `getter`, `setter`, and/or `deleter`.
+
+**Pure computed property** -- no backing storage, just derived from other fields:
+
 ```jac
-obj Account {
-    has:priv _balance: float = 0.0;
+obj Circle {
+    has radius: float = 1.0;
 
-    def get_balance() -> float {
-        return self._balance;
-    }
-
-    def deposit(amount: float) -> None {
-        if amount > 0 {
-            self._balance += amount;
-        }
+    has diameter: float {
+        getter { return self.radius * 2.0; }
     }
 }
 ```
+
+**Property over explicit backing storage** -- backing fields are always declared explicitly with `has` and referenced via `self._<name>`:
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) {
+                if value < 0.0 {
+                    raise ValueError("balance cannot be negative");
+                }
+                self._balance = value;
+            }
+            deleter { self._balance = 0.0; }
+        }
+}
+```
+
+**Impl-separated accessor bodies** -- property accessors follow the same def/impl split as regular methods, using dotted-impl syntax:
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float;
+            setter(value: float);
+            deleter;
+        }
+}
+
+impl Account.balance.getter -> float { return self._balance; }
+impl Account.balance.setter(value: float) {
+    if value < 0.0 { raise ValueError("negative"); }
+    self._balance = value;
+}
+impl Account.balance.deleter { self._balance = 0.0; }
+```
+
+**Read-only properties** -- omit the `setter` to make a property read-only. Assignment is rejected at type-check time with `E1005`.
+
+**Rules:**
+
+- `has x: T { ... }` is *always* a property -- it never allocates backing storage.
+- `has x: T = value;` (no block) is *always* a field.
+- The two cannot be combined: `has x: T = value { ... }` is rejected with `E0080`. Declare backing storage as a separate `has` field.
+- An empty accessor block emits `E0081`.
+- The setter's write type is the property's declared type -- assignments are type-checked against it.
 
 ??? example "Try it: Objects and Enums complete example"
     ```jac
@@ -781,16 +827,13 @@ obj Account {
 
 Jac separates *interface* (what an object has and can do) from *implementation* (how it does it). This separation enables cleaner architecture, easier testing, and better organization of large codebases. You declare the interface in one place and implement abilities in `impl` blocks -- even in separate files.
 
-### 1 Forward Declarations
+### 1 Mutual References
 
-Forward declarations let you reference a type before it's fully defined. This is essential for circular references (like User referencing Post and Post referencing User) and for organizing code across multiple files.
+Jac resolves symbols across the entire module before type-checking bodies, so types can reference each other in any order with no forward declarations. Forward declarations exist in some languages because their compiler walks top-to-bottom; Jac's doesn't.
 
 ```jac
-# Forward declarations
-obj User;
-obj Post;
-
-# Now define with mutual references
+# Define in any order -- the checker sees both types before it
+# resolves either body.
 obj User {
     has name: str;
     has posts: list[Post] = [];
@@ -801,6 +844,8 @@ obj Post {
     has author: User;
 }
 ```
+
+A second `obj User { ... }` block with the same name is a duplicate-declaration error (`E0077`). Jac's separation model is *decl + impl*, not *decl + decl* -- see Implementation Blocks below for the supported way to split a type across files.
 
 ### 2 Implementation Blocks
 

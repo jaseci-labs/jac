@@ -880,4 +880,21 @@ test "root keyword trigger raises TypeError at runtime" {
     assert "BadTuple:" in output , "`(Root, root)` tuple must raise TypeError";
     assert "root" in output , "at least one error must mention 'root'";
     assert "should not reach here" not in output , "no bad walker should reach its ability body";
+}    
+
+test "native property getter/setter/deleter with impl separation" {
+    # `has <name>: <type> { getter; setter; deleter; }` declares a property
+    # over explicitly-declared backing storage; no `field` keyword is used.
+    output = run_jac(os.path.join(FIXTURES, "prop_native.jac"));
+    assert output == "ok\n";
+}
+
+test "as cast is type erased" {
+    output = run_jac(os.path.join(FIXTURES, "as_cast.jac"));
+    assert output == "42\n7\n6\n43\n";
+}
+
+test "as cast does not disturb with/except alias" {
+    output = run_jac(os.path.join(FIXTURES, "as_cast_with_except.jac"));
+    assert output == "with-ternary-ok\nwith-paren-cast-ok\nboom\n";
 }

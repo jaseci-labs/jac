@@ -11,7 +11,6 @@ import re;
 import time;
 import from pathlib { Path }
 import from collections { namedtuple }
-import from typing { Any }
 
 glob SourceLocation = namedtuple("SourceLocation", ["file", "line", "column"]);
 
@@ -332,7 +331,7 @@ def _get_map_signature(base_path: str) -> str {
 }
 
 # Global cache: base_path -> (signature, SourceMapper)
-glob _mapper_cache: dict[str, tuple[str, Any]] = {};
+glob _mapper_cache: dict[str, tuple[str, any]] = {};
 
 # ---------------------------------------------------------------------------
 # Rate limiter for client error reports
@@ -399,7 +398,7 @@ obj SourceMapper {
     static def from_bundle(base_path: str) -> SourceMapper {
         # Check cache
         sig: str = _get_map_signature(base_path);
-        cached: tuple[str, Any] | None = _mapper_cache.get(base_path);
+        cached: tuple[str, any] | None = _mapper_cache.get(base_path);
         if cached is not None and cached[0] == sig {
             return SourceMapper(
                 _source_map=cached[1]._source_map,

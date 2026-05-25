@@ -5,7 +5,6 @@ import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from pydantic { BaseModel, Field, ValidationError }
-import from typing { Any }
 import jwt;
 import json;
 import from os { getenv }
@@ -49,10 +48,16 @@ import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
     UpdatePasswordRequest,
+    AddIdentityRequest,
+    VerifyIdentityRequest,
+    SendVerificationRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     UpdateProfileRequest,
     UpdateProfileResponse,
     MeResponse
 }
+import from jac_scale.abstractions.emailer { Emailer }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -82,6 +87,13 @@ obj JacAPIServerAuth {
     def register_refresh_token_endpoint -> None;
     # Update password
     def register_update_password_endpoint -> None;
+    # Identity management
+    def register_add_identity_endpoint -> None;
+    def register_send_verification_endpoint -> None;
+    def register_verify_identity_endpoint -> None;
+    # Password reset
+    def register_forgot_password_endpoint -> None;
+    def register_reset_password_endpoint -> None;
     # Current user
     def register_me_endpoint -> None;
     def register_update_me_endpoint -> None;
@@ -102,6 +114,12 @@ obj JacAPIServerAuth {
     def register_api_key_endpoints -> None;
 }
 
+"""Emailer mixin: lazy singleton initialised at startup from jac.toml config."""
+obj JacAPIServerEmailer {
+    def setup_emailer -> Emailer | None;
+    def get_emailer -> Emailer | None;
+}
+
 """Core server lifecycle: start/postinit, health, HMR, scheduler, metrics."""
 obj JacAPIServerCore {
     def postinit -> None;
@@ -118,15 +136,15 @@ obj JacAPIServerCore {
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
-    def enable_hmr(hot_reloader: Any) -> None;
+    def enable_hmr(hot_reloader: any) -> None;
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
     def _setup_events -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
-        original_handler: Callable[..., Any]
-    ) -> Callable[..., Any];
+        original_handler: Callable[..., any]
+    ) -> Callable[..., any];
 }
 
 """Walker, function, webhook, WebSocket endpoint registration and callbacks."""
@@ -193,12 +211,13 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _hot_reloader: Any | None = None,
+        _hot_reloader: any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
+        _ws_manager: WebSocketConnectionManager | None = None,
         _broker: EventStreamBroker | None = None,
-        _ws_manager: WebSocketConnectionManager | None = None;
+        _emailer: Emailer | None = None;
 }

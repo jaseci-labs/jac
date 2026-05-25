@@ -32,7 +32,7 @@ edge LivesIn {}
 """Serializer round-trip: topology_index_data bytes must survive serialize/deserialize."""
 test "topology_index_data survives Serializer round-trip" {
     tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     try {
         cfg = JacConfig();
         cfg.run.topology_index = True;
@@ -91,7 +91,7 @@ test "topology_index_data survives Serializer round-trip" {
 """After serialize/deserialize, resolve_chain should still work correctly."""
 test "topology index resolve_chain works after Serializer round-trip" {
     tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     try {
         cfg = JacConfig();
         cfg.run.topology_index = True;
@@ -140,7 +140,7 @@ test "topology index resolve_chain works after Serializer round-trip" {
 """Full persistence: build graph, save to SQLite, reload, verify index + queries."""
 test "topology index survives sqlite persistence round-trip" {
     tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     try {
         cfg = JacConfig();
         cfg.run.topology_index = True;

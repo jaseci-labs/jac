@@ -6,7 +6,7 @@ import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from typing { Any, Optional }
+import from typing { Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
 
@@ -64,6 +64,7 @@ class ViteBundler {
         is_dev: bool,
         entry_file: Path,
         api_base_url: str,
+        base_path: str,
         api_port: int = 8000,
         for_mobile_dev: bool = False,
         mobile_hmr_host: str = "",
@@ -92,14 +93,14 @@ class ViteBundler {
         port: int = 3000,
         suppress_initial_output: bool = False,
         host: str = ""
-    ) -> Any;
+    ) -> any;
 
     # Internal helpers for dev server
     def _ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None;
     def _ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None;
     def _start_vite_with_output_capture(
-        self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
-    ) -> Any;
+        self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
+    ) -> any;
 }
 # Env var used to pass API base URL through deep call chains
 # (e.g., DesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
