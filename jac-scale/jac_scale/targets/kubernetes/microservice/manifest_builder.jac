@@ -337,7 +337,15 @@ obj MicroserviceManifestBuilder {
     dispatch resolves via this fast-path; without it, sv calls silently
     fall back to local module imports inside the image."""
     def _build_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {
-        env: list[dict[str, any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
+        # K8S_APP_NAME / K8S_NAMESPACE: surfaced as ordinary env vars so
+        # in-pod code (Loki URL builder, log shippers, etc.) can read them
+        # without having to parse jac.toml templates. K-track is the source
+        # of truth for both at deploy time.
+        env: list[dict[str, any]] = [
+            {"name": "JAC_SV_NAME", "value": svc_name},
+            {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
+            {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
+        ];
 
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
