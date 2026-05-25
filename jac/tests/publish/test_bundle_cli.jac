@@ -1,15 +1,12 @@
 """CLI tests for the `jac bundle` command."""
 
 import os;
-import importlib;
 import tempfile;
 import shutil;
 import from pathlib { Path }
 import from subprocess { run }
 
-glob _PRECOMPILE_MINOR_RANGE = importlib.import_module(
-         "jaclang.cli.commands.project"
-     )._PRECOMPILE_MINOR_RANGE;
+glob _PRECOMPILE_MINOR_RANGE: range = range(11, 15);
 
 
 """Return the cpython-3XX tags for every python3.X present on PATH."""
