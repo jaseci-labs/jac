@@ -287,18 +287,21 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["nargs"] = argparse.REMAINDER;
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
-        # Boolean flag
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
+        # `--X` and the auto `--no-X` share one underscored dest, else
+        # argparse leaves a phantom `X-dashed: True` in vars() for
+        # hyphenated names (issue #6115).
+        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
+        kwargs["dest"] = shared_dest;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
             parser.add_argument(f"--{arg.name}", **kwargs);
         }
-        # Add --no-X variant
         no_kwargs = {
             "action": "store_false",
-            "dest": arg.name,
+            "dest": shared_dest,
             "help": f"Disable {arg.name}"
         };
         parser.add_argument(f"--no-{arg.name}", **no_kwargs);

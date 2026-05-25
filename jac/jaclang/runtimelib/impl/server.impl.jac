@@ -1896,7 +1896,7 @@ impl JacAPIServer.load_module(force_reload: bool = False) -> None {
 }
 
 """Get loaded module (backward compatibility)."""
-impl JacAPIServer.module -> object {
+impl JacAPIServer.module.getter -> object {
     return self.introspector._module;
 }
 

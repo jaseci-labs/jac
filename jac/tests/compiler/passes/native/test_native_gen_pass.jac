@@ -3229,6 +3229,23 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
     );
 }
 
+# ─── async / await (synchronous model) ───────────────────────────────────
+test "await resolves an async call to its value" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "driver", ctypes.c_int64, ctypes.c_int64);
+    # x = await get_val() = 5; y = await add_async(5, n)
+    assert f(10) == 15;
+    assert f(0) == 5;
+}
+
+test "nested awaits evaluate inside-out" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "nested_await", ctypes.c_int64, ctypes.c_int64);
+    # add_async(get_val()=5, n)
+    assert f(3) == 8;
+    assert f(-5) == 0;
+}
+
 # ─── flow / wait (synchronous model) ─────────────────────────────────────
 test "flow then wait returns the task result" {
     (eng, _) = compile_native("flow_wait.na.jac");

@@ -927,6 +927,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
          "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
      ),
+     W3043 = _warn(
+         "W3043",
+         Category.LINT,
+         "@property '{name}' can be replaced with native property syntax "
+         "'has {name}: {type_name} {{ getter; ... }}' [property-to-native]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -955,7 +961,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
          "stale-has-read": "W3041",
-         "map-lambda-to-comprehension": "W3042"
+         "map-lambda-to-comprehension": "W3042",
+         "property-to-native": "W3043"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

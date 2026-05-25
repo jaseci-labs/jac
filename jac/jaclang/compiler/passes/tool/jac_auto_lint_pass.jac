@@ -51,8 +51,15 @@ import from jaclang.jac0core.diagnostics {
     W3039,
     W3040,
     W3041,
-    W3042
+    W3042,
+    W3043
 }
+
+# W3043 impl-side coordination: dotted impl target ("Cls.prop" / "Outer.Inner.prop")
+# -> accessor keyword ("getter"/"setter"/"deleter"). Populated by a program-level
+# driver before formatting annex (.impl.jac) files, since decl_link is not resolved
+# in the parse-only format pipeline. Empty in the normal single-file path.
+glob PROPERTY_IMPL_TARGETS: dict[str, str] = {};
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
@@ -191,6 +198,19 @@ obj JacAutoLintPass(UniPass) {
     ) -> (tuple[uni.Expr, uni.Expr] | None);
 
     def _convert_map_to_comprehension(nd: uni.FuncCall) -> bool;
+    # @property-decorator -> native property syntax conversion (W3043)
+    def _convert_properties(container: uni.Archetype) -> None;
+    def _property_role_of_ability(ab: uni.Ability) -> str;
+    def _make_accessor_from_ability(src: uni.Ability, kind: str) -> uni.Ability;
+    def _build_property_has(
+        ref_node: uni.UniNode,
+        prop_name: str,
+        type_expr: (uni.Expr | None),
+        accessors: list
+    ) -> uni.ArchHas;
+
+    def _impl_property_kind(nd: uni.ImplDef) -> str;
+    def _convert_property_impl(nd: uni.ImplDef) -> None;
 }
 
 """Report-only lint pass for use in the standard compile/LSP pipeline.

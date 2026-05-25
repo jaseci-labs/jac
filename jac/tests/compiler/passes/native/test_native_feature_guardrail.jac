@@ -143,18 +143,6 @@ test "guardrail: yield expression is rejected" {
     )}";
 }
 
-test "guardrail: await expression is rejected" {
-    prog = compile_na_inline(
-        "await_expr",
-        "async def get_val() -> int { return 5; }\n"
-        "async def driver() -> int {\n"
-        "    return await get_val();\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for AwaitExpr, got: {fmt_errors(
-        prog
-    )}";
-}
 
 # ─────────────────────────────────────────────────────────────────────
 # Negative controls — supported features must NOT trigger E5090

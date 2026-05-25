@@ -166,13 +166,20 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
     return None;
 }
 
-"""Bootstrap admin UI - copy pre-built bundle to admin_dist_dir if needed.
+"""Bootstrap admin UI - copy pre-built React bundle to admin_dist_dir
+if needed.
 
 Skips when the destination index.html is at least as new as the source,
 so normal restarts don't re-copy. Refreshes on package upgrade (source
 newer) or cold start (destination missing).
+
+Renamed from `bootstrap_admin` (A-05c) so it doesn't shadow
+`JacAPIServerAdmin.bootstrap_admin` once `MicroserviceGateway` inherits
+that mixin to register admin JSON endpoints. The two are complementary:
+this stages static assets; the inherited one creates the default admin
+user record.
 """
-impl MicroserviceGateway.bootstrap_admin -> None {
+impl MicroserviceGateway.bootstrap_admin_ui -> None {
     admin_dist = Path(self.admin_dist_dir);
     dest_index = admin_dist / "index.html";
 
@@ -183,7 +190,28 @@ impl MicroserviceGateway.bootstrap_admin -> None {
         src_index = bundled_dist / "index.html";
 
         if not (bundled_dist.exists() and src_index.exists()) {
-            logger.debug("No pre-built admin UI found in package");
+            # Editable install path: jac-scale was installed via
+            # `pip install -e`, so the release pipeline that pre-builds
+            # `_dist/` never ran. If the destination already has an
+            # index.html (test fixture, previous boot, manual build),
+            # respect it; otherwise fall back to the inherited
+            # `build_admin_client` which invokes `jac build main.jac`
+            # in `admin/ui/`. Drops the need for jacBuilder-style
+            # `RUN jac run scripts/build_admin_ui.jac` workarounds.
+            if dest_index.exists() {
+                return;
+            }
+            logger.info(
+                "No pre-built admin _dist - building from source via "
+                "JacAPIServerAdmin.build_admin_client"
+            );
+            if not self.build_admin_client() {
+                logger.warning(
+                    "Admin UI build failed - the static UI will be "
+                    "unavailable. Install bun + jac-client, or use a "
+                    "wheel install of jac-scale."
+                );
+            }
             return;
         }
 
@@ -556,7 +584,28 @@ impl MicroserviceGateway.setup -> FastAPI {
     self.app = FastAPI(title="Jac Microservice Gateway");
     gw = self;
 
-    self.bootstrap_admin();
+    self.bootstrap_admin_ui();
+    # A-05c: register the admin JSON endpoints (/admin/login, /admin/me,
+    # /admin/users, etc.) on this gateway's FastAPI app so the admin
+    # React bundle can actually authenticate + hit its APIs.
+    # Without this, the static UI loads but every API call falls through
+    # to the SPA-fallback and React gets HTML where it expected JSON.
+    # Failure is non-fatal: in environments without Mongo/Redis (raw dev
+    # mode), the gateway still serves traffic, just without admin auth.
+    try {
+        self._install_admin_api();
+    } except Exception as e {
+        # Roll back any partial install (self.server gets assigned
+        # before any of the calls that can fail like UserManager init).
+        # Without this reset, the dispatcher would see server != None and
+        # delegate /admin/* to FastAPI even though no routes were
+        # registered, breaking the static-UI fallback.
+        self.server = None;
+        logger.warning(
+            "Admin JSON API not installed - admin UI will be read-only "
+            f"static. Cause: {type(e).__name__}: {e}"
+        );
+    }
 
     # Install the trace-id log filter once when the gateway starts up
     # so every subsequent log line gets a [trace=...] prefix.
@@ -626,6 +675,28 @@ impl MicroserviceGateway.setup -> FastAPI {
             } elif path == "/docs" {
                 svc_label = "__docs__";
                 resp = gw.handle_docs();
+            } elif path == "/admin" or path.startswith("/admin/") {
+                # A-05c: when the admin JSON API has been installed,
+                # JFastApiServer has registered FastAPI routes for
+                # /admin/login, /admin/me, /admin/users, etc., plus a
+                # catchall `/admin/{path:path}` that performs SPA asset
+                # + index.html fallback. Delegate to FastAPI's
+                # router via call_next so those routes can match. If
+                # the install failed (Mongo unreachable etc.), fall
+                # back to the static-asset handler so the UI still
+                # loads read-only.
+                svc_label = "__admin__";
+                admin_resp: Response | None = None;
+                if gw.server is not None {
+                    admin_resp = await call_next(request);
+                } else {
+                    admin_resp = gw.handle_admin(path);
+                }
+                if admin_resp is None {
+                    import from jac_scale.microservices.runtime.errors { not_found }
+                    admin_resp = not_found(path);
+                }
+                resp = admin_resp;
             } else {
                 # Prefix-match first so we can label the service name on
                 # proxy hits even before handle_proxy gets the Response.
@@ -639,13 +710,6 @@ impl MicroserviceGateway.setup -> FastAPI {
                     if builtin is not None {
                         svc_label = "__builtin__";
                         resp = builtin;
-                    }
-                }
-                if resp is None {
-                    admin = gw.handle_admin(path);
-                    if admin is not None {
-                        svc_label = "__admin__";
-                        resp = admin;
                     }
                 }
                 if resp is None {
@@ -751,4 +815,65 @@ impl MicroserviceGateway.start -> None {
     server = uvicorn.Server(config);
     install_signal_drain(server, timeout_s=drain_timeout);
     server.run();
+}
+
+
+"""A-05c: install the admin JSON endpoints on this gateway's FastAPI app.
+
+Creates a `JFastApiServer` instance that *wraps the gateway's existing
+FastAPI app* (instead of constructing a new one), then calls the
+`register_admin_endpoints` method inherited from `JacAPIServerAdmin`.
+The method queues JEndPoints via `self.server.add_endpoint(...)` which
+the subsequent `self.server.create_server()` materializes into actual
+FastAPI routes on `self.server.app` - same object as `self.app`, so
+the admin routes coexist with the gateway's dispatcher middleware.
+
+Failure modes (any exception bubbles up to caller's try/except):
+  - Mongo unreachable: UserManager init can't bootstrap; admin auth dead
+  - `jac_scale.admin` import failure: no admin module bundled in this
+    install path (theoretical; only happens if jac-scale is installed
+    without the admin submodule)
+  - JFastApiServer middleware double-attach: gateway already has a
+    middleware stack; the JFastApi `jwt_validation_middleware` it adds
+    overlays before our dispatcher in the FastAPI middleware order. This
+    means admin Authorization headers get validated before the dispatcher
+    sees the request - intentional, the dispatcher relies on the JWT
+    decode having already populated request.state.
+
+Side-effect: any subsequent request to /admin/* on the gateway carries
+JWT validation. /admin/login and /admin/reset-password are explicitly
+exempted by JFastApiServer's middleware (they need to issue tokens, so
+they bypass the validate-then-extract flow).
+"""
+impl MicroserviceGateway._install_admin_api -> None {
+    import from jac_scale.jserver.jfast_api { JFastApiServer }
+    import from jac_scale.webhook { ApiKeyManager }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+
+    # 1. JFastApiServer wrapping OUR FastAPI app. The constructor accepts
+    #    an existing app, so JEndPoint registrations land on this gateway.
+    self.server = JFastApiServer(app=self.app);
+
+    # 2. UserManager + ApiKeyManager - the same pattern JacAPIServerCore
+    #    .postinit uses for the monolith. UserManager picks Mongo when
+    #    MONGODB_URI is set (K8s default), shelf-DB fallback otherwise.
+    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
+    self.server.set_user_manager(self.user_manager);
+    self._api_key_manager = ApiKeyManager();
+
+    # 3. Queue the JSON endpoints. The call appends JEndPoint specs
+    #    to self.server._endpoints (no FastAPI route is created yet).
+    self.register_admin_endpoints();
+
+    # 4. Materialize the queued endpoints as actual FastAPI routes.
+    #    JFastApiServer.add_endpoint() only enqueues; create_server()
+    #    runs execute() which calls _create_fastapi_route() for every
+    #    queued JEndPoint. Without this step the routes never exist
+    #    on the app and the dispatcher's call_next sees only 404s.
+    self.server.create_server();
+
+    logger.info(
+        "Admin JSON API installed on gateway "
+        "(/admin/login, /admin/me, /admin/users, ...)"
+    );
 }
