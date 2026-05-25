@@ -220,6 +220,35 @@ class JacEdge {
     static def detach(`edge: EdgeAnchor) -> None;
 }
 
+"""Backend seam for object-spatial side effects.
+
+The traversal engine talks to this plain interface (a normal method call the
+native/JS backends can lower to a vtable dispatch) instead of reaching for
+sv-only machinery directly. The default instance below carries the server
+behavior — bridging to the ExecutionContext's `CallState`/contextvar — so sv is
+unchanged; native/client builds will supply a subclass with trivial impls.
+
+This first slice covers the report sink (the `report` statement and the
+spawn-boundary report collection); persistence/permission/identity move behind
+the same seam in later changes.
+"""
+obj OspHost {
+    """Record a `report` value in the current walk scope."""
+    def record_report(expr: any) -> None;
+
+    """Open a report scope at a spawn. Returns an opaque token if this spawn
+        owns the scope (outermost), else None."""
+    def open_walk_scope -> object;
+
+    """Close a report scope: when the token marks the outermost spawn, collect
+        the accumulated reports onto the walker and tear the scope down."""
+    def close_walk_scope(scope: object, warch: WalkerArchetype) -> None;
+}
+
+"""Active object-spatial host. Defaults to the server-backed behavior; a
+native/client build swaps in a subclass with no-op persistence."""
+glob _osp_host = OspHost();
+
 """Jac Edge Operations."""
 class JacWalker {
     """Jac's visit stmt feature."""

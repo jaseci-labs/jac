@@ -517,19 +517,12 @@ impl JacWalker._visit_node_recursive(
 impl JacWalker.spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
     ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
     walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
+    report_scope = _osp_host.open_walk_scope();
     try {
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
@@ -565,24 +558,16 @@ impl JacWalker.spawn_call(
         walker_succeeded = True;
         return warch;
     } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # Flush deferred persistence at the outermost spawn boundary, on
-            # success only — mirrors ExecutionManager.spawn_walker so direct
-            # `walker spawn node` flows (tests, `jac run`, CLI) persist without
-            # callers having to call Jac.commit() manually. Skipped on
-            # exception so partial walker state is dropped with the L1 buffer.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
+        # Outermost spawn: collect reports onto the walker and tear the scope
+        # down (server-side this drains the CallState contextvar).
+        _osp_host.close_walk_scope(report_scope, warch);
+        # Flush deferred persistence at the outermost spawn boundary, on
+        # success only — mirrors ExecutionManager.spawn_walker so direct
+        # `walker spawn node` flows (tests, `jac run`, CLI) persist without
+        # callers having to call Jac.commit() manually. Skipped on exception so
+        # partial walker state is dropped with the L1 buffer.
+        if (report_scope is not None) and walker_succeeded {
+            ctx.mem.commit();
         }
     }
 }
@@ -730,19 +715,12 @@ impl JacWalker._async_visit_node_recursive(
 impl JacWalker.async_spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
     ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
     walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
+    report_scope = _osp_host.open_walk_scope();
     try {
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
@@ -786,20 +764,10 @@ impl JacWalker.async_spawn_call(
         walker_succeeded = True;
         return warch;
     } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # See spawn_call: flush deferred persistence on success only.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
+        _osp_host.close_walk_scope(report_scope, warch);
+        # See spawn_call: flush deferred persistence on success only.
+        if (report_scope is not None) and walker_succeeded {
+            ctx.mem.commit();
         }
     }
 }
@@ -1456,17 +1424,66 @@ impl JacBasics.field(
     return field(`init=`init);
 }
 
+"""Record a report value in the current walk scope.
+
+    Server behavior: enqueue onto the request-scoped CallState (a thread-safe
+    queue keyed by a contextvar), which the outermost spawn drains onto the
+    walker. A no-op when no scope is active.
+    """
+impl OspHost.record_report(expr: any) -> None {
+    ctx = JacRuntimeInterface.get_context();
+    call_state = ctx.call_state.get(None);
+    if call_state {
+        call_state.reports.put_nowait(expr);
+    }
+}
+
+"""Open a report scope at a spawn.
+
+    Server behavior: if no scope is active this spawn is the outermost — create
+    a CallState, bind it to the contextvar, and return the reset token. A nested
+    spawn returns None and shares the outermost scope.
+    """
+impl OspHost.open_walk_scope -> object {
+    import from jaclang.runtimelib.context { CallState }
+    ctx = JacRuntimeInterface.get_context();
+    if ctx.call_state.get(None) is None {
+        return ctx.call_state.set(CallState());
+    }
+    return None;
+}
+
+"""Close a report scope opened by `open_walk_scope`.
+
+    For the outermost spawn (truthy token) drain the accumulated reports onto
+    the walker and reset the contextvar; nested spawns (None) do nothing.
+    """
+impl OspHost.close_walk_scope(scope: object, warch: WalkerArchetype) -> None {
+    if scope is None {
+        return;
+    }
+    ctx = JacRuntimeInterface.get_context();
+    call_state = ctx.call_state.get(None);
+    if call_state {
+        reports = [];
+        while not call_state.reports.empty() {
+            item = call_state.reports.get_nowait();
+            if item is not call_state._sentinel {
+                reports.append(item);
+            }
+        }
+        warch.reports = reports;
+    }
+    ctx.call_state.reset(scope);
+}
+
 """Jac's report stmt feature."""
 impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
-    ctx = JacRuntimeInterface.get_context();
     if custom {
-        ctx.custom = expr;
+        JacRuntimeInterface.get_context().custom = expr;
     } else {
         JacConsole.get_console().print(expr);
-        call_state = ctx.call_state.get(None);
-        if call_state {
-            call_state.reports.put_nowait(expr);
-        }
+        _osp_host.record_report(expr);
     }
 }
 
