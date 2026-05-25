@@ -1520,9 +1520,68 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
         decorator_list.append(sem_decorator);
     }
     if isinstance(nd.signature, uni.EventSignature) {
+        event_sig = nd.signature;
         decorator_list.append(
             self.jaclib_obj(
-                'on_entry' if (nd.signature.event.name == Tok.KW_ENTRY) else 'on_exit'
+                'on_entry' if (event_sig.event.name == Tok.KW_ENTRY) else 'on_exit'
+            )
+        );
+        # Stamp the compiler-known trigger type (matching the param annotation
+        # built in exit_event_signature) so the runtime carries it as data
+        # instead of recovering it via `inspect`. Untyped events stamp None.
+        trigger_arg: ast3.expr = self.sync(ast3.Constant(value=None));
+        if event_sig.arch_tag_info {
+            # Reuse the generated py_ast node directly — the same established
+            # pattern exit_event_signature uses to place it as the param
+            # annotation. Do NOT deepcopy: synced py_ast nodes back-reference
+            # the whole unitree, so deepcopy clones the entire AST and blows the
+            # recursion limit (see jac_auto_lint_pass detach-parent note).
+            tinfo = cast(ast3.expr, self.py_ast_val(event_sig.arch_tag_info));
+            if (
+                isinstance(tinfo, ast3.Tuple)
+                and isinstance(event_sig.arch_tag_info, uni.TupleVal)
+            ) {
+                if (len(tinfo.elts) > 1) {
+                    trigger_arg = tinfo.elts[0];
+                    for elem in tinfo.elts[1:] {
+                        trigger_arg = self.sync(
+                            ast3.BinOp(
+                                left=trigger_arg, op=self.sync(ast3.BitOr()), right=elem
+                            )
+                        );
+                    }
+                } elif (len(tinfo.elts) == 1) {
+                    trigger_arg = tinfo.elts[0];
+                }
+            } else {
+                trigger_arg = tinfo;
+            }
+        }
+        # Wrap in a no-arg lambda so the trigger type resolves lazily (at first
+        # dispatch), not at class-decoration time. Abilities routinely name
+        # types defined later in the module (node<->walker mutual refs), so
+        # eager evaluation would NameError on the forward reference.
+        trigger_thunk = self.sync(
+            ast3.Lambda(
+                args=self.sync(
+                    ast3.arguments(
+                        posonlyargs=[],
+                        args=[],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[]
+                    )
+                ),
+                body=trigger_arg
+            )
+        );
+        decorator_list.append(
+            self.sync(
+                ast3.Call(
+                    func=self.jaclib_obj('set_trigger'),
+                    args=[trigger_thunk],
+                    keywords=[]
+                )
             )
         );
     }

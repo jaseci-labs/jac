@@ -1096,14 +1096,19 @@ impl JacBasics.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         (fn.name, fn) for fn in cls._jac_exit_funcs_
     );
     for func in cls.__dict__.values() {
-        if callable(func) {
+        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
+            # Trigger is compiler-stamped via @set_trigger; absent only for
+            # hand-built/dynamic archetypes, where DSFunc falls back to inspect.
+            dsfunc = JacRuntimeInterface.DSFunc(
+                func.__name__, func, func.__jac_trigger__
+            )
+                if func?.__jac_trigger__
+                else JacRuntimeInterface.DSFunc(func.__name__, func);
             if func?.__jac_entry {
-                entries[func.__name__] = JacRuntimeInterface.DSFunc(
-                    func.__name__, func
-                );
+                entries[func.__name__] = dsfunc;
             }
             if func?.__jac_exit {
-                exits[func.__name__] = JacRuntimeInterface.DSFunc(func.__name__, func);
+                exits[func.__name__] = dsfunc;
             }
         }
     }
@@ -1773,6 +1778,17 @@ impl JacBasics.on_entry(func: Callable) -> Callable {
 impl JacBasics.on_exit(func: Callable) -> Callable {
     setattr(func, '__jac_exit', True);
     return func;
+}
+
+"""Stamp an ability with its compiler-known trigger type (a lazy thunk)."""
+impl JacBasics.set_trigger(
+    trigger_thunk: Callable
+) -> Callable[([Callable], Callable)] {
+    def deco(func: Callable) -> Callable {
+        setattr(func, '__jac_trigger__', trigger_thunk);
+        return func;
+    }
+    return deco;
 }
 
 """Get the client bundle builder instance."""

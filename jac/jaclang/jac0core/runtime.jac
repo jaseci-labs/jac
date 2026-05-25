@@ -557,6 +557,18 @@ system,
 
     """Mark a method as jac exit with this decorator."""
     static def on_exit(func: Callable) -> Callable;
+
+    """Stamp an ability with its compiler-known trigger type.
+
+    Emitted by codegen for every `with <T> entry/exit` ability so the trigger
+    is carried as data rather than recovered at runtime via `inspect`. The
+    argument is a no-arg thunk (`lambda: <T>`) that resolves the trigger lazily
+    at first dispatch — deferring evaluation so forward-referenced types (e.g.
+    a node ability triggered by a walker defined later) resolve correctly. Read
+    by `make_archetype` into `ObjectSpatialFunction.trigger_override`."""
+    static def set_trigger(
+        trigger_thunk: Callable
+    ) -> Callable[([Callable], Callable)];
 }
 
 """Jac Client Bundle Operations - Generic interface for client bundling."""

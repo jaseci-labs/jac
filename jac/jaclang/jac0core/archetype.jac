@@ -14,6 +14,11 @@ glob logger = getLogger(__name__),
      TANCH = TypeVar('TANCH', bound='Anchor'),
      T = TypeVar('T');
 
+"""Sentinel marking an ObjectSpatialFunction whose trigger the compiler did
+not emit (e.g. dynamically-built archetypes) — `.trigger` then falls back to
+recovering it from the ability signature via `inspect`."""
+glob _NO_TRIGGER = object();
+
 """Access level enum."""
 enum AccessLevel {
     NO_ACCESS = -1,
@@ -231,7 +236,8 @@ obj Root(NodeArchetype) {
 """Object-Spatial Function."""
 obj ObjectSpatialFunction {
     has name: str,
-        func: Callable[([any, any], Any)];
+        func: Callable[([any, any], Any)],
+        trigger_override: any = _NO_TRIGGER;
 
     @cached_property
     def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);
