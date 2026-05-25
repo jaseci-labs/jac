@@ -22,6 +22,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
+| `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
 | `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
@@ -572,6 +573,110 @@ The Jac extension includes live graph visualization:
 Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
 
 For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
+
+---
+
+## Browser Automation
+
+### jac browse
+
+Drive a headless Chrome/Chromium over the Chrome DevTools Protocol (CDP): navigate, interact with elements, inspect the page, and capture screenshots. The driver is zero-dependency -- it speaks CDP over a hand-rolled WebSocket, so no Playwright or Selenium install is required. Interactions use real CDP input events (trusted clicks and keystrokes), not JavaScript injection.
+
+```bash
+jac browse <action> [args ...] [-s SESSION]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `action` | The action to perform (see table below) | Required |
+| `args` | Action-specific arguments (selector, url, text, path, ...) | `[]` |
+| `-s, --session` | Session name; each session is an isolated browser instance | `default` |
+
+**Actions:**
+
+| Action | Arguments | Description |
+|--------|-----------|-------------|
+| `open` | `[url]` | Launch a headless browser, optionally navigating to a URL |
+| `navigate` / `goto` | `<url>` | Navigate to a URL (adds `https://` if no scheme; waits for load) |
+| `click` | `<selector\|@ref>` | Real mouse click at the element center |
+| `type` | `<selector> <text>` | Focus an element and type text as per-character key events |
+| `fill` | `<selector> <text>` | Clear a field and insert text in one step |
+| `press` | `<key>` | Press a named key or character (`Enter`, `Tab`, `Ctrl+A`, ...) |
+| `get` | `url\|title\|text [selector]` | Read a page property (`get text` needs a selector) |
+| `eval` | `<expression>` | Run JavaScript and return the result as JSON |
+| `snapshot` | | Print the accessibility tree with `@e1`/`@e2` refs on interactive nodes |
+| `screenshot` | `[path]` | Capture the page as PNG (defaults to the cache directory) |
+| `state` | `save\|load <path>` | Save or restore cookies + localStorage as JSON |
+| `sessions` | | List known sessions with their PID, port, and liveness |
+| `close` | | Terminate the browser and clear session state |
+
+Outputs are printed raw so they pipe cleanly; JSON-valued results (`eval`, `get`) are serialized. Errors go to stderr and return exit code `1`.
+
+**Sessions and persistence:**
+
+A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
+
+**Refs vs. selectors:**
+
+`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. CSS selectors auto-wait until the element is visible and position-stable before acting.
+
+**Environment variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `JACBROWSER_SESSION` | Default session name (overridden by `-s`) |
+| `JACBROWSER_CHROME` | Path to the Chrome/Chromium binary |
+| `JACBROWSER_CACHE` | Cache directory for session, ref, and screenshot files |
+
+**Examples:**
+
+```bash
+# Launch a browser and open a page
+jac browse open example.com
+
+# Read page properties
+jac browse get title
+jac browse get text 'h1'
+
+# Inspect the accessibility tree -> assigns @e1, @e2, ... to interactive nodes
+jac browse snapshot
+#   @e1 link "Home"
+#   @e5 button "Send Message"
+
+# Interact by ref (from snapshot) or by CSS selector
+jac browse click @e5
+jac browse fill '#email' you@example.com
+jac browse press Enter
+
+# Run JavaScript
+jac browse eval "document.querySelectorAll('a').length"
+
+# Capture a screenshot
+jac browse screenshot ./page.png
+
+# Save and restore an authenticated session
+jac browse state save auth.json
+jac browse state load auth.json
+
+# Work in an isolated session
+jac browse -s work open example.com
+jac browse sessions
+#   * work     pid=12345 port=9222 [alive]
+
+# Close the browser
+jac browse close
+```
+
+A typical end-to-end flow chains these together:
+
+```bash
+jac browse open example.com
+jac browse snapshot                 # find the @ref of the field and button
+jac browse fill @e3 "hello"
+jac browse click @e5
+jac browse screenshot result.png
+jac browse close
+```
 
 ---
 
