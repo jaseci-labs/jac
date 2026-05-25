@@ -822,7 +822,7 @@ impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
-impl JacLangServer.diagnostics -> dict[str, list] {
+impl JacLangServer.diagnostics.getter -> dict[str, list] {
     with self._state_lock.read_lock() {
         all_errors = list(self.errors_had);
         all_warnings = list(self.warnings_had);

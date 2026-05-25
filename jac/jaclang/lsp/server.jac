@@ -76,11 +76,9 @@ obj TextDocument {
         _position_codec: PositionCodec by postinit;
 
     def postinit -> None;
-    @property
-    def source -> str;
 
-    @property
-    def lines -> list[str];
+    has source: str { getter; }
+    has lines: list[str] { getter; }
 
     def apply_change(change: any) -> None;
     def _apply_incremental_change(
@@ -127,11 +125,9 @@ obj LanguageServer {
         _shutdown_flag: bool = False;
 
     def postinit -> None;
-    @property
-    def workspace -> Workspace;
 
-    @property
-    def lsp -> LanguageServer;
+    has workspace: Workspace { getter; }
+    has lsp: LanguageServer { getter; }
 
     def feature(method: str, options: any = None) -> Callable;
     def start_io -> None;

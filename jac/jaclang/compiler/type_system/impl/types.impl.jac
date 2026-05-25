@@ -474,7 +474,7 @@ impl ClassType.__str__ -> str {
 }
 
 """Non-null view of the shared details (asserted)."""
-impl ClassType.shared -> ClassType.ClassDetailsShared {
+impl ClassType.shared.getter -> ClassType.ClassDetailsShared {
     assert self._shared is not None , "ClassType.shared accessed before construction (detached property ClassType?)";
     return self._shared;
 }
@@ -517,7 +517,7 @@ impl TypeBase.unknown -> UnknownType {
 }
 
 """Returns the category of the type."""
-impl TypeBase.category -> TypeCategory {
+impl TypeBase.category.getter -> TypeCategory {
     return self.CATEGORY;
 }
 
