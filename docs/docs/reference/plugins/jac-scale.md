@@ -2713,12 +2713,12 @@ Kubernetes uses readiness and liveness probes to decide when a pod is ready to s
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `health_check_path` | Endpoint probed by both readiness and liveness checks |
-| `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
-| `readiness_period` | `20` | Seconds between readiness checks |
-| `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
-| `liveness_period`  | `20` | Seconds between liveness checks |
-| `liveness_failure_threshold` | `80` | Consecutive failures before the pod is restarted |
+| `health_check_path` | `/docs` | Endpoint probed by both readiness and liveness checks |
+| `readiness_initial_delay` | `5` | Seconds to wait before first readiness check |
+| `readiness_period` | `5` | Seconds between readiness checks |
+| `liveness_initial_delay`  | `15` | Seconds to wait before first liveness check |
+| `liveness_period`  | `10` | Seconds between liveness checks |
+| `liveness_failure_threshold` | `3` | Consecutive failures before the pod is restarted |
 
 **To change in `jac.toml`:**
 
@@ -3241,7 +3241,7 @@ image_registry = "${ECR_REGISTRY}"
 
 Behavior:
 
-- **Local clusters** (Minikube, Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`minikube image load`, `k3d image import`, `kind load docker-image`).
+- **Local clusters** (Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`k3d image import`, `kind load docker-image`).
 - **Remote clusters**: `image_registry` must be set. The image is tagged as `<image_registry>/<app_name>:dev-<sha12>` and pushed before `kubectl apply`. The `<sha12>` suffix is a content hash of the source tree -- rebuilds change the tag, which triggers an automatic rolling update.
 - The registry value supports `${ENV_VAR}` interpolation so you can keep registry URLs out of source control. The local environment is read at deploy time.
 - Authentication to the registry is up to you (`docker login`, ECR `get-login-password`, GCR service account, etc.). `jac-scale` does not manage registry credentials.
@@ -3287,7 +3287,7 @@ Each entry is an [array of tables](https://toml.io/en/v1.0.0#array-of-tables) (n
 | `size` | yes (PVC mode) | Requested storage, e.g. `10Gi`. |
 | `access_mode` | yes (PVC mode) | One of `ReadWriteMany` (most common for cross-pod), `ReadWriteOnce`, `ReadOnlyMany`. ReadWriteMany requires an RWX-capable storage class. |
 | `storage_class` | yes (PVC mode) | The StorageClass to bind to. Cloud providers' RWX classes: AWS `efs-sc`, GCP Filestore CSI, Azure Files. |
-| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on k3d / kind / Minikube; will not survive a pod move on multi-node clusters. |
+| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on k3d / kind; will not survive a pod move on multi-node clusters. |
 
 PVC mode and hostPath mode are mutually exclusive per entry. K-track applies PVCs before Deployments so pods do not crash-loop on "PVC not found".
 
@@ -3401,23 +3401,6 @@ Recommended flow:
 2. Deploy with `jac start --scale`.
 3. Wait for pod readiness: `microk8s kubectl get pods -n <namespace> -w`.
 4. Open `http://localhost:30080/docs` only after the app pod is `Running` and `Ready`.
-
-### Minikube (Alternative)
-
-```bash
-# Install
-brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
-
-# Start cluster
-minikube start
-
-# Deploy your app
-jac start --scale
-
-# Access your app via minikube service
-minikube service jaseci -n default
-```
 
 ### Docker Desktop (Alternative)
 

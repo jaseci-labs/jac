@@ -2,12 +2,12 @@
 
 Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
-This tutorial prioritizes deploying to a local Kubernetes cluster with MicroK8s on Ubuntu (recommended). Docker Desktop, Minikube, and cloud providers (EKS, GKE, AKS) are also supported when `kubectl` is properly configured.
+This tutorial prioritizes deploying to a local Kubernetes cluster with MicroK8s on Ubuntu (recommended). Docker Desktop and cloud providers (EKS, GKE, AKS) are also supported when `kubectl` is properly configured.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
-> - Kubernetes cluster running (MicroK8s recommended; Docker Desktop, Minikube, or cloud provider also supported)
+> - Kubernetes cluster running (MicroK8s recommended; Docker Desktop or cloud provider also supported)
 > - `kubectl` configured
 > - jac-scale installed and enabled:
 >
@@ -129,11 +129,19 @@ jac start --scale --build
 
 **Requirements for production mode:**
 
-Create a `.env` file with your Docker credentials:
+Create a `.env` file with Docker credentials:
 
 ```env
 DOCKER_USERNAME=your-dockerhub-username
 DOCKER_PASSWORD=your-dockerhub-password-or-token
+```
+
+If you do not want to use `.env`, export these in your shell/CI and reference them in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+docker_username = "${DOCKER_USERNAME}"
+docker_password = "${DOCKER_PASSWORD}"
 ```
 
 ---
@@ -174,11 +182,11 @@ ingress_node_port = 30080
 
 | Key | Description | Default |
 |----------|-------------|---------|
-| `readiness_initial_delay` | Readiness probe delay (seconds) | `10` |
-| `readiness_period` | Readiness probe interval (seconds) | `20` |
-| `liveness_initial_delay` | Liveness probe delay (seconds) | `10` |
-| `liveness_period` | Liveness probe interval (seconds) | `20` |
-| `liveness_failure_threshold` | Consecutive liveness failures before restart | `80` |
+| `readiness_initial_delay` | Readiness probe delay (seconds) | `5` |
+| `readiness_period` | Readiness probe interval (seconds) | `5` |
+| `liveness_initial_delay` | Liveness probe delay (seconds) | `15` |
+| `liveness_period` | Liveness probe interval (seconds) | `10` |
+| `liveness_failure_threshold` | Consecutive liveness failures before restart | `3` |
 
 ### Database Options
 
@@ -217,12 +225,14 @@ These are runtime environment behaviors used in Kubernetes mode:
 - `POD_NAMESPACE`: used to resolve in-cluster namespace for service DNS.
 - `.env` pass-through: `jac start --scale` loads `.env`; for Kubernetes deploys,
   `.env` keys are injected into app pod environment variables.
+- Direct env overrides read by jac-scale runtime:
+  `MONGODB_URI`, `REDIS_URL`, `SYSTEM_USER_PASSWORD`, `EMAILER_SMTP_PASSWORD`.
 
 ---
 
 ## Remote Clusters and Image Registry
 
-Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
+Local clusters (Docker Desktop, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
 
 For a remote cluster, set `image_registry` in `jac.toml` so the build pipeline pushes there before applying manifests:
 
@@ -252,7 +262,7 @@ size = "10Gi"
 access_mode = "ReadWriteMany"
 storage_class = "efs-sc"
 
-# OR for local dev clusters (k3d/kind/minikube), use a hostPath instead:
+# OR for local dev clusters (k3d/kind), use a hostPath instead:
 # host_path = "/var/lib/myapp-workspace"
 ```
 

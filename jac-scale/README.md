@@ -42,8 +42,8 @@ Whether you're developing locally with `jac start` or deploying to production wi
 ## Prerequisites
 
 - kubenetes(K8s) installed
-  - [Minikube Kubernetes](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download/) (for Windows/Linux)
-  - [Docker Desktop with Kubernetes](https://www.docker.com/resources/kubernetes-and-docker/) (alternative for Windows - easier setup)
+  - [MicroK8s](https://microk8s.io/) (recommended for local setups)
+  - [Docker Desktop with Kubernetes](https://www.docker.com/resources/kubernetes-and-docker/) (alternative for Windows/macOS)
 
 **Note:** Kubernetes is only needed if you are planning to use `jac start --scale`. If you only want to use `jac start`, Kubernetes is not required.
 
@@ -199,21 +199,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - [Official MicroK8s installation guide](https://microk8s.io/)
 - [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
-**Option B: Minikube**
-
-```bash
-# Install
-brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
-
-# Start cluster
-minikube start
-
-# Access your app via minikube service
-minikube service jaseci -n default
-```
-
-**Option C: Docker Desktop with Kubernetes (Windows - Recommended)**
+**Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
@@ -399,21 +385,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - [Official MicroK8s installation guide](https://microk8s.io/)
 - [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
-**Option B: Minikube**
-
-```bash
-# Install
-brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
-
-# Start cluster
-minikube start
-
-# Access your app via minikube service
-minikube service jaseci -n default
-```
-
-**Option C: Docker Desktop with Kubernetes (Windows - Recommended)**
+**Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
@@ -509,34 +481,34 @@ async walker FetchData {
 
 ## Configuration Options
 
-### Optional Environment Variables
+### Kubernetes Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `APP_NAME` | Name of your JAC application | `jaseci` |
-| `DOCKER_USERNAME` | DockerHub username for pushing the image | - |
-| `DOCKER_PASSWORD` | DockerHub password or access token | - |
-| `K8s_NAMESPACE` | Kubernetes namespace to deploy the application | `default` |
-| `ingress_node_port` | NodePort for the NGINX ingress controller used by local Kubernetes access | `30080` |
-| `K8s_CPU_REQUEST` | CPU request for the application container | - |
-| `K8s_CPU_LIMIT` | CPU limit for the application container | - |
-| `K8s_MEMORY_REQUEST` | Memory request for the application container | - |
-| `K8s_MEMORY_LIMIT` | Memory limit for the application container | - |
-| `K8s_READINESS_INITIAL_DELAY` | Seconds before readiness probe first checks the pod | `10` |
-| `K8s_READINESS_PERIOD` | Seconds between readiness probe checks | `20` |
-| `K8s_LIVENESS_INITIAL_DELAY` | Seconds before liveness probe first checks the pod | `10` |
-| `K8s_LIVENESS_PERIOD` | Seconds between liveness probe checks | `20` |
-| `K8s_LIVENESS_FAILURE_THRESHOLD` | Consecutive liveness probe failures before restart | `80` |
-| `K8s_MONGODB` | Whether MongoDB is needed (`True`/`False`) | `True` |
-| `K8s_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
-| `MONGODB_URI` | URL of MongoDB database | - |
-| `REDIS_URL` | URL of Redis database | - |
-| `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
-| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey_for_testing_only!'` |
-| `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
-| `SSO_HOST` | SSO host URL | `'http://localhost:8000/sso'` |
-| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
-| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
+Use `[plugins.scale.kubernetes]` in `jac.toml`.
+
+| TOML Key | Description | Default |
+|----------|-------------|---------|
+| `app_name` | Name of your JAC application | `jaseci` |
+| `namespace` | Kubernetes namespace to deploy the application | `default` |
+| `ingress_node_port` | NodePort for local ingress access | `30080` |
+| `docker_username` | DockerHub username for image push | `""` |
+| `docker_password` | DockerHub password/token for image push | `""` |
+| `cpu_request` | CPU request for the application container | `None` |
+| `cpu_limit` | CPU limit for the application container | `None` |
+| `memory_request` | Memory request for the application container | `None` |
+| `memory_limit` | Memory limit for the application container | `None` |
+| `readiness_initial_delay` | Seconds before first readiness probe | `5` |
+| `readiness_period` | Seconds between readiness probes | `5` |
+| `liveness_initial_delay` | Seconds before first liveness probe | `15` |
+| `liveness_period` | Seconds between liveness probes | `10` |
+| `liveness_failure_threshold` | Consecutive liveness failures before restart | `3` |
+| `mongodb_enabled` | Whether MongoDB is needed (`True`/`False`) | `True` |
+| `redis_enabled` | Whether Redis is needed (`True`/`False`) | `True` |
+
+Sensitive values and env handling:
+
+- Use environment-backed interpolation in `jac.toml` for secrets, e.g. `docker_password = "${DOCKER_PASSWORD}"`.
+- Runtime DB overrides are read directly from env: `MONGODB_URI`, `REDIS_URL`.
+- Additional runtime secret env overrides: `SYSTEM_USER_PASSWORD`, `EMAILER_SMTP_PASSWORD`.
 
 ## Deployment Modes
 
@@ -705,7 +677,7 @@ When you run `jac start --scale`, the following steps are executed:
 
 - Check service exposure: `kubectl get svc -n <namespace>`
 - Verify NodePort is not blocked by firewall
-- For Minikube/local clusters, access through ingress NodePort: `http://localhost:30080`
+- For local clusters, access through ingress NodePort: `http://localhost:30080`
 
 **Build failures:**
 
