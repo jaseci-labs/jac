@@ -2150,6 +2150,58 @@ test "jir cache computes mro for subtype checking" {
     }
 }
 
+"""Regression: JIR cache must preserve HasVar.accessors None vs empty list.
+
+A plain `has` field has accessors=None; a native property (`has x: T { getter; setter; }`)
+has a non-empty accessors list. The accessors field is serialised as NODE_LIST, which
+cannot distinguish None from [] -- both round-trip to []. On a cache hit a plain field's
+accessors became [], so the property classifier saw a setter-less property and falsely
+raised E1005 on assignment.
+"""
+test "jir cache preserves plain field vs property accessors" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Box has a plain field `data` next to a native getter/setter property `value`.
+        with open(os.path.join(tmpdir, "lib.jac"), "w") as f {
+            f.write(
+                "obj Box {\n"
+                "    has data: int = 0,\n"
+                "        _v: int = 0,\n"
+                "        value: int {\n"
+                "            getter { return self._v; }\n"
+                "            setter(x: int) { self._v = x; }\n"
+                "        }\n"
+                "}\n"
+            );
+        }
+        with open(os.path.join(tmpdir, "main.jac"), "w") as f {
+            f.write(
+                "import from lib { Box }\n"
+                "with entry { b = Box(); b.data = 5; print(b.data); }\n"
+            );
+        }
+        main_path = os.path.join(tmpdir, "main.jac");
+        # Run check twice: first creates cache, second uses it
+        outputs: list[str] = [];
+        for _ in range(2) {
+            JacRuntime.program = JacProgram();
+            (cap_out, cap_err, old_out, old_err) = _capture_output();
+            try {
+                analysis.check([main_path]);
+                outputs.append(cap_out.getvalue() + cap_err.getvalue());
+            } finally {
+                _restore_output(old_out, old_err);
+            }
+        }
+        # E1005 "read-only property" appears if accessors None->[] makes `data` look like a property
+        assert "read-only property" not in outputs[1] , f"JIR cache lost plain-field accessors:\n{outputs[
+            1
+        ]}";
+    }
+}
+
 """jac check on .impl.jac files should compile the base file and filter errors."""
 test "jac check on impl file redirects to base and filters errors" {
     import from jaclang.jac0core.program { JacProgram }

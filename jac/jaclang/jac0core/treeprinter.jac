@@ -361,19 +361,9 @@ class SymbolTree {
         children: (list[SymbolTree] | None) = None
     ) -> None;
 
-    """Get parent node."""
-    @property
-    def parent(self: SymbolTree) -> (SymbolTree | None) {
-        return self.__parent;
-    }
-
-    """Set parent node."""
-    @parent.setter
-    def parent(self: SymbolTree, parent_node: (SymbolTree | None)) {
-        if parent_node {
-            self.__parent = parent_node;
-            parent_node.kid.append(self);
-        }
+    has parent: (SymbolTree | None) {
+        getter;
+        setter(self: SymbolTree, parent_node: (SymbolTree | None));
     }
 }
 

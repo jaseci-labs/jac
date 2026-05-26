@@ -27,6 +27,18 @@ import from jaclang.cli.guide_store {
     get_guide as gs_get,
     search_guides as gs_search
 }
+import from jaclang.cli.browser_engine {
+    cmd_open as br_open,
+    cmd_navigate as br_navigate,
+    cmd_snapshot as br_snapshot,
+    cmd_click as br_click,
+    cmd_type as br_type,
+    cmd_fill as br_fill,
+    cmd_press as br_press,
+    cmd_get as br_get,
+    cmd_eval as br_eval,
+    cmd_close as br_close
+}
 
 #===============================================================================
 # MODEL & SESSION STATE
@@ -62,7 +74,7 @@ glob yolo_mode: bool = True,
 # Tool names grouped for the turn-stat breakdown: tools that mutate files,
 # and tools that execute code or shell commands. Everything else is a read.
 glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
-     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app"},
+     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app","browse_open","browse_navigate","browse_click","browse_type","browse_fill","browse_press","browse_eval","browse_close"},
      # Set True by `run_turn` when the turn issued a file-writing tool call, so
      # the one-shot verify-and-continue guard only kicks in when code changed.
      _turn_wrote: bool = False;
@@ -646,13 +658,198 @@ sem context_slice = "Get a typed context slice for a symbol: its definition, the
 sem context_slice.name = "The symbol to build a context slice around.";
 
 
+#===============================================================================
+# BROWSER TOOLS
+#===============================================================================
+# A headless browser, driven over the Chrome DevTools Protocol by the built-in
+# `jac browse` engine -- no npm/pip install. The agent uses these to QA a
+# running web app: open its URL, read the page as an accessibility tree, then
+# act on the @refs that snapshot assigns. Every call reconnects to one shared,
+# isolated browser session, so they are all serialized below.
+glob _BROWSE_SESSION: str = "jac-ai";
+
+
+"""Turn a browser-engine exception into a tool-result string with a next step."""
+def _browse_err(e: Exception) -> str {
+    msg = str(e);
+    if "no live browser" in msg {
+        return "ERROR: no browser is open -- call browse_open(url) first.";
+    }
+    return f"ERROR: {msg}";
+}
+
+
+def browse_open(url: str) -> str {
+    if url and not confirm(f"open a browser at {url}") {
+        return "DENIED: the user declined opening the browser.";
+    }
+    try {
+        return br_open(_BROWSE_SESSION, url or None);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
+sem browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
+
+
+def browse_navigate(url: str) -> str {
+    if not confirm(f"navigate the browser to {url}") {
+        return "DENIED: the user declined this navigation.";
+    }
+    try {
+        return br_navigate(_BROWSE_SESSION, url);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_navigate = "Navigate the open browser to a different URL and wait for it to load.";
+sem browse_navigate.url = "The URL to navigate to.";
+
+
+def browse_snapshot -> str {
+    try {
+        return truncate(br_snapshot(_BROWSE_SESSION));
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
+
+
+def browse_click(target: str) -> str {
+    if not confirm(f"click {target} in the browser") {
+        return "DENIED: the user declined this click.";
+    }
+    try {
+        return br_click(_BROWSE_SESSION, target);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
+sem browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
+
+
+def browse_type(target: str, text: str) -> str {
+    if not confirm(f"type into {target} in the browser") {
+        return "DENIED: the user declined this input.";
+    }
+    try {
+        return br_type(_BROWSE_SESSION, target, text);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_type = "Focus an element and type text into it as real key events, appending to whatever is already there.";
+sem browse_type.target = "An @ref from browse_snapshot, or a CSS selector.";
+sem browse_type.text = "The text to type.";
+
+
+def browse_fill(target: str, text: str) -> str {
+    if not confirm(f"fill {target} in the browser") {
+        return "DENIED: the user declined this input.";
+    }
+    try {
+        return br_fill(_BROWSE_SESSION, target, text);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_fill = "Clear a field and set its value to the given text. Prefer this over browse_type for form fields.";
+sem browse_fill.target = "An @ref from browse_snapshot, or a CSS selector.";
+sem browse_fill.text = "The text to set the field to.";
+
+
+def browse_press(key: str) -> str {
+    if not confirm(f"press {key} in the browser") {
+        return "DENIED: the user declined this key press.";
+    }
+    try {
+        return br_press(_BROWSE_SESSION, key);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_press = "Press a single key in the browser, e.g. 'Enter', 'Tab', 'Escape', or a chord like 'Ctrl+A'.";
+sem browse_press.key = "The key or chord to press.";
+
+
+def browse_get(what: str, selector: str) -> str {
+    try {
+        return truncate(str(br_get(_BROWSE_SESSION, what, selector or None)));
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_get = "Read a property of the current page: 'url', 'title', or 'text' (the visible text of the element named by selector).";
+sem browse_get.what = "One of 'url', 'title', or 'text'.";
+sem browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
+
+
+def browse_eval(expression: str) -> str {
+    if not confirm(f"run JavaScript in the browser: {expression}") {
+        return "DENIED: the user declined this script.";
+    }
+    try {
+        return truncate(str(br_eval(_BROWSE_SESSION, expression)));
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_eval = "Evaluate a JavaScript expression in the page and return its result. Use this to inspect page state or check for errors, e.g. \"document.querySelectorAll('.error').length\".";
+sem browse_eval.expression = "A JavaScript expression to evaluate.";
+
+
+def browse_close -> str {
+    try {
+        return br_close(_BROWSE_SESSION);
+    } except Exception as e {
+        return _browse_err(e);
+    }
+}
+
+sem browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
+
+
+"""Close the agent's browser session if one was opened (best-effort)."""
+def _browse_shutdown {
+    try {
+        br_close(_BROWSE_SESSION);
+    } except Exception {
+    # The browser may never have been opened this session; nothing to clean.
+    }
+}
+
+
 # Side-effecting tools must never run concurrently; byLLM keeps any parallel
-# batch that contains one of these sequential.
+# batch that contains one of these sequential. Every browser tool reconnects to
+# the same shared Chrome, so they are all serialized to avoid interleaving on
+# the page.
 with entry {
     mark_serialize(write_file);
     mark_serialize(edit_file);
     mark_serialize(run_command);
     mark_serialize(start_app);
+    mark_serialize(browse_open);
+    mark_serialize(browse_navigate);
+    mark_serialize(browse_snapshot);
+    mark_serialize(browse_click);
+    mark_serialize(browse_type);
+    mark_serialize(browse_fill);
+    mark_serialize(browse_press);
+    mark_serialize(browse_get);
+    mark_serialize(browse_eval);
+    mark_serialize(browse_close);
 }
 
 #===============================================================================
@@ -688,6 +885,9 @@ Work like this:
 - Keep files focused and modest in size; split large archetypes into impl
   files. For a large file, write a skeleton first, then fill it with edit_file.
 - Make minimal, targeted changes. Prefer edit_file over rewriting a whole file.
+- Drive a browser when it helps. A headless browser is built in: use browse_open
+  to load a running web app, browse_snapshot to read the page, and the
+  browse_click/fill/type/press tools to exercise user flows. No install needed.
 - Fix as you go. Every write_file and edit_file result reports the compiler
   errors and warnings your edit caused -- in the file you wrote and in any
   other file it affects. Fix them before moving on; never leave a write with
@@ -700,19 +900,18 @@ order, and fix anything it surfaces (then run the pass again):
 1. `jac check .` -- a whole-project type-check. It must report zero errors.
 2. For any runnable app, call start_app and confirm it boots with no errors in
    the startup logs.
-3. For a web or fullstack app, also QA it in a real browser with the
-   `agent-browser` CLI, driven through run_command:
-   - Check the CLI first: `command -v agent-browser`. If it is missing, tell
-     the user, suggest they run `npm i -g agent-browser`, skip the browser
-     step, and do NOT install it yourself.
-   - If it is installed, start the server detached so it stays up during the
-     test -- from the app's directory run
-     `nohup jac start <entry> > /tmp/jac_qa.log 2>&1 &` -- wait a few seconds,
-     then read /tmp/jac_qa.log for the URL it serves on.
-   - Drive the browser: `agent-browser open <url>`, `agent-browser snapshot`
-     to read the page, exercise the main user flows with click/type/fill, and
-     check for console or on-page errors. Take an `agent-browser screenshot`.
-   - Stop the server when finished: `pkill -f "jac start"`.
+3. For a web or fullstack app, also QA it in a real browser with the built-in
+   browse_* tools (a headless browser is built in -- nothing to install):
+   - Start the server detached so it stays up during the test -- from the app's
+     directory run `nohup jac start <entry> > /tmp/jac_qa.log 2>&1 &` through
+     run_command, wait a few seconds, then read /tmp/jac_qa.log for the URL it
+     serves on.
+   - browse_open(url), then browse_snapshot to read the page. Exercise the main
+     user flows with browse_click / browse_fill / browse_type / browse_press,
+     calling browse_snapshot again after each step to see the result.
+   - Confirm the expected content rendered and check for errors -- use
+     browse_eval to inspect page state (e.g. count error nodes) when in doubt.
+   - browse_close when finished, then stop the server: `pkill -f "jac start"`.
 Once QA is clean, finish with a short plain-language summary of what you
 changed and why, plus one line on the QA you ran and that it passed.
 
@@ -820,7 +1019,17 @@ def ask(message: str) -> str by agent_model(
         jac_check,
         start_app,
         search_guides,
-        read_guide
+        read_guide,
+        browse_open,
+        browse_navigate,
+        browse_snapshot,
+        browse_click,
+        browse_type,
+        browse_fill,
+        browse_press,
+        browse_get,
+        browse_eval,
+        browse_close
     ],
     conversation=history,
     stream=True,
@@ -1406,6 +1615,7 @@ def run_agent(req: object) -> int {
         run_turn(initial_prompt);
         # Don't let a one-shot build exit on code that doesn't compile.
         verify_and_continue();
+        _browse_shutdown();
         return 0;
     }
 
@@ -1467,6 +1677,7 @@ def run_agent(req: object) -> int {
         run_turn(line);
     }
 
+    _browse_shutdown();
     console.print("Bye.");
     return 0;
 }
