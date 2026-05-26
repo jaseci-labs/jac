@@ -143,7 +143,7 @@ test "nodes_visited_by lists a walker's targets" {
 test "archetypes filters by kind" {
     ci = fresh();
     nodes = {a.name for a in ci.archetypes("node")};
-    assert nodes == {"User","Post"} , nodes;
+    assert nodes == {"User", "Post"} , nodes;
     walkers = {a.name for a in ci.archetypes("walker")};
     assert walkers == {"Crawler"} , walkers;
     shutil.rmtree(ci.proj_dir, ignore_errors=True);

@@ -523,7 +523,7 @@ impl LayoutPass._is_layout_compatible_type(
         if isinstance(type_node.target, uni.Name) {
             target_name = type_node.target.value;
         }
-        if target_name in {"list","dict","set","frozenset","tuple"} {
+        if target_name in {"list", "dict", "set", "frozenset", "tuple"} {
             # Validate element types
             if type_node?.right and type_node.right?.slices {
                 for sl in type_node.right.slices {

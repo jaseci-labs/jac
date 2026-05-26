@@ -37,7 +37,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
          "@types/react-dom": "^18.2.0"
      },
      # Legacy meta-package names (for migration)
-     LEGACY_META_PACKAGES = {"jac-client-node","@jac-client/dev-deps"};
+     LEGACY_META_PACKAGES = {"jac-client-node", "@jac-client/dev-deps"};
 
 # ============================================================================
 # DEPENDENCY MANAGEMENT HELPERS

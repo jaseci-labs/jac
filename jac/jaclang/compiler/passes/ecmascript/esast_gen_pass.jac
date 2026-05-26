@@ -141,7 +141,16 @@ glob _T = TypeVar('_T', bound=es.Node),
      # type of the receiver cannot be proven (issue #5508 / #5453), the
      # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
      # which dispatches to the native JS operation at runtime.
-     POLYMORPHIC_METHODS: set[str] = {"lower","upper","strip","lstrip","rstrip","append","extend","pop"},
+     POLYMORPHIC_METHODS: set[str] = {
+         "lower",
+         "upper",
+         "strip",
+         "lstrip",
+         "rstrip",
+         "append",
+         "extend",
+         "pop"
+     },
      LiteralValue = str | bool | int | float | None;
 
 """Name of the synthesized children accumulator local for a JSX `{...}`

@@ -39,7 +39,18 @@ import from jaclang.jac0core.jir {
 import from jaclang.jac0core.bccache { discover_annex_files }
 
 # Directories never worth compiling -- generated output, vendored deps, VCS.
-glob _SKIP_DIRS: set[str] = {"__pycache__","__jac_gen__",".git",".venv","venv","node_modules","build","dist",".mypy_cache",".pytest_cache"},
+glob _SKIP_DIRS: set[str] = {
+         "__pycache__",
+         "__jac_gen__",
+         ".git",
+         ".venv",
+         "venv",
+         "node_modules",
+         "build",
+         "dist",
+         ".mypy_cache",
+         ".pytest_cache"
+     },
      # Archetype keyword -> readable kind. Falls back to the raw token value.
      _ARCH_KIND: dict[str, str] = {
          "node": "node",

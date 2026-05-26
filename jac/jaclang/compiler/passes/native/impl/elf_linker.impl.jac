@@ -217,7 +217,7 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_X86_64_JUMP_SLOT,
             copy_rtype=R_X86_64_COPY,
             glob_dat_rtype=R_X86_64_GLOB_DAT,
-            gotpcrel_rtypes={R_X86_64_GOTPCREL,R_X86_64_REX_GOTPCRELX}
+            gotpcrel_rtypes={R_X86_64_GOTPCREL, R_X86_64_REX_GOTPCRELX}
         );
     } elif e_machine == EM_AARCH64 {
         return ArchConfig(
@@ -233,7 +233,7 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_AARCH64_JUMP_SLOT,
             copy_rtype=R_AARCH64_COPY,
             glob_dat_rtype=R_AARCH64_GLOB_DAT,
-            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE,R_AARCH64_LD64_GOT_LO12_NC}
+            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE, R_AARCH64_LD64_GOT_LO12_NC}
         );
     }
     return None;
@@ -639,7 +639,7 @@ impl ElfLinker.build_executable -> bytes {
     }
 
     # Identify external symbols
-    known_data_syms = {"stdin","stdout","stderr","environ"};
+    known_data_syms = {"stdin", "stdout", "stderr", "environ"};
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
     local_sym_map: dict[str, tuple[str, int]] = {};

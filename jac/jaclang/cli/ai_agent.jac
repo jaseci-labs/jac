@@ -73,8 +73,20 @@ glob yolo_mode: bool = True,
 
 # Tool names grouped for the turn-stat breakdown: tools that mutate files,
 # and tools that execute code or shell commands. Everything else is a read.
-glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
-     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app","browse_open","browse_navigate","browse_click","browse_type","browse_fill","browse_press","browse_eval","browse_close"},
+glob _WRITE_TOOLS: set[str] = {"write_file", "edit_file"},
+     _RUN_TOOLS: set[str] = {
+         "run_command",
+         "jac_check",
+         "start_app",
+         "browse_open",
+         "browse_navigate",
+         "browse_click",
+         "browse_type",
+         "browse_fill",
+         "browse_press",
+         "browse_eval",
+         "browse_close"
+     },
      # Set True by `run_turn` when the turn issued a file-writing tool call, so
      # the one-shot verify-and-continue guard only kicks in when code changed.
      _turn_wrote: bool = False;

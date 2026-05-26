@@ -454,6 +454,11 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
             parts.append(self.space());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
             parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.EventSignature) {
+            # Space it off the target name, else `start` + `with` -> `startwith`.
+            parts.append(self.space());
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -795,10 +800,13 @@ impl DocIRGenPass.exit_py_inline_code(nd: uni.PyInlineCode) -> None {
 impl DocIRGenPass.exit_assign_compr(nd: uni.AssignCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in nd.kid {
-        parts.append(i.gen.doc_ir);
+        if isinstance(i, uni.Token) and i.name == Tok.COMMA {
+            parts.append(doc.Text(", "));
+        } else {
+            parts.append(self.remove_all_spaces(i.gen.doc_ir));
+        }
     }
-    compact_doc = self.remove_all_spaces(self.concat(parts));
-    nd.gen.doc_ir = self.group(compact_doc);
+    nd.gen.doc_ir = self.group(self.concat(parts));
 }
 
 """Generate DocIR for filter comprehensions."""
@@ -1600,11 +1608,49 @@ impl DocIRGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
 
 """Generate DocIR for set values."""
 impl DocIRGenPass.exit_set_val(nd: uni.SetVal) -> None {
-    parts: list[doc.DocType] = [];
+    nd.gen.doc_ir = self.format_comma_collection(nd);
+}
+
+"""Lay out a comma-delimited literal: flat with a space after each comma, or,
+when the group breaks, one element per line wrapped in an indented block. Shared
+by list, set, and tuple literals so their comma handling cannot drift apart."""
+impl DocIRGenPass.format_comma_collection(nd: uni.UniNode) -> doc.DocType {
+    flat_parts: list[doc.DocType] = [];
     for i in nd.kid {
-        parts.append(i.gen.doc_ir);
+        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            flat_parts.append(i.gen.doc_ir);
+            flat_parts.append(self.space());
+        } else {
+            flat_parts.append(i.gen.doc_ir);
+        }
     }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    not_broke = self.concat(flat_parts, ast_node=nd);
+    broken_parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            broken_parts.append(i.gen.doc_ir);
+            broken_parts.append(self.hard_line());
+        } else {
+            broken_parts.append(i.gen.doc_ir);
+        }
+    }
+    if (len(broken_parts) >= 3) {
+        broke = self.concat(
+            [
+                broken_parts[0],
+                self.indent(
+                    self.concat([self.hard_line(), *broken_parts[1:-1]], ast_node=nd),
+                    ast_node=nd
+                ),
+                self.hard_line(),
+                broken_parts[-1]
+            ],
+            ast_node=nd
+        );
+    } else {
+        broke = self.concat(broken_parts, ast_node=nd);
+    }
+    return self.group(self.if_break(broke, not_broke), ast_node=nd);
 }
 
 """Generate DocIR for multiline strings."""
@@ -1620,38 +1666,7 @@ impl DocIRGenPass.exit_multi_string(nd: uni.MultiString) -> None {
 
 """Generate DocIR for tuple values."""
 impl DocIRGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-    }
-    not_broke = self.concat(parts);
-    parts = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.hard_line());
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-    }
-    if (len(parts) >= 3) {
-        broke = self.concat(
-            [
-                parts[0],
-                self.indent(self.concat([self.hard_line(), *parts[1:-1]])),
-                self.hard_line(),
-                parts[-1]
-            ]
-        );
-    } else {
-        broke = self.concat(parts);
-    }
-    nd.gen.doc_ir = self.group(self.if_break(broke, not_broke));
+    nd.gen.doc_ir = self.format_comma_collection(nd);
 }
 
 """Generate DocIR for finally statements."""
@@ -1865,42 +1880,7 @@ impl DocIRGenPass.exit_dict_val(nd: uni.DictVal) -> None {
 
 """Generate DocIR for list values."""
 impl DocIRGenPass.exit_list_val(nd: uni.ListVal) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-    }
-    not_broke = self.concat(parts, ast_node=nd);
-    parts = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.hard_line());
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-    }
-    if (len(parts) >= 3) {
-        broke = self.concat(
-            [
-                parts[0],
-                self.indent(
-                    self.concat([self.hard_line(), *parts[1:-1]], ast_node=nd),
-                    ast_node=nd
-                ),
-                self.hard_line(),
-                parts[-1]
-            ],
-            ast_node=nd
-        );
-    } else {
-        broke = self.concat(parts, ast_node=nd);
-    }
-    nd.gen.doc_ir = self.group(self.if_break(broke, not_broke), ast_node=nd);
+    nd.gen.doc_ir = self.format_comma_collection(nd);
 }
 
 """Generate DocIR for atom trailers."""
