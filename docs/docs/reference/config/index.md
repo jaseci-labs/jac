@@ -777,20 +777,40 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 
 ### jac-scale: Kubernetes
 
-Use `jac.toml` as the primary configuration source under `[plugins.scale.kubernetes]`.
-Legacy env-style names are shown for migration clarity.
+Use `jac.toml` as the source of truth under `[plugins.scale.kubernetes]`.
+Legacy `K8s_*` and `APP_NAME` environment-style names are no longer read as
+direct config inputs.
 
-| `jac.toml` Key | Legacy Env-Style Name | Description | Default |
-|----------------|------------------------|-------------|---------|
-| `app_name` | `APP_NAME` | Application name for K8s resources | `jaseci` |
-| `namespace` | `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `ingress_node_port` | `K8s_NODE_PORT` | Local ingress NodePort for app access | `30080` |
-| `cpu_request` | `K8s_CPU_REQUEST` | CPU resource request | None |
-| `cpu_limit` | `K8s_CPU_LIMIT` | CPU resource limit | None |
-| `memory_request` | `K8s_MEMORY_REQUEST` | Memory resource request | None |
-| `memory_limit` | `K8s_MEMORY_LIMIT` | Memory resource limit | None |
-| `docker_username` | `DOCKER_USERNAME` | DockerHub username | None |
-| `docker_password` | `DOCKER_PASSWORD` | DockerHub password/token | None |
+| `jac.toml` Key | Description | Default |
+|----------------|-------------|---------|
+| `app_name` | Application name for K8s resources | `jaseci` |
+| `namespace` | Kubernetes namespace | `default` |
+| `ingress_node_port` | Local ingress NodePort for app access | `30080` |
+| `container_port` | Container port exposed by the app | `8000` |
+| `cpu_request` | CPU resource request | `None` |
+| `cpu_limit` | CPU resource limit | `None` |
+| `memory_request` | Memory resource request | `None` |
+| `memory_limit` | Memory resource limit | `None` |
+| `readiness_initial_delay` | Readiness probe initial delay (seconds) | `10` |
+| `readiness_period` | Readiness probe period (seconds) | `20` |
+| `liveness_initial_delay` | Liveness probe initial delay (seconds) | `10` |
+| `liveness_period` | Liveness probe period (seconds) | `20` |
+| `liveness_failure_threshold` | Liveness probe failure threshold | `80` |
+| `mongodb_enabled` | Deploy MongoDB in cluster | `True` |
+| `redis_enabled` | Deploy Redis in cluster | `True` |
+| `min_replicas` | Minimum HPA replicas | `1` |
+| `max_replicas` | Maximum HPA replicas | `3` |
+| `cpu_utilization_target` | HPA CPU utilization target (%) | `50` |
+| `domain` | Domain used for TLS/ingress | `""` |
+| `cert_manager_email` | Email for cert-manager/ACME | `""` |
+| `service_account_name` | Pre-created ServiceAccount name | `""` |
+
+Kubernetes runtime env behavior (not `jac.toml` keys):
+
+- `KUBERNETES_SERVICE_HOST` indicates in-cluster mode.
+- `POD_NAMESPACE` is used for namespace resolution in service DNS.
+- During `jac start --scale`, project `.env` keys are passed into app pod
+  environment variables.
 
 ---
 
