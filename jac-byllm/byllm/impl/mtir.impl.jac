@@ -147,7 +147,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # `by llm(system_prompt=...)` extends base. Accepts str or zero-arg callable.
     call_system_prompt = call_params.get("system_prompt");
     if callable(call_system_prompt) {
-        try { call_system_prompt = call_system_prompt(); } except Exception { call_system_prompt = None; }
+        try { 
+            call_system_prompt = call_system_prompt();
+        } except Exception { 
+            call_system_prompt = None;
+        }
     }
     if call_system_prompt {
         system_content += "\n\n" + str(call_system_prompt);
