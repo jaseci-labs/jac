@@ -1102,6 +1102,50 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
+    # --- Callable struct field: `obj.field(args)` where `field` is a
+    # function-pointer field (not a method). Load the pointer and indirect-call.
+    # (Method dispatch handles real methods; fields are checked here first.)
+    _fld_struct = self.type_var_map.get(target_name)
+        if target_name is not None
+        else None;
+    if (
+        _fld_struct is not None
+        and _fld_struct in self.struct_field_types
+        and method_name in self.struct_field_types[_fld_struct]
+    ) {
+        _fld_ty = self.struct_field_types[_fld_struct][method_name];
+        if (
+            isinstance(_fld_ty, ir.PointerType)
+            and isinstance(_fld_ty.pointee, ir.FunctionType)
+        ) {
+            _obj_v = self._codegen_expr(trailer.target);
+            if _obj_v is not None {
+                _idx = self.struct_field_indices[_fld_struct][method_name];
+                _fld_ptr = self.builder.gep(
+                    _obj_v,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _idx)],
+                    name=f"{method_name}.fldptr"
+                );
+                _fnp = self.builder.load(_fld_ptr, name=f"{method_name}.fn");
+                _fn_ty = _fld_ty.pointee;
+                _cargs: list[ir.Value] = [];
+                for (_i, _p) in enumerate(nd.params or []) {
+                    _pv = self._codegen_expr(_p);
+                    if _pv is not None {
+                        if _i < len(_fn_ty.args) {
+                            _pv = self._coerce_type(_pv, _fn_ty.args[_i]);
+                        }
+                        _cargs.append(_pv);
+                    }
+                }
+                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                if isinstance(_fn_ty.return_type, ir.VoidType) {
+                    return None;
+                }
+                return _r;
+            }
+        }
+    }
     # --- Native stdlib module method calls: sys.exit() ---
     if (
         target_name == "sys"
