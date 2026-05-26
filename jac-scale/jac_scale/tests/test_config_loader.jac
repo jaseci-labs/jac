@@ -77,15 +77,15 @@ test "get_scale_config implements path-keyed caching" {
             "app_name = \"app1\"\n"
             "image_registry = \"registry1\"\n"
             "mongodb_root_username = \"user1\"\n"
-            "mongodb_root_password = \"pwd1\"\n"
+            "mongodb_root_password = \"mock-mongodb-root-password-1\"\n"
             "redis_username = \"redisuser1\"\n"
-            "redis_password = \"redispwd1\"\n"
+            "redis_password = \"mock-redis-password-1\"\n"
             "domain = \"domain1.local\"\n"
             "cert_manager_email = \"email1@domain1.local\"\n\n"
             "[plugins.scale.database]\n"
-            "redis_url = \"redis://user1:pwd1@host1:6379\"\n\n"
+            "redis_url = \"redis://user1:mock-redis-url-password-1@host1:6379\"\n\n"
             "[plugins.scale.secrets]\n"
-            "api_key = \"secret_key_1\"\n"
+            "api_key = \"mock-api-key-1\"\n"
         );
         toml1.write_text(toml1_content);
         toml2 = tmp2 / "jac.toml";
@@ -94,15 +94,15 @@ test "get_scale_config implements path-keyed caching" {
             "app_name = \"app2\"\n"
             "image_registry = \"registry2\"\n"
             "mongodb_root_username = \"user2\"\n"
-            "mongodb_root_password = \"pwd2\"\n"
+            "mongodb_root_password = \"mock-mongodb-root-password-2\"\n"
             "redis_username = \"redisuser2\"\n"
-            "redis_password = \"redispwd2\"\n"
+            "redis_password = \"mock-redis-password-2\"\n"
             "domain = \"domain2.local\"\n"
             "cert_manager_email = \"email2@domain2.local\"\n\n"
             "[plugins.scale.database]\n"
-            "redis_url = \"redis://user2:pwd2@host2:6379\"\n\n"
+            "redis_url = \"redis://user2:mock-redis-url-password-2@host2:6379\"\n\n"
             "[plugins.scale.secrets]\n"
-            "api_key = \"secret_key_2\"\n"
+            "api_key = \"mock-api-key-2\"\n"
         );
         toml2.write_text(toml2_content);
         # Load configurations
@@ -118,26 +118,26 @@ test "get_scale_config implements path-keyed caching" {
         assert cfg1.load().get("kubernetes", {}).get("image_registry") == "registry1";
         assert cfg2.load().get("kubernetes", {}).get("image_registry") == "registry2";
         # Database URLs
-        assert cfg1.get_database_config()["redis_url"] == "redis://user1:pwd1@host1:6379";
-        assert cfg2.get_database_config()["redis_url"] == "redis://user2:pwd2@host2:6379";
+        assert cfg1.get_database_config()["redis_url"] == "redis://user1:mock-redis-url-password-1@host1:6379";
+        assert cfg2.get_database_config()["redis_url"] == "redis://user2:mock-redis-url-password-2@host2:6379";
         # MongoDB Credentials
         assert cfg1.get_kubernetes_config()["mongodb_root_username"] == "user1";
         assert cfg2.get_kubernetes_config()["mongodb_root_username"] == "user2";
-        assert cfg1.get_kubernetes_config()["mongodb_root_password"] == "pwd1";
-        assert cfg2.get_kubernetes_config()["mongodb_root_password"] == "pwd2";
+        assert cfg1.get_kubernetes_config()["mongodb_root_password"] == "mock-mongodb-root-password-1";
+        assert cfg2.get_kubernetes_config()["mongodb_root_password"] == "mock-mongodb-root-password-2";
         # Redis Credentials
         assert cfg1.get_kubernetes_config()["redis_username"] == "redisuser1";
         assert cfg2.get_kubernetes_config()["redis_username"] == "redisuser2";
-        assert cfg1.get_kubernetes_config()["redis_password"] == "redispwd1";
-        assert cfg2.get_kubernetes_config()["redis_password"] == "redispwd2";
+        assert cfg1.get_kubernetes_config()["redis_password"] == "mock-redis-password-1";
+        assert cfg2.get_kubernetes_config()["redis_password"] == "mock-redis-password-2";
         # Domain / Ingress Settings
         assert cfg1.get_kubernetes_config()["domain"] == "domain1.local";
         assert cfg2.get_kubernetes_config()["domain"] == "domain2.local";
         assert cfg1.get_kubernetes_config()["cert_manager_email"] == "email1@domain1.local";
         assert cfg2.get_kubernetes_config()["cert_manager_email"] == "email2@domain2.local";
         # Custom Secrets
-        assert cfg1.get_secrets_config()["api_key"] == "secret_key_1";
-        assert cfg2.get_secrets_config()["api_key"] == "secret_key_2";
+        assert cfg1.get_secrets_config()["api_key"] == "mock-api-key-1";
+        assert cfg2.get_secrets_config()["api_key"] == "mock-api-key-2";
         # 3. Verify equivalent paths normalize and resolve to the same instance
         rel_tmp1 = Path(tmp1_str);
         cfg1_rel = get_scale_config(rel_tmp1);
