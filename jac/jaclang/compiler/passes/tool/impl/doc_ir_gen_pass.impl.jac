@@ -454,6 +454,11 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
             parts.append(self.space());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
             parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.EventSignature) {
+            # Space it off the target name, else `start` + `with` -> `startwith`.
+            parts.append(self.space());
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
