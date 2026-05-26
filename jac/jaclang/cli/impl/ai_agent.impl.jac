@@ -33,8 +33,8 @@ impl resolve_model_name(model_override: str = "") -> str {
         agent_model_source = "command line";
         return flag;
     }
-    # Read the raw [plugins.byllm.model] table -- not the defaults-merged
-    # config -- so an unset `default_model` does not masquerade as a choice.
+    # Read the raw table, not the defaults-merged config, so an unset
+    # `default_model` is not mistaken for a choice.
     toml_model = "";
     try {
         raw = get_byllm_config().get_jac_config().get_plugin_config("byllm");
@@ -58,11 +58,10 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
     name = resolve_model_name(model_override);
     cfg: dict[str, object] = {};
     is_local = name.startswith("local:");
-    # Reset first: a rebuild may swap a local model for a cloud one, and the
-    # banner must not keep showing a stale thread count.
+    # Reset first: a rebuild may swap local for cloud; don't keep a stale count.
     agent_threads = 0;
-    # Pin local models to a low temperature for deterministic code edits;
-    # leave cloud models at the provider default (newer ones reject the param).
+    # Low temp for local determinism; cloud uses the provider default (newer
+    # ones reject the param).
     agent_temperature = 0.3 if is_local else None;
     if is_local {
         try {
@@ -70,9 +69,8 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
         } except Exception {
             cfg = {};
         }
-        # Cap CPU usage so local inference does not peg (and overheat) the
-        # machine: a jac.toml [plugins.byllm.local] n_threads wins, otherwise
-        # default to half the cores.
+        # Cap CPU so local inference doesn't peg the machine: configured
+        # n_threads wins, else half the cores.
         if not cfg.get("n_threads") {
             cores = os.cpu_count() or 2;
             cfg["n_threads"] = max(1, cores // 2);
@@ -109,19 +107,17 @@ impl confirm(action: str) -> bool {
 impl write_feedback(path: str) -> str {
     global agent_ci_dirty;
     if agent_ci is None or not inline_feedback {
-        # When inline feedback is off the project model is still stale after a
-        # write; flag it so the next semantic query (or `jac_check`) refreshes.
+        # Feedback off: still flag dirty so the next semantic query refreshes.
         if agent_ci is not None and not inline_feedback {
             agent_ci_dirty = True;
         }
         return "";
     }
-    # The write changed the project; mark dirty up front so a failed refresh
-    # still triggers a rebuild on the next semantic query.
+    # Mark dirty up front so a failed refresh still rebuilds on the next query.
     agent_ci_dirty = True;
     try {
-        # refresh_and_diff recompiles and returns the diagnostics this edit is
-        # responsible for: all of `path`, plus breakage in dependent modules.
+        # refresh_and_diff returns the diagnostics this edit caused (`path`
+        # plus breakage in dependent modules).
         diags: list = list(agent_ci.refresh_and_diff(path));
     } except Exception {
         return "";
@@ -289,9 +285,8 @@ impl run_command(command: str) -> str {
     if not confirm(f"run shell command: {command}") {
         return "DENIED: the user declined to run this command.";
     }
-    # Put the running interpreter's bin directory first on PATH so `jac` (and
-    # other console scripts installed alongside it) resolve even when the
-    # session was launched without the environment activated.
+    # Prepend the interpreter's bin dir to PATH so `jac` resolves even when the
+    # session was launched without the env activated.
     env = dict(os.environ);
     bin_dir = os.path.dirname(sys.executable);
     if bin_dir {
@@ -323,9 +318,8 @@ impl start_app(entry_file: str) -> str {
     if not confirm(f"start the app with `jac start {entry_path}`") {
         return "DENIED: the user declined to start the app.";
     }
-    # `jac start` resolves the project (and its installed deps) from the entry
-    # file's own directory, so run it there -- not wherever the session was
-    # launched -- which matters when the app was scaffolded into a subfolder.
+    # Run in the entry file's own dir: `jac start` resolves the project and its
+    # deps from there, which matters when the app was scaffolded into a subfolder.
     work_dir = os.path.dirname(entry_path) or ".";
     target = os.path.basename(entry_path);
     try {
@@ -339,10 +333,8 @@ impl start_app(entry_file: str) -> str {
     } except Exception as e {
         return f"ERROR launching `jac start {entry_path}`: {e}";
     }
-    # Let it boot, then stop it -- we only want the startup diagnostics, not a
-    # server left running after the tool returns. The boot window defaults to
-    # 12s but can be shortened via JAC_AI_START_TIMEOUT (seconds), mainly so
-    # tests need not wait the full default.
+    # Boot then stop -- we only want the startup diagnostics. The 12s window is
+    # overridable via JAC_AI_START_TIMEOUT (seconds), mainly for tests.
     boot_wait = 12.0;
     try {
         raw = os.environ.get("JAC_AI_START_TIMEOUT");
@@ -846,8 +838,6 @@ impl print_stats(
         parts.append(tokens);
     }
     # Generation throughput: completion tokens over the wall-clock turn time.
-    # Reported alongside the token totals so the speed of the model (local or
-    # cloud) is visible per turn.
     completion = int(usage.get("completion_tokens", 0) or 0);
     if completion > 0 and elapsed > 0 {
         parts.append(f"{completion / elapsed:.1f} tok/s");
@@ -928,8 +918,8 @@ impl _ci_event(info: any) {
     if op == "load" {
         what = f"load · compiled {recompiled} files";
     } else {
-        # create / edit / delete: show the recompiled count against the project
-        # size so an incremental refresh is visibly cheaper than a full build.
+        # create / edit / delete: show recompiled/total so an incremental
+        # refresh reads as cheaper than a full build.
         what = f"{op} {name} · recompiled {recompiled}/{total}";
     }
     console.print(f"      ⚙ code intel · {what} · {_fmt_ms(ms)}", style="dim");
@@ -937,20 +927,17 @@ impl _ci_event(info: any) {
 
 impl render_stream(event_stream: any) -> dict {
     out: any = sys.stdout;
-    # Animated `thinking...` rewrites the line with \r, which only makes sense
-    # on a terminal; piped output gets the static lines without it.
+    # `\r` animation only makes sense on a tty; piped output gets static lines.
     is_tty = bool(out?.isatty) and bool(out.isatty());
     # A write tool anywhere in the turn arms the verify-and-continue guard.
     global _turn_wrote;
-    # Phase-stat accumulators -- declared before the try so the `except`
-    # handlers can still return them if the stream errors out partway through.
+    # Declared before the try so the `except` handlers can still return them.
     n_read = 0;
     n_write = 0;
     n_run = 0;
     files: set[str] = set();
     usage: dict[str, object] = {};
     answer = "";  # the phase's final answer text, captured for the ledger
-    # Live-render state.
     streamed = False;  # raw reasoning/answer tokens on the current line
     thought_raw = "";  # this step's accumulated reasoning tokens
     prose_shown = 0;  # chars of this step's prose already streamed
@@ -994,7 +981,6 @@ impl render_stream(event_stream: any) -> dict {
             kind = event.event_type;
             data = event.data;
             if kind == "thought" {
-                # Reasoning is shown only in the verbose view; quiet hides it.
                 if not verbose {
                     continue;
                 }
@@ -1016,8 +1002,8 @@ impl render_stream(event_stream: any) -> dict {
                     out.flush();
                     streamed = True;
                 }
-                # No prose yet but generating (the call is streaming as JSON):
-                # show a live, ticking activity line so a slow model is not silent.
+                # Generating but no prose yet (streaming as JSON): show a
+                # ticking activity line so a slow model is not silent.
                 if hit and not streamed and is_tty {
                     out.write(f"\r  ● thinking… {time.time() - step_t0:.1f}s");
                     out.flush();
@@ -1041,8 +1027,8 @@ impl render_stream(event_stream: any) -> dict {
                 flush_result();
                 tool = str(data.get("tool", "?"));
                 args = data.get("args", {});
-                # Tally the call for the turn stats: writes (and the files they
-                # touch), code/shell runs, and everything else as a read.
+                # Tally for turn stats: writes (and the files they touch), runs,
+                # everything else a read.
                 if tool in _WRITE_TOOLS {
                     n_write += 1;
                     _turn_wrote = True;
@@ -1061,7 +1047,6 @@ impl render_stream(event_stream: any) -> dict {
                 console.print(f"  ⏺ {fmt_tool_call(tool, args)}{gen}", style="cyan");
                 last_llm_ms = 0.0;
                 last_llm_tokens = 0;
-                # Next step's reasoning starts fresh.
                 thought_raw = "";
                 prose_shown = 0;
                 step_t0 = 0.0;
@@ -1076,8 +1061,7 @@ impl render_stream(event_stream: any) -> dict {
                 }
                 flush_result();
             } elif kind == "usage" {
-                # byLLM emits one `usage` event at stream end with token totals
-                # aggregated across every LLM call in the turn.
+                # byLLM emits one `usage` event at stream end, totalled across the turn.
                 total = data.get("total", {});
                 if isinstance(total, dict) {
                     usage = total;
@@ -1240,8 +1224,8 @@ impl PhaseState.run{
     _active_session = visitor;
     label = type(self).__name__;
     console.print(f"\n  ● {label}", style="bold blue");
-    # Refresh the framing system message with the latest ledger, but keep this
-    # node's own working messages from any earlier visit (its memory lives here).
+    # Refresh the system message with the latest ledger; keep this node's prior
+    # working messages (its memory).
     sysmsg = {
         "role": "system",
         "content": Prompt.for_phase(type(self), visitor.objective, visitor.ledger)
@@ -1256,7 +1240,7 @@ impl PhaseState.run{
     );
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
-    # Return to the routing hub (this state's only incoming edge) for the next decision.
+    # Back to the Hub (this state's only incoming edge) for the next decision.
     visit [<--];
 }
 
@@ -1342,8 +1326,7 @@ impl verify_and_continue(max_rounds: int = 3) {
         if not errs {
             break;
         }
-        # The last round did not shrink the error count -- the model is stuck,
-        # so stop nudging rather than burn another round on the same wall.
+        # Error count didn't shrink -- the model is stuck, so stop nudging.
         if prev_count >= 0 and len(errs) >= prev_count {
             break;
         }
@@ -1373,23 +1356,19 @@ impl verify_and_continue(max_rounds: int = 3) {
 
 impl run_agent(req: object) -> int {
     global agent_model,yolo_mode,agent_ci,show_stats,verbose,inline_feedback;
-    # `req` is an AgentRequest; access it untyped so attribute reads
-    # type-check without importing the class into this byLLM-only module.
+    # Access `req` untyped so attribute reads type-check without importing
+    # AgentRequest into this byLLM-only module.
     r: any = req;
-    # File writes and code execution run without prompting unless `--safe`
-    # asks to confirm each one.
     yolo_mode = not r.safe;
-    # Rich live view unless `--quiet`/`-q` asks for compact output.
     verbose = not bool(getattr(r, "quiet", False));
-    # The compiler-backed project model the semantic tools navigate. Surface its
-    # recompiles in the live view so the work behind writes and queries is visible.
+    # Surface CI recompiles in the live view so the work behind writes/queries shows.
     agent_ci = r.code_intel;
     if agent_ci is not None {
         agent_ci.on_event = _ci_event;
     }
     initial_prompt = str(r.prompt);
-    # The import-time `agent_model` already covers jac.toml/default; only
-    # rebuild when a flag actually changes the model or its context window.
+    # Import-time `agent_model` covers jac.toml/default; rebuild only when a
+    # flag changes the model or its context window.
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
     }

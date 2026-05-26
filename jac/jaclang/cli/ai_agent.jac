@@ -10,57 +10,32 @@ no hard dependency on the byLLM plugin. `run_agent` takes the resolved flags
 directly and builds the model from them before the session starts.
 """
 
-# Declarations only; implementations live in impl/ai_agent.impl.jac. `Model`
-# types the model builder and the import-time `agent_model`; `mark_serialize`
-# is called from the `with entry` blocks below.
+# Implementations live in impl/ai_agent.impl.jac.
 import from byllm.lib { Model }
 import from byllm.parallel { mark_serialize }
 
-#===============================================================================
-# MODEL & SESSION STATE
-#===============================================================================
-
-# Skip confirmation prompts for file writes and code execution. On by default;
-# `run_agent` clears it when the `--safe` flag asks to confirm every action.
+# Session flags, reset from the CLI flags by `run_agent`. `--safe` clears
+# yolo_mode (confirm every write/command).
 glob yolo_mode: bool = True,
-     # Resolved CPU thread count for local inference; shown in the banner. Set by
-     # `build_model`; 0 means "not a local model / leave it to the backend".
+     # Local-inference thread count; 0 = not a local model.
      agent_threads: int = 0,
-     # Sampling temperature for the agent's calls. Set by `build_model`: a low,
-     # deterministic value for local models, `None` for cloud models (some newer
-     # ones reject `temperature` outright, so it is left to the provider default).
+     # `None` for cloud models -- some newer ones reject `temperature`.
      agent_temperature: float | None = None,
-     # Where the resolved model came from -- shown in the banner so the user can
-     # see whether a `--model` flag, jac.toml, or the built-in default won.
      agent_model_source: str = "default",
-     # Whether to print the one-line turn summary (duration, tool calls, files
-     # changed, tokens, project health) after each turn. Toggled with `/stats`.
      show_stats: bool = True,
-     # Rich live view: stream the model's reasoning, a `thinking... Ns` line for
-     # reasoning-less models, per-step/tool timings, and multi-line tool-result
-     # snippets. Cleared by `--quiet`/`-q`; toggled with `/verbose`. When off,
-     # only tool-call lines, one-line results, and the final answer are shown.
+     # Rich live view; `--quiet` turns it off, `/verbose` toggles.
      verbose: bool = True,
-     # Whether write_file/edit_file append inline compiler feedback (the
-     # recompile-and-diff that surfaces errors the write introduced). On by
-     # default and now incremental, so it costs an LSP-save; toggle off with
-     # `/feedback` for sessions that would rather rely on explicit `jac_check`.
      inline_feedback: bool = True;
 
-# Tool names grouped for the turn-stat breakdown: tools that mutate files,
-# and tools that execute code or shell commands. Everything else is a read.
+# Tool-name groups for the turn-stat breakdown; everything else counts as a read.
 glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
      _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app","browse_open","browse_navigate","browse_click","browse_type","browse_fill","browse_press","browse_eval","browse_close"},
-     # Set True by `run_turn` when the turn issued a file-writing tool call, so
-     # the one-shot verify-and-continue guard only kicks in when code changed.
+     # Set by `run_turn` on a file-writing call; gates verify-and-continue.
      _turn_wrote: bool = False;
 
-# The shared CodeIntelligence handle for this session, set by `run_agent` from
-# the AgentRequest. The semantic tools (find_symbol, find_uses, ...) query it
-# so the agent navigates the project by compiler symbol data, not text search.
+# Shared CodeIntelligence handle the semantic tools query (set by `run_agent`).
 glob agent_ci: any = None,
-     # Set by write_file/edit_file after a successful write; the next semantic
-     # query rebuilds the project model so lookups reflect the new source.
+     # Set on write; the next semantic query rebuilds the project model.
      agent_ci_dirty: bool = False;
 
 """Pick which model `jac ai` should run.
@@ -82,20 +57,13 @@ usual provider env vars). Local models additionally read the runtime knobs
 """
 def build_model(model_override: str = "", n_ctx: int = 0) -> Model;
 
-# Built at import time from jac.toml (or the bundled default) so every `by`
-# clause always has a model; `run_agent` rebuilds it when flags are passed.
+# Built at import so every `by` clause has a model; `run_agent` rebuilds on flags.
 glob agent_model = build_model();
 
-# The durable session memory: a compact ledger of changes and notes that
-# persists across turns and is visible to every state. Each turn's walker is
-# spawned with it; raw per-phase transcripts live on the nodes and are ephemeral.
-# `_active_session` lets the `note` tool reach the running walker's ledger.
+# Durable cross-turn memory; `_active_session` lets the `note` tool reach it.
 glob _session_ledger: Ledger | None = None,
      _active_session: AgentSession | None = None;
 
-#===============================================================================
-# TOOL HELPERS
-#===============================================================================
 """Clip oversized tool output so it does not blow the model's context."""
 def truncate(text: str, limit: int = 12000) -> str;
 
@@ -116,9 +84,7 @@ introduced nothing (or no code intelligence is available).
 """
 def write_feedback(path: str) -> str;
 
-#===============================================================================
-# TOOLS -- plain typed functions; byLLM turns the annotations into JSON schema
-#===============================================================================
+# Tools: plain typed functions; byLLM turns the annotations into JSON schema.
 def read_file(path: str) -> str;
 
 
@@ -153,9 +119,7 @@ def search_guides(keyword: str) -> str;
 def read_guide(name: str) -> str;
 
 
-#===============================================================================
-# SEMANTIC TOOLS -- backed by the Jac compiler's symbol table, not text search
-#===============================================================================
+# Semantic tools: backed by the compiler's symbol table, not text search.
 """Return the session's CodeIntelligence, rebuilding it if a write happened.
 
 `write_file`/`edit_file` flag the project as dirty; the first semantic query
@@ -179,14 +143,9 @@ def find_walkers(node_type: str) -> str;
 def context_slice(name: str) -> str;
 
 
-#===============================================================================
-# BROWSER TOOLS
-#===============================================================================
-# A headless browser, driven over the Chrome DevTools Protocol by the built-in
-# `jac browse` engine -- no npm/pip install. The agent uses these to QA a
-# running web app: open its URL, read the page as an accessibility tree, then
-# act on the @refs that snapshot assigns. Every call reconnects to one shared,
-# isolated browser session, so they are all serialized below.
+# Headless browser over the Chrome DevTools Protocol (built-in `jac browse`
+# engine, no npm/pip). Every call reconnects to one shared session, so they are
+# all serialized below.
 glob _BROWSE_SESSION: str = "jac-ai";
 
 
@@ -228,10 +187,8 @@ def browse_close -> str;
 def _browse_shutdown;
 
 
-# Side-effecting tools must never run concurrently; byLLM keeps any parallel
-# batch that contains one of these sequential. Every browser tool reconnects to
-# the same shared Chrome, so they are all serialized to avoid interleaving on
-# the page.
+# Side-effecting tools must not run concurrently; serialize them so byLLM keeps
+# any parallel batch that contains one of them sequential.
 with entry {
     mark_serialize(write_file);
     mark_serialize(edit_file);
@@ -249,9 +206,6 @@ with entry {
     mark_serialize(browse_close);
 }
 
-#===============================================================================
-# SYSTEM PROMPT & THE AGENT TURN
-#===============================================================================
 glob AGENT_RULES = """\
 You are Jac AI, a coding agent working inside the user's terminal in their Jac
 project. You read, write, and debug Jac code, and verify it really works. You
@@ -288,9 +242,8 @@ def system_prompt -> str;
 def reset_session;
 
 
-# A turn that rewrites one file more than this many times is not converging --
-# typically a weaker model re-emitting a whole file on each compile error. The
-# progress guard ends the turn rather than burning the iteration budget.
+# Rewriting one file more than this many times signals a non-converging loop;
+# the progress guard then ends the turn rather than burning the iteration budget.
 glob _REWRITE_LIMIT = 5;
 
 
@@ -304,9 +257,6 @@ fix, so end the turn with a summary instead of spending the whole budget.
 def _progress_guard(ctx: any) -> str;
 
 
-#===============================================================================
-# AGENT MEMORY, TOOLS, PROMPTS, AND THE PHASE RUNNER
-#===============================================================================
 """Compact, durable memory shared across phases and turns.
 
 Holds a short record of the changes made and free-form notes any phase may
@@ -362,9 +312,8 @@ obj Prompt {
 }
 
 
-# One byLLM ReAct call, scoped to whatever `tools` and `ctx` the calling state
-# passes in -- so a single runner serves every phase. `max_tokens=8192` is a
-# generous ceiling so large write_file arguments are not truncated mid-stream.
+# One byLLM ReAct call serving every phase. `max_tokens=8192` is a generous
+# ceiling so large write_file arguments are not truncated mid-stream.
 """Run the current phase: the LLM works with `tools` over the phase's own `ctx`."""
 def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     tools=tools,
@@ -388,9 +337,6 @@ with entry {
     mark_serialize(note);
 }
 
-#===============================================================================
-# TERMINAL UI
-#===============================================================================
 def print_banner;
 
 
@@ -495,15 +441,10 @@ returns this phase's tool-call tallies for the walker to accumulate.
 def render_stream(event_stream: any) -> dict;
 
 
-#===============================================================================
-# OSP AGENT: a walker the LLM routes through Plan / Build / QA / Done states
-#===============================================================================
-# The agent is an AgentSession walker over a small state graph. A Hub node
-# routes the walker to the next state with `visit [-->] by`, reading each
-# candidate state's `sem` description plus the ledger to decide. Each state owns
-# its phase prompt (its `sem`) and its tool set (its `tools()` override); the
-# shared base `PhaseState.run` ability runs that phase over the node's own
-# ephemeral `ctx`, records a ledger entry, and returns the walker to the Hub.
+# OSP agent: an AgentSession walker over a small state graph. A Hub routes to
+# the next state with `visit [-->] by`, reading each state's `sem` and the
+# ledger. Each state owns its prompt (`sem`) and tool set (`tools()`); the shared
+# `PhaseState.run` runs the phase, records a ledger entry, and returns to the Hub.
 """A phase state: a self-contained step with its own prompt, tools, and context."""
 node PhaseState {
     has ctx: list = [];
