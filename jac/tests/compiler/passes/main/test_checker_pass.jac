@@ -2860,6 +2860,21 @@ test "union_and_optional_special_forms" {
     );
 }
 
+"""Union[('A', 'B')] with string forward references resolves to actual types, not Literal["A"]."""
+test "union_string_forward_refs" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , (
+        f"Expected 0 errors — Union[('Foo','Bar')] should resolve to Foo|Bar not "
+        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: " + "\n".join(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
 """Test __getattr__ support: dynamic attrs use __getattr__ return type."""
 test "getattr_support" {
     program = JacProgram();
