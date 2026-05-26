@@ -55,7 +55,7 @@ impl AssetProcessor.copy_typescript_files(
         return;
     }
     dest_dir.mkdir(parents=True, exist_ok=True);
-    ts_extensions = {'.ts','.tsx'};
+    ts_extensions = {'.ts', '.tsx'};
     def copy_recursive(
         source: Path, destination: Path, base: (Path | None) = None
     ) -> None {

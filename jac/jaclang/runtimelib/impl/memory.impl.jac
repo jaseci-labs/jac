@@ -136,7 +136,7 @@ def _is_legacy_schema(conn: sqlite3.Connection) -> bool {
         return False;
     }
     cols = {row[1] for row in rows};
-    return cols == {'id','data'};
+    return cols == {'id', 'data'};
 }
 
 """Create the anchors + quarantine + schema_meta tables (new schema)."""
