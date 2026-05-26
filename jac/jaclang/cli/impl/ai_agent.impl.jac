@@ -1164,8 +1164,27 @@ impl PhaseState.run{
     );
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
-    # Back to the Hub (this state's only incoming edge) for the next decision.
-    visit [<--];
+    # Route to the next state along this node's own out-edges.
+    visitor.steps += 1;
+    if visitor.steps > visitor.max_steps {
+        # Safety valve: a runaway session halts here (no onward visit) rather
+        # than looping forever. The outer verify-and-continue still applies.
+        console.print("\n  ● step cap reached -- stopping", style="yellow");
+    } elif len([-->]) == 1 {
+        # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
+        visit [-->];
+    } else {
+        # Several successors (QA -> Build / Plan / Done): let the model choose,
+        # reading each candidate state's `sem` plus the objective and ledger.
+        visit [-->] by agent_model(
+            incl_info={
+                "Objective": visitor.objective,
+                "Progress so far": visitor.ledger.render(),
+                "Step": f"{visitor.steps} of at most {visitor.max_steps}",
+                "How to choose": "Pick the single next state. Choose Done only once you have actually verified the result; go back to Build to fix problems QA found, or to Plan to rethink the approach."
+            }
+        );
+    }
 }
 
 sem Done = "the DONE state: choose this only when the objective is fully built AND QA has actually verified it (type-checked, and for an app, run and exercised). Ends the session.";
@@ -1174,32 +1193,21 @@ impl Done.finish{
     console.print("\n  ● Done", style="bold green");
 }
 
-impl Hub.route{
-    visitor.steps += 1;
-    # Safety valve: never loop forever -- force completion past the cap.
-    if visitor.steps > visitor.max_steps {
-        visit [-->][?:Done];
-    } else {
-        visit [-->] by agent_model(
-            incl_info={
-                "Objective": visitor.objective,
-                "Progress so far": visitor.ledger.render(),
-                "Step": f"{visitor.steps} of at most {visitor.max_steps}",
-                "How to choose": "Pick the single next state. Typical order is Plan, then Build, then QA; return to Build if QA finds problems; choose Done only once QA has actually verified the result."
-            }
-        );
-    }
-}
-
 impl AgentSession.begin{
-    # Each state returns to the hub via its incoming edge, so no reference is kept.
-    hub = Hub();
-    here ++> hub;
-    hub ++> Plan();
-    hub ++> Build();
-    hub ++> QA();
-    hub ++> Done();
-    visit hub;
+    # Wire the pipeline once, then enter at Plan. The edges encode the legal
+    # transitions: Plan -> Build -> QA, and QA loops back to Build/Plan or
+    # finishes at Done.
+    plan = Plan();
+    build = Build();
+    qa = QA();
+    done = Done();
+    here ++> plan;
+    plan ++> build;
+    build ++> qa;
+    qa ++> build;
+    qa ++> plan;
+    qa ++> done;
+    visit plan;
 }
 
 impl run_turn(message: str) {

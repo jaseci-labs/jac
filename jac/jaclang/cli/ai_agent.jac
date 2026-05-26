@@ -504,10 +504,13 @@ returns this phase's tool-call tallies for the walker to accumulate.
 def render_stream(event_stream: any) -> dict;
 
 
-# OSP agent: an AgentSession walker over a small state graph. A Hub routes to
-# the next state with `visit [-->] by`, reading each state's `sem` and the
-# ledger. Each state owns its prompt (`sem`) and tool set (`tools()`); the shared
-# `PhaseState.run` runs the phase, records a ledger entry, and returns to the Hub.
+# OSP agent: an AgentSession walker over a small state graph laid out as a
+# pipeline -- Plan --> Build --> QA, with QA looping back to Build/Plan or on to
+# Done. The legal transitions ARE the edges, so each state routes only among its
+# own successors: the shared `PhaseState.run` runs the phase, records a ledger
+# entry, then advances along the single out-edge, or lets the model pick when a
+# state has several (only QA does). Each state owns its prompt (`sem`) and tool
+# set (`tools()`).
 """A phase state: a self-contained step with its own prompt, tools, and context."""
 node PhaseState {
     has ctx: list = [];
@@ -532,11 +535,6 @@ node QA(PhaseState) {}
 """The terminal state: the task is complete and verified."""
 node Done {
     can finish with AgentSession entry;
-}
-
-"""Routes the walker to the next state from the ledger and the states' roles."""
-node Hub {
-    can route with AgentSession entry;
 }
 
 walker AgentSession {
