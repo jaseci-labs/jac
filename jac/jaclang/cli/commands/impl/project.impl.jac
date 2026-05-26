@@ -1100,7 +1100,7 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-glob _PRECOMPILE_MINOR_RANGE: range = range(11, 15);
+glob _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
 
 """Return (executable, version_tag) for every python3.X found on PATH."""
 def _find_precompile_pythons -> list[tuple[str, str]] {
