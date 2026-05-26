@@ -665,6 +665,11 @@ impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
         }
     }
 
+    # Expose sc-targets so the narrowing walker can use fast identity checks,
+    # matching what exit_if_else_expr does for CfgExpr condition nodes.
+    nd.sc_true_target = true_target;
+    nd.sc_false_target = false_target;
+
     # Peel parens so `if (a and b)` wires the same as `if a and b`.
     unwrapped = _unwrap_parens(nd.condition);
     cond_bool = unwrapped if isinstance(unwrapped, uni.BoolExpr) else None;

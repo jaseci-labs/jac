@@ -713,7 +713,7 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
 }
 
 """IfStmt node type for Jac Ast."""
-obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
+obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode, ConditionalNode) {
     has condition: Expr,
         body: Sequence[CodeBlockStmt];
 

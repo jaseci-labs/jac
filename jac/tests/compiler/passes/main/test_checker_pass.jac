@@ -5022,3 +5022,17 @@ test "duplicate_archetype_decl_is_hard_error" {
         1
     ].pretty_print()}";
 }
+
+"""Test unified ConditionalNode narrowing: IfStmt sc_true/false_target identity check."""
+test "cfg_unified_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_cfg_unified_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (unconditional access), but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}

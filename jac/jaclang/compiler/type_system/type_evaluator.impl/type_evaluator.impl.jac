@@ -3891,12 +3891,31 @@ impl TypeEvaluator._get_type_from_flow_node(
 
         pred_narrowed = self._get_type_from_flow_node(target, pred, visited);
 
-        # CfgExpr predecessor: expression-level short-circuit branch.
-        if isinstance(pred, uni.CfgExpr) {
-            predicate = self._find_predicate_for(target, pred.expr);
+        # Unified ConditionalNode predecessor: CfgExpr (ternary) or IfStmt (if-stmt,
+        # covers ElseIf). For IfStmt, skip when the successor is a CfgExpr — that
+        # is a condition-entry edge, not a true/false branch. CfgExpr predecessors
+        # always fire because ternary true/false branches are themselves CfgExprs.
+        if isinstance(pred, uni.CfgExpr)
+        or (isinstance(pred, uni.IfStmt) and not isinstance(flow_node, uni.CfgExpr)) {
+            cond_expr = pred.expr if isinstance(pred, uni.CfgExpr) else pred.condition;
+            predicate = self._find_predicate_for(target, cond_expr);
             if predicate is not None {
-                is_true_edge = flow_node is pred.sc_true_target;
-                is_false_edge = flow_node is pred.sc_false_target;
+                # Fast path: sc-targets set by the CFG build pass.
+                is_true_edge: bool = (
+                    pred.sc_true_target is not None
+                    and flow_node is pred.sc_true_target
+                );
+                is_false_edge: bool = (
+                    pred.sc_false_target is not None
+                    and flow_node is pred.sc_false_target
+                );
+                # Structural fallback for IfStmt when sc-targets were not resolved
+                # (e.g. fall-through to next sibling with no else body).
+                if not is_true_edge and not is_false_edge and isinstance(pred, uni.IfStmt) {
+                    edge_kind = self._classify_edge(pred, flow_node);
+                    is_true_edge = edge_kind == "true";
+                    is_false_edge = edge_kind == "false";
+                }
                 if is_true_edge or is_false_edge {
                     narrowed = self._apply_narrowing(
                         predicate, pred_narrowed, is_true_edge, target
@@ -3912,39 +3931,6 @@ impl TypeEvaluator._get_type_from_flow_node(
                 }
             }
         }
-
-        # IfStmt predecessor (covers ElseIf). Skip when the successor is a
-        # CfgExpr: that's a condition-entry edge, not a true/false branch.
-        if isinstance(pred, uni.IfStmt) and not isinstance(flow_node, uni.CfgExpr) {
-            predicate = self._find_predicate_for(target, pred.condition);
-            if predicate is not None {
-                edge_kind = self._classify_edge(pred, flow_node);
-                if edge_kind == "true" {
-                    narrowed = self._apply_narrowing(
-                        predicate, pred_narrowed, True, target
-                    );
-                    if narrowed is not None {
-                        incoming_types.append(narrowed);
-                    } else {
-                        has_unnarrowed_pred = True;
-                    }
-                    continue;
-                } elif edge_kind == "false" {
-                    narrowed = self._apply_narrowing(
-                        predicate, pred_narrowed, False, target
-                    );
-                    if narrowed is not None {
-                        incoming_types.append(narrowed);
-                    } else {
-                        has_unnarrowed_pred = True;
-                    }
-                    continue;
-                }
-            }
-        }
-        # TODO: ElseIf (elif) narrowing needs CFG fix - predecessor nodes don't match.
-        # The CFG builds correct links but type checker sees different node instances.
-        # This is a future PR task.
 
         # WhileStmt predecessor: the loop body is the true branch of the condition.
         # `while x:` guarantees x is truthy inside the body, so narrow accordingly.
