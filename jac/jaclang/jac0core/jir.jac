@@ -24,7 +24,7 @@ import from pathlib { Path }
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 11;
+glob FORMAT_VERSION: int = 12;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
