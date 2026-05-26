@@ -231,9 +231,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
         monitoring = MonitoringDeployer(obs_config, self.logger);
-        monitoring.deploy(
-            app_name, obs_config.namespace, apps_v1, core_v1, provider
-        );
+        monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1, provider);
     }
 
     """Label namespace `pod-security.kubernetes.io/enforce=privileged` so
