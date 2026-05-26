@@ -365,6 +365,7 @@ test "unresolvable nested class in field falls back to default, anchor still loa
         db_path = os.path.join(tmpdir, "test.db");
         good_id = str(uuid.uuid4());
         bad_nested_id = str(uuid.uuid4());
+        bad_null_id = str(uuid.uuid4());
         import json;
         import sqlite3;
         mem = SqliteMemory(path=db_path);
@@ -399,30 +400,39 @@ test "unresolvable nested class in field falls back to default, anchor still loa
             );
         }
         _insert(mem.__conn__, good_id, 42);
-        # Nested dict with an unresolvable __type__ — _deserialize_value returns
-        # None, coerce(None, int) fails → TypeError → quarantine.
+        # Case 1: nested dict with an unresolvable __type__ — _deserialize_value
+        # returns None; coerce(None, int) fails; runtime restores default 0.
         _insert(
             mem.__conn__,
             bad_nested_id,
             {'__type__': 'RemovedClass', '__module__': 'app', 'x': 1}
         );
+        # Case 2: literal JSON null stored directly for a non-Optional int field —
+        # the original scenario from issue #6181 (schema migration / past write bug).
+        _insert(cast(sqlite3.Connection, mem.__conn__), bad_null_id, None);
         mem.__conn__.commit();
         # Good row loads fine.
         good = mem.get(uuid.UUID(good_id));
         assert good is not None , "valid row must load";
         assert cast(_TypedProfile, good.archetype).score == 42;
-        # Row with unresolvable nested class must LOAD (not quarantine) with score
-        # reset to the declared default (0), not None and not quarantined.
-        recovered = mem.get(uuid.UUID(bad_nested_id));
-        assert recovered is not None , "anchor with bad field must load after fix";
-        assert cast(_TypedProfile, recovered.archetype).score == 0 , (
+        # Case 1: unresolvable nested class — anchor loads, score reset to default.
+        recovered_nested = mem.get(uuid.UUID(bad_nested_id));
+        assert recovered_nested is not None , "anchor with bad nested field must load after fix";
+        assert cast(_TypedProfile, recovered_nested.archetype).score == 0 , (
             "score must be restored to class default (0) when nested class is unresolvable"
+        );
+        # Case 2: literal null — anchor loads, score reset to default.
+        recovered_null = mem.get(uuid.UUID(bad_null_id));
+        assert recovered_null is not None , "anchor with null field must load after fix";
+        assert cast(_TypedProfile, recovered_null.archetype).score == 0 , (
+            "score must be restored to class default (0) when field is stored as null"
         );
         conn = sqlite3.connect(db_path);
         q_ids = {r[0] for r in conn.execute("SELECT id FROM anchors_quarantine")};
         live_ids = {r[0] for r in conn.execute("SELECT id FROM anchors")};
         conn.close();
-        assert bad_nested_id not in q_ids , "anchor with recoverable field must NOT be quarantined";
+        assert bad_nested_id not in q_ids , "anchor with recoverable nested field must NOT be quarantined";
+        assert bad_null_id not in q_ids , "anchor with null field must NOT be quarantined";
         assert good_id in live_ids , "good row must remain live";
         mem.close();
     }

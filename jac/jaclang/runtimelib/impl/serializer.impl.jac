@@ -687,15 +687,26 @@ impl Serializer._deserialize_archetype(
                     # anchor. Common case: has things: list[X] = [] stored as null
                     # after a schema migration or a past write bug.
                     recovered: object = None;
+                    has_default = False;
                     for fd in fields(cls) {
                         if fd.name == k {
                             if fd.default_factory is not MISSING {
                                 recovered = fd.default_factory();
+                                has_default = True;
                             } elif fd.default is not MISSING {
                                 recovered = fd.default;
+                                has_default = True;
                             }
                             break;
                         }
+                    }
+                    if not has_default {
+                        logger.warning(
+                            f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                            f"on non-Optional field {target} and no class default "
+                            "available; cannot recover."
+                        );
+                        return None;
                     }
                     logger.warning(
                         f"Serializer: {module_name}.{type_name}.{k}: stored None "
