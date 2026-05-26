@@ -143,6 +143,28 @@ def jac_check(path: str) -> str;
 def start_app(entry_file: str) -> str;
 
 
+# The dev server `serve` launched, tracked so it can be polled then stopped.
+glob _SERVE_PROC: any = None;
+
+"""Start the dev server and wait until it is actually serving, returning its URL.
+
+Launches `jac start <entry>` detached and polls its log until the ready URL
+appears -- the first start can be slow because it installs client deps and
+builds the client -- then returns that URL for `browse_open`. On failure returns
+the log tail so the model can fix the cause. Far more reliable than starting the
+server by hand and scraping the log for a URL within a fixed window.
+"""
+def serve(entry_file: str) -> str;
+
+
+"""Stop the dev server started by `serve` (best-effort)."""
+def stop_server -> str;
+
+
+"""Kill the `serve` dev server and its child processes if one is running."""
+def _serve_shutdown;
+
+
 def search_guides(keyword: str) -> str;
 
 
@@ -357,6 +379,8 @@ glob TOOLS: list[ToolSpec] = [
          ToolSpec(fn=context_slice, category="read", phases={"plan", "build"}),
          ToolSpec(fn=jac_check, category="run", phases={"build", "qa"}),
          ToolSpec(fn=start_app, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=serve, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=stop_server, category="run", serialize=True, phases={"qa"}),
          ToolSpec(
              fn=run_command, category="run", serialize=True, phases={"build", "qa"}
          ),

@@ -4,6 +4,7 @@ import os;
 import re;
 import sys;
 import time;
+import signal;
 import subprocess;
 import from pathlib { Path }
 
@@ -365,6 +366,107 @@ impl start_app(entry_file: str) -> str {
         output = proc.communicate()[0];
     }
     return truncate(str(output) if output else "(no startup output)");
+}
+
+sem serve = "Start the web/fullstack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
+sem serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
+impl serve(entry_file: str) -> str {
+    global _SERVE_PROC;
+    entry_path = entry_file or "main.jac";
+    if not confirm(f"start the dev server with `jac start {entry_path}`") {
+        return "DENIED: the user declined to start the server.";
+    }
+    # Drop any server we started earlier so we don't leak ports.
+    _serve_shutdown();
+    work_dir = os.path.dirname(entry_path) or ".";
+    target = os.path.basename(entry_path);
+    log_path = "/tmp/jac_ai_serve.log";
+    try {
+        log_f = open(log_path, "w");
+        # Own process group so _serve_shutdown can kill the server *and* the
+        # vite/build children it spawns.
+        _SERVE_PROC = subprocess.Popen(
+            [sys.executable, "-m", "jaclang", "start", target],
+            cwd=work_dir,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True
+        );
+    } except Exception as e {
+        return f"ERROR launching `jac start {entry_path}`: {e}";
+    }
+    # First build is slow (deps + client build); poll the log for the ready URL
+    # rather than reading once. Override the budget with JAC_AI_SERVE_TIMEOUT.
+    timeout = 120.0;
+    try {
+        raw = os.environ.get("JAC_AI_SERVE_TIMEOUT");
+        if raw {
+            timeout = float(raw);
+        }
+    } except Exception as e {
+        _ = e;
+    }
+    # Match only the local dev URL, never an unrelated link (e.g. a help URL
+    # printed among the dependency warnings).
+    url_re = re.compile(
+        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
+    );
+    deadline = time.time() + timeout;
+    url = "";
+    while time.time() < deadline {
+        if _SERVE_PROC.poll() is not None {
+            break;  # server exited before becoming ready
+        }
+        try {
+            log_text = Path(log_path).read_text();
+        } except Exception {
+            log_text = "";
+        }
+        m = url_re.search(log_text);
+        if m {
+            url = m.group(0).rstrip("/");
+            break;
+        }
+        time.sleep(1.0);
+    }
+    if url {
+        return (
+            f"OK: server ready at {url} (logs: {log_path}). "
+            f"Open it with browse_open(\"{url}\"), exercise it, then stop_server."
+        );
+    }
+    tail = "";
+    try {
+        tail = "\n".join(Path(log_path).read_text().splitlines()[-25:]);
+    } except Exception {
+        tail = "(no log output)";
+    }
+    _serve_shutdown();
+    return (
+        f"ERROR: the server did not become ready within {int(timeout)}s. "
+        f"Last log lines:\n{tail}"
+    );
+}
+
+sem stop_server = "Stop the dev server started by serve. Call this when finished with browser QA.";
+impl stop_server -> str {
+    _serve_shutdown();
+    return "OK: dev server stopped.";
+}
+
+impl _serve_shutdown{
+    global _SERVE_PROC;
+    if _SERVE_PROC is not None {
+        try {
+            os.killpg(os.getpgid(int(_SERVE_PROC.pid)), int(signal.SIGTERM));
+        } except Exception {
+            try {
+                _SERVE_PROC.terminate();
+            } except Exception { }
+        }
+        _SERVE_PROC = None;
+    }
 }
 
 sem search_guides = "Search the bundled Jac reference guides; returns matching guide names and descriptions ranked by relevance. Matches any word in the query, so several keywords broaden the search.";
@@ -1146,7 +1248,7 @@ sem Plan = "the PLANNING state: understand the request and the existing project 
 
 sem Build = "the BUILDING state: carry out the plan. Scaffold a new app with `jac create --use <template> <name>` (templates: default, client, fullstack) via run_command rather than hand-building the layout, then adapt it. Write and edit files -- prefer edit_file, and read a file before editing it. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
 
-sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: start the server detached (`nohup jac start <entry> > /tmp/jac_qa.log 2>&1 &` via run_command), read the log for its URL, browse_open it, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop the server with `pkill -f \"jac start\"`. Do not conclude the app works until you have actually run and exercised it.";
+sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: call serve(entry) to start the dev server -- it waits until the server is actually ready and returns its URL (the first start is slow, as it installs client deps and builds the client). Then browse_open that URL, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop_server. If serve reports the server failed to start, read the log tail it returns and go back to Build to fix the cause -- do not conclude the app works until you have actually run and exercised it.";
 
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 impl PhaseState.run{
@@ -1179,9 +1281,20 @@ impl PhaseState.run{
     } elif len([-->]) == 1 {
         # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
         visit [-->];
+    } elif _project_errors() {
+        # Hard gate: the project does not compile, so finishing is not an option.
+        # Skip the model's choice and route straight back to Build to fix it --
+        # this is what stops QA from declaring Done on broken code.
+        n = len(_project_errors());
+        console.print(
+            f"  ↳ project has {n} compile error(s) -- returning to Build",
+            style="yellow"
+        );
+        visit [-->][?:Build];
     } else {
-        # Several successors (QA -> Build / Plan / Done): let the model choose,
-        # reading each candidate state's `sem` plus the objective and ledger.
+        # Several successors (QA -> Build / Plan / Done) and the project compiles:
+        # let the model choose, reading each candidate state's `sem`, the
+        # objective, and the ledger.
         visit [-->] by agent_model(
             incl_info={
                 "Objective": visitor.objective,
@@ -1318,6 +1431,7 @@ impl run_agent(req: object) -> int {
         # Don't let a one-shot build exit on code that doesn't compile.
         verify_and_continue();
         _browse_shutdown();
+        _serve_shutdown();
         return 0;
     }
 
@@ -1382,6 +1496,7 @@ impl run_agent(req: object) -> int {
     }
 
     _browse_shutdown();
+    _serve_shutdown();
     console.print("Bye.");
     return 0;
 }
