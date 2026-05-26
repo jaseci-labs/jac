@@ -120,12 +120,8 @@ def _canonical_name(plugin: object) -> str {
 """Thin wrapper around importlib.metadata.Distribution."""
 obj _DistFacade {
     has _dist: importlib.metadata.Distribution;
-
-    @property
-    def project_name -> str;
-
-    @property
-    def version -> str;
+    has project_name: str { getter; }
+    has version: str { getter; }
 
     def __getattr__(attr: str) -> object;
 }

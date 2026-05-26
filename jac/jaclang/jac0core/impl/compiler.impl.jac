@@ -47,12 +47,12 @@ impl _SetupProgress.on_internal_compile(file_path: str) -> None {
 }
 
 """Whether we're currently in a first-run setup."""
-impl _SetupProgress.is_active -> bool {
+impl _SetupProgress.is_active.getter -> bool {
     return self._banner_shown;
 }
 
 """Module hub for jaclang.* modules (lazily initialized)."""
-impl JacCompiler.internal_program -> JacProgram {
+impl JacCompiler.internal_program.getter -> JacProgram {
     if (self._internal_program is None) {
         import from jaclang.jac0core.program { JacProgram }
         self._internal_program = JacProgram();

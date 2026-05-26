@@ -39,6 +39,7 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_BOOL": 8,
          "OPT_INT": 9,
          "SKIP": 10,
+         "OPT_NODE_LIST": 11,
 
      },
      ENUM_TYPES: set = {"SymbolType","SymbolAccess","EdgeDir","CodeContext"},
@@ -193,6 +194,12 @@ def generate -> str {
             # body field from AstImplNeedingNode[T] needs NODE_LIST (can be list or single node)
             if pname == "body" and name in BODY_NODE_LIST_CLASSES {
                 kind_val = FIELD_KINDS["NODE_LIST"];
+            } elif pname == "accessors" and name == "HasVar" {
+                # accessors is `Sequence[Ability] | None`: plain fields have None,
+                # native properties have a list. NODE_LIST cannot distinguish
+                # None from [], which makes a cached plain field look like a
+                # setter-less property (false E1005). OPT_NODE_LIST keeps None.
+                kind_val = FIELD_KINDS["OPT_NODE_LIST"];
             } else {
                 kind_val = classify_type(ann_str);
             }

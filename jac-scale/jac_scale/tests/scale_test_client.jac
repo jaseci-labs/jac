@@ -255,16 +255,16 @@ obj ScaleTestClient {
         raise RuntimeError(f"Admin login failed: {data}");
     }
 
-    """Get the underlying server instance."""
-    @property
-    def server -> any {
-        return self._server;
+    has server: any {
+        getter {
+            return self._server;
+        }
     }
 
-    """Get the underlying Starlette TestClient."""
-    @property
-    def raw_client -> any {
-        return self._client;
+    has raw_client: any {
+        getter {
+            return self._client;
+        }
     }
 
     """Cleanup resources."""
