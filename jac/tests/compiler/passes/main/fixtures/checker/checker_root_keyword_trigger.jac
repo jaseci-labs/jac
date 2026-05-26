@@ -7,6 +7,7 @@ walker GoodWalker {
         ;
     }  # valid - Root is the class
 
+
     can visit2 with Root | N entry {
         ;
     }  # valid - union of classes
@@ -52,5 +53,12 @@ walker BadVarTuple {
     can visit with (Root, my_node) entry {
         ;
     }  # E1116 - my_node inside tuple form
+
+}
+
+walker BadCallInstance {
+    can visit with N() entry {
+        ;
+    }  # E1116 - N() is a call expr yielding an instance, not a class
 
 }

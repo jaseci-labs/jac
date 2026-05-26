@@ -1082,7 +1082,7 @@ test "root_keyword_as_walker_trigger" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 6 , f"Expected 6 E1116 (3 root keyword + 3 variable instance, bare/union/tuple), got {len(
+    assert len(e1116) == 7 , f"Expected 7 E1116 (3 root keyword + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
     var_errors = [
@@ -1090,13 +1090,20 @@ test "root_keyword_as_walker_trigger" {
         for e in e1116
         if "my_node" in e.pretty_print()
     ];
+    # `N()` call-expr instance: no name leaf, so diagnostic uses the type name `N`.
+    call_errors = [
+        e
+        for e in e1116
+        if 'got "N"' in e.pretty_print()
+    ];
     root_errors = [
         e
         for e in e1116
-        if e not in var_errors
+        if e not in var_errors and e not in call_errors
     ];
     assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
     assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
+    assert len(call_errors) == 1 , "Expected 1 E1116 for `N()` call-expr instance trigger";
 }
 
 test "undefined_osp_position" {

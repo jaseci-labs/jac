@@ -741,7 +741,9 @@ impl TypeCheckPass._check_event_trigger_archetype(
     for arg in targets {
         ty = self.evaluator.get_type_of_expression(arg);
         if isinstance(ty, types.ClassType) and ty.is_instance() {
-            self.emit(err, node_override=arg, type=arg.value);
+            # Only name leaves carry `.value`; other exprs (e.g. `N()`) fall back to the type name.
+            label = arg.value if isinstance(arg, uni.Name) else str(ty);
+            self.emit(err, node_override=arg, type=label);
             continue;
         }
         if not is_valid(ty) {
