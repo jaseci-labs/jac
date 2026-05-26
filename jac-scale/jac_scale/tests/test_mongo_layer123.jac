@@ -419,6 +419,150 @@ test "MongoBackend recover re-links undirected edge to both endpoints" {
 }
 
 
+test "MongoBackend recover_all processes nodes before edges so re-link finds live endpoints" {
+    # Ordering bug regression: edge inserted into quarantine BEFORE the node;
+    # naïve iteration would restore the edge first, leaving data.edges empty.
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        client = MongoClient(uri);
+        col = client["jac_test_l123"]["_anchors"];
+        q_col = client["jac_test_l123"]["_anchors_quarantine"];
+
+        node_id = str(uuid4());
+        edge_id = str(uuid4());
+
+        # Adversarial insertion order: edge first, node second.
+        q_col.insert_one(
+            {
+                '_id': edge_id,
+                'type': 'EdgeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'GenericEdge',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'EdgeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': edge_id,
+                    'persistent': True,
+                    'source': node_id,
+                    'target': node_id,
+                    'is_undirected': False,
+                    'archetype': {
+                        '__type__': 'GenericEdge',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    }
+                },
+                'error': 'cascade quarantine: connected node was quarantined',
+                'quarantined_at': '2026-05-17T00:00:00',
+                'from_format_version': 1
+            }
+        );
+        q_col.insert_one(
+            {
+                '_id': node_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'Root',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': node_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': 'Root',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    },
+                    'edges': []
+                },
+                'error': 'cascade quarantine: connected node was quarantined',
+                'quarantined_at': '2026-05-17T00:00:00',
+                'from_format_version': 1
+            }
+        );
+
+        (recovered, still_stuck) = backend.recover_all();
+        assert recovered == 2 , f"both docs must recover, got {recovered}: {still_stuck}";
+        assert not still_stuck , f"nothing should remain stuck, got {still_stuck}";
+
+        node_doc = col.find_one({'_id': node_id});
+        assert node_doc is not None , "recovered node must be live in _anchors";
+        node_edges = node_doc.get('data', {}).get('edges', []);
+        assert edge_id in node_edges , (
+            f"node data.edges must contain the re-linked edge (ordering fix); got: {node_edges}"
+        );
+
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend recover_all emits warning when re-link target is missing" {
+    # When a quarantined edge's source node is absent from live _anchors,
+    # recover_all must still succeed (matched_count==0 is not a crash) and
+    # the edge must be moved to the live collection.
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        client = MongoClient(uri);
+        col = client["jac_test_l123"]["_anchors"];
+        q_col = client["jac_test_l123"]["_anchors_quarantine"];
+
+        ghost_node_id = str(uuid4());
+        edge_id = str(uuid4());
+
+        # Only the edge is in quarantine; ghost_node_id has no live doc.
+        q_col.insert_one(
+            {
+                '_id': edge_id,
+                'type': 'EdgeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'GenericEdge',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'EdgeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': edge_id,
+                    'persistent': True,
+                    'source': ghost_node_id,
+                    'target': ghost_node_id,
+                    'is_undirected': False,
+                    'archetype': {
+                        '__type__': 'GenericEdge',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    }
+                },
+                'error': 'cascade quarantine: connected node was quarantined',
+                'quarantined_at': '2026-05-17T00:00:00',
+                'from_format_version': 1
+            }
+        );
+
+        # Must not raise — matched_count==0 is a warning-only path.
+        (recovered, still_stuck) = backend.recover_all();
+        assert recovered == 1 , f"edge must be recovered even without live node, got {recovered}";
+        assert not still_stuck , f"edge must not be stuck, got {still_stuck}";
+
+        # Edge moved to live collection; ghost node was never created.
+        assert col.find_one({'_id': edge_id}) is not None , "edge must be live after recovery";
+        assert col.find_one({'_id': ghost_node_id}) is None , "ghost node must not materialise";
+
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
 # ---------------------------------------------------------------------------
 # Regression: issue #6076 — _put_node_atomic fails with "empty object" error
 # when access.roots.anchors is {} (the default for every new NodeAnchor).
@@ -439,7 +583,7 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
 
         # Build a node with the default Permission — access.roots.anchors = {}
         p = _MongoLayer123Person(name="charlie", age=40);
-        anchor = p.__jac__;
+        anchor = cast(NodeAnchor, p.__jac__);
         anchor.persistent = True;
 
         fake_edge_id = str(uuid4());
@@ -451,30 +595,26 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
         client = MongoClient(uri);
         col = client["jac_test_l123"]["_anchors"];
 
-        # The document must have been written successfully.
         doc = col.find_one({'_id': str(anchor.id)});
         assert doc is not None , (
             "_put_node_atomic must persist the NodeAnchor even when "
             "access.roots.anchors is the default empty dict"
         );
 
-        # The added edge must be recorded.
         stored_edges = doc.get('data', {}).get('edges', []);
         assert fake_edge_id in stored_edges , (
             f"added edge must appear in data.edges; got: {stored_edges}"
         );
 
-        # The stored document must contain no empty-dict values at any path —
-        # that is the root cause of the MongoDB error.
         def _has_empty_dict(v: object) -> bool {
             if isinstance(v, dict) {
                 if not v {
                     return True;
                 }
-                return any(_has_empty_dict(vv) for vv in v.values());
+                return bool(any(_has_empty_dict(vv) for vv in v.values()));
             }
             if isinstance(v, list) {
-                return any(_has_empty_dict(item) for item in v);
+                return bool(any(_has_empty_dict(item) for item in v));
             }
             return False;
         }
@@ -508,7 +648,7 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
         backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
 
         p = _MongoLayer123Person(name="diana", age=35);
-        anchor = p.__jac__;
+        anchor = cast(NodeAnchor, p.__jac__);
         anchor.persistent = True;
 
         # Step 1: initial full upsert (sets data.__type__, arch_module, etc.).

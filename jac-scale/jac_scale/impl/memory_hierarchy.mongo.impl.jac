@@ -937,10 +937,16 @@ def _mongo_attempt_recover(backend: MongoBackend, doc: dict) -> tuple {
         }
         for node_id in relink_ids {
             try {
-                backend.collection.update_one(
+                result = backend.collection.update_one(
                     {'_id': node_id, 'type': 'NodeAnchor'},
                     {'$addToSet': {'data.edges': doc_id}}
                 );
+                if result.matched_count == 0 {
+                    logger.warning(
+                        f"MongoBackend: recover re-link of edge {doc_id} "
+                        f"to node {node_id} skipped: node not live in collection"
+                    );
+                }
             } except Exception as relink_err {
                 logger.warning(
                     f"MongoBackend: recover re-link of edge {doc_id} "
@@ -1114,6 +1120,8 @@ impl MongoBackend.recover_all -> tuple {
     } except Exception {
         return (0, []);
     }
+    # Process NodeAnchors before EdgeAnchors so re-link finds live nodes.
+    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
     recovered = 0;
     still_stuck: list = [];
     for d in docs {
