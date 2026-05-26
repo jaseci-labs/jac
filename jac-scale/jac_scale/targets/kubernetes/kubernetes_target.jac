@@ -1283,6 +1283,8 @@ obj KubernetesTarget(DeploymentTarget) {
         self.k8s_config = KubernetesConfig.from_dict(
             KubernetesConfig, self.scale_config.get_kubernetes_config()
         );
+        self.k8s_config.app_name = self.config.app_name;
+        self.k8s_config.namespace = self.config.namespace;
 
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
