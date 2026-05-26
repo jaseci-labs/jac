@@ -3383,7 +3383,11 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 > **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) land in M-14.c.
 
+<!-- -->
+
 > **Trace correlation.** Microservice mode already propagates `X-Trace-Id` (K-12). Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field ships in M-14.b.
+
+<!-- -->
 
 > **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy lands in M-14.c.
 
