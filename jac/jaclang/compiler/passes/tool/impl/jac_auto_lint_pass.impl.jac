@@ -207,6 +207,11 @@ impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
         return;
     }
     impl_node = nd;
+    # W3043: rewrite `impl Cls.prop` -> `impl Cls.prop.getter/.setter/.deleter`
+    # when the matched declaration is a @property accessor.
+    if not self._is_suppressed(W3043) {
+        self._convert_property_impl(impl_node);
+    }
     if not self._is_suppressed(W3010) {
         self._fix_impl_signature_mismatch(impl_node);
     }
@@ -271,6 +276,13 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
         return;
     }
     arch = nd;
+    # W3043: convert @property/@x.setter/@x.deleter ability groups into a single
+    # native `has name: T { getter; setter; deleter; }` property declaration.
+    if not self._is_suppressed(W3043)
+    and arch.body is not None
+    and isinstance(arch.body, list) {
+        self._convert_properties(arch);
+    }
     if arch.body is not None and isinstance(arch.body, list) {
         old_body = list(arch.body);
         new_body = self.combine_consecutive_has(old_body);
@@ -447,6 +459,12 @@ impl JacAutoLintPass.can_combine_glob(
 
 """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
 impl JacAutoLintPass.can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool {
+    # Property has-vars (with accessor blocks) can never share a `has a, b;` line.
+    for hv in list(has1.vars) + list(has2.vars) {
+        if hv.accessors is not None {
+            return False;
+        }
+    }
     if has1.is_static != has2.is_static {
         return False;
     }
@@ -2911,4 +2929,309 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
     }
     parent.kid = [list_compr if k is nd else k for k in parent.kid];
     return True;
+}
+
+
+"""W3043: classify an ability as a property accessor by its decorators.
+
+Returns "property" for a `@property` getter, "setter" for `@<name>.setter`,
+"deleter" for `@<name>.deleter`, and "" for anything else (including
+`@cached_property`, whose caching semantics have no native equivalent).
+"""
+impl JacAutoLintPass._property_role_of_ability(ab: uni.Ability) -> str {
+    if not ab.decorators {
+        return "";
+    }
+    for dec in ab.decorators {
+        if isinstance(dec, uni.Name) and dec.value == "property" {
+            return "property";
+        }
+        if isinstance(dec, uni.AtomTrailer)
+        and dec.is_attr
+        and isinstance(dec.right, uni.Name) {
+            if dec.right.value == "setter" {
+                return "setter";
+            }
+            if dec.right.value == "deleter" {
+                return "deleter";
+            }
+        }
+    }
+    return "";
+}
+
+"""W3043: build a single native-property accessor Ability from a decorated one.
+
+`kind` is the accessor_kind ("property"/"setter"/"deleter"). The getter drops
+its return type (the property's declared type carries it on the `has`); the
+setter keeps its `(value: T)` signature. A signature-only declaration (no body)
+becomes a `getter;`/`setter;`/`deleter;` stub whose body lives in an impl file.
+"""
+impl JacAutoLintPass._make_accessor_from_ability(
+    src: uni.Ability, kind: str
+) -> uni.Ability {
+    kw = "getter" if kind == "property" else kind;
+    name_node = self._make_name_node(src, kw);
+    sig: (uni.FuncSignature | uni.EventSignature | None) = (
+        src.signature if kind == "setter" else None
+    );
+    acc_kid: list[uni.UniNode] = [name_node];
+    if sig is not None {
+        acc_kid.append(sig);
+    }
+    body: (list | None) = None;
+    if isinstance(src.body, list) {
+        body = src.body;
+        acc_kid.append(src.gen_token(Tok.LBRACE));
+        for s in src.body {
+            acc_kid.append(s);
+        }
+        acc_kid.append(src.gen_token(Tok.RBRACE));
+    } else {
+        acc_kid.append(src.gen_token(Tok.SEMI));
+    }
+    return uni.Ability(
+        name_ref=name_node,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=sig,
+        body=body,
+        kid=acc_kid,
+        doc=None,
+        decorators=None,
+        type_params=None,
+        accessor_kind=kind
+    );
+}
+
+"""W3043: assemble `has <name>: <type> { <accessors> }` as an ArchHas node."""
+impl JacAutoLintPass._build_property_has(
+    ref_node: uni.UniNode, prop_name: str, type_expr: (uni.Expr | None), accessors: list
+) -> uni.ArchHas {
+    name_node = self._make_name_node(ref_node, prop_name);
+    colon_tok = ref_node.gen_token(Tok.COLON);
+    type_tag = uni.SubTag(tag=type_expr, kid=[colon_tok, type_expr]);
+    hv_kid: list[uni.UniNode] = [name_node, type_tag, ref_node.gen_token(Tok.LBRACE)];
+    for acc in accessors {
+        hv_kid.append(acc);
+    }
+    hv_kid.append(ref_node.gen_token(Tok.RBRACE));
+    has_var = uni.HasVar(
+        name=name_node,
+        type_tag=type_tag,
+        value=None,
+        defer=False,
+        accessors=accessors,
+        kid=hv_kid
+    );
+    has_kw = ref_node.gen_token(Tok.KW_HAS);
+    return uni.ArchHas(
+        is_static=False,
+        vars=[has_var],
+        is_frozen=False,
+        access=None,
+        doc=None,
+        kid=[has_kw, has_var]
+    );
+}
+
+"""W3043: convert @property accessor abilities in an archetype body to native
+`has name: T { getter; setter; deleter; }` declarations, mutating body + kid.
+"""
+impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
+    body = container.body;
+    if not isinstance(body, list) {
+        return;
+    }
+    groups: dict[str, dict[str, uni.Ability]] = {};
+    group_indices: dict[str, list[int]] = {};
+    order: list[str] = [];
+    for (idx, item) in enumerate(body) {
+        if not isinstance(item, uni.Ability) {
+            continue;
+        }
+        role = self._property_role_of_ability(item);
+        if role == "" or not isinstance(item.name_ref, uni.Name) {
+            continue;
+        }
+        pname = item.name_ref.value;
+        if pname not in groups {
+            groups[pname] = {};
+            group_indices[pname] = [];
+            order.append(pname);
+        }
+        groups[pname][role] = item;
+        group_indices[pname].append(idx);
+    }
+    replaced: dict[int, uni.ArchHas] = {};  # first body index -> new ArchHas
+    dropped_ids: set[int] = set();
+    for pname in order {
+        g = groups[pname];
+        if "property" not in g {
+            continue;  # a property must have a getter to convert
+        }
+        getter_ab = g["property"];
+        type_expr = getter_ab.signature.return_type if getter_ab.signature else None;
+        if type_expr is None {
+            continue;  # native `has name: T` requires a declared type
+        }
+        type_name = type_expr.value if isinstance(type_expr, uni.Name) else "...";
+        if not self.emit(
+            W3043, node_override=getter_ab, name=pname, type_name=type_name
+        ) {
+            continue;
+        }
+        accessors: list[uni.Ability] = [
+            self._make_accessor_from_ability(getter_ab, "property")
+        ];
+        if "setter" in g {
+            accessors.append(self._make_accessor_from_ability(g["setter"], "setter"));
+        }
+        if "deleter" in g {
+            accessors.append(self._make_accessor_from_ability(g["deleter"], "deleter"));
+        }
+        arch_has = self._build_property_has(getter_ab, pname, type_expr, accessors);
+        indices = sorted(group_indices[pname]);
+        for i in indices {
+            dropped_ids.add(id(body[i]));
+        }
+        replaced[indices[0]] = arch_has;
+    }
+    if not replaced {
+        return;
+    }
+    first_map: dict[int, uni.ArchHas] = {};
+    new_body: list[uni.UniNode] = [];
+    for (idx, item) in enumerate(body) {
+        if idx in replaced {
+            first_map[id(item)] = replaced[idx];
+            new_body.append(replaced[idx]);
+        } elif id(item) in dropped_ids {
+            continue;
+        } else {
+            new_body.append(item);
+        }
+    }
+    container.body = new_body;
+    new_kid: list[uni.UniNode] = [];
+    for k in container.kid {
+        if id(k) in first_map {
+            new_kid.append(first_map[id(k)]);
+        } elif id(k) in dropped_ids {
+            continue;
+        } else {
+            new_kid.append(k);
+        }
+    }
+    container.kid = new_kid;
+    self.recalculate_parents(container);
+}
+
+"""W3043: determine the accessor kind for an impl whose target is a property.
+
+Uses the matched declaration (decl_link) to classify: a getter impl when the
+decl is `@property`, a setter/deleter impl for the respective decorators.
+Returns "" when the impl is not a property accessor or is already native.
+"""
+impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
+    if not nd.target {
+        return "";
+    }
+    last = nd.target[-1];
+    if isinstance(last, uni.Name) and last.value in ["getter", "setter", "deleter"] {
+        return "";  # already native dotted-accessor impl
+    }
+    decl = nd.decl_link;
+    if isinstance(decl, uni.Ability) {
+        return self._property_role_of_ability(decl);
+    }
+    # Fallback for the parse-only format pipeline (no decl_link): consult the
+    # driver-populated dotted-target map.
+    dotted = ".".join(
+        [
+            t.value
+            for t in nd.target
+            if isinstance(t, uni.Name)
+        ]
+    );
+    return PROPERTY_IMPL_TARGETS.get(dotted, "");
+}
+
+"""W3043: rewrite `impl Cls.prop` -> `impl Cls.prop.getter/.setter/.deleter`."""
+impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
+    kind = self._impl_property_kind(nd);
+    if kind == "" {
+        return;
+    }
+    last_target = nd.target[-1];
+    prop_name = last_target.value if isinstance(last_target, uni.Name) else "?";
+    if not self.emit(W3043, node_override=nd, name=prop_name, type_name="...") {
+        return;
+    }
+    # Anchor the synthetic `.getter` tokens at the last target name's position
+    # (not the impl keyword's) so the kid position sequence stays monotonic and
+    # the position-based comment injector keeps body comments attached.
+    kw = "getter" if kind == "property" else kind;
+    acc_name = self._make_name_node(last_target, kw);
+    dot_tok = last_target.gen_token(Tok.DOT);
+    nd.target = list(nd.target) + [acc_name];
+    new_kid: list[uni.UniNode] = [];
+    for k in nd.kid {
+        new_kid.append(k);
+        if k is last_target {
+            new_kid.append(dot_tok);
+            new_kid.append(acc_name);
+        }
+    }
+    nd.kid = new_kid;
+    # Strip any redundant `@property`/`@x.setter`/`@x.deleter` decorator from the
+    # impl itself: the dotted `.getter/.setter/.deleter` target already marks it
+    # as a property accessor (jac0core impls historically carried the decorator
+    # on both the decl and the impl).
+    if nd.decorators {
+        drop_ids: set[int] = set();
+        for dec in nd.decorators {
+            is_prop = (
+                isinstance(dec, uni.Name)
+                and dec.value in ["property", "cached_property"]
+            )
+            or (
+                isinstance(dec, uni.AtomTrailer)
+                and dec.is_attr
+                and isinstance(dec.right, uni.Name)
+                and dec.right.value in ["setter", "deleter"]
+            );
+            if is_prop {
+                drop_ids.add(id(dec));
+            }
+        }
+        if drop_ids {
+            nd.decorators = [
+                d
+                for d in nd.decorators
+                if id(d) not in drop_ids
+            ]
+            or None;
+            stripped_kid: list[uni.UniNode] = [];
+            for k in nd.kid {
+                if id(k) in drop_ids {
+                    if (
+                        stripped_kid
+                        and isinstance(stripped_kid[-1], uni.Token)
+                        and (stripped_kid[-1].name == Tok.DECOR_OP)
+                    ) {
+                        stripped_kid.pop();
+                    }
+                    continue;
+                }
+                stripped_kid.append(k);
+            }
+            nd.kid = stripped_kid;
+        }
+    }
+    self.recalculate_parents(nd);
 }

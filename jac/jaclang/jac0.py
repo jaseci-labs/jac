@@ -442,11 +442,23 @@ class Param:
 
 
 @dataclass
+class Accessor:
+    # kind: "getter" | "setter" | "deleter"
+    kind: str = ""
+    params: list = field(default_factory=list)
+    return_type: str = ""
+    # body is None for a signature-only stub (impl provides it elsewhere)
+    body: list | None = None
+
+
+@dataclass
 class HasVar:
     name: str = ""
     type_ann: str = ""
     default: str = ""
     by_postinit: bool = False
+    # Native property accessor blocks: `has x: T { getter; setter(v: T); }`
+    accessors: list = field(default_factory=list)
 
 
 @dataclass
@@ -1409,6 +1421,15 @@ class Parser:
             type_ann = self._collect_type(stop_vals={"="}, stop_names={"by"})
             default = ""
             by_postinit = False
+            accessors: list[Accessor] = []
+            if self._at(TT.LBRACE):
+                # Native property: `has x: T { getter; setter(v: T); deleter; }`.
+                accessors = self._parse_accessors()
+                vars_list.append(
+                    HasVar(name=name, type_ann=type_ann, accessors=accessors)
+                )
+                # An accessor block ends the has statement (no trailing `;`).
+                break
             if self._match_op("="):
                 default = self._collect_until(TT.COMMA, TT.SEMI)
             elif self._at(TT.NAME, "by"):
@@ -1435,6 +1456,33 @@ class Parser:
                 self._advance()
                 self._advance()
         return HasDecl(vars=vars_list)
+
+    def _parse_accessors(self) -> list[Accessor]:
+        """Parse a `{ getter; setter(v: T); deleter; }` property accessor block."""
+        self._expect(TT.LBRACE)
+        accessors: list[Accessor] = []
+        while not self._at(TT.RBRACE):
+            kind = self._expect(TT.NAME).value  # getter | setter | deleter
+            params: list[Param] = []
+            if self._at(TT.LPAREN):
+                self._advance()
+                params = self._parse_params()
+                self._expect(TT.RPAREN)
+            return_type = ""
+            if self._match(TT.ARROW):
+                return_type = self._collect_type()
+            body: list | None = None
+            if self._at(TT.LBRACE):
+                self._advance()
+                body = self._parse_body()
+                self._expect(TT.RBRACE)
+            else:
+                self._expect(TT.SEMI)
+            accessors.append(
+                Accessor(kind=kind, params=params, return_type=return_type, body=body)
+            )
+        self._expect(TT.RBRACE)
+        return accessors
 
     # ── Glob Declarations ─────────────────────────────────────────────────
 
@@ -1907,8 +1955,14 @@ class CodeGen:
         if node.is_dataclass:
             has_dc = any("dataclass" in d for d in node.decorators)
             if not has_dc:
-                # Check if the class has 'has' fields
-                has_fields = any(isinstance(n, HasDecl) for n in node.body)
+                # Check if the class has 'has' fields. Property-only `has`
+                # declarations (accessor blocks) are not dataclass fields, so a
+                # class whose only `has` is a property must keep its inherited
+                # __init__ rather than getting an arg-less generated one.
+                has_fields = any(
+                    isinstance(n, HasDecl) and any(not v.accessors for v in n.vars)
+                    for n in node.body
+                )
                 # Check if the class has a manual __init__ (def init)
                 impls = self.impl_registry.get(node.name, [])
                 has_init = any(
@@ -1971,6 +2025,11 @@ class CodeGen:
                 parts = impl.target.split(".")
                 mname = parts[-1] if len(parts) > 1 else parts[0]
                 mname = _dunder_names.get(mname, mname)
+                # Native property accessor impls (`Cls.prop.getter`) have no
+                # FuncDef stub; emit them directly.
+                if len(parts) >= 2 and parts[-1] in ("getter", "setter", "deleter"):
+                    self._emit_impl_as_method(impl, stub_lookup)
+                    continue
                 if mname not in stub_lookup:
                     continue
                 self._emit_impl_as_method(impl, stub_lookup)
@@ -2084,8 +2143,41 @@ class CodeGen:
 
     # ── Has ───────────────────────────────────────────────────────────────
 
+    def _emit_property_accessor(
+        self, prop_name: str, kind: str, params: list, return_type: str, body: list
+    ) -> None:
+        """Emit one decorated property accessor method (getter/setter/deleter)."""
+        if kind == "getter":
+            self._line("@property")
+        elif kind == "setter":
+            self._line(f"@{prop_name}.setter")
+        else:  # deleter
+            self._line(f"@{prop_name}.deleter")
+        func_params = list(params)
+        if not func_params or func_params[0].name not in ("self", "cls"):
+            func_params.insert(0, Param(name="self"))
+        ps = self._format_params(func_params)
+        ret = f" -> {return_type}" if return_type else ""
+        self._line(f"def {prop_name}({ps}){ret}:")
+        self.indent += 1
+        prev_in_class = self._in_class
+        self._in_class = False
+        self._emit_body(body)
+        self._in_class = prev_in_class
+        self.indent -= 1
+        self._line()
+
     def _emit_has(self, node: HasDecl) -> None:
         for var in node.vars:
+            if var.accessors:
+                # Native property: not a dataclass field. Inline-bodied accessors
+                # emit here; signature-only stubs are filled by their impl.
+                for acc in var.accessors:
+                    if acc.body is not None:
+                        self._emit_property_accessor(
+                            var.name, acc.kind, acc.params, acc.return_type, acc.body
+                        )
+                continue
             if var.by_postinit:
                 self._line(f"{var.name}: {var.type_ann} = field(init=False)")
             elif var.default:
@@ -2121,6 +2213,12 @@ class CodeGen:
         self, impl: ImplDef, stub_lookup: dict[str, FuncDef] | None = None
     ) -> None:
         parts = impl.target.split(".")
+        # Native property accessor impl: `impl Cls.prop.getter/.setter/.deleter`.
+        if len(parts) >= 2 and parts[-1] in ("getter", "setter", "deleter"):
+            self._emit_property_accessor(
+                parts[-2], parts[-1], impl.params, impl.return_type, impl.body
+            )
+            return
         method_name = parts[-1] if len(parts) > 1 else parts[0]
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         method_name = _dunder_names.get(method_name, method_name)
