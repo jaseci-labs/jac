@@ -218,10 +218,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # `baseline` enforcement blocks hostPath, so namespaces that
         # default to baseline (vanilla minikube, fresh EKS, etc.) reject
         # the DaemonSet pods and the deploy stalls with `FailedCreate`.
-        # Stamp the `privileged` label up-front so the operator doesn't
-        # have to `kubectl label namespace ...` manually. Scoped to the
-        # opt-in `logs.enabled` path so we never mutate user namespaces
-        # that aren't explicitly asking for hostPath workloads.
+        # Stamp the `privileged` label when the namespace has no policy
+        # set yet so common-case deploys just work. Existing policy
+        # values (restricted / baseline / privileged / etc.) are left
+        # untouched - downgrading them would be a security regression;
+        # we warn instead and let the operator relabel by hand.
         self._ensure_privileged_namespace(core_v1, obs_config.namespace);
         if self.logger {
             self.logger.info(
@@ -235,18 +236,32 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     """Label namespace `pod-security.kubernetes.io/enforce=privileged` so
-    hostPath-using DaemonSets (node-exporter, Alloy) can schedule.
-    Idempotent + non-fatal: existing label is preserved (we overwrite
-    only when missing or set to something stricter), and any API error
-    surfaces as a warning so a sealed-namespace cluster doesn't break
-    the deploy - the operator will see the FailedCreate event anyway
-    and can label the namespace by hand."""
+    hostPath-using DaemonSets (node-exporter, Alloy) can schedule. Only
+    stamps the label when it's MISSING - any existing value (including
+    `restricted` / `baseline` set by a compliance policy) is left alone
+    and surfaces as a warning telling the operator the manual relabel
+    command. Never downgrade a stricter policy silently.
+
+    API errors are also non-fatal and warn-only so a sealed-namespace
+    cluster doesn't break the deploy - the operator will see the
+    FailedCreate event anyway and can label the namespace by hand."""
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
         try {
             ns = core_v1.read_namespace(name=namespace);
             labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
             current: str = labels.get("pod-security.kubernetes.io/enforce", "");
-            if current == "privileged" {
+            if current {
+                if self.logger {
+                    self.logger.warn(
+                        f"namespace '{namespace}' has "
+                        f"pod-security.kubernetes.io/enforce={current}; "
+                        f"hostPath DaemonSets (node-exporter, Alloy) may be "
+                        f"rejected. Relabel manually with `kubectl label "
+                        f"namespace {namespace} "
+                        f"pod-security.kubernetes.io/enforce=privileged "
+                        f"--overwrite` if you want to enable them."
+                    );
+                }
                 return;
             }
             patch = {
