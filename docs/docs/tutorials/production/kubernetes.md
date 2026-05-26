@@ -89,6 +89,17 @@ walker:pub health {
 jac start --scale
 ```
 
+!!! tip
+    Ensure your Kubernetes cluster is running before deploy.
+
+    - If MicroK8s is not installed yet, install it first (see [Option A: MicroK8s](#option-a-microk8s-ubuntu-recommended)).
+    - If MicroK8s is already installed, start/check readiness before deploy:
+
+    ```bash
+    microk8s start
+    microk8s status --wait-ready
+    ```
+
 That's it. Your application is now running on Kubernetes.
 
 **Access your application (default local setup):**
