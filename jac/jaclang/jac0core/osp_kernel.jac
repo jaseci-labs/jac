@@ -27,7 +27,7 @@ glob UNTYPED: int = -1;
 `trig_tag` (or `trig_tag` is UNTYPED)."""
 obj Slot {
     has trig_tag: int,
-        fn: Callable[([any, any], None)];
+        fn: Callable[([any, any], any)];
 }
 
 """Compiler-emitted dispatch descriptor for a walker archetype."""
