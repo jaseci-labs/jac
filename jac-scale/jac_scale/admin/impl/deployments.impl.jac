@@ -332,11 +332,11 @@ impl JacAPIServerDeployments.admin_deployments_list(
     )
     or [];
     cpu_by_pod = prom_query(
-        f'sum(rate(container_cpu_usage_seconds_total{{pod!=""{ns_and}}}[5m])) by (pod)'
+        f'sum(rate(container_cpu_usage_seconds_total{{pod=~".+"{ns_and}}}[5m])) by (pod)'
     )
     or [];
     mem_by_pod = prom_query(
-        f'sum(container_memory_working_set_bytes{{pod!=""{ns_and}}}) by (pod)'
+        f'sum(container_memory_working_set_bytes{{pod=~".+"{ns_and}}}) by (pod)'
     )
     or [];
     restarts_by_pod = prom_query(
