@@ -367,10 +367,6 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         return None;
     }
     if anchor is None {
-        # Distinguish the two failure modes so operators can triage correctly:
-        # 1. Class not in registry → "class unresolvable" (fix: rename/alias)
-        # 2. Class found but a field failed deserialization → "archetype field
-        #    deserialization failed" (fix: widen field type or rewrite stored value)
         cls_resolved = (
             Serializer._get_class(arch_module, arch_type)
                 if (arch_module and arch_type)

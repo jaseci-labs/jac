@@ -682,10 +682,6 @@ impl Serializer._deserialize_archetype(
                     (origin is Union or origin is UnionType) and NoneType in args
                 );
                 if deser_v is None and not is_optional {
-                    # Stored None on a non-Optional field. Recover using the
-                    # field's declared default rather than failing the entire
-                    # anchor. Common case: has things: list[X] = [] stored as null
-                    # after a schema migration or a past write bug.
                     recovered: object = None;
                     has_default = False;
                     for fd in fields(cls) {
