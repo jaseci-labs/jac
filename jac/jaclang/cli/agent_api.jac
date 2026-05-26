@@ -49,6 +49,10 @@ def build_agent_request(
         safe=safe,
         quiet=quiet,
         cwd=cwd,
-        code_intel=CodeIntelligence(proj_dir=cwd)
+        code_intel=CodeIntelligence(proj_dir=cwd, lazy=True)
+        # Lazy: the agent's structural tools (`project_map`, walkers) load from
+        # the cheap, cross-run-cached structural index, deferring the full
+        # type-checked pipeline until the first symbol/diagnostic query actually
+        # needs it -- so startup and project-map calls don't pay semantic cost.
     );
 }

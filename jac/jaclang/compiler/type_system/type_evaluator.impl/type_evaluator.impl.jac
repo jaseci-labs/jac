@@ -1165,7 +1165,20 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Unbounded TypeVar - only universal object attributes are allowed
                     # Pyright: treats unbounded TypeVars as "object*"
-                    universal_attrs = {"__class__","__doc__","__dict__","__module__","__sizeof__","__str__","__repr__","__hash__","__eq__","__ne__","__init__","__new__"};
+                    universal_attrs = {
+                        "__class__",
+                        "__doc__",
+                        "__dict__",
+                        "__module__",
+                        "__sizeof__",
+                        "__str__",
+                        "__repr__",
+                        "__hash__",
+                        "__eq__",
+                        "__ne__",
+                        "__init__",
+                        "__new__"
+                    };
                     if attr_name in universal_attrs {
                         # Look up on object class
                         if self.prefetch.object_class {

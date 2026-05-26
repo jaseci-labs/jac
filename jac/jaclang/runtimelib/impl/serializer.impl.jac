@@ -278,7 +278,7 @@ impl Serializer._deserialize_value(val: object) -> object {
         return [Serializer._deserialize_value(v) for v in val];
     }
     if isinstance(val, dict) {
-        if '$ref' in val and val.keys() <= {'$ref','$type'} {
+        if '$ref' in val and val.keys() <= {'$ref', '$type'} {
             return Serializer._deserialize_jac_ref(val);
         }
         return Serializer.deserialize(val)

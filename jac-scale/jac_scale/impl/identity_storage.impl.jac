@@ -29,7 +29,7 @@ impl IdentityStorage.create_user(
     type_counts: dict[str, int] = {};
     for identity in identities {
         id_type = identity.get('type', '');
-        if id_type not in {'username','email'} {
+        if id_type not in {'username', 'email'} {
             return {
                 'error': f"Invalid identity type: {id_type}. Only 'username' and 'email' are allowed",
                 'code': 'VALIDATION_ERROR'

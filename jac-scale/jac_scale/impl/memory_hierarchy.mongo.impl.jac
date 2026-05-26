@@ -546,7 +546,7 @@ The planner combines these with the topology_index narrowing automatically
 — see `jaclang.runtimelib.planner` for the strategy chooser.
 """
 impl MongoBackend.capabilities -> set[str] {
-    return {'type_pushdown','field_pushdown','id_in','slice'};
+    return {'type_pushdown', 'field_pushdown', 'id_in', 'slice'};
 }
 
 
