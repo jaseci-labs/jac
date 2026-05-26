@@ -423,3 +423,170 @@ test "unresolvable nested class in field is quarantined, not silently loaded as 
         mem.close();
     }
 }
+
+
+test "SqliteMemory recover_all processes nodes before edges so re-link finds live anchors" {
+    # Ordering bug regression: edge row inserted into quarantine BEFORE the node;
+    # naïve DB iteration would restore the edge first, leaving data.edges empty.
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        node_id = str(uuid.uuid4());
+        edge_id = str(uuid.uuid4());
+        # Create the schema via SqliteMemory, then seed quarantine with a raw conn.
+        # inspect_summary() is used (not close()) because sync() skips _ensure_connection
+        # when there is nothing to persist, leaving the schema tables uncreated.
+        mem_init = SqliteMemory(path=db_path);
+        mem_init.inspect_summary();
+        mem_init.close();
+        seed_conn = sqlite3.connect(db_path);
+        insert_sql = (
+            "INSERT INTO anchors_quarantine"
+            " (id, type, arch_module, arch_type, fingerprint, data,"
+            "  error, quarantined_at, from_format_version)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+        # Adversarial order: edge first, node second.
+        seed_conn.execute(
+            insert_sql,
+            (
+                edge_id,
+                'EdgeAnchor',
+                'jaclang.jac0core.archetype',
+                'GenericEdge',
+                None,
+                json.dumps(
+                    {
+                        '__type__': 'EdgeAnchor',
+                        '__module__': 'jaclang.jac0core.archetype',
+                        'id': edge_id,
+                        'persistent': True,
+                        'source': node_id,
+                        'target': node_id,
+                        'is_undirected': False,
+                        'archetype': {
+                            '__type__': 'GenericEdge',
+                            '__module__': 'jaclang.jac0core.archetype'
+                        }
+                    }
+                ),
+                'cascade quarantine',
+                '2026-05-17T00:00:00',
+                1
+            )
+        );
+        seed_conn.execute(
+            insert_sql,
+            (
+                node_id,
+                'NodeAnchor',
+                'jaclang.jac0core.archetype',
+                'Root',
+                None,
+                json.dumps(
+                    {
+                        '__type__': 'NodeAnchor',
+                        '__module__': 'jaclang.jac0core.archetype',
+                        'id': node_id,
+                        'persistent': True,
+                        'archetype': {
+                            '__type__': 'Root',
+                            '__module__': 'jaclang.jac0core.archetype'
+                        },
+                        'edges': []
+                    }
+                ),
+                'cascade quarantine',
+                '2026-05-17T00:00:00',
+                1
+            )
+        );
+        seed_conn.commit();
+        seed_conn.close();
+        mem = SqliteMemory(path=db_path);
+        (recovered, still_stuck) = mem.recover_all();
+        assert recovered == 2 , f"both rows must recover, got {recovered}: {still_stuck}";
+        assert not still_stuck , f"nothing should remain stuck, got {still_stuck}";
+        mem.close();
+        verify_conn = sqlite3.connect(db_path);
+        row = verify_conn.execute(
+            "SELECT data FROM anchors WHERE id = ? AND type = 'NodeAnchor'", (node_id, )
+        ).fetchone();
+        assert row is not None , "recovered node must be live in anchors";
+        node_doc = cast(dict, json.loads(cast(str, row[0])));
+        recovered_edges = cast(list, node_doc.get('edges', []));
+        assert edge_id in recovered_edges , (
+            f"node data.edges must contain the re-linked edge (ordering fix); got: {recovered_edges}"
+        );
+        verify_conn.close();
+    }
+}
+
+
+test "SqliteMemory recover_all emits warning when re-link target is missing" {
+    # When a quarantined edge's source node is absent from live anchors,
+    # recovery must still complete without error and move the edge to live.
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        ghost_node_id = str(uuid.uuid4());
+        edge_id = str(uuid.uuid4());
+        # Create schema, then seed with a raw connection.
+        mem_init = SqliteMemory(path=db_path);
+        mem_init.inspect_summary();
+        mem_init.close();
+        seed_conn = sqlite3.connect(db_path);
+        # Only the edge is quarantined; ghost_node_id has no live row.
+        seed_conn.execute(
+            (
+                "INSERT INTO anchors_quarantine"
+                " (id, type, arch_module, arch_type, fingerprint, data,"
+                "  error, quarantined_at, from_format_version)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ),
+            (
+                edge_id,
+                'EdgeAnchor',
+                'jaclang.jac0core.archetype',
+                'GenericEdge',
+                None,
+                json.dumps(
+                    {
+                        '__type__': 'EdgeAnchor',
+                        '__module__': 'jaclang.jac0core.archetype',
+                        'id': edge_id,
+                        'persistent': True,
+                        'source': ghost_node_id,
+                        'target': ghost_node_id,
+                        'is_undirected': False,
+                        'archetype': {
+                            '__type__': 'GenericEdge',
+                            '__module__': 'jaclang.jac0core.archetype'
+                        }
+                    }
+                ),
+                'cascade quarantine',
+                '2026-05-17T00:00:00',
+                1
+            )
+        );
+        seed_conn.commit();
+        seed_conn.close();
+        # Must not raise — missing node triggers a warning, not a crash.
+        mem = SqliteMemory(path=db_path);
+        (recovered, still_stuck) = mem.recover_all();
+        assert recovered == 1 , f"edge must be recovered even without live node, got {recovered}";
+        assert not still_stuck , f"edge must not be stuck, got {still_stuck}";
+        mem.close();
+        verify_conn = sqlite3.connect(db_path);
+        live = verify_conn.execute(
+            "SELECT id FROM anchors WHERE id = ?", (edge_id, )
+        ).fetchone();
+        assert live is not None , "edge must be live after recovery";
+        ghost = verify_conn.execute(
+            "SELECT id FROM anchors WHERE id = ?", (ghost_node_id, )
+        ).fetchone();
+        assert ghost is None , "ghost node must not materialise";
+        verify_conn.close();
+    }
+}
