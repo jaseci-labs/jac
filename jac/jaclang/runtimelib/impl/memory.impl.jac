@@ -1300,6 +1300,11 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
                         f"to node {node_id} failed: {relink_err}"
                     );
                 }
+            } else {
+                logger.warning(
+                    f"SqliteMemory: recover re-link of edge {row_id} "
+                    f"to node {node_id} skipped: node not found in live anchors"
+                );
             }
         }
     }
@@ -1487,6 +1492,8 @@ impl SqliteMemory.recover_all -> tuple {
             )
         )
     );
+    # Process NodeAnchors before EdgeAnchors so re-link finds live nodes.
+    rows.sort(key=lambda r : 0 if r[1] == 'NodeAnchor' else 1);
     recovered = 0;
     still_stuck: list = [];
     for r in rows {

@@ -34,7 +34,7 @@ impl SemanticAnalysisPass._check_archetype(
                 continue;
             }
             for var in stmnt.vars {
-                if var.accessors is not None {
+                if var.accessors {
                     continue;  # property declarations aren't dataclass fields
                 }
                 if ((var.value is not None) or var.defer) {
