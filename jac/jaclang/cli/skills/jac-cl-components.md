@@ -175,6 +175,7 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
   onClick={def (e: MouseEvent) { count = count + 1; }}
   onClick={def (e: MouseEvent) -> None { count = count + 1; }}
   ```
+
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
