@@ -166,7 +166,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             bundle["observability_error"] = str(e);
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     f"Observability stack deploy reported a non-fatal error: {e}",
                     {"app_name": app_name}
                 );
@@ -261,7 +261,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     f"Could not label namespace '{namespace}' privileged - "
                     f"hostPath DaemonSets may be rejected by PodSecurity. "
                     f"Run `kubectl label namespace {namespace} "
@@ -292,7 +292,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             return dict(ms_cfg.get("logs", {}));
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     f"Could not read [plugins.scale.microservices.logs] - "
                     f"observability stack will not be deployed: {e}"
                 );

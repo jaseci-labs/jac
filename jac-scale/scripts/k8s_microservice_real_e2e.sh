@@ -109,10 +109,23 @@ kubectl label namespace "${NAMESPACE}" \
 
 cd "${PROJECT_DIR}"
 python - <<PYEOF
-import sys, jaclang  # noqa: F401
+import logging, sys, jaclang  # noqa: F401
 from jac_scale.targets.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
 from jac_scale.abstractions.config.app_config import AppConfig
+
+# Surface MonitoringDeployer / observability warnings to stderr so CI
+# logs show the actual error instead of the silent
+# bundle["observability_error"] swallow.
+class StderrLogger:
+    def info(self, msg, *args, **kwargs):
+        print(f"INFO: {msg}", file=sys.stderr)
+    def warn(self, msg, *args, **kwargs):
+        print(f"WARN: {msg}", file=sys.stderr)
+    def error(self, msg, *args, **kwargs):
+        print(f"ERROR: {msg}", file=sys.stderr)
+    def debug(self, msg, *args, **kwargs):
+        pass
 
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
@@ -121,10 +134,18 @@ target = KubernetesMicroserviceTarget(
         container_port=8000,
         python_image="${IMAGE_TAG}",
     ),
+    logger=StderrLogger(),
 )
 result = target.deploy(AppConfig(code_folder=".", app_name="jac-e2e", build=False))
 if not result.success:
     print(f"deploy failed: {result.message}", file=sys.stderr)
+    sys.exit(1)
+# Observability failures are non-fatal for the deploy itself but the
+# e2e expects logs.enabled to succeed - fail loudly so the next step
+# doesn't get a misleading "loki not found" with no root cause.
+obs_err = (result.details or {}).get("observability_error") if hasattr(result, "details") else None
+if obs_err:
+    print(f"FAIL: observability stack errored mid-deploy: {obs_err}", file=sys.stderr)
     sys.exit(1)
 print(f"deploy: {result.message}")
 PYEOF
