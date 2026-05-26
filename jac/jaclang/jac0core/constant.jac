@@ -113,20 +113,11 @@ enum CodeContext {
             return self.value;
         }
 
-        @property
-        def is_server(self: CodeContext) -> bool {
-            return (self == CodeContext.SERVER);
-        }
+        has is_server: bool { getter; }
 
-        @property
-        def is_client(self: CodeContext) -> bool {
-            return (self == CodeContext.CLIENT);
-        }
+        has is_client: bool { getter; }
 
-        @property
-        def is_native(self: CodeContext) -> bool {
-            return (self == CodeContext.NATIVE);
-        }
+        has is_native: bool { getter; }
     }
 }
 
