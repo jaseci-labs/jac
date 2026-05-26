@@ -77,13 +77,36 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
 
-        redis_max_memory = db_config.get('redis_max_memory', '200mb');
-        redis_eviction_policy = db_config.get('redis_eviction_policy', 'allkeys-lru');
-        redis_eviction_samples = db_config.get('redis_eviction_samples', 5);
-        redis_default_ttl = db_config.get('redis_default_ttl', 0);
-        redis_enable_keyspace_notifications = db_config.get(
-            'redis_enable_keyspace_notifications', False
+        redis_max_memory = self.config.get('redis_max_memory');
+        if redis_max_memory is None {
+            redis_max_memory = db_config.get('redis_max_memory', '200mb');
+        }
+
+        redis_eviction_policy = self.config.get('redis_eviction_policy');
+        if redis_eviction_policy is None {
+            redis_eviction_policy = db_config.get(
+                'redis_eviction_policy', 'allkeys-lru'
+            );
+        }
+
+        redis_eviction_samples = self.config.get('redis_eviction_samples');
+        if redis_eviction_samples is None {
+            redis_eviction_samples = db_config.get('redis_eviction_samples', 5);
+        }
+
+        redis_default_ttl = self.config.get('redis_default_ttl');
+        if redis_default_ttl is None {
+            redis_default_ttl = db_config.get('redis_default_ttl', 0);
+        }
+
+        redis_enable_keyspace_notifications = self.config.get(
+            'redis_enable_keyspace_notifications'
         );
+        if redis_enable_keyspace_notifications is None {
+            redis_enable_keyspace_notifications = db_config.get(
+                'redis_enable_keyspace_notifications', False
+            );
+        }
 
         valid_policies = [
             'allkeys-lru',
@@ -222,12 +245,32 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
         k8s_config = scale_config.get_kubernetes_config();
-        redis_default_ttl = db_config.get('redis_default_ttl', 0);
-        redis_enable_keyspace_notifications = db_config.get(
-            'redis_enable_keyspace_notifications', False
+
+        redis_default_ttl = self.config.get('redis_default_ttl');
+        if redis_default_ttl is None {
+            redis_default_ttl = db_config.get('redis_default_ttl', 0);
+        }
+
+        redis_enable_keyspace_notifications = self.config.get(
+            'redis_enable_keyspace_notifications'
         );
-        redis_username = str(k8s_config.get('redis_username', 'admin'));
-        redis_password = str(k8s_config.get('redis_password', 'password'));
+        if redis_enable_keyspace_notifications is None {
+            redis_enable_keyspace_notifications = db_config.get(
+                'redis_enable_keyspace_notifications', False
+            );
+        }
+
+        redis_username = self.config.get('redis_username');
+        if redis_username is None {
+            redis_username = k8s_config.get('redis_username', 'admin');
+        }
+        redis_username = str(redis_username);
+
+        redis_password = self.config.get('redis_password');
+        if redis_password is None {
+            redis_password = k8s_config.get('redis_password', 'password');
+        }
+        redis_password = str(redis_password);
         connection_string = self._build_connection_string(
             redis_username, redis_password, redis_service_name, redis_port
         );
@@ -472,8 +515,19 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         if not self.connection_string {
             scale_config = get_scale_config();
             k8s_config = scale_config.get_kubernetes_config();
-            redis_username = str(k8s_config.get('redis_username', 'admin'));
-            redis_password = str(k8s_config.get('redis_password', 'password'));
+
+            redis_username = self.config.get('redis_username');
+            if redis_username is None {
+                redis_username = k8s_config.get('redis_username', 'admin');
+            }
+            redis_username = str(redis_username);
+
+            redis_password = self.config.get('redis_password');
+            if redis_password is None {
+                redis_password = k8s_config.get('redis_password', 'password');
+            }
+            redis_password = str(redis_password);
+
             service_name = f"{self.app_name}-redis-service";
             self.connection_string = self._build_connection_string(
                 redis_username, redis_password, service_name

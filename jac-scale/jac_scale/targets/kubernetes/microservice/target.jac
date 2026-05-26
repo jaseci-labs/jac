@@ -26,6 +26,9 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
 import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
+import from pathlib { Path }
+import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 glob logger = logging.getLogger(__name__);
 
@@ -83,8 +86,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # for remote.
         registry_url: str | None = None;
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            raw = get_scale_config().load();
+            raw = self.scale_config.load();
             k8s_raw = raw.get("kubernetes", {});
             reg = str(k8s_raw.get("image_registry", "")).strip();
             registry_url = reg;
@@ -112,6 +114,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     client. Kubeconfig from outside, in-cluster SA from inside.
     `DeploymentResult.details` keeps the manifest bundle."""
     def deploy(app_config: AppConfig) -> DeploymentResult {
+        # Load the scale config for the deployed app
+        self.scale_config = get_scale_config(Path(app_config.code_folder));
+        self.k8s_config = KubernetesConfig.from_dict(
+            KubernetesConfig, self.scale_config.get_kubernetes_config()
+        );
+
         app_name = app_config.app_name or self.k8s_config.app_name;
         if self.logger {
             self.logger.info(
@@ -197,7 +205,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
-            logger=self.logger
+            logger=self.logger,
+            scale_config=self.scale_config
         );
         return builder.generate_manifests(app_config, image);
     }

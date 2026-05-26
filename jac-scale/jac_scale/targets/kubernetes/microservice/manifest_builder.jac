@@ -5,6 +5,7 @@ ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision
@@ -29,7 +30,8 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
-        logger: any = None;
+        logger: any = None,
+        scale_config: (JacScaleConfig | None) = None;
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, hpas, pdbs, pod_specs}`,
@@ -71,8 +73,8 @@ obj MicroserviceManifestBuilder {
             bundle["user_secret"] = user_secret;
         }
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            scale_config = self.scale_config or get_scale_config();
+            ms_cfg = scale_config.get_microservices_config();
             ingress_cfg: dict[str, any] = ms_cfg.get("ingress", {});
         } except Exception {
             ingress_cfg = {};
@@ -90,8 +92,8 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jac_scale.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
+        scale_config = self.scale_config or get_scale_config();
+        ms_cfg = scale_config.get_microservices_config();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
         if not routes {
@@ -126,8 +128,8 @@ obj MicroserviceManifestBuilder {
     """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            scale_config = self.scale_config or get_scale_config();
+            ms_cfg = scale_config.get_microservices_config();
             return int(ms_cfg.get("drain_timeout_seconds", 10));
         } except Exception {
             return 10;
@@ -137,8 +139,8 @@ obj MicroserviceManifestBuilder {
     """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, any] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            scale_config = self.scale_config or get_scale_config();
+            ms_cfg = scale_config.get_microservices_config();
             return dict(ms_cfg.get("services", {}).get(svc_name, {}));
         } except Exception {
             return {};
@@ -149,8 +151,8 @@ obj MicroserviceManifestBuilder {
     for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            scale_config = self.scale_config or get_scale_config();
+            ms_cfg = scale_config.get_microservices_config();
             raw = ms_cfg.get("shared_volumes", []);
             if not isinstance(raw, list) {
                 return [];
@@ -312,8 +314,8 @@ obj MicroserviceManifestBuilder {
     _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            scale_config = self.scale_config or get_scale_config();
+            ms_cfg = scale_config.get_microservices_config();
             return dict(ms_cfg.get("routes", {}));
         } except Exception {
             return {};

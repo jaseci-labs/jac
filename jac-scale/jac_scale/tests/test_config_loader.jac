@@ -54,3 +54,96 @@ test "get_microservices_config preserves all sections (regression guard)" {
     missing = expected_keys - set(out.keys());
     assert not missing , f"missing keys: {missing}";
 }
+
+
+test "get_scale_config implements path-keyed caching" {
+    import from pathlib { Path }
+    import tempfile;
+    import from jac_scale.config_loader {
+        get_scale_config,
+        reset_scale_config,
+        _scale_config_instances
+    }
+
+    reset_scale_config();
+
+    with tempfile.TemporaryDirectory() as tmp1_str, tempfile.TemporaryDirectory() as tmp2_str {
+        tmp1 = Path(tmp1_str).resolve();
+        tmp2 = Path(tmp2_str).resolve();
+        # Write different jac.toml configurations to each directory
+        toml1 = tmp1 / "jac.toml";
+        toml1_content = (
+            "[plugins.scale.kubernetes]\n"
+            "app_name = \"app1\"\n"
+            "image_registry = \"registry1\"\n"
+            "mongodb_root_username = \"user1\"\n"
+            "mongodb_root_password = \"pwd1\"\n"
+            "redis_username = \"redisuser1\"\n"
+            "redis_password = \"redispwd1\"\n"
+            "domain = \"domain1.local\"\n"
+            "cert_manager_email = \"email1@domain1.local\"\n\n"
+            "[plugins.scale.database]\n"
+            "redis_url = \"redis://user1:pwd1@host1:6379\"\n\n"
+            "[plugins.scale.secrets]\n"
+            "api_key = \"secret_key_1\"\n"
+        );
+        toml1.write_text(toml1_content);
+        toml2 = tmp2 / "jac.toml";
+        toml2_content = (
+            "[plugins.scale.kubernetes]\n"
+            "app_name = \"app2\"\n"
+            "image_registry = \"registry2\"\n"
+            "mongodb_root_username = \"user2\"\n"
+            "mongodb_root_password = \"pwd2\"\n"
+            "redis_username = \"redisuser2\"\n"
+            "redis_password = \"redispwd2\"\n"
+            "domain = \"domain2.local\"\n"
+            "cert_manager_email = \"email2@domain2.local\"\n\n"
+            "[plugins.scale.database]\n"
+            "redis_url = \"redis://user2:pwd2@host2:6379\"\n\n"
+            "[plugins.scale.secrets]\n"
+            "api_key = \"secret_key_2\"\n"
+        );
+        toml2.write_text(toml2_content);
+        # Load configurations
+        cfg1 = get_scale_config(tmp1);
+        cfg2 = get_scale_config(tmp2);
+        # 1. Verify separate cache instances are created
+        assert cfg1 is not cfg2;
+        # 2. Verify independent configuration values are correctly parsed
+        # App Names
+        assert cfg1.get_kubernetes_config()["app_name"] == "app1";
+        assert cfg2.get_kubernetes_config()["app_name"] == "app2";
+        # Image Registries
+        assert cfg1.load().get("kubernetes", {}).get("image_registry") == "registry1";
+        assert cfg2.load().get("kubernetes", {}).get("image_registry") == "registry2";
+        # Database URLs
+        assert cfg1.get_database_config()["redis_url"] == "redis://user1:pwd1@host1:6379";
+        assert cfg2.get_database_config()["redis_url"] == "redis://user2:pwd2@host2:6379";
+        # MongoDB Credentials
+        assert cfg1.get_kubernetes_config()["mongodb_root_username"] == "user1";
+        assert cfg2.get_kubernetes_config()["mongodb_root_username"] == "user2";
+        assert cfg1.get_kubernetes_config()["mongodb_root_password"] == "pwd1";
+        assert cfg2.get_kubernetes_config()["mongodb_root_password"] == "pwd2";
+        # Redis Credentials
+        assert cfg1.get_kubernetes_config()["redis_username"] == "redisuser1";
+        assert cfg2.get_kubernetes_config()["redis_username"] == "redisuser2";
+        assert cfg1.get_kubernetes_config()["redis_password"] == "redispwd1";
+        assert cfg2.get_kubernetes_config()["redis_password"] == "redispwd2";
+        # Domain / Ingress Settings
+        assert cfg1.get_kubernetes_config()["domain"] == "domain1.local";
+        assert cfg2.get_kubernetes_config()["domain"] == "domain2.local";
+        assert cfg1.get_kubernetes_config()["cert_manager_email"] == "email1@domain1.local";
+        assert cfg2.get_kubernetes_config()["cert_manager_email"] == "email2@domain2.local";
+        # Custom Secrets
+        assert cfg1.get_secrets_config()["api_key"] == "secret_key_1";
+        assert cfg2.get_secrets_config()["api_key"] == "secret_key_2";
+        # 3. Verify equivalent paths normalize and resolve to the same instance
+        rel_tmp1 = Path(tmp1_str);
+        cfg1_rel = get_scale_config(rel_tmp1);
+        assert cfg1_rel is cfg1;
+        # 4. Verify cache resetting works correctly
+        reset_scale_config();
+        assert len(_scale_config_instances) == 0;
+    }
+}

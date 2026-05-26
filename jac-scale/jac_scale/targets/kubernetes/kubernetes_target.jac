@@ -37,6 +37,8 @@ import from jac_scale._optdeps.kubernetes {
 }
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
+import from pathlib { Path }
+import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
@@ -47,11 +49,13 @@ obj KubernetesTarget(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
         k8s_config: KubernetesConfig by postinit,
+        scale_config: JacScaleConfig by postinit,
         env_list: list = [],
         secrets: dict[str, str] = {};
 
     def postinit {
         self.k8s_config = self.config;
+        self.scale_config = get_scale_config();
     }
 
     """Get init containers from all enabled database providers."""
@@ -582,8 +586,13 @@ obj KubernetesTarget(DeploymentTarget) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             mongodb_service_name = f"{mongodb_name}-service";
+            mongo_config = {
+                'app_name': app_name,
+                ** self.scale_config.get_kubernetes_config(),
+                ** self.scale_config.get_database_config()
+            };
             mongo_provider = DatabaseProviderFactory.create(
-                'kubernetes_mongo', self, {'app_name': app_name}
+                'kubernetes_mongo', self, mongo_config
             );
             mongo_result = mongo_provider.deploy({});
             self._apply_provider_service_account(
@@ -697,8 +706,13 @@ obj KubernetesTarget(DeploymentTarget) {
             redis_name = f"{app_name}-redis";
             redis_service_name = f"{redis_name}-service";
             redis_config_name = f"{redis_name}-config";
+            redis_config = {
+                'app_name': app_name,
+                ** self.scale_config.get_kubernetes_config(),
+                ** self.scale_config.get_database_config()
+            };
             redis_provider = DatabaseProviderFactory.create(
-                'kubernetes_redis', self, {'app_name': app_name}
+                'kubernetes_redis', self, redis_config
             );
             redis_result = redis_provider.deploy({});
             self._apply_provider_service_account(
@@ -1264,6 +1278,12 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def deploy(app_config: AppConfig) -> DeploymentResult {
+        # Load the scale config for the deployed app
+        self.scale_config = get_scale_config(Path(app_config.code_folder));
+        self.k8s_config = KubernetesConfig.from_dict(
+            KubernetesConfig, self.scale_config.get_kubernetes_config()
+        );
+
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
         namespace = self.k8s_config.namespace;

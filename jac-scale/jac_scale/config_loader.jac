@@ -34,7 +34,7 @@ class JacScaleConfig(PluginConfigBase) {
     def get_microservices_config(self: JacScaleConfig) -> dict[str, any];
 }
 
-glob _scale_config_instance: JacScaleConfig | None = None;
+glob _scale_config_instances: dict[Path, JacScaleConfig] = {};
 
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def reset_scale_config -> None;
