@@ -227,7 +227,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             self.logger.info(
                 f"Deploying observability stack (Prometheus + Grafana + "
                 f"Loki + Alloy) for '{app_name}'",
-                {"namespace": obs_config.namespace, "provider": provider.name}
+                {"namespace": obs_config.namespace, "provider": type(provider).__name__}
             );
         }
         monitoring = MonitoringDeployer(obs_config, self.logger);
