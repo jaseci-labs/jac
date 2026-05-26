@@ -1693,21 +1693,25 @@ obj MonitoringDeployer {
                                         'mountPath': '/etc/alloy'
                                     },
                                     {
-                                        # Mount /var/log (not just /var/log/pods)
-                                        # because containerd-runtime clusters (EKS
-                                        # 1.24+, minikube default, vanilla 1.26+)
-                                        # write pod logs as a symlink chain:
-                                        # /var/log/pods/<ns>_<pod>_<uid>/<container>/<N>.log
-                                        #   -> /var/log/containers/<...>.log
-                                        # If we mount only /var/log/pods the
-                                        # symlink follow into /var/log/containers
-                                        # fails with ENOENT and Alloy logs
+                                        'name': 'varlogpods',
+                                        'mountPath': '/var/log/pods',
+                                        'readOnly': True
+                                    },
+                                    {
+                                        # `/var/log/pods/<...>/<container>/<N>.log`
+                                        # is a symlink chain pointing into the
+                                        # container runtime's data dir (docker:
+                                        # /var/lib/docker/containers, also where
+                                        # minikube + EKS docker-shim land). Without
+                                        # this mount the symlink follow fails with
+                                        # ENOENT and Alloy logs
                                         # `error getting os stat ... no such file
-                                        # or directory` every scrape interval.
-                                        # Matches Grafana's official Alloy helm
-                                        # chart layout.
-                                        'name': 'varlog',
-                                        'mountPath': '/var/log',
+                                        # or directory` every scrape interval. On
+                                        # pure-containerd clusters the dir does
+                                        # not exist; hostPath silently no-ops.
+                                        # Validated on EKS 2026-05-20 + minikube.
+                                        'name': 'varlogcontainers',
+                                        'mountPath': '/var/lib/docker/containers',
                                         'readOnly': True
                                     }
                                 ]
@@ -1718,7 +1722,14 @@ obj MonitoringDeployer {
                                 'name': 'alloy-config-vol',
                                 'configMap': {'name': f"{alloy_name}-config"}
                             },
-                            {'name': 'varlog', 'hostPath': {'path': '/var/log'}}
+                            {
+                                'name': 'varlogpods',
+                                'hostPath': {'path': '/var/log/pods'}
+                            },
+                            {
+                                'name': 'varlogcontainers',
+                                'hostPath': {'path': '/var/lib/docker/containers'}
+                            }
                         ]
                     }
                 }
