@@ -1,6 +1,6 @@
 # Jac Super
 
-Enhanced console output plugin for Jac CLI with Rich formatting.
+Enhanced console output plugin for Jac CLI with Rich formatting, plus shadcn-style UI components for Jac projects.
 
 ## Installation
 
@@ -26,3 +26,39 @@ No configuration required. After installation, jac-super automatically enhances 
 | `NO_COLOR` | Disables colors (fallback to base console) |
 | `NO_EMOJI` | Disables emojis (uses text labels) |
 | `TERM=dumb` | Disables both colors and emojis |
+
+## Shadcn Components
+
+jac-super also brings [shadcn/ui](https://ui.shadcn.com)-style components to Jac projects. The full component set ships **bundled with the plugin** (under `jac_super/shadcn/registry/`), so `jac add`/`jac remove` work fully offline -- no network calls.
+
+### Add / remove components
+
+```bash
+jac add --shadcn button card dialog    # resolve + install (auto-resolves peer deps)
+jac remove --shadcn button dialog      # delete from components/ui/
+```
+
+Adding components resolves the chosen `style`'s Tailwind classes from the bundled sources, writes `.cl.jac` files to `components/ui/`, updates `[dependencies.npm]` in `jac.toml`, and creates `lib/utils.cl.jac` with the `cn()` helper if missing. The component set under `jac_super/shadcn/registry/` is a vendored snapshot of the [jac-shadcn](https://github.com/jaseci-labs/jac-shadcn) repo.
+
+### Configure the style
+
+Add a `[jac-shadcn]` section to your project's `jac.toml`:
+
+```toml
+[jac-shadcn]
+style = "nova"   # nova | vega | maia | lyra | mira
+```
+
+### Use components in your code
+
+```jac
+cl import from "./components/ui/button" { Button }
+
+cl {
+    def:pub MyPage() -> JsxElement {
+        return <div>
+            <Button variant="outline">Click me</Button>
+        </div>;
+    }
+}
+```

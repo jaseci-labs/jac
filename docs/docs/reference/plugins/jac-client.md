@@ -1525,28 +1525,26 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system. This controls the visual style, color theme, font, and border radius used by shadcn components in your project.
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. `jac add --shadcn` resolves components from the set bundled with `jac-super` (offline) and reads `style` to choose which style's Tailwind classes to emit; the remaining theming fields are applied when scaffolding via the project template.
 
 ```toml
 [jac-shadcn]
-style = "nova"            # Component style variant
+style = "nova"            # Component style variant (read by `jac add`)
 baseColor = "neutral"     # Base color palette
 theme = "amber"           # Accent color theme
 font = "inter"            # Font family
 radius = "default"        # Border radius preset
 menuAccent = "subtle"     # Menu accent style
 menuColor = "default"     # Menu color scheme
-registry = "https://jac-shadcn.jaseci.org"  # Component registry URL
 ```
 
 | Key | Description | Examples |
 |-----|-------------|---------|
-| `style` | Component style variant | `"nova"`, `"default"` |
+| `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
 | `baseColor` | Base neutral color palette | `"neutral"`, `"slate"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
 | `font` | Typography font family | `"inter"`, `"geist"`, `"system"` |
 | `radius` | Border radius preset | `"default"`, `"sm"`, `"md"`, `"lg"`, `"none"` |
-| `registry` | shadcn component registry URL | Custom registry for Jac-compatible components |
 
 shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
 

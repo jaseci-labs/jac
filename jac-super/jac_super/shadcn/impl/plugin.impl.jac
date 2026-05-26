@@ -42,7 +42,7 @@ impl _handle_shadcn_add(ctx: HookContext) -> None {
 
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
-    import from jac_shadcn.shadcn_handler { add_shadcn_components }
+    import from jac_super.shadcn.shadcn_handler { add_shadcn_components }
 
     config = get_config();
     if config is None {
@@ -82,7 +82,7 @@ impl _handle_shadcn_remove(ctx: HookContext) -> None {
 
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
-    import from jac_shadcn.shadcn_handler { remove_shadcn_components }
+    import from jac_super.shadcn.shadcn_handler { remove_shadcn_components }
 
     config = get_config();
     if config is None {
@@ -120,15 +120,15 @@ impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
     import from jaclang.cli.console { console }
 
     # Find template directory relative to this module
-    # plugin.impl.jac is in jac_shadcn/impl/, so .parent.parent = jac_shadcn/
-    module_dir = Path(__file__).parent.parent;  # jac_shadcn directory
+    # plugin.impl.jac is in jac_super/shadcn/impl/, so .parent.parent = jac_super/shadcn/
+    module_dir = Path(__file__).parent.parent;  # jac_super/shadcn directory
     template_dir = module_dir / "templates" / "jac-shadcn";
 
     if not template_dir.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
-            package_root = str(files("jac_shadcn"));
+            package_root = str(files("jac_super.shadcn"));
             template_dir = Path(package_root) / "templates" / "jac-shadcn";
         } except (TypeError, ModuleNotFoundError) as e {
             console.warning(f"Failed to locate jac-shadcn template directory: {e}");

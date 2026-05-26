@@ -3,13 +3,16 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jac_shadcn.shadcn_handler { _read_shadcn_config }
-import from jac_shadcn.shadcn_handler { _resolve_peer_deps }
-import from jac_shadcn.shadcn_handler { _update_npm_deps }
-import from jac_shadcn.shadcn_handler { add_shadcn_components }
-import from jac_shadcn.shadcn_handler { remove_shadcn_components }
-import from jac_shadcn.shadcn_handler { _fetch_json }
-import from jac_shadcn.plugin { JacShadcnPlugin }
+import from jac_super.shadcn.shadcn_handler { _read_shadcn_config }
+import from jac_super.shadcn.shadcn_handler { _resolve_peer_deps }
+import from jac_super.shadcn.shadcn_handler { _update_npm_deps }
+import from jac_super.shadcn.shadcn_handler { add_shadcn_components }
+import from jac_super.shadcn.shadcn_handler { remove_shadcn_components }
+import from jac_super.shadcn.shadcn_handler { load_registry }
+import from jac_super.shadcn.shadcn_handler { parse_style_css }
+import from jac_super.shadcn.shadcn_handler { resolve_component }
+import from jac_super.shadcn.shadcn_handler { resolve_single_component }
+import from jac_super.shadcn.plugin { JacShadcnPlugin }
 
 
 # ── Config Reader Tests ──
@@ -227,7 +230,7 @@ test "remove multiple components" {
 # ── Jacpack Template Tests ──
 test "jacpack template directory exists and loads" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     assert template_dir.exists();
     assert template_dir.is_dir();
     template = load_template_from_directory(template_dir);
@@ -236,7 +239,7 @@ test "jacpack template directory exists and loads" {
 
 test "jacpack template has required fields" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     template = load_template_from_directory(template_dir);
     assert template.name == "jac-shadcn";
     assert template.description != "";
@@ -247,7 +250,7 @@ test "jacpack template has required fields" {
 
 test "jacpack template config has shadcn section" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     template = load_template_from_directory(template_dir);
     config = template.config;
     assert "jac-shadcn" in config;
@@ -260,7 +263,7 @@ test "jacpack template config has shadcn section" {
 
 test "jacpack template has npm dependencies" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     template = load_template_from_directory(template_dir);
     npm = template.config["dependencies"]["npm"];
     assert "clsx" in npm;
@@ -270,50 +273,65 @@ test "jacpack template has npm dependencies" {
 
 test "jacpack template has required files" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     template = load_template_from_directory(template_dir);
     assert "main.jac" in template.files;
     assert "global.css" in template.files;
-    assert "lib/utils.cl.jac" in template.files;
 }
 
 
-# ── Live Registry Integration Tests ──
-test "fetch registry index from live server" {
-    data = _fetch_json("https://jac-shadcn.jaseci.org/registry");
+# ── Bundled Registry Tests ──
+test "bundled registry loads with components" {
+    data = load_registry();
     assert data is not None;
     assert "components" in data;
     assert isinstance(data["components"], dict);
     assert len(data["components"]) > 0;
+    assert "button" in data["components"];
 }
 
-test "fetch single component from live server" {
-    data = _fetch_json("https://jac-shadcn.jaseci.org/component/button?style=nova");
+test "resolve single bundled component applies style" {
+    data = resolve_single_component("button", "nova");
     assert data is not None;
-    assert "name" in data;
-    assert "content" in data;
+    assert "error" not in data;
+    assert data["name"] == "button";
     assert len(data["content"]) > 0;
+    # cn-* tokens should have been resolved away in the delivered source.
+    assert "cn-" not in data["content"];
 }
 
-test "add components from live registry" {
+test "resolve unknown component returns error" {
+    data = resolve_single_component("nonexistent", "nova");
+    assert "error" in data;
+}
+
+test "parse style css produces resolution map" {
+    resolution_map = parse_style_css("nova");
+    assert len(resolution_map) > 0;
+    for key in resolution_map {
+        assert key.startswith("cn-");
+    }
+}
+
+test "resolve component replaces tokens longest first" {
+    resolution_map = {"cn-foo": "A", "cn-foo-bar": "B"};
+    result = resolve_component("x cn-foo-bar cn-foo y", resolution_map);
+    assert result == "x B A y";
+}
+
+test "add components from bundled registry" {
     with tempfile.TemporaryDirectory() as tmpdir {
         # Set up a minimal project with jac.toml
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\nregistry = "https://jac-shadcn.jaseci.org"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
         );
         obj MockConfig {
             has project_root: str,
                 _raw_data: dict;
         }
         config = MockConfig(
-            project_root=tmpdir,
-            _raw_data={
-                "jac-shadcn": {
-                    "style": "nova",
-                    "registry": "https://jac-shadcn.jaseci.org"
-                }
-            }
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
         );
         result = add_shadcn_components(config, ["button"]);
         assert result == True;

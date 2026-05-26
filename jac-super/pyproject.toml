@@ -18,6 +18,7 @@ requires-python = ">=3.12"
 dependencies = [
     "jaclang>=0.15.3",
     "rich>=13.0.0",
+    "jac-client>=0.1.0",
 ]
 
 [project.urls]
@@ -30,13 +31,22 @@ Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 
 [project.entry-points."jac"]
 console = "jac_super.plugin.console:JacSuperPlugin"
+shadcn = "jac_super.shadcn.plugin:JacShadcnPlugin"
 
 [tool.setuptools.packages.find]
 include = ["jac_super*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac"]
-jac_super = ["_precompiled/**/*.jir", "_precompiled/manifest.json"]
+jac_super = [
+    "_precompiled/**/*.jir",
+    "_precompiled/manifest.json",
+    "shadcn/templates/**/*",
+    "shadcn/templates/**/.*",
+    "shadcn/registry/registry.json",
+    "shadcn/registry/components/ui/*.cl.jac",
+    "shadcn/registry/styles/*.css",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]

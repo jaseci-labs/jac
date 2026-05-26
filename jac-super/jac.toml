@@ -20,9 +20,20 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.include]
 packages = ["jac_super*"]
 
+[project.include.data]
+jac_super = [
+    "shadcn/templates/**/*",
+    "shadcn/templates/**/.*",
+    "shadcn/registry/registry.json",
+    "shadcn/registry/components/ui/*.cl.jac",
+    "shadcn/registry/styles/*.css",
+]
+
 [dependencies]
 jaclang = ">=0.15.3"
 rich = ">=13.0.0"
+"jac-client" = ">=0.1.0"
 
 [entrypoints.jac]
 console = "jac_super.plugin.console:JacSuperPlugin"
+shadcn = "jac_super.shadcn.plugin:JacShadcnPlugin"

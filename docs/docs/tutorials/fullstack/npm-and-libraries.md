@@ -274,12 +274,12 @@ def:pub Tab(props: any) -> JsxElement {
 
 ## shadcn/ui Integration
 
-[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. The `jac-shadcn` plugin provides first-class support -- install it with `pip install jac-shadcn`, then use `jac add --shadcn` to fetch pre-built, themed components from the [jac-shadcn registry](https://jac-shadcn.jaseci.org).
+[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. The [`jac-super`](https://pypi.org/project/jac-super/) plugin provides first-class support -- the full component set ships bundled with the plugin, so `jac add --shadcn` installs pre-built, themed components **offline** (no registry fetch).
 
 ### Installation & Setup
 
 ```bash
-pip install jac-shadcn
+pip install jac-super
 ```
 
 Create a new project with shadcn theming:
@@ -290,18 +290,11 @@ cd myapp
 jac install
 ```
 
-Or add to an existing project by adding the `[jac-shadcn]` section to your `jac.toml`:
+Or add to an existing project by adding a `[jac-shadcn]` section to your `jac.toml`. `jac add` reads `style` to pick which style's resolved Tailwind classes to emit:
 
 ```toml
 [jac-shadcn]
-style = "nova"
-baseColor = "neutral"
-theme = "neutral"
-font = "figtree"
-radius = "default"
-menuAccent = "subtle"
-menuColor = "default"
-registry = "https://jac-shadcn.jaseci.org"
+style = "nova"   # nova | vega | maia | lyra | mira
 ```
 
 Then add and use components:
@@ -310,7 +303,7 @@ Then add and use components:
 jac add --shadcn button card dialog
 ```
 
-This fetches resolved `.cl.jac` components into `components/ui/`, installs peer dependencies automatically, and creates the `cn()` utility if needed.
+This resolves the chosen style's `.cl.jac` components into `components/ui/`, installs peer dependencies automatically, and creates the `cn()` utility if needed -- all from the bundled component set, no network required.
 
 ### Adding Components to Your Code
 
@@ -579,7 +572,7 @@ def:pub SplitView() -> JsxElement {
 | Import package | `import from "<package>" { named_export }` |
 | Import React hooks | `import from react { useRef, useCallback }` |
 | Setup Tailwind | Add vite plugin config + CSS import |
-| Setup shadcn | `pip install jac-shadcn` + `[jac-shadcn]` in jac.toml |
+| Setup shadcn | `pip install jac-super` + `[jac-shadcn]` in jac.toml |
 | Use cn() utility | Write in Jac with clsx + tailwind-merge |
 
 ---

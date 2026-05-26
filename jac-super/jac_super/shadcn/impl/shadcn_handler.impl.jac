@@ -1,6 +1,6 @@
 """Implementation of shadcn component handler."""
 
-import os;
+import re;
 import json as json_mod;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
@@ -15,31 +15,86 @@ impl _read_shadcn_config(config: any) -> any {
     return config._raw_data.get("jac-shadcn");
 }
 
-impl _fetch_json(url: str) -> any {
-    import urllib.request;
-    import urllib.error;
-
-    try {
-        req = urllib.request.Request(url);
-        req.add_header("Accept", "application/json");
-        with urllib.request.urlopen(req, timeout=30) as response {
-            raw = response.read().decode("utf-8");
-        }
-        data = json_mod.loads(raw);
-        if isinstance(data, dict)
-        and "data" in data
-        and isinstance(data.get("data"), dict)
-        and "result" in data["data"] {
-            return data["data"]["result"];
-        }
-        return data;
-    } except urllib.error.URLError as e {
-        console.error("Network error: " + str(e));
-        return None;
-    } except Exception as e {
-        console.error("Error fetching " + url + ": " + str(e));
-        return None;
+impl _registry_dir -> any {
+    # shadcn_handler.impl.jac is in jac_super/shadcn/impl/, so .parent.parent = jac_super/shadcn/
+    base = Path(__file__).parent.parent / "registry";
+    if base.exists() {
+        return base;
     }
+    # Fallback: resolve via installed package location
+    import from importlib.resources { files }
+    try {
+        return Path(str(files("jac_super.shadcn"))) / "registry";
+    } except (TypeError, ModuleNotFoundError) {
+        return base;
+    }
+}
+
+impl load_registry -> dict {
+    registry_path = _registry_dir() / "registry.json";
+    if registry_path.is_file() {
+        with open(registry_path, "r") as f {
+            return json_mod.load(f);
+        }
+    }
+    return {"version": "1.0.0", "components": {}, "sharedDeps": {}};
+}
+
+impl parse_style_css(style_name: str) -> dict {
+    style_path = _registry_dir() / "styles" / ("style-" + style_name + ".css");
+    if not style_path.is_file() {
+        return {};
+    }
+    with open(style_path, "r") as f {
+        content = f.read();
+    }
+
+    pattern = re.compile(r'\.(cn-[\w-]+)\s*\{\s*@apply\s+([^;]+);');
+    resolution_map: dict = {};
+    for match in pattern.findall(content) {
+        resolution_map[match[0]] = match[1].strip();
+    }
+    return resolution_map;
+}
+
+impl resolve_component(source: str, resolution_map: dict) -> str {
+    # Sort keys longest-first so cn-foo-bar is replaced before cn-foo.
+    sorted_keys = sorted(list(resolution_map.keys()), key=len, reverse=True);
+    result = source;
+    for key in sorted_keys {
+        result = result.replace(key, resolution_map[key]);
+    }
+    return result;
+}
+
+impl resolve_single_component(component_name: str, style: str) -> dict {
+    registry = load_registry();
+    components = registry.get("components", {});
+
+    comp_meta = components.get(component_name);
+    if not comp_meta {
+        return {"error": "Component not found: " + component_name};
+    }
+
+    filename = comp_meta["file"];
+    filepath = _registry_dir() / "components" / "ui" / filename;
+    if not filepath.is_file() {
+        return {"error": "Component file not found: " + filename};
+    }
+
+    resolution_map = parse_style_css(style);
+    with open(filepath, "r") as f {
+        source = f.read();
+    }
+    resolved = resolve_component(source, resolution_map);
+
+    return {
+        "name": component_name,
+        "file": filename,
+        "content": resolved,
+        "npmDeps": comp_meta.get("npmDeps", []),
+        "peerComponents": comp_meta.get("peerComponents", [])
+    };
 }
 
 impl _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> list {
@@ -112,14 +167,13 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
     }
 
     style = shadcn_config.get("style", "nova");
-    registry_url = shadcn_config.get("registry", "https://jac-shadcn.jaseci.org");
     project_root = Path(str(config.project_root));
 
     console.print("\n Adding components (style: " + style + ")\n", style="bold cyan");
 
-    registry_data = _fetch_json(registry_url + "/registry");
-    if not registry_data {
-        console.error("Could not fetch component registry from " + registry_url);
+    registry_data = load_registry();
+    if not registry_data or not registry_data.get("components") {
+        console.error("Bundled component registry is empty or missing.");
         return False;
     }
 
@@ -159,9 +213,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
 
     added: list = [];
     for name in to_install {
-        comp_data = _fetch_json(
-            registry_url + "/component/" + name + "?style=" + style
-        );
+        comp_data = resolve_single_component(name, style);
 
         if not comp_data or "error" in comp_data {
             err_msg = str(comp_data.get("error", "Unknown error"))
