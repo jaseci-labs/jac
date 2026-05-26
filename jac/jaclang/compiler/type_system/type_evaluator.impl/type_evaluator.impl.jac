@@ -3803,7 +3803,46 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
         );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            _flow_result = self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            if _flow_result is not None {
+                return _flow_result;
+            }
+        }
+        # Ternary fallback: CFG does not connect list-comp internals to the
+        # enclosing ternary condition (InnerCompr/ListCompr are linked to the
+        # enclosing statement, not to nd.condition). Walk up the parent chain
+        # to find a containing IfElseExpr whose condition matches this key or
+        # is a dotted extension of it (prefix-chain narrowing).
+        _prev: uni.UniNode = at_node;
+        _cur: uni.UniNode | None = at_node.parent;
+        while _cur is not None {
+            if isinstance(_cur, uni.IfElseExpr) {
+                _cond_key = self.create_key_for_reference(_cur.condition.expr);
+                if _cond_key is not None and (
+                    _cond_key == key or _cond_key.startswith(key + ".")
+                ) {
+                    _is_true = (_prev is _cur.value);
+                    _is_false = (_prev is _cur.else_value);
+                    if _is_true or _is_false {
+                        _targ = NarrowingTarget(
+                            key=key,
+                            declared_type=declared_type,
+                            deps=frozenset(reference_key_deps(_cur.condition.expr))
+                        );
+                        _pred = self._find_predicate_for(_targ, _cur.condition.expr);
+                        if _pred is not None {
+                            _narrowed = self._apply_narrowing(
+                                _pred, declared_type, _is_true, _targ
+                            );
+                            if _narrowed is not None {
+                                return _narrowed;
+                            }
+                        }
+                    }
+                }
+            }
+            _prev = _cur;
+            _cur = _cur.parent;
         }
         return None;
     } finally {
@@ -3884,7 +3923,18 @@ impl TypeEvaluator._get_type_from_flow_node(
         # variable is unnarrowed.  Walk through them to reach the
         # enclosing statement-level CFG node where the real narrowing
         # (e.g., an isinstance guard on an if-stmt) may reside.
-        if key not in pred.affected_symbols and not isinstance(pred, uni.CfgExpr) {
+        # Also keep a predecessor when its affected_symbols contains a
+        # dotted extension of key (e.g., "o.child.items" for key "o.child"):
+        # a truthiness guard on the longer chain narrows the prefix too.
+        _key_prefix = key + ".";
+        _has_prefix_sym = any(
+            s.startswith(_key_prefix) for s in pred.affected_symbols
+        );
+        if (
+            key not in pred.affected_symbols
+            and not _has_prefix_sym
+            and not isinstance(pred, uni.CfgExpr)
+        ) {
             has_unnarrowed_pred = True;
             continue;
         }
@@ -4503,6 +4553,21 @@ impl TypeEvaluator._find_predicate_for(
                 }
 
         }
+    }
+    # Prefix-chain narrowing: condition `a.b.c` truthy implies `a.b` is non-None.
+    # When the condition's key is a dotted extension of target.key (e.g., condition
+    # key "o.child.items" for target key "o.child"), the prefix must be non-None for
+    # the access to have evaluated at all. Narrow the prefix to non-None.
+    if (
+        info is not None
+        and info.kind == NarrowingKind.TRUTHINESS
+        and info.key.startswith(key + ".")
+        and self.prefetch
+        and self.prefetch.none_type_class
+        and self._union_contains_none(target.declared_type)
+    ) {
+        none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+        return NarrowingPredicate(key=key, narrow_type=none_inst, is_inverted=True);
     }
     return None;
 }

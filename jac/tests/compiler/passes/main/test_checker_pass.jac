@@ -3120,6 +3120,24 @@ test "type_subscript_member_access" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Test prefix-chain narrowing: `obj.attr` truthy implies `obj` is non-None.
+
+Covers three patterns:
+  1. Ternary true-branch with list comp: `[x for x in o.child.items] if o.child.items else []`
+  2. AND if-guard: `if o.child and o.child.items { use(o.child.items) }`
+  3. Single prefix guard: `if o.child.items { use(o.child.items) }`
+"""
+test "prefix_chain_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_prefix_chain_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 3 , "Expected 3 type errors (2 unguarded condition accesses + 1 intentional), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Test isinstance type narrowing in ternary expressions."""
 test "isinstance_ternary_narrowing" {
     program = JacProgram();
