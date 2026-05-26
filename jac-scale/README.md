@@ -199,7 +199,21 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - [Official MicroK8s installation guide](https://microk8s.io/)
 - [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
-**Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
+**Option B: Minikube**
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
+**Option C: Docker Desktop with Kubernetes (Windows - Recommended)**
 
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
@@ -385,7 +399,21 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - [Official MicroK8s installation guide](https://microk8s.io/)
 - [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
-**Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
+**Option B: Minikube**
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
+**Option C: Docker Desktop with Kubernetes (Windows - Recommended)**
 
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)

@@ -92,7 +92,7 @@ jac start --scale
 !!! tip
     Ensure your Kubernetes cluster is running before deploy.
 
-    - If MicroK8s is not installed yet, install it first (see [Option A: MicroK8s](#option-a-microk8s-ubuntu-recommended)).
+    - If MicroK8s is not installed yet, install it first (see [Set Up Kubernetes](/reference/plugins/jac-scale/#setting-up-kubernetes)).
     - If MicroK8s is already installed, start/check readiness before deploy:
 
     ```bash
@@ -340,52 +340,7 @@ Subsequent deployments only update the application - databases persist across de
 
 ## Setting Up Kubernetes
 
-### Option A: MicroK8s (Ubuntu Recommended)
-
-Official docs:
-
-- [MicroK8s Home](https://microk8s.io/)
-- [MicroK8s Getting Started](https://microk8s.io/docs/getting-started)
-
-```bash
-# Install MicroK8s from snap.
-sudo snap install microk8s --classic
-
-# Add current user to the microk8s group (needed to run microk8s without sudo).
-sudo usermod -a -G microk8s $USER
-
-# Apply new group membership in the current shell (or log out and back in).
-newgrp microk8s
-
-# Wait until MicroK8s reports the cluster as ready.
-microk8s status --wait-ready
-
-# Ensure required addons are enabled for deployment.
-microk8s enable dns ingress hostpath-storage
-```
-
-### Option B: Docker Desktop
-
-1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-2. Open Settings > Kubernetes
-3. Check "Enable Kubernetes"
-4. Click "Apply & Restart"
-
-### Option C: Minikube
-
-```bash
-# Install minikube
-brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
-
-# Start cluster
-minikube start
-
-# For minikube, access via service helper:
-minikube service jaseci -n default
-# Or use the same ingress entry used in this guide:
-# http://localhost:30080
-```
+For setup instructions, go to [Set Up Kubernetes](/reference/plugins/jac-scale/#setting-up-kubernetes).
 
 ---
 
