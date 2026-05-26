@@ -204,7 +204,7 @@ test "structural index is persisted and served across loads without re-parsing" 
     # flat structural index is written to the project cache.
     ci1 = CodeIntelligence(proj_dir=proj, structural=True);
     ci1.load();
-    assert {a.name for a in ci1.archetypes("node")} == {"User","Post"};
+    assert {a.name for a in ci1.archetypes("node")} == {"User", "Post"};
 
     # A fresh facade over the same unchanged project must serve every module
     # from the on-disk index -- zero re-parses -- yet answer identically.
@@ -216,7 +216,7 @@ test "structural index is persisted and served across loads without re-parsing" 
     ev = events[0];
     assert ev["recompiled"] == 0 , ev;
     assert ev["cached"] == 2 , ev;
-    assert {a.name for a in ci2.archetypes("node")} == {"User","Post"};
+    assert {a.name for a in ci2.archetypes("node")} == {"User", "Post"};
     assert "Crawler" in {e.walker_name for e in ci2.walkers_visiting("User")};
     shutil.rmtree(proj, ignore_errors=True);
 }
@@ -239,7 +239,7 @@ test "structural index cache invalidates only the edited module" {
     ev = events[0];
     assert ev["recompiled"] == 1 , ev;
     assert ev["cached"] == 1 , ev;
-    assert {a.name for a in ci.archetypes("node")} == {"User","Post","Tag"};
+    assert {a.name for a in ci.archetypes("node")} == {"User", "Post", "Tag"};
     shutil.rmtree(proj, ignore_errors=True);
 }
 
@@ -259,7 +259,7 @@ test "lazy mode serves the map from cache and type-checks only on demand" {
     assert events[-1]["cached"] == 2 , events;
     assert events[-1]["recompiled"] == 0 , events;
     # A structural query stays cheap -- no full pipeline runs.
-    assert {a.name for a in ci.archetypes("node")} == {"User","Post"};
+    assert {a.name for a in ci.archetypes("node")} == {"User", "Post"};
     assert all([e["op"] != "typecheck" for e in events]) , events;
 
     # A type query (cross-module def/use chains) triggers the full upgrade once,

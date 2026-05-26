@@ -367,10 +367,24 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         return None;
     }
     if anchor is None {
-        logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {id}. Moving to quarantine."
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
         );
+        if cls_resolved is None {
+            reason = f"class {arch_module}.{arch_type} unresolvable";
+            logger.warning(
+                f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
+                f"for anchor {id}. Moving to quarantine."
+            );
+        } else {
+            reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            logger.warning(
+                f"MongoBackend: archetype field deserialization failed for "
+                f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
+            );
+        }
         _mongo_quarantine(
             self,
             str(_id),
@@ -379,7 +393,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
+            reason,
             from_format_version=fmt_version
         );
         return None;

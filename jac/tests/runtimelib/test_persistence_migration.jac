@@ -37,6 +37,11 @@ obj _SyncProfile(Root) {
         tags: list[str] = [];
 }
 
+# Used by the has_default=False quarantine test: name has NO default.
+obj _RequiredField(Root) {
+    has name: str;
+}
+
 
 test "fingerprint is present on archetypes and stable across instances" {
     fp = _DemoArchV1?.__jac_fingerprint__;
@@ -352,19 +357,13 @@ test "in-place list mutation is detected dirty and flushed to DB" {
 }
 
 
-test "unresolvable nested class in field is quarantined, not silently loaded as None" {
-    # When a field stores a nested object whose class no longer exists,
-    # _deserialize_value returns None. coerce(None, non-Optional-type) raises
-    # TypeError so the anchor is quarantined rather than loaded with a None field.
-    #
-    # Note: other coercion mismatches (e.g. set serialised as str due to JSON
-    # limitations) are NOT quarantined — they fall back with a warning. Only
-    # confirmed None-for-non-Optional is treated as hard corruption.
+test "unresolvable nested class in field falls back to default, anchor still loads" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         db_path = os.path.join(tmpdir, "test.db");
         good_id = str(uuid.uuid4());
         bad_nested_id = str(uuid.uuid4());
+        bad_null_id = str(uuid.uuid4());
         import json;
         import sqlite3;
         mem = SqliteMemory(path=db_path);
@@ -399,26 +398,32 @@ test "unresolvable nested class in field is quarantined, not silently loaded as 
             );
         }
         _insert(mem.__conn__, good_id, 42);
-        # Nested dict with an unresolvable __type__ — _deserialize_value returns
-        # None, coerce(None, int) fails → TypeError → quarantine.
         _insert(
             mem.__conn__,
             bad_nested_id,
             {'__type__': 'RemovedClass', '__module__': 'app', 'x': 1}
         );
+        _insert(cast(sqlite3.Connection, mem.__conn__), bad_null_id, None);
         mem.__conn__.commit();
-        # Good row loads fine.
         good = mem.get(uuid.UUID(good_id));
         assert good is not None , "valid row must load";
         assert cast(_TypedProfile, good.archetype).score == 42;
-        # Bad row must be quarantined, not returned.
-        assert mem.get(uuid.UUID(bad_nested_id)) is None , "unresolvable nested class must quarantine";
+        recovered_nested = mem.get(uuid.UUID(bad_nested_id));
+        assert recovered_nested is not None , "anchor with bad nested field must load after fix";
+        assert cast(_TypedProfile, recovered_nested.archetype).score == 0 , (
+            "score must be restored to class default (0) when nested class is unresolvable"
+        );
+        recovered_null = mem.get(uuid.UUID(bad_null_id));
+        assert recovered_null is not None , "anchor with null field must load after fix";
+        assert cast(_TypedProfile, recovered_null.archetype).score == 0 , (
+            "score must be restored to class default (0) when field is stored as null"
+        );
         conn = sqlite3.connect(db_path);
         q_ids = {r[0] for r in conn.execute("SELECT id FROM anchors_quarantine")};
         live_ids = {r[0] for r in conn.execute("SELECT id FROM anchors")};
         conn.close();
-        assert bad_nested_id in q_ids , "bad row must be in quarantine table";
-        assert bad_nested_id not in live_ids , "bad row must leave anchors table";
+        assert bad_nested_id not in q_ids , "anchor with recoverable nested field must NOT be quarantined";
+        assert bad_null_id not in q_ids , "anchor with null field must NOT be quarantined";
         assert good_id in live_ids , "good row must remain live";
         mem.close();
     }
@@ -519,6 +524,71 @@ test "SqliteMemory recover_all processes nodes before edges so re-link finds liv
             f"node data.edges must contain the re-linked edge (ordering fix); got: {recovered_edges}"
         );
         verify_conn.close();
+    }
+}
+
+
+test "non-Optional field with no default stores null quarantines only that anchor, no cascade" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        bad_id = str(uuid.uuid4());
+        neighbour_id = str(uuid.uuid4());
+        import json;
+        import sqlite3;
+        mem = SqliteMemory(path=db_path);
+        mem._ensure_connection();
+        def _insert_required(conn: sqlite3.Connection, row_id: str, name_val: object) {
+            conn.execute(
+                """
+                INSERT INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint, data,
+                     format_version, updated_at)
+                VALUES (?, 'NodeAnchor', ?, '_RequiredField', NULL, ?, 1,
+                        '2026-05-26T00:00:00')
+                """,
+                (
+                    row_id,
+                    _RequiredField.__module__,
+                    json.dumps(
+                        {
+                            '__type__': 'NodeAnchor',
+                            '__module__': 'jaclang.jac0core.archetype',
+                            'id': row_id,
+                            'persistent': True,
+                            'archetype': {
+                                '__type__': '_RequiredField',
+                                '__module__': _RequiredField.__module__,
+                                'name': name_val
+                            },
+                            'edges': []
+                        }
+                    )
+                )
+            );
+        }
+        _insert_required(cast(sqlite3.Connection, mem.__conn__), bad_id, None);
+        _insert_required(cast(sqlite3.Connection, mem.__conn__), neighbour_id, "alice");
+        cast(sqlite3.Connection, mem.__conn__).commit();
+        bad_anchor = mem.get(uuid.UUID(bad_id));
+        assert bad_anchor is None , "anchor with no-default null field must be quarantined (returns None)";
+        good_anchor = mem.get(uuid.UUID(neighbour_id));
+        assert good_anchor is not None , "neighbour anchor must still load normally";
+        conn = sqlite3.connect(db_path);
+        q_rows = {
+            r[0]: r[1] for r in conn.execute("SELECT id, error FROM anchors_quarantine")
+        };
+        live_ids = {r[0] for r in conn.execute("SELECT id FROM anchors")};
+        conn.close();
+        assert bad_id in q_rows , "bad anchor must be in anchors_quarantine";
+        assert neighbour_id not in q_rows , "neighbour must NOT be cascade-quarantined";
+        assert neighbour_id in live_ids , "neighbour must remain live";
+        quarantine_reason = q_rows[bad_id];
+        assert quarantine_reason is not None , "quarantine row must carry a reason string";
+        assert "archetype field deserialization failed" in quarantine_reason , (
+            "reason must identify field failure, not class-unresolvable"
+        );
+        mem.close();
     }
 }
 

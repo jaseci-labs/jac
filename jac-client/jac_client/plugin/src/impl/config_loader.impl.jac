@@ -194,36 +194,43 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     dev_section = npm_plugin_deps.get('dev', {});
     npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
 
-    # Migrate legacy meta-packages if present
-    (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
-        jac_config, npm_deps, npm_dev_deps
-    );
-    needs_reinstall = migrated;
+    # Self-healing dependency management (migration + injection) only runs for
+    # projects that have explicitly opted into the client via a [plugins.client]
+    # section. Reading config for a non-client project must NEVER mutate jac.toml
+    # — otherwise merely booting the API server (or any read of client config)
+    # would inject react/vite/etc. into a backend-only project's jac.toml.
+    if 'client' in jac_config.plugins {
+        # Migrate legacy meta-packages if present
+        (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
+            jac_config, npm_deps, npm_dev_deps
+        );
+        needs_reinstall = migrated;
 
-    # Ensure core runtime dependencies are present
-    all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-    (npm_deps, added) = _ensure_dependencies(
-        jac_config,
-        npm_deps,
-        all_runtime,
-        is_dev=False,
-        description="Core client runtime library."
-    );
-    needs_reinstall = needs_reinstall or added;
+        # Ensure core runtime dependencies are present
+        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        (npm_deps, added) = _ensure_dependencies(
+            jac_config,
+            npm_deps,
+            all_runtime,
+            is_dev=False,
+            description="Core client runtime library."
+        );
+        needs_reinstall = needs_reinstall or added;
 
-    # Ensure core dev/build dependencies are present
-    (npm_dev_deps, added) = _ensure_dependencies(
-        jac_config,
-        npm_dev_deps,
-        CORE_DEV_DEPS,
-        is_dev=True,
-        description="Build toolchain dependency."
-    );
-    needs_reinstall = needs_reinstall or added;
+        # Ensure core dev/build dependencies are present
+        (npm_dev_deps, added) = _ensure_dependencies(
+            jac_config,
+            npm_dev_deps,
+            CORE_DEV_DEPS,
+            is_dev=True,
+            description="Build toolchain dependency."
+        );
+        needs_reinstall = needs_reinstall or added;
 
-    # Clear node_modules if any dependency was added or migrated
-    if needs_reinstall {
-        _clear_node_modules(self.project_dir);
+        # Clear node_modules if any dependency was added or migrated
+        if needs_reinstall {
+            _clear_node_modules(self.project_dir);
+        }
     }
 
     # Build user config in the expected internal format

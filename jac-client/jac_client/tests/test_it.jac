@@ -2067,6 +2067,8 @@ entry-point = "main.jac"
 
 [serve]
 base_route_app = "app"
+
+[plugins.client]
 """
         );
         (project_dir / "main.jac").write_text('with entry { print("test"); }');
@@ -2097,6 +2099,8 @@ base_route_app = "app"
             """[project]
 name = "test-project"
 version = "1.0.0"
+
+[plugins.client]
 
 [dependencies.npm]
 jac-client-node = "1.0.7"
