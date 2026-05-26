@@ -3402,6 +3402,23 @@ Recommended flow:
 3. Wait for pod readiness: `microk8s kubectl get pods -n <namespace> -w`.
 4. Open `http://localhost:30080/docs` only after the app pod is `Running` and `Ready`.
 
+### Minikube (Alternative)
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Deploy your app
+jac start --scale
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
 ### Docker Desktop (Alternative)
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
