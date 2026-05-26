@@ -93,8 +93,8 @@ That's it. Your application is now running on Kubernetes.
 
 **Access your application (default local setup):**
 
-- API: http://localhost:30080
-- Swagger docs: http://localhost:30080/docs
+- API: <http://localhost:30080>
+- Swagger docs: <http://localhost:30080/docs>
 
 ---
 
@@ -145,42 +145,67 @@ ingress_node_port = 30080
 | `app_name` | Name of your application | `jaseci` |
 | `namespace` | Kubernetes namespace | `default` |
 | `ingress_node_port` | Local ingress NodePort for app access | `30080` |
+| `container_port` | Container port exposed by the app | `8000` |
+| `docker_image_name` | Docker image name (defaults to `{app_name}:latest`) | `""` |
+| `docker_username` | DockerHub username for image push | `""` |
+| `docker_password` | DockerHub password/token for image push | `""` |
 
 ### Resource Limits
 
-| Variable | Description | Default |
+| Key | Description | Default |
 |----------|-------------|---------|
-| `K8s_CPU_REQUEST` | CPU request | - |
-| `K8s_CPU_LIMIT` | CPU limit | - |
-| `K8s_MEMORY_REQUEST` | Memory request | - |
-| `K8s_MEMORY_LIMIT` | Memory limit | - |
+| `cpu_request` | CPU request | `null` |
+| `cpu_limit` | CPU limit | `null` |
+| `memory_request` | Memory request | `null` |
+| `memory_limit` | Memory limit | `null` |
 
 ### Health Checks
 
-| Variable | Description | Default |
+| Key | Description | Default |
 |----------|-------------|---------|
-| `K8s_READINESS_INITIAL_DELAY` | Readiness probe delay (seconds) | `10` |
-| `K8s_READINESS_PERIOD` | Readiness probe interval | `20` |
-| `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe delay (seconds) | `10` |
-| `K8s_LIVENESS_PERIOD` | Liveness probe interval | `20` |
+| `readiness_initial_delay` | Readiness probe delay (seconds) | `10` |
+| `readiness_period` | Readiness probe interval (seconds) | `20` |
+| `liveness_initial_delay` | Liveness probe delay (seconds) | `10` |
+| `liveness_period` | Liveness probe interval (seconds) | `20` |
+| `liveness_failure_threshold` | Consecutive liveness failures before restart | `80` |
 
 ### Database Options
 
-| Variable | Description | Default |
+| Key | Description | Default |
 |----------|-------------|---------|
-| `K8s_MONGODB` | Enable MongoDB | `True` |
-| `K8s_REDIS` | Enable Redis | `True` |
-| `MONGODB_URI` | External MongoDB URL | Auto-provisioned |
-| `REDIS_URL` | External Redis URL | Auto-provisioned |
+| `mongodb_enabled` | Enable MongoDB deployment | `true` |
+| `redis_enabled` | Enable Redis deployment | `true` |
+| `mongodb_storage_size` | MongoDB PVC size | `1Gi` |
+| `pvc_size` | Shared/default PVC size | `5Gi` |
 
-### Authentication
+### Scaling and Ingress
 
-| Variable | Description | Default |
+| Key | Description | Default |
 |----------|-------------|---------|
-| `JWT_SECRET` | JWT signing key | Auto-generated |
-| `JWT_EXP_DELTA_DAYS` | Token expiration (days) | `7` |
-| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
-| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth secret | - |
+| `min_replicas` | Minimum HPA replicas | `1` |
+| `max_replicas` | Maximum HPA replicas | `3` |
+| `cpu_utilization_target` | HPA CPU target (%) | `50` |
+| `ingress_limit_rps` | Ingress request rate limit per client | `20` |
+| `ingress_limit_burst_multiplier` | Burst multiplier for rate limiting | `5` |
+| `ingress_limit_connections` | Max concurrent connections per client | `20` |
+| `ingress_session_affinity` | Enable sticky sessions | `true` |
+
+### TLS and Service Account (Optional)
+
+| Key | Description | Default |
+|----------|-------------|---------|
+| `domain` | Domain used for ingress/TLS setup | `""` |
+| `cert_manager_email` | Email for cert-manager ACME issuer | `""` |
+| `service_account_name` | Pre-created ServiceAccount to run pods as | `""` |
+
+### Kubernetes-Only Runtime Env Behavior
+
+These are runtime environment behaviors used in Kubernetes mode:
+
+- `KUBERNETES_SERVICE_HOST`: signals in-cluster Kubernetes runtime.
+- `POD_NAMESPACE`: used to resolve in-cluster namespace for service DNS.
+- `.env` pass-through: `jac start --scale` loads `.env`; for Kubernetes deploys,
+  `.env` keys are injected into app pod environment variables.
 
 ---
 
