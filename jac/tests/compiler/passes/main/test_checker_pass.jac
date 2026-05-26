@@ -5022,3 +5022,14 @@ test "duplicate_archetype_decl_is_hard_error" {
         1
     ].pretty_print()}";
 }
+
+test "jir_plain_has_field_assign" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "jir_has_assign.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , "Expected 0 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}

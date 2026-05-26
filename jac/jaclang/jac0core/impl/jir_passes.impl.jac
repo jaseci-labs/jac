@@ -323,6 +323,17 @@ impl JirWriter._write_field(
             _write_varint(buf, 1);
             _write_varint(buf, self._get_node_id(val));
         }
+    } elif kind == FieldKind.OPT_NODE_LIST {
+        if val is None {
+            buf.append(0);
+        } else {
+            buf.append(1);
+            items = list(val) if isinstance(val, (list, tuple)) else [val];
+            _write_varint(buf, len(items));
+            for item in items {
+                _write_varint(buf, self._get_node_id(item));
+            }
+        }
     } elif kind == FieldKind.OPT_NODE_REF {
         if val is None {
             buf.append(0);
@@ -734,6 +745,25 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                 }
             }
             nd[fname] = items;
+        } elif kind == FieldKind.OPT_NODE_LIST {
+            flag = data[pos];
+            pos += 1;
+            if flag == 0 {
+                nd[fname] = None;
+            } else {
+                (count, pos) = _read_varint(data, pos);
+                items = [];
+                for _ in range(count) {
+                    (nid, pos) = _read_varint(data, pos);
+                    if nid < _SN {
+                        n = nodes[nid];
+                        if n is not None {
+                            items.append(n);
+                        }
+                    }
+                }
+                nd[fname] = items;
+            }
         } elif kind == FieldKind.OPT_NODE_REF {
             flag = data[pos];
             pos += 1;
