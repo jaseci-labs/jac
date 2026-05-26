@@ -1179,7 +1179,7 @@ def _precompile_all_pythons(config) -> int {
         console.error("Cannot locate jaclang package root for precompile script.");
         return 1;
     }
-    script_path = str(_jac_root.parent / "scripts" / "precompile_bytecode.jac");
+    script_path = str(_jac_root / "utils" / "precompile_bytecode.jac");
     if not Path(script_path).exists() {
         console.error(f"Precompile script not found: {script_path}");
         return 1;
