@@ -434,7 +434,11 @@ test "SqliteMemory recover_all processes nodes before edges so re-link finds liv
         node_id = str(uuid.uuid4());
         edge_id = str(uuid.uuid4());
         # Create the schema via SqliteMemory, then seed quarantine with a raw conn.
-        SqliteMemory(path=db_path).close();
+        # inspect_summary() is used (not close()) because sync() skips _ensure_connection
+        # when there is nothing to persist, leaving the schema tables uncreated.
+        mem_init = SqliteMemory(path=db_path);
+        mem_init.inspect_summary();
+        mem_init.close();
         seed_conn = sqlite3.connect(db_path);
         insert_sql = (
             "INSERT INTO anchors_quarantine"
@@ -528,7 +532,9 @@ test "SqliteMemory recover_all emits warning when re-link target is missing" {
         ghost_node_id = str(uuid.uuid4());
         edge_id = str(uuid.uuid4());
         # Create schema, then seed with a raw connection.
-        SqliteMemory(path=db_path).close();
+        mem_init = SqliteMemory(path=db_path);
+        mem_init.inspect_summary();
+        mem_init.close();
         seed_conn = sqlite3.connect(db_path);
         # Only the edge is quarantined; ghost_node_id has no live row.
         seed_conn.execute(
