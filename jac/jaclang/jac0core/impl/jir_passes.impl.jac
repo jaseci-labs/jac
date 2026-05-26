@@ -66,16 +66,11 @@ impl JirWriter.write_module(
     );
 
     # Assemble: header (uncompressed) + zlib(pool + nodes + links) + optional sections
-    import from jaclang.jac0core.jir { SEC_TYPE_TAGS, write_sections }
+    import from jaclang.jac0core.jir { write_sections }
     payload = pool_bytes + bytes(ir_buf) + bytes(link_buf);
     compressed = zlib.compress(payload, 6);
-    # Collect type tags from enriched Expr nodes and add as a section
-    tag_bytes = self._serialize_type_tags();
     if sections is None {
         sections = {};
-    }
-    if tag_bytes {
-        sections[SEC_TYPE_TAGS] = tag_bytes;
     }
     section_bytes = write_sections(sections);
     return header + compressed + section_bytes;
@@ -328,6 +323,26 @@ impl JirWriter._write_field(
             _write_varint(buf, 1);
             _write_varint(buf, self._get_node_id(val));
         }
+    } elif kind == FieldKind.OPT_NODE_LIST {
+        # Like NODE_LIST but preserves None vs [] via a leading presence byte.
+        # A plain `has` field has accessors=None; a bare NODE_LIST encoding
+        # round-trips None to [], making the field look like a setter-less
+        # property on cache reload (false E1005). The flag keeps the distinction.
+        if val is None {
+            buf.append(0);
+        } else {
+            buf.append(1);
+            if isinstance(val, (list, tuple)) {
+                items = list(val);
+                _write_varint(buf, len(items));
+                for item in items {
+                    _write_varint(buf, self._get_node_id(item));
+                }
+            } else {
+                _write_varint(buf, 1);
+                _write_varint(buf, self._get_node_id(val));
+            }
+        }
     } elif kind == FieldKind.OPT_NODE_REF {
         if val is None {
             buf.append(0);
@@ -384,35 +399,6 @@ impl JirWriter._count_symbols(module: Module) -> int {
     }
     return count;
 }
-
-"""Serialize backend_type_tag values from enriched Expr nodes into a compact section.
-
-Format: varint(count) followed by count × [varint(node_id), varint(str_pool_idx)].
-Only Expr nodes with non-None backend_type_tag are included. The string pool used
-here is the same _pool that was built during _write_node, so tag strings are
-interned alongside the rest of the IR strings.
-"""
-impl JirWriter._serialize_type_tags -> bytes {
-    import from jaclang.jac0core.unitree { Expr }
-    buf = bytearray();
-    pairs: list[tuple[int, int]] = [];
-    for ir_item in self._nodes {
-        if isinstance(ir_item, Expr) and ir_item.backend_type_tag is not None {
-            nid = self._node_ids.get(id(ir_item));
-            if nid is not None {
-                tag_idx = self._pool.intern(ir_item.backend_type_tag);
-                pairs.append((nid, tag_idx));
-            }
-        }
-    }
-    _write_varint(buf, len(pairs));
-    for (nid, tag_idx) in pairs {
-        _write_varint(buf, nid);
-        _write_varint(buf, tag_idx);
-    }
-    return bytes(buf);
-}
-
 
 # =============================================================================
 # JirReader implementation
@@ -497,22 +483,13 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
                 SEC_BYTECODE,
                 SEC_MTIR,
                 SEC_LLVM_IR,
-                SEC_INTEROP,
-                SEC_TYPE_TAGS
+                SEC_INTEROP
             }
             secs = self._read_trailing_sections(data);
             self.bytecode_section = secs.get(SEC_BYTECODE);
             self.mtir_section = secs.get(SEC_MTIR);
             self.llvm_ir_section = secs.get(SEC_LLVM_IR);
             self.interop_section = secs.get(SEC_INTEROP);
-            self.type_tags_section = secs.get(SEC_TYPE_TAGS);
-            if self.type_tags_section is not None {
-                try {
-                    self._apply_type_tags(self.type_tags_section);
-                } except Exception {
-                    pass;  # corrupt section — tags simply remain None
-                }
-            }
             return last_node;
         }
     }
@@ -777,6 +754,25 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                 }
             }
             nd[fname] = items;
+        } elif kind == FieldKind.OPT_NODE_LIST {
+            flag = data[pos];
+            pos += 1;
+            if flag == 0 {
+                nd[fname] = None;
+            } else {
+                (count, pos) = _read_varint(data, pos);
+                items = [];
+                for _ in range(count) {
+                    (nid, pos) = _read_varint(data, pos);
+                    if nid < _SN {
+                        n = nodes[nid];
+                        if n is not None {
+                            items.append(n);
+                        }
+                    }
+                }
+                nd[fname] = items;
+            }
         } elif kind == FieldKind.OPT_NODE_REF {
             flag = data[pos];
             pos += 1;
@@ -1302,37 +1298,4 @@ impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
     }
 
     return pos;
-}
-
-"""Apply backend_type_tag values from a serialized SEC_TYPE_TAGS section.
-
-Reads varint-encoded (node_id, pool_idx) pairs and sets backend_type_tag on the
-corresponding Expr nodes. The string pool used here is the same _pool that was
-populated during read_module (deserialized before the node stream). Any invalid
-node_id or pool_idx is silently skipped so a corrupt section cannot crash the reader.
-"""
-impl JirReader._apply_type_tags(data: bytes) -> None {
-    import from jaclang.jac0core.unitree { Expr }
-    if self._pool is None {
-        return;
-    }
-    pool = self._pool;
-    nodes = self._nodes;
-    mv = memoryview(data);
-    pos = 0;
-    (count, pos) = _read_varint(mv, pos);
-    for _ in range(count) {
-        (nid, pos) = _read_varint(mv, pos);
-        (tag_idx, pos) = _read_varint(mv, pos);
-        if nid < len(nodes)
-        and nodes[nid] is not None
-        and isinstance(nodes[nid], Expr) {
-            try {
-                tag = pool.get(tag_idx);
-                nodes[nid].backend_type_tag = tag;
-            } except Exception {
-                pass;
-            }
-        }
-    }
 }

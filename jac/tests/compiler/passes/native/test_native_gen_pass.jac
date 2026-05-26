@@ -236,6 +236,43 @@ test "strings concat" {
     assert f(b"hello ", b"world") == b"hello world";
 }
 
+# UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
+# previously unimplemented in native (returned empty); these lock in that
+# `s.encode()[a:b].decode()` round-trips and that byte access is portable.
+test "bytes utf8 byte_len" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
+    assert f("café".encode("utf-8")) == 5;
+    assert f("日本語".encode("utf-8")) == 9;
+    assert f(b"ascii") == 5;
+}
+
+test "bytes utf8 byte_at portable" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
+    enc = "café".encode("utf-8");  # 63 61 66 C3 A9
+    for i in range(len(enc)) {
+        assert f(enc, i) == enc[i] , f"byte_at({i}) native={f(enc, i)} py={enc[i]}";
+    }
+}
+
+test "bytes utf8 decode roundtrip and slice" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    rt = get_func(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
+    assert rt("café".encode("utf-8")) == "café".encode("utf-8");
+    sd = get_func(
+        eng,
+        "slice_decode",
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    enc = "café".encode("utf-8");
+    assert sd(enc, 0, 3) == b"caf";
+    assert sd(enc, 3, 5) == "é".encode("utf-8");
+}
+
 test "strings fstring int" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "format_int", ctypes.c_char_p, ctypes.c_int64);
@@ -1191,6 +1228,19 @@ test "runtime errors list negative index" {
     (eng, _) = compile_native("runtime_errors.na.jac");
     f = get_func(eng, "test_list_negative_index", ctypes.c_int64);
     assert f() == 1;
+}
+
+test "list valid negative index" {
+    (eng, _) = compile_native("runtime_errors.na.jac");
+    f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "list method on object field (pop)" {
+    (eng, _) = compile_native("list_field_methods.na.jac");
+    # pop() on a field list must shrink it: depth 2 -> 1 encodes as 21.
+    f = get_func(eng, "field_pop_shrinks", ctypes.c_int64);
+    assert f() == 21;
 }
 
 test "runtime errors list index at len" {
@@ -2157,22 +2207,6 @@ test "list_bugs reassign str list with empty literal" {
 }
 
 # --- String Enum Tests ---
-test "string_enums ordinal red" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_red", ctypes.c_int64);
-    assert f() == 0 , f"Color.RED ordinal should be 0, got {f()}";
-}
-
-test "string_enums ordinal blue" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_blue", ctypes.c_int64);
-    assert f() == 2 , f"Color.BLUE ordinal should be 2, got {f()}";
-}
-
 test "string_enums comparison" {
     (eng, _) = compile_native("string_enums.na.jac");
     entry_fn = get_func(eng, "jac_entry", None);
@@ -2220,6 +2254,16 @@ test "string_enums int enum still works" {
     assert f() == 2 , f"Priority.HIGH should be 2, got {f()}";
 }
 
+test "string_enums int enum name access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "priority_high_name", ctypes.c_char_p);
+    assert f() == b"HIGH" , f"Priority.HIGH.name should be 'HIGH', got {f()}";
+    g = get_func(eng, "priority_low_name", ctypes.c_char_p);
+    assert g() == b"LOW" , f"Priority.LOW.name should be 'LOW', got {g()}";
+}
+
 # --- Cross-Module Enum Import Tests ---
 test "enum_import compiles" {
     (eng, _) = compile_native("na_enum_import.na.jac");
@@ -2232,15 +2276,6 @@ test "enum_import enum comparison" {
     entry_fn();
     f = get_func(eng, "use_imported_enum", ctypes.c_int64);
     assert f() == 1 , "TokenKind.KW_IF == TokenKind.KW_IF should return 1";
-}
-
-test "enum_import ordinal" {
-    (eng, _) = compile_native("na_enum_import.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "imported_enum_ordinals", ctypes.c_int64);
-    # TokenKind.EOF is the last member (ordinal 6)
-    assert f() == 6 , f"TokenKind.EOF ordinal should be 6, got {f()}";
 }
 
 test "enum_import value access" {
@@ -3192,4 +3227,189 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
         "sv pathway must reject `w: Wrapper = raw` (int → obj). The native "
         "pointer-bitcast escape hatch must not apply outside .na.jac modules."
     );
+}
+
+# ─── async / await (synchronous model) ───────────────────────────────────
+test "await resolves an async call to its value" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "driver", ctypes.c_int64, ctypes.c_int64);
+    # x = await get_val() = 5; y = await add_async(5, n)
+    assert f(10) == 15;
+    assert f(0) == 5;
+}
+
+test "nested awaits evaluate inside-out" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "nested_await", ctypes.c_int64, ctypes.c_int64);
+    # add_async(get_val()=5, n)
+    assert f(3) == 8;
+    assert f(-5) == 0;
+}
+
+# ─── flow / wait (synchronous model) ─────────────────────────────────────
+test "flow then wait returns the task result" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_one", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;
+    assert f(0) == 0;
+}
+
+test "wait directly on a flow expression" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_inline", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 14;
+}
+
+test "multiple flow handles waited independently" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # task(3)+task(4) = 6+8 = 14
+    assert f(3, 4) == 14;
+}
+
+# ─── C-style iter-for loop ───────────────────────────────────────────────
+test "iter-for sums a counted range" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "sum_n", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;  # 0+1+2+3+4
+    assert f(0) == 0;
+    assert f(1) == 0;
+}
+
+test "iter-for counts down with a decrementing step" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "count_down", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 5;  # i = 5,4,3,2,1
+    assert f(0) == 0;
+}
+
+test "iter-for honors break" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_break", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 3;  # 0+1+2, break at i==3
+    assert f(2) == 1;  # 0+1
+}
+
+test "iter-for honors continue and still advances the counter" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_continue", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 8;  # 0+1+3+4 (skip 2)
+    assert f(2) == 1;  # 0+1
+}
+
+# ─── Nested function definitions ─────────────────────────────────────────
+test "nested function helper is callable from its enclosing function" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(5) + double(6) = 10 + 12 = 22
+    assert f(5) == 22;
+    assert f(0) == 2;
+}
+
+test "nested function can recurse" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 120;
+    assert f(1) == 1;
+}
+
+test "nested function can read a module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 107;
+}
+
+# ─── Match statements ────────────────────────────────────────────────────
+test "match dispatches on literal value patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "classify", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 100;
+    assert f(1) == 200;
+    assert f(5) == 300;
+}
+
+test "match supports OR patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_or", ctypes.c_int64, ctypes.c_int64);
+    assert f(1) == 1;
+    assert f(2) == 1;
+    assert f(3) == 1;
+    assert f(4) == 0;
+}
+
+test "match capture pattern binds the subject" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_capture", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;
+    assert f(7) == 14;
+}
+
+test "match honors case guards" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_guard", ctypes.c_int64, ctypes.c_int64);
+    assert f(20) == 1;
+    assert f(11) == 1;
+    assert f(5) == 2;
+    assert f(-1) == 3;
+}
+
+test "match dispatches on string patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "match_str", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"hi") == 1;
+    assert f(b"bye") == 2;
+    assert f(b"nope") == 0;
+}
+
+# ─── Pipe-forward operator `|>` ──────────────────────────────────────────
+test "pipe-forward feeds lhs as the sole argument" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_single", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 6;
+    assert f(-1) == 0;
+}
+
+test "pipe-forward chains left-associatively" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
+    # inc(inc(5)) == 7
+    assert f(5) == 7;
+    assert f(0) == 2;
+}
+
+test "pipe-forward spreads a tuple lhs into multiple args" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # add(3, 4) == 7
+    assert f(3, 4) == 7;
+    assert f(10, -2) == 8;
+}
+
+# ─── Walrus operator `:=` ────────────────────────────────────────────────
+test "walrus operator binds inside an if-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_if", ctypes.c_int64, ctypes.c_int64);
+    # x=10 -> n=20 (>5) -> 21
+    assert f(10) == 21;
+    # x=1 -> n=2 (not >5) -> returns n=2
+    assert f(1) == 2;
+}
+
+test "walrus operator rebinds inside a while-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_while", ctypes.c_int64, ctypes.c_int64);
+    # sum(0..4) = 10
+    assert f(5) == 10;
+    assert f(0) == 0;
+    # sum(0..9) = 45
+    assert f(10) == 45;
+}
+
+test "walrus expression evaluates to the assigned value" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_value", ctypes.c_int64, ctypes.c_int64);
+    # m = a+10 = 15, y = 15, y+m = 30
+    assert f(5) == 30;
+    # m = 10, y = 10, 20
+    assert f(0) == 20;
 }

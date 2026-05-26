@@ -19,6 +19,7 @@ is enough.
 """
 
 import os;
+import time;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.program { JacProgram }
@@ -58,6 +59,17 @@ obj SourceRef {
     def render -> str {
         loc = f"{self.file}:{self.line}";
         return f"{loc}  {self.snippet}" if self.snippet else loc;
+    }
+
+    """A JSON-friendly mapping of this reference, for machine consumers."""
+    def to_dict -> dict {
+        return {
+            "file": self.file,
+            "line": self.line,
+            "col": self.col,
+            "role": self.role,
+            "snippet": self.snippet
+        };
     }
 }
 
@@ -105,6 +117,24 @@ obj SymbolInfo {
         }
         return "\n".join(lines);
     }
+
+    """A JSON-friendly mapping of this symbol, for machine consumers."""
+    def to_dict -> dict {
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "file": self.file,
+            "line": self.line,
+            "col": self.col,
+            "type_str": self.type_str,
+            "doc": self.doc,
+            "signature": self.signature,
+            "fields": self.fields,
+            "abilities": self.abilities,
+            "base_classes": self.base_classes,
+            "is_genai": self.is_genai
+        };
+    }
 }
 
 
@@ -117,6 +147,16 @@ obj Diagnostic {
 
     def render -> str {
         return f"{self.severity}: {self.file}:{self.line}: {self.message}";
+    }
+
+    """A JSON-friendly mapping of this diagnostic, for machine consumers."""
+    def to_dict -> dict {
+        return {
+            "file": self.file,
+            "line": self.line,
+            "severity": self.severity,
+            "message": self.message
+        };
     }
 }
 
@@ -142,6 +182,18 @@ obj EntryPoint {
 
     def render -> str {
         return f"{self.walker_name}.{self.ability}  ({self.event} {self.node_type})  [{self.file}:{self.line}]";
+    }
+
+    """A JSON-friendly mapping of this entry point, for machine consumers."""
+    def to_dict -> dict {
+        return {
+            "walker_name": self.walker_name,
+            "ability": self.ability,
+            "node_type": self.node_type,
+            "event": self.event,
+            "file": self.file,
+            "line": self.line
+        };
     }
 }
 
@@ -178,6 +230,20 @@ obj ContextSlice {
         }
         return "\n".join(parts);
     }
+
+    """A JSON-friendly mapping of this slice, for machine consumers.
+
+    Nested records are serialised through their own `to_dict`, so the slice
+    shape stays in lockstep with the `SymbolInfo`/`SourceRef` contracts.
+    """
+    def to_dict -> dict {
+        return {
+            "query": self.query,
+            "target": self.target.to_dict() if self.target is not None else None,
+            "related": [s.to_dict() for s in self.related],
+            "uses": [u.to_dict() for u in self.uses]
+        };
+    }
 }
 
 
@@ -189,22 +255,32 @@ call `refresh` to rebuild. All query methods return plain `SymbolInfo` /
 """
 obj CodeIntelligence {
     has proj_dir: str,
-        type_check: bool = True;
+        type_check: bool = True,
+        # Parse-only mode: compile each file with `parse_str` rather than the
+        # full pipeline, skipping symbol/import resolution and type inference.
+        # Valid only for the structural queries (`archetypes`, `entry_points`)
+        # that read declarations straight off the AST -- name- and type-
+        # addressed queries need the symbol tables a parse alone never builds.
+        structural: bool = False,
+        # Optional observer invoked after every compile (`load`/`refresh`) with
+        # a stats dict {op, file, recompiled, total, ms}. Lets a caller (the
+        # `jac ai` live view) surface when code intelligence recompiles and how
+        # much it touched, without this facade knowing anything about rendering.
+        on_event: any = None;
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
         self.prog: JacProgram = JacProgram();
+        # The program tracks the reverse-dependency graph for us: every compile
+        # records its import edges structurally, so `transitive_dependents` is
+        # complete (survives cache hits) and there is no parallel map to keep.
+        self.prog._track_dependencies = True;
         self._files: list[str] = [];
         self._file_set: set[str] = set();
         self._compiled: dict[str, uni.Module] = {};
         # Signature of the project's directory mtimes -- used by `refresh` to
-        # tell a content edit (incremental) from a file appearing/disappearing
-        # (full rediscovery).
+        # detect a file being added or removed out of band.
         self._dir_sig: dict[str, float] = {};
-        # Reverse-dependency map: target file -> set of project files that
-        # import it. Built from the modules' own import statements so it is
-        # complete (the compiler's own rdep map misses cache-hit imports).
-        self._rdeps: dict[str, set[str]] = {};
         self._loaded: bool = False;
     }
 
@@ -216,6 +292,7 @@ obj CodeIntelligence {
     is skipped, not fatal -- partial knowledge still beats none.
     """
     def load {
+        t0 = time.time();
         self._files = self._discover();
         self._file_set = {_real(f) for f in self._files};
         self.prog.errors_had = [];
@@ -224,33 +301,71 @@ obj CodeIntelligence {
         for f in self._files {
             self._compile_one(f);
         }
-        self._build_rdeps();
         self._dir_sig = self._dir_signature();
         self._loaded = True;
+        self._emit("load", "", len(self._files), t0);
     }
 
-    """Rebuild after a file was written or deleted.
+    """Notify the `on_event` observer that a compile just happened (if set)."""
+    def _emit(op: str, file: str, recompiled: int, t0: float) {
+        cb = self.on_event;
+        if cb is None {
+            return;
+        }
+        try {
+            cb(
+                {
+                    "op": op,
+                    "file": file,
+                    "recompiled": recompiled,
+                    "total": len(self._file_set),
+                    "ms": (time.time() - t0) * 1000.0
+                }
+            );
+        } except Exception as e {
+            _ = e;
+        }
+    }
 
-    With no `file`, or before the first `load`, this is a full build. Given a
-    `file`, it is incremental: only the changed file and the modules that
-    import it (transitively) are recompiled -- the rest are served from the
-    compiler's cache, so the cost is an LSP-save, not a project rebuild. A
-    file appearing or disappearing shifts the directory signature and falls
-    back to a full rediscovery.
+    """Rebuild after a file was created, edited, or deleted -- always incremental.
+
+    Given a `file`, only that module and the modules that import it
+    (transitively) are recompiled; the rest are served from the compiler's
+    cache, so the cost is an LSP-save, not a project rebuild. Creating a file
+    is handled the same way -- it is registered in place rather than triggering
+    a full rediscovery -- so scaffolding an app file-by-file stays linear. With
+    no `file`, or before the first `load`, this is a full build. The transitive
+    importer set comes from the program's own reverse-dependency graph
+    (`transitive_dependents`), kept complete by `record_module_dependencies`.
     """
     def refresh(file: str = "") -> None {
         if not file or not self._loaded {
+            # A full build; `load` emits its own event.
             self.load();
             return;
         }
-        if self._dir_signature() != self._dir_sig {
-            self.load();
-            return;
+        t0 = time.time();
+        target = self._head_for(_real(file));
+        mode = "edit";
+        if not Path(target).exists() {
+            # Deletion: drop the module, then recompile whatever imported it so
+            # the now-broken references surface. The file itself is not recompiled.
+            mode = "delete";
+            self._drop_file(target);
+            stale: set[str] = self.prog.transitive_dependents(target);
+        } else {
+            if target not in self._file_set {
+                # A file the agent just created. Register it in place instead of
+                # rediscovering the project, and resync the directory signature.
+                mode = "create";
+                self._files.append(target);
+                self._file_set.add(target);
+                self._dir_sig = self._dir_signature();
+            }
+            # The changed file plus every module that imports it (transitively).
+            stale = self.prog.transitive_dependents(target);
+            stale.add(target);
         }
-        real = _real(file);
-        # The changed file plus every module that imports it (transitively).
-        stale: set[str] = self._transitive_importers(real);
-        stale.add(real);
         for p in stale {
             try {
                 self.prog.invalidate_module(p);
@@ -262,23 +377,78 @@ obj CodeIntelligence {
         # current ones. Untouched files' diagnostics are left intact.
         self.prog.errors_had = self._keep_diagnostics(self.prog.errors_had, stale);
         self.prog.warnings_had = self._keep_diagnostics(self.prog.warnings_had, stale);
+        recompiled = 0;
         for p in stale {
             if p in self._file_set {
                 self._compile_one(p);
+                recompiled += 1;
             }
         }
-        # An edit can add or drop an import, so the reverse-dependency map
-        # must be rebuilt from the recompiled modules -- otherwise the next
-        # refresh would not know a file's new importers.
-        self._build_rdeps();
+        self._emit(mode, target, recompiled, t0);
     }
 
-    """Compile one project file and record the resulting module."""
+    """Resolve an annex (`.impl.jac`/`.test.jac`) path to its owning head module.
+
+    Annex files are spliced into their parent module by the compiler and are
+    never compiled standalone, so a write to one must recompile the head. A
+    sibling annex (`foo.impl.jac`) maps to `foo.jac`; an annex inside a
+    `foo.impl/` directory maps to `foo.jac` in the parent. Non-annex paths, and
+    annexes whose head is not a known project file, are returned unchanged.
+    """
+    def _head_for(real: str) -> str {
+        p = Path(real);
+        head: (Path | None) = None;
+        name = p.name;
+        if name.endswith(".impl.jac") {
+            head = p.with_name(name[:-len(".impl.jac")] + ".jac");
+        } elif name.endswith(".test.jac") {
+            head = p.with_name(name[:-len(".test.jac")] + ".jac");
+        }
+        # An annex living inside a `<head>.impl/` directory belongs to the
+        # `<head>.jac` beside that directory, not to a sibling.
+        parent = p.parent;
+        if parent.name.endswith(".impl") {
+            head = parent.with_name(parent.name[:-len(".impl")] + ".jac");
+        }
+        if head is not None {
+            candidate = _real(str(head));
+            if candidate in self._file_set {
+                return candidate;
+            }
+        }
+        return real;
+    }
+
+    """Forget a deleted project file across the file list, set, and compiled map."""
+    def _drop_file(real: str) {
+        self._files = [
+            f
+            for f in self._files
+            if _real(f) != real
+        ];
+        self._file_set.discard(real);
+        if real in self._compiled {
+            del self._compiled[real];
+        }
+        self._dir_sig = self._dir_signature();
+    }
+
+    """Compile one project file and record the resulting module.
+
+    In `structural` mode the file is only parsed (`parse_str`) -- enough for the
+    AST-level structural queries and far cheaper, since it never resolves
+    imports or runs the symbol/type passes. Otherwise the full pipeline runs,
+    type-checked or not per `type_check`.
+    """
     def _compile_one(file: str) {
         try {
-            mod = self.prog.compile(
-                file_path=file, type_check=self.type_check, no_cgen=True
-            );
+            if self.structural {
+                mod = self.prog.parse_str(Path(file).read_text(), file);
+            } else {
+                mod = self.prog.compile(
+                    file_path=file, type_check=self.type_check, no_cgen=True
+                );
+            }
             # Keep the compiled module directly rather than relying on the
             # program hub: hub routing depends on the project's location.
             if mod is not None and mod.loc {
@@ -318,64 +488,6 @@ obj CodeIntelligence {
             loc = al.loc;
             if loc is None or _real(loc.mod_path) not in stale {
                 out.append(al);
-            }
-        }
-        return out;
-    }
-
-    """Build the reverse-dependency map from the modules' import statements.
-
-    Resolved here rather than read from the compiler's own rdep map, which is
-    populated opportunistically during import resolution and misses imports
-    served from cache -- leaving `refresh` blind to half a file's importers.
-    """
-    def _build_rdeps {
-        self._rdeps = {};
-        for mod in self._compiled.values() {
-            if mod.loc is None {
-                continue;
-            }
-            importer = _real(mod.loc.mod_path);
-            for imp in mod.get_all_sub_nodes(uni.Import) {
-                paths: list[uni.ModulePath] = [];
-                if imp.from_loc is not None {
-                    paths.append(imp.from_loc);
-                } else {
-                    for item in imp.items {
-                        if isinstance(item, uni.ModulePath) {
-                            paths.append(item);
-                        }
-                    }
-                }
-                for mp in paths {
-                    try {
-                        target = _real(mp.resolve_relative_path());
-                    } except Exception as e {
-                        _ = e;
-                        continue;
-                    }
-                    bucket = self._rdeps.get(target);
-                    if bucket is None {
-                        bucket = set();
-                        self._rdeps[target] = bucket;
-                    }
-                    bucket.add(importer);
-                }
-            }
-        }
-    }
-
-    """Every project file that imports `target`, transitively."""
-    def _transitive_importers(target: str) -> set[str] {
-        out: set[str] = set();
-        frontier: list[str] = [target];
-        while frontier {
-            current = frontier.pop();
-            for importer in self._rdeps.get(current, set()) {
-                if importer not in out {
-                    out.add(importer);
-                    frontier.append(importer);
-                }
             }
         }
         return out;

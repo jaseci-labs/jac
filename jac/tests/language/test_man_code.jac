@@ -12,13 +12,12 @@ import jaclang;
 import from jaclang.cli.commands { analysis, execution, tools }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 test "circle jac" {
     captured = io.StringIO();
     sys.stdout = captured;
-    execution.run(os.path.join(EXAMPLES, "manual_code", "circle.jac"));
+    execution.run(os.path.join(FIXTURES, "circle.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
     assert "Area of a circle with radius 5 using function: 78" in stdout_value;
@@ -30,7 +29,7 @@ test "circle jac test" {
     stdout_block = io.StringIO();
     sys.stderr = captured_output;
     sys.stdout = stdout_block;
-    analysis.test(os.path.join(EXAMPLES, "manual_code", "circle.jac"));
+    analysis.test(os.path.join(FIXTURES, "circle.jac"));
     sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;
     stderr_value = captured_output.getvalue();
@@ -40,7 +39,7 @@ test "circle jac test" {
 test "clean circle jac" {
     captured = io.StringIO();
     sys.stdout = captured;
-    execution.run(os.path.join(EXAMPLES, "manual_code", "circle_clean.jac"));
+    execution.run(os.path.join(FIXTURES, "circle_clean.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
     assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
@@ -50,7 +49,7 @@ test "clean circle jac" {
 test "pure circle jac" {
     captured = io.StringIO();
     sys.stdout = captured;
-    execution.run(os.path.join(EXAMPLES, "manual_code", "circle_pure.jac"));
+    execution.run(os.path.join(FIXTURES, "circle_pure.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
     assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
@@ -60,9 +59,7 @@ test "pure circle jac" {
 test "pure circle impl not double generated" {
     captured = io.StringIO();
     sys.stdout = captured;
-    tools.tool(
-        "ir", ["py", os.path.join(EXAMPLES, "manual_code", "circle_pure.jac"), ]
-    );
+    tools.tool("ir", ["py", os.path.join(FIXTURES, "circle_pure.jac"), ]);
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
     assert "\ndef __init__(self" not in stdout_value;
@@ -74,7 +71,7 @@ test "clean circle jac test" {
     sys.stderr = captured_output;
     sys.stdout = stdio_block;
     with suppress(SystemExit) {
-        analysis.test(os.path.join(EXAMPLES, "manual_code", "circle_clean_tests.jac"));
+        analysis.test(os.path.join(FIXTURES, "circle_clean_tests.jac"));
     }
     sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;
@@ -88,7 +85,7 @@ test "pure circle jac test" {
     sys.stderr = captured_output;
     sys.stdout = stdio_block;
     with suppress(SystemExit) {
-        analysis.test(os.path.join(EXAMPLES, "manual_code", "circle_pure.test.jac"));
+        analysis.test(os.path.join(FIXTURES, "circle_pure.test.jac"));
     }
     sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;

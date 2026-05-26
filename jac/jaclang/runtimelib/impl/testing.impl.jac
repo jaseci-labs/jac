@@ -23,12 +23,12 @@ impl TestResponse.json -> dict[str, any] {
 }
 
 """Check if response indicates success."""
-impl TestResponse.ok -> bool {
+impl TestResponse.ok.getter -> bool {
     return 200 <= self.status_code < 300;
 }
 
 """Get data from response, handling TransportResponse envelope."""
-impl TestResponse.data -> (dict[str, any] | None) {
+impl TestResponse.data.getter -> (dict[str, any] | None) {
     response_json = self.json();
     # Handle TransportResponse envelope format
     if "data" in response_json {
@@ -282,13 +282,13 @@ impl JacTestClient._parse_response(raw_response: bytes) -> TestResponse {
 }
 
 """Get the underlying server instance."""
-impl JacTestClient.server -> JacAPIServer {
+impl JacTestClient.server.getter -> JacAPIServer {
     self._ensure_initialized();
     return self._server;
 }
 
 """Get the user manager."""
-impl JacTestClient.user_manager -> any {
+impl JacTestClient.user_manager.getter -> any {
     self._ensure_initialized();
     return self._server.user_manager;
 }

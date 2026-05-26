@@ -1014,19 +1014,20 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     }
 }
 
-"""JsxSlot: wire the lowered slot body into the enclosing function's CFG.
+"""JsxSlot: wire the slot body into the enclosing function's CFG.
 
 The slot lives in expression position inside a `CodeBlockStmt` (e.g. a
-`return <jsx>;` or an assignment). `ViewLowerPass` has already rewritten
-the author's `{ stmt; stmt; ... }` template into accumulator form: `acc
-= []; ...; return <>{acc}</>;`. Those statements are children of the
-slot and need their own intra-body sequential linking; additionally, the
-first body statement must inherit incoming flow from the slot's
-enclosing `CodeBlockStmt` so backward narrowing walks from inside the
-slot pick up guards established earlier in the surrounding function
-(e.g. an `if x is None { return; }` before the JSX). Without this link
-the slot body is an island in the CFG and any narrowing established
-outside is silently dropped at the boundary."""
+`return <jsx>;` or an assignment). Its body is the author's faithful
+`{ stmt; stmt; ... }` template — the cl-target accumulator lowering
+happens later, in EsastGenPass, so the control-flow shape the CFG cares
+about (the `if`/`for`/`skip`/`return` guards) is exactly the author's.
+Those statements need their own intra-body sequential linking;
+additionally, the first body statement must inherit incoming flow from
+the slot's enclosing `CodeBlockStmt` so backward narrowing walks from
+inside the slot pick up guards established earlier in the surrounding
+function (e.g. an `if x is None { return; }` before the JSX). Without
+this link the slot body is an island in the CFG and any narrowing
+established outside is silently dropped at the boundary."""
 impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [

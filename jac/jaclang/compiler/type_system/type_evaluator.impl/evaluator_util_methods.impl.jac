@@ -42,7 +42,8 @@ impl TypeEvaluator._build_field_params(
             }
             # Property declarations (`has x: T { get; set; }`) are not dataclass
             # fields — they synthesize accessor methods, not init parameters.
-            if has_var.accessors is not None {
+            # Truthy (not `is not None`): an empty accessor list is a plain field.
+            if has_var.accessors {
                 continue;
             }
             param_type: TypeBase | None = None;
@@ -69,8 +70,15 @@ impl TypeEvaluator._create_dataclass_init_method(
 ) -> types.FunctionType {
     param_map = self._build_field_params(class_type, skip_deferred=True);
     parameters = list(param_map.values());
+    # `__init__` returns None. Synthesizing UnknownType here used to cascade
+    # into W1051 on every `super.init(...)` call to a dataclass-synthesized
+    # parent, and into E1001 when the call result was assigned to a typed slot.
+    ret_type: TypeBase = types.UnknownType();
+    if self.prefetch and self.prefetch.none_type_class {
+        ret_type = self._convert_to_instance(self.prefetch.none_type_class);
+    }
     return types.FunctionType(
-        func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
+        func_name="__init__", return_type=ret_type, parameters=parameters,
     );
 }
 
@@ -785,8 +793,10 @@ impl TypeEvaluator._classify_property_symbol(
     import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
     # Native property syntax: `has x: T { get; set; }` etc.
-    # Read-only iff there's no `set` accessor in the bundle.
-    if isinstance(node_, uni.HasVar) and (node_.accessors is not None) {
+    # Read-only iff there's no `set` accessor in the bundle. A truthy (not
+    # `is not None`) check so an empty accessor list reads as a plain field,
+    # not a setter-less property -- guards against any path that yields [].
+    if isinstance(node_, uni.HasVar) and node_.accessors {
         for acc in node_.accessors {
             if acc.accessor_kind == "setter" {
                 return PropertyWriteKind.WRITABLE;
@@ -862,7 +872,7 @@ impl TypeEvaluator.get_property_write_type(
 
     # Native HasVar property (`has x: T { get; set; }`): write type = declared type.
     node_decl = symbol.decl.name_of;
-    if isinstance(node_decl, uni.HasVar) and (node_decl.accessors is not None) {
+    if isinstance(node_decl, uni.HasVar) and node_decl.accessors {
         if kind == PropertyWriteKind.READ_ONLY {
             return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
         }
