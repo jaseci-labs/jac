@@ -12,6 +12,7 @@ my-app/
 ├── components/
 │   ├── Button.cl.jac          # reusable leaf - ONE component per file
 │   ├── ItemCard.cl.jac
+│   ├── ItemCard.style.css     # optional scoped styles - SAME basename
 │   ├── ItemList.cl.jac        # composes ItemCard
 │   ├── Layout.cl.jac          # app shell
 │   └── pages/
@@ -96,6 +97,7 @@ Load `jac-shadcn-components` for the import patterns and full component selectio
 - **Never edit files in `components/ui/`.** These are managed by the jac-shadcn registry. Compose with them in `components/` files instead.
 - **Reuse before creating.** Scan `components/` and `components/pages/` before writing a new file. Duplicate UI = default mistake.
 - **One exported component per file**, basename matches export. `Button.cl.jac` → `Button`.
+- **Scoped styles share the basename.** For plain component CSS, add `Button.style.css` beside `Button.cl.jac` -- classes auto-scope to that component, no import. See `jac-cl-styling`.
 - **PascalCase** for components + files: `UserCard.cl.jac`. `snake_case` for variables, handlers, hooks.
 - **Pages are thin orchestrators.** Read a hook, render a layout, pass data down. JSX > ~80 lines in a page = extract blocks into `components/`.
 - **Domain-meaningful names, not structural.** `CalculatorApp`, not `App`. `recipes_data`, not `data`. `services/recipes.sv.jac`, not `services/api.sv.jac`. Generic `Layout`/`App` only for the single top-level wrapper.

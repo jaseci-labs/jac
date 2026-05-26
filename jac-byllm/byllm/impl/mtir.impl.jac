@@ -371,3 +371,7 @@ impl MTRuntime.get_output_schema -> dict | None {
     # thus there is no output schema.
     return None;
 }
+
+impl MTIR.runtime.getter -> MTRuntime {
+    return MTRuntime.factory(self);
+}

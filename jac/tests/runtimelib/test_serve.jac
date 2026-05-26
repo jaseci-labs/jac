@@ -132,9 +132,7 @@ test "faux flag prints endpoint docs" {
 
 test "faux flag with littlex example" {
     littlex_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "../../examples/littleX/fullstack/server.jac"
-        )
+        os.path.join(os.path.dirname(__file__), "../../examples/littleX/server.jac")
     );
 
     if not os.path.exists(littlex_path) {
