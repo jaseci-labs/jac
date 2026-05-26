@@ -1,0 +1,29 @@
+Title: docs: clarify JSX comment syntax rules in jac-cl-components skill
+
+## Change
+Added one pitfall to `jac/jaclang/cli/skills/jac-cl-components.md`:
+
+> JSX comments use `{#* ... *#}`. This is only valid inside JSX element children
+> (between any opening and closing tag) — anywhere outside JSX is a parse error (E0001).
+> The JS-style `{/* ... */}` is also a parse error in Jac JSX.
+
+## Why
+Agents writing `.cl.jac` files consistently made two mistakes:
+1. Using `{/* comment */}` (JavaScript JSX syntax) — hard parse error in Jac
+2. Using `{#* ... *#}` in the function body (before `return <`) — also a parse error
+
+Without this pitfall, agents had no guidance on where JSX comments are valid.
+
+## Test Result
+Task: "Create a counter component with JSX comments explaining each section"
+
+| Run | Iterations |
+|---|---|
+| Before this change | 20+ |
+| After this change | 11 |
+
+At iteration 5, agent wrote `{#* *#}` at top level → got syntax error.
+At iteration 6, agent referenced the pitfall text: "only valid INSIDE JSX element children"
+→ self-corrected and produced a clean file with 0 errors.
+
+The pitfall text directly guided the agent's reasoning — confirmed in the run log.
