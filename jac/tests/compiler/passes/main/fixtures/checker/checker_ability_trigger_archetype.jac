@@ -31,6 +31,7 @@ walker BadWalker {
     can on4 with WalkerTwo entry  { ; }               # E1116 (walker, not node/edge)
     can on5 with (Place, NotAnArch) entry { ; }       # E1116 once (NotAnArch element)
     can on6 with Place | NotAnArch entry { ; }        # E1116 once (NotAnArch member)
+    can on7 with root entry              { ; }        # E1116 (root keyword, not Root class)
 }
 
 node BadNode {

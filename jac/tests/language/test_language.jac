@@ -872,6 +872,18 @@ test "bidirectional edge traversal" {
     assert "Backward from e:\nDone." in output;
 }
 
+test "root keyword trigger raises TypeError at runtime" {
+    output = run_jac(os.path.join(FIXTURES, "root_keyword_trigger.jac"));
+    assert "GoodWalker: ok" in output , "GoodWalker with Root entry should run fine";
+    assert "BadWalker:" in output , "bare `root` keyword must raise TypeError";
+    assert "instance of `Root`" in output , "error must identify Root as the instance type";
+    assert "with Root entry" in output , "error must hint the correct fix for root";
+    assert "BadNodeInstance:" in output , "node instance as trigger must also raise TypeError";
+    assert "instance of `MyNode`" in output , "error must identify MyNode as the instance type";
+    assert "with MyNode entry" in output , "error must hint the correct fix for MyNode";
+    assert "should not reach here" not in output , "no bad walker body should execute";
+}
+
 test "native property getter/setter/deleter with impl separation" {
     # `has <name>: <type> { getter; setter; deleter; }` declares a property
     # over explicitly-declared backing storage; no `field` keyword is used.
