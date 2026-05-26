@@ -2585,6 +2585,21 @@ test "compound_and_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Test ternary (IfElseExpr) branch narrowing."""
+test "ternary_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_ternary_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Exactly 1 error: the intentional unconditional access in test_unconditional_access_errors.
+    # All ternary true-branch accesses (o.child.value if o.child else ...) must be error-free.
+    assert len(program.errors_had) == 1 , "Expected 1 type error (unconditional access), but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Test assert isinstance type narrowing."""
 test "assert_isinstance_narrowing" {
     program = JacProgram();

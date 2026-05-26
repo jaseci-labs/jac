@@ -3791,6 +3791,43 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     if key is None {
         return None;
     }
+    # Walk up the parent chain to check if this expression is inside the
+    # true/false branch of a ternary (IfElseExpr) whose condition matches key.
+    # This handles cases like `x.gen.py_ast if x else []` where `x.gen` is typed
+    # before the IfElseExpr itself is processed (exit_atom_trailer fires first).
+    _prev: uni.UniNode = at_node;
+    _cur: uni.UniNode | None = at_node.parent;
+    while _cur is not None {
+        if isinstance(_cur, uni.IfElseExpr) {
+            _cond_key = self.create_key_for_reference(_cur.condition.expr);
+            if _cond_key is not None and _cond_key == key {
+                _is_true = (_prev is _cur.value);
+                _is_false = (_prev is _cur.else_value);
+                if _is_true or _is_false {
+                    import from jaclang.compiler.type_system.type_evaluator {
+                        NarrowingTarget
+                    }
+                    import from jaclang.compiler.symbol_utils { reference_key_deps }
+                    _targ = NarrowingTarget(
+                        key=key,
+                        declared_type=declared_type,
+                        deps=frozenset(reference_key_deps(_cur.condition.expr))
+                    );
+                    _pred = self._find_predicate_for(_targ, _cur.condition.expr);
+                    if _pred is not None {
+                        _narrowed = self._apply_narrowing(
+                            _pred, declared_type, _is_true, _targ
+                        );
+                        if _narrowed is not None {
+                            return _narrowed;
+                        }
+                    }
+                }
+            }
+        }
+        _prev = _cur;
+        _cur = _cur.parent;
+    }
     if key in self._flow_pending_keys {
         return None;
     }
