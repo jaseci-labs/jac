@@ -39,9 +39,11 @@ Covers:
   - Subscript args of type special forms: Union['Foo'], Optional['Foo'],
     Union[('Foo', 'Bar')], ClassVar['Foo'], Final['Foo'], etc.
 """
-impl TypeEvaluator._is_type_annotation_context(node: uni.UniNode) -> bool {
+impl TypeEvaluator._is_type_annotation_context(nd: uni.UniNode) -> bool {
     # Walk up past MultiString wrapper
-    parent = node.parent if not isinstance(node.parent, uni.MultiString) else node.parent.parent;
+    parent = nd.parent
+        if not isinstance(nd.parent, uni.MultiString)
+        else nd.parent.parent;
     if parent is None {
         return False;
     }
@@ -75,9 +77,17 @@ impl TypeEvaluator._is_type_annotation_context(node: uni.UniNode) -> bool {
             ) {
                 target_name = target.right.value;
             }
-            if target_name in ("Union", "Optional", "ClassVar", "Final",
-                               "Annotated", "Required", "NotRequired",
-                               "ReadOnly", "Unpack") {
+            if target_name in (
+                "Union",
+                "Optional",
+                "ClassVar",
+                "Final",
+                "Annotated",
+                "Required",
+                "NotRequired",
+                "ReadOnly",
+                "Unpack"
+            ) {
                 return True;
             }
         }

@@ -43,7 +43,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # Forward-reference resolution: when a string is used in a type
                 # annotation context, resolve the string content as a type name.
                 # Covers: -> 'Path', has x: 'T', Union['T'], Optional['T'], etc.
-                if isinstance(expr.lit_value, str) and self._is_type_annotation_context(expr) {
+                if isinstance(expr.lit_value, str)
+                and self._is_type_annotation_context(expr) {
                     resolved = self._try_resolve_forward_ref(expr);
                     if resolved is not None {
                         return resolved;

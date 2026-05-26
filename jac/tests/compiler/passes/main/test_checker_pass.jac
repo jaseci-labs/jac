@@ -2868,13 +2868,15 @@ test "union_string_forward_refs" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
     user_errors = [
-        e for e in program.errors_had
+        e
+        for e in program.errors_had
         if "vendor" not in e.loc.mod_path and "typeshed" not in e.loc.mod_path
     ];
     assert len(user_errors) == 0 , (
         f"Expected 0 errors — Union/Optional string forward refs should resolve to types, "
-        f"not Literal[...]. Got {len(user_errors)}: "
-        + "\n".join([e.pretty_print() for e in user_errors])
+        f"not Literal[...]. Got {len(user_errors)}: " + "\n".join(
+            [e.pretty_print() for e in user_errors]
+        )
     );
 }
 
