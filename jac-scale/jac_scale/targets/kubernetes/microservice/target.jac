@@ -17,7 +17,7 @@ import from jac_scale._optdeps.kubernetes {
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
-    cluster_type
+    get_cluster_provider
 }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
@@ -205,7 +205,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        cluster_env: str = cluster_type();
+        # MonitoringDeployer.deploy expects a ClusterProvider object
+        # (Strategy refactor in 5840.feature.md), not the legacy
+        # `cluster_type()` string. Use the factory so prometheus /
+        # grafana can read provider.prometheus_scrape_port,
+        # provider.service_type, etc.
+        provider = get_cluster_provider();
 
         obs_config = self._build_observability_config();
         # node-exporter + Alloy DaemonSets need hostPath volumes
@@ -222,12 +227,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             self.logger.info(
                 f"Deploying observability stack (Prometheus + Grafana + "
                 f"Loki + Alloy) for '{app_name}'",
-                {"namespace": obs_config.namespace, "cluster_env": cluster_env}
+                {"namespace": obs_config.namespace, "provider": provider.name}
             );
         }
         monitoring = MonitoringDeployer(obs_config, self.logger);
         monitoring.deploy(
-            app_name, obs_config.namespace, apps_v1, core_v1, cluster_env
+            app_name, obs_config.namespace, apps_v1, core_v1, provider
         );
     }
 
