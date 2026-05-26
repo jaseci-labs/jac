@@ -5,6 +5,26 @@ description: Writing a client-side UI component - shape, reactive state, mount e
 
 `.cl.jac` files are client-side Jac. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `to cl:` header - the extension sets client context.
 
+## This is Jac, not React or JavaScript
+
+A `.cl.jac` component *compiles to* React, but you **write Jac** - Python-with-braces, not JSX/JS. This is the single most common mistake: do not reach for React/JS syntax. Translate every React habit to its Jac form:
+
+| React / JavaScript (WRONG in a `.jac` file) | Jac (correct) |
+|---|---|
+| `function App() { ... }` / `const App = () => ...` | `def:pub app() -> JsxElement { ... }` |
+| `class X extends Component { render() {...} }` | `def:pub X() -> JsxElement { ... }` (no classes, no `render`, no `constructor`) |
+| `const [n, setN] = useState(0)` ; `setN(n+1)` | `has n: int = 0;` then `n = n + 1;` (direct assign re-renders) |
+| `useEffect(() => {...}, [])` | `async can with entry { ... }` |
+| `onClick={() => doThing()}` | `onClick={handle}` with `def handle(e: MouseEvent) { doThing(); }` |
+| `this.props.x` / `props.x` | `x` - props are plain function parameters |
+| `import React from 'react'` | nothing - `JsxElement` and DOM events are built-in (never import them) |
+| `const`, `let`, `var x = 1` | `x: int = 1;` (typed assignment) |
+| `=== / !==` ; `null` / `undefined` ; `cond ? a : b` | `== / !=` ; `None` ; `a if cond else b` |
+| `items.map(x => <li>{x}</li>)` | `{for x in items { <li>{x}</li> }}` (statement slot) |
+| a `.js` / `.ts` / `.jsx` / `.tsx` file | a `.cl.jac` file - every component is `.cl.jac` |
+
+If you find yourself writing `function`, `=>`, `this.`, `export`, `import React`, or a `.js` file, stop - that is JavaScript. Write the Jac form from the table above.
+
 ```jac
 def:pub Counter() -> JsxElement {
     has count: int = 0;

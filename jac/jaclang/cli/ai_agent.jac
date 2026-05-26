@@ -34,9 +34,291 @@ obj AgentConfig {
         inline_feedback: bool = True;
 }
 
-# Mutated in place (field assignments only), so no `global` declaration is
-# needed to update it -- `run_agent` and the toggle commands write its fields.
-glob agent_cfg: AgentConfig = AgentConfig();
+# ---------------------------------------------------------------------------
+# Toolboxes -- the agent's capabilities, grouped by domain. Each public method
+# is a byLLM tool (its `sem` becomes the tool's JSON-schema description); the
+# `TOOLS` registry below wires them to phases. Cross-cutting infra (path
+# resolution, confirmation, code intelligence) lives in free functions and on
+# `AgentRuntime`, which the methods reach through the `agent` glob. The toolbox
+# objects are stateless: per-session state lives on `AgentRuntime`.
+# ---------------------------------------------------------------------------
+"""File tools: read, write, edit, list, and search files in the project.
+
+Paths resolve against the session working directory; writes are gated by
+`confirm` and screened for JavaScript/React drift before they touch disk, and a
+successful write reports the compiler errors it introduced via `write_feedback`.
+"""
+obj FileTools {
+    def read_file(path: str) -> str;
+    def write_file(path: str, content: str) -> str;
+    def edit_file(path: str, old_text: str, new_text: str) -> str;
+    def list_dir(path: str) -> str;
+    def grep(pattern: str, path: str) -> str;
+    """Rebuild the project model after a write and report the diagnostics it caused.
+
+    Returns, as a text block appended to the write tool's result, every compiler
+    error and warning now in `path` plus any newly introduced in other project
+    files the edit affects -- so the model gets compiler feedback, including
+    cross-file breakage, on every write without a separate `jac_check` call. A
+    dependent module's pre-existing error is not reported: only the delta this
+    edit caused. Warnings are included because an undefined name or unresolved
+    type surfaces as a warning, not an error. Empty string when the edit
+    introduced nothing (or no code intelligence is available).
+    """
+    def write_feedback(path: str) -> str;
+
+    """Reject a write that is JavaScript/React rather than Jac, with a fix-it.
+
+    A weaker model often reverts to its React training and writes JS/TS syntax
+    into a `.jac` file (or tries to create a `.js`/`.ts` file outright). This
+    returns a non-empty error message naming the offending tokens and the Jac
+    form to use, or `""` when the content is clean Jac -- caught at write time so
+    one stray file does not cascade into dozens of compile errors. Only `.jac`
+    (and code-file extensions) are policed; `.css`/`.json`/`.md`/config writes
+    pass through.
+    """
+    def _js_drift_error(path: str, content: str) -> str;
+}
+
+"""Process tools: run shell commands and the `jac` CLI, and manage the dev server.
+
+Commands run in the session working directory (so a `cd` the model issues
+persists), are gated by `confirm`, and have their output truncated. `serve` /
+`stop_server` own the long-lived dev server; a `jac start`/`jac serve` issued
+through `run_command` is redirected to `serve` because it would block.
+"""
+obj ProcessTools {
+    def run_command(command: str) -> str;
+    def jac_check(path: str) -> str;
+    def start_app(entry_file: str) -> str;
+    """Start the dev server and wait until it is actually serving, returning its URL.
+
+    Launches `jac start <entry>` detached and polls its log until the ready URL
+    appears -- the first start can be slow because it installs client deps and
+    builds the client -- then returns that URL for `browse_open`. On failure
+    returns the log tail so the model can fix the cause. Far more reliable than
+    starting the server by hand and scraping the log for a URL within a fixed
+    window.
+    """
+    def serve(entry_file: str) -> str;
+
+    """Stop the dev server started by `serve` (best-effort)."""
+    def stop_server -> str;
+
+    """Combine a finished subprocess's stdout+stderr into a truncated result string."""
+    def _proc_output(result: any) -> str;
+
+    """Run a `jac` subcommand on a file and return its combined output."""
+    def run_jac_cli(subcommand: str, path: str) -> str;
+
+    """Kill the `serve` dev server and its child processes if one is running."""
+    def _serve_shutdown;
+}
+
+"""Semantic tools: navigate by the compiler's symbol table, not text search.
+
+Each method answers from `code_intel()` (the shared CodeIntelligence, rebuilt
+after a write), so lookups are exact -- a symbol's definition site and uses, the
+project's archetypes, the walkers that visit a node, or a typed context slice --
+where grep would match comments and unrelated identifiers.
+"""
+obj SemanticTools {
+    def find_symbol(name: str) -> str;
+    def find_uses(name: str) -> str;
+    def project_map -> str;
+    def find_walkers(node_type: str) -> str;
+    def context_slice(name: str) -> str;
+}
+
+"""Guide tools: search and read the bundled Jac reference guides -- the
+authoritative spec for idiomatic Jac, consulted before writing unfamiliar code.
+"""
+obj GuideTools {
+    def search_guides(keyword: str) -> str;
+    def read_guide(name: str) -> str;
+}
+
+"""Browser tools: drive a headless browser over the Chrome DevTools Protocol.
+
+Built on the built-in `jac browse` engine (no npm/pip). Every call reconnects to
+one shared session (`agent.browse_session`), so they are all serialized. Reads
+(snapshot, get, eval) run unconfirmed; navigations and interactions are gated by
+`confirm`.
+"""
+obj BrowseTools {
+    def browse_open(url: str) -> str;
+    def browse_navigate(url: str) -> str;
+    def browse_snapshot -> str;
+    def browse_click(target: str) -> str;
+    def browse_type(target: str, text: str) -> str;
+    def browse_fill(target: str, text: str) -> str;
+    def browse_press(key: str) -> str;
+    def browse_get(what: str, selector: str) -> str;
+    def browse_eval(expression: str) -> str;
+    def browse_close -> str;
+    """Turn a browser-engine exception into a tool-result string with a next step."""
+    def _browse_err(e: Exception) -> str;
+
+    """Run a browser-engine call under the shared confirm / error / truncate policy.
+
+    `confirm_msg` empty means the op is read-only and runs unconfirmed; otherwise
+    the action is gated and a declined call returns a DENIED string. `run` is a
+    thunk performing the actual `br_*` call; its result is returned (str-cast),
+    truncated when `clip` is set. Engine exceptions become a `_browse_err` string.
+    """
+    def _browse(confirm_msg: str, run: any, clip: bool = False) -> str;
+
+    """Close the agent's browser session if one was opened (best-effort)."""
+    def _browse_shutdown;
+}
+
+# Upper bound on the live "thinking..." line, used to erase it cleanly.
+glob _THINK_WIDTH = 40;
+
+"""Turn renderer: the live terminal view of a phase, plus the turn summary.
+
+Consumes the byLLM event stream (reasoning, tool calls, results, the answer) and
+renders it live, returning the phase's tool-call tallies; also prints the banner,
+the help, the per-turn stat line, and the code-intelligence compile events. The
+formatters are pure; `render_stream` keeps its per-stream state in locals.
+"""
+obj TurnRenderer {
+    def print_banner;
+    def print_help;
+    """Format a tool call as `name(key=value, ...)`, clipping long values."""
+    def fmt_tool_call(tool: str, args: object) -> str;
+
+    """Render a token count compactly: 12400 -> '12.4k', 840 -> '840'."""
+    def _short_num(n: int) -> str;
+
+    """Best-effort USD cost for the turn from litellm's price map; 0 if unknown.
+
+    Local models and any model litellm does not price raise here and fall back
+    to 0 -- which is correct for a local model, and a benign omission otherwise.
+    """
+    def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float;
+
+    """Render token usage (and cost, when priced) from a byLLM `usage` total."""
+    def _format_tokens(usage: dict[str, object]) -> str;
+
+    """Render the project's compiler health from the session's CodeIntelligence.
+
+    The count is project-wide, so it catches breakage the turn left in any file.
+    Reported only when the turn already built the project model (a write or a
+    semantic-tool query): a stat line must stay cheap and must never trigger a
+    whole-project compile -- in a large repo that would stall every turn. When
+    the model is not yet built there is nothing the turn touched, so the stat is
+    simply omitted.
+    """
+    def _format_health -> str;
+
+    """Print the one-line turn summary: duration, tools, files, tokens, health."""
+    def print_stats(
+        elapsed: float,
+        n_read: int,
+        n_write: int,
+        n_run: int,
+        files: set[str],
+        usage: dict[str, object]
+    );
+
+    """Strip a model's stray control tokens from streamed reasoning prose.
+
+    Some local templates wrap tool syntax in `<|channel>`/`<token|>` markers and
+    render quotes as `<|"|>`; clear them so only clean prose reaches the terminal.
+    The tool-call JSON itself is excluded upstream by `_split_reasoning`.
+    """
+    def _strip_control(text: str) -> str;
+
+    """Split accumulated reasoning into the prose safe to show and a hit flag.
+
+    A reply is reasoning prose followed by the `<tool_call>` JSON the protocol
+    recovers into a structured event. Return only the prose before the marker,
+    and hold back a trailing partial `<tool_call` so a marker split across stream
+    tokens is never shown. `hit` is True once the marker has appeared.
+    """
+    def _split_reasoning(raw: str) -> tuple[str, bool];
+
+    """Up to `max_lines` lines of a tool result, each clipped, with a more-marker."""
+    def _result_snippet(text: str, max_lines: int) -> list[str];
+
+    """Format a millisecond duration compactly: '820ms', '1.8s', '13.0s'."""
+    def _fmt_ms(ms: float) -> str;
+
+    """Format a step's model timing as `(24.6s, 113 tps)`, omitting tps if unknown."""
+    def _fmt_gen(ms: float, tokens: int) -> str;
+
+    """Render a code-intelligence compile, set as `CodeIntelligence.on_event`.
+
+    Fires whenever the compiler-backed project model rebuilds -- the initial
+    load, and the incremental recompile after each write or the first query
+    following one. Printed inline with the tool stream (it runs inside a tool's
+    execution) so the hidden compiler work behind write_file/find_symbol/etc. is
+    visible: which file, how many modules were recompiled out of the project, and
+    how long it took.
+    """
+    def _ci_event(info: any);
+
+    """Consume one byLLM phase event stream, rendering it live.
+
+    A phase ability calls this with the stream returned by the `run_phase` byLLM
+    call (typed `-> str` for the streaming contract, but with `logging=True` it
+    yields StreamEvent objects). Renders reasoning, tool calls, and the answer
+    live, and returns this phase's tool-call tallies for the walker to accumulate.
+    """
+    def render_stream(event_stream: any) -> dict;
+}
+
+"""All mutable per-session state for one `jac ai` run, gathered in one object.
+
+This is the single composition root: the working directory, the shared
+CodeIntelligence handle (and its dirty flag), the durable ledger, the live
+walker, the dev-server and browser handles, and the per-turn write flag all
+live here as fields instead of as a pile of module globals. Field assignments
+mutate it in place, so the functions that update it need no `global`. `cfg`
+carries the write-once knobs and the live `/stats`, `/verbose`, `/feedback`
+toggles.
+"""
+obj AgentRuntime {
+    has cfg: AgentConfig = AgentConfig(),
+        # Logical working directory: every file tool resolves its `path` against
+        # this and `run_command` runs in it, so a `cd` the model issues in one
+        # shell command persists to the next call and to the file tools (a plain
+        # subprocess cwd does not survive between calls). Set by `run_agent`.
+        cwd: str = "",
+        # Shared CodeIntelligence the semantic tools query; set by `run_agent`.
+        ci: any = None,
+        # Set on write; the next semantic query rebuilds the project model.
+        ci_dirty: bool = False,
+        # Durable cross-turn memory.
+        ledger: Ledger | None = None,
+        # The live walker, so the `note` tool can reach its ledger.
+        active_session: AgentSession | None = None,
+        # The dev server `serve` launched, tracked so it can be polled then stopped.
+        serve_proc: any = None,
+        # Shared headless-browser session id; every browser call reconnects to it.
+        browse_session: str = "jac-ai",
+        # Set by a file-writing tool; gates verify-and-continue.
+        turn_wrote: bool = False,
+        # Toolboxes: the agent's capabilities, composed onto the runtime.
+        files: FileTools = FileTools(),
+        proc: ProcessTools = ProcessTools(),
+        semantic: SemanticTools = SemanticTools(),
+        guides: GuideTools = GuideTools(),
+        web: BrowseTools = BrowseTools(),
+        # The live terminal view and turn-summary renderer.
+        view: TurnRenderer = TurnRenderer();
+
+    """Record a note onto the active session's ledger (the `note` tool).
+
+    A memory capability rather than a domain toolbox: it writes to the live
+    walker's ledger, which the runtime owns, so notes stay visible to every
+    later phase and turn.
+    """
+    def note(text: str) -> str;
+}
+
+glob agent: AgentRuntime = AgentRuntime();
 
 # A tool's properties -- its stats category, whether it must be serialized, and
 # which phases may call it -- declared together on one descriptor instead of
@@ -53,19 +335,41 @@ obj ToolSpec {
         phases: set[str] = set();
 }
 
-# Set by `run_turn` on a file-writing call; gates verify-and-continue.
-glob _turn_wrote: bool = False;
+"""Resolve a tool path against the session working directory.
 
-# Shared CodeIntelligence handle the semantic tools query (set by `run_agent`).
-glob agent_ci: any = None,
-     # Set on write; the next semantic query rebuilds the project model.
-     agent_ci_dirty: bool = False;
+Absolute paths pass through; relative paths are joined onto `agent.cwd` so
+every file tool agrees on what `main.jac` means, regardless of where `jac ai`
+was launched or which subfolder the model has `cd`'d into.
+"""
+def _resolve(path: str) -> str;
+
+"""Point the session (and its code intelligence) at a new working directory.
+
+Called when a `run_command` changes the shell's directory. Re-roots the shared
+CodeIntelligence at the new project root (the nearest ancestor holding a
+`jac.toml`, else the directory itself) so semantic queries and the health line
+reflect the project the model actually moved into -- e.g. a freshly scaffolded
+app subfolder -- not the launch directory.
+"""
+def _set_session_cwd(new_dir: str);
+
+"""The project root for a directory: nearest ancestor with a `jac.toml`, else it."""
+def _project_root_of(start: str) -> str;
+
+"""The imperative kickoff line for a phase, by state label (Plan/Build/QA).
+
+The phase `sem` describes the role; this is the turn's actual instruction. A
+weaker model tends to stop after merely exploring or describing a plan, so the
+Build line insists on writing code and the QA line insists on actually running
+the result -- finishing is not an option until the work exists and is verified.
+"""
+def _phase_directive(label: str) -> str;
 
 """Pick which model `jac ai` should run.
 
 Priority: the `--model` flag (`model_override`), then `[plugins.byllm.model]
 default_model` in jac.toml, then the bundled local model so the command works
-with no API key. Records the winning source in `agent_cfg.model_source`.
+with no API key. Records the winning source in `agent.cfg.model_source`.
 """
 def resolve_model_name(model_override: str = "") -> str;
 
@@ -83,10 +387,6 @@ def build_model(model_override: str = "", n_ctx: int = 0) -> Model;
 # Built at import so every `by` clause has a model; `run_agent` rebuilds on flags.
 glob agent_model = build_model();
 
-# Durable cross-turn memory; `_active_session` lets the `note` tool reach it.
-glob _session_ledger: Ledger | None = None,
-     _active_session: AgentSession | None = None;
-
 """Clip oversized tool output so it does not blow the model's context."""
 def truncate(text: str, limit: int = 12000) -> str;
 
@@ -98,155 +398,12 @@ def confirm(action: str) -> bool;
 def _count_diags(diags: list) -> tuple[int, int];
 
 
-"""Rebuild the project model after a write and report the diagnostics it caused.
-
-Returns, as a text block appended to the write tool's result, every compiler
-error and warning now in `path` plus any newly introduced in other project
-files the edit affects -- so the model gets compiler feedback, including
-cross-file breakage, on every write without a separate `jac_check` call. A
-dependent module's pre-existing error is not reported: only the delta this
-edit caused. Warnings are included because an undefined name or unresolved
-type surfaces as a warning, not an error. Empty string when the edit
-introduced nothing (or no code intelligence is available).
-"""
-def write_feedback(path: str) -> str;
-
-# Tools: plain typed functions; byLLM turns the annotations into JSON schema.
-def read_file(path: str) -> str;
-
-def write_file(path: str, content: str) -> str;
-
-
-def edit_file(path: str, old_text: str, new_text: str) -> str;
-
-
-def list_dir(path: str) -> str;
-
-
-def grep(pattern: str, path: str) -> str;
-
-
-"""Combine a finished subprocess's stdout+stderr into a truncated result string."""
-def _proc_output(result: any) -> str;
-
-
-"""Run a `jac` subcommand on a file and return its combined output."""
-def run_jac_cli(subcommand: str, path: str) -> str;
-
-
-def run_command(command: str) -> str;
-
-
-def jac_check(path: str) -> str;
-
-
-def start_app(entry_file: str) -> str;
-
-
-# The dev server `serve` launched, tracked so it can be polled then stopped.
-glob _SERVE_PROC: any = None;
-
-"""Start the dev server and wait until it is actually serving, returning its URL.
-
-Launches `jac start <entry>` detached and polls its log until the ready URL
-appears -- the first start can be slow because it installs client deps and
-builds the client -- then returns that URL for `browse_open`. On failure returns
-the log tail so the model can fix the cause. Far more reliable than starting the
-server by hand and scraping the log for a URL within a fixed window.
-"""
-def serve(entry_file: str) -> str;
-
-
-"""Stop the dev server started by `serve` (best-effort)."""
-def stop_server -> str;
-
-
-"""Kill the `serve` dev server and its child processes if one is running."""
-def _serve_shutdown;
-
-
-def search_guides(keyword: str) -> str;
-
-
-def read_guide(name: str) -> str;
-
-
-# Semantic tools: backed by the compiler's symbol table, not text search.
 """Return the session's CodeIntelligence, rebuilding it if a write happened.
 
 `write_file`/`edit_file` flag the project as dirty; the first semantic query
 after a write recompiles so symbol lookups reflect what the agent just wrote.
 """
 def code_intel -> any;
-
-
-def find_symbol(name: str) -> str;
-
-
-def find_uses(name: str) -> str;
-
-
-def project_map -> str;
-
-
-def find_walkers(node_type: str) -> str;
-
-
-def context_slice(name: str) -> str;
-
-
-# Headless browser over the Chrome DevTools Protocol (built-in `jac browse`
-# engine, no npm/pip). Every call reconnects to one shared session, so they are
-# all serialized below.
-glob _BROWSE_SESSION: str = "jac-ai";
-
-
-"""Turn a browser-engine exception into a tool-result string with a next step."""
-def _browse_err(e: Exception) -> str;
-
-
-"""Run a browser-engine call under the shared confirm / error / truncate policy.
-
-`confirm_msg` empty means the op is read-only and runs unconfirmed; otherwise
-the action is gated and a declined call returns a DENIED string. `run` is a
-thunk performing the actual `br_*` call; its result is returned (str-cast),
-truncated when `clip` is set. Engine exceptions become a `_browse_err` string.
-"""
-def _browse(confirm_msg: str, run: any, clip: bool = False) -> str;
-
-
-def browse_open(url: str) -> str;
-
-
-def browse_navigate(url: str) -> str;
-
-
-def browse_snapshot -> str;
-
-
-def browse_click(target: str) -> str;
-
-
-def browse_type(target: str, text: str) -> str;
-
-
-def browse_fill(target: str, text: str) -> str;
-
-
-def browse_press(key: str) -> str;
-
-
-def browse_get(what: str, selector: str) -> str;
-
-
-def browse_eval(expression: str) -> str;
-
-
-def browse_close -> str;
-
-
-"""Close the agent's browser session if one was opened (best-effort)."""
-def _browse_shutdown;
 
 
 glob AGENT_RULES = """\
@@ -267,6 +424,23 @@ Universal habits:
 - Leave a note. When you make a decision, rely on an assumption, or spot
   something a later state should check, call `note` -- notes stay visible to
   every later state and turn.
+
+You write JAC, not JavaScript, TypeScript, or React. Jac is Python-flavored
+with braces. A UI component looks like Python, NOT like a React class or
+function component. If you catch yourself writing React, STOP and write Jac:
+- A component is `def:pub Name(props) -> JsxElement { ... }` -- never a
+  `class`, never `function`, never `() => {}`, never `constructor`/`render`,
+  never `this.props` (props are plain function parameters; state is `has`).
+- NEVER `import React`, never `from "react"`, never `export` / `export default`.
+- Define functions with `def`, not `function`; use `lambda(x: int) -> int {...}`,
+  not `x => ...`. Declare variables `x: int = 1`, never `const`/`let`/`var`.
+- Refer to the current object as `self`, not `this`. Use `==`/`!=`, not
+  `===`/`!==`. Use `None`, not `null`/`undefined`. End statements with `;`.
+- Every source file is `.jac` (a client component is `.cl.jac`). Never create
+  a `.js`, `.ts`, `.jsx`, or `.tsx` file. JSX still uses `className` and
+  `{expr}` -- that part is the same.
+When unsure of the Jac form for any UI pattern, call read_guide("jac-cl-components")
+and copy its shapes exactly.
 
 Jac gotchas -- the type checker rejects all of these, so never write them:
 - There is no `pass` statement. For an empty block, write empty braces: `{}`.
@@ -349,16 +523,12 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     conversation=ctx,
     stream=True,
     logging=True,
-    temperature=agent_cfg.temperature,
+    temperature=agent.cfg.temperature,
     max_tokens=8192,
     parallelize=True,
     max_react_iterations=60,
     on_iteration=_progress_guard
 );
-
-
-"""Record a note onto the active session's ledger (see the `note` tool)."""
-def note(text: str) -> str;
 
 
 # The single source of truth for the agent's tools. Each row pairs a tool
@@ -367,37 +537,92 @@ def note(text: str) -> str;
 # this table, so adding a tool means adding one row here. Order is the order
 # tools are offered to the model within a phase.
 glob TOOLS: list[ToolSpec] = [
-         ToolSpec(fn=read_file, category="read", phases={"plan", "build", "qa"}),
-         ToolSpec(fn=write_file, category="write", serialize=True, phases={"build"}),
-         ToolSpec(fn=edit_file, category="write", serialize=True, phases={"build"}),
-         ToolSpec(fn=list_dir, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=grep, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=find_symbol, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=find_uses, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=project_map, category="read", phases={"plan"}),
-         ToolSpec(fn=find_walkers, category="read", phases={"plan"}),
-         ToolSpec(fn=context_slice, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=jac_check, category="run", phases={"build", "qa"}),
-         ToolSpec(fn=start_app, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=serve, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=stop_server, category="run", serialize=True, phases={"qa"}),
          ToolSpec(
-             fn=run_command, category="run", serialize=True, phases={"build", "qa"}
+             fn=agent.files.read_file, category="read", phases={"plan", "build", "qa"}
          ),
-         ToolSpec(fn=browse_open, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_navigate, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_snapshot, category="read", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_click, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_type, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_fill, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_press, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_get, category="read", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_eval, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=browse_close, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(fn=search_guides, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=read_guide, category="read", phases={"plan", "build"}),
          ToolSpec(
-             fn=note, category="read", serialize=True, phases={"plan", "build", "qa"}
+             fn=agent.files.write_file,
+             category="write",
+             serialize=True,
+             phases={"build"}
+         ),
+         ToolSpec(
+             fn=agent.files.edit_file,
+             category="write",
+             serialize=True,
+             phases={"build"}
+         ),
+         ToolSpec(fn=agent.files.list_dir, category="read", phases={"plan", "build"}),
+         ToolSpec(fn=agent.files.grep, category="read", phases={"plan", "build"}),
+         ToolSpec(
+             fn=agent.semantic.find_symbol, category="read", phases={"plan", "build"}
+         ),
+         ToolSpec(
+             fn=agent.semantic.find_uses, category="read", phases={"plan", "build"}
+         ),
+         ToolSpec(fn=agent.semantic.project_map, category="read", phases={"plan"}),
+         ToolSpec(fn=agent.semantic.find_walkers, category="read", phases={"plan"}),
+         ToolSpec(
+             fn=agent.semantic.context_slice, category="read", phases={"plan", "build"}
+         ),
+         ToolSpec(fn=agent.proc.jac_check, category="run", phases={"build", "qa"}),
+         ToolSpec(
+             fn=agent.proc.start_app, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(fn=agent.proc.serve, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(
+             fn=agent.proc.stop_server, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.proc.run_command,
+             category="run",
+             serialize=True,
+             phases={"build", "qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_open, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_navigate, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_snapshot,
+             category="read",
+             serialize=True,
+             phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_click, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_type, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_fill, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_press, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_get, category="read", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_eval, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_close, category="run", serialize=True, phases={"qa"}
+         ),
+         ToolSpec(
+             fn=agent.guides.search_guides, category="read", phases={"plan", "build"}
+         ),
+         ToolSpec(
+             fn=agent.guides.read_guide, category="read", phases={"plan", "build"}
+         ),
+         ToolSpec(
+             fn=agent.note,
+             category="read",
+             serialize=True,
+             phases={"plan", "build", "qa"}
          )
      ];
 
@@ -419,114 +644,12 @@ glob _WRITE_TOOLS: set[str] = {
 with entry {
     for t in TOOLS {
         if t.serialize {
-            mark_serialize(t.fn);
+            # Tools are toolbox methods: mark the underlying function so the flag
+            # survives (a bound method is a throwaway and rejects attributes).
+            mark_serialize(t.fn?.__func__ or t.fn);
         }
     }
 }
-
-def print_banner;
-
-
-def print_help;
-
-
-"""Format a tool call as `name(key=value, ...)`, clipping long values."""
-def fmt_tool_call(tool: str, args: object) -> str;
-
-
-"""Render a token count compactly: 12400 -> '12.4k', 840 -> '840'."""
-def _short_num(n: int) -> str;
-
-
-"""Best-effort USD cost for the turn from litellm's price map; 0 if unknown.
-
-Local models and any model litellm does not price raise here and fall back
-to 0 -- which is correct for a local model, and a benign omission otherwise.
-"""
-def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float;
-
-
-"""Render token usage (and cost, when priced) from a byLLM `usage` total."""
-def _format_tokens(usage: dict[str, object]) -> str;
-
-
-"""Render the project's compiler health from the session's CodeIntelligence.
-
-The count is project-wide, so it catches breakage the turn left in any file.
-Reported only when the turn already built the project model (a write or a
-semantic-tool query): a stat line must stay cheap and must never trigger a
-whole-project compile -- in a large repo that would stall every turn. When
-the model is not yet built there is nothing the turn touched, so the stat is
-simply omitted.
-"""
-def _format_health -> str;
-
-
-"""Print the one-line turn summary: duration, tools, files, tokens, health."""
-def print_stats(
-    elapsed: float,
-    n_read: int,
-    n_write: int,
-    n_run: int,
-    files: set[str],
-    usage: dict[str, object]
-);
-
-
-"""Strip a model's stray control tokens from streamed reasoning prose.
-
-Some local templates wrap tool syntax in `<|channel>`/`<token|>` markers and
-render quotes as `<|"|>`; clear them so only clean prose reaches the terminal.
-The tool-call JSON itself is excluded upstream by `_split_reasoning`.
-"""
-def _strip_control(text: str) -> str;
-
-
-"""Split accumulated reasoning into the prose safe to show and a hit flag.
-
-A reply is reasoning prose followed by the `<tool_call>` JSON the protocol
-recovers into a structured event. Return only the prose before the marker, and
-hold back a trailing partial `<tool_call` so a marker split across stream tokens
-is never shown. `hit` is True once the marker has appeared.
-"""
-def _split_reasoning(raw: str) -> tuple[str, bool];
-
-
-"""Up to `max_lines` lines of a tool result, each clipped, with a more-marker."""
-def _result_snippet(text: str, max_lines: int) -> list[str];
-
-
-"""Format a millisecond duration compactly: '820ms', '1.8s', '13.0s'."""
-def _fmt_ms(ms: float) -> str;
-
-
-"""Format a step's model timing as `(24.6s, 113 tps)`, omitting tps if unknown."""
-def _fmt_gen(ms: float, tokens: int) -> str;
-
-
-"""Render a code-intelligence compile, set as `CodeIntelligence.on_event`.
-
-Fires whenever the compiler-backed project model rebuilds -- the initial load,
-and the incremental recompile after each write or the first query following one.
-Printed inline with the tool stream (it runs inside a tool's execution) so the
-hidden compiler work behind write_file/find_symbol/etc. is visible: which file,
-how many modules were recompiled out of the project, and how long it took.
-"""
-def _ci_event(info: any);
-
-# Upper bound on the live "thinking..." line, used to erase it cleanly.
-glob _THINK_WIDTH = 40;
-
-
-"""Consume one byLLM phase event stream, rendering it live.
-
-A phase ability calls this with the stream returned by the `run_phase` byLLM call
-(typed `-> str` for the streaming contract, but with `logging=True` it yields
-StreamEvent objects). Renders reasoning, tool calls, and the answer live, and
-returns this phase's tool-call tallies for the walker to accumulate.
-"""
-def render_stream(event_stream: any) -> dict;
-
 
 # OSP agent: an AgentSession walker over a small state graph laid out as a
 # pipeline -- Plan --> Build --> QA, with QA looping back to Build/Plan or on to
@@ -566,7 +689,11 @@ walker AgentSession {
         ledger: Ledger,
         stats: TurnStats,
         steps: int = 0,
-        max_steps: int = 16;
+        max_steps: int = 16,
+        # How many times a Build phase has ended writing nothing and been pushed
+        # back to actually write code; bounded so a model that simply cannot
+        # produce a file does not loop forever.
+        build_nudges: int = 0;
 
     can begin with Root entry;
 }

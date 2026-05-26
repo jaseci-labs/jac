@@ -11,6 +11,7 @@ import from pathlib { Path }
 import from byllm.lib { Model, IterationAction }
 import from byllm.config_loader { get_byllm_config }
 
+import from jaclang.compiler.code_intel { CodeIntelligence }
 import from jaclang.cli.console { console }
 import from jaclang.cli.guide_store { list_guides as gs_list, get_guide as gs_get }
 import from jaclang.cli.browser_engine {
@@ -30,7 +31,7 @@ import from jaclang.cli.browser_engine {
 impl resolve_model_name(model_override: str = "") -> str {
     flag = model_override.strip();
     if flag {
-        agent_cfg.model_source = "command line";
+        agent.cfg.model_source = "command line";
         return flag;
     }
     # Read the raw table, not the defaults-merged config, so an unset
@@ -46,10 +47,10 @@ impl resolve_model_name(model_override: str = "") -> str {
         toml_model = "";
     }
     if toml_model {
-        agent_cfg.model_source = "jac.toml";
+        agent.cfg.model_source = "jac.toml";
         return toml_model;
     }
-    agent_cfg.model_source = "default";
+    agent.cfg.model_source = "default";
     return "local:gemma-4-e4b";
 }
 
@@ -58,10 +59,10 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
     cfg: dict[str, object] = {};
     is_local = name.startswith("local:");
     # Reset first: a rebuild may swap local for cloud; don't keep a stale count.
-    agent_cfg.threads = 0;
+    agent.cfg.threads = 0;
     # Low temp for local determinism; cloud uses the provider default (newer
     # ones reject the param).
-    agent_cfg.temperature = 0.3 if is_local else None;
+    agent.cfg.temperature = 0.3 if is_local else None;
     if is_local {
         try {
             cfg = dict(get_byllm_config().get_local_config());
@@ -74,12 +75,57 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
             cores = os.cpu_count() or 2;
             cfg["n_threads"] = max(1, cores // 2);
         }
-        agent_cfg.threads = int(cfg.get("n_threads") or 0);
+        agent.cfg.threads = int(cfg.get("n_threads") or 0);
     }
     if n_ctx > 0 {
         cfg["n_ctx"] = n_ctx;
     }
     return Model(model_name=name, config=cfg);
+}
+
+impl _resolve(path: str) -> str {
+    p = path or ".";
+    if os.path.isabs(p) {
+        return os.path.normpath(p);
+    }
+    base = agent.cwd or os.getcwd();
+    return os.path.normpath(os.path.join(base, p));
+}
+
+impl _project_root_of(start: str) -> str {
+    cur = os.path.normpath(start);
+    while True {
+        if os.path.isfile(os.path.join(cur, "jac.toml")) {
+            return cur;
+        }
+        parent = os.path.dirname(cur);
+        if parent == cur {
+            return os.path.normpath(start);
+        }
+        cur = parent;
+    }
+}
+
+impl _set_session_cwd(new_dir: str) {
+    real = os.path.normpath(new_dir);
+    if not os.path.isdir(real) or real == agent.cwd {
+        return;
+    }
+    prev_root = _project_root_of(agent.cwd) if agent.cwd else "";
+    agent.cwd = real;
+    new_root = _project_root_of(real);
+    # Only rebuild code intelligence when the *project* changed -- a `cd` within
+    # the same project keeps the existing (warm) handle.
+    if agent.ci is not None and new_root != prev_root {
+        try {
+            new_ci = CodeIntelligence(proj_dir=new_root, lazy=True);
+            new_ci.on_event = agent.ci.on_event;
+            agent.ci = new_ci;
+            agent.ci_dirty = False;
+        } except Exception as e {
+            _ = e;
+        }
+    }
 }
 
 impl truncate(text: str, limit: int = 12000) -> str {
@@ -91,7 +137,7 @@ impl truncate(text: str, limit: int = 12000) -> str {
 }
 
 impl confirm(action: str) -> bool {
-    if agent_cfg.yolo_mode {
+    if agent.cfg.yolo_mode {
         return True;
     }
     console.print(f"  needs approval: {action}", style="yellow");
@@ -114,25 +160,24 @@ impl _count_diags(diags: list) -> tuple[int, int] {
     return (n_err, len(diags) - n_err);
 }
 
-impl write_feedback(path: str) -> str {
-    global agent_ci_dirty;
-    if agent_ci is None or not agent_cfg.inline_feedback {
+impl FileTools.write_feedback(path: str) -> str {
+    if agent.ci is None or not agent.cfg.inline_feedback {
         # Feedback off: still flag dirty so the next semantic query refreshes.
-        if agent_ci is not None and not agent_cfg.inline_feedback {
-            agent_ci_dirty = True;
+        if agent.ci is not None and not agent.cfg.inline_feedback {
+            agent.ci_dirty = True;
         }
         return "";
     }
     # Mark dirty up front so a failed refresh still rebuilds on the next query.
-    agent_ci_dirty = True;
+    agent.ci_dirty = True;
     try {
         # refresh_and_diff returns the diagnostics this edit caused (`path`
         # plus breakage in dependent modules).
-        diags: list = list(agent_ci.refresh_and_diff(path));
+        diags: list = list(agent.ci.refresh_and_diff(path));
     } except Exception {
         return "";
     }
-    agent_ci_dirty = False;
+    agent.ci_dirty = False;
     if not diags {
         return "";
     }
@@ -151,40 +196,117 @@ impl write_feedback(path: str) -> str {
     return "\n".join(lines);
 }
 
-sem read_file = "Read and return the full text of a file.";
-sem read_file.path = "Path to the file to read, relative to the project.";
-impl read_file(path: str) -> str {
+impl FileTools._js_drift_error(path: str, content: str) -> str {
+    base = os.path.basename(path);
+    # A code file in this project is always Jac. Block JS/TS source outright --
+    # the right move is a .jac (or .cl.jac for a client component) file.
+    for ext in [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"] {
+        if base.endswith(ext) {
+            return (
+                f"REFUSED: '{base}' is a JavaScript/TypeScript file, but this is a "
+                "Jac project -- all source is Jac. Write a .jac file instead "
+                "(a client UI component goes in a .cl.jac file, e.g. "
+                "components/Calculator.cl.jac), using Jac syntax (def:pub "
+                "Name() -> JsxElement, has fields, def handlers). Do not create "
+                ".js/.ts files."
+            );
+        }
+    }
+    # Only police Jac source for React/JS syntax the model slipped in.
+    if not base.endswith(".jac") {
+        return "";
+    }
+    # (label, regex) -- each pattern is syntax that is NEVER valid Jac.
+    checks: list[tuple[str, str]] = [
+        (
+            "`import React` / a React import",
+            "import\\s+React\\b|from\\s+['\"]react['\"]"
+        ),
+        (
+            "`export` (Jac has no export -- a `def:pub` is the public form)",
+            "(?m)^\\s*export\\b"
+        ),
+        ("`function` (use `def`)", "(?m)^\\s*(async\\s+)?function\\b"),
+        ("an arrow function `=>` (use `lambda(x: T) -> R { ... }`)", "=>"),
+        (
+            "`const`/`let`/`var` (declare typed: `x: int = 1`)",
+            "(?m)^\\s*(const|let|var)\\s"
+        ),
+        ("`this.` (use `self.`; props are function params)", "\\bthis\\."),
+        (
+            "a `constructor(` (a component is `def:pub Name() -> JsxElement`)",
+            "(?m)^\\s*constructor\\s*\\("
+        ),
+        ("`===` / `!==` (use `==` / `!=`)", "===|!==")
+    ];
+    hits: list[str] = [];
+    for (label, pat) in checks {
+        if re.search(pat, content) {
+            hits.append(label);
+        }
+    }
+    if not hits {
+        return "";
+    }
+    found = "; ".join(hits);
+    return (
+        f"REFUSED: {base} contains JavaScript/React, not Jac. Found: {found}. "
+        "Rewrite it in Jac: a UI component is `def:pub Name(prop: T) -> "
+        "JsxElement { has state: int = 0; def on_click(e: MouseEvent) {...} "
+        "return <div>...</div>; }`. Read read_guide(\"jac-cl-components\") for "
+        "the exact shapes, then write the file again as Jac."
+    );
+}
+
+sem FileTools.read_file = "Read and return the full text of a file.";
+sem FileTools.read_file.path = "Path to the file to read, relative to the project.";
+impl FileTools.read_file(path: str) -> str {
     try {
-        return truncate(Path(path).read_text());
+        return truncate(Path(_resolve(path)).read_text());
     } except Exception as e {
         return f"ERROR reading {path}: {e}";
     }
 }
 
-sem write_file = "Create a file or overwrite it entirely with new content.";
-sem write_file.path = "Path of the file to write.";
-sem write_file.content = "The full new contents of the file.";
-impl write_file(path: str, content: str) -> str {
+sem FileTools.write_file = "Create a file or overwrite it entirely with new content.";
+sem FileTools.write_file.path = "Path of the file to write.";
+sem FileTools.write_file.content = "The full new contents of the file.";
+impl FileTools.write_file(path: str, content: str) -> str {
+    drift = self._js_drift_error(path, content);
+    if drift {
+        return drift;
+    }
     if not confirm(f"write {len(content)} chars to {path}") {
         return "DENIED: the user declined this write.";
     }
     try {
-        p = Path(path);
+        rp = _resolve(path);
+        p = Path(rp);
         p.parent.mkdir(parents=True, exist_ok=True);
         p.write_text(content);
-        return f"OK: wrote {len(content)} chars to {path}" + write_feedback(path);
+        return f"OK: wrote {len(content)} chars to {path}" + self.write_feedback(rp);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
     }
 }
 
-sem edit_file = "Replace one exact, unique occurrence of text in a file.";
-sem edit_file.path = "Path of the file to edit.";
-sem edit_file.old_text = "Exact text to find; must occur exactly once in the file.";
-sem edit_file.new_text = "Text to replace it with.";
-impl edit_file(path: str, old_text: str, new_text: str) -> str {
+sem FileTools.edit_file = "Replace one exact, unique occurrence of text in a file.";
+sem FileTools.edit_file.path = "Path of the file to edit.";
+sem FileTools.edit_file.old_text = "Exact text to find; must occur exactly once in the file.";
+sem FileTools.edit_file.new_text = "Text to replace it with.";
+impl FileTools.edit_file(path: str, old_text: str, new_text: str) -> str {
+    rp = _resolve(path);
+    if not os.path.isfile(rp) {
+        # A new file has nothing to edit; steer the model to write_file rather
+        # than letting it retry a doomed edit (the loop earlier sessions hit).
+        return (
+            f"ERROR: {path} does not exist, so there is nothing to edit. "
+            "Create it with write_file(path, content) instead. (Paths resolve "
+            f"against the current directory {agent.cwd or os.getcwd()}.)"
+        );
+    }
     try {
-        original = Path(path).read_text();
+        original = Path(rp).read_text();
     } except Exception as e {
         return f"ERROR reading {path}: {e}";
     }
@@ -198,22 +320,27 @@ impl edit_file(path: str, old_text: str, new_text: str) -> str {
             "include more surrounding context so it matches exactly once."
         );
     }
+    updated = original.replace(old_text, new_text);
+    drift = self._js_drift_error(path, updated);
+    if drift {
+        return drift;
+    }
     if not confirm(f"edit {path}") {
         return "DENIED: the user declined this edit.";
     }
     try {
-        Path(path).write_text(original.replace(old_text, new_text));
-        return f"OK: edited {path}" + write_feedback(path);
+        Path(rp).write_text(updated);
+        return f"OK: edited {path}" + self.write_feedback(rp);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
     }
 }
 
-sem list_dir = "List the entries of a directory (hidden entries excluded).";
-sem list_dir.path = "Directory path; empty string means the current directory.";
-impl list_dir(path: str) -> str {
+sem FileTools.list_dir = "List the entries of a directory (hidden entries excluded).";
+sem FileTools.list_dir.path = "Directory path; empty string means the current directory.";
+impl FileTools.list_dir(path: str) -> str {
     try {
-        target = Path(path or ".");
+        target = Path(_resolve(path));
         names: list[str] = [];
         for entry in sorted(target.iterdir()) {
             if entry.name.startswith(".") {
@@ -227,16 +354,16 @@ impl list_dir(path: str) -> str {
     }
 }
 
-sem grep = "Search for a regular expression across .jac files (or one file).";
-sem grep.pattern = "Python regular expression to search for.";
-sem grep.path = "File or directory to search; empty string means current directory.";
-impl grep(pattern: str, path: str) -> str {
+sem FileTools.grep = "Search for a regular expression across .jac files (or one file).";
+sem FileTools.grep.pattern = "Python regular expression to search for.";
+sem FileTools.grep.path = "File or directory to search; empty string means current directory.";
+impl FileTools.grep(pattern: str, path: str) -> str {
     try {
         regex = re.compile(pattern);
     } except Exception as e {
         return f"ERROR: invalid regular expression: {e}";
     }
-    search_root = Path(path or ".");
+    search_root = Path(_resolve(path));
     if search_root.is_file() {
         files = [search_root];
     } elif search_root.is_dir() {
@@ -267,19 +394,20 @@ impl grep(pattern: str, path: str) -> str {
     return "\n".join(hits) or "(no matches)";
 }
 
-impl _proc_output(result: any) -> str {
+impl ProcessTools._proc_output(result: any) -> str {
     combined = (str(result.stdout or "") + str(result.stderr or "")).strip();
     return truncate(combined or f"(no output; exit code {result.returncode})");
 }
 
-impl run_jac_cli(subcommand: str, path: str) -> str {
+impl ProcessTools.run_jac_cli(subcommand: str, path: str) -> str {
     try {
-        return _proc_output(
+        return agent.proc._proc_output(
             subprocess.run(
                 [sys.executable, "-m", "jaclang", subcommand, path],
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
+                cwd=agent.cwd or None
             )
         );
     } except Exception as e {
@@ -287,9 +415,21 @@ impl run_jac_cli(subcommand: str, path: str) -> str {
     }
 }
 
-sem run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --use fullstack <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create` templates: default, client, fullstack.";
-sem run_command.command = "The shell command to run.";
-impl run_command(command: str) -> str {
+sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --use fullstack <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create` templates: default, client, fullstack.";
+sem ProcessTools.run_command.command = "The shell command to run.";
+impl ProcessTools.run_command(command: str) -> str {
+    # `jac start` / `jac serve` are long-lived servers: run through run_command
+    # they would block until the 180s timeout. Redirect to the dedicated tools,
+    # which start the server, wait for readiness, and hand back a URL.
+    stripped = command.strip();
+    if re.search("\\bjac\\s+(start|serve)\\b", stripped) and "--help" not in stripped {
+        return (
+            "Don't start the server with run_command -- it blocks. Use the "
+            "serve(entry_file) tool instead: it launches the dev server, waits "
+            "until it is actually ready, and returns the URL to browse_open. "
+            "Then exercise the page and call stop_server when done."
+        );
+    }
     if not confirm(f"run shell command: {command}") {
         return "DENIED: the user declined to run this command.";
     }
@@ -300,41 +440,79 @@ impl run_command(command: str) -> str {
     if bin_dir {
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "");
     }
+    work_dir = agent.cwd or os.getcwd();
+    # Run the command, then echo the shell's final directory on its own line.
+    # Because shell=True runs the whole thing in one shell, a `cd` inside
+    # `command` changes that shell's cwd, and the trailing `pwd` captures it --
+    # so we can carry the new directory into the next call and the file tools.
+    marker = "__JAC_AI_CWD__";
+    wrapped = (
+        command + f"\n__jac_ai_rc=$?\nprintf '\\n{marker}%s\\n' \"$(pwd)\"\n"
+        "exit $__jac_ai_rc"
+    );
     try {
-        return _proc_output(
-            subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                env=env
-            )
+        result = subprocess.run(
+            wrapped,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env=env,
+            cwd=work_dir
         );
     } except subprocess.TimeoutExpired {
         return f"ERROR: `{command}` timed out after 180s.";
     } except Exception as e {
         return f"ERROR running `{command}`: {e}";
     }
+    stdout = str(result.stdout or "");
+    new_cwd = "";
+    kept: list[str] = [];
+    for ln in stdout.splitlines() {
+        if ln.startswith(marker) {
+            new_cwd = ln[len(marker):].strip();
+        } else {
+            kept.append(ln);
+        }
+    }
+    if new_cwd and new_cwd != work_dir {
+        _set_session_cwd(new_cwd);
+    }
+    combined = ("\n".join(kept) + str(result.stderr or "")).strip();
+    out = truncate(combined or f"(no output; exit code {result.returncode})");
+    # When the model changed directory, say so -- otherwise a `cd` looks like a
+    # no-op in the transcript and the model repeats it.
+    if new_cwd and new_cwd != work_dir {
+        out = f"(now in {new_cwd})\n" + out;
+    }
+    return out;
 }
 
-sem jac_check = "Type-check and compile Jac code with `jac check`. Pass a single file, or a directory (`.` for the whole project) to check everything at once. Use this after writing or editing Jac code to confirm it is valid.";
-sem jac_check.path = "File or directory to check; '.' or empty string checks the whole project.";
-impl jac_check(path: str) -> str {
-    return run_jac_cli("check", path or ".");
+sem ProcessTools.jac_check = "Type-check and compile Jac code with `jac check`. Pass a single file, or a directory (`.` for the whole project) to check everything at once. Use this after writing or editing Jac code to confirm it is valid.";
+sem ProcessTools.jac_check.path = "File or directory to check; '.' or empty string checks the whole project.";
+impl ProcessTools.jac_check(path: str) -> str {
+    return agent.proc.run_jac_cli("check", path or ".");
 }
 
-sem start_app = "Start the app with `jac start` for ~12 seconds to confirm it boots, then stop it; returns the startup logs. Use this after building an app to catch errors that `jac check` cannot.";
-sem start_app.entry_file = "Entry .jac file to start; empty string means 'main.jac'.";
-impl start_app(entry_file: str) -> str {
+sem ProcessTools.start_app = "Start the app with `jac start` for ~12 seconds to confirm it boots, then stop it; returns the startup logs. Use this after building an app to catch errors that `jac check` cannot.";
+sem ProcessTools.start_app.entry_file = "Entry .jac file to start; empty string means 'main.jac'.";
+impl ProcessTools.start_app(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
+    abs_entry = _resolve(entry_path);
+    if not os.path.isfile(abs_entry) {
+        return (
+            f"ERROR: no such entry file '{entry_path}' (looked in "
+            f"{agent.cwd or os.getcwd()}). Use list_dir to find the app's "
+            "main .jac file, then pass its path."
+        );
+    }
     if not confirm(f"start the app with `jac start {entry_path}`") {
         return "DENIED: the user declined to start the app.";
     }
     # Run in the entry file's own dir: `jac start` resolves the project and its
     # deps from there, which matters when the app was scaffolded into a subfolder.
-    work_dir = os.path.dirname(entry_path) or ".";
-    target = os.path.basename(entry_path);
+    work_dir = os.path.dirname(abs_entry) or ".";
+    target = os.path.basename(abs_entry);
     try {
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaclang", "start", target],
@@ -368,24 +546,31 @@ impl start_app(entry_file: str) -> str {
     return truncate(str(output) if output else "(no startup output)");
 }
 
-sem serve = "Start the web/fullstack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
-sem serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
-impl serve(entry_file: str) -> str {
-    global _SERVE_PROC;
+sem ProcessTools.serve = "Start the web/fullstack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
+sem ProcessTools.serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
+impl ProcessTools.serve(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
+    abs_entry = _resolve(entry_path);
+    if not os.path.isfile(abs_entry) {
+        return (
+            f"ERROR: no such entry file '{entry_path}' (looked in "
+            f"{agent.cwd or os.getcwd()}). Use list_dir to find the app's "
+            "main .jac file (the one with the `cl`/`sv` mount), then pass its path."
+        );
+    }
     if not confirm(f"start the dev server with `jac start {entry_path}`") {
         return "DENIED: the user declined to start the server.";
     }
     # Drop any server we started earlier so we don't leak ports.
-    _serve_shutdown();
-    work_dir = os.path.dirname(entry_path) or ".";
-    target = os.path.basename(entry_path);
+    agent.proc._serve_shutdown();
+    work_dir = os.path.dirname(abs_entry) or ".";
+    target = os.path.basename(abs_entry);
     log_path = "/tmp/jac_ai_serve.log";
     try {
         log_f = open(log_path, "w");
         # Own process group so _serve_shutdown can kill the server *and* the
         # vite/build children it spawns.
-        _SERVE_PROC = subprocess.Popen(
+        agent.serve_proc = subprocess.Popen(
             [sys.executable, "-m", "jaclang", "start", target],
             cwd=work_dir,
             stdout=log_f,
@@ -415,7 +600,7 @@ impl serve(entry_file: str) -> str {
     deadline = time.time() + timeout;
     url = "";
     while time.time() < deadline {
-        if _SERVE_PROC.poll() is not None {
+        if agent.serve_proc.poll() is not None {
             break;  # server exited before becoming ready
         }
         try {
@@ -442,36 +627,35 @@ impl serve(entry_file: str) -> str {
     } except Exception {
         tail = "(no log output)";
     }
-    _serve_shutdown();
+    agent.proc._serve_shutdown();
     return (
         f"ERROR: the server did not become ready within {int(timeout)}s. "
         f"Last log lines:\n{tail}"
     );
 }
 
-sem stop_server = "Stop the dev server started by serve. Call this when finished with browser QA.";
-impl stop_server -> str {
-    _serve_shutdown();
+sem ProcessTools.stop_server = "Stop the dev server started by serve. Call this when finished with browser QA.";
+impl ProcessTools.stop_server -> str {
+    agent.proc._serve_shutdown();
     return "OK: dev server stopped.";
 }
 
-impl _serve_shutdown{
-    global _SERVE_PROC;
-    if _SERVE_PROC is not None {
+impl ProcessTools._serve_shutdown{
+    if agent.serve_proc is not None {
         try {
-            os.killpg(os.getpgid(int(_SERVE_PROC.pid)), int(signal.SIGTERM));
+            os.killpg(os.getpgid(int(agent.serve_proc.pid)), int(signal.SIGTERM));
         } except Exception {
             try {
-                _SERVE_PROC.terminate();
+                agent.serve_proc.terminate();
             } except Exception { }
         }
-        _SERVE_PROC = None;
+        agent.serve_proc = None;
     }
 }
 
-sem search_guides = "Search the bundled Jac reference guides; returns matching guide names and descriptions ranked by relevance. Matches any word in the query, so several keywords broaden the search.";
-sem search_guides.keyword = "Keywords to search guide names, descriptions, and bodies for.";
-impl search_guides(keyword: str) -> str {
+sem GuideTools.search_guides = "Search the bundled Jac reference guides; returns matching guide names and descriptions ranked by relevance. Matches any word in the query, so several keywords broaden the search.";
+sem GuideTools.search_guides.keyword = "Keywords to search guide names, descriptions, and bodies for.";
+impl GuideTools.search_guides(keyword: str) -> str {
     words = [
         w
         for w in keyword.lower().split()
@@ -502,9 +686,9 @@ impl search_guides(keyword: str) -> str {
     return "\n".join([line for (_, line) in scored]);
 }
 
-sem read_guide = "Read a bundled Jac reference guide in full -- the authoritative spec for writing correct, idiomatic Jac.";
-sem read_guide.name = "Exact guide name, e.g. 'jac-walker-patterns'.";
-impl read_guide(name: str) -> str {
+sem GuideTools.read_guide = "Read a bundled Jac reference guide in full -- the authoritative spec for writing correct, idiomatic Jac.";
+sem GuideTools.read_guide.name = "Exact guide name, e.g. 'jac-walker-patterns'.";
+impl GuideTools.read_guide(name: str) -> str {
     guide = gs_get(name);
     if guide is None {
         available = ", ".join([g.name for g in gs_list()]);
@@ -514,22 +698,21 @@ impl read_guide(name: str) -> str {
 }
 
 impl code_intel -> any {
-    global agent_ci_dirty;
-    if agent_ci is None {
+    if agent.ci is None {
         return None;
     }
-    if agent_ci_dirty {
+    if agent.ci_dirty {
         try {
-            agent_ci.refresh();
+            agent.ci.refresh();
         } except Exception { }
-        agent_ci_dirty = False;
+        agent.ci_dirty = False;
     }
-    return agent_ci;
+    return agent.ci;
 }
 
-sem find_symbol = "Look up a Jac symbol (node, walker, edge, obj, enum, ability, ...) by name via the compiler's symbol table. Returns its exact definition site, fields, abilities, base classes, and every place it is used. This is precise -- unlike grep it never matches a comment or an unrelated identifier. Prefer this over grep whenever you know the name of the thing you are looking for.";
-sem find_symbol.name = "The symbol name to look up, e.g. 'User' or 'make_user'.";
-impl find_symbol(name: str) -> str {
+sem SemanticTools.find_symbol = "Look up a Jac symbol (node, walker, edge, obj, enum, ability, ...) by name via the compiler's symbol table. Returns its exact definition site, fields, abilities, base classes, and every place it is used. This is precise -- unlike grep it never matches a comment or an unrelated identifier. Prefer this over grep whenever you know the name of the thing you are looking for.";
+sem SemanticTools.find_symbol.name = "The symbol name to look up, e.g. 'User' or 'make_user'.";
+impl SemanticTools.find_symbol(name: str) -> str {
     ci = code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
@@ -556,9 +739,9 @@ impl find_symbol(name: str) -> str {
     return "\n".join(out);
 }
 
-sem find_uses = "List every definition and use of a symbol across the whole project, computed from the compiler's def/use chains. Use this before renaming or changing a symbol to see exactly what it touches.";
-sem find_uses.name = "The symbol name whose references to list.";
-impl find_uses(name: str) -> str {
+sem SemanticTools.find_uses = "List every definition and use of a symbol across the whole project, computed from the compiler's def/use chains. Use this before renaming or changing a symbol to see exactly what it touches.";
+sem SemanticTools.find_uses.name = "The symbol name whose references to list.";
+impl SemanticTools.find_uses(name: str) -> str {
     ci = code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
@@ -574,8 +757,8 @@ impl find_uses(name: str) -> str {
     return "\n".join(lines);
 }
 
-sem project_map = "Show every node, walker, edge, and object archetype in the project with its location -- a structural overview built from the compiler, not a directory listing. Use this first to understand an unfamiliar project.";
-impl project_map -> str {
+sem SemanticTools.project_map = "Show every node, walker, edge, and object archetype in the project with its location -- a structural overview built from the compiler, not a directory listing. Use this first to understand an unfamiliar project.";
+impl SemanticTools.project_map -> str {
     ci = code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
@@ -591,9 +774,9 @@ impl project_map -> str {
     return "\n".join(sorted(rows));
 }
 
-sem find_walkers = "Find every walker entry point that traverses a given node type -- an Object-Spatial query the compiler answers from walker entry signatures. Use this to see how a node is visited.";
-sem find_walkers.node_type = "The node archetype name, e.g. 'User'.";
-impl find_walkers(node_type: str) -> str {
+sem SemanticTools.find_walkers = "Find every walker entry point that traverses a given node type -- an Object-Spatial query the compiler answers from walker entry signatures. Use this to see how a node is visited.";
+sem SemanticTools.find_walkers.node_type = "The node archetype name, e.g. 'User'.";
+impl SemanticTools.find_walkers(node_type: str) -> str {
     ci = code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
@@ -609,9 +792,9 @@ impl find_walkers(node_type: str) -> str {
     return "\n".join(lines);
 }
 
-sem context_slice = "Get a typed context slice for a symbol: its definition, the types it depends on, and where it is used -- a focused, compiler-accurate neighbourhood to read instead of opening whole files.";
-sem context_slice.name = "The symbol to build a context slice around.";
-impl context_slice(name: str) -> str {
+sem SemanticTools.context_slice = "Get a typed context slice for a symbol: its definition, the types it depends on, and where it is used -- a focused, compiler-accurate neighbourhood to read instead of opening whole files.";
+sem SemanticTools.context_slice.name = "The symbol to build a context slice around.";
+impl SemanticTools.context_slice(name: str) -> str {
     ci = code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
@@ -619,7 +802,7 @@ impl context_slice(name: str) -> str {
     return str(ci.slice_for(name).render());
 }
 
-impl _browse_err(e: Exception) -> str {
+impl BrowseTools._browse_err(e: Exception) -> str {
     msg = str(e);
     if "no live browser" in msg {
         return "ERROR: no browser is open -- call browse_open(url) first.";
@@ -627,7 +810,7 @@ impl _browse_err(e: Exception) -> str {
     return f"ERROR: {msg}";
 }
 
-impl _browse(confirm_msg: str, run: any, clip: bool = False) -> str {
+impl BrowseTools._browse(confirm_msg: str, run: any, clip: bool = False) -> str {
     if confirm_msg and not confirm(confirm_msg) {
         return f"DENIED: the user declined to {confirm_msg}.";
     }
@@ -635,94 +818,97 @@ impl _browse(confirm_msg: str, run: any, clip: bool = False) -> str {
         out = run();
         return truncate(str(out)) if clip else str(out);
     } except Exception as e {
-        return _browse_err(e);
+        return agent.web._browse_err(e);
     }
 }
 
-sem browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
-sem browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
-impl browse_open(url: str) -> str {
-    return _browse(
+sem BrowseTools.browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
+sem BrowseTools.browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
+impl BrowseTools.browse_open(url: str) -> str {
+    return agent.web._browse(
         f"open a browser at {url}" if url else "",
-        lambda : br_open(_BROWSE_SESSION, url or None)
+        lambda : br_open(agent.browse_session, url or None)
     );
 }
 
-sem browse_navigate = "Navigate the open browser to a different URL and wait for it to load.";
-sem browse_navigate.url = "The URL to navigate to.";
-impl browse_navigate(url: str) -> str {
-    return _browse(
-        f"navigate the browser to {url}", lambda : br_navigate(_BROWSE_SESSION, url)
+sem BrowseTools.browse_navigate = "Navigate the open browser to a different URL and wait for it to load.";
+sem BrowseTools.browse_navigate.url = "The URL to navigate to.";
+impl BrowseTools.browse_navigate(url: str) -> str {
+    return agent.web._browse(
+        f"navigate the browser to {url}",
+        lambda : br_navigate(agent.browse_session, url)
     );
 }
 
-sem browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
-impl browse_snapshot -> str {
-    return _browse("", lambda : br_snapshot(_BROWSE_SESSION), clip=True);
+sem BrowseTools.browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
+impl BrowseTools.browse_snapshot -> str {
+    return agent.web._browse("", lambda : br_snapshot(agent.browse_session), clip=True);
 }
 
-sem browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
-sem browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
-impl browse_click(target: str) -> str {
-    return _browse(
-        f"click {target} in the browser", lambda : br_click(_BROWSE_SESSION, target)
+sem BrowseTools.browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
+sem BrowseTools.browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
+impl BrowseTools.browse_click(target: str) -> str {
+    return agent.web._browse(
+        f"click {target} in the browser",
+        lambda : br_click(agent.browse_session, target)
     );
 }
 
-sem browse_type = "Focus an element and type text into it as real key events, appending to whatever is already there.";
-sem browse_type.target = "An @ref from browse_snapshot, or a CSS selector.";
-sem browse_type.text = "The text to type.";
-impl browse_type(target: str, text: str) -> str {
-    return _browse(
+sem BrowseTools.browse_type = "Focus an element and type text into it as real key events, appending to whatever is already there.";
+sem BrowseTools.browse_type.target = "An @ref from browse_snapshot, or a CSS selector.";
+sem BrowseTools.browse_type.text = "The text to type.";
+impl BrowseTools.browse_type(target: str, text: str) -> str {
+    return agent.web._browse(
         f"type into {target} in the browser",
-        lambda : br_type(_BROWSE_SESSION, target, text)
+        lambda : br_type(agent.browse_session, target, text)
     );
 }
 
-sem browse_fill = "Clear a field and set its value to the given text. Prefer this over browse_type for form fields.";
-sem browse_fill.target = "An @ref from browse_snapshot, or a CSS selector.";
-sem browse_fill.text = "The text to set the field to.";
-impl browse_fill(target: str, text: str) -> str {
-    return _browse(
-        f"fill {target} in the browser", lambda : br_fill(_BROWSE_SESSION, target, text)
+sem BrowseTools.browse_fill = "Clear a field and set its value to the given text. Prefer this over browse_type for form fields.";
+sem BrowseTools.browse_fill.target = "An @ref from browse_snapshot, or a CSS selector.";
+sem BrowseTools.browse_fill.text = "The text to set the field to.";
+impl BrowseTools.browse_fill(target: str, text: str) -> str {
+    return agent.web._browse(
+        f"fill {target} in the browser",
+        lambda : br_fill(agent.browse_session, target, text)
     );
 }
 
-sem browse_press = "Press a single key in the browser, e.g. 'Enter', 'Tab', 'Escape', or a chord like 'Ctrl+A'.";
-sem browse_press.key = "The key or chord to press.";
-impl browse_press(key: str) -> str {
-    return _browse(
-        f"press {key} in the browser", lambda : br_press(_BROWSE_SESSION, key)
+sem BrowseTools.browse_press = "Press a single key in the browser, e.g. 'Enter', 'Tab', 'Escape', or a chord like 'Ctrl+A'.";
+sem BrowseTools.browse_press.key = "The key or chord to press.";
+impl BrowseTools.browse_press(key: str) -> str {
+    return agent.web._browse(
+        f"press {key} in the browser", lambda : br_press(agent.browse_session, key)
     );
 }
 
-sem browse_get = "Read a property of the current page: 'url', 'title', or 'text' (the visible text of the element named by selector).";
-sem browse_get.what = "One of 'url', 'title', or 'text'.";
-sem browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
-impl browse_get(what: str, selector: str) -> str {
-    return _browse(
-        "", lambda : br_get(_BROWSE_SESSION, what, selector or None), clip=True
+sem BrowseTools.browse_get = "Read a property of the current page: 'url', 'title', or 'text' (the visible text of the element named by selector).";
+sem BrowseTools.browse_get.what = "One of 'url', 'title', or 'text'.";
+sem BrowseTools.browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
+impl BrowseTools.browse_get(what: str, selector: str) -> str {
+    return agent.web._browse(
+        "", lambda : br_get(agent.browse_session, what, selector or None), clip=True
     );
 }
 
-sem browse_eval = "Evaluate a JavaScript expression in the page and return its result. Use this to inspect page state or check for errors, e.g. \"document.querySelectorAll('.error').length\".";
-sem browse_eval.expression = "A JavaScript expression to evaluate.";
-impl browse_eval(expression: str) -> str {
-    return _browse(
+sem BrowseTools.browse_eval = "Evaluate a JavaScript expression in the page and return its result. Use this to inspect page state or check for errors, e.g. \"document.querySelectorAll('.error').length\".";
+sem BrowseTools.browse_eval.expression = "A JavaScript expression to evaluate.";
+impl BrowseTools.browse_eval(expression: str) -> str {
+    return agent.web._browse(
         f"run JavaScript in the browser: {expression}",
-        lambda : br_eval(_BROWSE_SESSION, expression),
+        lambda : br_eval(agent.browse_session, expression),
         clip=True
     );
 }
 
-sem browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
-impl browse_close -> str {
-    return _browse("", lambda : br_close(_BROWSE_SESSION));
+sem BrowseTools.browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
+impl BrowseTools.browse_close -> str {
+    return agent.web._browse("", lambda : br_close(agent.browse_session));
 }
 
-impl _browse_shutdown{
+impl BrowseTools._browse_shutdown{
     try {
-        br_close(_BROWSE_SESSION);
+        br_close(agent.browse_session);
     } except Exception {
     # The browser may never have been opened this session; nothing to clean.
     }
@@ -742,13 +928,15 @@ impl system_prompt -> str {
 }
 
 impl reset_session{
-    global _session_ledger;
-    _session_ledger = Ledger();
+    agent.ledger = Ledger();
 }
 
 impl _progress_guard(ctx: any) -> str {
     import json;
     counts: dict[str, int] = {};
+    # Ordered signature ("name|args") of every tool call, to spot a model stuck
+    # re-issuing the SAME call (read or write) -- e.g. read_file(main.jac) 40x.
+    sigs: list[str] = [];
     for m in ctx.messages {
         tcs = m.get("tool_calls") if isinstance(m, dict) else m?.tool_calls;
         if not tcs {
@@ -763,23 +951,32 @@ impl _progress_guard(ctx: any) -> str {
             if name is None and isinstance(fn, dict) {
                 name = fn.get("name");
             }
-            if name not in _WRITE_TOOLS {
-                continue;
-            }
             raw = fn?.arguments;
             if raw is None and isinstance(fn, dict) {
                 raw = fn.get("arguments");
             }
+            args_str = "";
             try {
                 parsed = json.loads(raw) if isinstance(raw, str) else (raw or {});
+                args_str = json.dumps(parsed, sort_keys=True)
+                    if isinstance(parsed, dict)
+                    else str(raw);
                 path = str(parsed.get("path", "")) if isinstance(parsed, dict) else "";
             } except Exception {
+                args_str = str(raw);
                 path = "";
             }
-            if path {
+            sigs.append(f"{name}|{args_str}");
+            if name in _WRITE_TOOLS and path {
                 counts[path] = counts.get(path, 0) + 1;
             }
         }
+    }
+    # Repeated-call loop: the last 3 tool calls are byte-for-byte identical. No
+    # legitimate workflow re-runs the exact same call thrice in a row, so end the
+    # phase and let the pipeline move on rather than burn the iteration budget.
+    if len(sigs) >= 3 and sigs[-1] == sigs[-2] and sigs[-2] == sigs[-3] {
+        return IterationAction.ABORT_WITH_SUMMARY;
     }
     worst = max(counts.values()) if counts else 0;
     if worst > _REWRITE_LIMIT {
@@ -788,17 +985,17 @@ impl _progress_guard(ctx: any) -> str {
     return IterationAction.CONTINUE;
 }
 
-impl print_banner{
+impl TurnRenderer.print_banner{
     console.print("");
     console.print("  Jac AI -- interactive coding agent", style="bold");
     console.print(
-        f"  model: {agent_model.model_name}  (from {agent_cfg.model_source})",
+        f"  model: {agent_model.model_name}  (from {agent.cfg.model_source})",
         style="muted"
     );
-    if agent_cfg.threads > 0 {
-        console.print(f"  inference threads: {agent_cfg.threads}", style="muted");
+    if agent.cfg.threads > 0 {
+        console.print(f"  inference threads: {agent.cfg.threads}", style="muted");
     }
-    if agent_cfg.yolo_mode {
+    if agent.cfg.yolo_mode {
         console.print(
             "  file writes and commands run without confirmation (use --safe to confirm each)",
             style="yellow"
@@ -808,7 +1005,7 @@ impl print_banner{
     console.print("");
 }
 
-impl print_help{
+impl TurnRenderer.print_help{
     console.print("  /help     show this help", style="muted");
     console.print("  /clear    reset the conversation", style="muted");
     console.print("  /guides   list the bundled Jac reference guides", style="muted");
@@ -822,7 +1019,7 @@ impl print_help{
     console.print("  /exit     quit the session", style="muted");
 }
 
-impl fmt_tool_call(tool: str, args: object) -> str {
+impl TurnRenderer.fmt_tool_call(tool: str, args: object) -> str {
     parts: list[str] = [];
     if isinstance(args, dict) {
         for (key, value) in args.items() {
@@ -836,11 +1033,11 @@ impl fmt_tool_call(tool: str, args: object) -> str {
     return f"{tool}(" + ", ".join(parts) + ")";
 }
 
-impl _short_num(n: int) -> str {
+impl TurnRenderer._short_num(n: int) -> str {
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n);
 }
 
-impl _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float {
+impl TurnRenderer._estimate_cost(prompt_tokens: int, completion_tokens: int) -> float {
     try {
         import litellm;
         costs: any = litellm.cost_per_token(
@@ -854,21 +1051,23 @@ impl _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float {
     }
 }
 
-impl _format_tokens(usage: dict[str, object]) -> str {
+impl TurnRenderer._format_tokens(usage: dict[str, object]) -> str {
     prompt = int(usage.get("prompt_tokens", 0) or 0);
     completion = int(usage.get("completion_tokens", 0) or 0);
     if prompt == 0 and completion == 0 {
         return "";
     }
-    text = f"{_short_num(prompt)} in / {_short_num(completion)} out";
-    cost = _estimate_cost(prompt, completion);
+    text = f"{agent.view._short_num(prompt)} in / {agent.view._short_num(
+        completion
+    )} out";
+    cost = agent.view._estimate_cost(prompt, completion);
     if cost > 0 {
         text += f" (~${cost:.4f})";
     }
     return text;
 }
 
-impl _format_health -> str {
+impl TurnRenderer._format_health -> str {
     ci = code_intel();
     if ci is None or not ci.is_loaded() {
         return "";
@@ -885,7 +1084,7 @@ impl _format_health -> str {
     return f"project: {n_err} error(s), {n_warn} warning(s)";
 }
 
-impl print_stats(
+impl TurnRenderer.print_stats(
     elapsed: float,
     n_read: int,
     n_write: int,
@@ -912,7 +1111,7 @@ impl print_stats(
         suffix = "" if len(files) == 1 else "s";
         parts.append(f"{len(files)} file{suffix} changed");
     }
-    tokens = _format_tokens(usage);
+    tokens = agent.view._format_tokens(usage);
     if tokens {
         parts.append(tokens);
     }
@@ -921,14 +1120,14 @@ impl print_stats(
     if completion > 0 and elapsed > 0 {
         parts.append(f"{completion / elapsed:.1f} tok/s");
     }
-    health = _format_health();
+    health = agent.view._format_health();
     if health {
         parts.append(health);
     }
     console.print("  " + "  ·  ".join(parts), style="muted");
 }
 
-impl _strip_control(text: str) -> str {
+impl TurnRenderer._strip_control(text: str) -> str {
     import re;
     t = text.replace("<|\"|>", "\"").replace("<|'|>", "'");
     t = re.sub("<\\|[a-z_]+>[a-z]*", "", t);
@@ -936,7 +1135,7 @@ impl _strip_control(text: str) -> str {
     return t;
 }
 
-impl _split_reasoning(raw: str) -> tuple[str, bool] {
+impl TurnRenderer._split_reasoning(raw: str) -> tuple[str, bool] {
     mark = "<tool_call>";
     idx = raw.find(mark);
     if idx >= 0 {
@@ -954,7 +1153,7 @@ impl _split_reasoning(raw: str) -> tuple[str, bool] {
     return (raw[:len(raw) - hold], False);
 }
 
-impl _result_snippet(text: str, max_lines: int) -> list[str] {
+impl TurnRenderer._result_snippet(text: str, max_lines: int) -> list[str] {
     stripped = text.strip();
     if not stripped {
         return ["(no output)"];
@@ -971,22 +1170,22 @@ impl _result_snippet(text: str, max_lines: int) -> list[str] {
     return shown;
 }
 
-impl _fmt_ms(ms: float) -> str {
+impl TurnRenderer._fmt_ms(ms: float) -> str {
     return f"{int(ms)}ms" if ms < 1000 else f"{ms / 1000:.1f}s";
 }
 
-impl _fmt_gen(ms: float, tokens: int) -> str {
+impl TurnRenderer._fmt_gen(ms: float, tokens: int) -> str {
     if ms <= 0 {
         return "";
     }
     if tokens > 0 {
         tps = tokens / (ms / 1000);
-        return f"   ({_fmt_ms(ms)}, {tps:.0f} tps)";
+        return f"   ({agent.view._fmt_ms(ms)}, {tps:.0f} tps)";
     }
-    return f"   ({_fmt_ms(ms)})";
+    return f"   ({agent.view._fmt_ms(ms)})";
 }
 
-impl _ci_event(info: any) {
+impl TurnRenderer._ci_event(info: any) {
     op = str(info.get("op", "?"));
     recompiled = int(info.get("recompiled", 0));
     cached = int(info.get("cached", 0));
@@ -1007,15 +1206,16 @@ impl _ci_event(info: any) {
         # refresh reads as cheaper than a full build.
         what = f"{op} {name} · recompiled {recompiled}/{total}";
     }
-    console.print(f"      ⚙ code intel · {what} · {_fmt_ms(ms)}", style="dim");
+    console.print(
+        f"      ⚙ code intel · {what} · {agent.view._fmt_ms(ms)}", style="dim"
+    );
 }
 
-impl render_stream(event_stream: any) -> dict {
+impl TurnRenderer.render_stream(event_stream: any) -> dict {
     out: any = sys.stdout;
     # `\r` animation only makes sense on a tty; piped output gets static lines.
     is_tty = bool(out?.isatty) and bool(out.isatty());
     # A write tool anywhere in the turn arms the verify-and-continue guard.
-    global _turn_wrote;
     # Declared before the try so the `except` handlers can still return them.
     n_read = 0;
     n_write = 0;
@@ -1054,8 +1254,10 @@ impl render_stream(event_stream: any) -> dict {
         }
         (result, ms) = (pend_result["result"], pend_result["ms"]);
         pend_result = None;
-        lines = _result_snippet(result, 3 if agent_cfg.verbose else 1);
-        tail = f"   {_fmt_ms(ms)}" if (agent_cfg.verbose and ms is not None) else "";
+        lines = agent.view._result_snippet(result, 3 if agent.cfg.verbose else 1);
+        tail = f"   {agent.view._fmt_ms(ms)}"
+            if (agent.cfg.verbose and ms is not None)
+            else "";
         console.print(f"      ↳ {lines[0]}{tail}", style="dim");
         for ln in lines[1:] {
             console.print(f"        {ln}", style="dim");
@@ -1066,7 +1268,7 @@ impl render_stream(event_stream: any) -> dict {
             kind = event.event_type;
             data = event.data;
             if kind == "thought" {
-                if not agent_cfg.verbose {
+                if not agent.cfg.verbose {
                     continue;
                 }
                 tok = str(data.get("content", ""));
@@ -1077,10 +1279,10 @@ impl render_stream(event_stream: any) -> dict {
                     step_t0 = time.time();
                 }
                 thought_raw += tok;
-                (prose, hit) = _split_reasoning(thought_raw);
+                (prose, hit) = agent.view._split_reasoning(thought_raw);
                 new_raw = prose[prose_shown:];
                 prose_shown = len(prose);
-                cleaned = _strip_control(new_raw);
+                cleaned = agent.view._strip_control(new_raw);
                 if cleaned {
                     clear_think();
                     out.write(cleaned);
@@ -1116,7 +1318,7 @@ impl render_stream(event_stream: any) -> dict {
                 # everything else a read.
                 if tool in _WRITE_TOOLS {
                     n_write += 1;
-                    _turn_wrote = True;
+                    agent.turn_wrote = True;
                     if isinstance(args, dict) {
                         path = args.get("path");
                         if path {
@@ -1128,10 +1330,12 @@ impl render_stream(event_stream: any) -> dict {
                 } else {
                     n_read += 1;
                 }
-                gen = _fmt_gen(last_llm_ms, last_llm_tokens)
-                    if agent_cfg.verbose
+                gen = agent.view._fmt_gen(last_llm_ms, last_llm_tokens)
+                    if agent.cfg.verbose
                     else "";
-                console.print(f"  ⏺ {fmt_tool_call(tool, args)}{gen}", style="cyan");
+                console.print(
+                    f"  ⏺ {agent.view.fmt_tool_call(tool, args)}{gen}", style="cyan"
+                );
                 last_llm_ms = 0.0;
                 last_llm_tokens = 0;
                 thought_raw = "";
@@ -1222,11 +1426,11 @@ impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
     );
 }
 
-sem note = "Record a short note that stays visible to every later phase (Plan, Build, QA) and in later turns. Use it to flag a decision, an assumption, or something to verify.";
-sem note.text = "The note to remember.";
-impl note(text: str) -> str {
-    if _active_session is not None {
-        _active_session.ledger.remember(text);
+sem AgentRuntime.note = "Record a short note that stays visible to every later phase (Plan, Build, QA) and in later turns. Use it to flag a decision, an assumption, or something to verify.";
+sem AgentRuntime.note.text = "The note to remember.";
+impl AgentRuntime.note(text: str) -> str {
+    if agent.active_session is not None {
+        agent.active_session.ledger.remember(text);
         return f"noted: {text}";
     }
     return "(no active session to note onto)";
@@ -1244,16 +1448,47 @@ impl PhaseState.tools -> list {
     ];
 }
 
-sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac. Do not write or edit files here. Finish by stating a short, concrete plan -- the files to create or change and what each is for.";
+sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac (read at least the one for the kind of code you will write -- e.g. jac-cl-components for a UI). Do not write or edit files here. Finish by stating a short, concrete plan: whether to scaffold (and which template -- client for a browser-only UI, fullstack for server/data, default for a script), the files to create or change, and what each is for.";
 
-sem Build = "the BUILDING state: carry out the plan. Scaffold a new app with `jac create --use <template> <name>` (templates: default, client, fullstack) via run_command rather than hand-building the layout, then adapt it. Write and edit files -- prefer edit_file, and read a file before editing it. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
+sem Build = "the BUILDING state: carry out the plan. For a new app, scaffold it ONCE with `jac create --use <template> <name>` via run_command, then `cd <name>` so every later tool works inside the project (the cd persists). Pick the SIMPLEST template that fits: `client` for a browser-only UI with no server or saved data (a calculator, a unit converter, a static page); `fullstack` only when you need server endpoints or persistent/multi-user data; `default` for a non-web script. To create a NEW file, call write_file with its FULL contents -- never create files with shell redirection (`echo >`, `cat <<EOF`, `touch`) and never try to edit a file that does not exist yet. Use edit_file only to change a file that already exists, and read it first. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
 
 sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: call serve(entry) to start the dev server -- it waits until the server is actually ready and returns its URL (the first start is slow, as it installs client deps and builds the client). Then browse_open that URL, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop_server. If serve reports the server failed to start, read the log tail it returns and go back to Build to fix the cause -- do not conclude the app works until you have actually run and exercised it.";
 
+impl _phase_directive(label: str) -> str {
+    if label == "Plan" {
+        return (
+            "Investigate the request and the existing project, then state a "
+            "short, concrete plan. Do not write or edit files in this state."
+        );
+    }
+    if label == "Build" {
+        return (
+            "Build the requested feature NOW by writing real code: call "
+            "write_file to create each new file with its full contents, and "
+            "edit_file to change existing ones. Exploring or describing the "
+            "plan is NOT building -- keep working until every file the task "
+            "needs exists and the project compiles. After each write, read the "
+            "compiler feedback it returns and fix the errors before moving on. "
+            "Do not end this state with only reads."
+        );
+    }
+    if label == "QA" {
+        return (
+            "Verify the finished work end to end NOW. Run jac_check and require "
+            "zero errors. For a web or fullstack app, serve it and drive the "
+            "browser (browse_open, browse_snapshot, then click/type the real "
+            "controls) to confirm the REQUESTED feature actually works on the "
+            "page -- not just that the scaffold loads. If anything is missing, "
+            "wrong, or broken, go back to Build to fix it; choose Done only "
+            "after you have actually run and exercised the result."
+        );
+    }
+    return f"Carry out the {label} state now.";
+}
+
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 impl PhaseState.run{
-    global _active_session;
-    _active_session = visitor;
+    agent.active_session = visitor;
     label = type(self).__name__;
     console.print(f"\n  ● {label}", style="bold blue");
     # Refresh the system message with the latest ledger; keep this node's prior
@@ -1267,8 +1502,8 @@ impl PhaseState.run{
     } else {
         self.ctx[0] = sysmsg;
     }
-    result = render_stream(
-        run_phase(f"Carry out the {label} state now.", self.tools(), self.ctx)
+    result = agent.view.render_stream(
+        run_phase(_phase_directive(label), self.tools(), self.ctx)
     );
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
@@ -1278,6 +1513,34 @@ impl PhaseState.run{
         # Safety valve: a runaway session halts here (no onward visit) rather
         # than looping forever. The outer verify-and-continue still applies.
         console.print("\n  ● step cap reached -- stopping", style="yellow");
+    } elif label == "Build"
+    and int(result.get("n_write", 0) or 0) == 0
+    and visitor.build_nudges < 2 {
+        # Build that wrote nothing -- a weaker model often "describes" code (even
+        # pastes it into its answer) without ever calling write_file. Don't let
+        # that count as building: push back into Build with a blunt instruction
+        # to actually write the files. Bounded by build_nudges so a model that
+        # truly cannot produce a file falls through instead of looping.
+        visitor.build_nudges += 1;
+        self.ctx.append(
+            {
+                "role": "user",
+                "content": (
+                    "You ended Build having called write_file ZERO times -- you only "
+                    "described code, pasted it into your reply, or left notes. That "
+                    "is not building. Call write_file NOW with the COMPLETE Jac "
+                    "contents of each file the task needs (for a UI, e.g. "
+                    "components/Calculator.cl.jac as a `def:pub Calculator() -> "
+                    "JsxElement` component, and edit main.jac to render it). Write "
+                    "real Jac files this turn -- do not explain, just write them."
+                )
+            }
+        );
+        console.print(
+            "  ↳ Build wrote no files -- re-entering Build to actually write code",
+            style="yellow"
+        );
+        visit self;
     } elif len([-->]) == 1 {
         # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
         visit [-->];
@@ -1330,21 +1593,20 @@ impl AgentSession.begin{
 }
 
 impl run_turn(message: str) {
-    global _turn_wrote,_session_ledger;
-    _turn_wrote = False;
+    agent.turn_wrote = False;
     # The session ledger persists across turns; create it on first use.
-    ledger = _session_ledger;
+    ledger = agent.ledger;
     if ledger is None {
         ledger = Ledger();
-        _session_ledger = ledger;
+        agent.ledger = ledger;
     }
     started = time.time();
     session = AgentSession(
         objective=message, ledger=ledger, stats=TurnStats()
     ) spawn root;
-    if agent_cfg.show_stats {
+    if agent.cfg.show_stats {
         st = session.stats;
-        print_stats(
+        agent.view.print_stats(
             time.time() - started, st.n_read, st.n_write, st.n_run, st.files, st.usage
         );
     }
@@ -1367,7 +1629,7 @@ impl _project_errors -> list {
 }
 
 impl verify_and_continue(max_rounds: int = 3) {
-    if not _turn_wrote {
+    if not agent.turn_wrote {
         return;
     }
     rnd = 0;
@@ -1406,16 +1668,19 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-    global agent_model,agent_ci;
+    global agent_model;
     # Access `req` untyped so attribute reads type-check without importing
     # AgentRequest into this byLLM-only module.
     r: any = req;
-    agent_cfg.yolo_mode = not r.safe;
-    agent_cfg.verbose = not bool(getattr(r, "quiet", False));
+    # Seed the session working directory; every file tool and run_command
+    # resolves against it, and a `cd` the model issues updates it.
+    agent.cwd = os.path.normpath(str(getattr(r, "cwd", "") or os.getcwd()));
+    agent.cfg.yolo_mode = not r.safe;
+    agent.cfg.verbose = not bool(getattr(r, "quiet", False));
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
-    agent_ci = r.code_intel;
-    if agent_ci is not None {
-        agent_ci.on_event = _ci_event;
+    agent.ci = r.code_intel;
+    if agent.ci is not None {
+        agent.ci.on_event = agent.view._ci_event;
     }
     initial_prompt = str(r.prompt);
     # Import-time `agent_model` covers jac.toml/default; rebuild only when a
@@ -1423,15 +1688,15 @@ impl run_agent(req: object) -> int {
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
     }
-    print_banner();
+    agent.view.print_banner();
     reset_session();
 
     if initial_prompt {
         run_turn(initial_prompt);
         # Don't let a one-shot build exit on code that doesn't compile.
         verify_and_continue();
-        _browse_shutdown();
-        _serve_shutdown();
+        agent.web._browse_shutdown();
+        agent.proc._serve_shutdown();
         return 0;
     }
 
@@ -1452,7 +1717,7 @@ impl run_agent(req: object) -> int {
             break;
         }
         if line == "/help" {
-            print_help();
+            agent.view.print_help();
             continue;
         }
         if line == "/clear" {
@@ -1468,26 +1733,26 @@ impl run_agent(req: object) -> int {
             continue;
         }
         if line == "/stats" {
-            agent_cfg.show_stats = not agent_cfg.show_stats;
+            agent.cfg.show_stats = not agent.cfg.show_stats;
             console.success(
-                "Turn stats on." if agent_cfg.show_stats else "Turn stats off."
+                "Turn stats on." if agent.cfg.show_stats else "Turn stats off."
             );
             continue;
         }
         if line == "/verbose" {
-            agent_cfg.verbose = not agent_cfg.verbose;
+            agent.cfg.verbose = not agent.cfg.verbose;
             console.success(
                 "Verbose: streaming reasoning, timings, and step detail."
-                    if agent_cfg.verbose
+                    if agent.cfg.verbose
                     else "Quiet: tool calls and the answer only."
             );
             continue;
         }
         if line == "/feedback" {
-            agent_cfg.inline_feedback = not agent_cfg.inline_feedback;
+            agent.cfg.inline_feedback = not agent.cfg.inline_feedback;
             console.success(
                 "Inline compiler feedback on: writes report errors they introduce."
-                    if agent_cfg.inline_feedback
+                    if agent.cfg.inline_feedback
                     else "Inline compiler feedback off: use jac_check to compile."
             );
             continue;
@@ -1495,8 +1760,8 @@ impl run_agent(req: object) -> int {
         run_turn(line);
     }
 
-    _browse_shutdown();
-    _serve_shutdown();
+    agent.web._browse_shutdown();
+    agent.proc._serve_shutdown();
     console.print("Bye.");
     return 0;
 }
