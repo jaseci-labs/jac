@@ -381,7 +381,18 @@ impl ObjectSpatialFunction.trigger -> (
     if (len(parameters) >= 2) {
         second_param = `list(parameters.values())[1];
         ty = second_param.annotation;
-        return ty if (ty != _empty) else None;
+        if ty == _empty {
+            return None;
+        }
+        if isinstance(ty, Archetype) {
+            raise TypeError(
+                f"Ability trigger must be a class, not an instance of `{type(
+                    ty
+                ).__name__}`. "
+                f"Use `with {type(ty).__name__} entry` instead."
+            );
+        }
+        return ty;
     }
     return None;
 }

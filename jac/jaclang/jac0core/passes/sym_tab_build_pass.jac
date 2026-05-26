@@ -35,9 +35,7 @@ class SymTabBuildPass(UniPass) {
     """Pop scope."""
     def pop_scope(self: SymTabBuildPass) -> UniScopeNode;
 
-    """Return current scope."""
-    @property
-    def cur_scope(self: SymTabBuildPass) -> UniScopeNode;
+    has cur_scope: UniScopeNode { getter; }
 
     """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
