@@ -2,13 +2,18 @@
 
 import os;
 import tempfile;
+import tomlkit;
 import from pathlib { Path }
+import from unittest.mock { patch }
+
+import jac_shadcn.shadcn_handler as handler;
 import from jac_shadcn.shadcn_handler { _read_shadcn_config }
 import from jac_shadcn.shadcn_handler { _resolve_peer_deps }
 import from jac_shadcn.shadcn_handler { _update_npm_deps }
 import from jac_shadcn.shadcn_handler { add_shadcn_components }
 import from jac_shadcn.shadcn_handler { remove_shadcn_components }
 import from jac_shadcn.shadcn_handler { _fetch_json }
+import from jac_shadcn.lockfile { record_install, load_lockfile }
 import from jac_shadcn.plugin { JacShadcnPlugin }
 
 
@@ -119,7 +124,7 @@ test "resolve peer deps no duplicates" {
 }
 
 
-# ── Update NPM Deps Tests ──
+# ── tomlkit-based npm dep patching ──
 test "update npm deps adds new dependency" {
     with tempfile.TemporaryDirectory() as tmpdir {
         toml_path = Path(tmpdir) / "jac.toml";
@@ -144,9 +149,10 @@ test "update npm deps skips existing dependency" {
             has project_root: str;
         }
         config = MockConfig(project_root=tmpdir);
-        _update_npm_deps(config, {"clsx": "^2.1.1"});
-        content = toml_path.read_text();
-        assert content == original;
+        _update_npm_deps(config, {"clsx": "^9.9.9"});
+        # Existing pin is preserved; we don't clobber user choices.
+        doc = tomlkit.parse(toml_path.read_text());
+        assert doc["dependencies"]["npm"]["clsx"] == "^2.1.1";
     }
 }
 
@@ -162,6 +168,39 @@ test "update npm deps does nothing for empty deps" {
         _update_npm_deps(config, {});
         content = toml_path.read_text();
         assert content == original;
+    }
+}
+
+test "tomlkit patch preserves comments and surrounding sections" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '# top-level comment\n' + '[project]\nname = "demo"\n\n' + '[dependencies.npm]\n' + '# pinned for legal review\n' + 'clsx = "^2.1.1"\n\n' + '[jacpack.options]\ndirectories = ["components"]\n'
+        );
+        obj MockConfig {
+            has project_root: str;
+        }
+        config = MockConfig(project_root=tmpdir);
+        _update_npm_deps(config, {"radix-ui": "^1.0.0"});
+        content = toml_path.read_text();
+        assert "# top-level comment" in content;
+        assert "# pinned for legal review" in content;
+        assert "[jacpack.options]" in content;
+        assert "radix-ui" in content;
+    }
+}
+
+test "tomlkit handles npm key with @scope/name format" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text('[dependencies.npm]\n');
+        obj MockConfig {
+            has project_root: str;
+        }
+        config = MockConfig(project_root=tmpdir);
+        _update_npm_deps(config, {"@radix-ui/react-dialog": "^1.0.0"});
+        doc = tomlkit.parse(toml_path.read_text());
+        assert "@radix-ui/react-dialog" in doc["dependencies"]["npm"];
     }
 }
 
@@ -223,11 +262,207 @@ test "remove multiple components" {
     }
 }
 
+test "remove auto-prunes deps owned only by the removed component" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        ui_dir.mkdir(parents=True);
+        (ui_dir / "button.cl.jac").write_text("// button");
+        (ui_dir / "card.cl.jac").write_text("// card");
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[dependencies.npm]\n' + 'class-variance-authority = "^0.7.0"\n' + 'radix-ui = "^1.0.0"\n'
+        );
+        record_install(
+            Path(tmpdir), "button", "1.0.0", ["class-variance-authority", "radix-ui"]
+        );
+        record_install(Path(tmpdir), "card", "1.0.0", ["class-variance-authority"]);
+        obj MockConfig {
+            has project_root: str;
+        }
+        config = MockConfig(project_root=tmpdir);
+        result = remove_shadcn_components(config, ["button"]);
+        assert result == True;
+        doc = tomlkit.parse(toml_path.read_text());
+        # radix-ui was only held by button -> pruned
+        assert "radix-ui" not in doc["dependencies"]["npm"];
+        # class-variance-authority still held by card -> kept
+        assert "class-variance-authority" in doc["dependencies"]["npm"];
+        lock = load_lockfile(Path(tmpdir));
+        assert "button" not in lock["components"];
+        assert "card" in lock["components"];
+    }
+}
+
+test "remove --keep-deps leaves npm deps untouched" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        ui_dir.mkdir(parents=True);
+        (ui_dir / "button.cl.jac").write_text("// button");
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text('[dependencies.npm]\n' + 'radix-ui = "^1.0.0"\n');
+        record_install(Path(tmpdir), "button", "1.0.0", ["radix-ui"]);
+        obj MockConfig {
+            has project_root: str;
+        }
+        config = MockConfig(project_root=tmpdir);
+        result = remove_shadcn_components(config, ["button"], keep_deps=True);
+        assert result == True;
+        doc = tomlkit.parse(toml_path.read_text());
+        assert "radix-ui" in doc["dependencies"]["npm"];
+        lock = load_lockfile(Path(tmpdir));
+        assert "button" not in lock["components"];
+    }
+}
+
+
+# ── add_shadcn_components with mocked registry ──
+def _mock_registry() -> dict {
+    return {
+        "components": {
+            "button": {
+                "file": "button.cl.jac",
+                "npmDeps": ["class-variance-authority"],
+                "peerComponents": []
+            },
+            "card": {
+                "file": "card.cl.jac",
+                "npmDeps": ["class-variance-authority"],
+                "peerComponents": []
+            }
+        },
+        "sharedDeps": {}
+    };
+}
+
+
+def _mock_component(name: str, version: str = "1.0.0") -> dict {
+    return {
+        "name": name,
+        "file": name + ".cl.jac",
+        "content": "// " + name + " component @ " + version + "\n",
+        "npmDeps": ["class-variance-authority"],
+        "version": version
+    };
+}
+
+
+test "add records install in lockfile with version from response" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "demo"\n\n' + '[jac-shadcn]\nstyle = "nova"\nregistry = "https://example.org"\n'
+        );
+        obj MockConfig {
+            has project_root: str,
+                _raw_data: dict;
+        }
+        config = MockConfig(
+            project_root=tmpdir,
+            _raw_data={
+                "jac-shadcn": {"style": "nova", "registry": "https://example.org"}
+            }
+        );
+        def fake_fetch(url: str) -> dict {
+            if url.endswith("/registry") {
+                return _mock_registry();
+            }
+            if "/component/button" in url {
+                return _mock_component("button", "1.2.3");
+            }
+            return None;
+        }
+        with patch.object(handler, "_fetch_json", side_effect=fake_fetch) {
+            result = add_shadcn_components(config, ["button"]);
+        }
+        assert result == True;
+        lock = load_lockfile(Path(tmpdir));
+        assert lock["components"]["button"]["version"] == "1.2.3";
+        assert "class-variance-authority" in lock["components"]["button"]["npm_deps"];
+    }
+}
+
+
+test "add rejects component when registry returns traversal filename" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "demo"\n\n' + '[jac-shadcn]\nstyle = "nova"\nregistry = "https://example.org"\n'
+        );
+        obj MockConfig {
+            has project_root: str,
+                _raw_data: dict;
+        }
+        config = MockConfig(
+            project_root=tmpdir,
+            _raw_data={
+                "jac-shadcn": {"style": "nova", "registry": "https://example.org"}
+            }
+        );
+        def fake_fetch(url: str) -> dict {
+            if url.endswith("/registry") {
+                return _mock_registry();
+            }
+            return {
+                "name": "button",
+                "file": "../../escape.cl.jac",
+                "content": "pwned",
+                "npmDeps": [],
+                "version": "1.0.0"
+            };
+        }
+        with patch.object(handler, "_fetch_json", side_effect=fake_fetch) {
+            add_shadcn_components(config, ["button"]);
+        }
+        # Nothing landed outside ui_dir
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        for f in ui_dir.rglob("*") {
+            assert "escape" not in str(f);
+        }
+        # Lockfile must not record a malicious install
+        lock = load_lockfile(Path(tmpdir));
+        assert "button" not in lock.get("components", {});
+    }
+}
+
+
+test "add parses name@version and forwards version query param" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "demo"\n\n' + '[jac-shadcn]\nstyle = "nova"\nregistry = "https://example.org"\n'
+        );
+        obj MockConfig {
+            has project_root: str,
+                _raw_data: dict;
+        }
+        config = MockConfig(
+            project_root=tmpdir,
+            _raw_data={
+                "jac-shadcn": {"style": "nova", "registry": "https://example.org"}
+            }
+        );
+        seen_urls: list = [];
+        def fake_fetch(url: str) -> dict {
+            seen_urls.append(url);
+            if url.endswith("/registry") {
+                return _mock_registry();
+            }
+            return _mock_component("button", "1.5.0");
+        }
+        with patch.object(handler, "_fetch_json", side_effect=fake_fetch) {
+            add_shadcn_components(config, ["button@1.5.0"]);
+        }
+        assert any("version=1.5.0" in u for u in seen_urls);
+        lock = load_lockfile(Path(tmpdir));
+        assert lock["components"]["button"]["version"] == "1.5.0";
+    }
+}
+
 
 # ── Jacpack Template Tests ──
 test "jacpack template directory exists and loads" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     assert template_dir.exists();
     assert template_dir.is_dir();
     template = load_template_from_directory(template_dir);
@@ -236,9 +471,9 @@ test "jacpack template directory exists and loads" {
 
 test "jacpack template has required fields" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     template = load_template_from_directory(template_dir);
-    assert template.name == "jac-shadcn";
+    assert template.name == "shadcn";
     assert template.description != "";
     assert template.config is not None;
     assert len(template.files) > 0;
@@ -247,20 +482,22 @@ test "jacpack template has required fields" {
 
 test "jacpack template config has shadcn section" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     template = load_template_from_directory(template_dir);
     config = template.config;
     assert "jac-shadcn" in config;
     shadcn = config["jac-shadcn"];
     assert "style" in shadcn;
-    assert "registry" in shadcn;
     assert "baseColor" in shadcn;
     assert "theme" in shadcn;
+    # `registry` is intentionally NOT scaffolded -- the plugin's hardcoded
+    # default is the canonical URL. Users add it only for self-hosted mirrors.
+    assert "registry" not in shadcn;
 }
 
 test "jacpack template has npm dependencies" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     template = load_template_from_directory(template_dir);
     npm = template.config["dependencies"]["npm"];
     assert "clsx" in npm;
@@ -270,72 +507,31 @@ test "jacpack template has npm dependencies" {
 
 test "jacpack template has required files" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "shadcn";
     template = load_template_from_directory(template_dir);
+    # Files the template ships -- enough for `jac start main.jac` to render
+    # a themed page at "/" after `jac install`.
     assert "main.jac" in template.files;
     assert "global.css" in template.files;
-    assert "lib/utils.cl.jac" in template.files;
+    assert "pages/layout.jac" in template.files;
+    assert "pages/index.jac" in template.files;
+    assert "components/home-page.cl.jac" in template.files;
+    # lib/utils.cl.jac + components/ui/*.cl.jac are created on-demand by
+    # `jac shadcn init` / `jac shadcn add`, not scaffolded by the template.
 }
 
 
-# ── Live Registry Integration Tests ──
-test "fetch registry index from live server" {
+# ── Live Registry Smoke Test (the only live test) ──
+test "live registry returns expected shape (smoke)" {
+    # Single canary test that hits the real registry. If the registry
+    # response shape drifts, this is the early-warning. All other tests
+    # use mocked HTTP and are CI-safe regardless of registry health.
     data = _fetch_json("https://jac-shadcn.jaseci.org/registry");
-    assert data is not None;
+    if data is None {
+        # Registry unreachable -- skip rather than fail noisily in CI.
+        return;
+    }
     assert "components" in data;
     assert isinstance(data["components"], dict);
     assert len(data["components"]) > 0;
-}
-
-test "fetch single component from live server" {
-    data = _fetch_json("https://jac-shadcn.jaseci.org/component/button?style=nova");
-    assert data is not None;
-    assert "name" in data;
-    assert "content" in data;
-    assert len(data["content"]) > 0;
-}
-
-test "add components from live registry" {
-    with tempfile.TemporaryDirectory() as tmpdir {
-        # Set up a minimal project with jac.toml
-        toml_path = Path(tmpdir) / "jac.toml";
-        toml_path.write_text(
-            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\nregistry = "https://jac-shadcn.jaseci.org"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
-        );
-        obj MockConfig {
-            has project_root: str,
-                _raw_data: dict;
-        }
-        config = MockConfig(
-            project_root=tmpdir,
-            _raw_data={
-                "jac-shadcn": {
-                    "style": "nova",
-                    "registry": "https://jac-shadcn.jaseci.org"
-                }
-            }
-        );
-        result = add_shadcn_components(config, ["button"]);
-        assert result == True;
-        ui_dir = Path(tmpdir) / "components" / "ui";
-        assert ui_dir.exists();
-        # Check button file was created
-        button_files = list(ui_dir.glob("button*.cl.jac"));
-        assert len(button_files) > 0;
-        # Check utils was created
-        utils_path = Path(tmpdir) / "lib" / "utils.cl.jac";
-        assert utils_path.exists();
-    }
-}
-
-test "add components fails without shadcn config" {
-    with tempfile.TemporaryDirectory() as tmpdir {
-        obj MockConfig {
-            has project_root: str,
-                _raw_data: dict;
-        }
-        config = MockConfig(project_root=tmpdir, _raw_data={});
-        result = add_shadcn_components(config, ["button"]);
-        assert result == False;
-    }
 }
