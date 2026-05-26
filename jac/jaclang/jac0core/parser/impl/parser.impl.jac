@@ -5722,12 +5722,12 @@ impl Parser.parse_archetype -> Archetype {
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];
-    if is_async {
-        kid.append(async_uni);
-    }
     for (i, d) in enumerate(decorators) {
         kid.append(decor_unis[i]);
         kid.append(d);
+    }
+    if is_async {
+        kid.append(async_uni);
     }
     kid.append(arch_type);
     if access {
