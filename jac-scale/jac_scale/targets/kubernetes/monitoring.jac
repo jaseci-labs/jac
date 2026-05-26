@@ -1693,8 +1693,21 @@ obj MonitoringDeployer {
                                         'mountPath': '/etc/alloy'
                                     },
                                     {
-                                        'name': 'varlogpods',
-                                        'mountPath': '/var/log/pods',
+                                        # Mount /var/log (not just /var/log/pods)
+                                        # because containerd-runtime clusters (EKS
+                                        # 1.24+, minikube default, vanilla 1.26+)
+                                        # write pod logs as a symlink chain:
+                                        # /var/log/pods/<ns>_<pod>_<uid>/<container>/<N>.log
+                                        #   -> /var/log/containers/<...>.log
+                                        # If we mount only /var/log/pods the
+                                        # symlink follow into /var/log/containers
+                                        # fails with ENOENT and Alloy logs
+                                        # `error getting os stat ... no such file
+                                        # or directory` every scrape interval.
+                                        # Matches Grafana's official Alloy helm
+                                        # chart layout.
+                                        'name': 'varlog',
+                                        'mountPath': '/var/log',
                                         'readOnly': True
                                     }
                                 ]
@@ -1705,10 +1718,7 @@ obj MonitoringDeployer {
                                 'name': 'alloy-config-vol',
                                 'configMap': {'name': f"{alloy_name}-config"}
                             },
-                            {
-                                'name': 'varlogpods',
-                                'hostPath': {'path': '/var/log/pods'}
-                            }
+                            {'name': 'varlog', 'hostPath': {'path': '/var/log'}}
                         ]
                     }
                 }
