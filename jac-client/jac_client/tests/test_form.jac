@@ -49,7 +49,7 @@ def _setup_form_project(
     for entry in os.listdir(form_handling_path) {
         src = os.path.join(form_handling_path, entry);
         dst = os.path.join(project_path, entry);
-        if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
+        if entry in {"node_modules", "build", "dist", ".pytest_cache", ".jac"} {
             continue;
         }
         if os.path.isdir(src) {

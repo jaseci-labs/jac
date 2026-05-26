@@ -143,7 +143,7 @@ test "nodes_visited_by lists a walker's targets" {
 test "archetypes filters by kind" {
     ci = fresh();
     nodes = {a.name for a in ci.archetypes("node")};
-    assert nodes == {"User","Post"} , nodes;
+    assert nodes == {"User", "Post"} , nodes;
     walkers = {a.name for a in ci.archetypes("walker")};
     assert walkers == {"Crawler"} , walkers;
     shutil.rmtree(ci.proj_dir, ignore_errors=True);
@@ -195,6 +195,80 @@ test "refresh_and_diff surfaces breakage an edit causes in a dependent" {
     hit_files = {os.path.basename(d.file) for d in diags};
     assert "walkers.jac" in hit_files , [d.render() for d in diags];
     shutil.rmtree(ci.proj_dir, ignore_errors=True);
+}
+
+
+test "structural index is persisted and served across loads without re-parsing" {
+    proj = make_project();
+    # First cold load over a fresh project: both modules are parsed and their
+    # flat structural index is written to the project cache.
+    ci1 = CodeIntelligence(proj_dir=proj, structural=True);
+    ci1.load();
+    assert {a.name for a in ci1.archetypes("node")} == {"User","Post"};
+
+    # A fresh facade over the same unchanged project must serve every module
+    # from the on-disk index -- zero re-parses -- yet answer identically.
+    events: list[dict] = [];
+    ci2 = CodeIntelligence(proj_dir=proj, structural=True);
+    ci2.on_event = lambda ev: dict : events.append(ev);
+    ci2.load();
+    assert len(events) == 1 , events;
+    ev = events[0];
+    assert ev["recompiled"] == 0 , ev;
+    assert ev["cached"] == 2 , ev;
+    assert {a.name for a in ci2.archetypes("node")} == {"User","Post"};
+    assert "Crawler" in {e.walker_name for e in ci2.walkers_visiting("User")};
+    shutil.rmtree(proj, ignore_errors=True);
+}
+
+
+test "structural index cache invalidates only the edited module" {
+    proj = make_project();
+    # Warm the cache for both modules.
+    CodeIntelligence(proj_dir=proj, structural=True).load();
+
+    # Edit model.jac; walkers.jac is untouched. The content hash of model.jac
+    # changes so its index is rebuilt, while walkers.jac is served from cache.
+    model_path = os.path.join(proj, "model.jac");
+    Path(model_path).write_text(_MODEL + "\nnode Tag { has label: str; }\n");
+
+    events: list[dict] = [];
+    ci = CodeIntelligence(proj_dir=proj, structural=True);
+    ci.on_event = lambda ev: dict : events.append(ev);
+    ci.load();
+    ev = events[0];
+    assert ev["recompiled"] == 1 , ev;
+    assert ev["cached"] == 1 , ev;
+    assert {a.name for a in ci.archetypes("node")} == {"User","Post","Tag"};
+    shutil.rmtree(proj, ignore_errors=True);
+}
+
+
+test "lazy mode serves the map from cache and type-checks only on demand" {
+    proj = make_project();
+    # Warm the structural cache so the lazy load below is a pure cache hit.
+    CodeIntelligence(proj_dir=proj, lazy=True).load();
+
+    events: list[dict] = [];
+    ci = CodeIntelligence(proj_dir=proj, lazy=True);
+    ci.on_event = lambda ev: dict : events.append(ev);
+    ci.load();
+    # The lazy load is structural: both modules come from the on-disk index and
+    # nothing is parsed or type-checked.
+    assert events[-1]["op"] == "load" , events;
+    assert events[-1]["cached"] == 2 , events;
+    assert events[-1]["recompiled"] == 0 , events;
+    # A structural query stays cheap -- no full pipeline runs.
+    assert {a.name for a in ci.archetypes("node")} == {"User","Post"};
+    assert all([e["op"] != "typecheck" for e in events]) , events;
+
+    # A type query (cross-module def/use chains) triggers the full upgrade once,
+    # and then resolves correctly across modules.
+    refs = ci.references("User");
+    assert any([e["op"] == "typecheck" for e in events]) , events;
+    files = {os.path.basename(r.file) for r in refs};
+    assert "model.jac" in files and "walkers.jac" in files , files;
+    shutil.rmtree(proj, ignore_errors=True);
 }
 
 

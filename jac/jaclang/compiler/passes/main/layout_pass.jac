@@ -20,7 +20,24 @@ obj fields must resolve to one of these, another obj, an enum, a typed
 collection (list[T], dict[K,V], set[T]) where element types are also
 layout-compatible, or a callable with explicit signature (function pointer).
 """
-glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {"int","float","bool","str","bytes","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64",};
+glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
+         "int",
+         "float",
+         "bool",
+         "str",
+         "bytes",
+         "i8",
+         "u8",
+         "i16",
+         "u16",
+         "i32",
+         "u32",
+         "i64",
+         "u64",
+         "f32",
+         "f64",
+
+     };
 
 """Per-field layout descriptor."""
 obj FieldInfo {
