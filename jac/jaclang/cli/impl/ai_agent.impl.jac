@@ -27,10 +27,9 @@ import from jaclang.cli.browser_engine {
 
 
 impl resolve_model_name(model_override: str = "") -> str {
-    global agent_model_source;
     flag = model_override.strip();
     if flag {
-        agent_model_source = "command line";
+        agent_cfg.model_source = "command line";
         return flag;
     }
     # Read the raw table, not the defaults-merged config, so an unset
@@ -46,23 +45,22 @@ impl resolve_model_name(model_override: str = "") -> str {
         toml_model = "";
     }
     if toml_model {
-        agent_model_source = "jac.toml";
+        agent_cfg.model_source = "jac.toml";
         return toml_model;
     }
-    agent_model_source = "default";
+    agent_cfg.model_source = "default";
     return "local:gemma-4-e4b";
 }
 
 impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
-    global agent_threads,agent_temperature;
     name = resolve_model_name(model_override);
     cfg: dict[str, object] = {};
     is_local = name.startswith("local:");
     # Reset first: a rebuild may swap local for cloud; don't keep a stale count.
-    agent_threads = 0;
+    agent_cfg.threads = 0;
     # Low temp for local determinism; cloud uses the provider default (newer
     # ones reject the param).
-    agent_temperature = 0.3 if is_local else None;
+    agent_cfg.temperature = 0.3 if is_local else None;
     if is_local {
         try {
             cfg = dict(get_byllm_config().get_local_config());
@@ -75,7 +73,7 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
             cores = os.cpu_count() or 2;
             cfg["n_threads"] = max(1, cores // 2);
         }
-        agent_threads = int(cfg.get("n_threads") or 0);
+        agent_cfg.threads = int(cfg.get("n_threads") or 0);
     }
     if n_ctx > 0 {
         cfg["n_ctx"] = n_ctx;
@@ -92,7 +90,7 @@ impl truncate(text: str, limit: int = 12000) -> str {
 }
 
 impl confirm(action: str) -> bool {
-    if yolo_mode {
+    if agent_cfg.yolo_mode {
         return True;
     }
     console.print(f"  needs approval: {action}", style="yellow");
@@ -104,11 +102,22 @@ impl confirm(action: str) -> bool {
     return answer in ("y", "yes");
 }
 
+impl _count_diags(diags: list) -> tuple[int, int] {
+    n_err = len(
+        [
+            d
+            for d in diags
+            if d.severity == "error"
+        ]
+    );
+    return (n_err, len(diags) - n_err);
+}
+
 impl write_feedback(path: str) -> str {
     global agent_ci_dirty;
-    if agent_ci is None or not inline_feedback {
+    if agent_ci is None or not agent_cfg.inline_feedback {
         # Feedback off: still flag dirty so the next semantic query refreshes.
-        if agent_ci is not None and not inline_feedback {
+        if agent_ci is not None and not agent_cfg.inline_feedback {
             agent_ci_dirty = True;
         }
         return "";
@@ -126,14 +135,7 @@ impl write_feedback(path: str) -> str {
     if not diags {
         return "";
     }
-    n_err = len(
-        [
-            d
-            for d in diags
-            if d.severity == "error"
-        ]
-    );
-    n_warn = len(diags) - n_err;
+    (n_err, n_warn) = _count_diags(diags);
     lines = [
         f"\ncompiler feedback for editing {path} -- {n_err} error(s), "
         f"{n_warn} warning(s); fix what you introduced (some may be in other "
@@ -264,16 +266,21 @@ impl grep(pattern: str, path: str) -> str {
     return "\n".join(hits) or "(no matches)";
 }
 
+impl _proc_output(result: any) -> str {
+    combined = (str(result.stdout or "") + str(result.stderr or "")).strip();
+    return truncate(combined or f"(no output; exit code {result.returncode})");
+}
+
 impl run_jac_cli(subcommand: str, path: str) -> str {
     try {
-        result = subprocess.run(
-            [sys.executable, "-m", "jaclang", subcommand, path],
-            capture_output=True,
-            text=True,
-            timeout=120
+        return _proc_output(
+            subprocess.run(
+                [sys.executable, "-m", "jaclang", subcommand, path],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
         );
-        combined = ((result.stdout or "") + (result.stderr or "")).strip();
-        return truncate(combined or f"(no output; exit code {result.returncode})");
     } except Exception as e {
         return f"ERROR running `jac {subcommand} {path}`: {e}";
     }
@@ -293,11 +300,16 @@ impl run_command(command: str) -> str {
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "");
     }
     try {
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=180, env=env
+        return _proc_output(
+            subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                env=env
+            )
         );
-        combined = ((result.stdout or "") + (result.stderr or "")).strip();
-        return truncate(combined or f"(no output; exit code {result.returncode})");
     } except subprocess.TimeoutExpired {
         return f"ERROR: `{command}` timed out after 180s.";
     } except Exception as e {
@@ -513,126 +525,97 @@ impl _browse_err(e: Exception) -> str {
     return f"ERROR: {msg}";
 }
 
-sem browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
-sem browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
-impl browse_open(url: str) -> str {
-    if url and not confirm(f"open a browser at {url}") {
-        return "DENIED: the user declined opening the browser.";
+impl _browse(confirm_msg: str, run: any, clip: bool = False) -> str {
+    if confirm_msg and not confirm(confirm_msg) {
+        return f"DENIED: the user declined to {confirm_msg}.";
     }
     try {
-        return br_open(_BROWSE_SESSION, url or None);
+        out = run();
+        return truncate(str(out)) if clip else str(out);
     } except Exception as e {
         return _browse_err(e);
     }
+}
+
+sem browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
+sem browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
+impl browse_open(url: str) -> str {
+    return _browse(
+        f"open a browser at {url}" if url else "",
+        lambda : br_open(_BROWSE_SESSION, url or None)
+    );
 }
 
 sem browse_navigate = "Navigate the open browser to a different URL and wait for it to load.";
 sem browse_navigate.url = "The URL to navigate to.";
 impl browse_navigate(url: str) -> str {
-    if not confirm(f"navigate the browser to {url}") {
-        return "DENIED: the user declined this navigation.";
-    }
-    try {
-        return br_navigate(_BROWSE_SESSION, url);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"navigate the browser to {url}", lambda : br_navigate(_BROWSE_SESSION, url)
+    );
 }
 
 sem browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
 impl browse_snapshot -> str {
-    try {
-        return truncate(br_snapshot(_BROWSE_SESSION));
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse("", lambda : br_snapshot(_BROWSE_SESSION), clip=True);
 }
 
 sem browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
 sem browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
 impl browse_click(target: str) -> str {
-    if not confirm(f"click {target} in the browser") {
-        return "DENIED: the user declined this click.";
-    }
-    try {
-        return br_click(_BROWSE_SESSION, target);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"click {target} in the browser", lambda : br_click(_BROWSE_SESSION, target)
+    );
 }
 
 sem browse_type = "Focus an element and type text into it as real key events, appending to whatever is already there.";
 sem browse_type.target = "An @ref from browse_snapshot, or a CSS selector.";
 sem browse_type.text = "The text to type.";
 impl browse_type(target: str, text: str) -> str {
-    if not confirm(f"type into {target} in the browser") {
-        return "DENIED: the user declined this input.";
-    }
-    try {
-        return br_type(_BROWSE_SESSION, target, text);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"type into {target} in the browser",
+        lambda : br_type(_BROWSE_SESSION, target, text)
+    );
 }
 
 sem browse_fill = "Clear a field and set its value to the given text. Prefer this over browse_type for form fields.";
 sem browse_fill.target = "An @ref from browse_snapshot, or a CSS selector.";
 sem browse_fill.text = "The text to set the field to.";
 impl browse_fill(target: str, text: str) -> str {
-    if not confirm(f"fill {target} in the browser") {
-        return "DENIED: the user declined this input.";
-    }
-    try {
-        return br_fill(_BROWSE_SESSION, target, text);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"fill {target} in the browser", lambda : br_fill(_BROWSE_SESSION, target, text)
+    );
 }
 
 sem browse_press = "Press a single key in the browser, e.g. 'Enter', 'Tab', 'Escape', or a chord like 'Ctrl+A'.";
 sem browse_press.key = "The key or chord to press.";
 impl browse_press(key: str) -> str {
-    if not confirm(f"press {key} in the browser") {
-        return "DENIED: the user declined this key press.";
-    }
-    try {
-        return br_press(_BROWSE_SESSION, key);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"press {key} in the browser", lambda : br_press(_BROWSE_SESSION, key)
+    );
 }
 
 sem browse_get = "Read a property of the current page: 'url', 'title', or 'text' (the visible text of the element named by selector).";
 sem browse_get.what = "One of 'url', 'title', or 'text'.";
 sem browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
 impl browse_get(what: str, selector: str) -> str {
-    try {
-        return truncate(str(br_get(_BROWSE_SESSION, what, selector or None)));
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        "", lambda : br_get(_BROWSE_SESSION, what, selector or None), clip=True
+    );
 }
 
 sem browse_eval = "Evaluate a JavaScript expression in the page and return its result. Use this to inspect page state or check for errors, e.g. \"document.querySelectorAll('.error').length\".";
 sem browse_eval.expression = "A JavaScript expression to evaluate.";
 impl browse_eval(expression: str) -> str {
-    if not confirm(f"run JavaScript in the browser: {expression}") {
-        return "DENIED: the user declined this script.";
-    }
-    try {
-        return truncate(str(br_eval(_BROWSE_SESSION, expression)));
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse(
+        f"run JavaScript in the browser: {expression}",
+        lambda : br_eval(_BROWSE_SESSION, expression),
+        clip=True
+    );
 }
 
 sem browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
 impl browse_close -> str {
-    try {
-        return br_close(_BROWSE_SESSION);
-    } except Exception as e {
-        return _browse_err(e);
-    }
+    return _browse("", lambda : br_close(_BROWSE_SESSION));
 }
 
 impl _browse_shutdown{
@@ -707,12 +690,13 @@ impl print_banner{
     console.print("");
     console.print("  Jac AI -- interactive coding agent", style="bold");
     console.print(
-        f"  model: {agent_model.model_name}  (from {agent_model_source})", style="muted"
+        f"  model: {agent_model.model_name}  (from {agent_cfg.model_source})",
+        style="muted"
     );
-    if agent_threads > 0 {
-        console.print(f"  inference threads: {agent_threads}", style="muted");
+    if agent_cfg.threads > 0 {
+        console.print(f"  inference threads: {agent_cfg.threads}", style="muted");
     }
-    if yolo_mode {
+    if agent_cfg.yolo_mode {
         console.print(
             "  file writes and commands run without confirmation (use --safe to confirm each)",
             style="yellow"
@@ -792,14 +776,7 @@ impl _format_health -> str {
     } except Exception {
         return "";
     }
-    n_err = len(
-        [
-            d
-            for d in diags
-            if d.severity == "error"
-        ]
-    );
-    n_warn = len(diags) - n_err;
+    (n_err, n_warn) = _count_diags(diags);
     if n_err == 0 and n_warn == 0 {
         return "project: clean";
     }
@@ -969,8 +946,8 @@ impl render_stream(event_stream: any) -> dict {
         }
         (result, ms) = (pend_result["result"], pend_result["ms"]);
         pend_result = None;
-        lines = _result_snippet(result, 3 if verbose else 1);
-        tail = f"   {_fmt_ms(ms)}" if (verbose and ms is not None) else "";
+        lines = _result_snippet(result, 3 if agent_cfg.verbose else 1);
+        tail = f"   {_fmt_ms(ms)}" if (agent_cfg.verbose and ms is not None) else "";
         console.print(f"      ↳ {lines[0]}{tail}", style="dim");
         for ln in lines[1:] {
             console.print(f"        {ln}", style="dim");
@@ -981,7 +958,7 @@ impl render_stream(event_stream: any) -> dict {
             kind = event.event_type;
             data = event.data;
             if kind == "thought" {
-                if not verbose {
+                if not agent_cfg.verbose {
                     continue;
                 }
                 tok = str(data.get("content", ""));
@@ -1043,7 +1020,9 @@ impl render_stream(event_stream: any) -> dict {
                 } else {
                     n_read += 1;
                 }
-                gen = _fmt_gen(last_llm_ms, last_llm_tokens) if verbose else "";
+                gen = _fmt_gen(last_llm_ms, last_llm_tokens)
+                    if agent_cfg.verbose
+                    else "";
                 console.print(f"  ⏺ {fmt_tool_call(tool, args)}{gen}", style="cyan");
                 last_llm_ms = 0.0;
                 last_llm_tokens = 0;
@@ -1128,60 +1107,6 @@ impl TurnStats.absorb(st: dict) {
     }
 }
 
-impl PhaseTools.plan -> list {
-    return [
-        read_file,
-        list_dir,
-        grep,
-        find_symbol,
-        find_uses,
-        project_map,
-        find_walkers,
-        context_slice,
-        search_guides,
-        read_guide,
-        note
-    ];
-}
-
-impl PhaseTools.build -> list {
-    return [
-        read_file,
-        write_file,
-        edit_file,
-        list_dir,
-        grep,
-        find_symbol,
-        find_uses,
-        context_slice,
-        jac_check,
-        run_command,
-        search_guides,
-        read_guide,
-        note
-    ];
-}
-
-impl PhaseTools.qa -> list {
-    return [
-        read_file,
-        jac_check,
-        start_app,
-        run_command,
-        browse_open,
-        browse_navigate,
-        browse_snapshot,
-        browse_click,
-        browse_type,
-        browse_fill,
-        browse_press,
-        browse_get,
-        browse_eval,
-        browse_close,
-        note
-    ];
-}
-
 impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
     role = str(getattr(state_ty, "_jac_semstr", "") or "");
     return (
@@ -1199,24 +1124,23 @@ impl note(text: str) -> str {
     return "(no active session to note onto)";
 }
 
+# A state's tools are the TOOLS rows tagged with its phase, in registry order.
+# The phase is the node's class name lowercased (Plan -> "plan"), the same name
+# `run` uses as the phase label -- so Plan/Build/QA need no override.
 impl PhaseState.tools -> list {
-    return [];
+    phase = type(self).__name__.lower();
+    return [
+        t.fn
+        for t in TOOLS
+        if phase in t.phases
+    ];
 }
 
 sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac. Do not write or edit files here. Finish by stating a short, concrete plan -- the files to create or change and what each is for.";
-impl Plan.tools -> list {
-    return PhaseTools.plan();
-}
 
 sem Build = "the BUILDING state: carry out the plan. Scaffold a new app with `jac create --use <template> <name>` (templates: default, client, fullstack) via run_command rather than hand-building the layout, then adapt it. Write and edit files -- prefer edit_file, and read a file before editing it. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
-impl Build.tools -> list {
-    return PhaseTools.build();
-}
 
 sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: start the server detached (`nohup jac start <entry> > /tmp/jac_qa.log 2>&1 &` via run_command), read the log for its URL, browse_open it, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop the server with `pkill -f \"jac start\"`. Do not conclude the app works until you have actually run and exercised it.";
-impl QA.tools -> list {
-    return PhaseTools.qa();
-}
 
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 impl PhaseState.run{
@@ -1291,7 +1215,7 @@ impl run_turn(message: str) {
     session = AgentSession(
         objective=message, ledger=ledger, stats=TurnStats()
     ) spawn root;
-    if show_stats {
+    if agent_cfg.show_stats {
         st = session.stats;
         print_stats(
             time.time() - started, st.n_read, st.n_write, st.n_run, st.files, st.usage
@@ -1355,12 +1279,12 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-    global agent_model,yolo_mode,agent_ci,show_stats,verbose,inline_feedback;
+    global agent_model,agent_ci;
     # Access `req` untyped so attribute reads type-check without importing
     # AgentRequest into this byLLM-only module.
     r: any = req;
-    yolo_mode = not r.safe;
-    verbose = not bool(getattr(r, "quiet", False));
+    agent_cfg.yolo_mode = not r.safe;
+    agent_cfg.verbose = not bool(getattr(r, "quiet", False));
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
     agent_ci = r.code_intel;
     if agent_ci is not None {
@@ -1416,24 +1340,26 @@ impl run_agent(req: object) -> int {
             continue;
         }
         if line == "/stats" {
-            show_stats = not show_stats;
-            console.success("Turn stats on." if show_stats else "Turn stats off.");
+            agent_cfg.show_stats = not agent_cfg.show_stats;
+            console.success(
+                "Turn stats on." if agent_cfg.show_stats else "Turn stats off."
+            );
             continue;
         }
         if line == "/verbose" {
-            verbose = not verbose;
+            agent_cfg.verbose = not agent_cfg.verbose;
             console.success(
                 "Verbose: streaming reasoning, timings, and step detail."
-                    if verbose
+                    if agent_cfg.verbose
                     else "Quiet: tool calls and the answer only."
             );
             continue;
         }
         if line == "/feedback" {
-            inline_feedback = not inline_feedback;
+            agent_cfg.inline_feedback = not agent_cfg.inline_feedback;
             console.success(
                 "Inline compiler feedback on: writes report errors they introduce."
-                    if inline_feedback
+                    if agent_cfg.inline_feedback
                     else "Inline compiler feedback off: use jac_check to compile."
             );
             continue;

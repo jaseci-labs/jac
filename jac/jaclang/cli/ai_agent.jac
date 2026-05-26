@@ -14,24 +14,47 @@ directly and builds the model from them before the session starts.
 import from byllm.lib { Model }
 import from byllm.parallel { mark_serialize }
 
-# Session flags, reset from the CLI flags by `run_agent`. `--safe` clears
-# yolo_mode (confirm every write/command).
-glob yolo_mode: bool = True,
-     # Local-inference thread count; 0 = not a local model.
-     agent_threads: int = 0,
-     # `None` for cloud models -- some newer ones reject `temperature`.
-     agent_temperature: float | None = None,
-     agent_model_source: str = "default",
-     show_stats: bool = True,
-     # Rich live view; `--quiet` turns it off, `/verbose` toggles.
-     verbose: bool = True,
-     inline_feedback: bool = True;
+"""Session settings for one `jac ai` run, set from the CLI flags by `run_agent`.
 
-# Tool-name groups for the turn-stat breakdown; everything else counts as a read.
-glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
-     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app","browse_open","browse_navigate","browse_click","browse_type","browse_fill","browse_press","browse_eval","browse_close"},
-     # Set by `run_turn` on a file-writing call; gates verify-and-continue.
-     _turn_wrote: bool = False;
+Holds the write-once knobs the flags resolve (model source, inference threads,
+temperature) and the live display toggles the `/stats`, `/verbose`, and
+`/feedback` commands flip mid-session. One object in place of a pile of globals;
+`--safe` clears `yolo_mode` (confirm every write/command).
+"""
+obj AgentConfig {
+    has yolo_mode: bool = True,
+        # Local-inference thread count; 0 = not a local model.
+        threads: int = 0,
+        # `None` for cloud models -- some newer ones reject `temperature`.
+        temperature: float | None = None,
+        model_source: str = "default",
+        show_stats: bool = True,
+        # Rich live view; `--quiet` turns it off, `/verbose` toggles.
+        verbose: bool = True,
+        inline_feedback: bool = True;
+}
+
+# Mutated in place (field assignments only), so no `global` declaration is
+# needed to update it -- `run_agent` and the toggle commands write its fields.
+glob agent_cfg: AgentConfig = AgentConfig();
+
+# A tool's properties -- its stats category, whether it must be serialized, and
+# which phases may call it -- declared together on one descriptor instead of
+# spread across separate hand-kept lists. The `TOOLS` registry (built after the
+# tool functions, below) is the single source those lists are now derived from.
+obj ToolSpec {
+    has fn: any,
+        # "read" | "write" | "run"; drives the turn-stat breakdown (anything
+        # that is neither write nor run counts as a read).
+        category: str,
+        # Side-effecting: byLLM keeps any parallel batch containing it sequential.
+        serialize: bool = False,
+        # Subset of {"plan", "build", "qa"} -- the phases that expose this tool.
+        phases: set[str] = set();
+}
+
+# Set by `run_turn` on a file-writing call; gates verify-and-continue.
+glob _turn_wrote: bool = False;
 
 # Shared CodeIntelligence handle the semantic tools query (set by `run_agent`).
 glob agent_ci: any = None,
@@ -42,7 +65,7 @@ glob agent_ci: any = None,
 
 Priority: the `--model` flag (`model_override`), then `[plugins.byllm.model]
 default_model` in jac.toml, then the bundled local model so the command works
-with no API key. Records the winning source in `agent_model_source`.
+with no API key. Records the winning source in `agent_cfg.model_source`.
 """
 def resolve_model_name(model_override: str = "") -> str;
 
@@ -71,6 +94,10 @@ def truncate(text: str, limit: int = 12000) -> str;
 def confirm(action: str) -> bool;
 
 
+"""Count a diagnostics list as `(errors, warnings)` by severity."""
+def _count_diags(diags: list) -> tuple[int, int];
+
+
 """Rebuild the project model after a write and report the diagnostics it caused.
 
 Returns, as a text block appended to the write tool's result, every compiler
@@ -87,7 +114,6 @@ def write_feedback(path: str) -> str;
 # Tools: plain typed functions; byLLM turns the annotations into JSON schema.
 def read_file(path: str) -> str;
 
-
 def write_file(path: str, content: str) -> str;
 
 
@@ -98,6 +124,10 @@ def list_dir(path: str) -> str;
 
 
 def grep(pattern: str, path: str) -> str;
+
+
+"""Combine a finished subprocess's stdout+stderr into a truncated result string."""
+def _proc_output(result: any) -> str;
 
 
 """Run a `jac` subcommand on a file and return its combined output."""
@@ -153,6 +183,16 @@ glob _BROWSE_SESSION: str = "jac-ai";
 def _browse_err(e: Exception) -> str;
 
 
+"""Run a browser-engine call under the shared confirm / error / truncate policy.
+
+`confirm_msg` empty means the op is read-only and runs unconfirmed; otherwise
+the action is gated and a declined call returns a DENIED string. `run` is a
+thunk performing the actual `br_*` call; its result is returned (str-cast),
+truncated when `clip` is set. Engine exceptions become a `_browse_err` string.
+"""
+def _browse(confirm_msg: str, run: any, clip: bool = False) -> str;
+
+
 def browse_open(url: str) -> str;
 
 
@@ -186,25 +226,6 @@ def browse_close -> str;
 """Close the agent's browser session if one was opened (best-effort)."""
 def _browse_shutdown;
 
-
-# Side-effecting tools must not run concurrently; serialize them so byLLM keeps
-# any parallel batch that contains one of them sequential.
-with entry {
-    mark_serialize(write_file);
-    mark_serialize(edit_file);
-    mark_serialize(run_command);
-    mark_serialize(start_app);
-    mark_serialize(browse_open);
-    mark_serialize(browse_navigate);
-    mark_serialize(browse_snapshot);
-    mark_serialize(browse_click);
-    mark_serialize(browse_type);
-    mark_serialize(browse_fill);
-    mark_serialize(browse_press);
-    mark_serialize(browse_get);
-    mark_serialize(browse_eval);
-    mark_serialize(browse_close);
-}
 
 glob AGENT_RULES = """\
 You are Jac AI, a coding agent working inside the user's terminal in their Jac
@@ -291,20 +312,6 @@ obj TurnStats {
 }
 
 
-"""The tool set each phase exposes, grouped by what that phase may do.
-
-Each state node returns one of these from its `tools()` override, so the
-allowed actions are a property of the node type: Plan reads and explores,
-Build writes and checks, QA verifies and drives the browser. Every set
-includes `note` so any phase can leave durable notes.
-"""
-obj PhaseTools {
-    static def plan -> list;
-    static def build -> list;
-    static def qa -> list;
-}
-
-
 """Builds a phase's system prompt: base rules + the node's own role + the ledger."""
 obj Prompt {
     """Compose the system message for a state, given the objective and memory."""
@@ -320,7 +327,7 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     conversation=ctx,
     stream=True,
     logging=True,
-    temperature=agent_temperature,
+    temperature=agent_cfg.temperature,
     max_tokens=8192,
     parallelize=True,
     max_react_iterations=60,
@@ -332,9 +339,65 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
 def note(text: str) -> str;
 
 
-# `note` mutates the shared ledger, so keep it out of parallel tool batches.
+# The single source of truth for the agent's tools. Each row pairs a tool
+# function with its properties; the stats categories, each PhaseState's tool
+# set (PhaseState.tools), and the serialize calls below are all derived from
+# this table, so adding a tool means adding one row here. Order is the order
+# tools are offered to the model within a phase.
+glob TOOLS: list[ToolSpec] = [
+         ToolSpec(fn=read_file, category="read", phases={"plan","build","qa"}),
+         ToolSpec(fn=write_file, category="write", serialize=True, phases={"build"}),
+         ToolSpec(fn=edit_file, category="write", serialize=True, phases={"build"}),
+         ToolSpec(fn=list_dir, category="read", phases={"plan","build"}),
+         ToolSpec(fn=grep, category="read", phases={"plan","build"}),
+         ToolSpec(fn=find_symbol, category="read", phases={"plan","build"}),
+         ToolSpec(fn=find_uses, category="read", phases={"plan","build"}),
+         ToolSpec(fn=project_map, category="read", phases={"plan"}),
+         ToolSpec(fn=find_walkers, category="read", phases={"plan"}),
+         ToolSpec(fn=context_slice, category="read", phases={"plan","build"}),
+         ToolSpec(fn=jac_check, category="run", phases={"build","qa"}),
+         ToolSpec(fn=start_app, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(
+             fn=run_command, category="run", serialize=True, phases={"build","qa"}
+         ),
+         ToolSpec(fn=browse_open, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_navigate, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_snapshot, category="read", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_click, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_type, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_fill, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_press, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_get, category="read", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_eval, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=browse_close, category="run", serialize=True, phases={"qa"}),
+         ToolSpec(fn=search_guides, category="read", phases={"plan","build"}),
+         ToolSpec(fn=read_guide, category="read", phases={"plan","build"}),
+         ToolSpec(
+             fn=note, category="read", serialize=True, phases={"plan","build","qa"}
+         )
+     ];
+
+# Tool-name groups for the turn-stat breakdown, derived from TOOLS; everything
+# not named here counts as a read.
+glob _WRITE_TOOLS: set[str] = {
+         str(t.fn.__name__)
+         for t in TOOLS
+         if t.category == "write"
+     },
+     _RUN_TOOLS: set[str] = {
+         str(t.fn.__name__)
+         for t in TOOLS
+         if t.category == "run"
+     };
+
+# Side-effecting tools must not run concurrently; serialize each one so byLLM
+# keeps any parallel batch that contains it sequential. Derived from TOOLS.
 with entry {
-    mark_serialize(note);
+    for t in TOOLS {
+        if t.serialize {
+            mark_serialize(t.fn);
+        }
+    }
 }
 
 def print_banner;
@@ -449,23 +512,22 @@ def render_stream(event_stream: any) -> dict;
 node PhaseState {
     has ctx: list = [];
 
-    """The tools this state exposes (overridden per state)."""
+    """The tools this state exposes: the TOOLS rows tagged with its phase.
+
+    Derived from the node's own class name (Plan/Build/QA -> plan/build/qa),
+    so a state's allowed actions follow from its identity with no per-state
+    override -- the same name `run` uses as the phase label.
+    """
     def tools -> list;
 
     can run with AgentSession entry;
 }
 
-node Plan(PhaseState) {
-    def tools -> list;
-}
+node Plan(PhaseState) {}
 
-node Build(PhaseState) {
-    def tools -> list;
-}
+node Build(PhaseState) {}
 
-node QA(PhaseState) {
-    def tools -> list;
-}
+node QA(PhaseState) {}
 
 """The terminal state: the task is complete and verified."""
 node Done {
