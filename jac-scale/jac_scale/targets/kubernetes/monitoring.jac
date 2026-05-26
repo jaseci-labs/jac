@@ -1100,6 +1100,24 @@ obj MonitoringDeployer {
                                     {
                                         'name': 'GF_SERVER_SERVE_FROM_SUB_PATH',
                                         'value': 'true'
+                                    },
+                                    # Allow same-origin iframe embedding so the admin UI
+                                    # can render Grafana panels inside the dashboard.
+                                    {
+                                        'name': 'GF_SECURITY_ALLOW_EMBEDDING',
+                                        'value': 'true'
+                                    },
+                                    {
+                                        'name': 'GF_AUTH_ANONYMOUS_ENABLED',
+                                        'value': 'true'
+                                    },
+                                    {
+                                        'name': 'GF_AUTH_ANONYMOUS_ORG_ROLE',
+                                        'value': 'Viewer'
+                                    },
+                                    {
+                                        'name': 'GF_USERS_DEFAULT_THEME',
+                                        'value': 'dark'
                                     }
                                 ],
                                 'volumeMounts': [

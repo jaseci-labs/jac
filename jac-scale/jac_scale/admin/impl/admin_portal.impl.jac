@@ -434,6 +434,24 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Get parsed Prometheus metrics as JSON (admin only)'
         )
     );
+    # Cluster info endpoint — exposes Grafana embed config so the admin UI
+    # can render Kubernetes dashboards inline via iframe.
+    async def get_cluster_info_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_get_cluster_info(authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/cluster/info',
+            callback=get_cluster_info_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='Get cluster embed config',
+            description='Returns Grafana base URL and dashboard UIDs for embedding cluster panels (admin only)'
+        )
+    );
     # Admin UI - redirect /admin to /admin/
     self.server.add_endpoint(
         JEndPoint(
@@ -1052,6 +1070,36 @@ impl JacAPIServerAdmin.admin_get_metrics(
             meta=Meta(extra={'http_status': 500})
         );
     }
+}
+
+"""Return Grafana embed configuration for the admin UI's cluster views.
+
+Reports whether the Kubernetes monitoring stack is enabled, the Grafana ingress
+base path, and the dashboard UIDs provisioned by `MonitoringDeployer`. The admin
+UI embeds individual panels from these dashboards via iframe at the same origin.
+"""
+impl JacAPIServerAdmin.admin_get_cluster_info(
+    Authorization: str | None = None
+) -> TransportResponse {
+    import os;
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    monitoring = get_scale_config().get_monitoring_config();
+    enabled = bool(monitoring.get('enabled', False))
+    and bool(monitoring.get('k8s_metrics_enabled', False));
+    return TransportResponse.success(
+        data={
+            'enabled': enabled,
+            'grafana_base': '/grafana',
+            'dashboard_uid': 'k8s-cluster',
+            'app_dashboard_uid': 'jac-scale-app',
+            'app_name': os.environ.get('K8S_APP_NAME', ''),
+            'namespace': os.environ.get('K8S_NAMESPACE', '')
+        },
+        meta=Meta(extra={'http_status': 200})
+    );
 }
 
 """Parse Prometheus text format into structured metric data."""

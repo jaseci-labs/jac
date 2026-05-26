@@ -36,12 +36,10 @@ cl {
         NotificationsPage,
         StorageProvidersPage,
         DatabasePage,
-        DeploymentsPage,
-        ScalingPage,
-        PodsPage,
         ActivityPage,
         SecurityPage
     }
+    import from .deploy.ClusterPages { DeploymentsPage, ScalingPage, PodsPage }
 
     # Page route map: category -> subtab -> component
     glob PAGE_ROUTES = {
