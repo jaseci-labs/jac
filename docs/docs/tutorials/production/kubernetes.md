@@ -324,11 +324,8 @@ newgrp microk8s
 # Wait until MicroK8s reports the cluster as ready.
 microk8s status --wait-ready
 
-# Enable DNS and default storage addons used by typical jac-scale deployments.
-microk8s enable dns storage
-
-# Optional convenience alias: use kubectl commands through MicroK8s.
-alias kubectl='microk8s kubectl'
+# Ensure required addons are enabled for deployment.
+microk8s enable dns ingress hostpath-storage
 ```
 
 ### Option B: Docker Desktop

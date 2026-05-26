@@ -3346,8 +3346,8 @@ hpa = { enabled = false }
 
 Official docs:
 
-- https://microk8s.io/
-- https://microk8s.io/docs/getting-started
+- [MicroK8s Home](https://microk8s.io/)
+- [MicroK8s Getting Started](https://microk8s.io/docs/getting-started)
 
 ```bash
 # Install MicroK8s
@@ -3360,11 +3360,8 @@ newgrp microk8s
 # Wait until cluster is ready
 microk8s status --wait-ready
 
-# Enable required addons
-microk8s enable dns storage
-
-# Optional convenience alias for this shell
-alias kubectl='microk8s kubectl'
+# Ensure required addons are enabled for deployment
+microk8s enable dns ingress hostpath-storage
 ```
 
 Deploy your app:
@@ -3375,8 +3372,8 @@ jac start --scale
 
 Access your app:
 
-- `http://localhost:30080`
-- `http://localhost:30080/docs`
+- <http://localhost:30080>
+- <http://localhost:30080/docs>
 
 If first deployment is slow, tune Kubernetes liveness probes in `jac.toml`:
 

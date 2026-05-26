@@ -197,7 +197,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 **Option A: MicroK8s (Windows/Linux/Mac)**
 
 - [Official MicroK8s installation guide](https://microk8s.io/)
-- [ubunutu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
+- [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
 **Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 
@@ -380,10 +380,10 @@ you can add new todo tasks
 
 To use `jac start --scale`, you need Kubernetes installed on your machine.
 
-**Option A: MicroK8 (Windows/Linux/Mac)**
+**Option A: MicroK8s (Windows/Linux/Mac)**
 
-- [Official MicroK8 installation guide](https://microk8s.io/)
-- [ubunutu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
+- [Official MicroK8s installation guide](https://microk8s.io/)
+- [Ubuntu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
 **Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 
