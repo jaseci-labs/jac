@@ -1217,6 +1217,10 @@ def _precompile_all_pythons(config) -> int {
             f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
             f"{', '.join(failed_versions)}"
         );
+        if len(failed_versions) == len(pythons) {
+            console.error("All precompilation targets failed — aborting bundle.");
+            return 1;
+        }
     }
     return 0;
 }
