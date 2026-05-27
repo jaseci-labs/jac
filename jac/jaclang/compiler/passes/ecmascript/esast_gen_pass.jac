@@ -124,30 +124,35 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.KW_IN: "emit_op_contains",
          Tok.KW_NIN: "emit_op_contains"
      },
-     # Lower `type(x) is <builtin>` / `is not` to valid JS typeof / Array.isArray
-     # checks. Placeholder {0} is the subject expression (not the typeof call).
-     TYPE_IS_JS_CHECKS: dict[(str, str)] = {
-         "str": 'typeof {0} === "string"',
-         "int": 'typeof {0} === "number" && Number.isInteger({0})',
-         "float": 'typeof {0} === "number" && !Number.isInteger({0})',
-         "bool": 'typeof {0} === "boolean"',
-         "dict": 'typeof {0} === "object" && {0} !== null && !Array.isArray({0})',
-         "list": "Array.isArray({0})",
-         "tuple": "Array.isArray({0})",
-         "set": "{0} instanceof Set",
-         "bytes": "{0} instanceof Uint8Array",
-         "type": 'typeof {0} === "function"',
-         "i8": 'typeof {0} === "number"',
-         "u8": 'typeof {0} === "number"',
-         "i16": 'typeof {0} === "number"',
-         "u16": 'typeof {0} === "number"',
-         "i32": 'typeof {0} === "number"',
-         "u32": 'typeof {0} === "number"',
-         "i64": 'typeof {0} === "number"',
-         "u64": 'typeof {0} === "number"',
-         "f32": 'typeof {0} === "number"',
-         "f64": 'typeof {0} === "number"'
-     },
+     # Jac builtin typenames that `type(x) is <name>` can lower to a runtime
+     # `_jac.poly.type_is(x, "<name>")` check. The name→JS-semantics mapping
+     # lives in `_jac.poly.type_is` (jac_runtime_js.jac), the single source of
+     # truth; this set only gates which names are eligible. See issue #6149.
+     TYPE_IS_BUILTIN_NAMES: frozenset[str] = frozenset(
+         {
+             "str",
+             "bool",
+             "int",
+             "float",
+             "dict",
+             "list",
+             "tuple",
+             "set",
+             "bytes",
+             "type",
+             "any",
+             "i8",
+             "u8",
+             "i16",
+             "u16",
+             "i32",
+             "u32",
+             "i64",
+             "u64",
+             "f32",
+             "f64"
+         }
+     ),
      UNARY_EMIT_MAP: dict[(Tok, str)] = {
          Tok.MINUS: "emit_op_neg",
          Tok.PLUS: "emit_op_pos",
@@ -382,7 +387,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
     def _type_call_subject_param(call: uni.FuncCall) -> (uni.Expr | None);
-    def _expr_to_js_string(expr: uni.Expr) -> str;
+    def _es_jac_poly_call(
+        method: str, args: list[es.Expression], jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _try_type_is_compare(
         left_node: uni.Expr, right_node: uni.Expr, negate: bool, jac_node: uni.UniNode
     ) -> (es.Expression | None);

@@ -2261,16 +2261,40 @@ impl EsastGenPass._type_call_subject_param(call: uni.FuncCall) -> (uni.Expr | No
     return None;
 }
 
-"""Render a Jac expression's generated ES AST as a JS source fragment."""
-impl EsastGenPass._expr_to_js_string(expr: uni.Expr) -> str {
-    import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-    if not expr.gen.es_ast {
-        return "";
-    }
-    return JSCodeGenerator().generate(cast(es.Expression, expr.gen.es_ast));
+"""Build a `_jac.poly.<method>(...args)` runtime call."""
+impl EsastGenPass._es_jac_poly_call(
+    method: str, args: list[es.Expression], jac_node: uni.UniNode
+) -> es.Expression {
+    self.needs_jac_runtime = True;
+    poly = self.sync_loc(
+        es.MemberExpression(
+            object=self.sync_loc(es.Identifier(name="_jac"), jac_node=jac_node),
+            property=self.sync_loc(es.Identifier(name="poly"), jac_node=jac_node),
+            computed=False
+        ),
+        jac_node=jac_node
+    );
+    callee = self.sync_loc(
+        es.MemberExpression(
+            object=poly,
+            property=self.sync_loc(es.Identifier(name=method), jac_node=jac_node),
+            computed=False
+        ),
+        jac_node=jac_node
+    );
+    return self.sync_loc(
+        es.CallExpression(callee=cast(es.Expression, callee), arguments=args),
+        jac_node=jac_node
+    );
 }
 
-"""Lower `type(x) is <builtin>` to a JS typeof / Array.isArray check."""
+"""Lower `type(x) is <T>` to `_jac.poly.type_is(x, spec)`, or None if not applicable.
+
+Routes through the runtime helper (mirroring `_jac.poly.contains`) so the
+subject is evaluated exactly once and the lossy Python->JS type-mapping lives in
+one place. `spec` is the builtin typename string, or — for a user archetype —
+the class constructor (an exact `x.constructor === C` match, not `instanceof`).
+"""
 impl EsastGenPass._try_type_is_compare(
     left_node: uni.Expr, right_node: uni.Expr, negate: bool, jac_node: uni.UniNode
 ) -> (es.Expression | None) {
@@ -2288,23 +2312,40 @@ impl EsastGenPass._try_type_is_compare(
     if not type_name or type_name == "None" {
         return None;
     }
-    if type_name == "any" {
-        check_js = "false" if negate else "true";
-        return self.sync_loc(es.Identifier(name=check_js), jac_node=jac_node);
-    }
-    template = TYPE_IS_JS_CHECKS.get(type_name);
-    if not template {
+    subject = cast((es.Expression | None), subject_expr.gen.es_ast);
+    if subject is None {
         return None;
     }
-    subject_js = self._expr_to_js_string(subject_expr);
-    if not subject_js {
+    # Resolve the type spec: a builtin typename string, or the class reference
+    # for a user archetype. Anything else falls through to the generic path.
+    spec: (es.Expression | None) = None;
+    if type_name in TYPE_IS_BUILTIN_NAMES {
+        spec = self.sync_loc(
+            es.Literal(value=type_name, raw=f'"{type_name}"'), jac_node=jac_node
+        );
+    } else {
+        import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
+        symbol = resolve_expr_symbol(right_node, self.get_main_mod());
+        if symbol is not None
+        and symbol.sym_type in (
+            SymbolType.OBJECT_ARCH,
+            SymbolType.NODE_ARCH,
+            SymbolType.EDGE_ARCH,
+            SymbolType.WALKER_ARCH
+        ) {
+            spec = cast((es.Expression | None), right_node.gen.es_ast);
+        }
+    }
+    if spec is None {
         return None;
     }
-    check_js = template.replace("{0}", subject_js);
+    check = self._es_jac_poly_call("type_is", [subject, spec], jac_node);
     if negate {
-        check_js = "!(" + check_js + ")";
+        check = self.sync_loc(
+            es.UnaryExpression(operator="!", argument=check), jac_node=jac_node
+        );
     }
-    return self.sync_loc(es.Identifier(name=check_js), jac_node=jac_node);
+    return check;
 }
 
 """Process compare expression."""
@@ -2385,32 +2426,8 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             # TypeError on string operands and tests array indices rather
             # than element values. Route through the runtime-polymorphic
             # `_jac.poly.contains`, which dispatches on the value at runtime.
-            contains_callee = self.sync_loc(
-                es.MemberExpression(
-                    object=self.sync_loc(
-                        es.MemberExpression(
-                            object=self.sync_loc(
-                                es.Identifier(name='_jac'), jac_node=nd
-                            ),
-                            property=self.sync_loc(
-                                es.Identifier(name='poly'), jac_node=nd
-                            ),
-                            computed=False
-                        ),
-                        jac_node=nd
-                    ),
-                    property=self.sync_loc(es.Identifier(name='contains'), jac_node=nd),
-                    computed=False
-                ),
-                jac_node=nd
-            );
-            self.needs_jac_runtime = True;
-            contains_call = self.sync_loc(
-                es.CallExpression(
-                    callee=cast(es.Expression, contains_callee),
-                    arguments=[cast(es.Expression, right), cast(es.Expression, left)]
-                ),
-                jac_node=nd
+            contains_call = self._es_jac_poly_call(
+                "contains", [cast(es.Expression, right), cast(es.Expression, left)], nd
             );
             if (op_tok == Tok.KW_NIN) {
                 comparison = self.sync_loc(

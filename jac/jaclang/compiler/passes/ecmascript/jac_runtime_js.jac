@@ -354,6 +354,28 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         return Object.prototype.hasOwnProperty.call(c, x);
       }
       return false;
+    },
+    type_is(x, spec) {
+      // Runtime lowering of `type(x) is <T>`. `spec` is a builtin typename
+      // string, or a class constructor for a user archetype. `x` is evaluated
+      // once by the caller, so this is safe for side-effecting subjects.
+      // These are JS approximations of Python's exact-type `type()` checks:
+      // JS has no int/float distinction (Number.isInteger only separates
+      // whole-valued numbers) and list/tuple both map to Array.
+      if (typeof spec === "function") return x != null && x.constructor === spec;
+      switch (spec) {
+        case "str": return typeof x === "string";
+        case "bool": return typeof x === "boolean";
+        case "int": return typeof x === "number" && Number.isInteger(x);
+        case "float": return typeof x === "number" && !Number.isInteger(x);
+        case "dict": return x !== null && typeof x === "object" && !Array.isArray(x);
+        case "list": case "tuple": return Array.isArray(x);
+        case "set": return x instanceof Set;
+        case "bytes": return x instanceof Uint8Array;
+        case "type": return typeof x === "function";
+        case "any": return true;
+        default: return /^[iuf](8|16|32|64)$/.test(spec) && typeof x === "number";
+      }
     }
   },
 
