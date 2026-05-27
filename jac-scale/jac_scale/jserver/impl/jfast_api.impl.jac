@@ -67,7 +67,13 @@ class ConsoleLogHandler(logging.Handler) {
 
 """Filter that suppresses noisy health-check access log entries."""
 class HealthCheckFilter(logging.Filter) {
-    _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP','"GET /healthz'};
+    _SUPPRESSED = {
+        '"GET /docs HTTP',
+        '"GET / HTTP',
+        '"GET /openapi.json HTTP',
+        '"GET /health HTTP',
+        '"GET /healthz'
+    };
 
     def filter(self: HealthCheckFilter, record: logging.LogRecord) -> bool {
         msg = record.getMessage();
