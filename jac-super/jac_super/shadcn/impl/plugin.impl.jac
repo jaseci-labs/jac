@@ -33,6 +33,119 @@ impl JacShadcnPlugin.create_cmd -> None {
         pre_hook=_handle_shadcn_remove,
         source="jac-shadcn"
     );
+
+    # Theme options for `jac create --use jac-shadcn` (consumed in post_create).
+    registry.extend_command(
+        command_name="create",
+        args=[
+            Arg.create(
+                "style",
+                typ=str,
+                default=None,
+                help="shadcn style preset (nova|vega|maia|lyra|mira)",
+                short=""
+            ),
+            Arg.create(
+                "baseColor",
+                typ=str,
+                default=None,
+                help="shadcn base palette (neutral|stone|zinc|gray)",
+                short=""
+            ),
+            Arg.create(
+                "theme",
+                typ=str,
+                default=None,
+                help="shadcn accent theme (e.g. rose, emerald)",
+                short=""
+            ),
+            Arg.create(
+                "font",
+                typ=str,
+                default=None,
+                help="shadcn font family (e.g. inter, outfit)",
+                short=""
+            ),
+            Arg.create(
+                "radius",
+                typ=str,
+                default=None,
+                help="shadcn border radius (none|small|medium|large)",
+                short=""
+            ),
+            Arg.create(
+                "menuAccent",
+                typ=str,
+                default=None,
+                help="shadcn menu accent (subtle|bold)",
+                short=""
+            ),
+            Arg.create(
+                "menuColor",
+                typ=str,
+                default=None,
+                help="shadcn menu color scheme",
+                short=""
+            )
+        ],
+        pre_hook=_handle_create_theme,
+        source="jac-shadcn"
+    );
+
+    # register_project_template is firstresult; register directly so the
+    # jac-shadcn template is available even when another plugin (jac-client)
+    # also provides templates and wins the hook.
+    import from jaclang.project.template_registry { get_template_registry }
+    try {
+        info = _build_shadcn_template_info();
+        if info {
+            get_template_registry().register(info);
+        }
+    } except Exception {
+        ;
+    }
+}
+
+impl _handle_create_theme(ctx: HookContext) -> None {
+    # Only act when scaffolding the jac-shadcn template.
+    if ctx.get_arg("use", "default") != "jac-shadcn" {
+        return;
+    }
+    overrides: dict = {};
+    for key in [
+        "style",
+        "baseColor",
+        "theme",
+        "font",
+        "radius",
+        "menuAccent",
+        "menuColor"
+    ] {
+        val = ctx.get_arg(key, None);
+        if val is not None {
+            overrides[key] = val;
+        }
+    }
+    # Stash for _shadcn_post_create (same process). Mutate in place (glob is read-only to rebind).
+    _PENDING_THEME.clear();
+    _PENDING_THEME.update(overrides);
+}
+
+impl _shadcn_post_create(project_path: any, project_name: str) -> None {
+    import from jaclang.cli.console { console }
+    import from jac_super.shadcn.theme_handler {
+        normalize_shadcn_config,
+        materialize_themed_starter
+    }
+
+    try {
+        shadcn_config = normalize_shadcn_config(dict(_PENDING_THEME));
+        materialize_themed_starter(project_path, project_name, shadcn_config);
+    } except Exception as e {
+        console.warning("Could not apply shadcn theme: " + str(e));
+    } finally {
+        _PENDING_THEME.clear();
+    }
 }
 
 impl _handle_shadcn_add(ctx: HookContext) -> None {
@@ -115,7 +228,7 @@ impl _handle_shadcn_remove(ctx: HookContext) -> None {
     }
 }
 
-impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
+impl _build_shadcn_template_info -> dict[str, any] | None {
     import from jaclang.project.template_loader { load_template_from_directory }
     import from jaclang.cli.console { console }
 
@@ -142,9 +255,20 @@ impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
 
     try {
         template = load_template_from_directory(template_dir);
-        return template.to_dict();
+        info = template.to_dict();
+        # Generate the themed starter (global.css, components, main.jac) after scaffold.
+        info["post_create"] = _shadcn_post_create;
+        return info;
     } except Exception as e {
         console.warning(f"Could not load jac-shadcn template: {e}");
         return None;
     }
+}
+
+# register_project_template is a firstresult hook, so when jac-client is installed
+# its templates win and this is never consulted. We therefore ALSO register the
+# template directly into the singleton registry in create_cmd (below). This hook
+# remains as a fallback for environments where jac-super is the only provider.
+impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
+    return _build_shadcn_template_info();
 }

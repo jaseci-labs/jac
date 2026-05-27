@@ -339,3 +339,4 @@ wikipedia_react.jac
 # (sibling plugin.jac / plugin.impl.jac are already ignored above)
 shadcn_handler.jac
 shadcn_handler.impl.jac
+theme_handler.jac

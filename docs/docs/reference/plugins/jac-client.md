@@ -1525,7 +1525,11 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. `jac add --shadcn` resolves components from the set bundled with `jac-super` (offline) and reads `style` to choose which style's Tailwind classes to emit; the remaining theming fields are applied when scaffolding via the project template.
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jac-super`:
+
+- `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
+- `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
+- `jac add --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
 
 ```toml
 [jac-shadcn]

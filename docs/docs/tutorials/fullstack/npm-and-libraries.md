@@ -282,22 +282,38 @@ def:pub Tab(props: any) -> JsxElement {
 pip install jac-super
 ```
 
-Create a new project with shadcn theming:
+Create a new themed project (fully offline -- the component set, styles, and color themes all ship with the plugin):
 
 ```bash
-jac create --use 'https://jac-shadcn.jaseci.org/jacpack' myapp
+jac create --use jac-shadcn --theme rose --font inter myapp
 cd myapp
 jac install
 ```
 
-Or add to an existing project by adding a `[jac-shadcn]` section to your `jac.toml`. `jac add` reads `style` to pick which style's resolved Tailwind classes to emit:
+This scaffolds a themed starter: a generated `global.css` (theme colors + font + radius), `lib/utils.cl.jac`, and `button`/`card` components for the chosen style, plus a `main.jac` that demos them. All theme flags are optional and default to `nova`/`neutral`/`figtree`:
 
-```toml
-[jac-shadcn]
-style = "nova"   # nova | vega | maia | lyra | mira
+| Flag | Values | Default |
+|------|--------|---------|
+| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira` | `nova` |
+| `--baseColor` | `neutral`, `stone`, `zinc`, `gray` | `neutral` |
+| `--theme` | `rose`, `emerald`, `blue`, `amber`, … | `neutral` |
+| `--font` | `inter`, `outfit`, `geist`, … | `figtree` |
+| `--radius` | `none`, `small`, `medium`, `large` | `default` |
+| `--menuAccent` | `subtle`, `bold` | `subtle` |
+
+The chosen values are written to the `[jac-shadcn]` section of `jac.toml`.
+
+### Re-theme in place
+
+Change the theme of an existing project without recreating it -- `jac retheme` regenerates `global.css` from `[jac-shadcn]` (and, when `--style` changes, re-resolves the components already in `components/ui/`):
+
+```bash
+jac retheme --theme emerald --font outfit   # switch accent + font
+jac retheme --style mira                     # switch style, restyle installed components
+jac retheme                                  # regenerate from the current jac.toml config
 ```
 
-Then add and use components:
+### Add more components
 
 ```bash
 jac add --shadcn button card dialog

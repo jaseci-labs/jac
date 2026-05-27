@@ -139,14 +139,16 @@ impl _update_npm_deps(config: any, npm_deps: dict) -> None {
 
     for key in npm_deps {
         ver = npm_deps[key];
-        if key in content {
+        # Scoped npm names (@scope/pkg) are not valid TOML bare keys -- quote them.
+        toml_key = key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
+        if toml_key in content {
             continue;
         }
         marker = "[dependencies.npm]";
         idx = content.find(marker);
         if idx >= 0 {
             insert_pos = idx + len(marker);
-            line = key + ' = "' + ver + '"';
+            line = toml_key + ' = "' + ver + '"';
             content = content[:insert_pos] + "\n" + line + content[insert_pos:];
         }
     }
