@@ -2860,7 +2860,7 @@ test "union_and_optional_special_forms" {
     );
 }
 
-"""Union[('A', 'B')] with string forward references resolves to actual types, not Literal["A"]."""
+"""Union/Optional string forward refs resolve to actual types, not Literal[...]."""
 test "union_string_forward_refs" {
     program = JacProgram();
     mod = program.compile(
@@ -2868,10 +2868,34 @@ test "union_string_forward_refs" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , (
-        f"Expected 0 errors — Union[('Foo','Bar')] should resolve to Foo|Bar not "
-        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: " + "\n".join(
+        "Expected 0 errors — Union[('Foo','Bar')], Union['Foo'], and Optional['Foo'] "
+        "should resolve to real types, not Literal strings. Got "
+        f"{len(program.errors_had)}: " + "\n".join(
             [e.pretty_print() for e in program.errors_had]
         )
+    );
+}
+
+"""Unresolvable Union[('A', 'B')] strings still degrade to Literal (safety net)."""
+test "union_string_forward_refs_unresolved" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref_unresolved.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 1 , (
+        f"Expected 1 error for int return to Literal union, got {len(user_errors)}: " + "\n".join(
+            [e.pretty_print() for e in user_errors]
+        )
+    );
+    assert "Literal" in user_errors[0].pretty_print() , (
+        "Expected Literal[...] fallback for unresolvable Union strings"
     );
 }
 

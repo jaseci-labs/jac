@@ -30,6 +30,29 @@ impl TypeEvaluator._try_resolve_forward_ref(expr: uni.String) -> TypeBase | None
     return resolved;
 }
 
+"""Resolve one Union/Optional subscript argument, honoring string forward refs."""
+impl TypeEvaluator._type_from_union_annotation_arg(val: uni.UniNode) -> TypeBase {
+    string_expr: uni.String | None = None;
+    if isinstance(val, uni.MultiString) and val.strings {
+        # Only the first segment: canonical single-string forward ref, not concat.
+        if (
+            isinstance(val.strings[0], uni.String)
+            and isinstance(val.strings[0].lit_value, str)
+        ) {
+            string_expr = val.strings[0];
+        }
+    } elif isinstance(val, uni.String) and isinstance(val.lit_value, str) {
+        string_expr = val;
+    }
+    if string_expr is not None {
+        fwd = self._try_resolve_forward_ref(string_expr);
+        if fwd is not None {
+            return self._convert_to_instance(fwd);
+        }
+    }
+    return self._convert_to_instance(self.get_type_of_expression(val));
+}
+
 """Build field parameters from class MRO for synthesized constructors."""
 impl TypeEvaluator._build_field_params(
     class_type: types.ClassType, skip_deferred: bool = True
