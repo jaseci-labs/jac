@@ -21,9 +21,8 @@ impl TypeEvaluator._try_resolve_forward_ref(expr: uni.String) -> TypeBase | None
     if not symbol.decl or not symbol.decl.name_of {
         return None;
     }
-    resolved = self.get_type_of_expression(symbol.defn[-1])
-        if symbol.defn
-        else self.get_type_of_expression(symbol.decl);
+    # get_type_of_symbol uses symbol_resolution_stack to break alias cycles.
+    resolved = self.get_type_of_symbol(symbol);
     if isinstance(resolved, types.UnknownType) {
         return None;
     }
@@ -31,12 +30,13 @@ impl TypeEvaluator._try_resolve_forward_ref(expr: uni.String) -> TypeBase | None
 }
 
 """Resolve one Union/Optional subscript argument, honoring string forward refs."""
-impl TypeEvaluator._type_from_union_annotation_arg(val: uni.UniNode) -> TypeBase {
+impl TypeEvaluator._type_from_union_annotation_arg(val: uni.Expr) -> TypeBase {
     string_expr: uni.String | None = None;
     if isinstance(val, uni.MultiString) and val.strings {
-        # Only the first segment: canonical single-string forward ref, not concat.
+        # Single-segment only (matches SubTag/FuncSignature forward-ref path); not concat.
         if (
-            isinstance(val.strings[0], uni.String)
+            len(val.strings) == 1
+            and isinstance(val.strings[0], uni.String)
             and isinstance(val.strings[0].lit_value, str)
         ) {
             string_expr = val.strings[0];

@@ -2894,8 +2894,10 @@ test "union_string_forward_refs_unresolved" {
             [e.pretty_print() for e in user_errors]
         )
     );
-    assert "Literal" in user_errors[0].pretty_print() , (
-        "Expected Literal[...] fallback for unresolvable Union strings"
+    assert user_errors[0].code and user_errors[0].code.code == "E1002" , (
+        f"Expected E1002 return mismatch, got {user_errors[0].code.code
+            if user_errors[0].code
+            else '?'}"
     );
 }
 
