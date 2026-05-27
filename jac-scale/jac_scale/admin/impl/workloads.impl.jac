@@ -1,8 +1,12 @@
-"""Deployments admin endpoints implementation.
+"""Workloads admin endpoints implementation.
 
-Queries the in-cluster Prometheus for kube-state-metrics, node-exporter and
-cAdvisor data, then projects it into a flat, UI-friendly shape so the admin
-panel can render traffic-light cards without doing any PromQL math.
+Queries the in-cluster Prometheus for kube-state-metrics and cAdvisor data,
+then projects it into a flat, UI-friendly shape so the admin panel can render
+traffic-light cards without doing any PromQL math.
+
+Scopes everything by K8S_NAMESPACE — the namespace IS the application boundary,
+no name-pattern filtering. The monitoring stack (Prometheus, Grafana, etc.)
+shows up in the list and the UI labels it as infrastructure.
 """
 import os;
 import time;
@@ -24,61 +28,33 @@ import from jac_scale.utilities.metrics.prometheus_client {
 
 glob logger = logging.getLogger(__name__);
 
-"""Suffixes (relative to the app name) used by the monitoring stack itself.
+"""Map replica counts to a UI-friendly status.
 
-We hide these from the deployments list so users see only *their* deployments,
-not jac-scale's own observability sidecars.
+Picks the worst-case label so a workload with any failing replica surfaces as
+'Broken' even if some are still running.
 """
-glob _MONITORING_SUFFIXES: list = [
-         "-prometheus",
-         "-grafana",
-         "-kube-state-metrics",
-         "-node-exporter"
-     ];
-
-"""Map a kube_pod_status_phase result set to a UI-friendly status.
-
-The phase counts come from Prometheus as separate metrics per phase; we pick
-the worst-case label so a deployment with any failing pod surfaces as
-'Broken' even if some pods are still Running.
-"""
-def _phase_to_status(running: int, pending: int, failed: int, restarts: int) -> str {
-    if failed > 0 {
+def _phase_to_status(ready: int, desired: int, restarts: int) -> str {
+    if desired > 0 and ready == 0 and restarts > 0 {
         return "Broken";
     }
-    if restarts > 0 and running > 0 {
+    if restarts > 0 and ready > 0 {
         return "Unstable";
     }
-    if pending > 0 and running == 0 {
+    if desired > 0 and ready < desired {
         return "Starting";
     }
-    if running > 0 {
+    if ready > 0 {
         return "Healthy";
     }
     return "Unknown";
 }
 
-"""Return True if a deployment name belongs to the jac-scale monitoring stack.
+"""Strip the trailing replicaset/pod hash segments to recover the parent name.
 
-Used to filter out Prometheus/Grafana/kube-state-metrics/node-exporter from
-the user-facing deployments list. Matches by suffix to handle apps with
-arbitrary `app_name` prefixes.
+K8s pod names look like `<owner>-<replicaset_hash>-<pod_hash>`. We strip the
+trailing two hash segments to roll pod-level metrics up to their owner.
 """
-def _is_monitoring_stack(name: str) -> bool {
-    for suffix in _MONITORING_SUFFIXES {
-        if name.endswith(suffix) {
-            return True;
-        }
-    }
-    return False;
-}
-
-"""Group a list of {pod, value} entries by their parent deployment name.
-
-K8s pod names look like `<deployment>-<replicaset_hash>-<pod_hash>`. We strip
-the trailing two hash segments to roll pod-level metrics up to the deployment.
-"""
-def _deployment_name_from_pod(pod: str) -> str {
+def _owner_name_from_pod(pod: str) -> str {
     if not pod {
         return "";
     }
@@ -89,48 +65,64 @@ def _deployment_name_from_pod(pod: str) -> str {
     return "-".join(parts[:-2]);
 }
 
-"""Register all deployments endpoints under /admin/deployments/*."""
-impl JacAPIServerDeployments.register_deployments_endpoints -> None {
+"""Register all workloads endpoints under /admin/workloads/*."""
+impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     async def summary_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_deployments_summary(authorization);
+        return self.admin_workloads_summary(authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/admin/deployments',
+            path='/admin/workloads',
             callback=summary_handler,
             parameters=[],
             response_model=None,
             tags=['Admin'],
-            summary='Deployments summary',
-            description='Top-line deployment health stats for the admin dashboard (admin only)'
+            summary='Workloads summary',
+            description='Top-line workload health stats for the admin dashboard (admin only)'
         )
     );
     async def list_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_deployments_list(authorization);
+        return self.admin_workloads_list(authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/admin/deployments/list',
+            path='/admin/workloads/list',
             callback=list_handler,
             parameters=[],
             response_model=None,
             tags=['Admin'],
-            summary='List deployments',
-            description='Per-deployment health table for the admin dashboard (admin only)'
+            summary='List workloads',
+            description='Per-workload health table (Deployments, StatefulSets, DaemonSets) for the admin dashboard (admin only)'
         )
     );
-    async def detail_handler(request: Request, name: str) -> TransportResponse {
+    async def pods_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_deployment_detail(name, authorization);
+        return self.admin_workloads_pods(authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/admin/deployments/{name}',
+            path='/admin/workloads/pods',
+            callback=pods_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='List pods',
+            description='Per-pod health table for the admin dashboard (admin only)'
+        )
+    );
+    async def detail_handler(request: Request, name: str) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_workload_detail(name, authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/workloads/{name}',
             callback=detail_handler,
             parameters=[
                 APIParameter(
@@ -138,28 +130,28 @@ impl JacAPIServerDeployments.register_deployments_endpoints -> None {
                     data_type='string',
                     required=True,
                     default=None,
-                    description='Deployment name',
+                    description='Workload name',
                     type=ParameterType.PATH
                 )
             ],
             response_model=None,
             tags=['Admin'],
-            summary='Deployment detail',
-            description='Per-pod breakdown for a single deployment (admin only)'
+            summary='Workload detail',
+            description='Per-pod breakdown for a single workload (admin only)'
         )
     );
     async def timeseries_handler(
         request: Request, name: str, metric: str = "cpu", range_minutes: int = 60
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_deployment_timeseries(
+        return self.admin_workload_timeseries(
             name, metric, range_minutes, authorization
         );
     }
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/admin/deployments/{name}/timeseries',
+            path='/admin/workloads/{name}/timeseries',
             callback=timeseries_handler,
             parameters=[
                 APIParameter(
@@ -167,7 +159,7 @@ impl JacAPIServerDeployments.register_deployments_endpoints -> None {
                     data_type='string',
                     required=True,
                     default=None,
-                    description='Deployment name',
+                    description='Workload name',
                     type=ParameterType.PATH
                 ),
                 APIParameter(
@@ -189,8 +181,8 @@ impl JacAPIServerDeployments.register_deployments_endpoints -> None {
             ],
             response_model=None,
             tags=['Admin'],
-            summary='Deployment time-series',
-            description='Time-series for CPU/memory/requests on a single deployment (admin only)'
+            summary='Workload time-series',
+            description='Time-series for CPU/memory/requests on a single workload (admin only)'
         )
     );
 }
@@ -202,7 +194,7 @@ the UI renders directly. If Prometheus is unreachable the response still
 succeeds with `metrics_available: false` so the UI can show a banner instead
 of erroring.
 """
-impl JacAPIServerDeployments.admin_deployments_summary(
+impl JacAPIServerWorkloads.admin_workloads_summary(
     Authorization: str | None = None
 ) -> TransportResponse {
     error = self.require_admin(Authorization);
@@ -222,15 +214,12 @@ impl JacAPIServerDeployments.admin_deployments_summary(
     }
     ns_filter = f'namespace="{namespace}"' if namespace else '';
     ns_and = f',{ns_filter}' if ns_filter else '';
-    # Probe Prometheus once before fanning out queries. If we can't reach it,
-    # surface metrics_available: false so the UI shows the right banner
-    # instead of pretending the cluster is empty.
     probe = prom_query(f'count(kube_pod_status_phase{{phase="Running"{ns_and}}} == 1)');
     if probe is None {
         return TransportResponse.success(
             data={
                 'metrics_available': False,
-                'reason': 'Prometheus is configured but unreachable from the app pod (check cross-node networking)',
+                'reason': 'Prometheus is configured but unreachable from the app pod',
                 'namespace': namespace
             },
             meta=Meta(extra={'http_status': 200})
@@ -285,13 +274,13 @@ impl JacAPIServerDeployments.admin_deployments_summary(
     );
 }
 
-"""Build the per-deployment table.
+"""Build the per-workload table including Deployments, StatefulSets and DaemonSets.
 
-Joins kube_deployment_status_replicas_available against cAdvisor CPU/memory
-metrics, hides the monitoring stack itself, and translates phase + restart
-counts into Healthy/Starting/Broken/Unstable.
+Joins kube-state-metrics replica counts against cAdvisor CPU/memory metrics
+and rolls each pod's usage up to its parent workload by stripping the
+replicaset/pod hash suffix. Scope is the entire K8S_NAMESPACE.
 """
-impl JacAPIServerDeployments.admin_deployments_list(
+impl JacAPIServerWorkloads.admin_workloads_list(
     Authorization: str | None = None
 ) -> TransportResponse {
     error = self.require_admin(Authorization);
@@ -301,32 +290,56 @@ impl JacAPIServerDeployments.admin_deployments_list(
     namespace = os.environ.get("K8S_NAMESPACE", "");
     if resolve_prometheus_url() is None {
         return TransportResponse.success(
-            data={'metrics_available': False, 'deployments': []},
+            data={'metrics_available': False, 'workloads': []},
             meta=Meta(extra={'http_status': 200})
         );
     }
     ns_filter = f'namespace="{namespace}"' if namespace else '';
     ns_and = f',{ns_filter}' if ns_filter else '';
-    available_raw = prom_query(
+    # Probe Prometheus once before fanning out queries.
+    dep_available_raw = prom_query(
         f'kube_deployment_status_replicas_available{{{ns_filter}}}'
             if ns_filter
             else 'kube_deployment_status_replicas_available'
     );
-    if available_raw is None {
+    if dep_available_raw is None {
         return TransportResponse.success(
             data={
                 'metrics_available': False,
                 'reason': 'Prometheus is configured but unreachable from the app pod',
-                'deployments': []
+                'workloads': []
             },
             meta=Meta(extra={'http_status': 200})
         );
     }
-    available = available_raw;
-    desired = prom_query(
+    dep_desired = prom_query(
         f'kube_deployment_spec_replicas{{{ns_filter}}}'
             if ns_filter
             else 'kube_deployment_spec_replicas'
+    )
+    or [];
+    sts_ready = prom_query(
+        f'kube_statefulset_status_replicas_ready{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_statefulset_status_replicas_ready'
+    )
+    or [];
+    sts_desired = prom_query(
+        f'kube_statefulset_replicas{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_statefulset_replicas'
+    )
+    or [];
+    ds_ready = prom_query(
+        f'kube_daemonset_status_number_available{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_daemonset_status_number_available'
+    )
+    or [];
+    ds_desired = prom_query(
+        f'kube_daemonset_status_desired_number_scheduled{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_daemonset_status_desired_number_scheduled'
     )
     or [];
     cpu_by_pod = prom_query(
@@ -343,87 +356,221 @@ impl JacAPIServerDeployments.admin_deployments_list(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
     or [];
-    desired_by_name = {};
-    for entry in desired {
-        m = entry.get("metric", {});
-        v = entry.get("value", [0, "0"]);
-        desired_by_name[m.get("deployment", "")] = int(float(v[1]))
-            if len(v) > 1
-            else 0;
+
+    def _index_by_label(rows: list, label: str) -> dict {
+        out: dict = {};
+        for entry in rows {
+            key = entry.get("metric", {}).get(label, "");
+            v = entry.get("value", [0, "0"]);
+            if key {
+                out[key] = int(float(v[1])) if len(v) > 1 else 0;
+            }
+        }
+        return out;
     }
-    cpu_by_deploy: dict = {};
-    mem_by_deploy: dict = {};
-    restarts_by_deploy: dict = {};
+
+    dep_desired_by = _index_by_label(dep_desired, "deployment");
+    sts_desired_by = _index_by_label(sts_desired, "statefulset");
+    ds_desired_by = _index_by_label(ds_desired, "daemonset");
+
+    cpu_by_owner: dict = {};
+    mem_by_owner: dict = {};
+    restarts_by_owner: dict = {};
     for entry in cpu_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        deploy = _deployment_name_from_pod(pod);
-        cpu_by_deploy[deploy] = cpu_by_deploy.get(deploy, 0.0) + float(
+        owner = _owner_name_from_pod(pod);
+        cpu_by_owner[owner] = cpu_by_owner.get(owner, 0.0) + float(
             v[1] if len(v) > 1 else 0
         );
     }
     for entry in mem_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        deploy = _deployment_name_from_pod(pod);
-        mem_by_deploy[deploy] = mem_by_deploy.get(deploy, 0.0) + float(
+        owner = _owner_name_from_pod(pod);
+        mem_by_owner[owner] = mem_by_owner.get(owner, 0.0) + float(
             v[1] if len(v) > 1 else 0
         );
     }
     for entry in restarts_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        deploy = _deployment_name_from_pod(pod);
-        restarts_by_deploy[deploy] = restarts_by_deploy.get(deploy, 0) + int(
+        owner = _owner_name_from_pod(pod);
+        restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(
             float(v[1] if len(v) > 1 else 0)
         );
     }
-    deployments: list = [];
-    for entry in available {
-        m = entry.get("metric", {});
-        v = entry.get("value", [0, "0"]);
-        name = m.get("deployment", "");
-        if not name or _is_monitoring_stack(name) {
-            continue;
-        }
-        avail_count = int(float(v[1])) if len(v) > 1 else 0;
-        desired_count = desired_by_name.get(name, avail_count);
-        restarts = restarts_by_deploy.get(name, 0);
-        running = avail_count;
-        pending = max(0, desired_count - avail_count);
-        failed = 0;
-        if desired_count > 0 and avail_count == 0 and restarts > 0 {
-            failed = desired_count;
-        }
-        status = _phase_to_status(running, pending, failed, restarts);
-        deployments.append(
+
+    workloads: list = [];
+
+    def _append(name: str, kind: str, ready: int, desired: int) {
+        restarts = restarts_by_owner.get(name, 0);
+        status = _phase_to_status(ready, desired, restarts);
+        workloads.append(
             {
                 'name': name,
+                'kind': kind,
                 'status': status,
-                'replicas_ready': avail_count,
-                'replicas_desired': desired_count,
-                'cpu_cores': round(cpu_by_deploy.get(name, 0.0), 3),
-                'memory_bytes': int(mem_by_deploy.get(name, 0.0)),
+                'replicas_ready': ready,
+                'replicas_desired': desired,
+                'cpu_cores': round(cpu_by_owner.get(name, 0.0), 3),
+                'memory_bytes': int(mem_by_owner.get(name, 0.0)),
                 'restarts_last_hour': restarts
             }
         );
     }
-    def _dep_name(d: dict) -> str {
+
+    for entry in dep_available_raw {
+        m = entry.get("metric", {});
+        v = entry.get("value", [0, "0"]);
+        name = m.get("deployment", "");
+        if not name {
+            continue;
+        }
+        ready = int(float(v[1])) if len(v) > 1 else 0;
+        _append(name, "Deployment", ready, dep_desired_by.get(name, ready));
+    }
+    for entry in sts_ready {
+        m = entry.get("metric", {});
+        v = entry.get("value", [0, "0"]);
+        name = m.get("statefulset", "");
+        if not name {
+            continue;
+        }
+        ready = int(float(v[1])) if len(v) > 1 else 0;
+        _append(name, "StatefulSet", ready, sts_desired_by.get(name, ready));
+    }
+    for entry in ds_ready {
+        m = entry.get("metric", {});
+        v = entry.get("value", [0, "0"]);
+        name = m.get("daemonset", "");
+        if not name {
+            continue;
+        }
+        ready = int(float(v[1])) if len(v) > 1 else 0;
+        _append(name, "DaemonSet", ready, ds_desired_by.get(name, ready));
+    }
+
+    def _wl_name(d: dict) -> str {
         return d["name"];
     }
-    deployments = sorted(deployments, key=_dep_name);
+    workloads = sorted(workloads, key=_wl_name);
     return TransportResponse.success(
         data={
             'metrics_available': True,
             'namespace': namespace,
-            'deployments': deployments
+            'workloads': workloads
         },
         meta=Meta(extra={'http_status': 200})
     );
 }
 
-"""Per-pod breakdown for one deployment plus requested-vs-used resources."""
-impl JacAPIServerDeployments.admin_deployment_detail(
+"""List every individual pod in the namespace with status + resource usage."""
+impl JacAPIServerWorkloads.admin_workloads_pods(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    namespace = os.environ.get("K8S_NAMESPACE", "");
+    if resolve_prometheus_url() is None {
+        return TransportResponse.success(
+            data={'metrics_available': False, 'pods': []},
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+    ns_filter = f'namespace="{namespace}"' if namespace else '';
+    ns_and = f',{ns_filter}' if ns_filter else '';
+    phase_by_pod = prom_query(f'kube_pod_status_phase{{{ns_filter}}} == 1' if ns_filter
+        else 'kube_pod_status_phase == 1');
+    if phase_by_pod is None {
+        return TransportResponse.success(
+            data={
+                'metrics_available': False,
+                'reason': 'Prometheus is configured but unreachable from the app pod',
+                'pods': []
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+    cpu_by_pod = prom_query(
+        f'sum(rate(container_cpu_usage_seconds_total{{pod=~".+"{ns_and}}}[5m])) by (pod)'
+    )
+    or [];
+    mem_by_pod = prom_query(
+        f'sum(container_memory_working_set_bytes{{pod=~".+"{ns_and}}}) by (pod)'
+    )
+    or [];
+    restarts_by_pod = prom_query(
+        f'sum(increase(kube_pod_container_status_restarts_total{{{ns_filter}}}[1h])) by (pod)'
+            if ns_filter
+            else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
+    )
+    or [];
+    node_by_pod = prom_query(f'kube_pod_info{{{ns_filter}}}' if ns_filter
+        else 'kube_pod_info')
+    or [];
+
+    def _index_float_by_pod(rows: list) -> dict {
+        out: dict = {};
+        for entry in rows {
+            pod = entry.get("metric", {}).get("pod", "");
+            v = entry.get("value", [0, "0"]);
+            if pod {
+                out[pod] = float(v[1]) if len(v) > 1 else 0.0;
+            }
+        }
+        return out;
+    }
+    cpu = _index_float_by_pod(cpu_by_pod);
+    mem = _index_float_by_pod(mem_by_pod);
+    restarts = _index_float_by_pod(restarts_by_pod);
+    node_for: dict = {};
+    for entry in node_by_pod {
+        m = entry.get("metric", {});
+        pod = m.get("pod", "");
+        node_name = m.get("node", "");
+        if pod {
+            node_for[pod] = node_name;
+        }
+    }
+    pods: list = [];
+    for entry in phase_by_pod {
+        m = entry.get("metric", {});
+        pod = m.get("pod", "");
+        phase = m.get("phase", "Unknown");
+        if not pod {
+            continue;
+        }
+        pods.append(
+            {
+                'name': pod,
+                'phase': phase,
+                'owner': _owner_name_from_pod(pod),
+                'node': node_for.get(pod, ''),
+                'cpu_cores': round(cpu.get(pod, 0.0), 3),
+                'memory_bytes': int(mem.get(pod, 0.0)),
+                'restarts_last_hour': int(restarts.get(pod, 0.0))
+            }
+        );
+    }
+    def _pod_name(d: dict) -> str {
+        return d["name"];
+    }
+    pods = sorted(pods, key=_pod_name);
+    return TransportResponse.success(
+        data={
+            'metrics_available': True,
+            'namespace': namespace,
+            'pods': pods
+        },
+        meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Per-pod breakdown for one workload plus requested-vs-used resources."""
+impl JacAPIServerWorkloads.admin_workload_detail(
     name: str, Authorization: str | None = None
 ) -> TransportResponse {
     error = self.require_admin(Authorization);
@@ -518,8 +665,8 @@ impl JacAPIServerDeployments.admin_deployment_detail(
     );
 }
 
-"""Range query for one deployment (CPU cores, memory bytes, or request rate)."""
-impl JacAPIServerDeployments.admin_deployment_timeseries(
+"""Range query for one workload (CPU cores, memory bytes, or request rate)."""
+impl JacAPIServerWorkloads.admin_workload_timeseries(
     name: str,
     metric: str = "cpu",
     range_minutes: int = 60,

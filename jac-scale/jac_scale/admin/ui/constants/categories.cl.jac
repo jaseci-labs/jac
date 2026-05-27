@@ -8,7 +8,7 @@ cl {
              {"id": "monitor", "label": "Monitoring", "default": "metrics"},
              {"id": "settings", "label": "Settings", "default": "config"},
              {"id": "integrations", "label": "Integrations", "default": "email"},
-             {"id": "deploy", "label": "Deployment", "default": "deployments"},
+             {"id": "deploy", "label": "Deployment", "default": "workloads"},
              {"id": "audit", "label": "Audit", "default": "activity"}
          ];
 
@@ -51,9 +51,8 @@ cl {
                  {"id": "database", "label": "Database"}
              ],
              "deploy": [
-                 {"id": "deployments", "label": "Deployments"},
-                 {"id": "scaling", "label": "Scaling"},
-                 {"id": "pods", "label": "Pods"}
+                 {"id": "workloads", "label": "Workloads"},
+                 {"id": "scaling", "label": "Auto-scaling"}
              ],
              "audit": [
                  {"id": "activity", "label": "Activity Log"},

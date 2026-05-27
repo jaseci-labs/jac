@@ -15,7 +15,7 @@ cl {
     import from .monitoring.MetricsPage { MetricsPage }
     import from .monitoring.LLMMetricsPage { LLMMetricsPage }
     import from .monitoring.LLMTracesPage { LLMTracesPage }
-    import from .monitoring.DeploymentsPage { DeploymentsPage }
+    import from .monitoring.WorkloadsPage { WorkloadsPage }
     import from .placeholder.PlaceholderPage {
         SessionsPage,
         ApiKeysPage,
@@ -38,7 +38,6 @@ cl {
         StorageProvidersPage,
         DatabasePage,
         ScalingPage,
-        PodsPage,
         ActivityPage,
         SecurityPage
     }
@@ -79,9 +78,8 @@ cl {
                  "database": DatabasePage
              },
              "deploy": {
-                 "deployments": DeploymentsPage,
-                 "scaling": ScalingPage,
-                 "pods": PodsPage
+                 "workloads": WorkloadsPage,
+                 "scaling": ScalingPage
              },
              "audit": {"activity": ActivityPage, "security": SecurityPage}
          };

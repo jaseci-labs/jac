@@ -363,14 +363,6 @@ cl {
             </Card>;
     }
 
-    def:pub PodsPage -> JsxElement {
-        return
-            <PlaceholderCard
-                title="Pod Status"
-                message="Kubernetes pod monitoring coming soon"
-            />;
-    }
-
     def:pub ActivityPage -> JsxElement {
         return
             <div

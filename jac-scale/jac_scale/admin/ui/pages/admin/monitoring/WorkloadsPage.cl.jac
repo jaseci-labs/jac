@@ -1,6 +1,10 @@
-"""Deployments page: non-technical-friendly view of K8s workload health.
+"""Workloads page: non-technical-friendly view of K8s workload health.
 
-Renders summary cards + a per-deployment table driven by /admin/deployments/*.
+Renders summary cards + a table of Deployments / StatefulSets / DaemonSets / Pods
+driven by /admin/workloads/*. A chip filter at the top lets the admin narrow
+the table to a specific workload kind. Pods are loaded separately because
+they have a different shape (per-pod rather than aggregated).
+
 Status strings ('Healthy', 'Starting', 'Broken', 'Unstable') are pre-computed
 server-side so this page is purely presentational.
 """
@@ -8,24 +12,28 @@ server-side so this page is purely presentational.
 cl {
     import from react { useEffect }
     import from ....context.AuthContext { useAuth }
-    import from ....services.deploymentsService {
-        getDeploymentsSummary,
-        getDeploymentsList
+    import from ....services.workloadsService {
+        getWorkloadsSummary,
+        getWorkloadsList,
+        getWorkloadsPods
     }
 
-    def:pub DeploymentsPage -> JsxElement {
+    def:pub WorkloadsPage -> JsxElement {
         has isLoading: bool = True,
             metricsAvailable: bool = True,
             unavailableReason: str = "",
             summary: dict = {},
-            deployments: list = [],
+            workloads: list = [],
+            pods: list = [],
+            kindFilter: str = "All",
             autoRefresh: bool = True;
 
         auth = useAuth();
 
         async def loadAll {
-            sumRes = await getDeploymentsSummary(auth["authToken"]);
-            listRes = await getDeploymentsList(auth["authToken"]);
+            sumRes = await getWorkloadsSummary(auth["authToken"]);
+            listRes = await getWorkloadsList(auth["authToken"]);
+            podsRes = await getWorkloadsPods(auth["authToken"]);
             sumData = {};
             if sumRes["ok"] and sumRes["data"] {
                 sumData = sumRes["data"];
@@ -34,10 +42,15 @@ cl {
             if listRes["ok"] and listRes["data"] {
                 listData = listRes["data"];
             }
+            podsData = {};
+            if podsRes["ok"] and podsRes["data"] {
+                podsData = podsRes["data"];
+            }
             metricsAvailable = bool(sumData["metrics_available"]);
             unavailableReason = sumData["reason"] or "";
             summary = sumData;
-            deployments = listData["deployments"] or [];
+            workloads = listData["workloads"] or [];
+            pods = podsData["pods"] or [];
             isLoading = False;
         }
 
@@ -92,6 +105,26 @@ cl {
                 </span>;
         }
 
+        def kindBadge(kind: str) -> JsxElement {
+            return
+                <span
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700"
+                >
+                    {kind}
+                </span>;
+        }
+
+        def phaseBadge(phase: str) -> JsxElement {
+            phaseMap = {
+                "Running": "Healthy",
+                "Pending": "Starting",
+                "Succeeded": "Healthy",
+                "Failed": "Broken",
+                "Unknown": "Unknown"
+            };
+            return statusBadge(phaseMap[phase] or phase);
+        }
+
         def renderStatCard(
             label: str, value: any, sub: str = "", tone: str = "white"
         ) -> JsxElement {
@@ -112,12 +145,27 @@ cl {
                 </div>;
         }
 
+        def chip(label: str, active: bool) -> JsxElement {
+            base = "px-3 py-1 rounded-full text-xs font-medium cursor-pointer border ";
+            cls = base + ("bg-teal-500/20 text-teal-200 border-teal-500/40"
+                if active
+                else "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200");
+            return
+                <button
+                    key={label}
+                    className={cls}
+                    onClick={lambda e: any { kindFilter = label; }}
+                >
+                    {label}
+                </button>;
+        }
+
         if isLoading {
             return
                 <div
                     className="bg-slate-900 border border-slate-800 rounded-lg p-8 text-center"
                 >
-                    <p className="text-sm text-slate-400">Loading deployments...</p>
+                    <p className="text-sm text-slate-400">Loading workloads...</p>
                 </div>;
         }
 
@@ -134,12 +182,12 @@ cl {
                 </div>;
         }
 
-        pods = summary["pods"] or {};
+        summaryPods = summary["pods"] or {};
         nodes = summary["nodes"] or {};
         traffic = summary["traffic"] or {};
-        running = pods["running"] or 0;
-        pending = pods["pending"] or 0;
-        failed = pods["failed"] or 0;
+        running = summaryPods["running"] or 0;
+        pending = summaryPods["pending"] or 0;
+        failed = summaryPods["failed"] or 0;
         nodesReady = nodes["ready"] or 0;
         nodesTotal = nodes["total"] or 0;
         rps = traffic["requests_per_sec"] or 0;
@@ -161,6 +209,27 @@ cl {
         if errPct >= 1 {
             errTone = "bad";
         }
+
+        # Apply the chip filter to the in-memory list. "Pods" switches to the
+        # per-pod data shape; everything else filters the aggregated rows.
+        filteredWorkloads = [];
+        if kindFilter == "All" {
+            filteredWorkloads = workloads;
+        } elif kindFilter != "Pods" {
+            singularMap = {
+                "Deployments": "Deployment",
+                "StatefulSets": "StatefulSet",
+                "DaemonSets": "DaemonSet"
+            };
+            wantKind = singularMap[kindFilter] or kindFilter;
+            for w in workloads {
+                if w["kind"] == wantKind {
+                    filteredWorkloads.append(w);
+                }
+            }
+        }
+
+        showPods = kindFilter == "Pods";
 
         return
             <div className="space-y-4">
@@ -188,16 +257,21 @@ cl {
                     <div
                         className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
                     >
-                        <h2 className="text-sm font-medium text-white">Deployments</h2>
+                        <h2 className="text-sm font-medium text-white">Workloads</h2>
                         <p className="text-xs text-slate-500">
-                            {str(len(deployments))} found, refreshing every 10s
+                            refreshing every 10s
                         </p>
                     </div>
-                    {len(deployments) == 0
+                    <div className="flex gap-2 px-4 py-3 border-b border-slate-800">
+                        {[chip(k, kindFilter == k) for k in [
+                            "All", "Deployments", "StatefulSets", "DaemonSets", "Pods"
+                        ]]}
+                    </div>
+                    {not showPods and len(filteredWorkloads) == 0
                     and <div className="p-6 text-center text-sm text-slate-500">
-                        No deployments visible.
+                        No workloads visible.
                     </div>}
-                    {len(deployments) > 0
+                    {not showPods and len(filteredWorkloads) > 0
                     and <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead
@@ -205,7 +279,10 @@ cl {
                             >
                                 <tr>
                                     <th className="text-left px-4 py-2 font-medium">
-                                        Deployment
+                                        Name
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Kind
                                     </th>
                                     <th className="text-left px-4 py-2 font-medium">
                                         Status
@@ -227,30 +304,99 @@ cl {
                             <tbody>
                                 {[
                                     <tr
-                                        key={d["name"]}
+                                        key={w["kind"] + "/" + w["name"]}
                                         className="border-t border-slate-800"
                                     >
                                         <td className="px-4 py-2 text-white">
-                                            {d["name"]}
+                                            {w["name"]}
                                         </td>
                                         <td className="px-4 py-2">
-                                            {statusBadge(d["status"])}
+                                            {kindBadge(w["kind"])}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            {statusBadge(w["status"])}
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
-                                            {d["replicas_ready"]}{" / "}{d[
+                                            {w["replicas_ready"]}{" / "}{w[
                                                 "replicas_desired"
                                             ]}
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
-                                            {d["cpu_cores"]}{" cores"}
+                                            {w["cpu_cores"]}{" cores"}
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
-                                            {formatBytes(d["memory_bytes"])}
+                                            {formatBytes(w["memory_bytes"])}
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
-                                            {d["restarts_last_hour"]}
+                                            {w["restarts_last_hour"]}
                                         </td>
-                                    </tr> for d in deployments
+                                    </tr> for w in filteredWorkloads
+                                ]}
+                            </tbody>
+                        </table>
+                    </div>}
+                    {showPods and len(pods) == 0
+                    and <div className="p-6 text-center text-sm text-slate-500">
+                        No pods visible.
+                    </div>}
+                    {showPods and len(pods) > 0
+                    and <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead
+                                className="text-xs text-slate-500 uppercase tracking-wider bg-slate-950/40"
+                            >
+                                <tr>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Pod
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Workload
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Phase
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Node
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        CPU
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Memory
+                                    </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Restarts (1h)
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[
+                                    <tr
+                                        key={p["name"]}
+                                        className="border-t border-slate-800"
+                                    >
+                                        <td className="px-4 py-2 text-white">
+                                            {p["name"]}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {p["owner"]}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            {phaseBadge(p["phase"])}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {p["node"]}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {p["cpu_cores"]}{" cores"}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {formatBytes(p["memory_bytes"])}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {p["restarts_last_hour"]}
+                                        </td>
+                                    </tr> for p in pods
                                 ]}
                             </tbody>
                         </table>
