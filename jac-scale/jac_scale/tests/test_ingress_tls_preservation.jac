@@ -1,190 +1,146 @@
-"""Tests for TLS-state preservation in IngressDeployer._deploy_ingress_resource.
+"""Tests for TLS-safe redeployment in IngressDeployer._deploy_ingress_resource.
 
-Every redeployment via jac start --scale calls _deploy_ingress_resource, which
-uses replace_namespaced_ingress (a full PUT).  Without reading the existing
-Ingress first, the PUT wipes spec.tls, the rule host, and the TLS annotations
-that --enable-tls previously wrote.  These tests guard that regression.
+_deploy_ingress_resource uses patch_namespaced_ingress so it only sends the
+fields jac-scale owns.  spec.tls and spec.rules[*].host are written exclusively
+by enable_tls and are intentionally absent from the patch body — the API server
+leaves them untouched without any read-before-write logic.
 """
 
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jac_scale.targets.kubernetes { ingress as ingress_module }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def _tls_ingress_dict(host: str, secret: str) -> dict {
-    return {
-        'metadata': {
-            'annotations': {
-                'cert-manager.io/issuer': 'letsencrypt-prod',
-                'nginx.ingress.kubernetes.io/ssl-redirect': 'true',
-                'nginx.ingress.kubernetes.io/force-ssl-redirect': 'true',
-                'jac-scale/domain': host
-            }
-        },
-        'spec': {
-            'ingressClassName': 'test-ns-myapp-nginx',
-            'rules': [{'host': host, 'http': {'paths': [{'path': '/'}]}}],
-            'tls': [{'hosts': [host], 'secretName': secret}]
-        }
-    };
-}
-
-def _no_tls_ingress_dict -> dict {
-    return {
-        'metadata': {'annotations': {}},
-        'spec': {
-            'ingressClassName': 'test-ns-myapp-nginx',
-            'rules': [{'http': {'paths': [{'path': '/'}]}}],
-            'tls': []
-        }
-    };
-}
-
 def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {
     cfg = KubernetesConfig(domain=domain, cert_manager_email=cert_email);
     return IngressDeployer(k8s_config=cfg);
 }
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-test "deploy ingress resource preserves tls spec on redeployment" {
-    # Verifies the primary regression: a redeployment after --enable-tls must
-    # keep spec.tls, the rule host, and the three TLS annotations intact.
-    networking_v1 = unittest.mock.MagicMock();
-    core_v1 = unittest.mock.MagicMock();
-    mock_api_client = unittest.mock.MagicMock();
-    mock_api_client.sanitize_for_serialization.return_value = _tls_ingress_dict(
-        'example.com', 'myapp-tls'
-    );
-
-    with unittest.mock.patch.object(
-        ingress_module.client, 'ApiClient', lambda : mock_api_client
-    ) {
-        deployer = _make_deployer(domain='example.com', cert_email='a@b.com');
-        deployer._deploy_ingress_resource(
-            'myapp',
-            'test-ns',
-            'test-ns-myapp-nginx',
-            8000,
-            False,
-            False,
-            False,
-            networking_v1,
-            core_v1
-        );
-    }
-
-    call_args = networking_v1.replace_namespaced_ingress.call_args;
-    body = call_args[1]['body'];
-
-    assert body['spec'].get('tls') == [
-        {'hosts': ['example.com'], 'secretName': 'myapp-tls'}
-    ] , "spec.tls must be carried forward from the existing Ingress";
-    assert body['spec']['rules'][0].get('host') == 'example.com' , "rule host must be carried forward from the existing Ingress";
-    ann = body['metadata']['annotations'];
-    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' , "cert-manager.io/issuer annotation must be preserved";
-    assert ann.get('nginx.ingress.kubernetes.io/ssl-redirect') == 'true' , "ssl-redirect annotation must be preserved";
-    assert ann.get('nginx.ingress.kubernetes.io/force-ssl-redirect') == 'true' , "force-ssl-redirect annotation must be preserved";
-}
-
-test "deploy ingress resource uses wildcard rule when no existing ingress" {
-    # First deploy: Ingress does not exist yet (read returns 404).
-    # The new body must have no host and no tls — behaviour identical to before the fix.
-    networking_v1 = unittest.mock.MagicMock();
-    core_v1 = unittest.mock.MagicMock();
-    networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
-
-    deployer = _make_deployer();
+def _call_deploy(
+    deployer: IngressDeployer,
+    networking_v1: any,
+    core_v1: any,
+    redis_dashboard: bool = False
+) {
     deployer._deploy_ingress_resource(
         'myapp',
         'test-ns',
         'test-ns-myapp-nginx',
         8000,
         False,
-        False,
+        redis_dashboard,
         False,
         networking_v1,
         core_v1
     );
-
-    call_args = networking_v1.replace_namespaced_ingress.call_args;
-    body = call_args[1]['body'];
-    assert body['spec'].get('tls') is None , "spec.tls must be absent on first deploy";
-    assert body['spec']['rules'][0].get('host') is None , "rule host must be absent on first deploy";
 }
 
-test "deploy ingress resource re-raises non-404 read error" {
-    # A 500 (or any non-404) from read_namespaced_ingress is a real API failure
-    # and must not be swallowed — only 404 (Ingress not yet created) is expected.
+# ── Tests ─────────────────────────────────────────────────────────────────────
+test "deploy uses patch not replace for main ingress" {
+    # _deploy_ingress_resource must call patch_namespaced_ingress, never
+    # replace_namespaced_ingress, so that spec.tls is never sent as part of the
+    # body and is therefore never wiped by a full PUT.
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
-    networking_v1.read_namespaced_ingress.side_effect = ApiException(status=500);
+
+    deployer = _make_deployer(domain='example.com', cert_email='a@b.com');
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    assert networking_v1.patch_namespaced_ingress.called , "patch_namespaced_ingress must be called on redeployment";
+    assert not networking_v1.replace_namespaced_ingress.called , "replace_namespaced_ingress must never be called";
+}
+
+test "patch body never contains spec.tls or host" {
+    # The patch body must not include spec.tls or rules[*].host — those fields
+    # belong to enable_tls and must be left untouched by redeployment.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+
+    deployer = _make_deployer(domain='example.com', cert_email='a@b.com');
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
+    assert 'tls' not in body.get('spec', {}) , "spec.tls must not appear in the patch body";
+    rules = body.get('spec', {}).get('rules', []);
+    assert len(rules) > 0 , "patch body must include at least one rule";
+    assert 'host' not in rules[0] , "rules[*].host must not appear in the patch body";
+}
+
+test "patch body contains jac-scale-owned annotations" {
+    # The patch must carry jac-scale's own annotations so nginx limits and
+    # session affinity settings are applied on every deploy.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+
+    deployer = _make_deployer(domain='example.com', cert_email='a@b.com');
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
+    ann = body['metadata']['annotations'];
+    assert 'nginx.ingress.kubernetes.io/proxy-body-size' in ann , "proxy-body-size annotation must be present";
+    assert 'nginx.ingress.kubernetes.io/limit-rps' in ann , "limit-rps annotation must be present";
+    assert ann.get('jac-scale/domain') == 'example.com' , "jac-scale/domain annotation must match config";
+    # TLS annotations must NOT be written by _deploy_ingress_resource
+    assert 'cert-manager.io/issuer' not in ann , "cert-manager.io/issuer must not be set by _deploy_ingress_resource";
+    assert 'nginx.ingress.kubernetes.io/ssl-redirect' not in ann , "ssl-redirect must not be set by _deploy_ingress_resource";
+    assert 'nginx.ingress.kubernetes.io/force-ssl-redirect' not in ann , "force-ssl-redirect must not be set by _deploy_ingress_resource";
+}
+
+test "first deploy creates ingress when patch returns 404" {
+    # On a brand-new cluster there is no Ingress yet; patch returns 404 so
+    # the code must fall back to create_namespaced_ingress.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
+
+    deployer = _make_deployer();
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    assert networking_v1.create_namespaced_ingress.called , "create_namespaced_ingress must be called when patch returns 404";
+    # Created body must also not contain tls or host
+    create_body = networking_v1.create_namespaced_ingress.call_args[1]['body'];
+    assert 'tls' not in create_body.get('spec', {}) , "spec.tls must not appear in create body";
+    assert 'host' not in create_body.get('spec', {}).get('rules', [{}])[0] , "host must not appear in create body";
+}
+
+test "non-404 patch error propagates" {
+    # A 500 (or any non-404) from patch_namespaced_ingress is a real API
+    # failure and must not be swallowed.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=500);
 
     deployer = _make_deployer();
     raised = False;
     try {
-        deployer._deploy_ingress_resource(
-            'myapp',
-            'test-ns',
-            'test-ns-myapp-nginx',
-            8000,
-            False,
-            False,
-            False,
-            networking_v1,
-            core_v1
-        );
+        _call_deploy(deployer, networking_v1, core_v1);
     } except ApiException as e {
         raised = e.status == 500;
     }
-    assert raised , "Non-404 ApiException from read_namespaced_ingress must propagate";
+    assert raised , "Non-404 ApiException from patch_namespaced_ingress must propagate";
 }
 
-test "deploy ingress resource preserves redis insight tls on redeployment" {
-    # The RedisInsight Ingress has the same PUT-wipe risk as the main Ingress.
-    # sanitize_for_serialization is called once per Ingress; side_effect drives
-    # the main-ingress read to return no TLS and the redis read to return TLS.
+test "redis ingress patch body never contains spec.tls or host" {
+    # The RedisInsight Ingress patch must also omit spec.tls and rules[*].host.
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
-    mock_api_client = unittest.mock.MagicMock();
-    mock_api_client.sanitize_for_serialization.side_effect = [
-        _no_tls_ingress_dict(),
-        _tls_ingress_dict('example.com', 'myapp-tls')
-    ];
 
-    with unittest.mock.patch.object(
-        ingress_module.client, 'ApiClient', lambda : mock_api_client
-    ) {
-        cfg = KubernetesConfig(
-            domain='example.com',
-            cert_manager_email='a@b.com',
-            redis_insight_username='admin',
-            redis_insight_password='secret'
-        );
-        deployer = IngressDeployer(k8s_config=cfg);
-        deployer._deploy_ingress_resource(
-            'myapp',
-            'test-ns',
-            'test-ns-myapp-nginx',
-            8000,
-            False,
-            True,
-            False,
-            networking_v1,
-            core_v1
-        );
-    }
+    cfg = KubernetesConfig(
+        domain='example.com',
+        cert_manager_email='a@b.com',
+        redis_insight_username='admin',
+        redis_insight_password='secret'
+    );
+    deployer = IngressDeployer(k8s_config=cfg);
+    _call_deploy(deployer, networking_v1, core_v1, redis_dashboard=True);
 
-    # replace_namespaced_ingress is called twice: main ingress first, redis second.
-    all_calls = networking_v1.replace_namespaced_ingress.call_args_list;
-    assert len(all_calls) == 2 , "Expected two replace_namespaced_ingress calls";
+    # patch_namespaced_ingress is called twice: main ingress, then redis ingress.
+    all_calls = networking_v1.patch_namespaced_ingress.call_args_list;
+    assert len(all_calls) == 2 , "Expected two patch_namespaced_ingress calls";
     redis_body = all_calls[1][1]['body'];
-
-    assert redis_body['spec'].get('tls') == [
-        {'hosts': ['example.com'], 'secretName': 'myapp-tls'}
-    ] , "RedisInsight Ingress spec.tls must be preserved on redeployment";
-    assert redis_body['spec']['rules'][0].get('host') == 'example.com' , "RedisInsight Ingress rule host must be preserved on redeployment";
-    ann = redis_body['metadata']['annotations'];
-    assert ann.get('cert-manager.io/issuer') == 'letsencrypt-prod' , "cert-manager.io/issuer must be preserved on RedisInsight Ingress";
+    assert 'tls' not in redis_body.get('spec', {}) , "RedisInsight Ingress spec.tls must not appear in patch body";
+    redis_rules = redis_body.get('spec', {}).get('rules', []);
+    assert len(redis_rules) > 0 , "RedisInsight patch body must include at least one rule";
+    assert 'host' not in redis_rules[0] , "RedisInsight Ingress rules[*].host must not appear in patch body";
 }
