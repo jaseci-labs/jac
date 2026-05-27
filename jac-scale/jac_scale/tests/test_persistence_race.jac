@@ -182,7 +182,7 @@ test "concurrent writes to same root must not lose edges (race condition proof)"
                 server.wait(timeout=2);
             }
         }
-        system_dbs = {"admin","config","local"};
+        system_dbs = {"admin", "config", "local"};
         for db_name in mongo_client.list_database_names() {
             if db_name not in system_dbs {
                 mongo_client.drop_database(db_name);

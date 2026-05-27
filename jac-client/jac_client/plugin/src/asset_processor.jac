@@ -7,7 +7,28 @@ import from jaclang.project.config { get_config }
 """Handles copying of asset files (CSS, images, fonts, etc.) between directories."""
 class AssetProcessor {
     with entry {
-        ASSET_EXTENSIONS = {'.css','.scss','.sass','.less','.svg','.png','.jpg','.jpeg','.gif','.webp','.ico','.woff','.woff2','.ttf','.eot','.otf','.mp4','.webm','.mp3','.wav'};
+        ASSET_EXTENSIONS = {
+            '.css',
+            '.scss',
+            '.sass',
+            '.less',
+            '.svg',
+            '.png',
+            '.jpg',
+            '.jpeg',
+            '.gif',
+            '.webp',
+            '.ico',
+            '.woff',
+            '.woff2',
+            '.ttf',
+            '.eot',
+            '.otf',
+            '.mp4',
+            '.webm',
+            '.mp3',
+            '.wav'
+        };
     }
 
     def copy_assets(

@@ -1048,7 +1048,7 @@ test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
     # validated element-wise. Untyped triggers (`with entry`) are valid.
-    # The fixture has 6 walker-side bad cases (E1116) and 5 node/edge
+    # The fixture has 7 walker-side bad cases (E1116) and 5 node/edge
     # bad cases (E1117); the good cases must produce neither diagnostic.
     path = os.path.join(CHECKER_FIXTURES, "checker_ability_trigger_archetype.jac");
     program = JacProgram();
@@ -1059,7 +1059,7 @@ test "ability_trigger_archetype" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 6 , f"Expected 6 E1116 (invalid walker trigger), got {len(
+    assert len(e1116) == 7 , f"Expected 7 E1116 (invalid walker trigger), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
     e1117 = [
@@ -1070,6 +1070,40 @@ test "ability_trigger_archetype" {
     assert len(e1117) == 5 , f"Expected 5 E1117 (invalid node/edge trigger), got {len(
         e1117
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1117);
+}
+
+test "root_keyword_as_walker_trigger" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_root_keyword_trigger.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1116 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1116"
+    ];
+    assert len(e1116) == 7 , f"Expected 7 E1116 (3 root keyword + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
+        e1116
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
+    var_errors = [
+        e
+        for e in e1116
+        if "my_node" in e.pretty_print()
+    ];
+    # `N()` call-expr instance: no name leaf, so diagnostic uses the type name `N`.
+    call_errors = [
+        e
+        for e in e1116
+        if 'got "N"' in e.pretty_print()
+    ];
+    root_errors = [
+        e
+        for e in e1116
+        if e not in var_errors and e not in call_errors
+    ];
+    assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
+    assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
+    assert len(call_errors) == 1 , "Expected 1 E1116 for `N()` call-expr instance trigger";
 }
 
 test "undefined_osp_position" {
@@ -2823,6 +2857,21 @@ test "union_and_optional_special_forms" {
         ^^^^^^^^^^^
     """,
         program.errors_had[2].pretty_print()
+    );
+}
+
+"""Union[('A', 'B')] with string forward references resolves to actual types, not Literal["A"]."""
+test "union_string_forward_refs" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , (
+        f"Expected 0 errors — Union[('Foo','Bar')] should resolve to Foo|Bar not "
+        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: " + "\n".join(
+            [e.pretty_print() for e in program.errors_had]
+        )
     );
 }
 

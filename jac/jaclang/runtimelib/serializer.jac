@@ -1,7 +1,7 @@
 """JSON serialization for Jac objects with type-safe deserialization."""
 
 import logging;
-import from dataclasses { fields, is_dataclass }
+import from dataclasses { fields, is_dataclass, MISSING }
 import from datetime { date, datetime, time }
 import from enum { Enum }
 import from hashlib { sha256 }

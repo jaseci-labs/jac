@@ -12,3 +12,12 @@ obj Anchor(ArchetypeProtocol) {
     def give_access(caller_id: UUID, read_write: bool = False);
     def revoke_access(caller_id: UUID);
 }
+
+@restspec(protocol="ws")
+async walker my_ws_stream {
+    has action: str = "";
+
+    can start with `root entry {
+        report {"ok": True};
+    }
+}

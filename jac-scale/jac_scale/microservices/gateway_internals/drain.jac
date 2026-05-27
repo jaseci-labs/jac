@@ -9,7 +9,7 @@ import from threading { Lock as _DrainLock }
 
 glob logger = logging.getLogger(__name__),
      # Liveness must stay 200 mid-drain; readiness has its own draining handler.
-     _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live","/healthz/ready"};
+     _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live", "/healthz/ready"};
 
 
 # Pre-set: inflight=0 so wait_for_zero returns True immediately.
