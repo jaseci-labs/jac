@@ -1,12 +1,22 @@
-"""Union[('A', 'B')] should resolve strings as type names, not Literal["A"] | Literal["B"]."""
+"""Union/Optional string forward refs resolve to types, not Literal[...]."""
 
-import from typing { Union }
-
-glob MyType = Union[('Foo', 'Bar')];
+import from typing { Union, Optional }
 
 obj Foo {}
 obj Bar {}
 
-def make -> MyType {
-    return Foo();  # Error before fix: Cannot return Foo, expected Literal["Foo"] | Literal["Bar"]
+glob MyTypeTuple = Union[('Foo', 'Bar')];
+glob MyTypeSingle = Union['Foo'];
+glob MyTypeOptional = Optional['Foo'];
+
+def make_tuple -> MyTypeTuple {
+    return Foo();
+}
+
+def make_single -> MyTypeSingle {
+    return Foo();
+}
+
+def make_optional -> MyTypeOptional {
+    return Foo();
 }
