@@ -344,21 +344,20 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get or create the global JacScaleConfig instance."""
+"""Get or create the path-keyed JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
-    global _scale_config_instance;
-    if _scale_config_instance is not None {
-        return _scale_config_instance;
+    global _scale_config_instances;
+    resolved_path = (project_dir or Path.cwd()).resolve();
+    if resolved_path not in _scale_config_instances {
+        _scale_config_instances[resolved_path] = JacScaleConfig(resolved_path);
     }
-    new_instance = JacScaleConfig(project_dir);
-    _scale_config_instance = new_instance;
-    return new_instance;
+    return _scale_config_instances[resolved_path];
 }
 
-"""Reset the global config instance (useful for testing)."""
+"""Reset the path-keyed config instances (useful for testing)."""
 impl reset_scale_config -> None {
-    global _scale_config_instance;
-    _scale_config_instance = None;
+    global _scale_config_instances;
+    _scale_config_instances.clear();
 }
 
 """Get telemetry configuration from jac.toml."""

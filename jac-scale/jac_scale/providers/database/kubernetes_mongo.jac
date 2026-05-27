@@ -24,9 +24,21 @@ obj KubernetesMongoProvider(DatabaseProvider) {
 
         scale_config = get_scale_config();
         k8s_config = scale_config.get_kubernetes_config();
-        mongodb_username = k8s_config.get('mongodb_root_username', 'admin');
-        mongodb_password = k8s_config.get('mongodb_root_password', 'password');
-        mongodb_storage_size = k8s_config.get('mongodb_storage_size', '1Gi');
+
+        mongodb_username = self.config.get('mongodb_root_username');
+        if mongodb_username is None {
+            mongodb_username = k8s_config.get('mongodb_root_username', 'admin');
+        }
+
+        mongodb_password = self.config.get('mongodb_root_password');
+        if mongodb_password is None {
+            mongodb_password = k8s_config.get('mongodb_root_password', 'password');
+        }
+
+        mongodb_storage_size = self.config.get('mongodb_storage_size');
+        if mongodb_storage_size is None {
+            mongodb_storage_size = k8s_config.get('mongodb_storage_size', '1Gi');
+        }
         connection_string = f"mongodb://{mongodb_username}:{mongodb_password}@{mongodb_service_name}:{mongodb_port}";
 
         mongodb_secret = {
@@ -173,8 +185,17 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         if not self.connection_string {
             scale_config = get_scale_config();
             k8s_config = scale_config.get_kubernetes_config();
-            mongodb_username = k8s_config.get('mongodb_root_username', 'admin');
-            mongodb_password = k8s_config.get('mongodb_root_password', 'password');
+
+            mongodb_username = self.config.get('mongodb_root_username');
+            if mongodb_username is None {
+                mongodb_username = k8s_config.get('mongodb_root_username', 'admin');
+            }
+
+            mongodb_password = self.config.get('mongodb_root_password');
+            if mongodb_password is None {
+                mongodb_password = k8s_config.get('mongodb_root_password', 'password');
+            }
+
             service_name = f"{self.app_name}-mongodb-service";
             self.connection_string = f"mongodb://{mongodb_username}:{mongodb_password}@{service_name}:27017";
         }
