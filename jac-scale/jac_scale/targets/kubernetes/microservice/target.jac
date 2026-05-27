@@ -161,10 +161,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # `[plugins.scale.microservices.logs].enabled`. Surfaces a failure
         # in `details` but does not fail the deploy - the app is healthy
         # without logs; the operator can re-run once Loki settles.
+        observability_err: str = "";
         try {
             self._deploy_observability(app_name);
         } except Exception as e {
-            bundle["observability_error"] = str(e);
+            observability_err = str(e);
+            bundle["observability_error"] = observability_err;
             if self.logger {
                 self.logger.warn(
                     f"Observability stack deploy reported a non-fatal error: {e}",
@@ -174,14 +176,24 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         svc_count = len(bundle["pod_specs"]) - 1;
-        return DeploymentResult(
-            success=True,
-            message=(
-                f"Applied {svc_count} service Deployment+Service pair(s) "
-                f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
-            ),
-            details=bundle
+        success_msg = (
+            f"Applied {svc_count} service Deployment+Service pair(s) "
+            f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
         );
+        # Append the observability error to the message so a user
+        # watching stdout sees the failure instead of assuming
+        # everything worked. The deploy is still success=True because
+        # the app pods are healthy without logs.
+        if observability_err {
+            success_msg = (
+                f"{success_msg} "
+                f"NOTE: observability stack deploy failed - "
+                f"`{observability_err}`. The app is running but pod logs "
+                f"are not being shipped to Loki. Re-run `jac start --scale` "
+                f"once the underlying issue is fixed."
+            );
+        }
+        return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
     """M-14.a: deploy Loki + Grafana Alloy (+ the surrounding Prometheus
