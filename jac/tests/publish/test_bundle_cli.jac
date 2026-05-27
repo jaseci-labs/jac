@@ -5,8 +5,7 @@ import tempfile;
 import shutil;
 import from pathlib { Path }
 import from subprocess { run }
-
-glob _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
+import from jaclang.cli.commands.project { _PRECOMPILE_MINOR_RANGE }
 
 
 """Return the cpython-3XX tags for every python3.X present on PATH."""

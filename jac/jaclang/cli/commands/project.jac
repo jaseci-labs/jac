@@ -3,7 +3,9 @@
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
-glob registry = get_registry();
+glob registry = get_registry(),
+     # Python 3.X minor versions targeted by `jac bundle --precompile`.
+     _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
 
 """Initialize a new Jac project."""
 @registry.command(

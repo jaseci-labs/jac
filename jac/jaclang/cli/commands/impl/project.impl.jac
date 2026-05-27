@@ -9,6 +9,7 @@ import base64;
 import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.project.config { JacConfig }
 
 """Initialize a new Jac project."""
 impl create(
@@ -1100,8 +1101,6 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-glob _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
-
 """Return (executable, version_tag) for every python3.X found on PATH."""
 def _find_precompile_pythons -> list[tuple[str, str]] {
     found: list[tuple[str, str]] = [];
@@ -1167,7 +1166,7 @@ def _run_precompile_in_venv(
 }
 
 """Run precompile for all Python versions found on PATH. Returns 0 on success, 1 on error."""
-def _precompile_all_pythons(config) -> int {
+def _precompile_all_pythons(config: JacConfig) -> int {
     import from jaclang.project.dependencies { DependencyInstaller }
 
     _jac_path = sys.modules.get("jaclang")?.__path__;
