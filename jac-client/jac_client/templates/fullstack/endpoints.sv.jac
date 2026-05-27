@@ -1,85 +1,42 @@
-"""Todo App - Server-Side Data Layer.
+"""{{name}} - Server-Side Data Layer.
 
-Each user gets their own todo list automatically!
-When authenticated, `root spawn` uses the user's personal root node.
+Messages are stored as `Message` nodes on the graph and persist across
+restarts. The walkers below are the API the client calls with `root spawn`.
+
+They are `:pub`, so they need no login: `root` is the shared global graph and
+every visitor reads and writes the same guestbook. Switch a walker to `:priv`
+to require authentication and give each user their own isolated `root`.
+
+The walkers report `Message` nodes directly. Typing `reports` as
+`list[Message]` makes `(spawn W).reports` a typed `list[Message]` on the client,
+so the UI gets `.author` / `.text` dot access instead of untyped dict keys.
 """
 
-# ========================================
-# Data Models
-# ========================================
-node Todo {
-    has id: str,
-        title: str,
-        completed: bool = False;
+node Message {
+    has author: str,
+        text: str;
 }
 
-glob todo_counter: int = 0;
+walker:pub PostMessage {
+    """Append a new message and report the created node."""
+    has author: str,
+        text: str,
+        reports: list[Message] = [];
 
-# ========================================
-# Walkers (API Operations)
-# ========================================
-walker:priv AddTodo {
-    """Add a new todo item to the user's list."""
-    has title: str;
-
-    can create with Root entry {
-        global todo_counter;
-        todo_counter += 1;
-        new_id = "todo_" + str(todo_counter);
-        new_todo = here ++> Todo(id=new_id, title=self.title, completed=False);
-        if new_todo {
-            report new_todo[0];
-        }
+    can post with Root entry {
+        report (here ++> Message(author=self.author, text=self.text))[0];
     }
 }
 
-walker:priv ListTodos {
-    """List all todo items for the current user."""
-    has todos: list[dict] = [];
+walker:pub ListMessages {
+    """Report every message in the guestbook, one report per node."""
+    has reports: list[Message] = [];
 
     can collect with Root entry {
         visit [-->];
     }
 
-    can gather with Todo entry {
-        self.todos.append(
-            {"id": here.id, "title": here.title, "completed": here.completed}
-        );
-    }
-
-    can report_all with Root exit {
-        report self.todos;
-    }
-}
-
-walker:priv ToggleTodo {
-    """Toggle a todo's completed status."""
-    has todo_id: str;
-
-    can search with Root entry {
-        visit [-->];
-    }
-
-    can toggle with Todo entry {
-        if here.id == self.todo_id {
-            here.completed = not here.completed;
-            report {"id": here.id, "completed": here.completed};
-        }
-    }
-}
-
-walker:priv DeleteTodo {
-    """Delete a todo item."""
-    has todo_id: str;
-
-    can search with Root entry {
-        visit [-->];
-    }
-
-    can delete with Todo entry {
-        if here.id == self.todo_id {
-            del here;
-            report {"deleted": self.todo_id};
-        }
+    can gather with Message entry {
+        report here;
     }
 }
