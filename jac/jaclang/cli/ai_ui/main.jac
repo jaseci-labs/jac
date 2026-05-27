@@ -11,7 +11,9 @@ import from server {
     agent_graph,
     agent_reset,
     agent_stop,
-    agent_stream
+    agent_stream,
+    agent_settings,
+    agent_apply_settings
 }
 import from server {
     UiEvent,
@@ -19,7 +21,9 @@ import from server {
     TurnStatsView,
     GraphNode,
     GraphEdge,
-    GraphData
+    GraphData,
+    SettingsView,
+    SettingsResult
 }
 
 to cl:
