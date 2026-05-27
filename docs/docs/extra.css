@@ -348,7 +348,7 @@ body,
 .md-tabs[data-md-state],
 .md-tabs[data-md-state="hidden"] {
     background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%) !important;
-    border-bottom: 1px solid #444 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-top: 1px solid #333 !important;
     padding: 0 24px !important;
     position: fixed !important;
@@ -366,7 +366,7 @@ body,
     visibility: visible !important;
     opacity: 1 !important;
     overflow: visible !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: none !important;
     pointer-events: auto !important;
 }
 
@@ -423,20 +423,45 @@ body,
 }
 
 .md-tabs__link:hover {
-    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.06) !important;
     color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.12) !important;
-    transform: translateY(-1px) !important;
+    border-color: transparent !important;
+    transform: none !important;
+}
+
+/* Don't restyle the active tab on hover — keep it fused with the body */
+.md-tabs__item--active .md-tabs__link:hover,
+.md-tabs__link--active:hover {
+    background: #1a1a1a !important;
+    transform: none !important;
 }
 
 
+/* Chrome-style active tab: fills bar, rounded top, fuses with body below */
+.md-tabs__item--active,
+.md-tabs__item--active[data-md-state] {
+    display: inline-flex !important;
+    align-items: stretch !important;
+    height: 56px !important;
+}
+
 .md-tabs__item--active .md-tabs__link,
 .md-tabs__link--active {
-    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%) !important;
+    background: #1a1a1a !important;
     color: #ffffff !important;
     font-weight: 600 !important;
-    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3) !important;
-    border-color: rgba(255, 255, 255, 0.2) !important;
+    border-radius: 12px 12px 0 0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+    position: relative !important;
+    margin: 8px 4px 0 4px !important;
+    padding: 0 22px !important;
+    height: 49px !important;
+    line-height: 49px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    z-index: 1005 !important;
 }
 
 /* Sidebar */
@@ -1294,4 +1319,35 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 
 .youtube-video-link:hover::before {
     transform: translate(-40%, -50%) scale(1.1);
+}
+
+/* Highlight the "Ask JacGPT" top-level tab */
+.md-tabs__link[href="https://jac-gpt.jaseci.org"],
+.md-tabs__link[href="https://jac-gpt.jaseci.org/"] {
+    background: linear-gradient(135deg, #ff6b00 0%, #ff9a3c 100%) !important;
+    color: #fff !important;
+    padding: 0.35rem 0.85rem !important;
+    margin: 0.25rem 0.25rem 0.25rem 0.6rem !important;
+    border-radius: 999px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+    border: 1px solid transparent !important;
+    box-shadow: 0 2px 10px rgba(255, 107, 0, 0.4) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.md-tabs__link[href="https://jac-gpt.jaseci.org"]:hover,
+.md-tabs__link[href="https://jac-gpt.jaseci.org/"]:hover {
+    background: linear-gradient(135deg, #ff7a1a 0%, #ffab5e 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(255, 107, 0, 0.65) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+/* Sidebar/nav variant (smaller screens) */
+.md-nav__link[href="https://jac-gpt.jaseci.org"],
+.md-nav__link[href="https://jac-gpt.jaseci.org/"] {
+    color: #ff7a1a !important;
+    font-weight: 700;
 }

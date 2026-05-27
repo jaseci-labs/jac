@@ -293,7 +293,7 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user","/graph"};
+     _BUILTIN_EXACT: set[str] = {"/user", "/graph"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 

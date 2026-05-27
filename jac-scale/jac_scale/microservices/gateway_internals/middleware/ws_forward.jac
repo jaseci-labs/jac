@@ -9,7 +9,18 @@ import aiohttp;
 import asyncio;
 
 glob _logger = logging.getLogger(__name__),
-     _WS_HOP_BY_HOP: set[str] = {"host","connection","upgrade","sec-websocket-key","sec-websocket-version","sec-websocket-extensions","sec-websocket-protocol","sec-websocket-accept","transfer-encoding","keep-alive"};
+     _WS_HOP_BY_HOP: set[str] = {
+         "host",
+         "connection",
+         "upgrade",
+         "sec-websocket-key",
+         "sec-websocket-version",
+         "sec-websocket-extensions",
+         "sec-websocket-protocol",
+         "sec-websocket-accept",
+         "transfer-encoding",
+         "keep-alive"
+     };
 
 
 def _to_ws_scheme(url: str) -> str {

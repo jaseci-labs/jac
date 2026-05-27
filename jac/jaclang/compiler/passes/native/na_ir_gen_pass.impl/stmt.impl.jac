@@ -995,7 +995,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
                     bare_redecl = _redecl_tag.value;
                 }
-                _skip_redecl = bare_redecl in {"list","dict","set","frozenset"};
+                _skip_redecl = bare_redecl in {"list", "dict", "set", "frozenset"};
                 if not _skip_redecl {
                     _declared_type = self._resolve_jac_type(_redecl_tag);
                     if _declared_type is not None
@@ -1606,7 +1606,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     bare_name = tag_node.value;
                 }
                 infer_from_val = (
-                    bare_name in {"list","dict","set","frozenset"}
+                    bare_name in {"list", "dict", "set", "frozenset"}
                     and isinstance(value.type, ir.PointerType)
                 );
                 if infer_from_val {

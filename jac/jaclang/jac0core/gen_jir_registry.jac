@@ -26,7 +26,7 @@ glob MANUAL_FIELDS: dict[str, list] = {
      # body field from AstImplNeedingNode[T] is (Sequence | ImplDef | None), must be NODE_LIST
      # TODO: Remove this override by specifying T in unitree.jac, e.g.:
      #   obj Archetype(..., AstImplNeedingNode[Sequence[ArchBlockStmt] | ImplDef], ...)
-     BODY_NODE_LIST_CLASSES: set = {"Archetype","Ability","Enum"},
+     BODY_NODE_LIST_CLASSES: set = {"Archetype", "Ability", "Enum"},
      FIELD_KINDS: dict[str, int] = {
          "STRING": 0,
          "INT": 1,
@@ -42,8 +42,8 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_NODE_LIST": 11,
 
      },
-     ENUM_TYPES: set = {"SymbolType","SymbolAccess","EdgeDir","CodeContext"},
-     SKIP_PARAMS: set = {"self","kid","parent"};
+     ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
+     SKIP_PARAMS: set = {"self", "kid", "parent"};
 
 """Map a type annotation string to a FieldKind int."""
 def classify_type(ann_str: str) -> int {
