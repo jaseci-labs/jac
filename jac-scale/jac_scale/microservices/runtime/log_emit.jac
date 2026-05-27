@@ -64,10 +64,10 @@ class _JacJsonFormatter(logging.Formatter) {
             "ts": ts,
             "level": record.levelname,
             "service": _SVC_NAME,
-            "trace_id": getattr(record, "trace_id", None),
+            "trace_id": record?.trace_id,
             "msg": record.getMessage()
         };
-        extras = getattr(record, "svc_extras", None);
+        extras = record?.svc_extras;
         if extras {
             out["extras"] = extras;
         }
