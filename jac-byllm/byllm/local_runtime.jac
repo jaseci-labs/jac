@@ -226,7 +226,21 @@ local models need is injected by `BaseLLM.make_model_params`
 just this one, so it does not need to be re-applied here.
 """
 def filter_params(params: dict) -> dict {
-    accepted: set[str] = {"messages","tools","tool_choice","response_format","stop","max_tokens","temperature","top_p","top_k","presence_penalty","frequency_penalty","repeat_penalty","seed"};
+    accepted: set[str] = {
+        "messages",
+        "tools",
+        "tool_choice",
+        "response_format",
+        "stop",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "top_k",
+        "presence_penalty",
+        "frequency_penalty",
+        "repeat_penalty",
+        "seed"
+    };
     out: dict = {};
     for (k, v) in params.items() {
         if k in accepted and v is not None {

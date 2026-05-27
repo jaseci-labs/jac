@@ -186,6 +186,11 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": "0.0.0.0",
                             "description": "Server host"
+                        },
+                        "suppress_health_check_logs": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Suppress health-check endpoint access log entries (/docs, /, /openapi.json, /health, /healthz, /healthz/ready, /healthz/live) from CLI output and Kubernetes pod logs. Off by default."
                         }
                     }
                 },

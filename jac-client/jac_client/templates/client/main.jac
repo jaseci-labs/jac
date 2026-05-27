@@ -2,10 +2,7 @@
 
 cl import from .components.Button { Button }
 
-# Client-side component
-to cl:
-
-def:pub app -> JsxElement {
+cl def:pub app -> JsxElement {
     has count: int = 0;
 
     return

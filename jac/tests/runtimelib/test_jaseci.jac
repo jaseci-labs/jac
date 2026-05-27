@@ -355,7 +355,7 @@ test "get edge" {
             ) for n_id in node_ids
         ];
         assert len(node_objs) == 2;
-        assert {no["archetype"].tag for no in node_objs} == {"first","second"};
+        assert {no["archetype"].tag for no in node_objs} == {"first", "second"};
     } finally {
         Jac.set_base_path(_orig_base);
         shutil.rmtree(_tmpdir, ignore_errors=True);

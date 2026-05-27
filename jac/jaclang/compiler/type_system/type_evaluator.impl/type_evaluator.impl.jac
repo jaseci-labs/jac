@@ -1165,7 +1165,20 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Unbounded TypeVar - only universal object attributes are allowed
                     # Pyright: treats unbounded TypeVars as "object*"
-                    universal_attrs = {"__class__","__doc__","__dict__","__module__","__sizeof__","__str__","__repr__","__hash__","__eq__","__ne__","__init__","__new__"};
+                    universal_attrs = {
+                        "__class__",
+                        "__doc__",
+                        "__dict__",
+                        "__module__",
+                        "__sizeof__",
+                        "__str__",
+                        "__repr__",
+                        "__hash__",
+                        "__eq__",
+                        "__ne__",
+                        "__init__",
+                        "__new__"
+                    };
                     if attr_name in universal_attrs {
                         # Look up on object class
                         if self.prefetch.object_class {
@@ -1320,6 +1333,22 @@ impl TypeEvaluator._get_type_of_expression_core(
                             ua_vals = expr.right.slices[0].start;
                             if isinstance(ua_vals, uni.TupleVal) {
                                 for val in ua_vals.values {
+                                    if (
+                                        isinstance(val, uni.MultiString)
+                                        and val.strings
+                                        and isinstance(val.strings[0], uni.String)
+                                        and isinstance(val.strings[0].lit_value, str)
+                                    ) {
+                                        fwd = self._try_resolve_forward_ref(
+                                            val.strings[0]
+                                        );
+                                        if fwd is not None {
+                                            union_args.append(
+                                                self._convert_to_instance(fwd)
+                                            );
+                                            continue;
+                                        }
+                                    }
                                     union_args.append(
                                         self._convert_to_instance(
                                             self.get_type_of_expression(val)
