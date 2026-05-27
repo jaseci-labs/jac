@@ -2,7 +2,41 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.13 (Latest Release)
+## jac-client 0.3.18 (Latest Release)
+
+### New Features
+
+- **`JacAwaiting` runtime shim**: New ambient `JacAwaiting(props)` view declaration in `client_runtime.cl.jac` -- a thin `React.Suspense` wrapper that the compiler targets when lowering `try { ... } awaiting { ... }` clauses on the `cl` target.
+
+### Bug Fixes
+
+- **Fix: `undefined` JSX children no longer crash the page**: A `cl` component that forwards a missing or optional prop as a JSX child (e.g. `{props.maybe}` when `maybe` isn't passed) now renders cleanly instead of blanking the page with `TypeError: Cannot read properties of undefined (reading '__jacUnsafeHtml')`.
+- **Fix: reading client config no longer mutates non-client projects' `jac.toml`**: `JacClientConfig.load()` previously injected the client's npm dependency set (react, vite, typescript, …) and rewrote `jac.toml` as a side effect of merely reading client config, so any backend-only project that booted the API server gained a `[dependencies.npm]` section and had its file reserialized. The self-healing dependency migration/injection is now gated on the project having explicitly opted into the client via a `[plugins.client]` section; real client projects still self-heal as before.
+
+### Refactors
+
+- **Refactor: read base path via `Jac.get_base_path_dir()`**: Migrated to the new accessor; the prior `Jac.base_path_dir` class attribute has been removed.
+- **Leaner fullstack starter template**: The `jac create` fullstack template is trimmed to a simpler message-based example -- the todo-app scaffolding (AuthForm, Button, TodoItem components and the template README) is removed in favor of a single MessageCard component with reworked `frontend`, `endpoints`, and `main`.
+
+## jac-client 0.3.14
+
+### New Features
+
+- **Feature: Mobile target with Capacitor (Android + iOS)**: Adds `jac build --client mobile`, `jac start --client mobile`, and `jac setup mobile` -- wraps the Jac client (Vite) web app in a Capacitor native shell. Reuses the WebTarget pipeline for HTML/JS/CSS; auto-selects the dev host for Android emulator (10.0.2.2), iOS Simulator (127.0.0.1), and LAN for physical devices; supports HMR via Vite + Capacitor live-reload; checks Android/iOS toolchain prerequisites; auto-configures `adb reverse` for USB-connected Android devices. Closes #5460.
+
+### Bug Fixes
+
+- **Fix: Desktop sidecar bundles all PyPI dependencies correctly**: PyPI packages whose installation name differs from their import name no longer get silently dropped from the frozen desktop sidecar. `.jac` source files shipped inside Python packages are bundled alongside the `.py` files.
+- **Fix: Correct assert string in `test_client_only_requires_base_url`**: The test was checking for `"client_only = true requires"` which never existed in the implementation. Updated to match the actual error message `"client_only mode requires"` in `desktop_target.impl.jac`.
+- **Fix: `jacSignup` surfaces JSON parse errors instead of swallowing them**: On a 200 response with a malformed body, `jacSignup` previously returned `{success: True, user_id: None}`, hiding the failure from callers. It now returns `{success: False, error: ...}` when the response body cannot be parsed as JSON.
+- **jac-client: Multi-segment SPA routes**: Fixed an issue where asset paths (JS/CSS) in the generated `index.html` were relative, causing 404 errors when refreshing on nested routes. Asset paths now use a configurable `base_path` (defaulting to `/`), which also enables deploying the app on a subpath.
+- **Fix: use `{**field}` instead of `{...field}` in JacForm input JSX**: jac-client's form-input components spread the `react-hook-form` `field` registration into JSX with `{...field}`, which is JS-idiomatic but emits W0063 (`prefer-double-star-spread`) once the type checker reaches them. Switched to Jac's `{**field}` so the lint stays clean as `@jac/runtime` consumers gain stricter type checking. No runtime behavior change.
+
+### Refactors
+
+- **Refactor: Convert `.map(lambda)` to JSX List Comprehension in Client Runtime**: Replaced `.map(lambda → JSX)` patterns in `client_runtime.impl.jac` with native Jac JSX list comprehension syntax (`[<jsx> for item in collection]`), aligning the runtime code with idiomatic Jac style.
+
+## jac-client 0.3.13
 
 ### New Features
 

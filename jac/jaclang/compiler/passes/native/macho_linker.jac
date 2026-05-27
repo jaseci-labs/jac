@@ -8,8 +8,6 @@ Supports Mach-O 64-bit with dynamic linking against libSystem.
 Architecture support: arm64, x86_64.
 """
 
-import from typing { Any }
-
 """Parsed Mach-O section."""
 obj MachOSection {
     has name: str,

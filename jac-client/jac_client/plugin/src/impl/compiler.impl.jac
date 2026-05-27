@@ -369,7 +369,7 @@ impl ViteCompiler.compile_dependencies_recursively(
             );
         } elif (path_obj.suffix == '.js') {
             self._copy_js_file(path_obj, source_root);
-        } elif (path_obj.suffix in {'.ts','.tsx'}) {
+        } elif (path_obj.suffix in {'.ts', '.tsx'}) {
             self._copy_ts_file(path_obj, source_root);
         } elif path_obj.is_file() {
             self._copy_asset_file(path_obj, source_root);
@@ -533,24 +533,13 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func:
-        (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
-    extract_exports_func: (Callable[([Any], list[str])] | None) = None,
-    extract_globals_func:
-        (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
+    compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
+    extract_exports_func: Callable[([any], list[str])],
+    extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])]
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
             'Vite package.json not found. Set vite_package_json when using ViteCompiler'
-        );
-    }
-    if (
-        (compile_to_js_func is None)
-        or (extract_exports_func is None)
-        or (extract_globals_func is None)
-    ) {
-        raise ClientBundleError(
-            'compile_to_js_func, extract_exports_func, and extract_globals_func are required'
         );
     }
     self.vite_package_json = vite_package_json;

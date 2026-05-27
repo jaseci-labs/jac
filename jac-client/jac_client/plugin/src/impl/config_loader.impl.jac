@@ -10,7 +10,6 @@ that combines plugin config with npm dependencies.
 import shutil;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.plugin_config { deep_merge }
 
 # Core dependency versions — individual packages instead of meta-packages.
@@ -38,7 +37,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
          "@types/react-dom": "^18.2.0"
      },
      # Legacy meta-package names (for migration)
-     LEGACY_META_PACKAGES = {"jac-client-node","@jac-client/dev-deps"};
+     LEGACY_META_PACKAGES = {"jac-client-node", "@jac-client/dev-deps"};
 
 # ============================================================================
 # DEPENDENCY MANAGEMENT HELPERS
@@ -48,7 +47,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
 Returns updated deps dict and whether node_modules should be cleared.
 """
 def _ensure_dependencies(
-    jac_config: Any,
+    jac_config: any,
     deps: dict,
     required: dict[str, str],
     is_dev: bool,
@@ -81,7 +80,7 @@ Removes the meta-package entry and injects the individual deps it contained.
 Returns updated deps dict and whether migration occurred.
 """
 def _migrate_legacy_meta_packages(
-    jac_config: Any, npm_deps: dict, npm_dev_deps: dict
+    jac_config: any, npm_deps: dict, npm_dev_deps: dict
 ) -> tuple[dict, dict, bool] {
     migrated = False;
 
@@ -148,9 +147,10 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 }
 
 """Get default configuration structure for client."""
-impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any] {
     return {
         'api': {'base_url': ''},
+        'base_path': '/',
         'vite': {
             'plugins': [],
             'lib_imports': [],
@@ -178,7 +178,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
 Overrides base class to also include npm dependencies from [dependencies.npm].
 Ensures core dependencies are present in jac.toml, migrating legacy meta-packages if needed.
 """
-impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     if self._config is not None {
         return self._config;
     }
@@ -194,41 +194,49 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     dev_section = npm_plugin_deps.get('dev', {});
     npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
 
-    # Migrate legacy meta-packages if present
-    (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
-        jac_config, npm_deps, npm_dev_deps
-    );
-    needs_reinstall = migrated;
+    # Self-healing dependency management (migration + injection) only runs for
+    # projects that have explicitly opted into the client via a [plugins.client]
+    # section. Reading config for a non-client project must NEVER mutate jac.toml
+    # — otherwise merely booting the API server (or any read of client config)
+    # would inject react/vite/etc. into a backend-only project's jac.toml.
+    if 'client' in jac_config.plugins {
+        # Migrate legacy meta-packages if present
+        (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
+            jac_config, npm_deps, npm_dev_deps
+        );
+        needs_reinstall = migrated;
 
-    # Ensure core runtime dependencies are present
-    all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-    (npm_deps, added) = _ensure_dependencies(
-        jac_config,
-        npm_deps,
-        all_runtime,
-        is_dev=False,
-        description="Core client runtime library."
-    );
-    needs_reinstall = needs_reinstall or added;
+        # Ensure core runtime dependencies are present
+        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        (npm_deps, added) = _ensure_dependencies(
+            jac_config,
+            npm_deps,
+            all_runtime,
+            is_dev=False,
+            description="Core client runtime library."
+        );
+        needs_reinstall = needs_reinstall or added;
 
-    # Ensure core dev/build dependencies are present
-    (npm_dev_deps, added) = _ensure_dependencies(
-        jac_config,
-        npm_dev_deps,
-        CORE_DEV_DEPS,
-        is_dev=True,
-        description="Build toolchain dependency."
-    );
-    needs_reinstall = needs_reinstall or added;
+        # Ensure core dev/build dependencies are present
+        (npm_dev_deps, added) = _ensure_dependencies(
+            jac_config,
+            npm_dev_deps,
+            CORE_DEV_DEPS,
+            is_dev=True,
+            description="Build toolchain dependency."
+        );
+        needs_reinstall = needs_reinstall or added;
 
-    # Clear node_modules if any dependency was added or migrated
-    if needs_reinstall {
-        _clear_node_modules(self.project_dir);
+        # Clear node_modules if any dependency was added or migrated
+        if needs_reinstall {
+            _clear_node_modules(self.project_dir);
+        }
     }
 
     # Build user config in the expected internal format
-    user_config: dict[str, Any] = {
+    user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
+        'base_path': client_config.get('base_path', '/'),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
@@ -248,37 +256,43 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
 }
 
 """Get package configuration (npm dependencies)."""
-impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('package', {});
 }
 
 """Get API configuration (base_url for backend)."""
-impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('api', {});
 }
 
+"""Get base path for HTML generation and Vite."""
+impl JacClientConfig.get_base_path(self: JacClientConfig) -> str {
+    config = self.load();
+    return str(config.get('base_path', '/'));
+}
+
 """Get Vite-specific configuration."""
-impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('vite', {});
 }
 
 """Get TypeScript-specific configuration for tsconfig.json customization."""
-impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('ts', {});
 }
 
 """Get generic config files to generate (postcss, tailwind, etc.)."""
-impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('configs', {});
 }
 
 """Get npm registry configuration for .npmrc generation."""
-impl JacClientConfig.get_npm_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_npm_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('npm', {});
 }
@@ -317,7 +331,7 @@ impl JacClientConfig.get_paths_config(self: JacClientConfig) -> dict[str, str] {
 }
 
 """Get PWA configuration from [plugins.client.pwa] in jac.toml."""
-impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('pwa', {});
 }

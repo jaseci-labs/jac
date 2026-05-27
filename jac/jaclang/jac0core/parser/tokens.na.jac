@@ -52,6 +52,9 @@ enum TokenKind {
     KW_STATIC = "static",
     KW_OVERRIDE = "override",
     KW_IMPL = "impl",
+    KW_GETTER = "getter",
+    KW_SETTER = "setter",
+    KW_DELETER = "deleter",
     KW_SEM = "sem",
     KW_TEST = "test",
     KW_GLOBAL = "glob",
@@ -75,6 +78,7 @@ enum TokenKind {
     KW_TRY = "try",
     KW_EXCEPT = "except",
     KW_FINALLY = "finally",
+    KW_AWAITING = "awaiting",
     KW_WITH = "with",
     KW_RETURN = "return",
     KW_YIELD = "yield",
@@ -211,6 +215,7 @@ enum TokenKind {
     CONV = "CONV",
     F_FORMAT_TEXT = "F_FORMAT_TEXT",
     JSX_TEXT = "JSX_TEXT",
+    JSX_COMMENT = "JSX_COMMENT",
     JSX_OPEN_START = "JSX_OPEN_START",
     JSX_SELF_CLOSE = "/>",
     JSX_TAG_END = "JSX_TAG_END",
@@ -244,6 +249,29 @@ obj Token {
 
     def is_keyword -> bool;
     def __str__ -> str;
+}
+
+# Marshal-safe lexer diagnostic record. The native lexer cannot call back
+# into the Python `prog` to append unitree `Alert`s, so it accumulates these
+# flat records instead; `parser.parse()` replays them into `prog` (see
+# native-lexer-parser-pathway).
+obj LexDiag {
+    has message: str,
+        code_str: str,
+        loc: SourceLoc,
+        is_error: bool = True;
+}
+
+# Marshal-safe captured-comment record (was an 8-tuple in lexer state).
+obj CommentData {
+    has value: str,
+        line: int,
+        end_line: int,
+        col_start: int,
+        col_end: int,
+        pos_start: int,
+        pos_end: int,
+        is_block: bool = False;
 }
 
 glob KEYWORDS: dict[str, TokenKind] = {
@@ -283,6 +311,9 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "static": TokenKind.KW_STATIC,
          "override": TokenKind.KW_OVERRIDE,
          "impl": TokenKind.KW_IMPL,
+         "getter": TokenKind.KW_GETTER,
+         "setter": TokenKind.KW_SETTER,
+         "deleter": TokenKind.KW_DELETER,
          "sem": TokenKind.KW_SEM,
          "test": TokenKind.KW_TEST,
          "glob": TokenKind.KW_GLOBAL,
@@ -308,6 +339,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "try": TokenKind.KW_TRY,
          "except": TokenKind.KW_EXCEPT,
          "finally": TokenKind.KW_FINALLY,
+         "awaiting": TokenKind.KW_AWAITING,
          "with": TokenKind.KW_WITH,
          # Jump statements
          "return": TokenKind.KW_RETURN,

@@ -132,10 +132,7 @@ test "faux flag prints endpoint docs" {
 
 test "faux flag with littlex example" {
     littlex_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../examples/littleX/littleX_single_nodeps.jac"
-        )
+        os.path.join(os.path.dirname(__file__), "../../examples/littleX/server.jac")
     );
 
     if not os.path.exists(littlex_path) {
@@ -155,12 +152,7 @@ test "faux flag with littlex example" {
         # Verify that littleX endpoints are discovered
         assert "WALKERS" in output;
         # Check for key littleX walkers
-        littlex_walkers = [
-            "update_profile",
-            "get_profile",
-            "create_tweet",
-            "load_feed"
-        ];
+        littlex_walkers = ["setup_profile", "get_profile", "create_tweet", "load_feed"];
         for w in littlex_walkers {
             assert w in output or "walker" in output.lower();
         }

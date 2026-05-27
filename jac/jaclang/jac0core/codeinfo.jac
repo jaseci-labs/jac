@@ -84,7 +84,11 @@ obj NativeFuncLayout {
         param_names: list[str] = field(default_factory=`list),
         ret_type: str = "i64",
         ret_struct_name: (str | None) = None,
-        ret_tuple_layout: (NativeTupleLayout | None) = None;
+        ret_tuple_layout: (NativeTupleLayout | None) = None,
+        # Enum type name when the function returns an enum (lowered to i64), so
+        # the marshaller can map the ordinal back to the Python enum member
+        # instead of leaking a raw int to Python callers.
+        ret_enum_type: (str | None) = None;
 }
 
 """Resolve a module name to a .na.jac file path.
@@ -160,7 +164,7 @@ obj InteropBinding {
         ret_type: str = 'int',
         param_types: list[str] = [],
         param_names: list[str] = [],
-        ast_node: Any = None,
+        ast_node: any = None,
         route: list[InteropContext] = [],
         source_module: (str | None) = None,
         # Kind of provider symbol this binding stubs out: 'function' for
@@ -169,14 +173,9 @@ obj InteropBinding {
         # codegen and runtime dispatch for sv-to-sv imports.
         kind: str = 'function';
 
-    @property
-    def is_direct -> bool;
-
-    @property
-    def is_composed -> bool;
-
-    @property
-    def is_cross_module -> bool;
+    has is_direct: bool { getter; }
+    has is_composed: bool { getter; }
+    has is_cross_module: bool { getter; }
 }
 
 """All cross-boundary function bindings for a module.
@@ -203,20 +202,11 @@ obj InteropManifest {
                 }
         );
 
-    @property
-    def native_imports -> list[InteropBinding];
-
-    @property
-    def native_exports -> list[InteropBinding];
-
-    @property
-    def native_cross_module_imports -> list[InteropBinding];
-
-    @property
-    def server_exports_to_client -> list[InteropBinding];
-
-    @property
-    def server_exports_to_server -> list[InteropBinding];
+    has native_imports: list[InteropBinding] { getter; }
+    has native_exports: list[InteropBinding] { getter; }
+    has native_cross_module_imports: list[InteropBinding] { getter; }
+    has server_exports_to_client: list[InteropBinding] { getter; }
+    has server_exports_to_server: list[InteropBinding] { getter; }
 }
 
 """Code generation target."""
@@ -225,6 +215,7 @@ obj CodeGenTarget {
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
+        css: str = '',
         client_manifest: ClientManifest = field(default_factory=ClientManifest),
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
@@ -234,28 +225,16 @@ obj CodeGenTarget {
         native_bitcode: (bytes | None) = None,
         interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
-        _interop_callbacks: list[Any] = field(default_factory=`list),
+        _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
         native_compat: bool = False,
-        layout_registry: Any = None,
+        layout_registry: any = None,
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.
         _clib_paths: list[str] = field(default_factory=`list);
 
-    @property
-    def doc_ir -> Doc {
-        if (self._doc_ir is None) {
-            import jaclang.compiler.passes.tool.doc_ir as doc;
-            self._doc_ir = doc.Text('');
-        }
-        return self._doc_ir;
-    }
-
-    @doc_ir.setter
-    def doc_ir(value: Doc) {
-        self._doc_ir = value;
-    }
+    has doc_ir: Doc { getter; setter(value: Doc); }
 }
 
 """Code location info."""
@@ -263,60 +242,17 @@ obj CodeLocInfo {
     has first_tok: Token,
         last_tok: Token;
 
-    @property
-    def orig_src -> Source {
-        return self.first_tok.orig_src;
-    }
-
-    @property
-    def mod_path -> str {
-        return self.first_tok.orig_src.file_path;
-    }
-
-    @property
-    def first_line -> int {
-        return self.first_tok.line_no;
-    }
-
-    @property
-    def last_line -> int {
-        return self.last_tok.end_line;
-    }
-
-    @property
-    def col_start -> int {
-        return self.first_tok.c_start;
-    }
-
-    @property
-    def col_end -> int {
-        return self.last_tok.c_end;
-    }
-
-    @property
-    def pos_start -> int {
-        return self.first_tok.pos_start;
-    }
-
-    @property
-    def pos_end -> int {
-        return self.last_tok.pos_end;
-    }
-
-    @property
-    def tok_range -> tuple[(Token, Token)] {
-        return (self.first_tok, self.last_tok);
-    }
-
-    @property
-    def first_token -> Token {
-        return self.first_tok;
-    }
-
-    @property
-    def last_token -> Token {
-        return self.last_tok;
-    }
+    has orig_src: Source { getter; }
+    has mod_path: str { getter; }
+    has first_line: int { getter; }
+    has last_line: int { getter; }
+    has col_start: int { getter; }
+    has col_end: int { getter; }
+    has pos_start: int { getter; }
+    has pos_end: int { getter; }
+    has tok_range: tuple[(Token, Token)] { getter; }
+    has first_token: Token { getter; }
+    has last_token: Token { getter; }
 
     def update_token_range(first_tok: Token, last_tok: Token) {
         self.first_tok = first_tok;

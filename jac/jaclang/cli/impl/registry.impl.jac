@@ -60,6 +60,15 @@ impl CommandRegistry.command(
             existing = self.commands[name];
             # Higher priority wins
             if priority.value > existing.priority.value {
+                # Preserve extensions registered via extend_command before the
+                # higher-priority plugin re-registered the command. Without this
+                # carry-over, a plugin that re-declares a command silently wipes
+                # any pre/post hooks and extension args other plugins attached
+                # to the existing spec (e.g. `jac setup mobile` would lose
+                # jac-client's _handle_setup_target dispatcher).
+                spec.pre_hooks = list(existing.pre_hooks) + spec.pre_hooks;
+                spec.post_hooks = list(existing.post_hooks) + spec.post_hooks;
+                spec.extra_args = list(existing.extra_args) + spec.extra_args;
                 self.commands[name] = spec;
             }
             # Same or lower priority - keep existing
@@ -183,7 +192,7 @@ impl CommandRegistry._apply_pending_extensions(name: str) -> None {
 
 """Build argparse subparser for a command."""
 impl CommandRegistry._build_subparser(
-    subparsers: Any, spec: CommandSpec
+    subparsers: any, spec: CommandSpec
 ) -> argparse.ArgumentParser {
     import from jaclang.cli.command { CommandSpec }
     # Build description with examples
@@ -278,18 +287,21 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["nargs"] = argparse.REMAINDER;
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
-        # Boolean flag
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
+        # `--X` and the auto `--no-X` share one underscored dest, else
+        # argparse leaves a phantom `X-dashed: True` in vars() for
+        # hyphenated names (issue #6115).
+        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
+        kwargs["dest"] = shared_dest;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
             parser.add_argument(f"--{arg.name}", **kwargs);
         }
-        # Add --no-X variant
         no_kwargs = {
             "action": "store_false",
-            "dest": arg.name,
+            "dest": shared_dest,
             "help": f"Disable {arg.name}"
         };
         parser.add_argument(f"--no-{arg.name}", **no_kwargs);

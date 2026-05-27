@@ -6,7 +6,6 @@ import os;
 import sys;
 import types;
 import from threading { Event }
-import from typing { Any }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.jir {
     SEC_BYTECODE,
@@ -77,6 +76,11 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
+        # JSX `{...}` slot bodies are NOT desugared here: the surface AST is
+        # kept faithful through analysis (ASTValidationPass enforces the slot
+        # body rules) and the accumulator-IIFE lowering happens at cl codegen
+        # time in EsastGenPass, so the formatter/unparser round-trip the
+        # author's template verbatim from real tokens.
         return [
             ASTValidationPass,
             SymTabBuildPass,
@@ -139,6 +143,34 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+"""Inference-only schedule for native compilation.
+
+    The native backend (NaIRGenPass) lowers Expr.type into ir.Type instead
+    of re-deriving structure from annotation AST, so it needs the central
+    TypeEvaluator to have populated Expr.type before codegen. This schedule
+    runs only TypeCheckPass — the diagnostic-emitting passes (Static /
+    Portability / Lint) and the duplicate UniTreeEnrichPass (already run at
+    the tail of get_ir_gen_sched) are intentionally omitted: rerunning them
+    mutates AST state that NaIRGenPass and the cross-module linker depend on.
+
+    Same re-entrancy guard as get_type_check_sched.
+    """
+def get_native_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    global _typecheck_sched_loading;
+    if _typecheck_sched_loading {
+        return [];
+    }
+    _typecheck_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+        return [TypeCheckPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _typecheck_sched_loading = False;
+    }
+}
+
 """Full Python code generation schedule.
 
     Same re-entrancy guard as get_ir_gen_sched: when compiling the
@@ -152,11 +184,15 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     _codegen_sched_loading = True;
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main.walker_effects_pass {
+            WalkerEffectsPass
+        }
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
         passes: list[type[Transform[uni.Module, uni.Module]]] = [
             InteropAnalysisPass,
+            WalkerEffectsPass,
             EsastGenPass
         ];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
@@ -236,8 +272,8 @@ obj _SetupProgress {
     def _get_jaclang_root -> str;
     def _atexit_handler -> None;
     def on_internal_compile(file_path: str) -> None;
-    @property
-    def is_active -> bool;
+
+    has is_active: bool { getter; }
 }
 
 glob setup_progress = _SetupProgress();
@@ -336,12 +372,10 @@ obj JacCompiler {
     }
 
     has _internal_program: (JacProgram | None) = None;
-
-    @property
-    def internal_program -> JacProgram;
+    has internal_program: JacProgram { getter; }
 
     @classmethod
-    def _get_jaclang_root(cls: Any) -> str;
+    def _get_jaclang_root(cls: any) -> str;
 
     def _resolve_program(file_path: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
@@ -360,14 +394,14 @@ obj JacCompiler {
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
         section_data: bytes,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _restore_sections(

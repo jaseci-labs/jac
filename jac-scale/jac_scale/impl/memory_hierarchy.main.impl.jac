@@ -24,6 +24,8 @@ impl ScaleTieredMemory.postinit -> None {
         self.l3 = mongo_backend;
         # Give MongoDB access to L1 memory for sync()
         mongo_backend.set_memory_ref(self.__mem__);
+        # Give MongoDB access to L2 cache so quarantine ops can invalidate Redis
+        mongo_backend.set_cache_ref(self.l2);
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
         # Show subtle message (optional - uncomment to enable)
@@ -148,11 +150,13 @@ running the correct merge-aware sync() + L2 update.
 """
 impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
     import asyncio;
-    if self._committed {
+    if anchor is None and self._committed {
         return;
     }
-    await asyncio.to_thread(self.commit);
-    self._committed = True;
+    await asyncio.to_thread(self.commit, anchor);
+    if anchor is None {
+        self._committed = True;
+    }
 }
 
 """Close all backends."""

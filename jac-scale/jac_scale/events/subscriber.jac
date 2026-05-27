@@ -1,12 +1,12 @@
 """@subscribe decorator and global handler registry.
 Decorator records entries at import time; _setup_events wires each into the broker at server startup.
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jac_scale.events.broker { Event, RetryPolicy }
 
 obj _SubscriptionEntry {
     has topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest";
@@ -22,8 +22,8 @@ def subscribe(
     group: str | None = None,
     retry: RetryPolicy | None = None,
     start_from: str = "latest"
-) -> Callable[..., Any] {
-    def _decorator(handler: Callable[[Event], Any]) -> Callable[..., Any] {
+) -> Callable[..., any] {
+    def _decorator(handler: Callable[[Event], any]) -> Callable[..., any] {
         _registry.append(
             _SubscriptionEntry(
                 topic=topic,

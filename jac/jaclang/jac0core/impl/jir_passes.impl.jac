@@ -2,7 +2,6 @@
 import struct;
 import sys;
 import zlib;
-import from typing { Any }
 
 # =============================================================================
 # JirWriter implementation
@@ -67,16 +66,11 @@ impl JirWriter.write_module(
     );
 
     # Assemble: header (uncompressed) + zlib(pool + nodes + links) + optional sections
-    import from jaclang.jac0core.jir { SEC_TYPE_TAGS, write_sections }
+    import from jaclang.jac0core.jir { write_sections }
     payload = pool_bytes + bytes(ir_buf) + bytes(link_buf);
     compressed = zlib.compress(payload, 6);
-    # Collect type tags from enriched Expr nodes and add as a section
-    tag_bytes = self._serialize_type_tags();
     if sections is None {
         sections = {};
-    }
-    if tag_bytes {
-        sections[SEC_TYPE_TAGS] = tag_bytes;
     }
     section_bytes = write_sections(sections);
     return header + compressed + section_bytes;
@@ -329,6 +323,26 @@ impl JirWriter._write_field(
             _write_varint(buf, 1);
             _write_varint(buf, self._get_node_id(val));
         }
+    } elif kind == FieldKind.OPT_NODE_LIST {
+        # Like NODE_LIST but preserves None vs [] via a leading presence byte.
+        # A plain `has` field has accessors=None; a bare NODE_LIST encoding
+        # round-trips None to [], making the field look like a setter-less
+        # property on cache reload (false E1005). The flag keeps the distinction.
+        if val is None {
+            buf.append(0);
+        } else {
+            buf.append(1);
+            if isinstance(val, (list, tuple)) {
+                items = list(val);
+                _write_varint(buf, len(items));
+                for item in items {
+                    _write_varint(buf, self._get_node_id(item));
+                }
+            } else {
+                _write_varint(buf, 1);
+                _write_varint(buf, self._get_node_id(val));
+            }
+        }
     } elif kind == FieldKind.OPT_NODE_REF {
         if val is None {
             buf.append(0);
@@ -385,35 +399,6 @@ impl JirWriter._count_symbols(module: Module) -> int {
     }
     return count;
 }
-
-"""Serialize backend_type_tag values from enriched Expr nodes into a compact section.
-
-Format: varint(count) followed by count × [varint(node_id), varint(str_pool_idx)].
-Only Expr nodes with non-None backend_type_tag are included. The string pool used
-here is the same _pool that was built during _write_node, so tag strings are
-interned alongside the rest of the IR strings.
-"""
-impl JirWriter._serialize_type_tags -> bytes {
-    import from jaclang.jac0core.unitree { Expr }
-    buf = bytearray();
-    pairs: list[tuple[int, int]] = [];
-    for ir_item in self._nodes {
-        if isinstance(ir_item, Expr) and ir_item.backend_type_tag is not None {
-            nid = self._node_ids.get(id(ir_item));
-            if nid is not None {
-                tag_idx = self._pool.intern(ir_item.backend_type_tag);
-                pairs.append((nid, tag_idx));
-            }
-        }
-    }
-    _write_varint(buf, len(pairs));
-    for (nid, tag_idx) in pairs {
-        _write_varint(buf, nid);
-        _write_varint(buf, tag_idx);
-    }
-    return bytes(buf);
-}
-
 
 # =============================================================================
 # JirReader implementation
@@ -498,22 +483,13 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
                 SEC_BYTECODE,
                 SEC_MTIR,
                 SEC_LLVM_IR,
-                SEC_INTEROP,
-                SEC_TYPE_TAGS
+                SEC_INTEROP
             }
             secs = self._read_trailing_sections(data);
             self.bytecode_section = secs.get(SEC_BYTECODE);
             self.mtir_section = secs.get(SEC_MTIR);
             self.llvm_ir_section = secs.get(SEC_LLVM_IR);
             self.interop_section = secs.get(SEC_INTEROP);
-            self.type_tags_section = secs.get(SEC_TYPE_TAGS);
-            if self.type_tags_section is not None {
-                try {
-                    self._apply_type_tags(self.type_tags_section);
-                } except Exception {
-                    pass;  # corrupt section — tags simply remain None
-                }
-            }
             return last_node;
         }
     }
@@ -523,7 +499,7 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
 impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
     import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
     try {
-        magic_bytes: Any = SECTIONS_MAGIC;
+        magic_bytes: any = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
         if pos < 0 {
             return {};
@@ -603,6 +579,7 @@ impl JirReader._init_caches -> None {
         NameAtom,
         Expr,
         AstSymbolNode,
+        AstSymbolStubNode,
         WalkerStmtOnlyNode,
         Source,
         ParamVar,
@@ -613,7 +590,20 @@ impl JirReader._init_caches -> None {
         ModulePath,
         ModuleItem,
         SpecialVarRef,
-        ContextAwareNode
+        ContextAwareNode,
+        MultiString,
+        FString,
+        ListVal,
+        SetVal,
+        TupleVal,
+        DictVal,
+        ListCompr,
+        DictCompr,
+        IndexSlice,
+        EdgeOpRef,
+        FilterCompr,
+        AssignCompr,
+        JsxElement
     }
     import from jaclang.jac0core.constant {
         SymbolAccess,
@@ -627,6 +617,7 @@ impl JirReader._init_caches -> None {
     self._CodeLocInfo = CodeLocInfo;
     self._Expr = Expr;
     self._AstSymbolNode = AstSymbolNode;
+    self._AstSymbolStubNode = AstSymbolStubNode;
     self._WalkerStmtOnlyNode = WalkerStmtOnlyNode;
     self._Source = Source;
     self._ParamVar = ParamVar;
@@ -643,6 +634,27 @@ impl JirReader._init_caches -> None {
     self._CodeContext_SERVER = CodeContext.SERVER;
 
     self._uni_types = (UniScopeNode, UniCFGNode, NameAtom);
+
+    # Stub-symbol category per AstSymbolStubNode subclass — mirrors the
+    # sym_type each class's postinit passes to AstSymbolStubNode._init_stub.
+    # Used to fabricate name_spec during JIR deserialization so the round-trip
+    # restores the same _sym_category the live compile produced. SetCompr and
+    # GenCompr inherit ListCompr's postinit, so they don't need entries.
+    self._stub_sym_types = {
+        MultiString: SymbolType.STRING,
+        FString: SymbolType.STRING,
+        ListVal: SymbolType.SEQUENCE,
+        SetVal: SymbolType.SEQUENCE,
+        TupleVal: SymbolType.SEQUENCE,
+        DictVal: SymbolType.SEQUENCE,
+        ListCompr: SymbolType.SEQUENCE,
+        DictCompr: SymbolType.SEQUENCE,
+        IndexSlice: SymbolType.SEQUENCE,
+        EdgeOpRef: SymbolType.SEQUENCE,
+        FilterCompr: SymbolType.SEQUENCE,
+        AssignCompr: SymbolType.SEQUENCE,
+        JsxElement: SymbolType.OBJECT_ARCH
+    };
 
     # Build reverse lookup: enum_value_string -> enum_member
     self._enum_cache = {};
@@ -699,7 +711,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     # Construct ir_node via __new__ (skips init)
     cls = class_map[spec.class_name];
-    ir_node: Any = cls.__new__(cls);
+    ir_node: any = cls.__new__(cls);
     nd = ir_node.__dict__;
 
     # Read fields and set directly on the ir_node
@@ -742,6 +754,25 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                 }
             }
             nd[fname] = items;
+        } elif kind == FieldKind.OPT_NODE_LIST {
+            flag = data[pos];
+            pos += 1;
+            if flag == 0 {
+                nd[fname] = None;
+            } else {
+                (count, pos) = _read_varint(data, pos);
+                items = [];
+                for _ in range(count) {
+                    (nid, pos) = _read_varint(data, pos);
+                    if nid < _SN {
+                        n = nodes[nid];
+                        if n is not None {
+                            items.append(n);
+                        }
+                    }
+                }
+                nd[fname] = items;
+            }
         } elif kind == FieldKind.OPT_NODE_REF {
             flag = data[pos];
             pos += 1;
@@ -916,6 +947,34 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         ;
     }
 
+    # AstSymbolStubNode (MultiString, FString, ListVal, SetVal, TupleVal,
+    # DictVal, {List,Dict,Set,Gen}Compr, IndexSlice, EdgeOpRef, FilterCompr,
+    # AssignCompr, JsxElement): fabricate stub name_spec if not already
+    # populated. Each class's postinit normally calls
+    # AstSymbolStubNode._init_stub, which builds a stub Name via
+    # Name.gen_stub_from_node and wires it as self.name_spec. JIR doesn't
+    # persist that fabricated Name (it's not part of any declared field on
+    # the stub node), and the earlier name_spec fallbacks above all miss
+    # because these nodes neither expose a 'name'/'name_ref' field nor have
+    # a NameAtom in their kid list. Without this restoration, downstream
+    # passes that walk AtomTrailer chains and touch chain[0].sym (notably
+    # DeclImplMatchPass._resolve_symbols_in_subtree, invoked from
+    # TypeEvaluator._reattach_impl_modules after a JIR cache hit) raise
+    # AttributeError: '<StubClass>' object has no attribute 'name_spec'
+    # whenever a literal sits at the head of an attribute chain
+    # (e.g. "x".upper(), [..].method(), or a JSX subtree on a trailer).
+    if (isinstance(ir_node, self._AstSymbolStubNode) and nd.get('name_spec') is None) {
+        sym_type = self._stub_sym_types.get(type(ir_node), self._SymbolType_UNKNOWN);
+        try {
+            ir_node._init_stub(sym_type);
+        } except Exception {
+            # Best-effort: if loc/kid wiring isn't complete enough for
+            # gen_stub_from_node, leave name_spec unset. Callers that touch
+            # it will still surface a clearer error than a silent miss.
+            ;
+        }
+    }
+
     nodes[idx] = ir_node;
 
     # Read overlays (isinstance checks satisfy type checker; flags guarantee correctness)
@@ -1075,7 +1134,7 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     }
 
     # Create Symbol with __new__ (skip init); getattr avoids type-checker arity check
-    sym: Any = getattr(Symbol, '__new__')(Symbol);
+    sym: any = getattr(Symbol, '__new__')(Symbol);
     sym.defn = defn_nodes;
     sym.uses = [];
     sym.imported = imported;
@@ -1239,37 +1298,4 @@ impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
     }
 
     return pos;
-}
-
-"""Apply backend_type_tag values from a serialized SEC_TYPE_TAGS section.
-
-Reads varint-encoded (node_id, pool_idx) pairs and sets backend_type_tag on the
-corresponding Expr nodes. The string pool used here is the same _pool that was
-populated during read_module (deserialized before the node stream). Any invalid
-node_id or pool_idx is silently skipped so a corrupt section cannot crash the reader.
-"""
-impl JirReader._apply_type_tags(data: bytes) -> None {
-    import from jaclang.jac0core.unitree { Expr }
-    if self._pool is None {
-        return;
-    }
-    pool = self._pool;
-    nodes = self._nodes;
-    mv = memoryview(data);
-    pos = 0;
-    (count, pos) = _read_varint(mv, pos);
-    for _ in range(count) {
-        (nid, pos) = _read_varint(mv, pos);
-        (tag_idx, pos) = _read_varint(mv, pos);
-        if nid < len(nodes)
-        and nodes[nid] is not None
-        and isinstance(nodes[nid], Expr) {
-            try {
-                tag = pool.get(tag_idx);
-                nodes[nid].backend_type_tag = tag;
-            } except Exception {
-                pass;
-            }
-        }
-    }
 }

@@ -1,4 +1,4 @@
-# ruff: noqa: N801, N802, N803, N815
+# ruff: noqa: N801, N802, N803, N815, N816
 """DOM type stubs for Jac JSX event handling and element access.
 
 These types are ambient builtins — available in all Jac modules without import.
@@ -10,6 +10,30 @@ clientX, innerHTML) — this is intentional, not a Python naming violation.
 """
 
 from collections.abc import Callable
+from typing import Generic, TypeVar
+
+_RefT = TypeVar("_RefT")
+
+# ---------------------------------------------------------------------------
+# React ref handle
+# ---------------------------------------------------------------------------
+# Ambient generic modelling React's ref object (the result of `useRef`).
+# A client-context `has`-field typed `Ref[T]` lowers to `useRef(null)` (or
+# `useRef(initial)` when an initializer is given) instead of the usual
+# `useState`, and `useRef` is auto-imported from `react`. `.current` is the
+# mutable handle; it is `None` until React attaches the node (or until the
+# field is first written), so it is typed `T | None` and must be null-checked
+# before use — mirroring React's `RefObject<T>.current: T | null`.
+
+class Ref(Generic[_RefT]):
+    """A mutable ref container; `.current` holds the referenced value.
+
+    Construct with `Ref()` (an empty DOM ref, `.current` is None until React
+    attaches the node) or `Ref(initial)` (a value ref seeded with `initial`).
+    """
+
+    current: _RefT | None
+    def __init__(self, initial: _RefT | None = ...) -> None: ...
 
 # ---------------------------------------------------------------------------
 # DOM Element types
@@ -514,6 +538,29 @@ AnimationEventHandler = Callable[[AnimationEvent], None]
 TransitionEventHandler = Callable[[TransitionEvent], None]
 ScrollEventHandler = Callable[[ScrollEvent], None]
 EventHandler = Callable[[Event], None]
+
+# ---------------------------------------------------------------------------
+# Browser platform globals
+# ---------------------------------------------------------------------------
+
+class Storage:
+    """Web Storage API interface (the type of `localStorage` / `sessionStorage`).
+
+    Models the standard key/value store. `getItem` and `key` return
+    `str | None` because a missing key yields JS `null`.
+    """
+
+    length: int
+    def getItem(self, key: str) -> str | None: ...
+    def setItem(self, key: str, value: str) -> None: ...
+    def removeItem(self, key: str) -> None: ...
+    def clear(self) -> None: ...
+    def key(self, index: int) -> str | None: ...
+
+# Ambient browser globals — available to all frontend Jac modules without
+# import, mirroring how the DOM event/element classes above are exposed.
+localStorage: Storage
+sessionStorage: Storage
 
 # ---------------------------------------------------------------------------
 # Intrinsic HTML element prop types

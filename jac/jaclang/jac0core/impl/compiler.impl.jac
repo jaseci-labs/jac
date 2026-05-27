@@ -47,12 +47,12 @@ impl _SetupProgress.on_internal_compile(file_path: str) -> None {
 }
 
 """Whether we're currently in a first-run setup."""
-impl _SetupProgress.is_active -> bool {
+impl _SetupProgress.is_active.getter -> bool {
     return self._banner_shown;
 }
 
 """Module hub for jaclang.* modules (lazily initialized)."""
-impl JacCompiler.internal_program -> JacProgram {
+impl JacCompiler.internal_program.getter -> JacProgram {
     if (self._internal_program is None) {
         import from jaclang.jac0core.program { JacProgram }
         self._internal_program = JacProgram();
@@ -61,7 +61,7 @@ impl JacCompiler.internal_program -> JacProgram {
 }
 
 """Get the jaclang package root path."""
-impl JacCompiler._get_jaclang_root(cls: Any) -> str {
+impl JacCompiler._get_jaclang_root(cls: any) -> str {
     if (cls._jaclang_root is None) {
         cls._jaclang_root = os.path.dirname(os.path.dirname(__file__));
     }
@@ -149,7 +149,7 @@ impl JacCompiler.get_bytecode(
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
             if bc is not None {
-                magic_bytes: Any = SECTIONS_MAGIC;
+                magic_bytes: any = SECTIONS_MAGIC;
                 sec_pos = jir_data.find(magic_bytes, HEADER_SIZE);
                 if sec_pos >= 0 {
                     secs = read_sections(jir_data, sec_pos + len(magic_bytes));
@@ -262,7 +262,7 @@ impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
     cached_ir: str,
-    cached_interop: (dict[str, Any] | None)
+    cached_interop: (dict[str, any] | None)
 ) -> None {
     try {
         import llvmlite.binding as llvm;
@@ -334,7 +334,7 @@ impl JacCompiler._load_native_from_bitcode(
     full_target: str,
     target_program: JacProgram,
     section_data: bytes,
-    cached_interop: (dict[str, Any] | None)
+    cached_interop: (dict[str, any] | None)
 ) -> None {
     import struct as _struct;
     import llvmlite.binding as llvm;
@@ -418,7 +418,7 @@ impl JacCompiler._restore_sections(
     if native_obj_bytes is not None {
         try {
             import json;
-            cached_interop: (dict[str, Any] | None) = None;
+            cached_interop: (dict[str, any] | None) = None;
             interop_bytes = secs.get(SEC_INTEROP);
             if interop_bytes is not None {
                 cached_interop = json.loads(interop_bytes.decode('utf-8'));
@@ -438,7 +438,7 @@ impl JacCompiler._restore_sections(
             import zlib;
             import json;
             cached_ir = zlib.decompress(llvm_bytes).decode('utf-8');
-            cached_interop2: (dict[str, Any] | None) = None;
+            cached_interop2: (dict[str, any] | None) = None;
             interop_bytes2 = secs.get(SEC_INTEROP);
             if interop_bytes2 is not None {
                 cached_interop2 = json.loads(interop_bytes2.decode('utf-8'));
@@ -650,15 +650,84 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
-    if options.type_check {
+    # Native-compiled modules consume the central type checker's results:
+    # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
+    # parallel AST type resolver. Run the type-check schedule for any .na.jac
+    # module (or auto-promoted .jac) even when options.type_check is off, so
+    # codegen has a single semantic source of truth. This covers transitive
+    # imports too: when one .na.jac imports another, the nested compile gets
+    # its own TypeCheckPass run, so cross-module annotations land with
+    # `.type` populated.
+    run_type_check = options.type_check;
+    if not run_type_check {
+        # A module is native-compiled if it is a .na.jac file (whole module
+        # in native context), contains any `na { ... }` block (a .jac file
+        # with embedded native code), or is being auto-promoted to native in
+        # this program (the nacompile / `jac run --autonative` path sets
+        # `_auto_promote_native` on the program before compile). All three
+        # cases require Expr.type populated on annotations so NaIRGenPass
+        # can lower them via _lower_type. Plain .jac modules with no native
+        # surface follow the explicit `options.type_check` contract.
+        #
+        # Includes the symtab_ir_only path: when TypeEvaluator imports a
+        # .na.jac module to resolve a cross-module symbol, it compiles with
+        # symtab_ir_only=True and no codegen. We still want TypeCheckPass to
+        # run so the imported module's annotations land with .type populated,
+        # because a later NaIRGenPass walk for native cross-module linking
+        # will lower those annotations.
+        mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
+        is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        if not is_native_mod and mod_targ?.body {
+            for _stmt in mod_targ.body {
+                if isinstance(_stmt, uni.NativeBlock) {
+                    is_native_mod = True;
+                    break;
+                }
+            }
+        }
+        if (
+            not is_native_mod
+            and getattr(actual_program, '_auto_promote_native', False)
+            and mod_targ?.gen
+            and mod_targ.gen.native_compat
+        ) {
+            is_native_mod = True;
+        }
+        if is_native_mod {
+            run_type_check = True;
+        }
+    }
+    if run_type_check {
+        # Explicit `jac check` (options.type_check=True) runs the full
+        # schedule — TypeCheckPass + StaticAnalysis + Portability + the
+        # enrich-pass-second-pass + Lint.
+        #
+        # The implicit native run (.na.jac trigger) only needs Expr.type
+        # populated for NaIRGenPass, so it runs the inference-only schedule
+        # (TypeCheckPass alone). Rerunning UniTreeEnrichPass / Portability /
+        # Lint mutates AST state that NaIRGenPass and the cross-module linker
+        # depend on. Diagnostics from this run are kept: native code is held
+        # to the same type discipline as the rest of Jac (#6049).
+        implicit_native = not options.type_check;
+        passes = get_native_inference_sched()
+            if implicit_native
+            else get_type_check_sched();
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_type_check_sched(),
+            passes=passes,
             cancel_token=options.cancel_token
         );
     }
     if (not had_parse_errors and not options.no_cgen) {
+        # Re-pin _compile_options to *our* options before codegen runs.
+        # Earlier schedules may have invoked nested compile()s (e.g.
+        # TypeCheckPass loading an imported module to resolve a symbol),
+        # and each nested compile overwrites prog._compile_options. Native
+        # codegen (NaCompilePass) reads skip_native_engine / aot_mode from
+        # this slot; without the re-pin it would see the last nested
+        # caller's options instead of ours.
+        actual_program._compile_options = options;
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,

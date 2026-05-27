@@ -871,3 +871,40 @@ test "bidirectional edge traversal" {
     assert "Backward from f:\nFollower found: 5" in output;
     assert "Backward from e:\nDone." in output;
 }
+
+test "root keyword trigger raises TypeError at runtime" {
+    output = run_jac(os.path.join(FIXTURES, "root_keyword_trigger.jac"));
+    assert "GoodWalker: ok" in output , "GoodWalker with Root entry should run fine";
+    assert "BadWalker:" in output , "bare `root` keyword must raise TypeError";
+    assert "instance of `Root`" in output , "error must identify Root as the instance type";
+    assert "with Root entry" in output , "error must hint the correct fix for root";
+    assert "BadNodeInstance:" in output , "node instance as trigger must also raise TypeError";
+    assert "instance of `MyNode`" in output , "error must identify MyNode as the instance type";
+    assert "with MyNode entry" in output , "error must hint the correct fix for MyNode";
+    assert "should not reach here" not in output , "no bad walker body should execute";
+}
+
+test "native property getter/setter/deleter with impl separation" {
+    # `has <name>: <type> { getter; setter; deleter; }` declares a property
+    # over explicitly-declared backing storage; no `field` keyword is used.
+    output = run_jac(os.path.join(FIXTURES, "prop_native.jac"));
+    assert output == "ok\n";
+}
+
+test "multiple impl-separated property accessors in one class resolve independently" {
+    # Each property's getter/setter is registered under the same bare accessor
+    # name in the class scope; the decl/impl resolver must scope each
+    # `impl Cls.prop.getter` to its own property rather than collapsing them.
+    output = run_jac(os.path.join(FIXTURES, "prop_multi.jac"));
+    assert output == "ok\n";
+}
+
+test "as cast is type erased" {
+    output = run_jac(os.path.join(FIXTURES, "as_cast.jac"));
+    assert output == "42\n7\n6\n43\n";
+}
+
+test "as cast does not disturb with/except alias" {
+    output = run_jac(os.path.join(FIXTURES, "as_cast_with_except.jac"));
+    assert output == "with-ternary-ok\nwith-paren-cast-ok\nboom\n";
+}

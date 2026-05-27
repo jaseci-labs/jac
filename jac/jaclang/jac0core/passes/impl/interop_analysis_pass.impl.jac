@@ -192,8 +192,8 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
     # walkers go through /walker/<name> with params derived from `has`
     # fields. The walker map only contains `walker:pub` archetypes since
     # private walkers are not exposed at the HTTP boundary.
-    source_abilities: dict[str, Any] = {};
-    source_walkers: dict[str, Any] = {};
+    source_abilities: dict[str, any] = {};
+    source_walkers: dict[str, any] = {};
     if source_mod {
         try {
             self._collect_abilities(source_mod, source_abilities);
@@ -209,7 +209,7 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
         }
         sym_name = getattr(item.name, 'value', str(item.name));
         local_name = item.alias.sym_name if item.alias else sym_name;
-        walker_node: Any = source_walkers.get(sym_name);
+        walker_node: any = source_walkers.get(sym_name);
         if walker_node is not None {
             (param_names, param_types) = self._extract_walker_has_fields(walker_node);
             binding = InteropBinding(
@@ -269,7 +269,7 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
 
 """Walk a module AST collecting Ability nodes by name."""
 impl InteropAnalysisPass._collect_abilities(
-    self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+    self: InteropAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
     if isinstance(nd, uni.Ability) and nd.sym_name {
         out[nd.sym_name] = nd;
@@ -283,7 +283,7 @@ impl InteropAnalysisPass._collect_abilities(
 
 """Walk a module AST collecting public walker Archetype nodes by name."""
 impl InteropAnalysisPass._collect_pub_walkers(
-    self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+    self: InteropAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
     if isinstance(nd, uni.Archetype) and nd.sym_name {
         is_walker = False;
@@ -326,7 +326,7 @@ field shape. Type annotations are extracted with `_extract_type_name`
 so generics, unions, and boundary-typed defaults survive intact.
 """
 impl InteropAnalysisPass._extract_walker_has_fields(
-    self: InteropAnalysisPass, walker_nd: Any
+    self: InteropAnalysisPass, walker_nd: any
 ) -> tuple[list[str], list[str]] {
     names: list[str] = [];
     types: list[str] = [];
@@ -376,7 +376,7 @@ full compile pipeline to prevent recursive compilation cascades.
 """
 impl InteropAnalysisPass._parse_only_source_module(
     self: InteropAnalysisPass, file_path: str
-) -> Any {
+) -> any {
     import from jaclang.jac0core.compiler { JacCompiler }
     import from jaclang.jac0core.helpers { read_file_with_encoding }
     try {
@@ -392,8 +392,8 @@ impl InteropAnalysisPass._parse_only_source_module(
 
 """Find an Archetype or Enum node by name via AST walk."""
 impl InteropAnalysisPass._find_archetype(
-    self: InteropAnalysisPass, nd: Any, target: str
-) -> Any {
+    self: InteropAnalysisPass, nd: any, target: str
+) -> any {
     if (isinstance(nd, (uni.Archetype, uni.Enum)) and nd?.sym_name == target) {
         return nd;
     }
@@ -576,7 +576,23 @@ impl InteropAnalysisPass._extract_all_subscript_types(
 impl InteropAnalysisPass._extract_all_type_names(
     self: InteropAnalysisPass, expr: (uni.UniNode | None)
 ) -> list[str] {
-    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    prims = {
+        'str',
+        'int',
+        'float',
+        'bool',
+        'None',
+        'Any',
+        'list',
+        'dict',
+        'tuple',
+        'set',
+        'frozenset',
+        'bytes',
+        'object',
+        'type',
+        'JsxElement'
+    };
     if expr is None {
         return [];
     }
@@ -619,7 +635,23 @@ impl InteropAnalysisPass._extract_all_type_names(
 impl InteropAnalysisPass._collect_boundary_type(
     self: InteropAnalysisPass, type_name: str, source_mod: (uni.Module | None)
 ) -> None {
-    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    prims = {
+        'str',
+        'int',
+        'float',
+        'bool',
+        'None',
+        'Any',
+        'list',
+        'dict',
+        'tuple',
+        'set',
+        'frozenset',
+        'bytes',
+        'object',
+        'type',
+        'JsxElement'
+    };
     if type_name in prims {
         return;
     }

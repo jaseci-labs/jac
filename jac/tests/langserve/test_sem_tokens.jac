@@ -73,7 +73,7 @@ def check_semantic_token_update(
         "circle_ir",
         lspt.DidChangeTextDocumentParams(
             text_document=lspt.VersionedTextDocumentIdentifier(
-                version=32, uri="...jaclang/examples/manual_code/circle.jac"
+                version=32, uri="...jaclang/tests/langserve/fixtures/circle.jac"
             ),
             content_changes=[
                 lspt.TextDocumentContentChangeEvent_Type1(

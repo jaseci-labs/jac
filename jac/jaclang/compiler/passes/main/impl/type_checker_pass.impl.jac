@@ -191,11 +191,19 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
     if ((len(nd.target) == 1) and (nd.value is not None)) {
         target = nd.target[0];
         # Track whether this is a reassignment of a variable whose
-        # declaration has no type annotation.  For such variables the
-        # declared type is *inferred* from the first assignment, so
-        # later reassignments should be allowed to widen the inferred
-        # type — matching Pyright's behaviour for patterns like
-        # `x = None; …; x = value` or `x = 0; …; x = "str"`.
+        # declaration has no type annotation. Such a variable's declared
+        # type is *inferred* and FROZEN at its first binding, exactly as
+        # if that inferred type had been written as an explicit
+        # annotation — so `a = 0; …; a = "str"` is a type error.
+        #
+        # Two exceptions keep idiomatic code annotation-free:
+        #   * the `None`-sentinel pattern (`x = None; …; x = value`):
+        #     when the first binding infers `NoneType`, the inferred type
+        #     may evolve on later writes — mirroring TypeScript's
+        #     strict-mode evolving locals.
+        #   * the discard name `_`: it is a throwaway sink, so every
+        #     binding to it is independent and carries no frozen type.
+        # Any other first-binding type is enforced like an annotation.
         is_unannotated_reassign = False;
         # For assignment targets, use the declared symbol type (not the
         # narrowed type). Narrowing reflects the *current* value; the
@@ -220,9 +228,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             } else {
                 target.type = left_type;
             }
-            # Warn on bare generic type annotations (e.g. x: list = [])
+            # Warn on bare generic / explicit-any type annotations (e.g. x: list = [])
             if nd.type_tag and nd.type_tag.tag {
                 self._check_bare_generic(nd.type_tag.tag, left_type);
+                self._check_explicit_any(nd.type_tag.tag);
             }
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
@@ -246,8 +255,9 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             # Propagate type annotation to the target node
             if nd.type_tag and nd.type_tag.tag {
                 declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
-                # Warn on bare generic type annotations (e.g. list instead of list[T])
+                # Warn on bare generic / explicit-any type annotations
                 self._check_bare_generic(nd.type_tag.tag, declared_type);
+                self._check_explicit_any(nd.type_tag.tag);
                 # Convert class type to instance for assignment checking.
                 # Type annotations like `x: int` resolve to the class `int`
                 # (instantiable), but the LHS of an assignment represents an
@@ -383,13 +393,25 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     E1010, node_override=nd, op=nd.aug_op.name, type=left_type.name
                 );
             }
-        } elif (
-            not is_unannotated_reassign
-            and not self.evaluator.assign_type(
-                right_type, left_type, strict=self.evaluator._is_strict_site(nd)
-            )
-        ) {
-            self.emit(E1001, actual=str(right_type), expected=str(left_type));
+        } else {
+            # An unannotated reassignment skips the compatibility check
+            # only for a `None`-sentinel (inferred type may still evolve)
+            # or the `_` discard (every binding to it is independent).
+            # All other unannotated variables are frozen to their
+            # first-binding type (`left_type`) and enforced here.
+            is_evolving_reassign = is_unannotated_reassign
+            and (
+                self.evaluator.is_none_type(left_type)
+                or (isinstance(target, uni.Name) and target.value == "_")
+            );
+            if (
+                not is_evolving_reassign
+                and not self.evaluator.assign_type(
+                    right_type, left_type, strict=self.evaluator._is_strict_site(nd)
+                )
+            ) {
+                self.emit(E1001, actual=str(right_type), expected=str(left_type));
+            }
         }
         # Validate augmented assignment operator (+=, -=, etc.)
         if nd.aug_op is not None {
@@ -545,6 +567,7 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     ) {
         ret_ann_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
         self._check_bare_generic(nd.signature.return_type, ret_ann_type);
+        self._check_explicit_any(nd.signature.return_type);
     }
     # Check for missing return statements on non-None return type functions
     if (
@@ -593,6 +616,56 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         and nd.signature.arch_tag_info is not None
     ) {
         self._check_event_trigger_archetype(nd);
+    }
+    # Warn on a JSX component defined with an untyped props bag (`props: any`).
+    # A single parameter named `props` is the props-bag pattern (see the
+    # codegen heuristic in esast_gen_pass); when that parameter is untyped,
+    # every JSX prop on the component is unchecked — flag it once here (W1052).
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and nd.signature.return_type is not None
+        and nd.find_parent_of_type(uni.ImplDef) is None
+    ) {
+        comp_params = [
+            p
+            for p in nd.signature.get_parameters()
+            if isinstance(p.name, uni.Name) and p.name.value not in ("self", "cls")
+        ];
+        if (
+            len(comp_params) == 1
+            and isinstance(comp_params[0].name, uni.Name)
+            and comp_params[0].name.value == "props"
+        ) {
+            props_param = comp_params[0];
+            any_cls = self.evaluator.prefetch.any_class
+                if self.evaluator.prefetch
+                else None;
+            # `props: any` resolves to the prefetched `any` ClassType, not
+            # AnyType — an unannotated param has no type_tag.
+            is_untyped_bag = (
+                props_param.type_tag is None
+                or isinstance(props_param.type, types.AnyType)
+                or (
+                    any_cls is not None
+                    and isinstance(props_param.type, types.ClassType)
+                    and props_param.type.shared == any_cls.shared
+                )
+            );
+            jsx_cls = self.evaluator.prefetch.jsx_element_class
+                if self.evaluator.prefetch
+                else None;
+            ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
+            is_jsx_component = (
+                jsx_cls is not None
+                and isinstance(ret_type, types.ClassType)
+                and ret_type.shared == jsx_cls.shared
+            );
+            if is_untyped_bag and is_jsx_component {
+                self.emit(
+                    W1052, node_override=props_param, component=nd.name_spec.sym_name
+                );
+            }
+        }
     }
 }
 
@@ -643,18 +716,36 @@ impl TypeCheckPass._check_event_trigger_archetype(
         return False;
     }
 
-    # Tuple form `(A, B)` desugars to a union annotation in pyast_gen —
-    # validate per element so each bad type gets its own diagnostic.
+    def collect_union_leaves(expr: uni.Expr) -> list[uni.Expr] {
+        if (
+            isinstance(expr, uni.BinaryExpr)
+            and isinstance(expr.op, uni.Token)
+            and expr.op.name == Tok.BW_OR
+        ) {
+            return collect_union_leaves(expr.left) + collect_union_leaves(expr.right);
+        }
+        return [expr];
+    }
+
+    # Tuple form `(A, B)` and union form `A | B` are both expanded
+    # per element so each bad type (including `root` keyword) gets its
+    # own diagnostic rather than being masked by type evaluation.
     targets: list[uni.Expr] = (
         list(sig.arch_tag_info.values)
             if (
                 isinstance(sig.arch_tag_info, uni.TupleVal) and sig.arch_tag_info.values
             )
-            else [sig.arch_tag_info]
+            else collect_union_leaves(sig.arch_tag_info)
     );
     err = E1116 if walker_owner else E1117;
     for arg in targets {
         ty = self.evaluator.get_type_of_expression(arg);
+        if isinstance(ty, types.ClassType) and ty.is_instance() {
+            # Only name leaves carry `.value`; other exprs (e.g. `N()`) fall back to the type name.
+            label = arg.value if isinstance(arg, uni.Name) else str(ty);
+            self.emit(err, node_override=arg, type=label);
+            continue;
+        }
         if not is_valid(ty) {
             self.emit(err, node_override=arg, type=str(ty));
         }
@@ -702,6 +793,67 @@ impl TypeCheckPass._check_bare_generic(
         and (not ty.private or not ty.private.type_args)
     ) {
         self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+    }
+}
+
+"""Emit W1037 for explicit `any` type annotations.
+
+`any` is the gradual-typing escape hatch: annotating something `any`
+silently disables member-access, call-signature, and assignment checking
+on it. That is occasionally intentional (interop boundaries, genuinely
+dynamic data), so this is a warning rather than an error — but most uses
+are oversights that hide real bugs behind an un-checkable type.
+
+`ann_node` is the annotation AST node (a type-tag expression or signature
+return type). Walks the whole subtree so nested forms each warn at their
+own `any` — `list[any]`, `any | None`, callable params/returns.
+
+Both spellings of explicit Any are caught: the lowercase `any` builtin
+keyword (matched syntactically on its `BuiltinType` node) and `typing.Any`
+(matched by type identity against the prefetched `Any` class). Matching
+`typing.Any` by resolved type rather than by name means an alias such as
+`from typing import Any as A` still warns, while a user-defined class that
+happens to be named `Any` does not."""
+impl TypeCheckPass._check_explicit_any(
+    self: TypeCheckPass, ann_node: uni.UniNode
+) -> None {
+    if isinstance(ann_node, uni.BuiltinType) and ann_node.value == "any" {
+        self.emit(W1037, node_override=ann_node);
+    }
+    for sub in ann_node.get_all_sub_nodes(uni.BuiltinType) {
+        if sub.value == "any" {
+            self.emit(W1037, node_override=sub);
+        }
+    }
+    # `typing.Any` is the same gradual-typing escape hatch as `any`, but
+    # spelled as a name reference. Only `Any`-named candidates are resolved
+    # (cheap, and avoids touching unrelated names); the type check then
+    # confirms the reference truly is the prefetched `typing.Any` class.
+    names = ann_node.get_all_sub_nodes(uni.Name);
+    if isinstance(ann_node, uni.Name) {
+        names = [ann_node] + names;
+    }
+    for nm in names {
+        if nm.sym_name != "Any" {
+            continue;
+        }
+        # For the `typing.Any` attribute form the bare `Any` token is the
+        # member of a trailer, not a standalone reference — resolve the whole
+        # trailer, but still anchor the warning at the `Any` token.
+        resolve_target: uni.Expr = nm;
+        parent = nm.parent;
+        if (
+            isinstance(parent, uni.AtomTrailer)
+            and parent.is_attr
+            and (parent.right is nm)
+        ) {
+            resolve_target = parent;
+        }
+        if self.evaluator.is_explicit_any(
+            self.evaluator.get_type_of_expression(resolve_target)
+        ) {
+            self.emit(W1037, node_override=nm);
+        }
     }
 }
 
@@ -769,6 +921,7 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
             and nd.find_parent_of_type(uni.ImplDef) is None
         ) {
             self._check_bare_generic(nd.type_tag.tag, declared_type);
+            self._check_explicit_any(nd.type_tag.tag);
         }
     }
 }
@@ -799,9 +952,10 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     if (sym := nd.sym) {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         nd.type = declared_type;
-        # Warn on bare generic type annotations (e.g. has items: list instead of list[T])
+        # Warn on bare generic / explicit-any annotations (e.g. has items: list)
         if nd.type_tag and nd.type_tag.tag {
             self._check_bare_generic(nd.type_tag.tag, declared_type);
+            self._check_explicit_any(nd.type_tag.tag);
         }
         # Walker-specific: `has reports` is the typed view of the walker's
         # report channel. Require a list shape so `report X` (write side)
@@ -1228,6 +1382,16 @@ This validates all TypeVar usages including nested ones like `list[T]`.
 impl TypeCheckPass.exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> None {
     if isinstance(nd.tag, uni.Expr) {
         self.evaluator.validate_typevar_in_type_expr(nd.tag);
+        # Evaluate the annotation so the tag Expr carries a resolved `.type`.
+        # Symbol-type resolution only annotates the tag for the symbol kinds
+        # whose path happens to evaluate it; doing it here covers every
+        # annotation uniformly. Codegen backends (notably NaIRGenPass) lower
+        # Expr.type directly instead of re-deriving structure from the
+        # annotation AST. get_type_of_expression is memoized, so this is a
+        # no-op when the tag was already evaluated.
+        if nd.tag?.type is None {
+            self.evaluator.get_type_of_expression(nd.tag);
+        }
     }
 }
 

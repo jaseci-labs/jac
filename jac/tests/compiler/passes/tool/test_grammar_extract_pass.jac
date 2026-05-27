@@ -168,7 +168,18 @@ test "known rule names" {
     assert not prog.errors_had;
     extracted = GrammarExtractPass(ir_in=mod, prog=prog);
     rule_names = {r.name for r in extracted.rules};
-    expected = {"if_stmt","while_stmt","expression","bitwise_or","bitwise_xor","bitwise_and","arithmetic","term","power","factor"};
+    expected = {
+        "if_stmt",
+        "while_stmt",
+        "expression",
+        "bitwise_or",
+        "bitwise_xor",
+        "bitwise_and",
+        "arithmetic",
+        "term",
+        "power",
+        "factor"
+    };
     missing = expected - rule_names;
     assert len(missing) == 0 , f"Missing rules: {missing}";
 }

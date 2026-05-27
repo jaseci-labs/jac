@@ -1,0 +1,24 @@
+[project]
+name = "emailer-smtp-example"
+version = "1.0.0"
+description = "Built-in SMTP emailer example for jac-scale"
+entry-point = "app.jac"
+
+# Built-in SMTP provider. No custom emailer code required.
+[plugins.scale.emailer]
+provider = "smtp"
+from_address = "no-reply@example.com"
+
+[plugins.scale.emailer.smtp]
+host = "smtp.gmail.com"
+port = 587
+username = "no-reply@example.com"
+use_tls = true
+# password supplied via EMAILER_SMTP_PASSWORD env var (preferred over plain text here)
+
+# Token TTLs + frontend URLs the framework drops into the email body.
+[plugins.scale.auth]
+verify_token_ttl_seconds = 86400
+reset_token_ttl_seconds = 1800
+verify_url_template = "https://app.example.com/verify?token={token}"
+reset_url_template = "https://app.example.com/reset?token={token}"

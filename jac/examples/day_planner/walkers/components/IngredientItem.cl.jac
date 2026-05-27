@@ -10,7 +10,9 @@ def:pub IngredientItem(ing: ShoppingItem) -> JsxElement {
                 <span class="ing-qty">{ing.quantity} {ing.unit}</span>
             </div>
             <div class="ing-meta">
-                {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
+                {if ing.carby {
+                    <span class="carb-badge">Carbs</span>
+                }}
                 <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
             </div>
         </div>;

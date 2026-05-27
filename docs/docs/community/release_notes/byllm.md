@@ -2,7 +2,48 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.5 (Latest Release)
+## byllm 0.6.10 (Latest Release)
+
+### New Features
+
+- **Streaming responses report generation speed**: The streaming `llm_timing` event now carries the per-iteration completion-token count alongside its duration, so consumers can display tokens/sec.
+
+### Bug Fixes
+
+- **Fix: tool-using ReAct loops no longer hang on models without a tool-aware chat template**: Local GGUFs and ollama families like gemma drop `role:"tool"` messages and mis-render assistant `tool_calls`, so they never saw their own results and re-issued the same call forever; the transcript sent to these models is now linearised into the `<tool_call>`/`<tool_response>` text shape they can actually read.
+- **Fix: tool calls now dispatch when streaming against ollama**: ollama streams a tool call as plain text in the message `content` rather than a structured `tool_calls` field, and `litellm.stream_chunk_builder` cannot reassemble it. byLLM's text recovery previously ran only for backends with `supports_native_tools=False`, so the native ollama path silently dropped the call and the ReAct loop ended with the raw JSON as its answer. The streaming dispatch now rebuilds the message as a dict from the accumulated stream text and recovers the call whenever tools were offered but no native `tool_calls` came back, and the JSON recovery understands `{"tool_calls": [...]}` / `{"tool_call": {...}}` envelopes plus the `name`/`tool`/`tool_name`/`function` and `arguments`/`args`/`tool_args`/`parameters`/`input` key aliases small models emit. No-op for genuine native tool calls and plain-text answers, so cloud providers are unaffected.
+
+### Refactors
+
+- **Refactor: native property syntax**: `MTIR.runtime` now uses the native `has runtime: MTRuntime { getter; }` property form (getter body in `impl/mtir.impl.jac`) instead of a `@property` decorator, matching the codebase-wide migration.
+
+## byllm 0.6.9
+
+### New Features
+
+- **Tool calling for local models**: byLLM now supports tool calling on backends without server-side tool support by rendering the tool protocol into the prompt and recovering tool calls from the reply.
+
+### Bug Fixes
+
+- **Fix: `by llm()` no longer stalls the server in async walkers**: Using `by llm()` inside an `async` walker previously blocked the entire event loop for the full LLM round-trip (0.5–30 s), freezing every other concurrent request. It now runs fully non-blocking via `litellm.acompletion`, `AsyncOpenAI`, and `httpx.AsyncClient`. No code changes needed. Sync walkers are unaffected.
+- **Fix: CI dependency alignment check restored for `byllm`**: `httpx>=0.27.0` was missing from `jac.toml` after being added to `pyproject.toml` in #5944, causing the CI alignment check to fail. Both files are now in sync.
+
+## byllm 0.6.6
+
+### New Features
+
+- **Add: Universal schema-hint injection for structured-output prompts**: byLLM now extracts the `response_format` schema's enum/description metadata and appends a human-readable hint (e.g. `Schema requirements: - field must be one of: 1=WORK, 2=PERSONAL, ...`) to the last user message inside `BaseLLM.make_model_params`, so every backend sees the same explicit name-to-value mapping cloud frontier providers' server-side prompt builders inject for free. Fixes systematic miscategorization on Ollama, vLLM, and other local-style backends where small open-weight models (Gemma 4 E4B, Llama 3.x 8B class) were defaulting to the first allowed enum value because the schema description never reached the prompt. Empirical impact on the day_planner mini-bench: Ollama `gemma4:e4b` jumps from 1/6 (17%) to 6/6 (100%) on the categorize fixture; in-process `local:gemma-4-e4b` stays at 24/24 (100%). The previously LocalLLM-only `attach_schema_hint` is now `byllm.schema.inject_schema_hint`; LocalLLM's `filter_params` is reduced to llama.cpp-specific concerns (multimodal-content flatten and `json_schema` -> `json_object` rewrite) since the hint is already applied upstream.
+
+### Bug Fixes
+
+- **Fix: `local:` model ctx_window propagation to compaction layer**: `LocalLLM._get_ctx_window` (introduced in #5830) returned only `self.spec["n_ctx"]`, ignoring every user override. The proactive-compaction threshold then fired against the alias's hardcoded spec value (8192 for all bundled aliases) regardless of `by llm(ctx_window=N)`, `LocalLLM(ctx_window=N)`, `[plugins.byllm.compaction] ctx_window` in `jac.toml`, or `config={"n_ctx": N}`. Worst case: a user who built the engine with `config={"n_ctx": 2048}` got engine overflow at ~2048 tokens because compaction was waiting for 80% of 8192.
+- **Fix: `Message.to_dict()` crashing on media params with `sem` declarations**: An explicit `sem foo.img = "..."` on an `Image` (or any other `Media`) parameter crashed byllm with `TypeError: list indices must be integers or slices, not str`. The semstr-handling branch assumed `media.to_dict()` returns a single dict, but all `Media` subclasses return `list[dict]` (one entry per content block). The branch is now correct, and the sem string is emitted as a standard `{"type": "text", "text": ...}` block immediately before the media - replacing the previous non-standard `"description"` key that LLM provider APIs (OpenAI/Anthropic) would have rejected anyway. Surfaces in JacCoder image uploads through JacBuilder.
+
+### Refactors
+
+- **Refactor: Auto-compaction test suite**: Replaced the auto-compaction test suite (introduced in #5722) with 13 focused integration tests that drive the real `by llm()` pipeline end-to-end. The new suite asserts on observable outcomes (result correctness, exception type, message-list shape, hook-call counts) and never patches `_default_compact`, `_compact_messages`, `_copy_for_compaction`, `_get_ctx_window`, or `model_call_no_stream`; they all run as real implementations.
+
+## byllm 0.6.5
 
 ### New Features
 

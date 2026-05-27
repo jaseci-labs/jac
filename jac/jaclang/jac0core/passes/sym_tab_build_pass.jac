@@ -22,6 +22,7 @@ import from jaclang.jac0core.constant { SymbolAccess, Tokens }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.helpers { evaluate_version_condition }
+import from jaclang.jac0core.diagnostics { E0077 }
 
 """Jac Symbol table build pass."""
 class SymTabBuildPass(UniPass) {
@@ -34,9 +35,7 @@ class SymTabBuildPass(UniPass) {
     """Pop scope."""
     def pop_scope(self: SymTabBuildPass) -> UniScopeNode;
 
-    """Return current scope."""
-    @property
-    def cur_scope(self: SymTabBuildPass) -> UniScopeNode;
+    has cur_scope: UniScopeNode { getter; }
 
     """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
@@ -52,6 +51,9 @@ class SymTabBuildPass(UniPass) {
     def exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None;
     """Handle walrus operator (:=) assignments."""
     def exit_binary_expr(self: SymTabBuildPass, nd: uni.BinaryExpr) -> None;
+
+    """Bind `global x;` so subsequent assignments to `x` rebind the global."""
+    def enter_global_stmt(self: SymTabBuildPass, nd: uni.GlobalStmt) -> None;
 
     def enter_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def exit_test(self: SymTabBuildPass, nd: uni.Test) -> None;
@@ -114,6 +116,8 @@ class SymTabBuildPass(UniPass) {
     def exit_inner_compr(self: SymTabBuildPass, nd: uni.InnerCompr) -> None;
     def enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
     def exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
+    def enter_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
+    def exit_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
 }
 
 """Walk up ancestors to find the nearest Python-scoping node.
@@ -150,3 +154,15 @@ introduce a local in the nearest Python scope. Used both during
 SymTabBuildPass and, for impl bodies, re-run after DeclImplMatchPass has
 connected the body to its declaration so decl-scope HasVars are reachable."""
 def bind_assignment_targets(nd: uni.Assignment) -> None;
+
+"""Pull the module-level symbols named by a `global x;` statement into the
+enclosing Python scope so a subsequent `x = ...` rebinds the global instead of
+shadowing it with a fresh inferred local (which would drop the global's
+declared type).
+
+The global lives in the module that owns the *declaration*. For an inline body
+that is the enclosing module; for an impl body it is the decl module reached
+via `decl_link`. `decl_link` is unset during SymTabBuildPass, so this is a
+no-op for impl bodies there and is re-run by DeclImplMatchPass.connect_impls
+once the link is wired."""
+def bind_global_stmt(nd: uni.GlobalStmt) -> None;

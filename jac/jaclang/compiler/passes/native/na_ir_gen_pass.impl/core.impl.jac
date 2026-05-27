@@ -317,13 +317,33 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
+        # the enum name from the AST sig so the marshaller maps the ordinal back
+        # to the Python enum member.
+        ret_enum: (str | None) = None;
+        if ret_type == "i64" {
+            _fsig = self.method_ast_sigs.get(fname);
+            if _fsig and _fsig.return_type {
+                _rt = _fsig.return_type;
+                # Peel `T | None` (and general unions) to the first member.
+                if isinstance(_rt, uni.BinaryExpr)
+                and getattr(_rt.op, 'value', '') == "|" {
+                    _rt = _rt.left;
+                }
+                _rname = self._get_name(_rt);
+                if _rname is not None and _rname in self.enum_types {
+                    ret_enum = _rname;
+                }
+            }
+        }
         layout.functions[fname] = NativeFuncLayout(
             name=fname,
             param_types=param_types,
             param_names=param_names,
             ret_type=ret_type,
             ret_struct_name=ret_struct,
-            ret_tuple_layout=ret_tuple
+            ret_tuple_layout=ret_tuple,
+            ret_enum_type=ret_enum
         );
     }
     # Methods
@@ -467,14 +487,26 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if imported_mod is None {
             imported_mod = self.prog.mod.hub.get(abs_key);
         }
-        # If not in hub, parse the imported .jac file for type extraction.
+        # Not pre-loaded into the hub by the entry module's type-check (e.g.
+        # an import whose symbols the checker never resolved). Pull it in
+        # through the program pipeline rather than a raw parse: a .na.jac
+        # compile runs the implicit native type-check (see JacCompiler.compile),
+        # so the module's annotations land with `.type` populated and resolve
+        # via the unified `_lower_type` path -- a raw rd_parse would leave
+        # `.type = None` and silently fall back to name-based resolution.
+        # A nested compile overwrites prog._compile_options; save and restore
+        # it so the remaining native codegen still reads our skip_native_engine
+        # / aot_mode settings (mirrors the re-pin in JacCompiler.compile).
         if imported_mod is None and os.path.isfile(full_path) {
+            _saved_opts = self.prog._compile_options;
             try {
-                import from jaclang.jac0core.parser { parse as rd_parse }
-                source = open(full_path, encoding="utf-8").read();
-                (imported_mod, _) = rd_parse(source, full_path, prog=self.prog);
+                imported_mod = self.prog.compile(
+                    full_path, no_cgen=True, symtab_ir_only=True
+                );
             } except Exception {
-                continue;
+                imported_mod = None;
+            } finally {
+                self.prog._compile_options = _saved_opts;
             }
         }
         if imported_mod is None {
@@ -581,7 +613,8 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
         } elif isinstance(stmt, uni.GlobalVars) {
-            self._register_imported_globals(stmt);
+            _imp_path = imported_mod.loc.mod_path if imported_mod?.loc else "";
+            self._register_imported_globals(stmt, _imp_path);
         }
     }
 }
@@ -659,7 +692,9 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 }
 
 """Register imported global variables with external linkage (resolved at link time)."""
-impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
+impl NaIRGenPass._register_imported_globals(
+    nd: uni.GlobalVars, source_path: str = ""
+) -> None {
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
@@ -680,6 +715,10 @@ impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
             global_var.linkage = "external";
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
+            # Record origin so dup-error messages can name the source module
+            if source_path {
+                self._global_origins[var_name] = source_path;
+            }
             # Track list element types for imported list globals
             if isinstance(var_type, ir.PointerType) {
                 for (ename, ltype) in self.list_types.items() {
@@ -820,7 +859,12 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
-                if decl.body is not None {
+                # A `;`-terminated clib decl parses with body=None, but later
+                # passes (e.g. decl/impl matching) can normalise it to `[]`.
+                # Treat an empty body list as no body — only a non-empty body
+                # is a true error.
+                _is_empty_list = isinstance(decl.body, list) and not decl.body;
+                if decl.body is not None and not _is_empty_list {
                     self.emit(E5060, name=fn_name);
                     continue;
                 }

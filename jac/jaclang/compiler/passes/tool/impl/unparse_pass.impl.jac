@@ -767,6 +767,11 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.jac = "await " + nd.target.gen.jac;
 }
 
+"""CastExpr: value as cast_type"""
+impl UnparsePass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.jac = nd.value.gen.jac + " as " + nd.cast_type.gen.jac;
+}
+
 """GlobalStmt: global names ;"""
 impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
     nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
@@ -1142,8 +1147,14 @@ impl UnparsePass.exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None {
     nd.gen.jac = nd.expr.gen.jac;
 }
 
-"""JsxNormalAttribute: name[=value]."""
+"""JsxNormalAttribute: `name[=value]` — or `{name}` for the shorthand
+form (`#6082` item 6) where the attribute name and value are the same
+bare identifier."""
 impl UnparsePass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
+    if nd.is_shorthand {
+        nd.gen.jac = "{" + nd.name.gen.jac + "}";
+        return;
+    }
     result = nd.name.gen.jac;
     if nd.value {
         result = result + " = " + nd.value.gen.jac;
@@ -1159,6 +1170,26 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxSlot: statement-form `{...}` slot — emit each kid in order so the
+raw `{ stmt; stmt; ... }` shape round-trips. The slot body is never
+desugared in place (the cl accumulator lowering happens at codegen, in
+EsastGenPass), so the kids are always faithful surface tokens."""
+impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[str] = [];
+    for k in nd.kid {
+        s = k.gen.jac;
+        if s is not None {
+            parts.append(s);
+        }
+    }
+    nd.gen.jac = "".join(parts);
+}
+
+"""JsxComment: emit the raw `{#* ... *#}` text verbatim."""
+impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

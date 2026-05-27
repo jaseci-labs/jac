@@ -10,6 +10,7 @@ Reference:
 """
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
     E1001,
     E1002,
@@ -34,6 +35,8 @@ import from jaclang.jac0core.diagnostics {
     E1116,
     E1117,
     W1036,
+    W1037,
+    W1052,
     W2014,
     E2015
 }
@@ -82,6 +85,7 @@ class TypeCheckPass(UniPass) {
         self: TypeCheckPass, ann_node: uni.UniNode, ty: object
     ) -> None;
 
+    def _check_explicit_any(self: TypeCheckPass, ann_node: uni.UniNode) -> None;
     def _check_walker_reports_shape(
         self: TypeCheckPass, nd: uni.HasVar, declared_type: object
     ) -> None;

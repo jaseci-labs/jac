@@ -22,6 +22,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
+| `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
 | `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
@@ -35,6 +36,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
+| `jac guide` | Show curated Jac reference guides |
 | `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
@@ -170,7 +172,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa}] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
 ```
 
 | Option | Description | Default |
@@ -183,7 +185,9 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
 | `--no_client` | Skip client bundling/serving (API only) | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
-| `--client` | Client build target (`web`, `desktop`, `pwa`) | None |
+| `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
+| `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
+| `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -202,6 +206,15 @@ jac start --dev
 # HMR mode without client bundling (API only)
 jac start --dev --no_client
 
+# Mobile dev (Android default)
+jac start main.jac --client mobile --dev
+
+# Mobile dev on iOS simulator
+jac start main.jac --client mobile --dev --platform ios
+
+# Mobile dev with explicit host override
+jac start main.jac --client mobile --dev --host 192.168.1.25
+
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
 
@@ -217,7 +230,7 @@ jac start --scale --build
 
 ### jac create
 
-Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
+Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files, including an `AGENTS.md` that points AI coding agents at `jac guide`.
 
 ```bash
 jac create [-h] [-f] [-u USE] [-l] [name]
@@ -560,6 +573,110 @@ The Jac extension includes live graph visualization:
 Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
 
 For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
+
+---
+
+## Browser Automation
+
+### jac browse
+
+Drive a headless Chrome/Chromium over the Chrome DevTools Protocol (CDP): navigate, interact with elements, inspect the page, and capture screenshots. The driver is zero-dependency -- it speaks CDP over a hand-rolled WebSocket, so no Playwright or Selenium install is required. Interactions use real CDP input events (trusted clicks and keystrokes), not JavaScript injection.
+
+```bash
+jac browse <action> [args ...] [-s SESSION]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `action` | The action to perform (see table below) | Required |
+| `args` | Action-specific arguments (selector, url, text, path, ...) | `[]` |
+| `-s, --session` | Session name; each session is an isolated browser instance | `default` |
+
+**Actions:**
+
+| Action | Arguments | Description |
+|--------|-----------|-------------|
+| `open` | `[url]` | Launch a headless browser, optionally navigating to a URL |
+| `navigate` / `goto` | `<url>` | Navigate to a URL (adds `https://` if no scheme; waits for load) |
+| `click` | `<selector\|@ref>` | Real mouse click at the element center |
+| `type` | `<selector> <text>` | Focus an element and type text as per-character key events |
+| `fill` | `<selector> <text>` | Clear a field and insert text in one step |
+| `press` | `<key>` | Press a named key or character (`Enter`, `Tab`, `Ctrl+A`, ...) |
+| `get` | `url\|title\|text [selector]` | Read a page property (`get text` needs a selector) |
+| `eval` | `<expression>` | Run JavaScript and return the result as JSON |
+| `snapshot` | | Print the accessibility tree with `@e1`/`@e2` refs on interactive nodes |
+| `screenshot` | `[path]` | Capture the page as PNG (defaults to the cache directory) |
+| `state` | `save\|load <path>` | Save or restore cookies + localStorage as JSON |
+| `sessions` | | List known sessions with their PID, port, and liveness |
+| `close` | | Terminate the browser and clear session state |
+
+Outputs are printed raw so they pipe cleanly; JSON-valued results (`eval`, `get`) are serialized. Errors go to stderr and return exit code `1`.
+
+**Sessions and persistence:**
+
+A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
+
+**Refs vs. selectors:**
+
+`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. CSS selectors auto-wait until the element is visible and position-stable before acting.
+
+**Environment variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `JACBROWSER_SESSION` | Default session name (overridden by `-s`) |
+| `JACBROWSER_CHROME` | Path to the Chrome/Chromium binary |
+| `JACBROWSER_CACHE` | Cache directory for session, ref, and screenshot files |
+
+**Examples:**
+
+```bash
+# Launch a browser and open a page
+jac browse open example.com
+
+# Read page properties
+jac browse get title
+jac browse get text 'h1'
+
+# Inspect the accessibility tree -> assigns @e1, @e2, ... to interactive nodes
+jac browse snapshot
+#   @e1 link "Home"
+#   @e5 button "Send Message"
+
+# Interact by ref (from snapshot) or by CSS selector
+jac browse click @e5
+jac browse fill '#email' you@example.com
+jac browse press Enter
+
+# Run JavaScript
+jac browse eval "document.querySelectorAll('a').length"
+
+# Capture a screenshot
+jac browse screenshot ./page.png
+
+# Save and restore an authenticated session
+jac browse state save auth.json
+jac browse state load auth.json
+
+# Work in an isolated session
+jac browse -s work open example.com
+jac browse sessions
+#   * work     pid=12345 port=9222 [alive]
+
+# Close the browser
+jac browse close
+```
+
+A typical end-to-end flow chains these together:
+
+```bash
+jac browse open example.com
+jac browse snapshot                 # find the @ref of the field and button
+jac browse fill @e3 "hello"
+jac browse click @e5
+jac browse screenshot result.png
+jac browse close
+```
 
 ---
 
@@ -1043,6 +1160,8 @@ Sync the project environment to `jac.toml`. Installs all Python (pip), git, and 
 
 ```bash
 jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+            [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
+            [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
@@ -1051,6 +1170,13 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 | `-d, --dev` | Include dev dependencies | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
+| `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
+| `--no-cache-dir` | Disable the pip download cache | `False` |
+| `--pre` | Include pre-release and development versions | `False` |
+| `--dry-run` | Show what would be installed without actually installing anything | `False` |
+| `--no-deps` | Don't install package dependencies | `False` |
+| `--quiet` | Suppress pip output | `False` |
+| `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
 
 **Examples:**
 
@@ -1075,9 +1201,23 @@ jac install -e .
 
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
+
+# Reinstall all packages from scratch (ignores cached state)
+jac install --force-reinstall
+
+# Include pre-release versions
+jac install --pre
+
+# Preview what would be installed without doing it
+jac install --dry-run
+
+# Install without using pip's download cache
+jac install --no-cache-dir
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
+
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
@@ -1211,7 +1351,7 @@ jac purge
 
 ### jac bundle
 
-Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`.
+Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`. For the full end-to-end workflow, see the [Publishing Packages](../publishing.md) guide.
 
 ```bash
 jac bundle [-h] [-o OUTPUT]
@@ -1223,10 +1363,12 @@ jac bundle [-h] [-o OUTPUT]
 
 **What it does:**
 
-1. Reads `[package]` from `jac.toml` and validates required fields (`name`, `version`).
-2. Discovers source files under the package directory (defaults to the directory named after the package). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
-3. Generates a PEP 427-compliant `.whl` archive with a `METADATA`, `WHEEL`, `RECORD`, and optional `entry_points.txt`.
+1. Reads `[project]` from `jac.toml` and validates required fields (`name`, `version`).
+2. Discovers source files under the package directory (defaults to the directory named after the project, or the explicit `[project.include]` `packages` list). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
+3. Generates a PEP 427-compliant `.whl` archive with `METADATA`, `WHEEL`, `RECORD`, `top_level.txt`, and optional `entry_points.txt`. The build is reproducible (fixed ZIP timestamps).
 4. Writes `<name>-<version>-py3-none-any.whl` to the output directory.
+
+> **Note on bytecode:** `jac bundle` ships `.jir` files only if they already exist in your source tree. To pre-compile `.jac` → `.jir` before bundling (so installs skip compilation), run `jac` precompilation first; `jac bundle` itself does not regenerate stale `.jir` files.
 
 **Examples:**
 
@@ -1246,13 +1388,15 @@ pip install dist/mylib-1.0.0-py3-none-any.whl
 
 **Requirements:**
 
-A `[package]` section must exist in `jac.toml`. At minimum:
+A `[project]` section must exist in `jac.toml`. At minimum:
 
 ```toml
-[package]
+[project]
 name = "mylib"
 version = "1.0.0"
 ```
+
+See the [Configuration Reference](../config/index.md#project) for the full set of publishing fields (`license`, `readme`, `authors`, `[project.include]`, and more).
 
 ---
 
@@ -1453,6 +1597,44 @@ jac jac2js app.jac
 ---
 
 ## Utility Commands
+
+### jac guide
+
+Show the curated Jac reference guides bundled with the compiler -- the authoritative spec for writing correct, idiomatic Jac. AI coding agents and humans can read them straight from the CLI; nothing to install.
+
+```bash
+jac guide [-h] [-s SEARCH] [-e EXPORT] [-j] [topic]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `topic` | Guide name to display (omit to list every guide) | None |
+| `-s, --search` | List only guides matching a keyword | None |
+| `-e, --export` | Export all guides as a Claude Code skills directory at this path | None |
+| `-j, --json` | Emit machine-readable JSON (for tools and agents) | `False` |
+
+**Examples:**
+
+```bash
+# List every available guide
+jac guide
+
+# Print a specific guide
+jac guide jac-types
+
+# Find guides by keyword
+jac guide --search walker
+
+# Machine-readable list for tooling and agents
+jac guide --json
+
+# Export the guides as auto-loading Agent Skills
+jac guide --export ~/.claude/skills
+```
+
+See [Agent Skills and MCP](../../quick-guide/agent-skills-and-mcp.md) for using the guides with AI assistants.
+
+---
 
 ### jac grammar
 
@@ -1678,8 +1860,8 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`) | `web` |
-| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
 
 **Examples:**
 
@@ -1692,6 +1874,12 @@ jac build --client desktop
 
 # Build for Windows
 jac build --client desktop --platform windows
+
+# Build mobile app for Android
+jac build --client mobile --platform android
+
+# Build mobile app for iOS
+jac build --client mobile --platform ios
 ```
 
 #### jac setup
@@ -1699,14 +1887,25 @@ jac build --client desktop --platform windows
 One-time initialization for a build target.
 
 ```bash
-jac setup <target>
+jac setup <target> [-p PLATFORM]
 ```
+
+For `target=mobile`, `--platform` supports `android`, `ios`, or `all`.
 
 **Examples:**
 
 ```bash
 # Setup Tauri for desktop builds
 jac setup desktop
+
+# Setup Capacitor for mobile builds
+jac setup mobile
+
+# Setup iOS scaffold only (macOS only)
+jac setup mobile --platform ios
+
+# Setup both Android and iOS scaffolds (macOS)
+jac setup mobile --platform all
 ```
 
 #### Extended Flags
@@ -1746,9 +1945,9 @@ Expected project layout:
 
 ```
 mylib/
-├── jac.toml          ← must contain [package] section
+├── jac.toml          ← must contain [project] section
 ├── README.md
-└── mylib/            ← source dir (matches [package] name)
+└── mylib/            ← source dir (matches [project] name)
     ├── __init__.jac
     └── utils.jac
 ```

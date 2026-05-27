@@ -39,7 +39,7 @@ class DatabaseProviderFactory {
     static def create(
         provider_type: str,
         target: (DeploymentTarget | None) = None,
-        config: (dict[str, Any] | None) = None
+        config: (dict[str, any] | None) = None
     ) -> DatabaseProvider {
         if provider_type == 'kubernetes_mongo' {
             import from jac_scale.providers.database.kubernetes_mongo {
@@ -62,7 +62,7 @@ class DatabaseProviderFactory {
         db_type: (DatabaseType | str),
         uri: Optional[str] = None,
         config: Optional[Dict[(str, Any)]] = None
-    ) -> Any {
+    ) -> any {
         # Convert string to DatabaseType enum
         db_type_enum: DatabaseType;
         if (isinstance(db_type, str)) {

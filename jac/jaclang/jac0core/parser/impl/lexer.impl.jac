@@ -38,6 +38,44 @@ impl Lexer.in_jsx -> bool {
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
 }
 
+impl Lexer.in_view_body -> bool {
+    # True when the lexer cursor is lexically inside a JSX `{...}` slot body.
+    # Inside a slot the template is statement-based, so a `<Tag` that
+    # follows a `}` (end of a control-flow block) or a sibling JSX close
+    # tag must open a JSX element rather than be read as a `<` comparison.
+    return len(self._view_body_depths) > 0;
+}
+
+impl Lexer._track_view_context(tok: Token) {
+    # Track brace depths so JSX `{...}` slot tracking (pushed by
+    # `scan_jsx_content` when the slot's LBRACE is emitted) pops on the
+    # matching slot RBRACE.
+    k = tok.kind;
+    if k == TokenKind.LPAREN {
+        self._paren_depth += 1;
+    } elif k == TokenKind.RPAREN {
+        if self._paren_depth > 0 {
+            self._paren_depth -= 1;
+        }
+    } elif k == TokenKind.LSQUARE {
+        self._bracket_depth += 1;
+    } elif k == TokenKind.RSQUARE {
+        if self._bracket_depth > 0 {
+            self._bracket_depth -= 1;
+        }
+    } elif k == TokenKind.LBRACE {
+        self._brace_depth += 1;
+    } elif k == TokenKind.RBRACE {
+        if len(self._view_body_depths) > 0
+        and self._brace_depth == self._view_body_depths[-1] {
+            self._view_body_depths.pop();
+        }
+        if self._brace_depth > 0 {
+            self._brace_depth -= 1;
+        }
+    }
+}
+
 impl Lexer.prev_is_value -> bool {
     # Returns True when the previous token ends a value-producing expression.
     # Used to disambiguate `<` as comparison (after values) vs JSX tag opener.
@@ -70,30 +108,129 @@ impl Lexer.prev_is_value -> bool {
     ];
 }
 
+# --- UTF-8 byte-offset cursor (rune-aware) -------------------------------
+# `pos`/`_source_len` are byte offsets into the UTF-8 source. For pure-ASCII
+# source (`_ascii`) byte offset == code-point index, so these stay on the
+# plain `str` path (no encode/decode work). For source containing non-ASCII
+# code points they decode runes out of the cached `_enc` byte view. Both
+# branches are portable: they produce identical results in the Python and
+# native backends (where `str` is code-point-indexed vs UTF-8 i8* respectively).
+impl Lexer._width_of(lead: int) -> int {
+    # UTF-8 byte width from a lead byte value.
+    if lead < 0x80 {
+        return 1;
+    }
+    if lead < 0xE0 {
+        return 2;
+    }
+    if lead < 0xF0 {
+        return 3;
+    }
+    return 4;
+}
+
+impl Lexer._rune_width(byte_idx: int) -> int {
+    # Byte width of the UTF-8 code point whose lead byte is at byte_idx.
+    return self._width_of(int.from_bytes(self._enc[byte_idx:byte_idx + 1], "big"));
+}
+
+impl Lexer._char_at(byte_idx: int) -> str {
+    # The single code point starting at byte offset byte_idx, or "" if out of
+    # range or if byte_idx lands on a continuation byte (mid-rune — only the
+    # ASCII-prefix backscan steps one byte at a time, where a mid-rune hit is
+    # simply treated as non-alnum and stops the scan).
+    if byte_idx < 0 or byte_idx >= self._source_len {
+        return "";
+    }
+    if self._ascii {
+        return self.source[byte_idx];
+    }
+    one = self._enc[byte_idx:byte_idx + 1];
+    lead = int.from_bytes(one, "big");
+    if lead < 0x80 {
+        # ASCII byte — the overwhelming majority even in a non-ASCII file;
+        # decode the single byte directly and skip the width computation.
+        return one.decode("utf-8");
+    }
+    if lead < 0xC0 {
+        return "";  # continuation byte: mid-rune
+    }
+    w = self._width_of(lead);
+    return self._enc[byte_idx:byte_idx + w].decode("utf-8", errors="replace");
+}
+
+impl Lexer._slice(a: int, c: int) -> str {
+    # Decode the byte range [a, c) to a string.
+    if self._ascii {
+        return self.source[a:c];
+    }
+    return self._enc[a:c].decode("utf-8");
+}
+
 impl Lexer.current -> str {
+    # Hot path: inline the ASCII case (called once per character) so the
+    # common pure-ASCII source pays only a single extra branch vs. the
+    # pre-UTF-8 lexer.
     if self.pos >= self._source_len {
         return "";
     }
-    return self.source[self.pos];
+    if self._ascii {
+        return self.source[self.pos];
+    }
+    return self._char_at(self.pos);
 }
 
 impl Lexer.peek(offset: int = 1) -> str {
-    idx = self.pos + offset;
-    if idx >= self._source_len {
-        return "";
+    if self._ascii {
+        idx = self.pos + offset;
+        if idx >= self._source_len {
+            return "";
+        }
+        return self.source[idx];
     }
-    return self.source[idx];
+    # Walk `offset` code points forward from the current byte position.
+    bi = self.pos;
+    k = 0;
+    while k < offset and bi < self._source_len {
+        bi += self._rune_width(bi);
+        k += 1;
+    }
+    return self._char_at(bi);
 }
 
 impl Lexer.advance -> str {
-    ch = self.current();
+    if self._ascii {
+        ch = self.current();
+        if ch == "\n" {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+        self.pos += 1;
+        return ch;
+    }
+    # Non-ASCII path: read the lead byte once to derive both the code point
+    # and its width (avoids a second byte read via current()+_rune_width()).
+    if self.pos >= self._source_len {
+        return "";
+    }
+    one = self._enc[self.pos:self.pos + 1];
+    lead = int.from_bytes(one, "big");
+    if lead < 0x80 {
+        ch = one.decode("utf-8");
+        w = 1;
+    } else {
+        w = self._width_of(lead);
+        ch = self._enc[self.pos:self.pos + w].decode("utf-8", errors="replace");
+    }
     if ch == "\n" {
         self.line += 1;
         self.col = 1;
     } else {
         self.col += 1;
     }
-    self.pos += 1;
+    self.pos += w;
     return ch;
 }
 
@@ -110,7 +247,24 @@ impl Lexer.match_char(expected: str) -> bool {
 }
 
 impl Lexer.match_string(expected: str) -> bool {
-    if self.source[self.pos:self.pos + len(expected)] == expected {
+    if self._ascii {
+        # Fast path: byte == code point, so slice the str directly.
+        if self.source[self.pos:self.pos + len(expected)] == expected {
+            for _ in range(len(expected)) {
+                self.advance();
+            }
+            return True;
+        }
+        return False;
+    }
+    # `expected` is ASCII (operators/keywords). Compare raw bytes so a probe
+    # that straddles a multi-byte rune boundary never decodes a partial rune;
+    # ASCII bytes (<0x80) are never part of a multi-byte sequence, so a byte
+    # match is exact. Advance one code point per char of `expected`.
+    exp = expected.encode("utf-8");
+    exp_bytes = len(exp);
+    if self.pos + exp_bytes <= self._source_len
+    and self._enc[self.pos:self.pos + exp_bytes] == exp {
         for _ in range(len(expected)) {
             self.advance();
         }
@@ -143,29 +297,27 @@ impl Lexer.error(
     message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
 ) {
     self.error_count += 1;
-    if self?.prog and self.prog is not None and hasattr(self.prog, "errors_had") {
-        import from jaclang.jac0core.unitree { Token as UniToken, Source }
-        import from jaclang.jac0core.codeinfo { CodeLocInfo }
-        import from jaclang.jac0core.passes.transform { Alert }
-        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
-        sloc = self.make_loc(start_line, start_col, start_pos);
-        src = Source(self.source, mod_path=self.file_path);
-        tok = UniToken(
-            orig_src=src,
-            name="ERROR",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        code = DIAGNOSTICS.get(code_str) if code_str else None;
-        alrt = Alert(message, loc, Lexer, code=code);
-        self.prog.errors_had.append(alrt);
-    }
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=True
+        )
+    );
+}
+
+impl Lexer.warning(
+    message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
+) {
+    self.diags.append(
+        LexDiag(
+            message=message,
+            code_str=code_str,
+            loc=self.make_loc(start_line, start_col, start_pos),
+            is_error=False
+        )
+    );
 }
 
 impl Lexer.is_digit(ch: str) -> bool {
@@ -201,17 +353,17 @@ impl Lexer.skip_line_comment{
     while not self.at_end() and self.current() != "\n" {
         self.advance();
     }
-    comment_text = self.source[start_pos:self.pos];
+    comment_text = self._slice(start_pos, self.pos);
     self.comments.append(
-        (
-            comment_text,
-            start_line,
-            start_line,
-            start_col,
-            self.col,
-            start_pos,
-            self.pos,
-            False
+        CommentData(
+            value=comment_text,
+            line=start_line,
+            end_line=start_line,
+            col_start=start_col,
+            col_end=self.col,
+            pos_start=start_pos,
+            pos_end=self.pos,
+            is_block=False
         )
     );
 }
@@ -227,17 +379,17 @@ impl Lexer.skip_block_comment -> bool {
         if self.current() == "*" and self.peek() == "#" {
             self.advance();  # *
             self.advance();  # #
-            comment_text = self.source[start_pos:self.pos];
+            comment_text = self._slice(start_pos, self.pos);
             self.comments.append(
-                (
-                    comment_text,
-                    start_line,
-                    self.line,
-                    start_col,
-                    self.col,
-                    start_pos,
-                    self.pos,
-                    True
+                CommentData(
+                    value=comment_text,
+                    line=start_line,
+                    end_line=self.line,
+                    col_start=start_col,
+                    col_end=self.col,
+                    pos_start=start_pos,
+                    pos_end=self.pos,
+                    is_block=True
                 )
             );
             return True;
@@ -288,10 +440,10 @@ impl Lexer.scan_identifier -> Token {
         }
         # Check for "in" - making it "not in"
         if not self.at_end() and self.current() == "i" {
-            if self.source[self.pos:self.pos + 2] == "in"
+            if self._slice(self.pos, self.pos + 2) == "in"
             and (
                 self.pos + 2 >= self._source_len
-                or not self.is_alnum(self.source[self.pos + 2])
+                or not self.is_alnum(self._char_at(self.pos + 2))
             ) {
                 self.advance();  # i
                 self.advance();  # n
@@ -316,10 +468,10 @@ impl Lexer.scan_identifier -> Token {
         }
         # Check for "not" - making it "is not"
         if not self.at_end() and self.current() == "n" {
-            if self.source[self.pos:self.pos + 3] == "not"
+            if self._slice(self.pos, self.pos + 3) == "not"
             and (
                 self.pos + 3 >= self._source_len
-                or not self.is_alnum(self.source[self.pos + 3])
+                or not self.is_alnum(self._char_at(self.pos + 3))
             ) {
                 self.advance();  # n
                 self.advance();  # o
@@ -454,6 +606,16 @@ impl Lexer.scan_string(quote: str) -> Token {
     start_col = self.col;
     start_pos = self.pos;
     value = "";
+    # A leading r/R prefix sits in the source just before the opening quote
+    # (the lexer emits it as a separate name token). A raw string keeps
+    # backslashes literal, so an unknown escape there is intentional.
+    prefix = "";
+    pp = start_pos - 1;
+    while pp >= 0 and self.is_alnum(self._char_at(pp)) {
+        prefix = self._char_at(pp) + prefix;
+        pp -= 1;
+    }
+    is_raw = prefix.lower() in ["r", "rb", "br"];
     triple = False;
     # Check for triple-quoted string
     if self.peek() == quote and self.peek(2) == quote {
@@ -499,9 +661,33 @@ impl Lexer.scan_string(quote: str) -> Token {
 
         # Handle escape sequences
         if ch == "\\" {
-            value += self.advance();
+            esc_line = self.line;
+            esc_col = self.col;
+            esc_pos = self.pos;
+            value += self.advance();  # consume the backslash
             if not self.at_end() {
-                value += self.advance();
+                esc = self.current();
+                value += self.advance();  # consume the escaped character
+                # Flag escapes Python does not recognize: the compiler decodes
+                # the literal through Python, which would otherwise leak a bare
+                # SyntaxWarning with no source location. Raw strings are exempt.
+                if (
+                    not is_raw
+                    and esc not in "nrtbfva01234567xNuU"
+                    and esc != "\\"
+                    and esc != "\""
+                    and esc != "'"
+                    and esc != "\n"
+                    and esc != "\r"
+                ) {
+                    self.warning(
+                        f"Invalid escape sequence '\\{esc}'",
+                        esc_line,
+                        esc_col,
+                        esc_pos,
+                        code_str="W0100"
+                    );
+                }
             }
         } else {
             value += self.advance();
@@ -867,6 +1053,13 @@ impl Lexer.scan_jsx_tag_token -> Token {
         self.advance();
         return self.make_token(TokenKind.DOT, ".", start_line, start_col, start_pos);
     }
+    # `@` introduces a dynamic-tag expression: <@expr ...> / </@expr>
+    if ch == "@" {
+        self.advance();
+        return self.make_token(
+            TokenKind.DECOR_OP, "@", start_line, start_col, start_pos
+        );
+    }
     # Unknown - return error token
     self.error(
         f"Unexpected character in JSX tag: '{ch}'",
@@ -921,8 +1114,8 @@ impl Lexer.scan_jsx_content -> Token {
             TokenKind.JSX_CLOSE_START, "</", start_line, start_col, start_pos
         );
     }
-    # Check for nested JSX element: <identifier
-    if ch == "<" and self.is_alpha(self.peek()) {
+    # Check for nested JSX element: <identifier (or a dynamic tag <@expr)
+    if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
         self.advance();  # consume <
         self.jsx_depth += 1;
         # Push JSX_TAG on top of current JSX_CONTENT
@@ -943,10 +1136,52 @@ impl Lexer.scan_jsx_content -> Token {
     }
     # Opening brace for expression: {expr}
     if ch == "{" {
-        self.advance();
+        # JSX block-comment slot: `{#* ... *#}` is a Jac-native JSX comment
+        # that renders nothing. Look ahead from `{` over whitespace; if we
+        # find a `#*` block comment and the slot closes at `}` after it,
+        # emit a single JSX_COMMENT token spanning the whole `{...}` range.
+        # If anything else appears, restore and fall through to the regular
+        # LBRACE path so normal expression scanning takes over.
+        saved_pos = self.pos;
+        saved_line = self.line;
+        saved_col = self.col;
+        saved_comments_len = len(self.comments);
+        self.advance();  # consume {
+        self.skip_whitespace();
+        is_comment_slot = False;
+        if (not self.at_end() and self.current() == "#" and self.peek() == "*") {
+            if self.skip_block_comment() {
+                self.skip_whitespace();
+                if not self.at_end() and self.current() == "}" {
+                    self.advance();  # consume }
+                    is_comment_slot = True;
+                }
+            }
+        }
+        if is_comment_slot {
+            # Drop the comment we just recorded into self.comments — the
+            # JsxComment AST node owns it now, so leaving it in the sidecar
+            # would cause CommentInjectionPass to emit it twice on reformat.
+            self.comments = self.comments[:saved_comments_len];
+            value = self._slice(start_pos, self.pos);
+            return self.make_token(
+                TokenKind.JSX_COMMENT, value, start_line, start_col, start_pos
+            );
+        }
+        # Not a comment-only slot — restore and emit LBRACE as normal.
+        self.pos = saved_pos;
+        self.line = saved_line;
+        self.col = saved_col;
+        self.comments = self.comments[:saved_comments_len];
+        self.advance();  # consume {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
-        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        self.push_mode(LexerMode.NORMAL);  # Parse slot body in normal mode
+        # Track the slot's brace depth so any nested JSX inside the slot
+        # body (statement-position JSX after a `}` close of a control-flow
+        # arm) is still lexed as JSX. The +1 anticipates the increment
+        # `_track_view_context` will apply on this LBRACE.
+        self._view_body_depths.append(self._brace_depth + 1);
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Text content - collect until we hit a meaningful JSX delimiter or end.
@@ -966,7 +1201,8 @@ impl Lexer.scan_jsx_content -> Token {
             #   </  (closing tag / fragment close)
             #   <>  (fragment open)
             #   <A  (nested element — alpha means tag name)
-            if nxt == "/" or nxt == ">" or self.is_alpha(nxt) {
+            #   <@  (dynamic-tag element)
+            if nxt == "/" or nxt == ">" or nxt == "@" or self.is_alpha(nxt) {
                 break;
             }
         }
@@ -1598,10 +1834,24 @@ impl Lexer.next_token -> Token {
     if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
-    # Check for JSX opening tag: <identifier
+    # Check for JSX opening tag: <identifier (or a dynamic tag <@expr).
     # Only if the previous token is NOT a value (otherwise < is a comparison operator).
-    if ch == "<" and self.is_alpha(self.peek()) and not self.prev_is_value() {
-        return self.scan_jsx_open_start();
+    # Inside a `view` body the template is statement-based, so a `<Tag` that
+    # immediately follows a block close `}` or a sibling JSX close tag still
+    # opens a JSX element even though those tokens are "value"-ending.
+    if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
+        if not self.prev_is_value() {
+            return self.scan_jsx_open_start();
+        }
+        if self.in_view_body()
+        and self.prev_token_kind in [
+            TokenKind.RBRACE,
+            TokenKind.JSX_TAG_END,
+            TokenKind.JSX_SELF_CLOSE,
+            TokenKind.JSX_FRAG_CLOSE
+        ] {
+            return self.scan_jsx_open_start();
+        }
     }
     # Identifier or keyword
     if self.is_alpha(ch) {
@@ -1645,12 +1895,17 @@ impl Lexer.next_token -> Token {
 }
 
 impl Lexer.tokenize -> list[Token] {
-    self._source_len = len(self.source);
+    # Set up the UTF-8 byte view. `pos`/`_source_len` are byte offsets; the
+    # ASCII fast-path keeps scanning on the plain `str` (byte == code point).
+    self._enc = self.source.encode("utf-8");
+    self._source_len = len(self._enc);
+    self._ascii = self.source.isascii();
     tokens: list[Token] = [];
     last_pos = -1;
     while True {
         token = self.next_token();
         tokens.append(token);
+        self._track_view_context(token);
         self.prev_token_kind = token.kind;
         if token.kind == TokenKind.EOF {
             break;

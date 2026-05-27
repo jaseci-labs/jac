@@ -138,6 +138,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Connect/disconnect operator requires a right operand",
          help="Connect (`++>`, `+>:T:+>`) and disconnect (`del -->`, `del ->:T:->`) operators are binary -- supply the right-hand side, e.g. `a ++> b;` or `a del --> b;`."
      ),
+     # Parser: connection operator errors
+     E0027 = _err(
+         "E0027",
+         Category.SYNTAX,
+         "Expected ':+>' to close forward typed connection -- did you mean '+>: <EdgeType> :+> <node>'?"
+     ),
+     E0028 = _err(
+         "E0028",
+         Category.SYNTAX,
+         "Expected ':<+' or ':+>' to close backward typed connection -- did you mean '<+: <EdgeType> :<+ <node>' (backward) or '<+: <EdgeType> :+> <node>' (bidirectional)?"
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
@@ -215,6 +226,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0077 = _err(
+         "E0077",
+         Category.SYNTAX,
+         "Duplicate declaration of '{name}' (already declared as {kind})",
+         help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
+     ),
+     E0080 = _err(
+         "E0080",
+         Category.SYNTAX,
+         "Property declarations cannot have an initializer",
+         help="Declare backing storage as a separate `has` field (e.g. `has _x: T = value;`) and reference it from your accessors."
+     ),
+     E0081 = _err(
+         "E0081",
+         Category.SYNTAX,
+         "Property declaration must contain at least one of `getter`, `setter`, `deleter`"
+     ),
      # Parser: warnings
      W0060 = _warn(
          "W0060",
@@ -239,12 +267,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JSX spread '{{...expr}}' is JS-idiomatic. Prefer '{{**expr}}' in Jac.",
          "Jac uses ** for dict unpacking — use {**expr} instead of {...expr} in JSX attributes."
      ),
-     W0064 = _warn(
-         "W0064",
-         Category.SYNTAX,
-         "'{keyword} {{ ... }}' block syntax is deprecated. Use the 'to {keyword}:' section header instead.",
-         "Replace 'cl {{ ... }}' / 'sv {{ ... }}' / 'na {{ ... }}' with 'to cl:' / 'to sv:' / 'to na:' at module level. The section applies until the next 'to X:' header or end of file."
-     ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
@@ -255,6 +277,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
      E0107 = _err(
          "E0107", Category.SYNTAX, "Lexer stuck at EOF in mode {mode} (pos={pos})"
+     ),
+     # Lexer: warnings
+     W0100 = _warn(
+         "W0100",
+         Category.SYNTAX,
+         "Invalid escape sequence '{esc}'",
+         "Double the backslash for a literal backslash, or prefix the string with r to make it raw."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Type errors (E1xxx) — type checker and type evaluator
@@ -325,6 +354,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
          " \"{type}[Any]\"; consider adding explicit type arguments"
+     ),
+     # Explicit `any` annotation warning
+     W1037 = _warn(
+         "W1037",
+         Category.TYPE,
+         "Explicit 'any' type annotation disables type checking here;"
+         " consider a more specific type"
      ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
@@ -536,6 +572,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Expression type could not be resolved (Unknown)",
          "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
+     W1052 = _warn(
+         "W1052",
+         Category.TYPE,
+         "JSX component '{component}' uses an untyped props bag ('props: any');"
+         " its JSX props cannot be type-checked",
+         "Declare explicit typed parameters (e.g. 'def MyComp(title: str, count: int) -> JsxElement'), or annotate 'props' with a typed object. An untyped 'props: any' parameter opts the component out of all prop name and type validation."
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(
@@ -670,6 +713,82 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2018",
          Category.SEMANTIC,
          "Undefined name '{name}' in {position} — this position requires a defined type"
+     ),
+     E2019 = _err(
+         "E2019",
+         Category.SEMANTIC,
+         "A JSX slot renders template content and cannot 'return' a value. "
+         "Use 'skip;' for slot early-exit, or move the value-producing "
+         "expression outside the JSX slot."
+     ),
+     E2020 = _err(
+         "E2020",
+         Category.SEMANTIC,
+         "Bare 'return;' is not allowed inside a JSX slot — it reads like "
+         "it exits the enclosing function, but a slot body is an inlined "
+         "IIFE. Use 'skip;' for slot early-exit."
+     ),
+     E2021 = _err(
+         "E2021",
+         Category.SEMANTIC,
+         "'{kw}' is not allowed inside a '{loop}' loop in a JSX slot. "
+         "Use 'continue' to skip an iteration, or 'skip;' to exit the "
+         "whole slot."
+     ),
+     W2019 = _warn(
+         "W2019",
+         Category.SEMANTIC,
+         "'while' loop in a JSX slot renders JSX without a 'key' attribute — "
+         "add 'key=' so siblings keep their identity across re-renders."
+     ),
+     E2022 = _err(
+         "E2022",
+         Category.SEMANTIC,
+         "'finally' is not allowed on a 'try' that has an 'awaiting' clause. "
+         "The dispatched-but-not-joined window and finalization semantics "
+         "are ambiguous together; move cleanup into an explicit "
+         "mount/unmount hook or drop one of the clauses."
+     ),
+     W2020 = _warn(
+         "W2020",
+         Category.SEMANTIC,
+         "'awaiting' is not yet implemented on the '{target}' target — "
+         "the 'awaiting' clause body will be ignored at runtime. Only the "
+         "'cl' (react/preact) target currently lowers 'awaiting' to a "
+         "Suspense fallback."
+     ),
+     E2023 = _err(
+         "E2023",
+         Category.SEMANTIC,
+         "Redundant '{{...}}' slot wrapping inside a JSX slot body — slot "
+         "bodies are already in slot mode. Drop the outer braces: write "
+         "'{stmt_kw} ... {{ ... }}' directly instead of "
+         "'{{{stmt_kw} ... {{ ... }}}}'."
+     ),
+     E2024 = _err(
+         "E2024",
+         Category.SEMANTIC,
+         "'has' is not allowed inside a JSX slot body. A slot body is a "
+         "statement template that re-runs on every render; declaring "
+         "reactive state there would compile to a conditional 'useState' "
+         "and violate React's rules of hooks. Declare 'has'-fields at the "
+         "component scope (the enclosing 'def -> JsxElement' body)."
+     ),
+     W2021 = _warn(
+         "W2021",
+         Category.SEMANTIC,
+         "'for' loop in a JSX slot renders JSX without a 'key' attribute — "
+         "annotate one child element with 'key=' so iteration siblings "
+         "keep their identity across re-renders."
+     ),
+     E2025 = _err(
+         "E2025",
+         Category.SEMANTIC,
+         "A 'has'-field of type 'Ref[...]' must be constructed with an "
+         "initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' "
+         "for a value ref. It lowers to React's 'useRef', so a bare "
+         "declaration has no ref object to hold — '.current' would never be "
+         "defined. This mirrors how every other 'has'-field carries a value."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
@@ -814,6 +933,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
          "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
      ),
+     W3043 = _warn(
+         "W3043",
+         Category.LINT,
+         "@property '{name}' can be replaced with native property syntax "
+         "'has {name}: {type_name} {{ getter; ... }}' [property-to-native]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -842,7 +967,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
          "stale-has-read": "W3041",
-         "map-lambda-to-comprehension": "W3042"
+         "map-lambda-to-comprehension": "W3042",
+         "property-to-native": "W3043"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
@@ -911,11 +1037,24 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5022", Category.CODEGEN, "Failed to load C library '{path}': {error}"
      ),
      W5023 = _warn("W5023", Category.CODEGEN, "Native module not found: {path}"),
-     W5024 = _warn(
-         "W5024", Category.CODEGEN, "Failed to compile native module {path}: {error}"
+     E5024 = _err(
+         "E5024",
+         Category.CODEGEN,
+         "Failed to compile native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
      ),
-     W5025 = _warn(
-         "W5025", Category.CODEGEN, "Failed to link native module {path}: {error}"
+     E5025 = _err(
+         "E5025",
+         Category.CODEGEN,
+         "Failed to link native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
+     ),
+     E5026 = _err(
+         "E5026",
+         Category.CODEGEN,
+         "Symbol collision during native link: '{symbol}' is defined in both "
+         "'{existing_module}' and '{new_module}'. "
+         "Mark one as :priv or rename to avoid a runtime crash."
      ),
      # Layout pass
      E5030 = _err(
@@ -954,6 +1093,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5060",
          Category.CODEGEN,
          "C library import declaration '{name}' must not have a body"
+     ),
+     E5090 = _err(
+         "E5090",
+         Category.CODEGEN,
+         "Native pathway does not yet support {kind} '{name}'",
+         help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the .na.jac native compiler yet. Move the code to a non-native context, or extend NaIRGenPass to handle this node type."
      ),
      # Language server
      E5070 = _err("E5070", Category.CODEGEN, "Error during type check: {error}"),

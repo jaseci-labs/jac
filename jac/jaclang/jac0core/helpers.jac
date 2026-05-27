@@ -48,7 +48,7 @@ def get_uni_nodes_as_snake_case -> list {
     ];
     ordered_classes = sorted(
         uni_node_classes,
-        key=lambda cls: Any : source_code.find(f"class {cls.__name__}")
+        key=lambda cls: any : source_code.find(f"class {cls.__name__}")
     );
     snake_names = [];
     for cls in ordered_classes {
@@ -181,50 +181,66 @@ def pretty_print_source_location(
     colors: bool = False
 ) -> str {
     line_num_width: int = 5;
-    idx: int = pos_start;
     if ((file_source == '') or (file_path == '')) {
         return '';
+    }
+    # pos_start/pos_end are UTF-8 BYTE offsets (matching the lexer's byte-offset
+    # spans). Operate on the byte view so indexing never lands mid-rune or runs
+    # past the (code-point) string length on lines containing non-ASCII; decode
+    # slices for display and count code points for caret alignment.
+    fb = file_source.encode("utf-8");
+    flen: int = len(fb);
+    NL: int = 10;  # ord('\n')
+    idx: int = pos_start;
+    if (idx > flen) {
+        idx = flen;
     }
     start_line: int = error_line - 2;
     if (start_line < 1) {
         start_line = 1;
     }
     end_line: int = start_line + 5;
-    file_source.splitlines(True)[(start_line - 1)];
     curr_line: int = error_line;
     while ((idx >= 0) and (curr_line >= start_line)) {
         idx -= 1;
         if (idx < 0) {
             break;
         }
-        if (file_source[idx] == '\n') {
+        if (fb[idx] == NL) {
             curr_line -= 1;
         }
     }
     idx += 1;
-    assert ((idx == 0) or (file_source[(idx - 1)] == '\n'));
     pretty_dump = '';
     curr_line = start_line;
     while (curr_line < end_line) {
         pretty_dump += f"%{line_num_width}d | " % curr_line;
         idx_line_start = idx;
-        while ((idx < len(file_source)) and (file_source[idx] != '\n')) {
+        while ((idx < flen) and (fb[idx] != NL)) {
             idx += 1;
         }
         if (colors and (curr_line == error_line)) {
-            pretty_dump += file_source[idx_line_start:pos_start] + f"{ANSIColors.RED}{file_source[pos_start:pos_end]}{ANSIColors.END}" + file_source[pos_end:idx];
+            pre = fb[idx_line_start:pos_start].decode("utf-8", errors="replace");
+            mid = fb[pos_start:pos_end].decode("utf-8", errors="replace");
+            post = fb[pos_end:idx].decode("utf-8", errors="replace");
+            pretty_dump += pre + f"{ANSIColors.RED}{mid}{ANSIColors.END}" + post;
         } else {
-            pretty_dump += file_source[idx_line_start:idx];
+            pretty_dump += fb[idx_line_start:idx].decode("utf-8", errors="replace");
         }
         pretty_dump += '\n';
         if (curr_line == error_line) {
             pretty_dump += f"%{line_num_width}s | " % ' ';
+            # Align the caret by display columns (one cell per code point),
+            # preserving tabs, and size the underline in code points.
+            prefix = fb[idx_line_start:pos_start].decode("utf-8", errors="replace");
             spaces = '';
-            for idx_pre in range(idx_line_start, pos_start) {
-                spaces += '\t' if (file_source[idx_pre] == '\t') else ' ';
+            for ch in prefix {
+                spaces += '\t' if (ch == '\t') else ' ';
             }
-            err_token_len = pos_end - pos_start;
-            line_remaining = idx - pos_start;
+            err_token_len = len(
+                fb[pos_start:pos_end].decode("utf-8", errors="replace")
+            );
+            line_remaining = len(fb[pos_start:idx].decode("utf-8", errors="replace"));
             if (line_remaining > 0 and err_token_len > line_remaining) {
                 err_token_len = line_remaining;
             }
@@ -237,7 +253,7 @@ def pretty_print_source_location(
             }
             pretty_dump += spaces + underline + '\n';
         }
-        if (idx == len(file_source)) {
+        if (idx == flen) {
             break;
         }
         curr_line += 1;
@@ -285,7 +301,7 @@ def format_related_spans(
 
 """Jac debugger."""
 class Jdb(pdb.Pdb) {
-    def init(self: Jdb, *args: Any, **kwargs: Any) -> None;
+    def init(self: Jdb, *args: any, **kwargs: any) -> None;
     def has_breakpoint(self: Jdb, bytecode: bytes) -> bool;
 }
 
@@ -319,16 +335,48 @@ def read_file_with_encoding(file_path: str) -> str {
     );
 }
 
+import tomllib;
+
+"""Raised when read_toml_with_encoding hits a TOML parse failure.
+
+Subclasses tomllib.TOMLDecodeError so legacy callers that match on
+TOMLDecodeError keep working; new callers can match on
+MalformedJacTomlError to access the `file_path` and `original`
+attributes for actionable error messages. Library callers (jaclang
+import time, get_disabled_plugins) typically log + continue; CLI
+callers (`jac start`, etc.) print a banner and exit 2."""
+class MalformedJacTomlError(tomllib.TOMLDecodeError) {
+    has file_path: str,
+        original: tomllib.TOMLDecodeError;
+
+    def init(
+        self: MalformedJacTomlError, file_path: str, original: tomllib.TOMLDecodeError
+    ) {
+        tomllib.TOMLDecodeError.__init__(
+            self, f"jac.toml is malformed at {file_path}: {original}"
+        );
+        self.file_path = file_path;
+        self.original = original;
+    }
+}
+
+
 """Read and parse a TOML file with encoding fallback.
 
     tomllib does strict UTF-8 decode; this routes through
     read_file_with_encoding so non-UTF-8 files (e.g. UTF-16 with BOM) work.
-    Parse errors propagate as tomllib.TOMLDecodeError so callers can match
-    on the original exception type.
+    A TOML parse failure is re-raised as MalformedJacTomlError (a
+    tomllib.TOMLDecodeError subclass) carrying `file_path` and `original`
+    attributes. Legacy callers catching tomllib.TOMLDecodeError still
+    work; new callers should catch MalformedJacTomlError to surface
+    actionable errors.
     """
 def read_toml_with_encoding(file_path: str) -> dict {
-    import tomllib;
-    return tomllib.loads(read_file_with_encoding(file_path));
+    try {
+        return tomllib.loads(read_file_with_encoding(file_path));
+    } except tomllib.TOMLDecodeError as exc {
+        raise MalformedJacTomlError(file_path, exc);
+    }
 }
 
 """Return a short, readable type name for annotations."""
@@ -418,18 +466,31 @@ def _describe_nodes_list(objects: Sequence) -> str {
     """
 obj DistFacade {
     has _dist: (object | None);
-
-    @property
-    def project_name -> str;
-
-    @property
-    def version -> str;
+    has project_name: str { getter; }
+    has version: str { getter; }
 }
+
+"""Emit a one-line stderr warning when jac.toml fails to parse during
+library bootstrap. Library callers (import jaclang, get_disabled_plugins,
+the autonative check) MUST NOT exit - that would break notebooks,
+scripts, and `jac format` (which the user needs to fix the file). The
+CLI's _load_project_config is responsible for the hard-exit banner."""
+def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
+    import sys;
+    sys.stderr.write(
+        f"warning: jac.toml is malformed ({exc.file_path}): {exc.original}; "
+        "ignoring [plugins].disabled. "
+        "Run a `jac` CLI command for the actionable error.\n"
+    );
+}
+
 
 """Get list of disabled plugins from JAC_DISABLED_PLUGINS env var or jac.toml.
 
     Priority: JAC_DISABLED_PLUGINS env var > jac.toml
     Supports qualified names (package:plugin), short names, and "*" wildcard.
+    A malformed jac.toml is warned about and treated as no disable list,
+    so `import jaclang` never refuses to start.
 
     Returns:
         List of disabled plugin identifiers.
@@ -451,6 +512,9 @@ def get_disabled_plugins -> list {
             try {
                 data = read_toml_with_encoding(str(toml_path));
                 return data.get('plugins', {}).get('disabled', []);
+            } except MalformedJacTomlError as exc {
+                _warn_malformed_jac_toml(exc);
+                return [];
             } except Exception {
                 return [];
             }
@@ -462,6 +526,8 @@ def get_disabled_plugins -> list {
         try {
             data = read_toml_with_encoding(str(toml_path));
             return data.get('plugins', {}).get('disabled', []);
+        } except MalformedJacTomlError as exc {
+            _warn_malformed_jac_toml(exc);
         } except Exception {
             ;
         }
@@ -544,25 +610,40 @@ def load_plugins_with_disabling(
             # Surface plugin-load failures so users know why an installed
             # plugin's features (e.g. jac-scale's /docs and /graph routes)
             # are missing. Most common cause is an unmet runtime dep on
-            # the plugin's own side — name it explicitly and let the user
+            # the plugin's own side -- name it explicitly and let the user
             # decide whether to install the dep or disable the plugin via
             # JAC_DISABLED_PLUGINS / [plugins].disabled in jac.toml.
             # sys.stderr.write (not print) -- we're called from
             # jaclang/__init__.py during the foundational-module phase,
             # before cli.console is safe to import.
             import sys;
-            cause = type(exc).__name__;
-            if isinstance(exc, ModuleNotFoundError) and exc?.name {
+            if isinstance(exc, MalformedJacTomlError) {
+                # The malformed-toml warning is already emitted once by
+                # get_disabled_plugins. Repeating "Install the missing
+                # package" for every plugin that fails on the same parse
+                # error is exactly what the original bug report flagged.
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    "jac.toml parse failure (see warning above).\n"
+                );
+            } elif isinstance(exc, ModuleNotFoundError) and exc?.name {
                 detail = f"missing dependency '{exc.name}'";
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    f"{detail}. Install the missing package, or disable this "
+                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
+                    "jac.toml.\n"
+                );
             } else {
+                cause = type(exc).__name__;
                 detail = f"{cause}: {exc}";
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    f"{detail}. Install the missing package, or disable this "
+                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
+                    "jac.toml.\n"
+                );
             }
-            sys.stderr.write(
-                f"warning: plugin '{qualified_name}' failed to load -- "
-                f"{detail}. Install the missing package, or disable this "
-                "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                "jac.toml.\n"
-            );
         }
     }
 }

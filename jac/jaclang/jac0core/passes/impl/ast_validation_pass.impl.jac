@@ -156,7 +156,7 @@ impl ASTValidationPass.enter_assignment(
 ) -> None {
     # root and super compile to function calls (e.g. Jac.root()) which
     # cannot appear on the left side of an assignment in Python.
-    non_assignable = {Tok.KW_ROOT,Tok.KW_SUPER};
+    non_assignable = {Tok.KW_ROOT, Tok.KW_SUPER};
     for target in nd.target {
         ref_node: (uni.SpecialVarRef | None) = None;
         if isinstance(target, uni.SpecialVarRef) {
@@ -294,27 +294,89 @@ impl ASTValidationPass.enter_archetype(
     and isinstance(nd.body.body, (list, tuple)) {
         body = list(nd.body.body);
     }
-    seen_methods: set[str] = set();
+    # Phase 1: collect names declared with `@property` in this class body.
+    # Property-accessor decorators (`@<name>.setter` / `.getter` / `.deleter`)
+    # reuse the same method name to extend the property, so a method whose
+    # decorator matches `@<name>.<accessor>` is only a "property accessor"
+    # (and not a duplicate-method error) when `<name>` is actually a property
+    # declared in this class. Limiting the skip to that case preserves real
+    # duplicate detection in patterns like `@bar.setter def foo` (where `bar`
+    # is not a property — the second `def foo` should still collide with
+    # any earlier `def foo` in the class).
+    properties_seen: set[str] = set();
     for item in body {
-        if isinstance(item, uni.Ability) and item.name_ref is not None {
-            # Skip @overload-decorated methods — duplicates are expected.
-            has_overload = False;
-            if item.decorators is not None {
-                for dec in item.decorators {
-                    if isinstance(dec, uni.Name) and dec.value == "overload" {
-                        has_overload = True;
-                    }
+        if (
+            isinstance(item, uni.Ability)
+            and item.name_ref is not None
+            and item.decorators is not None
+        ) {
+            for dec in item.decorators {
+                if isinstance(dec, uni.Name) and dec.value == "property" {
+                    properties_seen.add(item.name_ref.value);
+                    break;
                 }
             }
-            if has_overload {
-                continue;
+        }
+    }
+
+    # Phase 2: duplicate detection with property-accessor awareness.
+    # `seen_methods` tracks plain method names; `seen_accessors` tracks
+    # `(property_name, accessor_kind)` so that two `@x.setter def x` defs
+    # still flag as a duplicate accessor.
+    seen_methods: set[str] = set();
+    seen_accessors: set[tuple[(str, str)]] = set();
+    for item in body {
+        if not (isinstance(item, uni.Ability) and item.name_ref is not None) {
+            continue;
+        }
+        has_overload = False;
+        accessor_kind: (str | None) = None;
+        accessor_target: (str | None) = None;
+        if item.decorators is not None {
+            for dec in item.decorators {
+                if isinstance(dec, uni.Name) and dec.value == "overload" {
+                    has_overload = True;
+                } elif (
+                    isinstance(dec, uni.AtomTrailer)
+                    and isinstance(dec.right, uni.Name)
+                    and dec.right.value in ("setter", "getter", "deleter")
+                    and isinstance(dec.target, uni.Name)
+                ) {
+                    accessor_kind = dec.right.value;
+                    accessor_target = dec.target.value;
+                }
             }
-            mname = item.name_ref.value;
-            if mname in seen_methods {
+        }
+        # @overload-decorated methods may legitimately repeat names.
+        if has_overload {
+            continue;
+        }
+        mname = item.name_ref.value;
+        # Recognise a property accessor only when the decorator's target Name
+        # matches the method name and that name was declared `@property` in
+        # this class. The first guard rejects cross-property accessors like
+        # `@bar.setter def foo`; the second rejects accessors for properties
+        # not declared here. Both cases fall through to plain dup detection,
+        # which is what catches real bugs that a looser structural check
+        # would silently swallow.
+        if (
+            accessor_kind is not None
+            and accessor_target == mname
+            and mname in properties_seen
+        ) {
+            key = (mname, accessor_kind);
+            if key in seen_accessors {
+                # Two `@x.setter def x` (or two `.getter` / `.deleter`):
+                # a genuine duplicate accessor — flag it.
                 self.emit(E0076, node_override=item.name_ref, name=mname);
             }
-            seen_methods.add(mname);
+            seen_accessors.add(key);
+            continue;
         }
+        if mname in seen_methods {
+            self.emit(E0076, node_override=item.name_ref, name=mname);
+        }
+        seen_methods.add(mname);
     }
 }
 
@@ -322,7 +384,11 @@ impl ASTValidationPass.enter_archetype(
 impl ASTValidationPass.enter_try_stmt(
     self: ASTValidationPass, nd: uni.TryStmt
 ) -> None {
-    if len(nd.excepts) == 0 and nd.finally_body is None {
+    # `awaiting` counts as a clause for the "non-empty try" rule — a
+    # `try { ... } awaiting { ... }` is a complete construct on its own
+    # (the resolved value's exceptions just propagate to the enclosing
+    # ErrorBoundary).
+    if len(nd.excepts) == 0 and nd.finally_body is None and nd.awaiting_body is None {
         self.emit(E0040, node_override=nd);
     }
     # E0071: bare except must be last
@@ -331,4 +397,195 @@ impl ASTValidationPass.enter_try_stmt(
             self.emit(E0071, node_override=exc);
         }
     }
+}
+
+# ----- JSX `{...}` slot body rules ------------------------------------------
+"""Validate a JSX statement-form slot body.
+
+The slot body is a statement template that the cl-target codegen lowers
+into an accumulator IIFE. These rules are codegen-independent (they hold
+for every target), so they live here, on the faithful surface AST,
+rather than in the cl lowering. Nested slots are validated by their own
+`enter_jsx_slot`, so this walks only the immediate body (recursing
+through control flow, not into nested JSX children)."""
+impl ASTValidationPass.enter_jsx_slot(
+    self: ASTValidationPass, nd: uni.JsxSlot
+) -> None {
+    self._check_slot_body([s for s in nd.body], False, "");
+}
+
+impl ASTValidationPass._check_slot_body(
+    self: ASTValidationPass, stmts: list, in_loop: bool, loop_kw: str
+) -> None {
+    for s in stmts {
+        if isinstance(s, uni.ReturnStmt) {
+            # Any `return` in a slot body is forbidden: a slot body is an
+            # inlined IIFE, so `return;` reads like a function-exit but only
+            # exits the slot. `skip;` is the canonical slot early-exit;
+            # `return expr;` makes no sense since slots render template
+            # content.
+            if s.expr is not None {
+                self.emit(E2019, node_override=s);
+            } else {
+                self.emit(E2020, node_override=s);
+            }
+        } elif isinstance(s, uni.CtrlStmt) {
+            # `skip;` is the slot early-exit — always allowed, including
+            # inside slot loops. Only `break;` remains ambiguous in a slot
+            # loop (exit-loop vs. exit-slot).
+            if in_loop and s.ctrl.value == "break" {
+                self.emit(E2021, node_override=s, kw=s.ctrl.value, loop=loop_kw);
+            }
+        } elif isinstance(s, uni.ArchHas) {
+            # `has`-fields inside a slot body would compile to a conditional
+            # `useState` — a rules-of-hooks violation. State belongs at the
+            # enclosing `def -> JsxElement` scope.
+            self.emit(E2024, node_override=s);
+        } elif isinstance(s, uni.WhileStmt) {
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                self.emit(W2019, node_override=s);
+            }
+            self._check_slot_body([b for b in s.body], True, "while");
+            self._check_slot_else(s.else_body, in_loop, loop_kw);
+        } elif isinstance(s, uni.InForStmt) or isinstance(s, uni.IterForStmt) {
+            # Keyless for-loop in a slot: an unkeyed loop child contributes
+            # its JSX as flat siblings, so a re-render with a reordered
+            # iterable loses iteration identity. W2021 names the fix.
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                self.emit(W2021, node_override=s);
+            }
+            self._check_slot_body([b for b in s.body], True, "for");
+            self._check_slot_else(s.else_body, in_loop, loop_kw);
+        } elif isinstance(s, uni.IfStmt) {
+            # IfStmt also matches ElseIf (a subclass).
+            self._check_slot_body([b for b in s.body], in_loop, loop_kw);
+            self._check_slot_else(s.else_body, in_loop, loop_kw);
+        } elif isinstance(s, uni.WithStmt) {
+            self._check_slot_body([b for b in s.body], in_loop, loop_kw);
+        } elif isinstance(s, uni.TryStmt) {
+            # `awaiting`-specific rules (these used to live in the cl
+            # lowering): `finally` is incompatible with `awaiting`, and
+            # `awaiting` only lowers on the cl target today.
+            if s.awaiting_body is not None {
+                if s.finally_body is not None {
+                    self.emit(E2022, node_override=s);
+                }
+                if not s.in_client_context() {
+                    target = "na" if s.in_native_context() else "sv";
+                    self.emit(W2020, node_override=s, target=target);
+                }
+            }
+            self._check_slot_body([b for b in s.body], in_loop, loop_kw);
+            if s.awaiting_body is not None {
+                self._check_slot_body(
+                    [b for b in s.awaiting_body.body], in_loop, loop_kw
+                );
+            }
+            for ex in s.excepts {
+                self._check_slot_body([b for b in ex.body], in_loop, loop_kw);
+            }
+            self._check_slot_else(s.else_body, in_loop, loop_kw);
+            if s.finally_body is not None {
+                self._check_slot_body(
+                    [b for b in s.finally_body.body], in_loop, loop_kw
+                );
+            }
+        } elif isinstance(s, uni.MatchStmt) {
+            for cs in s.cases {
+                self._check_slot_body([b for b in cs.body], in_loop, loop_kw);
+            }
+        } elif isinstance(s, uni.SwitchStmt) {
+            for cs in s.cases {
+                self._check_slot_body([b for b in cs.body], in_loop, loop_kw);
+            }
+        }
+    }
+}
+
+impl ASTValidationPass._check_slot_else(
+    self: ASTValidationPass, else_body: object, in_loop: bool, loop_kw: str
+) -> None {
+    if else_body is None {
+        return;
+    }
+    if isinstance(else_body, uni.IfStmt) {
+        self._check_slot_body([else_body], in_loop, loop_kw);
+    } elif isinstance(else_body, uni.ElseStmt) {
+        self._check_slot_body([b for b in else_body.body], in_loop, loop_kw);
+    }
+}
+
+impl ASTValidationPass._slot_emits_keyless_jsx(
+    self: ASTValidationPass, stmts: list
+) -> bool {
+    for s in stmts {
+        if isinstance(s, uni.ExprStmt) and isinstance(s.expr, uni.JsxElement) {
+            el = s.expr;
+            if (
+                not el.is_fragment
+                and el.dynamic_tag is None
+                and not self._slot_has_key_attr(el)
+            ) {
+                return True;
+            }
+        } elif isinstance(s, uni.WhileStmt)
+        or isinstance(s, uni.InForStmt)
+        or isinstance(s, uni.IterForStmt)
+        or isinstance(s, uni.WithStmt) {
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                return True;
+            }
+        } elif isinstance(s, uni.IfStmt) or isinstance(s, uni.ElseStmt) {
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                return True;
+            }
+        } elif isinstance(s, uni.TryStmt) {
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                return True;
+            }
+            if s.awaiting_body is not None
+            and self._slot_emits_keyless_jsx([b for b in s.awaiting_body.body]) {
+                return True;
+            }
+            for ex in s.excepts {
+                if self._slot_emits_keyless_jsx([b for b in ex.body]) {
+                    return True;
+                }
+            }
+            if s.else_body is not None
+            and isinstance(s.else_body, uni.ElseStmt)
+            and self._slot_emits_keyless_jsx([b for b in s.else_body.body]) {
+                return True;
+            }
+            if s.finally_body is not None
+            and self._slot_emits_keyless_jsx([b for b in s.finally_body.body]) {
+                return True;
+            }
+        } elif isinstance(s, uni.MatchStmt) or isinstance(s, uni.SwitchStmt) {
+            for cs in s.cases {
+                if self._slot_emits_keyless_jsx([b for b in cs.body]) {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}
+
+impl ASTValidationPass._slot_has_key_attr(
+    self: ASTValidationPass, el: uni.JsxElement
+) -> bool {
+    if el.attributes is None {
+        return False;
+    }
+    for a in el.attributes {
+        if (
+            isinstance(a, uni.JsxNormalAttribute)
+            and a.name is not None
+            and a.name.value == "key"
+        ) {
+            return True;
+        }
+    }
+    return False;
 }

@@ -1,0 +1,44 @@
+[project]
+name = "little-x"
+version = "1.0.0"
+description = "Little X - A Twitter-like social app built with Jac"
+entry-point = "main.jac"
+
+[jacpack]
+name = "little-x"
+description = "Little X social app template"
+
+[dependencies]
+numpy = ">=1.24.0"
+scikit-learn = ">=1.3.0"
+
+[dependencies.npm]
+lucide-react = "^0.469.0"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client.app_meta_data]
+title = "Little-X"
+description = "A decentralized social platform built with Jac"
+keywords = "little-x social jac jaseci"
+author = "Jaseci Labs"
+theme_color = "#f97316"
+icon = "/static/assets/littlex-logo.svg"

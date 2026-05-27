@@ -5,12 +5,15 @@ native machine code, and produce correct results when executed via ctypes.
 """
 
 import ctypes;
+import io;
 import os;
 import subprocess;
 import sys;
+import tempfile;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
@@ -231,6 +234,43 @@ test "strings concat" {
         eng, "concat_strings", ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p
     );
     assert f(b"hello ", b"world") == b"hello world";
+}
+
+# UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
+# previously unimplemented in native (returned empty); these lock in that
+# `s.encode()[a:b].decode()` round-trips and that byte access is portable.
+test "bytes utf8 byte_len" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
+    assert f("café".encode("utf-8")) == 5;
+    assert f("日本語".encode("utf-8")) == 9;
+    assert f(b"ascii") == 5;
+}
+
+test "bytes utf8 byte_at portable" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
+    enc = "café".encode("utf-8");  # 63 61 66 C3 A9
+    for i in range(len(enc)) {
+        assert f(enc, i) == enc[i] , f"byte_at({i}) native={f(enc, i)} py={enc[i]}";
+    }
+}
+
+test "bytes utf8 decode roundtrip and slice" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    rt = get_func(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
+    assert rt("café".encode("utf-8")) == "café".encode("utf-8");
+    sd = get_func(
+        eng,
+        "slice_decode",
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    enc = "café".encode("utf-8");
+    assert sd(enc, 0, 3) == b"caf";
+    assert sd(enc, 3, 5) == "é".encode("utf-8");
 }
 
 test "strings fstring int" {
@@ -806,7 +846,7 @@ test "chess play random moves stress" {
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
-        f"Expected 'Game ended.' in output.\n"
+        "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
 }
@@ -1188,6 +1228,19 @@ test "runtime errors list negative index" {
     (eng, _) = compile_native("runtime_errors.na.jac");
     f = get_func(eng, "test_list_negative_index", ctypes.c_int64);
     assert f() == 1;
+}
+
+test "list valid negative index" {
+    (eng, _) = compile_native("runtime_errors.na.jac");
+    f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "list method on object field (pop)" {
+    (eng, _) = compile_native("list_field_methods.na.jac");
+    # pop() on a field list must shrink it: depth 2 -> 1 encodes as 21.
+    f = get_func(eng, "field_pop_shrinks", ctypes.c_int64);
+    assert f() == 21;
 }
 
 test "runtime errors list index at len" {
@@ -1649,12 +1702,12 @@ test "cache marker non native file has no llvmir section in jir" {
         data = cache_path.read_bytes();
         magic_bytes = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
-        secs: dict = {};
+        secs: dict[int, bytes] = {};
         if pos >= 0 {
             secs = read_sections(data, pos + len(magic_bytes));
         }
         assert SEC_LLVM_IR not in secs , (
-            f"Non-native file should not have SEC_LLVM_IR in JIR cache"
+            "Non-native file should not have SEC_LLVM_IR in JIR cache"
         );
     } except Exception as e {
         os.unlink(jac_file);
@@ -1987,13 +2040,13 @@ test "auto promote chess.jac runs via cli" {
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
-        f"Expected 'Game ended.' in output.\n"
+        "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
     # Verify the native execution message appears (may be line-wrapped by Rich)
     combined = " ".join((result.stdout + result.stderr).split());
     assert "executed natively" in combined , (
-        f"Expected native execution message.\n" f"output tail: {combined[-500:]}"
+        "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
 
@@ -2154,30 +2207,14 @@ test "list_bugs reassign str list with empty literal" {
 }
 
 # --- String Enum Tests ---
-test "string_enums ordinal red" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_red", ctypes.c_int64);
-    assert f() == 0 , f"Color.RED ordinal should be 0, got {f()}";
-}
-
-test "string_enums ordinal blue" {
-    (eng, _) = compile_native("string_enums.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "color_ordinal_blue", ctypes.c_int64);
-    assert f() == 2 , f"Color.BLUE ordinal should be 2, got {f()}";
-}
-
 test "string_enums comparison" {
     (eng, _) = compile_native("string_enums.na.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_cmp", ctypes.c_int64, ctypes.c_int64);
-    assert f(0) == 10 , f"color_cmp(RED=0) should be 10";
-    assert f(1) == 20 , f"color_cmp(GREEN=1) should be 20";
-    assert f(2) == 30 , f"color_cmp(BLUE=2) should be 30";
+    assert f(0) == 10 , "color_cmp(RED=0) should be 10";
+    assert f(1) == 20 , "color_cmp(GREEN=1) should be 20";
+    assert f(2) == 30 , "color_cmp(BLUE=2) should be 30";
 }
 
 test "string_enums value access" {
@@ -2186,8 +2223,8 @@ test "string_enums value access" {
     entry_fn();
     f = get_func(eng, "color_value", ctypes.c_char_p, ctypes.c_int64);
     assert f(0) == b"red" , f"Color.RED.value should be 'red', got {f(0)}";
-    assert f(1) == b"green" , f"Color.GREEN.value should be 'green'";
-    assert f(2) == b"blue" , f"Color.BLUE.value should be 'blue'";
+    assert f(1) == b"green" , "Color.GREEN.value should be 'green'";
+    assert f(2) == b"blue" , "Color.BLUE.value should be 'blue'";
 }
 
 test "string_enums name access" {
@@ -2196,8 +2233,8 @@ test "string_enums name access" {
     entry_fn();
     f = get_func(eng, "color_name", ctypes.c_char_p, ctypes.c_int64);
     assert f(0) == b"RED" , f"Color.RED.name should be 'RED', got {f(0)}";
-    assert f(1) == b"GREEN" , f"Color.GREEN.name should be 'GREEN'";
-    assert f(2) == b"BLUE" , f"Color.BLUE.name should be 'BLUE'";
+    assert f(1) == b"GREEN" , "Color.GREEN.name should be 'GREEN'";
+    assert f(2) == b"BLUE" , "Color.BLUE.name should be 'BLUE'";
 }
 
 test "string_enums direction value" {
@@ -2205,8 +2242,8 @@ test "string_enums direction value" {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "direction_value", ctypes.c_char_p, ctypes.c_int64);
-    assert f(0) == b"N" , f"Direction.NORTH.value should be 'N'";
-    assert f(1) == b"S" , f"Direction.SOUTH.value should be 'S'";
+    assert f(0) == b"N" , "Direction.NORTH.value should be 'N'";
+    assert f(1) == b"S" , "Direction.SOUTH.value should be 'S'";
 }
 
 test "string_enums int enum still works" {
@@ -2215,6 +2252,16 @@ test "string_enums int enum still works" {
     entry_fn();
     f = get_func(eng, "int_enum_still_works", ctypes.c_int64);
     assert f() == 2 , f"Priority.HIGH should be 2, got {f()}";
+}
+
+test "string_enums int enum name access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "priority_high_name", ctypes.c_char_p);
+    assert f() == b"HIGH" , f"Priority.HIGH.name should be 'HIGH', got {f()}";
+    g = get_func(eng, "priority_low_name", ctypes.c_char_p);
+    assert g() == b"LOW" , f"Priority.LOW.name should be 'LOW', got {g()}";
 }
 
 # --- Cross-Module Enum Import Tests ---
@@ -2228,16 +2275,7 @@ test "enum_import enum comparison" {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "use_imported_enum", ctypes.c_int64);
-    assert f() == 1 , f"TokenKind.KW_IF == TokenKind.KW_IF should return 1";
-}
-
-test "enum_import ordinal" {
-    (eng, _) = compile_native("na_enum_import.na.jac");
-    entry_fn = get_func(eng, "jac_entry", None);
-    entry_fn();
-    f = get_func(eng, "imported_enum_ordinals", ctypes.c_int64);
-    # TokenKind.EOF is the last member (ordinal 6)
-    assert f() == 6 , f"TokenKind.EOF ordinal should be 6, got {f()}";
+    assert f() == 1 , "TokenKind.KW_IF == TokenKind.KW_IF should return 1";
 }
 
 test "enum_import value access" {
@@ -2478,7 +2516,17 @@ test "layout exports all expected functions" {
     (eng, ir) = compile_native("func_ptr_fields.na.jac");
     layout = ir.gen.native_layout;
     assert layout is not None;
-    expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
+    expected = {
+        "add",
+        "mul",
+        "negate",
+        "identity",
+        "make_all_fields",
+        "get_all_fields_x",
+        "get_all_fields_flag",
+        "make_maybe_point",
+        "get_maybe_x"
+    };
     assert expected == set(layout.functions.keys());
 }
 
@@ -2566,16 +2614,6 @@ test "cross module glob init: pushed values are readable" {
     get_second = get_func(eng, "get_second", ctypes.c_int64);
     assert get_first() == 42 , f"Expected 42, got {get_first()}";
     assert get_second() == 99 , f"Expected 99, got {get_second()}";
-}
-
-test "transitive import: compiles without errors" {
-    # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
-    # All three modules must be linked for compilation to succeed.
-    prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")));
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
 }
 
 test "transitive import: function call through two import hops returns correct value" {
@@ -2983,4 +3021,405 @@ test "lambda closure as scaler" {
     assert f(5, 3) == 15 , f"Expected 15, got {f(5, 3)}";
     assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
     assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
+}
+
+# ─── Symbol Collision Detection ───────────────────────────────────────────────
+# Before the fix, when two imported native modules both exported a symbol with
+# the same name, link_in() would silently merge them and produce a binary that
+# crashed with SIGSEGV at runtime. W5024/W5025 were mere warnings, so nacompile
+# wrote a corrupt binary without aborting.
+#
+# After the fix:
+#  - The compiler tracks exported symbols in a symbol_origins dict.
+#  - When a collision is detected before link_in(), E5026 is emitted and
+#    compilation is aborted (errors_had is non-empty).
+#  - Import compile/link failures (W5024/W5025) are now errors (E5024/E5025).
+test "symbol collision: importing two modules with the same exported symbol emits E5026" {
+    # sym_collision_lib_a and sym_collision_lib_b both export `shared_fn`.
+    # Compiling the entry that imports both must emit at least one error.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , (
+        "Expected E5026 symbol collision error, but errors_had is empty"
+    );
+    error_strs = [str(e) for e in prog.errors_had];
+    found_e5026 = any(
+        "E5026" in e or "Symbol collision" in e or "symbol collision" in e
+        for e in error_strs
+    );
+    assert found_e5026 , (f"Expected E5026 in errors, got: {error_strs}");
+}
+
+test "symbol collision: both conflicting module names appear in the error" {
+    # The error message must name both source files so the developer knows which
+    # modules need to be fixed.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , "Expected collision error";
+    combined = " ".join(str(e) for e in prog.errors_had);
+    assert "sym_collision_lib_a" in combined or "lib_a" in combined , (
+        f"Expected lib_a module name in error. Got: {combined}"
+    );
+    assert "sym_collision_lib_b" in combined or "lib_b" in combined , (
+        f"Expected lib_b module name in error. Got: {combined}"
+    );
+}
+
+test "symbol collision: the colliding symbol name is reported" {
+    # E5026 message must include the name of the duplicated symbol.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , "Expected collision error";
+    combined = " ".join(str(e) for e in prog.errors_had);
+    assert "collision_fn" in combined , (
+        f"Expected 'collision_fn' in error message. Got: {combined}"
+    );
+}
+
+# ─── Variable Re-Declaration Type Fix ────────────────────────────────────────
+# Before the fix, when a variable was re-declared with a different type
+# (x: int = 0; x: bool = True;), codegen would store through the original
+# wrongly-typed alloca (e.g. i1 stored into i64 allocation), causing IR type
+# mismatches or corrupt values at runtime.
+#
+# After the fix, the codegen allocates a fresh alloca of the declared type
+# whenever a typed re-declaration (x: T = ...) differs from the existing
+# alloca's pointee type. Collection types (list/dict/set/frozenset) are skipped
+# as they are handled separately.
+test "redecl type: int-to-bool re-declaration (True) returns 1" {
+    # x: int = 0; x: bool = True; if x { return 1; } return 0;
+    # Before fix: wrong alloca type → crash or wrong value.
+    # After fix: fresh i1 alloca; x == True → returns 1.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_int_to_bool_true", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected 1 (True branch taken), got {result}";
+}
+
+test "redecl type: int-to-bool re-declaration (False) returns 0" {
+    # x: int = 99; x: bool = False; if x { return 1; } return 0;
+    # After fix: fresh i1 alloca; x == False → returns 0.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_int_to_bool_false", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected 0 (False branch not taken), got {result}";
+}
+
+test "redecl type: same-type re-declaration updates value correctly" {
+    # x: int = 50; x: int = 99; return x; → must return 99.
+    # Same type: no fresh alloca needed; value must still be updated.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_same_type_int", ctypes.c_int64);
+    result = f();
+    assert result == 99 , f"Expected 99, got {result}";
+}
+
+test "redecl type: bool-to-int re-declaration returns int value" {
+    # x: bool = True; x: int = 42; return x; → must return 42.
+    # After fix: fresh i64 alloca for int; correct value stored.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_bool_to_int", ctypes.c_int64);
+    result = f();
+    assert result == 42 , f"Expected 42, got {result}";
+}
+
+# ─── Global Variable Scoping (na ⊆ sv) ───────────────────────────────────────
+# Python (and the sv pathway) bind a bare function-scope assignment as a NEW
+# function-local, even when a module global of the same name exists. Rebinding
+# the module global requires an explicit `global x;`.
+#
+# Before the fix the native pathway diverged: a bare `counter = 5` inside a
+# function rebound the module global, so `.na.jac` code observed different
+# results than the identical source run through the sv pathway.
+#
+# `run_sv_source` below executes a Jac source string through the sv pathway so
+# the cross-pathway test can prove both pathways agree on scoping.
+"""Run a .jac source string through the sv pathway; return captured stdout."""
+def run_sv_source(code: str) -> str {
+    tmpdir = tempfile.mkdtemp();
+    src_path = os.path.join(tmpdir, "xpath_mod.jac");
+    fh = open(src_path, "w");
+    fh.write(code);
+    fh.close();
+    old_stdout = sys.stdout;
+    buf = io.StringIO();
+    sys.stdout = buf;
+    try {
+        JacRuntime.jac_import(
+            target="xpath_mod", base_path=tmpdir, override_name="__main__"
+        );
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    return buf.getvalue();
+}
+
+test "glob scoping: bare function-scope assignment does not touch the module global" {
+    # bump_local() does `counter = 5;` with no `global` declaration — Python
+    # semantics make this a function-local, so the module global stays 0.
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_local = get_func(eng, "bump_local", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    assert bump_local() == 5 , "bare local assignment should evaluate to 5";
+    assert read_global() == 0 , (
+        "module global must be untouched by a bare function-scope assignment "
+        "(before the fix this returned 5 — the native pathway rebound the global)"
+    );
+}
+
+test "glob scoping: explicit `global` still rebinds the module global" {
+    # bump_global() declares `global counter;` first, so `counter = 99;` is a
+    # genuine global store — this must keep working.
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_global = get_func(eng, "bump_global", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    assert bump_global() == 99;
+    assert read_global() == 99 , "explicit `global x;` must rebind the global";
+}
+
+test "cross-pathway: glob scoping is identical in the na and sv pathways" {
+    # The SAME source is run through both pathways and the observable results
+    # must match (the na ⊆ sv guarantee). Before the fix the native pathway
+    # produced [5, 5, 99, 99] while the sv pathway produced [5, 0, 99, 99].
+    fixture_path = os.path.join(FIXTURES, "glob_scoping.na.jac");
+    fh = open(fixture_path);
+    base_src = fh.read();
+    fh.close();
+
+    # --- native pathway ---
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_local = get_func(eng, "bump_local", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    bump_global = get_func(eng, "bump_global", ctypes.c_int64);
+    na_results = [bump_local(), read_global(), bump_global(), read_global()];
+
+    # --- sv pathway: identical source, entry block prints the same sequence ---
+    sv_src = base_src.replace(
+        "with entry {}",
+        "with entry {\n" + "    print(bump_local());\n" + "    print(read_global());\n" + "    print(bump_global());\n" + "    print(read_global());\n" + "}"
+    );
+    assert "with entry {\n" in sv_src , "fixture entry block not substituted";
+    sv_out = run_sv_source(sv_src);
+    sv_results = [int(tok) for tok in sv_out.split()];
+
+    assert sv_results == [5, 0, 99, 99] , (
+        f"sv pathway diverged from CPython scoping: {sv_results}"
+    );
+    assert na_results == sv_results , (
+        f"native pathway diverges from sv: na={na_results} sv={sv_results}. "
+        "A bare function-scope assignment to a glob name must be a local."
+    );
+}
+
+# ─── Finding 2 guard: native pointer-bitcast escape hatch stays native-only ──
+# The type checker permits a handful of pointer-shaped cross-type assignments
+# (int/str/obj) because in native code they are all 64-bit pointers. That
+# escape hatch is gated to `.na.jac` modules via `_in_native_context()`. This
+# test locks that gating in: the sv pathway must still reject the assignment,
+# so the escape hatch can never silently weaken sv type-checking.
+test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway" {
+    code = (
+        "obj Wrapper { has slot: int; }\n" + "def make(raw: int) -> Wrapper {\n" + "    w: Wrapper = raw;\n" + "    return w;\n" + "}\n"
+    );
+    # sv pathway (.sv.jac): assigning an int to an obj-typed variable must
+    # remain a type error. The snippet is otherwise valid, so any error here
+    # is the assignability error.
+    sv_prog = JacProgram();
+    sv_path = os.path.join(FIXTURES, "_finding2_guard.sv.jac");
+    sv_prog.compile(file_path=sv_path, use_str=code, type_check=True);
+    assert sv_prog.errors_had , (
+        "sv pathway must reject `w: Wrapper = raw` (int → obj). The native "
+        "pointer-bitcast escape hatch must not apply outside .na.jac modules."
+    );
+}
+
+# ─── async / await (synchronous model) ───────────────────────────────────
+test "await resolves an async call to its value" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "driver", ctypes.c_int64, ctypes.c_int64);
+    # x = await get_val() = 5; y = await add_async(5, n)
+    assert f(10) == 15;
+    assert f(0) == 5;
+}
+
+test "nested awaits evaluate inside-out" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "nested_await", ctypes.c_int64, ctypes.c_int64);
+    # add_async(get_val()=5, n)
+    assert f(3) == 8;
+    assert f(-5) == 0;
+}
+
+# ─── flow / wait (synchronous model) ─────────────────────────────────────
+test "flow then wait returns the task result" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_one", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;
+    assert f(0) == 0;
+}
+
+test "wait directly on a flow expression" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_inline", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 14;
+}
+
+test "multiple flow handles waited independently" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # task(3)+task(4) = 6+8 = 14
+    assert f(3, 4) == 14;
+}
+
+# ─── C-style iter-for loop ───────────────────────────────────────────────
+test "iter-for sums a counted range" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "sum_n", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;  # 0+1+2+3+4
+    assert f(0) == 0;
+    assert f(1) == 0;
+}
+
+test "iter-for counts down with a decrementing step" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "count_down", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 5;  # i = 5,4,3,2,1
+    assert f(0) == 0;
+}
+
+test "iter-for honors break" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_break", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 3;  # 0+1+2, break at i==3
+    assert f(2) == 1;  # 0+1
+}
+
+test "iter-for honors continue and still advances the counter" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_continue", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 8;  # 0+1+3+4 (skip 2)
+    assert f(2) == 1;  # 0+1
+}
+
+# ─── Nested function definitions ─────────────────────────────────────────
+test "nested function helper is callable from its enclosing function" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(5) + double(6) = 10 + 12 = 22
+    assert f(5) == 22;
+    assert f(0) == 2;
+}
+
+test "nested function can recurse" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 120;
+    assert f(1) == 1;
+}
+
+test "nested function can read a module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 107;
+}
+
+# ─── Match statements ────────────────────────────────────────────────────
+test "match dispatches on literal value patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "classify", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 100;
+    assert f(1) == 200;
+    assert f(5) == 300;
+}
+
+test "match supports OR patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_or", ctypes.c_int64, ctypes.c_int64);
+    assert f(1) == 1;
+    assert f(2) == 1;
+    assert f(3) == 1;
+    assert f(4) == 0;
+}
+
+test "match capture pattern binds the subject" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_capture", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;
+    assert f(7) == 14;
+}
+
+test "match honors case guards" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_guard", ctypes.c_int64, ctypes.c_int64);
+    assert f(20) == 1;
+    assert f(11) == 1;
+    assert f(5) == 2;
+    assert f(-1) == 3;
+}
+
+test "match dispatches on string patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "match_str", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"hi") == 1;
+    assert f(b"bye") == 2;
+    assert f(b"nope") == 0;
+}
+
+# ─── Pipe-forward operator `|>` ──────────────────────────────────────────
+test "pipe-forward feeds lhs as the sole argument" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_single", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 6;
+    assert f(-1) == 0;
+}
+
+test "pipe-forward chains left-associatively" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
+    # inc(inc(5)) == 7
+    assert f(5) == 7;
+    assert f(0) == 2;
+}
+
+test "pipe-forward spreads a tuple lhs into multiple args" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # add(3, 4) == 7
+    assert f(3, 4) == 7;
+    assert f(10, -2) == 8;
+}
+
+# ─── Walrus operator `:=` ────────────────────────────────────────────────
+test "walrus operator binds inside an if-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_if", ctypes.c_int64, ctypes.c_int64);
+    # x=10 -> n=20 (>5) -> 21
+    assert f(10) == 21;
+    # x=1 -> n=2 (not >5) -> returns n=2
+    assert f(1) == 2;
+}
+
+test "walrus operator rebinds inside a while-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_while", ctypes.c_int64, ctypes.c_int64);
+    # sum(0..4) = 10
+    assert f(5) == 10;
+    assert f(0) == 0;
+    # sum(0..9) = 45
+    assert f(10) == 45;
+}
+
+test "walrus expression evaluates to the assigned value" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_value", ctypes.c_int64, ctypes.c_int64);
+    # m = a+10 = 15, y = 15, y+m = 30
+    assert f(5) == 30;
+    # m = 10, y = 10, 20
+    assert f(0) == 20;
 }

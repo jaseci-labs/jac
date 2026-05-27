@@ -6,7 +6,7 @@ allows the `jac create` command to use different project templates based on
 the --use flag or plugin-specific flags like --cl.
 """
 
-import from typing { Any, Callable }
+import from typing { Callable }
 import from pathlib { Path }
 
 """Represents a registered project template from a plugin.
@@ -17,14 +17,14 @@ options for the `jac create` command.
 obj ProjectTemplate {
     has name: str,  # e.g., "default", "client"
         description: str,  # e.g., "Basic Jac project"
-        config: dict[str, Any],  # JacConfig-compatible dict for jac.toml
+        config: dict[str, any],  # JacConfig-compatible dict for jac.toml
         files: dict[str, str],  # path -> content (with {{name}} placeholders)
         directories: list[str] = [],  # directories to create
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create:
             Callable | None = None;  # optional callback(project_path, project_name)
 
-    def to_dict -> dict[str, Any];
+    def to_dict -> dict[str, any];
 }
 
 """Registry for plugin-provided project templates.
@@ -36,7 +36,7 @@ this registry to scaffold projects based on the selected template.
 obj TemplateRegistry {
     has _templates: dict[str, ProjectTemplate] = {};
 
-    def register(template_info: dict[str, Any]) -> None;
+    def register(template_info: dict[str, any]) -> None;
     def get(name: str) -> ProjectTemplate | None;
     def get_default -> ProjectTemplate;
     def list_templates -> list[tuple[str, str]];

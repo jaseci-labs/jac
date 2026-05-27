@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   release-jaseci:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     defaults:
       run:
         working-directory: jaseci-package
@@ -32,17 +32,18 @@ jobs:
         run: |
           VERSION=$(python3 -c "
           import tomllib
-          with open('pyproject.toml', 'rb') as f:
+          with open('jac.toml', 'rb') as f:
               print(tomllib.load(f)['project']['version'])
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
         run: |
-          pip install build twine
+          pip install -e ../jac
+          pip install twine
 
       - name: Build package
-        run: python -m build
+        run: jac bundle
 
       - name: Publish package to PyPI
         run: |
@@ -50,7 +51,7 @@ jobs:
 
   create-github-release:
     needs: release-jaseci
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code

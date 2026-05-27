@@ -217,7 +217,7 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_X86_64_JUMP_SLOT,
             copy_rtype=R_X86_64_COPY,
             glob_dat_rtype=R_X86_64_GLOB_DAT,
-            gotpcrel_rtypes={R_X86_64_GOTPCREL,R_X86_64_REX_GOTPCRELX}
+            gotpcrel_rtypes={R_X86_64_GOTPCREL, R_X86_64_REX_GOTPCRELX}
         );
     } elif e_machine == EM_AARCH64 {
         return ArchConfig(
@@ -233,7 +233,7 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_AARCH64_JUMP_SLOT,
             copy_rtype=R_AARCH64_COPY,
             glob_dat_rtype=R_AARCH64_GLOB_DAT,
-            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE,R_AARCH64_LD64_GOT_LO12_NC}
+            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE, R_AARCH64_LD64_GOT_LO12_NC}
         );
     }
     return None;
@@ -639,7 +639,7 @@ impl ElfLinker.build_executable -> bytes {
     }
 
     # Identify external symbols
-    known_data_syms = {"stdin","stdout","stderr","environ"};
+    known_data_syms = {"stdin", "stdout", "stderr", "environ"};
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
     local_sym_map: dict[str, tuple[str, int]] = {};
@@ -1093,6 +1093,17 @@ impl ElfLinker.build_executable -> bytes {
     if len(data_bytes) > 0 {
         output[data_foff:data_foff + len(data_bytes)] = bytes(data_bytes);
     }
+
+    # Populate sym_vaddrs so callers can write a symmap for profiling tools.
+    for (sname, place) in local_sym_map.items() {
+        va = _resolve_seg_vaddr(
+            place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+        );
+        if sname {
+            self.sym_vaddrs[sname] = va;
+        }
+    }
+
     return bytes(output);
 }
 
@@ -1281,5 +1292,20 @@ impl ElfLinker.link(
         f.write(exe_bytes);
     }
     os.chmod(output_path, 0o755);
+
+    # Write a <binary>.symmap alongside the binary when JAC_SYMMAP=1 so that
+    # profiling post-processors (e.g. scripts/cg-annotate) can map raw
+    # callgrind addresses to real function names.
+    if os.environ.get("JAC_SYMMAP", "") {
+        symmap_path = output_path + ".symmap";
+        with open(symmap_path, "w") as smf {
+            for (sname, va) in sorted(
+                linker.sym_vaddrs.items(), key=lambda kv : kv[1]
+            ) {
+                smf.write(f"{sname} 0x{va:016x}\n");
+            }
+        }
+    }
+
     return True;
 }
