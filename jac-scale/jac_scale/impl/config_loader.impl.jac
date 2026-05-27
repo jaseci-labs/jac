@@ -499,7 +499,12 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         # manifest-build time. Empty list when the user hasn't declared
         # any - existing microservice apps without shared FS state get
         # an empty list and the same pod specs they had before.
-        'shared_volumes': list(ms_config.get('shared_volumes', []))
+        'shared_volumes': list(ms_config.get('shared_volumes', [])),
+        # M-14.a: centralised logs (Loki + Alloy). Opaque pass-through
+        # so KubernetesMicroserviceTarget can read `enabled` and (in
+        # M-14.c) nested storage / retention knobs without revisiting
+        # this loader on every new key.
+        'logs': dict(ms_config.get('logs', {}))
     };
 }
 

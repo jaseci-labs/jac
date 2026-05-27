@@ -184,6 +184,27 @@ body {
     filter: none;
 }
 
+.btn.stop {
+    background: var(--red);
+    color: #1a0b0b;
+}
+
+/* Blinking cursor on the in-progress streaming answer. */
+.cursor {
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--primary);
+    animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+}
+
 .input {
     width: 100%;
     background: var(--panel-2);
@@ -386,6 +407,72 @@ body {
     font-style: italic;
 }
 
+/* ---- Reasoning dropdown (folded thinking tokens) ---------------------- */
+.think {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid rgba(38, 40, 44, 0.5);
+}
+
+.think-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    color: var(--muted);
+    text-align: left;
+}
+
+.think-head:hover {
+    background: var(--panel-2);
+}
+
+.think-head .chev {
+    width: 10px;
+    color: #6b7077;
+    flex-shrink: 0;
+}
+
+.think-label {
+    color: #a5b4fc;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+}
+
+.think-count {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: #6b7077;
+}
+
+.think-dot {
+    margin-left: auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+}
+
+.think-dot.live {
+    animation: pulse 1.1s ease-in-out infinite;
+}
+
+.think-body {
+    padding: 2px 16px 10px 34px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--muted);
+    font-style: italic;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
 /* ---- Graph ------------------------------------------------------------ */
 .graph-wrap {
     position: relative;
@@ -422,18 +509,101 @@ body {
     border-radius: 3px;
 }
 
+/* ---- Token firehose (lower-left live stream) -------------------------- */
+.col.left > .pane {
+    flex: 1;
+    min-height: 0;
+}
+
+.tokenstream {
+    flex-shrink: 0;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.tokenstream-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #9aa0a8;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* ---- Stats bar -------------------------------------------------------- */
 .stats {
     display: flex;
-    gap: 18px;
-    padding: 8px 16px;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 16px;
     border-top: 1px solid var(--border);
     background: var(--panel);
     font-size: 12px;
     color: var(--muted);
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.stat-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
 }
 
 .stat b {
     color: var(--fg);
     font-weight: 600;
+}
+
+.stat-sub {
+    color: #6b7077;
+    font-size: 11px;
+}
+
+.stat-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+    margin: -7px 2px;
+}
+
+.stat-hint {
+    color: #6b7077;
+}
+
+.stat.health {
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.stat.health .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.stat.health.ok {
+    color: var(--green);
+}
+
+.stat.health.warn {
+    color: var(--amber);
+}
+
+.stat.health.err {
+    color: var(--red);
 }

@@ -267,6 +267,17 @@ obj TurnRenderer {
     live, and returns this phase's tool-call tallies for the walker to accumulate.
     """
     def render_stream(event_stream: any) -> dict;
+
+    """Forward one byLLM StreamEvent from a `visit [-->] by model` routing call.
+
+    Passed as the `stream_handler` to the QA routing model so the structured
+    edge selection still streams: every raw token is teed to the live firehose
+    and any clean reasoning prose is shown in the feed, while `visit [-->] by`
+    keeps the choice constrained to a real successor edge. Lighter than
+    `render_stream` -- routing is one cheap call, not a phase, so it skips the
+    tool and turn-stat bookkeeping.
+    """
+    def route_stream_event(event: any) -> None;
 }
 
 """A live, in-process feed of structured agent events for the `--ui` web view.
@@ -292,12 +303,35 @@ obj AgentEventBus {
         # Phase nodes in visit order this turn; the UI animates the edge between
         # each consecutive pair to show the walker moving.
         path: list[str] = [],
+        # The latest turn's summary stats (the same set the CLI prints): duration,
+        # tool breakdown, files, tokens, cost, throughput, and project health.
+        # Surfaced in `snapshot` and rendered as chips by the UI's stats bar.
+        last_stats: dict = {},
+        # Set by `ui_stop`; the progress guard aborts the phase and the walker
+        # halts, so the user can stop a turn mid-flight.
+        cancel_requested: bool = False,
+        # Live subscribers (one `queue.Queue` per open SSE stream). Every emit
+        # pushes a message to each, so the UI updates per token instead of
+        # polling. `emit_stream` re-pushes the growing event each token, so the
+        # client sees reasoning/answer text arrive a token at a time.
+        _subscribers: list = [],
         _next_id: int = 1,
-        # Keep the feed bounded so a long session does not grow without limit.
-        _cap: int = 400;
+        # Large enough to keep a full session's history (reasoning/answer stream
+        # into single growing events via `emit_stream`, so the count stays low).
+        _cap: int = 4000;
 
     """Append one event (kind + fields), stamping a monotonic id; thread-safe."""
     def emit(kind: str, fields: dict) -> None;
+
+    """Stream a token into the current block, or open a new one.
+
+    Reasoning and answer text arrive token-by-token. Rather than one event per
+    token (which would flood the feed and evict history), append the token to
+    the trailing event when it is a streaming block of the same `kind`; any
+    other emitted event closes the block, so the next token starts a fresh one.
+    The event's `text` grows in place, so each poll shows more of the stream.
+    """
+    def emit_stream(kind: str, token: str) -> None;
 
     """Mark the walker as entering a phase: set active, extend the path, emit."""
     def enter(phase: str) -> None;
@@ -310,6 +344,28 @@ obj AgentEventBus {
 
     """A JSON-ready snapshot the `ui_poll` endpoint returns each tick."""
     def snapshot -> dict;
+
+    """Register an SSE subscriber queue; returns it. Caller unsubscribes on close."""
+    def subscribe -> any;
+
+    """Drop a subscriber queue (on stream close/disconnect)."""
+    def unsubscribe(q: any) -> None;
+
+    """Push one delta message (the changed event + current top-level state) to
+    every subscriber. Called from `emit`/`emit_stream`.
+    """
+    def publish(ev: dict) -> None;
+
+    """Push a full snapshot (all events + state) to every subscriber -- the
+    first frame of a new stream, and after a reset.
+    """
+    def publish_full -> None;
+
+    """Push one raw model token to the live firehose, without touching the event
+    log. Fed from the unsplit stream, so it includes the tokens that form tool
+    calls -- which the cleaned reasoning view deliberately hides.
+    """
+    def feed_token(token: str) -> None;
 }
 
 
@@ -829,6 +885,20 @@ def ui_graph -> dict;
 
 """Clear the cross-turn ledger and the event feed for a fresh UI session."""
 def ui_reset -> None;
+
+"""Request that the running turn stop. Sets the bus cancel flag; the progress
+guard aborts the current phase and the walker halts at the next checkpoint.
+No-op when nothing is running.
+"""
+def ui_stop -> None;
+
+"""Live SSE event stream: yields a full snapshot, then one message per bus
+emit (token by token for reasoning/answer), plus periodic heartbeats so a
+client disconnect is detected. jac-scale frames each yielded dict as an
+`text/event-stream` `data: {json}` chunk. The `agent_stream` endpoint returns
+this; the client reads it to update the UI per token instead of polling.
+"""
+def ui_stream -> any;
 
 """Launch the bundled web UI for `jac ai --ui` and block until the user quits.
 

@@ -2,7 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.15 (Latest Release)
+## jac-super 0.1.16 (Latest Release)
+
+### New Features
+
+- **shadcn/ui components bundled into jac-super**: The former standalone `jac-shadcn` plugin is now part of `jac-super`. Install `jac-super` (no separate `pip install jac-shadcn`) to get the `--shadcn` flag on `jac add`/`jac remove` and the `jac-shadcn` project template. The full component set ships with the package, so `jac add --shadcn` resolves and installs components fully offline -- no calls to the registry website.
+- **Offline themed shadcn projects**: `jac create --use jac-shadcn` now scaffolds a themed starter fully offline -- color themes (21 of them), fonts, and radii are bundled with `jac-super`, no registry website needed. Pass `--style`, `--baseColor`, `--theme`, `--font`, `--radius`, and `--menuAccent` to customize at create time.
+- **`jac retheme` command**: Re-theme an existing jac-shadcn project in place -- regenerates `global.css` from the `[jac-shadcn]` config (with optional `--theme`/`--font`/`--style`/… overrides) and re-resolves installed components when the style changes.
+- **Fix: scoped npm deps in jac.toml**: `jac add --shadcn` and themed create now TOML-quote scoped npm keys (e.g. `@fontsource-variable/inter`, `@hugeicons/react`), which previously produced a malformed `[dependencies.npm]` section.
+
+### Refactors
+
+- **Refactor: jac-super console reduced to a single Rich renderer**: The Rich-enhanced console collapses 15 re-implemented methods into one `RichRenderer` (a `ConsoleRenderer` backend) plus a thin `JacSuperConsole` that overrides only `_make_renderer`, so the method surface can no longer drift from the base. Caller data is rendered through `rich.text.Text` and is never markup-parsed or auto-highlighted, and the renderer honors the facade's `no_color`/`emoji` decision instead of Rich's independent auto-detection.
+
+## jac-super 0.1.15
 
 ### Bug Fixes
 

@@ -1,6 +1,13 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.16 (Latest Release)
+## jac-mcp 0.1.17 (Latest Release)
+
+### Refactors
+
+- **Refactor: read base path via `Jac.get_base_path_dir()`**: Migrated to the new accessor; the prior `Jac.base_path_dir` class attribute has been removed.
+- **Refactor: drop redundant `Jac.setup()` calls**: The compiler bridge no longer calls the removed `Jac.setup()` no-op before each command.
+
+## jac-mcp 0.1.16
 
 ### New Features
 

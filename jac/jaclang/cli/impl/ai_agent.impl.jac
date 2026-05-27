@@ -964,6 +964,51 @@ impl AgentEventBus.emit(kind: str, fields: dict) -> None {
     if len(self.events) > self._cap {
         self.events = self.events[-self._cap:];
     }
+    self.publish(ev);
+}
+
+impl AgentEventBus.emit_stream(kind: str, token: str) -> None {
+    if not self.active_feed {
+        return;
+    }
+    if (
+        self.events
+        and self.events[-1].get("kind") == kind
+        and self.events[-1].get("streaming")
+    ) {
+        self.events[-1]["text"] = str(self.events[-1].get("text", "")) + token;
+        # Re-push the grown event so the client sees the cleaned text grow live.
+        # The firehose is fed separately from the raw stream (see feed_token).
+        self.publish(self.events[-1]);
+    } else {
+        ev = {"id": self._next_id, "kind": kind, "text": token, "streaming": True};
+        self._next_id += 1;
+        self.events.append(ev);
+        if len(self.events) > self._cap {
+            self.events = self.events[-self._cap:];
+        }
+        self.publish(ev);
+    }
+}
+
+impl AgentEventBus.feed_token(token: str) -> None {
+    if not self.active_feed or not self._subscribers {
+        return;
+    }
+    # Token-only message (no `ev`): the client appends it to the firehose and
+    # refreshes top-level state, but the event log is untouched.
+    msg = {
+        "token": token,
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path),
+        "stats": dict(self.last_stats)
+    };
+    for q in list(self._subscribers) {
+        try {
+            q.put_nowait(msg);
+        } except Exception { }
+    }
 }
 
 impl AgentEventBus.enter(phase: str) -> None {
@@ -980,6 +1025,7 @@ impl AgentEventBus.set_status(s: str) -> None {
 impl AgentEventBus.begin_turn -> None {
     self.active = "";
     self.path = [];
+    self.cancel_requested = False;
 }
 
 impl AgentEventBus.snapshot -> dict {
@@ -989,12 +1035,71 @@ impl AgentEventBus.snapshot -> dict {
         "events": list(self.events),
         "status": self.status,
         "active": self.active,
-        "path": list(self.path)
+        "path": list(self.path),
+        "stats": dict(self.last_stats)
     };
+}
+
+impl AgentEventBus.subscribe -> any {
+    import from queue { Queue }
+    q = Queue();
+    self._subscribers.append(q);
+    return q;
+}
+
+impl AgentEventBus.unsubscribe(q: any) -> None {
+    if q in self._subscribers {
+        self._subscribers.remove(q);
+    }
+}
+
+impl AgentEventBus.publish(ev: dict) -> None {
+    if not self.active_feed or not self._subscribers {
+        return;
+    }
+    # One delta carries the changed event plus the current top-level state, so
+    # the client upserts the event by id and refreshes status/active/path/stats
+    # in one step. Snapshot over a copy of the subscriber list (a stream may
+    # unsubscribe concurrently).
+    msg = {
+        "ev": ev,
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path),
+        "stats": dict(self.last_stats)
+    };
+    for q in list(self._subscribers) {
+        try {
+            q.put_nowait(msg);
+        } except Exception { }
+    }
+}
+
+impl AgentEventBus.publish_full -> None {
+    if not self._subscribers {
+        return;
+    }
+    msg = {
+        "full": True,
+        "events": list(self.events),
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path),
+        "stats": dict(self.last_stats)
+    };
+    for q in list(self._subscribers) {
+        try {
+            q.put_nowait(msg);
+        } except Exception { }
+    }
 }
 
 impl _progress_guard(ctx: any) -> str {
     import json;
+    # User pressed Stop (UI): abort the phase at this checkpoint.
+    if agent.bus.cancel_requested {
+        return IterationAction.ABORT_WITH_SUMMARY;
+    }
     counts: dict[str, int] = {};
     # Ordered signature ("name|args") of every tool call, to spot a model stuck
     # re-issuing the SAME call (read or write) -- e.g. read_file(main.jac) 40x.
@@ -1328,6 +1433,11 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
     }
     try {
         for event in event_stream {
+            # Stop pressed in the UI: quit consuming the stream immediately so
+            # the feed stops updating; the progress guard ends the ReAct loop.
+            if agent.bus.cancel_requested {
+                break;
+            }
             kind = event.event_type;
             data = event.data;
             if kind == "thought" {
@@ -1338,6 +1448,9 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 if not tok {
                     continue;
                 }
+                # Raw firehose: every generated token, including the ones that
+                # form tool calls (which the cleaned reasoning below hides).
+                agent.bus.feed_token(tok);
                 if step_t0 == 0.0 {
                     step_t0 = time.time();
                 }
@@ -1351,7 +1464,7 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                     out.write(cleaned);
                     out.flush();
                     streamed = True;
-                    agent.bus.emit("reasoning", {"text": cleaned});
+                    agent.bus.emit_stream("reasoning", cleaned);
                 }
                 # Generating but no prose yet (streaming as JSON): show a
                 # ticking activity line so a slow model is not silent.
@@ -1369,6 +1482,12 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 out.write(tok);
                 out.flush();
                 streamed = True;
+                # Stream the answer into the conversation token-by-token, and
+                # the raw token into the firehose.
+                agent.bus.emit_stream("answer", tok);
+                if tok {
+                    agent.bus.feed_token(tok);
+                }
             } elif kind == "llm_timing" {
                 last_llm_ms = float(data.get("duration_ms", 0) or 0);
                 last_llm_tokens = int(data.get("completion_tokens", 0) or 0);
@@ -1443,9 +1562,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
             import traceback;
             traceback.print_exc();
         }
-    }
-    if answer.strip() {
-        agent.bus.emit("answer", {"text": answer.strip()});
     }
     return {
         "n_read": n_read,
@@ -1560,6 +1676,10 @@ sem run_phase.directive = "A short instruction kicking off the current phase.";
 impl PhaseState.run{
     agent.active_session = visitor;
     label = type(self).__name__;
+    # Stop pressed in the UI: halt the walker before entering another phase.
+    if agent.bus.cancel_requested {
+        return;
+    }
     console.print(f"\n  ● {label}", style="bold blue");
     # Move the walker on the live graph: the UI animates the edge from the
     # previous phase to this one.
@@ -1580,6 +1700,11 @@ impl PhaseState.run{
     );
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
+    # Stop pressed during the phase: halt here, don't route onward (and don't
+    # make the QA route-selection LLM call).
+    if agent.bus.cancel_requested {
+        return;
+    }
     # Route to the next state along this node's own out-edges.
     visitor.steps += 1;
     if visitor.steps > visitor.max_steps {
@@ -1628,10 +1753,15 @@ impl PhaseState.run{
         );
         visit [-->][?:Build];
     } else {
-        # Several successors (QA -> Build / Plan / Done) and the project compiles:
-        # let the model choose, reading each candidate state's `sem`, the
-        # objective, and the ledger.
+        # Several successors (QA -> Build / Plan / Done) and the project
+        # compiles: let the model choose along this node's own out-edges,
+        # reading each candidate state's `sem`, the objective, and the ledger.
+        # Streamed via a stream_handler so the routing call's tokens reach the
+        # live firehose, while `visit [-->] by` still constrains the choice to a
+        # real successor edge (no free-text parsing, no manual default).
         visit [-->] by agent_model(
+            stream=True,
+            stream_handler=agent.view.route_stream_event,
             incl_info={
                 "Objective": visitor.objective,
                 "Progress so far": visitor.ledger.render(),
@@ -1639,6 +1769,27 @@ impl PhaseState.run{
                 "How to choose": "Pick the single next state. Choose Done only once you have actually verified the result; go back to Build to fix problems QA found, or to Plan to rethink the approach."
             }
         );
+    }
+}
+
+impl TurnRenderer.route_stream_event(event: any) -> None {
+    # Stop pressed in the UI: drop further routing tokens immediately.
+    if agent.bus.cancel_requested {
+        return;
+    }
+    tok = str(event.data.get("content", "")) if event.data else "";
+    if not tok {
+        return;
+    }
+    # Every routing token is raw model output -- the structured choice JSON, or
+    # reasoning a backend streams ahead of it. Tee it all to the firehose; show
+    # only clean reasoning prose (`thought`) in the live reasoning feed.
+    agent.bus.feed_token(tok);
+    if event.event_type == "thought" {
+        cleaned = self._strip_control(tok);
+        if cleaned {
+            agent.bus.emit_stream("reasoning", cleaned);
+        }
     }
 }
 
@@ -1684,17 +1835,52 @@ impl run_turn(message: str) {
             time.time() - started, st.n_read, st.n_write, st.n_run, st.files, st.usage
         );
     }
-    st2 = session.stats;
-    elapsed = time.time() - started;
-    agent.bus.emit(
-        "stats",
-        {
-            "text": (
-                f"{elapsed:.1f}s  ·  {st2.n_read} reads  ·  "
-                f"{st2.n_write} writes  ·  {st2.n_run} runs  ·  {len(st2.files)} files"
-            )
+    # Publish the same summary the CLI prints (print_stats) as structured data
+    # for the UI's stats bar: duration, tool breakdown, files, tokens, cost,
+    # throughput, and project health.
+    if agent.bus.active_feed {
+        st2 = session.stats;
+        elapsed = time.time() - started;
+        usage = st2.usage;
+        prompt = int(usage.get("prompt_tokens", 0) or 0);
+        completion = int(usage.get("completion_tokens", 0) or 0);
+        cost = (
+            agent.view._estimate_cost(prompt, completion)
+                if (prompt > 0 or completion > 0)
+                else 0.0
+        );
+        tok_per_s = completion / elapsed if (completion > 0 and elapsed > 0) else 0.0;
+        # Project health, only when the model is already built (cheap) -- same
+        # guard the CLI uses so a stat line never forces a whole-project compile.
+        n_err = 0;
+        n_warn = 0;
+        health_loaded = False;
+        ci = code_intel();
+        if ci is not None and ci.is_loaded() {
+            try {
+                (n_err, n_warn) = _count_diags(list(ci.diagnostics()));
+                health_loaded = True;
+            } except Exception {
+                health_loaded = False;
+            }
         }
-    );
+        agent.bus.last_stats = {
+            "elapsed": round(elapsed, 1),
+            "tools": st2.n_read + st2.n_write + st2.n_run,
+            "reads": st2.n_read,
+            "writes": st2.n_write,
+            "runs": st2.n_run,
+            "files": len(st2.files),
+            "tokens_in": prompt,
+            "tokens_out": completion,
+            "cost": cost,
+            "tok_per_s": round(tok_per_s, 1),
+            "errors": n_err,
+            "warnings": n_warn,
+            "health_loaded": health_loaded,
+            "has_run": True
+        };
+    }
 }
 
 impl _project_errors -> list {
@@ -1902,13 +2088,21 @@ impl ui_configure -> None {
 def _ui_turn_worker(prompt: str) {
     try {
         run_turn(prompt);
-        verify_and_continue();
+        # A stop request skips the auto-continue (don't restart work the user
+        # just halted).
+        if not agent.bus.cancel_requested {
+            verify_and_continue();
+        }
     } except Exception as e {
         agent.bus.emit("error", {"text": f"agent error: {e}"});
     }
-    # The walker leaves `active` on its final node (Done, or wherever it
-    # stopped); fall back to idle so the status pill stops pulsing.
-    if agent.bus.status != "done" {
+    if agent.bus.cancel_requested {
+        agent.bus.emit("system", {"text": "Stopped."});
+        agent.bus.cancel_requested = False;
+        agent.bus.set_status("idle");
+    } elif agent.bus.status != "done" {
+        # The walker leaves `active` on its final node (Done, or wherever it
+        # stopped); fall back to idle so the status pill stops pulsing.
         agent.bus.set_status("idle");
     }
 }
@@ -1918,8 +2112,8 @@ impl ui_send(prompt: str) -> bool {
     if not text {
         return False;
     }
-    if agent.bus.status == "running" {
-        return False;  # one turn at a time
+    if agent.bus.status == "running" or agent.bus.status == "stopping" {
+        return False;  # one turn at a time (and not while a stop is unwinding)
     }
     agent.bus.begin_turn();
     agent.bus.emit("user", {"text": text});
@@ -1930,6 +2124,31 @@ impl ui_send(prompt: str) -> bool {
 
 impl ui_poll -> dict {
     return agent.bus.snapshot();
+}
+
+impl ui_stream -> any {
+    import from queue { Empty }
+    q = agent.bus.subscribe();
+    try {
+        # First frame: a full snapshot so a fresh (or reconnecting) client has
+        # the complete state; subsequent frames are per-emit deltas. Events that
+        # race between subscribe and snapshot may arrive twice -- harmless, the
+        # client upserts by id.
+        snap = agent.bus.snapshot();
+        snap["full"] = True;
+        yield snap;
+        while True {
+            try {
+                # Timeout yields a heartbeat so a disconnected client is noticed
+                # (the generator reaches a yield and the server can close it).
+                yield q.get(timeout=10.0);
+            } except Empty {
+                yield {"heartbeat": True};
+            }
+        }
+    } finally {
+        agent.bus.unsubscribe(q);
+    }
 }
 
 impl ui_graph -> dict {
@@ -1958,6 +2177,21 @@ impl ui_reset -> None {
     agent.bus.events = [];
     agent.bus.begin_turn();
     agent.bus.set_status("idle");
+    # Tell live streams the feed was cleared (set_status only sends a delta).
+    agent.bus.publish_full();
+}
+
+impl ui_stop -> None {
+    # Only meaningful while a turn is running. Set the cancel flag and flip to a
+    # "stopping" status immediately so the UI confirms the click right away --
+    # the actual halt lands at the next stream/iteration checkpoint (which can
+    # be a second or two with a large local model). The worker clears the flag
+    # and drops to idle once the turn unwinds.
+    if agent.bus.status == "running" {
+        agent.bus.cancel_requested = True;
+        agent.bus.set_status("stopping");
+        agent.bus.emit("system", {"text": "Stopping…"});
+    }
 }
 
 impl _run_ui_server(r: any) -> int {
