@@ -1484,10 +1484,20 @@ impl BaseLLM._invoke_streaming(
                 }
             }
 
-            # Metrics: emit LLM call duration for this iteration
+            # Metrics: emit LLM call duration and completion-token count for this
+            # iteration so consumers can show generation speed (tokens/sec).
+            _completion_tokens = int(
+                usage.get("completion_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "completion_tokens", 0)
+            );
             yield StreamEvent(
                 event_type="llm_timing",
-                data={"duration_ms": _llm_ms, "iteration": iter_count}
+                data={
+                    "duration_ms": _llm_ms,
+                    "iteration": iter_count,
+                    "completion_tokens": _completion_tokens
+                }
             );
 
             # The model's reasoning already streamed above as incremental

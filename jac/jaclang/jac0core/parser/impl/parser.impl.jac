@@ -7246,7 +7246,7 @@ impl Parser.parse_sem_def -> SemDef {
         sem_dot_unis.append(self.make_uni_token(self.previous()));
         target_names.append(self.parse_impl_target_name());
     }
-    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING SEMI
+    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING+ SEMI
     sep_uni: UniToken | None = None;
     if self.match_tok(TokenKind.EQ) {
         sep_uni = self.make_uni_token(self.previous());
@@ -7256,9 +7256,14 @@ impl Parser.parse_sem_def -> SemDef {
         self.expect(TokenKind.EQ);  # Will error with expected '='
         sep_uni = self.make_uni_token(self.previous());
     }
-    # SemDef value is a bare STRING, not a multistring expression
-    value_tok = self.expect(TokenKind.STRING);
-    value = self.make_string(value_tok);
+    # The value is one or more adjacent string literals. Several are implicitly
+    # concatenated into a MultiString, so a long semstring can wrap across source
+    # lines (the formatter rebreaks it to fit the line width).
+    str_nodes: list = [self.make_string(self.expect(TokenKind.STRING))];
+    while self.check(TokenKind.STRING) {
+        str_nodes.append(self.make_string(self.advance()));
+    }
+    value = MultiString(strings=str_nodes, kid=str_nodes);
     kid: list = [sem_kw_uni];
     for (i, n) in enumerate(target_names) {
         kid.append(n);

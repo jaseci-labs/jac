@@ -274,43 +274,52 @@ def:pub Tab(props: any) -> JsxElement {
 
 ## shadcn/ui Integration
 
-[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. The `jac-shadcn` plugin provides first-class support -- install it with `pip install jac-shadcn`, then use `jac add --shadcn` to fetch pre-built, themed components from the [jac-shadcn registry](https://jac-shadcn.jaseci.org).
+[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. The [`jac-super`](https://pypi.org/project/jac-super/) plugin provides first-class support -- the full component set ships bundled with the plugin, so `jac add --shadcn` installs pre-built, themed components **offline** (no registry fetch).
 
 ### Installation & Setup
 
 ```bash
-pip install jac-shadcn
+pip install jac-super
 ```
 
-Create a new project with shadcn theming:
+Create a new themed project (fully offline -- the component set, styles, and color themes all ship with the plugin):
 
 ```bash
-jac create --use 'https://jac-shadcn.jaseci.org/jacpack' myapp
+jac create --use jac-shadcn --theme rose --font inter myapp
 cd myapp
 jac install
 ```
 
-Or add to an existing project by adding the `[jac-shadcn]` section to your `jac.toml`:
+This scaffolds a themed starter: a generated `global.css` (theme colors + font + radius), `lib/utils.cl.jac`, and `button`/`card` components for the chosen style, plus a `main.jac` that demos them. All theme flags are optional and default to `nova`/`neutral`/`figtree`:
 
-```toml
-[jac-shadcn]
-style = "nova"
-baseColor = "neutral"
-theme = "neutral"
-font = "figtree"
-radius = "default"
-menuAccent = "subtle"
-menuColor = "default"
-registry = "https://jac-shadcn.jaseci.org"
+| Flag | Values | Default |
+|------|--------|---------|
+| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira` | `nova` |
+| `--baseColor` | `neutral`, `stone`, `zinc`, `gray` | `neutral` |
+| `--theme` | `rose`, `emerald`, `blue`, `amber`, … | `neutral` |
+| `--font` | `inter`, `outfit`, `geist`, … | `figtree` |
+| `--radius` | `none`, `small`, `medium`, `large` | `default` |
+| `--menuAccent` | `subtle`, `bold` | `subtle` |
+
+The chosen values are written to the `[jac-shadcn]` section of `jac.toml`.
+
+### Re-theme in place
+
+Change the theme of an existing project without recreating it -- `jac retheme` regenerates `global.css` from `[jac-shadcn]` (and, when `--style` changes, re-resolves the components already in `components/ui/`):
+
+```bash
+jac retheme --theme emerald --font outfit   # switch accent + font
+jac retheme --style mira                     # switch style, restyle installed components
+jac retheme                                  # regenerate from the current jac.toml config
 ```
 
-Then add and use components:
+### Add more components
 
 ```bash
 jac add --shadcn button card dialog
 ```
 
-This fetches resolved `.cl.jac` components into `components/ui/`, installs peer dependencies automatically, and creates the `cn()` utility if needed.
+This resolves the chosen style's `.cl.jac` components into `components/ui/`, installs peer dependencies automatically, and creates the `cn()` utility if needed -- all from the bundled component set, no network required.
 
 ### Adding Components to Your Code
 
@@ -579,7 +588,7 @@ def:pub SplitView() -> JsxElement {
 | Import package | `import from "<package>" { named_export }` |
 | Import React hooks | `import from react { useRef, useCallback }` |
 | Setup Tailwind | Add vite plugin config + CSS import |
-| Setup shadcn | `pip install jac-shadcn` + `[jac-shadcn]` in jac.toml |
+| Setup shadcn | `pip install jac-super` + `[jac-shadcn]` in jac.toml |
 | Use cn() utility | Write in Jac with clsx + tailwind-merge |
 
 ---

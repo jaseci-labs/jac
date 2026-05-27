@@ -57,6 +57,13 @@ glob registry = get_registry();
             help="Compact output: hide live reasoning, timings, and step detail",
             short="q"
         ),
+        Arg.create(
+            "ui",
+            kind=ArgKind.FLAG,
+            typ=bool,
+            default=False,
+            help="Open the agent in a web UI with a live phase-graph visualizer"
+        ),
 
     ],
     examples=[
@@ -70,6 +77,7 @@ glob registry = get_registry();
             "jac ai -q \"fix the build\"",
             "Compact output -- just tool calls and the answer"
         ),
+        ("jac ai --ui", "Open a web UI with a live agent phase-graph visualizer"),
 
     ],
     group="general"
@@ -79,5 +87,6 @@ def ai(
     model: str = "",
     n_ctx: int = 0,
     safe: bool = False,
-    quiet: bool = False
+    quiet: bool = False,
+    ui: bool = False
 ) -> int;
