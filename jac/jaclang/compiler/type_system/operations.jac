@@ -43,7 +43,15 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.GT: ('__gt__', '__lt__'),
          Tok.GTE: ('__ge__', '__le__')
      },
-     ARITHMETIC_OPERATORS: set[str] = {Tok.PLUS,Tok.MINUS,Tok.STAR_MUL,Tok.DIV,Tok.FLOOR_DIV,Tok.MOD,Tok.STAR_POW},
+     ARITHMETIC_OPERATORS: set[str] = {
+         Tok.PLUS,
+         Tok.MINUS,
+         Tok.STAR_MUL,
+         Tok.DIV,
+         Tok.FLOOR_DIV,
+         Tok.MOD,
+         Tok.STAR_POW
+     },
      INT_LIKE_WIDTHS: dict[str, int] = {
          "i8": 8,
          "u8": 8,
@@ -54,7 +62,7 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          "i64": 64,
          "u64": 64
      },
-     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"},
+     FLOAT_LIKE_NAMES: set[str] = {"f32", "f64"},
      AUG_OPERATOR_MAP: dict[str, str] = {
          Tok.ADD_EQ: '__iadd__',
          Tok.SUB_EQ: '__isub__',

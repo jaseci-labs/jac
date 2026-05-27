@@ -553,7 +553,13 @@ impl MachOLinker.build_executable -> bytes {
     # ── Classify symbols ─────────────────────────────────────────
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
-    known_data_syms: set = {"__stdinp","__stdoutp","__stderrp","environ","_environ"};
+    known_data_syms: set = {
+        "__stdinp",
+        "__stdoutp",
+        "__stderrp",
+        "environ",
+        "_environ"
+    };
     local_sym_map: dict[str, tuple[str, int]] = {};
     sym_idx_map: dict[int, tuple[str, int]] = {};
 

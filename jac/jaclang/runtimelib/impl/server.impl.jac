@@ -1481,7 +1481,27 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and (
                     Path(path).suffix in (
                         custom_asset_extensions
-                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json'}
+                        or {
+                            '.png',
+                            '.jpg',
+                            '.jpeg',
+                            '.gif',
+                            '.webp',
+                            '.svg',
+                            '.ico',
+                            '.woff',
+                            '.woff2',
+                            '.ttf',
+                            '.otf',
+                            '.eot',
+                            '.mp4',
+                            '.webm',
+                            '.mp3',
+                            '.wav',
+                            '.css',
+                            '.js',
+                            '.json'
+                        }
                     )
                 )
             );
