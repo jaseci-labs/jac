@@ -181,7 +181,7 @@ test "server: new with builtin types works end-to-end" {
     import from jaclang.runtimelib.builtin { new }
     assert new(list, [1, 2, 3]) == [1, 2, 3];
     assert new(dict, {"a": 1}) == {"a": 1};
-    assert new(set, [1, 2, 2, 3]) == {1,2,3};
+    assert new(set, [1, 2, 2, 3]) == {1, 2, 3};
 }
 
 

@@ -278,10 +278,10 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         } except (ImportError, AttributeError, ValueError) {
             spec = None;
         }
-        if (spec and spec.origin and (spec.origin not in {'built-in','frozen'})) {
+        if (spec and spec.origin and (spec.origin not in {'built-in', 'frozen'})) {
             origin = os.path.normpath(spec.origin);
             ext = os.path.splitext(origin)[1].lower();
-            if (ext in {'.jac','.pyi','.py','.js','.ts','.jsx','.tsx'}) {
+            if (ext in {'.jac', '.pyi', '.py', '.js', '.ts', '.jsx', '.tsx'}) {
                 if (ext == '.jac') {
                     return (origin, 'jac');
                 }
@@ -291,7 +291,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
                 if (ext == '.py') {
                     return (origin, 'py');
                 }
-                if (ext in {'.js','.ts','.jsx','.tsx'}) {
+                if (ext in {'.js', '.ts', '.jsx', '.tsx'}) {
                     return (origin, 'js');
                 }
                 return (origin, 'other');

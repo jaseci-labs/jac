@@ -3,7 +3,7 @@
 impl ImportProcessor.should_process_import(
     self: ImportProcessor, import_path: Path
 ) -> bool {
-    return (import_path.suffix in {'.jac','.js'});
+    return (import_path.suffix in {'.jac', '.js'});
 }
 
 """Process client imports for Vite bundling."""

@@ -2516,7 +2516,17 @@ test "layout exports all expected functions" {
     (eng, ir) = compile_native("func_ptr_fields.na.jac");
     layout = ir.gen.native_layout;
     assert layout is not None;
-    expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
+    expected = {
+        "add",
+        "mul",
+        "negate",
+        "identity",
+        "make_all_fields",
+        "get_all_fields_x",
+        "get_all_fields_flag",
+        "make_maybe_point",
+        "get_maybe_x"
+    };
     assert expected == set(layout.functions.keys());
 }
 

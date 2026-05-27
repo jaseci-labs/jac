@@ -24,6 +24,11 @@ obj _MongoLayer123Person(Root) {
         age: int = 0;
 }
 
+# Used by the field-failure quarantine reason test: name has NO default.
+obj _MongoRequiredField(Root) {
+    has name: str;
+}
+
 
 test "MongoBackend stamps fingerprint + archetype identity on put" {
     container = MongoDbContainer("mongo:latest");
@@ -90,6 +95,104 @@ test "MongoBackend quarantines un-deserializable documents instead of dropping" 
         assert quarantined_doc.get('error');
         main = client["jac_test_l123"]["_anchors"];
         assert main.find_one({'_id': bad_id}) is None;
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend recovers null field to class default and loads anchor normally" {
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        arch_mod = getattr(_MongoLayer123Person, '__module__');
+        bad_id = str(uuid4());
+        backend.collection.insert_one(
+            {
+                '_id': bad_id,
+                'type': 'NodeAnchor',
+                'arch_module': arch_mod,
+                'arch_type': '_MongoLayer123Person',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': bad_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': '_MongoLayer123Person',
+                        '__module__': arch_mod,
+                        'name': None,
+                        'age': 0
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-26T00:00:00'
+            }
+        );
+        loaded = backend.get(UUID(bad_id));
+        assert loaded is not None , "anchor with null field must load after fix";
+        arch = cast(_MongoLayer123Person, cast(NodeAnchor, loaded).archetype);
+        assert arch.name == "" , (
+            f"null field must be restored to class default ''; got '{arch.name}'"
+        );
+        client = MongoClient(uri);
+        q = client["jac_test_l123"]["_anchors_quarantine"];
+        assert q.find_one({'_id': bad_id}) is None , "recovered anchor must NOT be quarantined";
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend quarantine reason identifies field failure not class unresolvable" {
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        arch_mod = getattr(_MongoRequiredField, '__module__');
+        bad_id = str(uuid4());
+        backend.collection.insert_one(
+            {
+                '_id': bad_id,
+                'type': 'NodeAnchor',
+                'arch_module': arch_mod,
+                'arch_type': '_MongoRequiredField',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': bad_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': '_MongoRequiredField',
+                        '__module__': arch_mod,
+                        'name': None
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-26T00:00:00'
+            }
+        );
+        loaded = backend.get(UUID(bad_id));
+        assert loaded is None , "anchor with no-default null field must be quarantined";
+        client = MongoClient(uri);
+        q = client["jac_test_l123"]["_anchors_quarantine"];
+        q_doc = cast(dict, q.find_one({'_id': bad_id}));
+        assert q_doc is not None , "anchor must be in quarantine";
+        reason = cast(str, q_doc.get('error', ''));
+        assert "archetype field deserialization failed" in reason , (
+            f"reason must identify field failure, not class-unresolvable; got: '{reason}'"
+        );
         client.close();
         backend.close();
     } finally {

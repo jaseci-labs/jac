@@ -67,7 +67,7 @@ def _reset_mongo -> None {
     if "mongo_client" not in _shared {
         return;
     }
-    system_dbs = {"admin","config","local"};
+    system_dbs = {"admin", "config", "local"};
     for db_name in _shared["mongo_client"].list_database_names() {
         if db_name not in system_dbs {
             _shared["mongo_client"].drop_database(db_name);

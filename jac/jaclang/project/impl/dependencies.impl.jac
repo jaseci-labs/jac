@@ -281,7 +281,7 @@ impl DependencyInstaller.list_installed -> list[str] {
     try {
         packages_data = json.loads(stdout);
         # Filter out venv infrastructure packages
-        infrastructure = {"pip","setuptools","wheel"};
+        infrastructure = {"pip", "setuptools", "wheel"};
         return sorted(
             [
                 pkg["name"]
