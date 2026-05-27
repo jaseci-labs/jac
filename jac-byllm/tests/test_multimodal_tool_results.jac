@@ -36,8 +36,7 @@ test "ToolCallResultMsg.to_dict serializes Media to image_url block" {
 
 test "content_preview yields text without leaking base64" {
     preview = content_preview(
-        [Text(text="PASS"), Image(url="data:image/png;base64,iVBORw0KGgoLONGBLOB")],
-        500
+        [Text(text="PASS"), Image(url="data:image/png;base64,iVBORw0KGgoLONGBLOB")], 500
     );
     assert "PASS" in preview;
     assert "[image]" in preview;

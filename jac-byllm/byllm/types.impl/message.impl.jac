@@ -30,10 +30,7 @@ impl Message.to_dict -> dict[str, object] {
     if isinstance(self.content, str) {
         return {"role": self.role.value, "content": self.content};
     }
-    return {
-        "role": self.role.value,
-        "content": serialize_media_content(self.content)
-    };
+    return {"role": self.role.value, "content": serialize_media_content(self.content)};
 }
 
 #-------------------------------------------------------------------------------
@@ -56,5 +53,6 @@ impl ToolCallResultMsg.to_dict -> dict[str, object] {
         "content": content_out,
         "tool_call_id": self.tool_call_id,
         "name": self.name,
+
     };
 }
