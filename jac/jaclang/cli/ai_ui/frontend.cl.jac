@@ -14,6 +14,7 @@ import from .components.PhaseGraph { PhaseGraph }
 import from .components.Conversation { Conversation }
 import from .components.ActivityFeed { ActivityFeed }
 import from .components.StatsBar { StatsBar }
+import from .components.TokenStream { TokenStream }
 import "./global.css";
 
 def:pub app -> JsxElement {
@@ -26,14 +27,18 @@ def:pub app -> JsxElement {
         # Server-shaped TurnStatsView; the server constructs it, so the client
         # only ever holds a plain object (never instantiate the sv type here).
         stats: any = {"has_run": False},
+        # Raw firehose of every streamed token, concatenated (capped).
+        tokens: str = "",
         draft: str = "";
 
     unmountedRef: any = useRef(False);
     ctrlRef: any = useRef(None);
     # The live event list is kept in a ref so the stream handler (captured once
     # by the effect) always upserts against the current list, not a stale render
-    # closure -- otherwise each delta would rebuild from an empty `events`.
+    # closure -- otherwise each delta would rebuild from an empty `events`. Same
+    # reason for the token firehose buffer.
     eventsRef: any = useRef([]);
+    tokensRef: any = useRef("");
 
     # Apply one stream message: a full snapshot replaces the feed; a delta
     # upserts the changed event by id (so a token re-push grows that event in
@@ -62,6 +67,16 @@ def:pub app -> JsxElement {
             }
             eventsRef.current = out;
             events = out;
+        }
+        # Firehose: append the raw token (delta msgs carry it; empty otherwise),
+        # capped to the most recent stretch.
+        if msg.token {
+            nt = tokensRef.current + msg.token;
+            if len(nt) > 4000 {
+                nt = nt[len(nt) - 4000:];
+            }
+            tokensRef.current = nt;
+            tokens = nt;
         }
         status = msg.status;
         active = msg.active;
@@ -147,6 +162,8 @@ def:pub app -> JsxElement {
         active = "";
         path = [];
         stats = {"has_run": False};
+        tokensRef.current = "";
+        tokens = "";
     }
 
     # Stop the running turn at the next checkpoint.
@@ -206,6 +223,7 @@ def:pub app -> JsxElement {
                         onSend={send}
                         onStop={stop}
                     />
+                    <TokenStream text={tokens} live={status == "running"}/>
                 </div>
                 <div className="col right">
                     <div className="pane">

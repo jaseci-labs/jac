@@ -509,6 +509,33 @@ body {
     border-radius: 3px;
 }
 
+/* ---- Token firehose (lower-left live stream) -------------------------- */
+.col.left > .pane {
+    flex: 1;
+    min-height: 0;
+}
+
+.tokenstream {
+    flex-shrink: 0;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.tokenstream-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #9aa0a8;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* ---- Stats bar -------------------------------------------------------- */
 .stats {
     display: flex;

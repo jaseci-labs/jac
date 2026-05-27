@@ -977,10 +977,37 @@ impl AgentEventBus.emit_stream(kind: str, token: str) -> None {
         and self.events[-1].get("streaming")
     ) {
         self.events[-1]["text"] = str(self.events[-1].get("text", "")) + token;
-        # Re-push the grown event so the client sees the token appended live.
+        # Re-push the grown event so the client sees the cleaned text grow live.
+        # The firehose is fed separately from the raw stream (see feed_token).
         self.publish(self.events[-1]);
     } else {
-        self.emit(kind, {"text": token, "streaming": True});
+        ev = {"id": self._next_id, "kind": kind, "text": token, "streaming": True};
+        self._next_id += 1;
+        self.events.append(ev);
+        if len(self.events) > self._cap {
+            self.events = self.events[-self._cap:];
+        }
+        self.publish(ev);
+    }
+}
+
+impl AgentEventBus.feed_token(token: str) -> None {
+    if not self.active_feed or not self._subscribers {
+        return;
+    }
+    # Token-only message (no `ev`): the client appends it to the firehose and
+    # refreshes top-level state, but the event log is untouched.
+    msg = {
+        "token": token,
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path),
+        "stats": dict(self.last_stats)
+    };
+    for q in list(self._subscribers) {
+        try {
+            q.put_nowait(msg);
+        } except Exception { }
     }
 }
 
@@ -1421,6 +1448,9 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 if not tok {
                     continue;
                 }
+                # Raw firehose: every generated token, including the ones that
+                # form tool calls (which the cleaned reasoning below hides).
+                agent.bus.feed_token(tok);
                 if step_t0 == 0.0 {
                     step_t0 = time.time();
                 }
@@ -1452,8 +1482,12 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 out.write(tok);
                 out.flush();
                 streamed = True;
-                # Stream the answer into the conversation token-by-token.
+                # Stream the answer into the conversation token-by-token, and
+                # the raw token into the firehose.
                 agent.bus.emit_stream("answer", tok);
+                if tok {
+                    agent.bus.feed_token(tok);
+                }
             } elif kind == "llm_timing" {
                 last_llm_ms = float(data.get("duration_ms", 0) or 0);
                 last_llm_tokens = int(data.get("completion_tokens", 0) or 0);
@@ -1719,17 +1753,44 @@ impl PhaseState.run{
         );
         visit [-->][?:Build];
     } else {
-        # Several successors (QA -> Build / Plan / Done) and the project compiles:
-        # let the model choose, reading each candidate state's `sem`, the
-        # objective, and the ledger.
-        visit [-->] by agent_model(
-            incl_info={
-                "Objective": visitor.objective,
-                "Progress so far": visitor.ledger.render(),
-                "Step": f"{visitor.steps} of at most {visitor.max_steps}",
-                "How to choose": "Pick the single next state. Choose Done only once you have actually verified the result; go back to Build to fix problems QA found, or to Plan to rethink the approach."
+        # Several successors (QA -> Build / Plan / Done) and the project
+        # compiles: let the model choose. Run it as a streamed call (rendered
+        # like a phase) instead of the structured `visit [-->] by`, so the
+        # decision's tokens reach the live firehose and its reasoning shows in
+        # the feed; then visit the state it names (safe default: Build).
+        self.ctx.append(
+            {
+                "role": "user",
+                "content": (
+                    "QA is complete and the project compiles. Decide the single "
+                    "next step and end your reply with exactly one word on its "
+                    "own line: DONE if the objective is fully built and verified, "
+                    "BUILD to fix problems you found, or PLAN to rethink the "
+                    f"approach. (Step {visitor.steps} of at most "
+                    f"{visitor.max_steps}.)"
+                )
             }
         );
+        choice = agent.view.render_stream(choose_next(self.ctx));
+        if agent.bus.cancel_requested {
+            return;
+        }
+        words = [
+            w
+            for w in str(choice.get("answer", "")).lower().replace("\n", " ").split()
+            if w
+        ];
+        last = words[len(words) - 1] if words else "";
+        if "done" in last {
+            console.print("  ↳ QA chose Done", style="bold green");
+            visit [-->][?:Done];
+        } elif "plan" in last {
+            console.print("  ↳ QA chose Plan", style="yellow");
+            visit [-->][?:Plan];
+        } else {
+            console.print("  ↳ QA chose Build", style="yellow");
+            visit [-->][?:Build];
+        }
     }
 }
 

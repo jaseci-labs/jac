@@ -349,6 +349,12 @@ obj AgentEventBus {
     first frame of a new stream, and after a reset.
     """
     def publish_full -> None;
+
+    """Push one raw model token to the live firehose, without touching the event
+    log. Fed from the unsplit stream, so it includes the tokens that form tool
+    calls -- which the cleaned reasoning view deliberately hides.
+    """
+    def feed_token(token: str) -> None;
 }
 
 
@@ -624,6 +630,20 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     parallelize=True,
     max_react_iterations=60,
     on_iteration=_progress_guard
+);
+
+
+# QA's next-state choice, run as a streamed (no-tool) call instead of the
+# structured `visit [-->] by` routing, so its tokens reach the live firehose and
+# its reasoning shows in the feed. `PhaseState.run` renders the stream and visits
+# the state named in the reply (safe default: Build).
+"""Decide QA's next state by reasoning over its own `ctx`; reply ends in a choice."""
+def choose_next(ctx: list) -> str by agent_model(
+    conversation=ctx,
+    stream=True,
+    logging=True,
+    temperature=agent.cfg.temperature,
+    max_tokens=2048
 );
 
 
