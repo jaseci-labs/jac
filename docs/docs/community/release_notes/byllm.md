@@ -2,7 +2,22 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.9 (Latest Release)
+## byllm 0.6.10 (Latest Release)
+
+### New Features
+
+- **Streaming responses report generation speed**: The streaming `llm_timing` event now carries the per-iteration completion-token count alongside its duration, so consumers can display tokens/sec.
+
+### Bug Fixes
+
+- **Fix: tool-using ReAct loops no longer hang on models without a tool-aware chat template**: Local GGUFs and ollama families like gemma drop `role:"tool"` messages and mis-render assistant `tool_calls`, so they never saw their own results and re-issued the same call forever; the transcript sent to these models is now linearised into the `<tool_call>`/`<tool_response>` text shape they can actually read.
+- **Fix: tool calls now dispatch when streaming against ollama**: ollama streams a tool call as plain text in the message `content` rather than a structured `tool_calls` field, and `litellm.stream_chunk_builder` cannot reassemble it. byLLM's text recovery previously ran only for backends with `supports_native_tools=False`, so the native ollama path silently dropped the call and the ReAct loop ended with the raw JSON as its answer. The streaming dispatch now rebuilds the message as a dict from the accumulated stream text and recovers the call whenever tools were offered but no native `tool_calls` came back, and the JSON recovery understands `{"tool_calls": [...]}` / `{"tool_call": {...}}` envelopes plus the `name`/`tool`/`tool_name`/`function` and `arguments`/`args`/`tool_args`/`parameters`/`input` key aliases small models emit. No-op for genuine native tool calls and plain-text answers, so cloud providers are unaffected.
+
+### Refactors
+
+- **Refactor: native property syntax**: `MTIR.runtime` now uses the native `has runtime: MTRuntime { getter; }` property form (getter body in `impl/mtir.impl.jac`) instead of a `@property` decorator, matching the codebase-wide migration.
+
+## byllm 0.6.9
 
 ### New Features
 
