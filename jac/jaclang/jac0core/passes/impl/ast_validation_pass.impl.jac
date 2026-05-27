@@ -156,7 +156,7 @@ impl ASTValidationPass.enter_assignment(
 ) -> None {
     # root and super compile to function calls (e.g. Jac.root()) which
     # cannot appear on the left side of an assignment in Python.
-    non_assignable = {Tok.KW_ROOT,Tok.KW_SUPER};
+    non_assignable = {Tok.KW_ROOT, Tok.KW_SUPER};
     for target in nd.target {
         ref_node: (uni.SpecialVarRef | None) = None;
         if isinstance(target, uni.SpecialVarRef) {
