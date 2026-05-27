@@ -231,11 +231,12 @@ impl ASTValidationPass.enter_non_local_stmt(
     }
 }
 
-"""E0063: glob is not valid inside a function body."""
+"""E0063: glob is only valid at module level."""
 impl ASTValidationPass.enter_global_vars(
     self: ASTValidationPass, nd: uni.GlobalVars
 ) -> None {
-    if nd.find_parent_of_type(uni.Ability) is not None
+    if nd.find_parent_of_type(uni.ModuleCode) is not None
+    or nd.find_parent_of_type(uni.Ability) is not None
     or nd.find_parent_of_type(uni.ImplDef) is not None {
         self.emit(E0063, node_override=nd);
     }
