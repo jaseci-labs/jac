@@ -32,8 +32,8 @@ import from jac_scale.config_loader { get_scale_config }
 
 # Match the [trace=abc12345] prefix `TraceIdLogFilter` adds to plain
 # text logs - lets us recover a short trace id from pre-M-14.b lines.
-glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*");
-glob logger = logging.getLogger(__name__);
+glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
+     logger = logging.getLogger(__name__);
 
 
 """Loki base URL with the env override / K8s DNS / localhost fallback."""

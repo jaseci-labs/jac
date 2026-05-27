@@ -240,10 +240,7 @@ cl {
                             onChange={lambda (e: any) { filterService = e.target.value; }}
                         >
                             <option value="">All services</option>
-                            {services.map(
-                                lambda (s: str) { return
-                                    <option key={s} value={s}>{s}</option>; }
-                            )}
+                            {[<option key={s} value={s}>{s}</option> for s in services]}
                         </select>
                     </div>
                     <div>
@@ -342,10 +339,11 @@ cl {
                         lambda (line: dict, idx: int) { return
                             <div
                                 key={idx}
-                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer "
-                                    + (panelIdx == idx
+                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer " + (
+                                    panelIdx == idx
                                     and "bg-sky-500/10 border-l-2 border-l-sky-400"
-                                    or "")}
+                                    or ""
+                                )}
                                 onClick={lambda { openPanel(idx, line); }}
                             >
                                 <span
@@ -380,7 +378,9 @@ cl {
                 and <div
                     className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col z-50"
                 >
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                    <div
+                        className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
+                    >
                         <div className="flex items-center gap-2">
                             <span
                                 className={"text-sm font-bold " + serviceColor(
@@ -389,9 +389,7 @@ cl {
                             >
                                 {panelLine["service"] or "?"}
                             </span>
-                            <span
-                                className={levelBadge(panelLine["level"] or "INFO")}
-                            >
+                            <span className={levelBadge(panelLine["level"] or "INFO")}>
                                 {(panelLine["level"] or "INFO").toUpperCase()}
                             </span>
                             <span className="text-xs text-slate-500 font-mono">
@@ -402,43 +400,53 @@ cl {
                             className="text-slate-400 hover:text-white text-xl leading-none"
                             onClick={lambda { closePanel(); }}
                             title="Close"
-                        >×</button>
+                        >
+                            ×
+                        </button>
                     </div>
                     <div className="flex-1 overflow-y-auto px-4 py-3 text-xs space-y-3">
                         <div>
                             <div
                                 className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
-                            >Message</div>
+                            >
+                                Message
+                            </div>
                             <div
                                 className="text-slate-100 font-mono break-all whitespace-pre-wrap bg-slate-900 border border-slate-800 rounded p-2"
-                            >{panelLine["msg"] or ""}</div>
+                            >
+                                {panelLine["msg"] or ""}
+                            </div>
                         </div>
                         <div className="grid grid-cols-[7rem_1fr] gap-y-1">
                             <div className="text-slate-500">Timestamp</div>
-                            <div
-                                className="text-slate-200 font-mono break-all"
-                            >{panelLine["ts"] or "-"}</div>
+                            <div className="text-slate-200 font-mono break-all">
+                                {panelLine["ts"] or "-"}
+                            </div>
                             {panelLine["pod"]
                             and <div className="text-slate-500">Pod</div>}
                             {panelLine["pod"]
-                            and <div
-                                className="text-slate-200 font-mono break-all"
-                            >{panelLine["pod"]}</div>}
+                            and <div className="text-slate-200 font-mono break-all">
+                                {panelLine["pod"]}
+                            </div>}
                             {panelLine["trace_id"]
                             and <div className="text-slate-500">Trace ID</div>}
                             {panelLine["trace_id"]
-                            and <div
-                                className="text-purple-300 font-mono break-all"
-                            >{panelLine["trace_id"]}</div>}
+                            and <div className="text-purple-300 font-mono break-all">
+                                {panelLine["trace_id"]}
+                            </div>}
                         </div>
                         {panelLine["extras"]
                         and <div>
                             <div
                                 className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
-                            >Extras</div>
+                            >
+                                Extras
+                            </div>
                             <pre
                                 className="bg-slate-900 border border-slate-800 rounded p-2 text-slate-200 overflow-x-auto"
-                            >{JSON.stringify(panelLine["extras"], None, 2)}</pre>
+                            >
+                                {JSON.stringify(panelLine["extras"], None, 2)}
+                            </pre>
                         </div>}
                         {panelLine["trace_id"]
                         and <div className="pt-2 border-t border-slate-800">
@@ -449,23 +457,24 @@ cl {
                                 {traceServices.length > 0
                                 and <span className="text-slate-600">·</span>}
                                 {traceServices.length > 0
-                                and traceServices.map(
-                                    lambda (s: str) { return
-                                        <span
-                                            key={s}
-                                            className={"font-mono " + serviceColor(s)}
-                                        >{s}</span>; }
-                                )}
+                                and [
+                                    <span
+                                        key={s}
+                                        className={"font-mono " + serviceColor(s)}
+                                    >
+                                        {s}
+                                    </span> for s in traceServices
+                                ]}
                             </div>
                             {traceLoading
-                            and <div
-                                className="text-sky-400 text-center py-3"
-                            >Loading trace lines...</div>}
+                            and <div className="text-sky-400 text-center py-3">
+                                Loading trace lines...
+                            </div>}
                             {not traceLoading
                             and traceLines.length == 0
-                            and <div
-                                className="text-slate-500 text-center py-3"
-                            >No other log lines found for this trace.</div>}
+                            and <div className="text-slate-500 text-center py-3">
+                                No other log lines found for this trace.
+                            </div>}
                             {not traceLoading
                             and traceLines.length > 0
                             and <div
@@ -479,15 +488,19 @@ cl {
                                         >
                                             <span
                                                 className="text-slate-500 text-[10px] whitespace-nowrap"
-                                            >{shortTime(tl["ts"] or "")}</span>
+                                            >
+                                                {shortTime(tl["ts"] or "")}
+                                            </span>
                                             <span
                                                 className={"text-[10px] font-bold whitespace-nowrap " + serviceColor(
                                                     tl["service"] or ""
                                                 )}
-                                            >{tl["service"] or "?"}</span>
-                                            <span
-                                                className="text-slate-200 break-all"
-                                            >{tl["msg"] or ""}</span>
+                                            >
+                                                {tl["service"] or "?"}
+                                            </span>
+                                            <span className="text-slate-200 break-all">
+                                                {tl["msg"] or ""}
+                                            </span>
                                         </div>; }
                                 )}
                             </div>}

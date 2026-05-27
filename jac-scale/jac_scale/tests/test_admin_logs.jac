@@ -36,8 +36,7 @@ test "all logs endpoints are GET (read-only surface)" {
 
     for ep in host.server._endpoints {
         if ep.path.startswith("/admin/logs") {
-            assert ep.method == HTTPMethod.GET ,
-                f"{ep.path} should be GET, got {ep.method}";
+            assert ep.method == HTTPMethod.GET , f"{ep.path} should be GET, got {ep.method}";
         }
     }
 }
@@ -50,8 +49,7 @@ test "logs endpoints are tagged 'Logs' so OpenAPI groups them" {
 
     for ep in host.server._endpoints {
         if ep.path.startswith("/admin/logs") {
-            assert ep.tags == ["Logs"] ,
-                f"{ep.path} should be tagged ['Logs'], got {ep.tags}";
+            assert ep.tags == ["Logs"] , f"{ep.path} should be tagged ['Logs'], got {ep.tags}";
         }
     }
 }
