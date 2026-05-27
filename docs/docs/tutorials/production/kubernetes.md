@@ -2,12 +2,12 @@
 
 Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
-This tutorial prioritizes deploying to a local Kubernetes cluster with MicroK8s on Ubuntu (recommended). Docker Desktop and cloud providers (EKS, GKE, AKS) are also supported when `kubectl` is properly configured.
+This tutorial covers deploying to a local Kubernetes cluster. MicroK8s (Ubuntu), Minikube, and Docker Desktop are all supported locally, as are cloud providers (EKS, GKE, AKS) when `kubectl` is properly configured.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
-> - Kubernetes cluster running (MicroK8s recommended; Docker Desktop or cloud provider also supported)
+> - Kubernetes cluster running (MicroK8s, Minikube, Docker Desktop, or cloud provider)
 > - `kubectl` configured
 > - jac-scale installed and enabled:
 >
@@ -262,7 +262,7 @@ size = "10Gi"
 access_mode = "ReadWriteMany"
 storage_class = "efs-sc"
 
-# OR for local dev clusters (k3d/kind), use a hostPath instead:
+# OR for local dev clusters (minikube/MicroK8s/k3d/kind), use a hostPath instead:
 # host_path = "/var/lib/myapp-workspace"
 ```
 

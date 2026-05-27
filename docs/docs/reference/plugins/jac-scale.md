@@ -3241,7 +3241,8 @@ image_registry = "${ECR_REGISTRY}"
 
 Behavior:
 
-- **Local clusters** (Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`k3d image import`, `kind load docker-image`).
+- **Local clusters** (Minikube, Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`minikube image load`, `k3d image import`, `kind load docker-image`). Minikube also supports building directly inside its Docker daemon via `docker-env` (the default auto-detected path).
+- **MicroK8s**: if `image_registry` is unset, import the image manually with `docker save <image> | microk8s ctr images import -`, or enable the built-in registry addon (`microk8s enable registry`) and set `image_registry = "localhost:32000"` in `jac.toml`.
 - **Remote clusters**: `image_registry` must be set. The image is tagged as `<image_registry>/<app_name>:dev-<sha12>` and pushed before `kubectl apply`. The `<sha12>` suffix is a content hash of the source tree -- rebuilds change the tag, which triggers an automatic rolling update.
 - The registry value supports `${ENV_VAR}` interpolation so you can keep registry URLs out of source control. The local environment is read at deploy time.
 - Authentication to the registry is up to you (`docker login`, ECR `get-login-password`, GCR service account, etc.). `jac-scale` does not manage registry credentials.
@@ -3287,7 +3288,7 @@ Each entry is an [array of tables](https://toml.io/en/v1.0.0#array-of-tables) (n
 | `size` | yes (PVC mode) | Requested storage, e.g. `10Gi`. |
 | `access_mode` | yes (PVC mode) | One of `ReadWriteMany` (most common for cross-pod), `ReadWriteOnce`, `ReadOnlyMany`. ReadWriteMany requires an RWX-capable storage class. |
 | `storage_class` | yes (PVC mode) | The StorageClass to bind to. Cloud providers' RWX classes: AWS `efs-sc`, GCP Filestore CSI, Azure Files. |
-| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on k3d / kind; will not survive a pod move on multi-node clusters. |
+| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on minikube, MicroK8s, k3d, or kind; will not survive a pod move on multi-node clusters. |
 
 PVC mode and hostPath mode are mutually exclusive per entry. K-track applies PVCs before Deployments so pods do not crash-loop on "PVC not found".
 
@@ -3342,7 +3343,39 @@ hpa = { enabled = false }
 
 ## Setting Up Kubernetes
 
-### MicroK8s (Ubuntu Recommended)
+### Minikube
+
+Official docs:
+
+- [Minikube Home](https://minikube.sigs.k8s.io/)
+- [Minikube Getting Started](https://minikube.sigs.k8s.io/docs/start/)
+
+```bash
+# Install minikube
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+# Start the cluster
+minikube start
+
+# Enable ingress addon
+minikube addons enable ingress
+```
+
+Deploy your app:
+
+```bash
+jac start --scale
+```
+
+Access your app:
+
+- <http://$(minikube ip):30080>
+- <http://$(minikube ip):30080/docs>
+
+---
+
+### MicroK8s (Ubuntu)
 
 Official docs:
 
@@ -3369,6 +3402,17 @@ Deploy your app:
 ```bash
 jac start --scale
 ```
+
+> **Microservice mode (`[plugins.scale.microservices].enabled = true`):** `jac start --scale` sets `auto_build = True` on `KubernetesMicroserviceTarget`, which calls `auto_build_and_distribute`. MicroK8s kubeconfig contexts are not matched by the local-cluster detector (`minikube`, `k3d-*`, `kind-*`), so the build falls through to `CLUSTER_REMOTE` and requires `image_registry` to be set. Enable the built-in registry addon and point `image_registry` at it:
+>
+> ```bash
+> microk8s enable registry
+> ```
+>
+> ```toml
+> [plugins.scale.kubernetes]
+> image_registry = "localhost:32000"
+> ```
 
 Access your app:
 
