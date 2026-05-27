@@ -790,11 +790,11 @@ Legacy environment-style names should be migrated to TOML keys.
 | `cpu_limit` | CPU resource limit | `None` |
 | `memory_request` | Memory resource request | `None` |
 | `memory_limit` | Memory resource limit | `None` |
-| `readiness_initial_delay` | Readiness probe initial delay (seconds) | `5` |
-| `readiness_period` | Readiness probe period (seconds) | `5` |
-| `liveness_initial_delay` | Liveness probe initial delay (seconds) | `15` |
-| `liveness_period` | Liveness probe period (seconds) | `10` |
-| `liveness_failure_threshold` | Liveness probe failure threshold | `3` |
+| `readiness_initial_delay` | Readiness probe initial delay (seconds) | `10` |
+| `readiness_period` | Readiness probe period (seconds) | `20` |
+| `liveness_initial_delay` | Liveness probe initial delay (seconds) | `10` |
+| `liveness_period` | Liveness probe period (seconds) | `20` |
+| `liveness_failure_threshold` | Liveness probe failure threshold | `80` |
 | `mongodb_enabled` | Deploy MongoDB in cluster | `True` |
 | `redis_enabled` | Deploy Redis in cluster | `True` |
 | `min_replicas` | Minimum HPA replicas | `1` |

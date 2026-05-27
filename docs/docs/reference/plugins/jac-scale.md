@@ -2714,11 +2714,11 @@ Kubernetes uses readiness and liveness probes to decide when a pod is ready to s
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `health_check_path` | `/docs` | Endpoint probed by both readiness and liveness checks |
-| `readiness_initial_delay` | `5` | Seconds to wait before first readiness check |
-| `readiness_period` | `5` | Seconds between readiness checks |
-| `liveness_initial_delay`  | `15` | Seconds to wait before first liveness check |
-| `liveness_period`  | `10` | Seconds between liveness checks |
-| `liveness_failure_threshold` | `3` | Consecutive failures before the pod is restarted |
+| `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
+| `readiness_period` | `20` | Seconds between readiness checks |
+| `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
+| `liveness_period`  | `20` | Seconds between liveness checks |
+| `liveness_failure_threshold` | `80` | Consecutive failures before the pod is restarted |
 
 **To change in `jac.toml`:**
 

@@ -182,11 +182,11 @@ ingress_node_port = 30080
 
 | Key | Description | Default |
 |----------|-------------|---------|
-| `readiness_initial_delay` | Readiness probe delay (seconds) | `5` |
-| `readiness_period` | Readiness probe interval (seconds) | `5` |
-| `liveness_initial_delay` | Liveness probe delay (seconds) | `15` |
-| `liveness_period` | Liveness probe interval (seconds) | `10` |
-| `liveness_failure_threshold` | Consecutive liveness failures before restart | `3` |
+| `readiness_initial_delay` | Readiness probe delay (seconds) | `10` |
+| `readiness_period` | Readiness probe interval (seconds) | `20` |
+| `liveness_initial_delay` | Liveness probe delay (seconds) | `10` |
+| `liveness_period` | Liveness probe interval (seconds) | `20` |
+| `liveness_failure_threshold` | Consecutive liveness failures before restart | `80` |
 
 ### Database Options
 
