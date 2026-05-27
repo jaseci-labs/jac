@@ -463,7 +463,7 @@ obj IngressDeployer {
 
         # spec.tls and spec.rules[*].host are owned exclusively by enable_tls.
         # Omitting them from the patch body means patch_namespaced_ingress never
-        # sends or overwrites them — no read-before-write needed.
+        # sends or overwrites them; no read-before-write needed.
         main_rule: dict = {'http': {'paths': paths}};
 
         ingress_annotations: dict = {

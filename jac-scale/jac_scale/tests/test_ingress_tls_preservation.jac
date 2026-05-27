@@ -2,7 +2,7 @@
 
 _deploy_ingress_resource uses patch_namespaced_ingress so it only sends the
 fields jac-scale owns.  spec.tls and spec.rules[*].host are written exclusively
-by enable_tls and are intentionally absent from the patch body — the API server
+by enable_tls and are intentionally absent from the patch body; the API server
 leaves them untouched without any read-before-write logic.
 """
 
@@ -52,7 +52,7 @@ test "deploy uses patch not replace for main ingress" {
 }
 
 test "patch body never contains spec.tls or host" {
-    # The patch body must not include spec.tls or rules[*].host — those fields
+    # The patch body must not include spec.tls or rules[*].host; those fields
     # belong to enable_tls and must be left untouched by redeployment.
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
