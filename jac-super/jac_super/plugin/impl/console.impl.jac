@@ -1,20 +1,32 @@
-"""Rich-enhanced console implementation for jac-super.
+"""Rich-enhanced console backend for jac-super.
 
-This module provides a Rich-based implementation of JacConsole that
-inherits from the base console and overrides methods to use Rich
-for elegant terminal output.
+This module provides `RichRenderer`, a `ConsoleRenderer` subclass that draws
+with Rich, plus `JacSuperConsole`, a `JacConsole` that installs it. The facade's
+15-method surface is inherited unchanged — jac-super customizes *only* the
+renderer, so the surface can never drift from the base (the failure mode behind
+issue #5995).
+
+Trust boundary
+---------------
+Rich treats every plain `str` handed to `Console.print` as a *rich document*:
+it parses `[tag]` markup, auto-highlights numbers/paths, and reflows to the
+terminal width. Caller data must never be interpreted that way. This renderer
+enforces the boundary structurally: data arrives as `Span`s with `style is
+None`, which are appended to a `rich.text.Text` as plain runs (Text is never
+markup-parsed, never auto-highlighted). Rich styling is applied only to spans
+that carry a tool-authored style role.
 """
-import os;
 import sys;
 import from contextlib { contextmanager }
 import from rich.console { Console as RichConsole }
 import from rich.panel { Panel }
 import from rich.table { Table }
+import from rich.text { Text }
 import from rich.theme { Theme }
-import from jaclang.cli.console { JacConsole as BaseJacConsole }
+import from jaclang.cli.console { JacConsole, ConsoleRenderer, Span }
 
-"""Rich-enhanced console that extends base JacConsole."""
-obj JacSuperConsole(BaseJacConsole) {
+"""Rich rendering backend. Overrides the ANSI primitives with Rich equivalents."""
+obj RichRenderer(ConsoleRenderer) {
     with entry {
         JAC_THEME = Theme(
             {
@@ -25,7 +37,8 @@ obj JacSuperConsole(BaseJacConsole) {
                 'url': 'underline green',
                 'muted': 'dim white',
                 'highlight': 'cyan',
-                'time': 'yellow'
+                'time': 'green',
+                'bright_white': 'bright_white'
             }
         );
     }
@@ -34,38 +47,91 @@ obj JacSuperConsole(BaseJacConsole) {
         _console_stderr: RichConsole by postinit;
 
     def postinit {
-        # Use Rich's `stderr=True` (not `file=sys.stderr`) so the stream is
-        # resolved per call. Passing `file=` would freeze the stream object at
-        # construction, breaking `sys.stderr = io.StringIO()` redirection that
-        # in-process CLI tests rely on (issue #5995, Bug 1).
-        self._console = RichConsole(theme=self.JAC_THEME);
-        self._console_stderr = RichConsole(theme=self.JAC_THEME, stderr=True);
+        # Build provisional consoles so the `by postinit` fields are
+        # initialized; `configure` rebuilds them once the facade resolves
+        # capabilities.
+        self._build_consoles();
     }
 
-    """Override print to use Rich console.
+    """Honor the facade's resolved capabilities, then rebuild the Rich consoles.
 
-    Rich's `Console.print` parses bracket-delimited markup like `[red]...[/red]`
-    by default. User-supplied content (file paths, source-line snippets,
-    f-string output) routinely contains square brackets that look like
-    markup — e.g. a diagnostic snippet for `[root()-->][?:Task]` would have
-    the `[root()-->]` interpreted as a malformed tag and stripped, leaving a
-    misleading `[?:Task]` underneath the carets. Disable markup parsing by
-    default; callers that want Rich markup must opt in explicitly via
-    `markup=True`. Auto-highlighting (`highlight`) is left at Rich's default
-    so numbers, strings, paths, and keywords still get their accent colors.
+    Capability detection has a single source of truth (the base
+    `JacConsole.init`); `no_color` / `emoji` are taken from it rather than
+    relying on Rich's independent auto-detection.
     """
-    def print(*args: any, **kwargs: any) {
-        # Extract style if provided, otherwise use default
-        style = kwargs.pop('style', None);
-        file = kwargs.pop('file', None);
+    def configure(use_emoji: bool, use_color: bool) {
+        self.use_emoji = use_emoji;
+        self.use_color = use_color;
+        self._build_consoles();
+    }
+
+    """Construct the stdout/stderr Rich consoles from the capability flags."""
+    def _build_consoles {
+        self._console = self._make_console(stderr=False);
+        self._console_stderr = self._make_console(stderr=True);
+    }
+
+    """Build one themed Rich console honoring the capability flags.
+
+    Rich's `stderr=True` (not `file=sys.stderr`) resolves the stream per call,
+    preserving the `sys.stderr = io.StringIO()` redirection in-process CLI tests
+    rely on (issue #5995, Bug 1).
+    """
+    def _make_console(stderr: bool = False) -> RichConsole {
+        return RichConsole(
+            theme=self.JAC_THEME,
+            stderr=stderr,
+            no_color=(not self.use_color),
+            emoji=self.use_emoji
+        );
+    }
+
+    """Pick the themed console for a stream, or None for an arbitrary stream."""
+    def _console_for(stream: any) -> any {
+        target = stream if stream is not None else sys.stdout;
+        if target is sys.stderr {
+            return self._console_stderr;
+        }
+        if target is sys.stdout {
+            return self._console;
+        }
+        return None;
+    }
+
+    """Render one composed line. Styled spans carry a theme role; data spans
+    (style is None) are appended as plain `Text` runs and emitted verbatim.
+    """
+    def emit(spans: list[Span], stream: any = None) -> None {
+        console = self._console_for(stream);
+        if console is None {
+            # Arbitrary stream: write verbatim, no styling.
+            print(''.join(s.text for s in spans), file=stream);
+            return;
+        }
+        t = Text();
+        for s in spans {
+            if s.style is not None {
+                t.append(s.text, style=s.style);
+            } else {
+                t.append(s.text);
+            }
+        }
+        console.print(t, soft_wrap=True);
+    }
+
+    """Emit raw print() args. Markup parsing and auto-highlight are disabled and
+    soft-wrap is on so user content passes through unchanged; an arbitrary
+    stream is written verbatim via builtin print.
+    """
+    def emit_raw(args: list, stream: any, style: (str | None), kwargs: dict) -> None {
+        console = self._console_for(stream);
+        if console is None {
+            print(*args, file=stream, **kwargs);
+            return;
+        }
         kwargs.setdefault('markup', False);
-        # Default to soft-wrap on so user content (long paths, JSON, code
-        # snippets) passes through unchanged. Rich's default reflows to the
-        # detected terminal width, violating the base `JacConsole.print`
-        # "pass through unchanged" contract (issue #5995, Bug 2).
+        kwargs.setdefault('highlight', False);
         kwargs.setdefault('soft_wrap', True);
-        # Use appropriate console based on file
-        console = self._console_stderr if (file == sys.stderr) else self._console;
         if style {
             console.print(*args, style=style, **kwargs);
         } else {
@@ -73,124 +139,70 @@ obj JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override status to use Rich console status."""
-    def status(*args: any, **kwargs: any) -> object {
-        return self._console.status(*args, **kwargs);
-    }
-
-    """Override success to use Rich styling."""
-    def success(message: str, emoji: bool = True) {
-        prefix = '✔' if (emoji and self.use_emoji) else '[SUCCESS]';
-        self._console.print(f"{prefix} {message}", style='success', markup=False);
-    }
-
-    """Override error to use Rich styling with stderr."""
-    def error(message: str, hint: (str | None) = None, emoji: bool = True) {
-        prefix = '✖' if (emoji and self.use_emoji) else '[ERROR]';
-        self._console_stderr.print(
-            f"{prefix} Error: {message}", style='error', markup=False
-        );
-        if hint {
-            hint_prefix = '💡' if self.use_emoji else 'HINT:';
-            self._console_stderr.print(
-                f"{hint_prefix} {hint}", style='info', markup=False
-            );
-        }
-    }
-
-    """Override warning to use Rich styling."""
-    def warning(message: str, emoji: bool = True) {
-        prefix = '⚠' if (emoji and self.use_emoji) else '[WARNING]';
-        self._console_stderr.print(
-            f"{prefix} {message}", style='warning', markup=False
-        );
-    }
-
-    """Override info to use Rich styling."""
-    def info(message: str, emoji: bool = True) {
-        prefix = 'ℹ' if (emoji and self.use_emoji) else '[INFO]';
-        self._console.print(f"{prefix} {message}", style='info', markup=False);
-    }
-
-    """Override print_header to use Rich styling."""
-    def print_header(title: str, version: (str | None) = None) {
+    """Header: title (and version) in cyan, no rule (Rich house style)."""
+    def header(title: str, version: (str | None) = None) {
         if version {
-            self._console.print(f"{title} v{version}", style='cyan');
+            self.emit([Span(f"{title} v{version}", 'cyan')]);
         } else {
-            self._console.print(f"{title}", style='cyan');
+            self.emit([Span(title, 'cyan')]);
         }
     }
 
-    """Override print_urls to use Rich URL styling."""
-    def print_urls(urls: any, symbol: str = '➜') {
-        items = urls.items() if isinstance(urls, dict) else urls;
-        for (label, url) in items {
-            padded_label = f"{label}:".ljust(10);
-            self._console.print(f"  {symbol}  {padded_label} [url]{url}[/url]");
+    """Next steps in a bordered Rich Panel. Step text is data (verbatim)."""
+    def next_steps(steps: list[str], title: str = 'Next Steps') {
+        body = Text();
+        for (i, step) in enumerate(steps, 1) {
+            if i > 1 {
+                body.append("\n");
+            }
+            body.append(f"  {i}  ", style='highlight');
+            body.append(step);
         }
-    }
-
-    """Override print_next_steps to use Rich Panel."""
-    def print_next_steps(steps: list[str], title: str = 'Next Steps') {
-        content = '\n'.join(f"  {i}  {step}" for (i, step) in enumerate(steps, 1));
-        panel = Panel(content, title=title, border_style='cyan', padding=(0, 1));
+        panel = Panel(body, title=title, border_style='cyan', padding=(0, 1));
         self._console.print(panel);
     }
 
-    """Override print_list to use Rich styling."""
-    def print_list(items: list[str], style: str = 'success', symbol: str = '✔') {
-        for item in items {
-            self._console.print(f"  {symbol} {item}", style=style);
-        }
-    }
-
-    """Override print_table to use Rich Table."""
-    def print_table(
-        headers: list[str], rows: list[list[str]], title: (str | None) = None
-    ) {
-        table = Table(title=title, show_header=True, header_style='cyan');
+    """Rich Table. Header and cell values are data, wrapped in `Text` so they
+    are never markup-parsed.
+    """
+    def table(headers: list[str], rows: list[list[str]], title: (str | None) = None) {
+        tbl = Table(title=title, show_header=True, header_style='cyan');
         for header in headers {
-            table.add_column(header);
+            tbl.add_column(Text(str(header)));
         }
         for row in rows {
-            table.add_row(*row);
+            tbl.add_row(*[Text(str(cell)) for cell in row]);
         }
-        self._console.print(table);
+        self._console.print(tbl);
     }
 
-    """Override spinner to use Rich status."""
+    """Rich status context. The status text is wrapped in `Text`."""
     @contextmanager
-    def spinner(text: str) -> object {
-        with self._console.status(f"[cyan]{text}[/cyan]", spinner='dots') as status {
-            yield status;
+    def status_ctx(args: list, kwargs: dict) -> object {
+        safe = [(Text(a) if isinstance(a, str) else a) for a in args];
+        with self._console.status(*safe, **kwargs) as st {
+            yield st;
         }
     }
 
-    """Override print_elapsed_time to use Rich styling."""
-    def print_elapsed_time(seconds: float) {
-        if (seconds < 1) {
-            ms = seconds * 1000;
-            self._console.print(f"  Done in {ms:.0f}ms", style='muted');
-        } else {
-            self._console.print(f"  Done in {seconds:.1f}s", style='muted');
+    """Rich spinner context."""
+    @contextmanager
+    def spinner_ctx(text: str) -> object {
+        with self._console.status(
+            Text(text, style='highlight'), spinner='dots'
+        ) as st {
+            yield st;
         }
     }
+}
 
-    """Override print_file_change to use Rich styling."""
-    def print_file_change(filepath: str, action: str = 'changed') {
-        import from datetime { datetime }
-        timestamp = datetime.now().strftime('%H:%M:%S');
-        emoji_map = {'changed': '⚡', 'created': '✨', 'deleted': '🗑️'};
-        emoji = emoji_map.get(action, '📝');
-        self._console.print(
-            f"[{timestamp}] {emoji} {action.capitalize()}: {filepath}", style='info'
-        );
-    }
+"""Jac console facade that renders with Rich.
 
-    """Override print_watching to use Rich styling."""
-    def print_watching(pattern: str, count: int) {
-        watch_emoji = '👀' if self.use_emoji else '[WATCHING]';
-        self._console.print(f"{watch_emoji} Watching for changes...", style='info');
-        self._console.print(f"   Monitoring: {pattern} ({count} files)", style='muted');
+It inherits the entire `JacConsole` method surface and overrides only the
+renderer it installs — no output methods are re-implemented.
+"""
+obj JacSuperConsole(JacConsole) {
+    def _make_renderer -> ConsoleRenderer {
+        return RichRenderer();
     }
 }

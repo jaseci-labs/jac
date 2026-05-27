@@ -65,6 +65,27 @@ class ConsoleLogHandler(logging.Handler) {
     }
 }
 
+"""Filter that suppresses noisy health-check access log entries."""
+class HealthCheckFilter(logging.Filter) {
+    _SUPPRESSED = {
+        '"GET /docs HTTP',
+        '"GET / HTTP',
+        '"GET /openapi.json HTTP',
+        '"GET /health HTTP',
+        '"GET /healthz'
+    };
+
+    def filter(self: HealthCheckFilter, record: logging.LogRecord) -> bool {
+        msg = record.getMessage();
+        for pat in self._SUPPRESSED {
+            if pat in msg {
+                return False;
+            }
+        }
+        return True;
+    }
+}
+
 """Run the FastAPI server using Uvicorn.
 
 If the specified port is in use, tries subsequent ports up to max_retries times.
@@ -74,9 +95,14 @@ impl JFastApiServer.run_server(
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
+    import from jac_scale.config_loader { get_scale_config }
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
     console_handler.setFormatter(logging.Formatter("%(message)s"));
+    server_cfg = get_scale_config().get_server_config();
+    if server_cfg.get('suppress_health_check_logs', False) {
+        console_handler.addFilter(HealthCheckFilter());
+    }
     # Suppress startup logs but route access logs through jac-super console
     log_config = {
         "version": 1,
@@ -114,7 +140,6 @@ impl JFastApiServer.run_server(
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
     import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
-    import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 

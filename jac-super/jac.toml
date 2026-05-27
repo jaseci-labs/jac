@@ -25,6 +25,7 @@ jac_super = [
     "shadcn/templates/**/*",
     "shadcn/templates/**/.*",
     "shadcn/registry/registry.json",
+    "shadcn/registry/themes.json",
     "shadcn/registry/components/ui/*.cl.jac",
     "shadcn/registry/styles/*.css",
 ]

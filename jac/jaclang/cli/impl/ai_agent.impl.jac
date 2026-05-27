@@ -6,6 +6,8 @@ import sys;
 import time;
 import signal;
 import subprocess;
+import threading;
+import webbrowser;
 import from pathlib { Path }
 
 import from byllm.lib { Model, IterationAction }
@@ -28,6 +30,18 @@ import from jaclang.cli.browser_engine {
 }
 
 
+# byLLM resolves config from `jac.toml` relative to its project dir. Use the
+# agent's working directory (the user's project) as the single source of truth,
+# not the process cwd -- under `jac ai --ui` the process runs in the bundled web
+# app's dir, so process cwd would read the wrong jac.toml. Empty `agent.cwd`
+# (import time, before run_agent sets it) falls back to the default (cwd).
+impl _byllm_config -> any {
+    if agent.cwd {
+        return get_byllm_config(Path(agent.cwd));
+    }
+    return get_byllm_config();
+}
+
 impl resolve_model_name(model_override: str = "") -> str {
     flag = model_override.strip();
     if flag {
@@ -38,7 +52,7 @@ impl resolve_model_name(model_override: str = "") -> str {
     # `default_model` is not mistaken for a choice.
     toml_model = "";
     try {
-        raw = get_byllm_config().get_jac_config().get_plugin_config("byllm");
+        raw = _byllm_config().get_jac_config().get_plugin_config("byllm");
         model_section = raw.get("model", {});
         if isinstance(model_section, dict) {
             toml_model = str(model_section.get("default_model", "")).strip();
@@ -65,7 +79,7 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
     agent.cfg.temperature = 0.3 if is_local else None;
     if is_local {
         try {
-            cfg = dict(get_byllm_config().get_local_config());
+            cfg = dict(_byllm_config().get_local_config());
         } except Exception {
             cfg = {};
         }
@@ -931,6 +945,54 @@ impl reset_session{
     agent.ledger = Ledger();
 }
 
+# ---------------------------------------------------------------------------
+# Event bus -- structured milestones for the `--ui` web view.
+# ---------------------------------------------------------------------------
+impl AgentEventBus.emit(kind: str, fields: dict) -> None {
+    if not self.active_feed {
+        return;
+    }
+    # No lock: the only writer is the single turn thread and the only reader is
+    # the poll endpoint; under the GIL the list append and the slice-reassign
+    # below are each atomic, and `snapshot` copies in one atomic step.
+    ev = {"id": self._next_id, "kind": kind};
+    ev.update(fields);
+    self._next_id += 1;
+    self.events.append(ev);
+    # Bounded ring: the UI replaces its whole log each poll, so dropping the
+    # oldest events just trims scrollback, never breaks continuity.
+    if len(self.events) > self._cap {
+        self.events = self.events[-self._cap:];
+    }
+}
+
+impl AgentEventBus.enter(phase: str) -> None {
+    self.active = phase;
+    self.path.append(phase);
+    self.emit("phase", {"node": phase});
+}
+
+impl AgentEventBus.set_status(s: str) -> None {
+    self.status = s;
+    self.emit("status", {"status": s});
+}
+
+impl AgentEventBus.begin_turn -> None {
+    self.active = "";
+    self.path = [];
+}
+
+impl AgentEventBus.snapshot -> dict {
+    # Copy in one step so the returned lists are stable even if the turn thread
+    # emits concurrently (atomic under the GIL).
+    return {
+        "events": list(self.events),
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path)
+    };
+}
+
 impl _progress_guard(ctx: any) -> str {
     import json;
     counts: dict[str, int] = {};
@@ -1254,6 +1316,7 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         }
         (result, ms) = (pend_result["result"], pend_result["ms"]);
         pend_result = None;
+        agent.bus.emit("tool_result", {"text": truncate(str(result), 600)});
         lines = agent.view._result_snippet(result, 3 if agent.cfg.verbose else 1);
         tail = f"   {agent.view._fmt_ms(ms)}"
             if (agent.cfg.verbose and ms is not None)
@@ -1288,6 +1351,7 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                     out.write(cleaned);
                     out.flush();
                     streamed = True;
+                    agent.bus.emit("reasoning", {"text": cleaned});
                 }
                 # Generating but no prose yet (streaming as JSON): show a
                 # ticking activity line so a slow model is not silent.
@@ -1336,6 +1400,9 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 console.print(
                     f"  ⏺ {agent.view.fmt_tool_call(tool, args)}{gen}", style="cyan"
                 );
+                agent.bus.emit(
+                    "tool", {"name": tool, "text": agent.view.fmt_tool_call(tool, args)}
+                );
                 last_llm_ms = 0.0;
                 last_llm_tokens = 0;
                 thought_raw = "";
@@ -1376,6 +1443,9 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
             import traceback;
             traceback.print_exc();
         }
+    }
+    if answer.strip() {
+        agent.bus.emit("answer", {"text": answer.strip()});
     }
     return {
         "n_read": n_read,
@@ -1491,6 +1561,9 @@ impl PhaseState.run{
     agent.active_session = visitor;
     label = type(self).__name__;
     console.print(f"\n  ● {label}", style="bold blue");
+    # Move the walker on the live graph: the UI animates the edge from the
+    # previous phase to this one.
+    agent.bus.enter(label);
     # Refresh the system message with the latest ledger; keep this node's prior
     # working messages (its memory).
     sysmsg = {
@@ -1573,6 +1646,7 @@ sem Done = "the DONE state: choose this only when the objective is fully built A
 impl Done.finish{
     # No onward visit: the walker's queue empties here and the session ends.
     console.print("\n  ● Done", style="bold green");
+    agent.bus.enter("Done");
 }
 
 impl AgentSession.begin{
@@ -1610,6 +1684,17 @@ impl run_turn(message: str) {
             time.time() - started, st.n_read, st.n_write, st.n_run, st.files, st.usage
         );
     }
+    st2 = session.stats;
+    elapsed = time.time() - started;
+    agent.bus.emit(
+        "stats",
+        {
+            "text": (
+                f"{elapsed:.1f}s  ·  {st2.n_read} reads  ·  "
+                f"{st2.n_write} writes  ·  {st2.n_run} runs  ·  {len(st2.files)} files"
+            )
+        }
+    );
 }
 
 impl _project_errors -> list {
@@ -1675,6 +1760,12 @@ impl run_agent(req: object) -> int {
     # Seed the session working directory; every file tool and run_command
     # resolves against it, and a `cd` the model issues updates it.
     agent.cwd = os.path.normpath(str(getattr(r, "cwd", "") or os.getcwd()));
+    # `--ui`: hand off to the bundled web app instead of the terminal REPL. The
+    # child server re-imports this module and runs the agent itself, so nothing
+    # else here (model build, banner, REPL) applies to the parent process.
+    if bool(getattr(r, "ui", False)) {
+        return _run_ui_server(r);
+    }
     agent.cfg.yolo_mode = not r.safe;
     agent.cfg.verbose = not bool(getattr(r, "quiet", False));
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
@@ -1762,6 +1853,215 @@ impl run_agent(req: object) -> int {
 
     agent.web._browse_shutdown();
     agent.proc._serve_shutdown();
+    console.print("Bye.");
+    return 0;
+}
+
+# ---------------------------------------------------------------------------
+# Web UI bridge -- backend the bundled `ai_ui` server endpoints call.
+# ---------------------------------------------------------------------------
+impl ui_configure -> None {
+    global agent_model;
+    # The launcher set these when it spawned this server process.
+    proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
+    agent.cwd = os.path.normpath(proj);
+    # No terminal here to confirm at, so writes/commands always run.
+    agent.cfg.yolo_mode = True;
+    agent.cfg.verbose = True;
+    agent.cfg.show_stats = True;
+    agent.bus.active_feed = True;
+    model_flag = os.environ.get("JAC_AI_UI_MODEL") or "";
+    n_ctx = 0;
+    try {
+        n_ctx = int(os.environ.get("JAC_AI_UI_NCTX") or "0");
+    } except Exception { }
+    # A project-rooted CodeIntelligence so the semantic tools work, lazily so
+    # boot stays cheap. No on_event hook: its prints would only clutter the log.
+    agent.ci = CodeIntelligence(proj_dir=agent.cwd, lazy=True);
+    reset_session();
+    # `agent.cwd` is now set to the user's project, so build_model resolves the
+    # model and byLLM config from their jac.toml (via `_byllm_config`), not this
+    # child server's working directory (the bundled ai_ui dir).
+    # Building the model can fail (missing API key, no local weights). Keep the
+    # server up regardless: the UI still loads and reports the problem in the
+    # feed, rather than the whole web app failing to boot.
+    try {
+        agent_model = build_model(model_flag, n_ctx);
+        agent.bus.emit(
+            "system",
+            {"text": f"Connected to {agent.cwd} using {agent_model.model_name}."}
+        );
+    } except Exception as e {
+        agent.bus.emit(
+            "error",
+            {"text": f"Connected to {agent.cwd}, but the model failed to load: {e}"}
+        );
+    }
+}
+
+def _ui_turn_worker(prompt: str) {
+    try {
+        run_turn(prompt);
+        verify_and_continue();
+    } except Exception as e {
+        agent.bus.emit("error", {"text": f"agent error: {e}"});
+    }
+    # The walker leaves `active` on its final node (Done, or wherever it
+    # stopped); fall back to idle so the status pill stops pulsing.
+    if agent.bus.status != "done" {
+        agent.bus.set_status("idle");
+    }
+}
+
+impl ui_send(prompt: str) -> bool {
+    text = prompt.strip();
+    if not text {
+        return False;
+    }
+    if agent.bus.status == "running" {
+        return False;  # one turn at a time
+    }
+    agent.bus.begin_turn();
+    agent.bus.emit("user", {"text": text});
+    agent.bus.set_status("running");
+    threading.Thread(target=_ui_turn_worker, args=(text, ), daemon=True).start();
+    return True;
+}
+
+impl ui_poll -> dict {
+    return agent.bus.snapshot();
+}
+
+impl ui_graph -> dict {
+    # The phase pipeline the AgentSession walker traverses. Nodes carry a short
+    # role blurb for the UI; edges are the legal transitions (QA fans out).
+    return {
+        "nodes": [
+            {"id": "Plan", "label": "Plan", "desc": "Explore and decide the approach"},
+            {"id": "Build", "label": "Build", "desc": "Write and edit the code"},
+            {"id": "QA", "label": "QA", "desc": "Type-check, run, and verify"},
+            {"id": "Done", "label": "Done", "desc": "Objective built and verified"}
+        ],
+        "edges": [
+            {"source": "Plan", "target": "Build"},
+            {"source": "Build", "target": "QA"},
+            {"source": "QA", "target": "Build"},
+            {"source": "QA", "target": "Plan"},
+            {"source": "QA", "target": "Done"}
+        ],
+        "state": agent.bus.snapshot()
+    };
+}
+
+impl ui_reset -> None {
+    reset_session();
+    agent.bus.events = [];
+    agent.bus.begin_turn();
+    agent.bus.set_status("idle");
+}
+
+impl _run_ui_server(r: any) -> int {
+    import jaclang;
+    import from importlib.util { find_spec }
+    if find_spec("jac_client") is None {
+        console.error(
+            "`jac ai --ui` needs the jac-client plugin, which is not installed.",
+            hint="Install it with:  pip install jac-client"
+        );
+        return 1;
+    }
+    pkg_file = jaclang.__file__;
+    if pkg_file is None {
+        console.error("jaclang package location is unavailable");
+        return 1;
+    }
+    ui_dir = str(Path(pkg_file).parent / "cli" / "ai_ui");
+    entry = os.path.join(ui_dir, "main.jac");
+    if not os.path.exists(entry) {
+        console.error(f"bundled UI app not found at {entry}");
+        return 1;
+    }
+    env = dict(os.environ);
+    env["JAC_AI_UI_PROJECT"] = agent.cwd;
+    env["JAC_AI_UI_MODEL"] = str(getattr(r, "model", "") or "");
+    env["JAC_AI_UI_NCTX"] = str(int(getattr(r, "n_ctx", 0) or 0));
+    log_path = "/tmp/jac_ai_ui.log";
+    console.print("");
+    console.print("  Jac AI -- web UI", style="bold");
+    console.print(f"  project: {agent.cwd}", style="muted");
+    console.print("  building the client (first run installs deps)…", style="muted");
+    proc: any = None;
+    try {
+        log_f = open(log_path, "w");
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "jaclang", "start", "main.jac"],
+            cwd=ui_dir,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            start_new_session=True
+        );
+    } except Exception as e {
+        console.error(f"failed to launch the UI server: {e}");
+        return 1;
+    }
+    url_re = re.compile(
+        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
+    );
+    timeout = 180.0;
+    try {
+        raw = os.environ.get("JAC_AI_UI_TIMEOUT");
+        if raw {
+            timeout = float(raw);
+        }
+    } except Exception { }
+    deadline = time.time() + timeout;
+    url = "";
+    while time.time() < deadline {
+        if proc.poll() is not None {
+            break;
+        }
+        try {
+            log_text = Path(log_path).read_text();
+        } except Exception {
+            log_text = "";
+        }
+        m = url_re.search(log_text);
+        if m {
+            url = m.group(0).rstrip("/");
+            break;
+        }
+        time.sleep(1.0);
+    }
+    if not url {
+        tail = "";
+        try {
+            tail = "\n".join(Path(log_path).read_text().splitlines()[-25:]);
+        } except Exception {
+            tail = "(no log output)";
+        }
+        try {
+            os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+        } except Exception { }
+        console.error(f"the UI server did not come up within {int(timeout)}s.\n{tail}");
+        return 1;
+    }
+    console.success(f"  UI ready at {url}");
+    console.print(f"  logs: {log_path}", style="muted");
+    console.print("  press Ctrl-C to stop", style="muted");
+    console.print("");
+    try {
+        webbrowser.open(url);
+    } except Exception { }
+    try {
+        proc.wait();
+    } except KeyboardInterrupt {
+        console.print("\n  stopping the UI server…", style="muted");
+    }
+    try {
+        os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+    } except Exception { }
     console.print("Bye.");
     return 0;
 }

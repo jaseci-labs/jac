@@ -124,10 +124,13 @@ jac db recover-all --app app.jac
 [plugins.scale.server]
 port = 8000
 host = "0.0.0.0"
-docs_enabled = true   # Enable /docs, /redoc, /openapi.json (default: true)
+docs_enabled = true                  # Enable /docs, /redoc, /openapi.json (default: true)
+suppress_health_check_logs = false   # Suppress health-check access log entries (default: false)
 ```
 
 Set `docs_enabled = false` to disable Swagger UI, ReDoc, and the OpenAPI JSON endpoint in production.
+
+Set `suppress_health_check_logs = true` to suppress access log entries for health-check and documentation endpoints (`/`, `/docs`, `/openapi.json`, `/health`, `/healthz`, `/healthz/ready`, `/healthz/live`) from CLI output and Kubernetes pod logs. Useful for reducing log noise in production.
 
 ### CORS Configuration
 

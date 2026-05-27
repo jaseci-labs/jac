@@ -269,6 +269,50 @@ obj TurnRenderer {
     def render_stream(event_stream: any) -> dict;
 }
 
+"""A live, in-process feed of structured agent events for the `--ui` web view.
+
+The terminal renderer prints to stdout; this bus tees the same milestones --
+phase transitions, tool calls and results, reasoning prose, the answer, and turn
+stats -- as structured records so the bundled web UI can render them and animate
+the phase-graph walker in real time. It lives on `AgentRuntime`, is appended to
+from the background turn thread, and read by the `ui_poll` endpoint, so every
+mutation takes `_lk`. `events` is a bounded ring (the UI replaces its log
+wholesale each poll, so no cursor is needed); `active` / `status` / `path` carry
+the current walker position for the graph.
+"""
+obj AgentEventBus {
+    has events: list[dict] = [],
+        # True only in a `--ui` session; the terminal path leaves it False so the
+        # emit points are no-ops and the bus stays empty and unread.
+        active_feed: bool = False,
+        # "idle" | "running" | "done" -- drives the UI status pill and graph glow.
+        status: str = "idle",
+        # The phase node the walker currently occupies (Plan/Build/QA/Done).
+        active: str = "",
+        # Phase nodes in visit order this turn; the UI animates the edge between
+        # each consecutive pair to show the walker moving.
+        path: list[str] = [],
+        _next_id: int = 1,
+        # Keep the feed bounded so a long session does not grow without limit.
+        _cap: int = 400;
+
+    """Append one event (kind + fields), stamping a monotonic id; thread-safe."""
+    def emit(kind: str, fields: dict) -> None;
+
+    """Mark the walker as entering a phase: set active, extend the path, emit."""
+    def enter(phase: str) -> None;
+
+    """Set the run status ("idle" | "running" | "done") and emit a status event."""
+    def set_status(s: str) -> None;
+
+    """Reset the per-turn graph state (active node and path) for a fresh walk."""
+    def begin_turn -> None;
+
+    """A JSON-ready snapshot the `ui_poll` endpoint returns each tick."""
+    def snapshot -> dict;
+}
+
+
 """All mutable per-session state for one `jac ai` run, gathered in one object.
 
 This is the single composition root: the working directory, the shared
@@ -300,6 +344,9 @@ obj AgentRuntime {
         browse_session: str = "jac-ai",
         # Set by a file-writing tool; gates verify-and-continue.
         turn_wrote: bool = False,
+        # Live structured event feed for the `--ui` web view; the terminal path
+        # leaves it untouched (it stays empty and is never read).
+        bus: AgentEventBus = AgentEventBus(),
         # Toolboxes: the agent's capabilities, composed onto the runtime.
         files: FileTools = FileTools(),
         proc: ProcessTools = ProcessTools(),
@@ -372,6 +419,16 @@ default_model` in jac.toml, then the bundled local model so the command works
 with no API key. Records the winning source in `agent.cfg.model_source`.
 """
 def resolve_model_name(model_override: str = "") -> str;
+
+"""byLLM config rooted at the agent's working dir, not the process cwd.
+
+The single source of truth for which `jac.toml` supplies the model and byLLM
+settings: `agent.cwd` (the user's project). This matters under `jac ai --ui`,
+where the process runs in the bundled web app's directory -- resolving against
+process cwd there would read the wrong `jac.toml`. Falls back to the default
+(process cwd) only before `agent.cwd` is set (import time).
+"""
+def _byllm_config -> any;
 
 """Build the agent's LLM, supporting any byLLM-compatible model.
 
@@ -726,5 +783,59 @@ flags, the working directory, and a shared `CodeIntelligence` handle the
 semantic tools query. With a non-empty `prompt`, runs a single turn and exits;
 otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
 failed turn reports its error but does not abort the session.
+
+When `req.ui` is set, hands off to `_run_ui_server`: launches the bundled Jac
+web app as a subprocess and opens it in the browser instead of the REPL.
 """
 def run_agent(req: object) -> int;
+
+
+# ---------------------------------------------------------------------------
+# Web UI bridge. The bundled `ai_ui` fullstack app (served in a child `jac
+# start` process) imports these functions as its server endpoints' backend.
+# That child process re-imports this module, so its `agent` glob -- and the
+# `agent.bus` the turn thread writes to -- is the same object `ui_poll` reads.
+# ---------------------------------------------------------------------------
+"""Configure the agent for a UI session from the launcher's environment.
+
+Called once at the UI server's boot. Reads the user's project directory and
+model knobs from the `JAC_AI_UI_*` env vars the launcher set, points `agent.cwd`
+and a fresh `CodeIntelligence` at that project, builds the model, and forces
+yolo mode (the server has no terminal to confirm at). Idempotent.
+"""
+def ui_configure -> None;
+
+"""Start one agent turn for `prompt` on a background thread; never blocks.
+
+Returns False (and does nothing) if a turn is already running, so the UI can
+disable its input while busy. The turn writes its milestones to `agent.bus`,
+which `ui_poll` drains.
+"""
+def ui_send(prompt: str) -> bool;
+
+"""The current event feed and walker state -- the UI's per-tick poll payload.
+
+Returns `agent.bus.snapshot()`: the bounded event log plus `status`, the
+`active` phase node, and the `path` walked this turn.
+"""
+def ui_poll -> dict;
+
+"""The static phase graph (nodes + edges) the UI renders in cytoscape, with state.
+
+Nodes are Plan/Build/QA/Done; edges are the legal transitions the walker may
+take. Returned once on mount; live position comes from `ui_poll`.
+"""
+def ui_graph -> dict;
+
+"""Clear the cross-turn ledger and the event feed for a fresh UI session."""
+def ui_reset -> None;
+
+"""Launch the bundled web UI for `jac ai --ui` and block until the user quits.
+
+Spawns `jac start` on the bundled `ai_ui` Jac app as a child process -- passing
+the user's project directory and model flags through `JAC_AI_UI_*` env vars --
+polls its log for the ready URL, opens the browser there, and waits. Ctrl-C
+shuts the child down. Returns 0 on a clean exit, 1 if the client plugin is
+missing or the server never came up.
+"""
+def _run_ui_server(r: any) -> int;

@@ -29,7 +29,25 @@ No configuration required. After installation, jac-super automatically enhances 
 
 ## Shadcn Components
 
-jac-super also brings [shadcn/ui](https://ui.shadcn.com)-style components to Jac projects. The full component set ships **bundled with the plugin** (under `jac_super/shadcn/registry/`), so `jac add`/`jac remove` work fully offline -- no network calls.
+jac-super also brings [shadcn/ui](https://ui.shadcn.com)-style components to Jac projects. The components, styles, and color themes all ship **bundled with the plugin** (under `jac_super/shadcn/registry/`), so create, theme, add, and remove all work fully offline -- no network calls.
+
+### Create a themed project
+
+```bash
+jac create --use jac-shadcn --theme rose --font inter myapp
+```
+
+Scaffolds a themed starter (generated `global.css`, `lib/utils`, `button`/`card`, and a `main.jac` demo). All theme flags are optional: `--style` (nova|vega|maia|lyra|mira), `--baseColor`, `--theme`, `--font`, `--radius`, `--menuAccent`. The chosen values are written to `[jac-shadcn]` in `jac.toml`.
+
+### Re-theme in place
+
+```bash
+jac retheme --theme emerald --font outfit   # switch accent + font
+jac retheme --style mira                     # switch style + restyle installed components
+jac retheme                                  # regenerate global.css from jac.toml
+```
+
+`jac retheme` regenerates `global.css` from the `[jac-shadcn]` config (with optional flag overrides) and, when `--style` changes, re-resolves the components already in `components/ui/`.
 
 ### Add / remove components
 
