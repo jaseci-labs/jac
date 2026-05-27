@@ -351,6 +351,14 @@ Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
 impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
+    # A stream_handler turns this into a streamed call whose events are pushed
+    # to the handler as they arrive, while invoke still returns the final
+    # (parsed) value. This is what lets `visit [-->] by model(stream=True,
+    # stream_handler=fn)` surface live tokens yet receive the routing result.
+    handler = mt_run.call_params.get("stream_handler");
+    if mt_run.stream and handler is not None {
+        return self._invoke_with_handler(mt_run, handler);
+    }
     # If logging is enabled with streaming, yield StreamEvent objects
     if mt_run.stream and mt_run.call_params.get("logging", False) {
         return self._invoke_streaming(mt_run);
@@ -386,6 +394,63 @@ impl BaseLLM._invoke_react_loop_streaming(
     } finally {
         mt_run.write_back_conversation();
     }
+}
+
+
+"""Drive a streamed invocation through a per-event callback.
+
+Forwards every StreamEvent to `on_event` as it arrives, then returns the
+final value: the parsed structured result for a structured return type, or
+the accumulated answer text otherwise. Backs `visit [-->] by model` and any
+structured `by llm()` call that wants live tokens via a stream_handler.
+"""
+impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object {
+    # No tools + structured return: the model output is JSON constrained by the
+    # response-format schema. Stream those tokens to the handler, accumulate,
+    # and parse them into the expected type.
+    if len(mt_run.tools) == 0
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        self._usage_history = [];
+        accumulated = "";
+        try {
+            for token in self.dispatch_streaming(mt_run) {
+                if token {
+                    accumulated += token;
+                    try {
+                        on_event(
+                            StreamEvent(event_type="chunk", data={"content": token})
+                        );
+                    } except Exception as e {
+                        logger.debug(f"stream_handler raised: {e}");
+                    }
+                }
+            }
+        } finally {
+            mt_run.write_back_conversation();
+        }
+        return mt_run.parse_response(accumulated);
+    }
+    # Tools (ReAct) or str return: drive the full streaming loop, forwarding
+    # reasoning, tool, and answer events, then return the captured structured
+    # output when present, else the streamed answer text.
+    parts: list[str] = [];
+    for ev in self._invoke_streaming(mt_run) {
+        try {
+            on_event(ev);
+        } except Exception as e {
+            logger.debug(f"stream_handler raised: {e}");
+        }
+        if ev.event_type == "chunk" {
+            parts.append(str(ev.data.get("content", "")));
+        }
+    }
+    if mt_run._has_final_output
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        return mt_run._final_output;
+    }
+    return "".join(parts);
 }
 
 
@@ -1584,14 +1649,23 @@ impl BaseLLM._invoke_streaming(
 
                 if finish_tc {
                     mt_run.add_message(finish_tc());
+                    # Capture the structured result so a handler-driven invoke
+                    # can return it once this generator is consumed.
+                    mt_run._final_output = finish_tc.get_output();
+                    mt_run._has_final_output = True;
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        if token {
-                            yield StreamEvent(
-                                event_type="chunk", data={"content": token}
-                            );
+                    # A structured return already carries its value in the finish
+                    # tool output; only stream a textual final answer for str/None
+                    # returns (the common `by llm() -> str` case).
+                    if mt_run.resp_type is None or mt_run.resp_type is str {
+                        for token in self._stream_final_answer(mt_run) {
+                            if token {
+                                yield StreamEvent(
+                                    event_type="chunk", data={"content": token}
+                                );
+                            }
                         }
                     }
                     break;

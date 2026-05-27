@@ -2423,6 +2423,7 @@ mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
 |----------------|-------------|---------|
 | `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
 | `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
+| `loki_enabled` | Deploy Loki + Alloy log pipeline and add Pod Logs dashboard to Grafana | `false` |
 
 #### Dashboard Credentials
 
@@ -2883,7 +2884,7 @@ jac_mcp = "latest"     # Optional MCP server plugin
 
 ### Monitoring Stack
 
-jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter) into the same namespace as your application.
+jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
 
 | Component | Purpose |
 |-----------|---------|
@@ -2891,6 +2892,8 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
+| **Loki** _(optional)_ | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Grafana Alloy** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
 
 **Defaults:**
 
@@ -2898,6 +2901,7 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 |----------|---------|-------------|
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
+| `loki_enabled` | `false` | Deploy Loki + Grafana Alloy and add a Pod Logs dashboard to Grafana |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
 
 **To enable in `jac.toml`:**
@@ -2907,6 +2911,13 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 enabled = true
 k8s_metrics_enabled = true
 prometheus_admin_password = "StrongPassword123!"
+```
+
+**To also enable log aggregation:**
+
+```toml
+[plugins.scale.kubernetes]
+loki_enabled = true
 ```
 
 After deployment, access:
@@ -2920,6 +2931,15 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 - Jaseci application `/metrics` endpoint
 - kube-state-metrics (pod, deployment, replica, restart state)
 - node-exporter (CPU, memory, disk, network per node)
+
+**Loki log pipeline (`loki_enabled = true`):**
+
+When enabled, two additional components are deployed:
+
+- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
+
+A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
 > To collect application metrics, also enable `[plugins.scale.monitoring] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
 
@@ -3340,6 +3360,39 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 replicas = 2
 hpa = { enabled = false }
 ```
+
+### Centralised Logs
+
+Microservice mode can deploy a Loki + Grafana Alloy log aggregation pipeline alongside the existing Prometheus + Grafana monitoring stack. Off by default.
+
+```toml
+[plugins.scale.microservices.logs]
+enabled = true
+```
+
+When enabled, `jac start --scale` deploys:
+
+- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[plugins.scale.kubernetes].monitoring_enabled = true` and `loki_enabled = true` on the monolith target.
+
+A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
+
+| Component | Resource | Reach |
+|-----------|----------|-------|
+| Loki | Deployment + ClusterIP Service `<app>-loki-service:3100` | Cluster-internal only |
+| Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
+| Grafana | Deployment + Service, NodePort/NLB via Ingress | `/grafana` on the app's external endpoint |
+
+> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) land in M-14.c.
+
+<!-- -->
+
+> **Trace correlation.** Microservice mode already propagates `X-Trace-Id` (K-12). Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field ships in M-14.b.
+
+<!-- -->
+
+> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy lands in M-14.c.
 
 ---
 
