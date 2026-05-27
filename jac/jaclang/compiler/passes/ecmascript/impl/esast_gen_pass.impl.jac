@@ -2565,7 +2565,7 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     nd.gen.es_ast = expr_stmt;
 }
 
-"""Process control statement (break/continue)."""
+"""Process control statement (break/continue/skip)."""
 impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     # `skip;` inside a slot is the early-exit guard: return the fragment of
     # everything accumulated so far, abandoning the rest of the slot body.
@@ -2574,9 +2574,15 @@ impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
         nd.gen.es_ast = self._view_fragment_return(acc, nd);
         return;
     }
-    stmt: (es.BreakStatement | es.ContinueStatement);
+    stmt: (es.BreakStatement | es.ContinueStatement | es.ReturnStatement);
     if (nd.ctrl.name == Tok.KW_BREAK) {
         stmt = self.sync_loc(es.BreakStatement(), jac_node=nd);
+    } elif (nd.ctrl.name == Tok.KW_SKIP) {
+        # `skip` is a Return-family keyword (the Python target lowers it to a
+        # bare `return`). Outside a slot it is a guard-clause early return, not
+        # a loop control -- emitting `continue;` here would be illegal JS in a
+        # non-loop body and crash the client build (issue #6206).
+        stmt = self.sync_loc(es.ReturnStatement(argument=None), jac_node=nd);
     } else {
         stmt = self.sync_loc(es.ContinueStatement(), jac_node=nd);
     }

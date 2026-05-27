@@ -11,7 +11,7 @@ on:
 
 jobs:
   test-core-compiler:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -35,7 +35,7 @@ jobs:
       run: pytest -x jac/tests/compiler -n auto
 
   test-core-runtime:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -59,7 +59,7 @@ jobs:
       run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
   test-client:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -104,7 +104,7 @@ jobs:
         pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
 
   test-packages-and-docs:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -150,7 +150,7 @@ jobs:
       run: pytest docs/tests/e2e/test_code_blocks.jac -v
 
   test-mcp:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -174,7 +174,7 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -269,7 +269,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -317,7 +317,7 @@ jobs:
           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5

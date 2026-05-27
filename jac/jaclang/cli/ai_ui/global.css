@@ -92,8 +92,7 @@ body {
 }
 
 .workspace {
-    display: grid;
-    grid-template-columns: minmax(360px, 1.1fr) minmax(420px, 1fr);
+    display: flex;
     flex: 1;
     min-height: 0;
 }
@@ -105,14 +104,46 @@ body {
     min-width: 0;
 }
 
+/* Left column width is driven by an inline style the resize handle updates; it
+   must not shrink below that, so the right column takes the remaining space. */
 .col.left {
-    border-right: 1px solid var(--border);
+    flex: 0 0 auto;
+    min-width: 280px;
 }
 
 .col.right {
-    display: grid;
-    grid-template-rows: minmax(220px, 0.9fr) 1.1fr;
-    min-height: 0;
+    flex: 1;
+    min-width: 0;
+    /* Safety net: if the graph pane is dragged taller than the column, clip
+       rather than letting it spill into the bottom pane. */
+    overflow: hidden;
+}
+
+/* ---- Resize handles --------------------------------------------------- */
+.resize-handle {
+    flex: 0 0 6px;
+    background: var(--border);
+    transition: background 0.15s ease;
+}
+
+.resize-handle:hover {
+    background: var(--primary);
+}
+
+.resize-handle.v {
+    cursor: col-resize;
+    width: 6px;
+}
+
+.resize-handle.h {
+    cursor: row-resize;
+    height: 6px;
+}
+
+/* Freeze cursor + suppress selection across the page while a handle drags. */
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
 }
 
 .pane {
@@ -509,24 +540,54 @@ body {
     border-radius: 3px;
 }
 
-/* ---- Token firehose (lower-left live stream) -------------------------- */
+/* The conversation fills the whole left column now that the token stream moved
+   to the bottom pane. */
 .col.left > .pane {
     flex: 1;
     min-height: 0;
 }
 
-.tokenstream {
-    flex-shrink: 0;
-    height: 160px;
+/* Right column: the graph pane keeps the height the handle sets; the activity
+   feed below it takes the rest. */
+.col.right > .pane:first-child {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.col.right > .pane:last-child {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ---- Bottom pane: token stream | ledger | inspector ------------------- */
+.bottompane {
+    flex: 0 0 auto;
     display: flex;
-    flex-direction: column;
+    min-height: 0;
     border-top: 1px solid var(--border);
     background: var(--panel);
 }
 
-.tokenstream-body {
+/* Three equal sections divided by vertical rules. */
+.bp-section {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.bp-section + .bp-section {
+    border-left: 1px solid var(--border);
+}
+
+.bp-body {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
+}
+
+.tokenstream-body {
     padding: 8px 14px 10px;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11.5px;
@@ -534,6 +595,95 @@ body {
     color: #9aa0a8;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* ---- Ledger panel ----------------------------------------------------- */
+.ledger-list {
+    display: flex;
+    flex-direction: column;
+    font-size: 12.5px;
+}
+
+.ledger-row {
+    display: flex;
+    gap: 9px;
+    padding: 6px 14px;
+    border-bottom: 1px solid rgba(38, 40, 44, 0.5);
+    align-items: baseline;
+}
+
+.ledger-phase {
+    flex-shrink: 0;
+    width: 46px;
+    color: #a5b4fc;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+.ledger-row.note .ledger-phase {
+    color: var(--amber);
+}
+
+.ledger-summary {
+    flex: 1;
+    min-width: 0;
+    color: var(--fg);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ---- Phase inspector -------------------------------------------------- */
+.insp-name {
+    margin-left: auto;
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+}
+
+.insp-body {
+    padding: 10px 14px 14px;
+}
+
+.insp-desc {
+    color: var(--fg);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.insp-label {
+    color: var(--muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+
+.insp-sem {
+    color: #c3c6cc;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 12px;
+}
+
+.insp-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.insp-tool {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--accent);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
 }
 
 /* ---- Stats bar -------------------------------------------------------- */

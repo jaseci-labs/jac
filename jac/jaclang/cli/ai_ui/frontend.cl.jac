@@ -15,6 +15,9 @@ import from .components.Conversation { Conversation }
 import from .components.ActivityFeed { ActivityFeed }
 import from .components.StatsBar { StatsBar }
 import from .components.TokenStream { TokenStream }
+import from .components.LedgerPane { LedgerPane }
+import from .components.PhaseInspector { PhaseInspector }
+import from .components.ResizeHandle { ResizeHandle }
 import "./global.css";
 
 def:pub app -> JsxElement {
@@ -29,16 +32,33 @@ def:pub app -> JsxElement {
         stats: any = {"has_run": False},
         # Raw firehose of every streamed token, concatenated (capped).
         tokens: str = "",
+        # The durable session ledger ({changes, notes}); refreshed whenever a
+        # ledger message arrives so the bottom-pane panel mirrors it live.
+        ledger: any = {"changes": [], "notes": []},
+        # The graph node the user clicked, shown in the phase inspector.
+        selected: str = "",
+        # Drag-resizable pane sizes (px): left column width, right-column graph
+        # height, and bottom-pane height. The handles mutate these.
+        leftW: int = 460,
+        graphH: int = 300,
+        bottomH: int = 200,
         draft: str = "";
 
     unmountedRef: any = useRef(False);
     ctrlRef: any = useRef(None);
+    # `window`/`document` typed loosely so viewport + element reads used to clamp
+    # pane sizes type-check (the client stub omits those members).
+    win: any = window;
+    doc: any = document;
     # The live event list is kept in a ref so the stream handler (captured once
     # by the effect) always upserts against the current list, not a stale render
     # closure -- otherwise each delta would rebuild from an empty `events`. Same
     # reason for the token firehose buffer.
     eventsRef: any = useRef([]);
     tokensRef: any = useRef("");
+    # Held in a ref for the same reason as events: ledger messages are sparse, so
+    # the handler must read the latest value, not a stale render closure.
+    ledgerRef: any = useRef({"changes": [], "notes": []});
 
     # Apply one stream message: a full snapshot replaces the feed; a delta
     # upserts the changed event by id (so a token re-push grows that event in
@@ -77,6 +97,12 @@ def:pub app -> JsxElement {
             }
             tokensRef.current = nt;
             tokens = nt;
+        }
+        # Ledger messages are sparse (only when a phase records or a note lands);
+        # apply whenever present, otherwise keep the last value.
+        if msg.ledger {
+            ledgerRef.current = msg.ledger;
+            ledger = msg.ledger;
         }
         status = msg.status;
         active = msg.active;
@@ -164,6 +190,9 @@ def:pub app -> JsxElement {
         stats = {"has_run": False};
         tokensRef.current = "";
         tokens = "";
+        ledgerRef.current = {"changes": [], "notes": []};
+        ledger = {"changes": [], "notes": []};
+        selected = "";
     }
 
     # Stop the running turn at the next checkpoint.
@@ -182,6 +211,8 @@ def:pub app -> JsxElement {
         active = g.state.active;
         path = g.state.path;
         stats = g.state.stats;
+        ledger = g.state.ledger;
+        ledgerRef.current = g.state.ledger;
     }
 
     # Open the live stream; abort it on unmount.
@@ -214,7 +245,7 @@ def:pub app -> JsxElement {
                 </button>
             </div>
             <div className="workspace">
-                <div className="col left">
+                <div className="col left" style={{"width": str(leftW) + "px"}}>
                     <Conversation
                         {events}
                         {status}
@@ -223,15 +254,52 @@ def:pub app -> JsxElement {
                         onSend={send}
                         onStop={stop}
                     />
-                    <TokenStream text={tokens} live={status == "running"}/>
                 </div>
+                <ResizeHandle
+                    vertical={True}
+                    onResize={lambda dx: float { leftW = max(
+                        300, min(int(leftW + dx), int(win.innerWidth) - 380)
+                    ); }}
+                />
                 <div className="col right">
-                    <div className="pane">
+                    <div className="pane" style={{"height": str(graphH) + "px"}}>
                         <div className="pane-head">Phase graph</div>
-                        <PhaseGraph {nodes} {edges} {active} {path} {status}/>
+                        <PhaseGraph
+                            {nodes}
+                            {edges}
+                            {active}
+                            {path}
+                            {status}
+                            {selected}
+                            onSelect={lambda id: str { selected = id; }}
+                        />
                     </div>
+                    <ResizeHandle
+                        vertical={False}
+                        onResize={lambda dy: float {
+                            # Clamp against the right column's own height so the
+                            # graph never grows past it (which would squeeze the
+                            # activity feed out); always leave it room.
+                            rc = doc.querySelector(".col.right");
+                            cap = (int(rc.clientHeight) - 120)
+                                if rc
+                                else (int(win.innerHeight) - 260);
+                            graphH = max(140, min(int(graphH + dy), cap));
+                        }}
+                    />
                     <ActivityFeed {events} {status}/>
                 </div>
+            </div>
+            <ResizeHandle
+                vertical={False}
+                onResize={lambda dy: float { bottomH = max(
+                    90, min(int(bottomH - dy), int(win.innerHeight) - 260)
+                ); }}
+            />
+            <div className="bottompane" style={{"height": str(bottomH) + "px"}}>
+                <TokenStream text={tokens} live={status == "running"}/>
+                <LedgerPane {ledger}/>
+                <PhaseInspector {nodes} {selected}/>
             </div>
             <StatsBar {stats} {active}/>
         </div>;

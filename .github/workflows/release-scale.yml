@@ -7,7 +7,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12', '3.13', '3.14']
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
@@ -33,7 +33,7 @@ jobs:
   release-scale:
     name: Release
     needs: precompile
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     defaults:
       run:
         working-directory: jac-scale

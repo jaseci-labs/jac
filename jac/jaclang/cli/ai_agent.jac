@@ -366,6 +366,15 @@ obj AgentEventBus {
     calls -- which the cleaned reasoning view deliberately hides.
     """
     def feed_token(token: str) -> None;
+
+    """A JSON-ready view of the durable session ledger (changes + notes), read
+    live off `agent.ledger` so the UI's ledger panel mirrors it."""
+    def ledger_view -> dict;
+
+    """Push the current ledger to every subscriber. Called whenever the ledger
+    changes (a phase records a step, or `note` leaves a note) so the UI's ledger
+    panel updates in real time rather than only on the next poll."""
+    def publish_ledger -> None;
 }
 
 
@@ -773,8 +782,12 @@ with entry {
 # set (`tools()`).
 """A phase state: a self-contained step with its own prompt, tools, and context."""
 node PhaseState {
-    has ctx: list = [];
+    has ctx: list = [],
+        desc: str = "";
 
+    # One-line role blurb the UI shows under the node. Lives here so tracing the
+    # real graph yields the label too -- no separate hardcoded list to keep in
+    # sync with the pipeline.
     """The tools this state exposes: the TOOLS rows tagged with its phase.
 
     Derived from the node's own class name (Plan/Build/QA -> plan/build/qa),
@@ -786,16 +799,34 @@ node PhaseState {
     can run with AgentSession entry;
 }
 
-node Plan(PhaseState) {}
+node Plan(PhaseState) {
+    has desc: str = "Explore and decide the approach";
+}
 
-node Build(PhaseState) {}
+node Build(PhaseState) {
+    has desc: str = "Write and edit the code";
+}
 
-node QA(PhaseState) {}
+node QA(PhaseState) {
+    has desc: str = "Type-check, run, and verify";
+}
 
 """The terminal state: the task is complete and verified."""
 node Done {
+    has desc: str = "Objective built and verified";
+
     can finish with AgentSession entry;
 }
+
+"""Build the phase pipeline and return its entry (Plan).
+
+The single source of truth for the workflow topology: which states exist and
+the legal transitions between them. Both the walker (`AgentSession.begin`) and
+the UI (`ui_graph`, which traces the result) consume this, so changing an edge
+here updates the agent's behavior and the rendered graph at once.
+"""
+def build_pipeline -> Plan;
+
 
 walker AgentSession {
     has objective: str,

@@ -1036,8 +1036,37 @@ impl AgentEventBus.snapshot -> dict {
         "status": self.status,
         "active": self.active,
         "path": list(self.path),
+        "stats": dict(self.last_stats),
+        "ledger": self.ledger_view()
+    };
+}
+
+impl AgentEventBus.ledger_view -> dict {
+    led = agent.ledger;
+    if led is None {
+        return {"changes": [], "notes": []};
+    }
+    return {"changes": list(led.changes), "notes": list(led.notes)};
+}
+
+impl AgentEventBus.publish_ledger -> None {
+    if not self.active_feed or not self._subscribers {
+        return;
+    }
+    # A ledger-only message: no `ev`/`token`, so the client refreshes its ledger
+    # panel and top-level state without touching the event log or firehose.
+    msg = {
+        "ledger": self.ledger_view(),
+        "status": self.status,
+        "active": self.active,
+        "path": list(self.path),
         "stats": dict(self.last_stats)
     };
+    for q in list(self._subscribers) {
+        try {
+            q.put_nowait(msg);
+        } except Exception { }
+    }
 }
 
 impl AgentEventBus.subscribe -> any {
@@ -1085,7 +1114,8 @@ impl AgentEventBus.publish_full -> None {
         "status": self.status,
         "active": self.active,
         "path": list(self.path),
-        "stats": dict(self.last_stats)
+        "stats": dict(self.last_stats),
+        "ledger": self.ledger_view()
     };
     for q in list(self._subscribers) {
         try {
@@ -1617,6 +1647,7 @@ sem AgentRuntime.note.text = "The note to remember.";
 impl AgentRuntime.note(text: str) -> str {
     if agent.active_session is not None {
         agent.active_session.ledger.remember(text);
+        agent.bus.publish_ledger();
         return f"noted: {text}";
     }
     return "(no active session to note onto)";
@@ -1700,6 +1731,9 @@ impl PhaseState.run{
     );
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
+    # Surface the new ledger entry to the UI panel right away (the next bus emit
+    # would carry it anyway, but this lands it the instant the phase records).
+    agent.bus.publish_ledger();
     # Stop pressed during the phase: halt here, don't route onward (and don't
     # make the QA route-selection LLM call).
     if agent.bus.cancel_requested {
@@ -1800,21 +1834,28 @@ impl Done.finish{
     agent.bus.enter("Done");
 }
 
-impl AgentSession.begin{
-    # Wire the pipeline once, then enter at Plan. The edges encode the legal
-    # transitions: Plan -> Build -> QA, and QA loops back to Build/Plan or
-    # finishes at Done.
+impl build_pipeline -> Plan {
+    # Wire the phase pipeline. The edges ARE the legal transitions: Plan -> Build
+    # -> QA, with QA looping back to Build/Plan or finishing at Done. This is the
+    # only place the topology is written down; `ui_graph` traces these same nodes
+    # and edges so the rendered graph can never drift from the real workflow.
     plan = Plan();
     build = Build();
     qa = QA();
     done = Done();
-    here ++> plan;
     plan ++> build;
     build ++> qa;
     qa ++> build;
     qa ++> plan;
     qa ++> done;
-    visit plan;
+    return plan;
+}
+
+impl AgentSession.begin{
+    # Build the pipeline as a free-standing graph and enter at Plan. The session
+    # does not hang off root: these nodes exist only for the walker to traverse,
+    # so there is no Root -> Plan edge to confuse the topology or the trace.
+    visit build_pipeline();
 }
 
 impl run_turn(message: str) {
@@ -2152,24 +2193,46 @@ impl ui_stream -> any {
 }
 
 impl ui_graph -> dict {
-    # The phase pipeline the AgentSession walker traverses. Nodes carry a short
-    # role blurb for the UI; edges are the legal transitions (QA fans out).
-    return {
-        "nodes": [
-            {"id": "Plan", "label": "Plan", "desc": "Explore and decide the approach"},
-            {"id": "Build", "label": "Build", "desc": "Write and edit the code"},
-            {"id": "QA", "label": "QA", "desc": "Type-check, run, and verify"},
-            {"id": "Done", "label": "Done", "desc": "Objective built and verified"}
-        ],
-        "edges": [
-            {"source": "Plan", "target": "Build"},
-            {"source": "Build", "target": "QA"},
-            {"source": "QA", "target": "Build"},
-            {"source": "QA", "target": "Plan"},
-            {"source": "QA", "target": "Done"}
-        ],
-        "state": agent.bus.snapshot()
-    };
+    # Trace the actual phase pipeline instead of hardcoding it, so the rendered
+    # graph always matches the walker's real topology: build the graph once, then
+    # BFS from the entry, emitting one node per state (id/label from its class
+    # name, blurb from its own `desc`) and one edge per out-edge. Change an edge
+    # in `build_pipeline` and this -- and the UI -- follow automatically.
+    nodes = [];
+    edges = [];
+    seen = set();
+    # Untyped so successors (Any, via the edge ref) append cleanly alongside the
+    # Plan entry.
+    frontier: list = [build_pipeline()];
+    while frontier {
+        nd = frontier.pop(0);
+        nid = type(nd).__name__;
+        if nid in seen {
+            continue;
+        }
+        seen.add(nid);
+        # `sem` is the node class's role prompt (`_jac_semstr`, the same string
+        # the router shows the model); `tools` are the phase's exposed tool names
+        # (Done has none). Both ride along so the UI inspector can show a state's
+        # full definition when its graph node is clicked -- no separate lookup.
+        tool_names = (
+            [getattr(t, "__name__", "") for t in nd.tools()] if nd?.tools else []
+        );
+        nodes.append(
+            {
+                "id": nid,
+                "label": nid,
+                "desc": nd.desc,
+                "sem": str(getattr(type(nd), "_jac_semstr", "") or ""),
+                "tools": tool_names
+            }
+        );
+        for succ in [nd-->] {
+            edges.append({"source": nid, "target": type(succ).__name__});
+            frontier.append(succ);
+        }
+    }
+    return {"nodes": nodes, "edges": edges, "state": agent.bus.snapshot()};
 }
 
 impl ui_reset -> None {
