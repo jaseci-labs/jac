@@ -24,6 +24,9 @@ obj AgentRequest {
         # Compact output: suppress the live reasoning stream, per-step/tool
         # timings, and step detail, leaving just tool calls and the answer.
         quiet: bool = False,
+        # Open the agent in a web UI (a bundled Jac fullstack app) instead of the
+        # terminal REPL, with a live cytoscape visualizer of the phase walker.
+        ui: bool = False,
         cwd: str = "",
         code_intel: CodeIntelligence | None = None;
 }
@@ -39,7 +42,8 @@ def build_agent_request(
     model: str = "",
     n_ctx: int = 0,
     safe: bool = False,
-    quiet: bool = False
+    quiet: bool = False,
+    ui: bool = False
 ) -> AgentRequest {
     cwd = os.getcwd();
     return AgentRequest(
@@ -48,7 +52,12 @@ def build_agent_request(
         n_ctx=n_ctx,
         safe=safe,
         quiet=quiet,
+        ui=ui,
         cwd=cwd,
-        code_intel=CodeIntelligence(proj_dir=cwd)
+        code_intel=CodeIntelligence(proj_dir=cwd, lazy=True)
+        # Lazy: the agent's structural tools (`project_map`, walkers) load from
+        # the cheap, cross-run-cached structural index, deferring the full
+        # type-checked pipeline until the first symbol/diagnostic query actually
+        # needs it -- so startup and project-map calls don't pay semantic cost.
     );
 }

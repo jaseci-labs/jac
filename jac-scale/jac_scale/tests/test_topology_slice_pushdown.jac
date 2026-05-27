@@ -71,7 +71,7 @@ def _get_redis_url -> str {
 def _reset_dbs {
     if "mongo_client" in _shared {
         for db_name in _shared["mongo_client"].list_database_names() {
-            if db_name not in {"admin","config","local"} {
+            if db_name not in {"admin", "config", "local"} {
                 _shared["mongo_client"].drop_database(db_name);
             }
         }

@@ -13,3 +13,4 @@ exclude = [
 
 [plugins.byllm.model]
 default_model = "ollama/gemma4:31b"
+#default_model = "ollama/qwen3-coder"

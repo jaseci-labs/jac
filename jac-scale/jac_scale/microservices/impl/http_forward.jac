@@ -10,7 +10,7 @@ import aiohttp;
 import from fastapi.responses { Response, StreamingResponse }
 
 glob _logger = logging.getLogger(__name__),
-     _HOP_BY_HOP: set[str] = {"host","transfer-encoding","connection","keep-alive"};
+     _HOP_BY_HOP: set[str] = {"host", "transfer-encoding", "connection", "keep-alive"};
 
 
 """Buffered forward. Returns (status, headers, body) or None on transport error."""

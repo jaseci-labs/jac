@@ -66,7 +66,7 @@ def _filter_has_predicates(filt: any) -> bool {
     } except (TypeError, AttributeError, ValueError) {
         return True;
     }
-    return bool(opcodes & {'LOAD_ATTR','COMPARE_OP','CONTAINS_OP','IS_OP'});
+    return bool(opcodes & {'LOAD_ATTR', 'COMPARE_OP', 'CONTAINS_OP', 'IS_OP'});
 }
 
 

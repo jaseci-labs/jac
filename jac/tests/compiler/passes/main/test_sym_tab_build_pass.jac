@@ -65,12 +65,12 @@ test "compr unpacking variables" {
     mod = JacProgram().compile(file_path);
     test_cases = [
         (0, {"x"}, uni.ListCompr),
-        (1, {"a","b","rest"}, uni.ListCompr),
-        (2, {"a","b","c","d"}, uni.ListCompr),
-        (3, {"a","b"}, uni.SetCompr),
-        (4, {"k","v"}, uni.DictCompr),
-        (5, {"a","b"}, uni.GenCompr),
-        (6, {"row","name","val"}, uni.ListCompr)
+        (1, {"a", "b", "rest"}, uni.ListCompr),
+        (2, {"a", "b", "c", "d"}, uni.ListCompr),
+        (3, {"a", "b"}, uni.SetCompr),
+        (4, {"k", "v"}, uni.DictCompr),
+        (5, {"a", "b"}, uni.GenCompr),
+        (6, {"row", "name", "val"}, uni.ListCompr)
     ];
     for (scope_idx, expected_vars, expected_type) in test_cases {
         scope = mod.sym_tab.kid_scope[scope_idx];

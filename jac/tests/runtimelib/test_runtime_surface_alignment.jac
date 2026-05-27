@@ -19,21 +19,42 @@ import from pathlib { Path }
 import jaclang;
 
 glob ALIGNED_SURFACE = {
-     # React Router v6-shaped routing. jac-client maps `Router` to
-     # ReactRouterBrowserRouter, so the same name covers both modes.
-     "Router","Routes","Route","Link","Navigate","Outlet","useNavigate","useLocation","useParams","useRouter","navigate",
-     # Hook aliases (different semantics across runtimes, but same names)
-     "useState","useEffect",
-     # JSX factory
-     "__jacJsx",
-     # Walker / function calls
-     "__jacSpawn","jacSpawn","__jacCallFunction",
-     # Auth
-     "jacSignup","jacLogin","jacLogout","jacIsLoggedIn",
-     # Browser API shims
-     "__getLocalStorage","__setLocalStorage","__removeLocalStorage",
-     # Error reporting
-     "__jacReportError","__jacInstallErrorHandlers","__jacReactErrorHandler"};
+         # React Router v6-shaped routing. jac-client maps `Router` to
+         # ReactRouterBrowserRouter, so the same name covers both modes.
+         "Router",
+         "Routes",
+         "Route",
+         "Link",
+         "Navigate",
+         "Outlet",
+         "useNavigate",
+         "useLocation",
+         "useParams",
+         "useRouter",
+         "navigate",
+         # Hook aliases (different semantics across runtimes, but same names)
+         "useState",
+         "useEffect",
+         # JSX factory
+         "__jacJsx",
+         # Walker / function calls
+         "__jacSpawn",
+         "jacSpawn",
+         "__jacCallFunction",
+         # Auth
+         "jacSignup",
+         "jacLogin",
+         "jacLogout",
+         "jacIsLoggedIn",
+         # Browser API shims
+         "__getLocalStorage",
+         "__setLocalStorage",
+         "__removeLocalStorage",
+         # Error reporting
+         "__jacReportError",
+         "__jacInstallErrorHandlers",
+         "__jacReactErrorHandler"
+     };
 
 def _bareserve_runtime_path -> str {
     runtimelib_dir = os.path.dirname(jaclang.runtimelib.__file__);
@@ -94,7 +115,19 @@ test "bare-serve and jac-client expose the aligned @jac/runtime surface" {
     # Drift detector: anything bare-serve adds but jac-client lacks (or vice
     # versa) within the routing/hooks subset means user code that compiles in
     # one mode breaks in the other.
-    routing_subset = {"Router","Routes","Route","Link","Navigate","Outlet","useNavigate","useLocation","useParams","useRouter","navigate"};
+    routing_subset = {
+        "Router",
+        "Routes",
+        "Route",
+        "Link",
+        "Navigate",
+        "Outlet",
+        "useNavigate",
+        "useLocation",
+        "useParams",
+        "useRouter",
+        "navigate"
+    };
     bareserve_routing = bareserve_syms & routing_subset;
     jac_client_routing = jac_client_syms & routing_subset;
     drift = bareserve_routing.symmetric_difference(jac_client_routing);
