@@ -124,6 +124,30 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.KW_IN: "emit_op_contains",
          Tok.KW_NIN: "emit_op_contains"
      },
+     # Lower `type(x) is <builtin>` / `is not` to valid JS typeof / Array.isArray
+     # checks. Placeholder {0} is the subject expression (not the typeof call).
+     TYPE_IS_JS_CHECKS: dict[(str, str)] = {
+         "str": 'typeof {0} === "string"',
+         "int": 'typeof {0} === "number" && Number.isInteger({0})',
+         "float": 'typeof {0} === "number" && !Number.isInteger({0})',
+         "bool": 'typeof {0} === "boolean"',
+         "dict": 'typeof {0} === "object" && {0} !== null && !Array.isArray({0})',
+         "list": "Array.isArray({0})",
+         "tuple": "Array.isArray({0})",
+         "set": "{0} instanceof Set",
+         "bytes": "{0} instanceof Uint8Array",
+         "type": 'typeof {0} === "function"',
+         "i8": 'typeof {0} === "number"',
+         "u8": 'typeof {0} === "number"',
+         "i16": 'typeof {0} === "number"',
+         "u16": 'typeof {0} === "number"',
+         "i32": 'typeof {0} === "number"',
+         "u32": 'typeof {0} === "number"',
+         "i64": 'typeof {0} === "number"',
+         "u64": 'typeof {0} === "number"',
+         "f32": 'typeof {0} === "number"',
+         "f64": 'typeof {0} === "number"'
+     },
      UNARY_EMIT_MAP: dict[(Tok, str)] = {
          Tok.MINUS: "emit_op_neg",
          Tok.PLUS: "emit_op_pos",
@@ -357,6 +381,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
+    def _type_call_subject_param(call: uni.FuncCall) -> (uni.Expr | None);
+    def _expr_to_js_string(expr: uni.Expr) -> str;
+    def _try_type_is_compare(
+        left_node: uni.Expr, right_node: uni.Expr, negate: bool, jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def _convert_assignment_target(
         target: uni.UniNode

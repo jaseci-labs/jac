@@ -2245,6 +2245,68 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     nd.gen.es_ast = unary_expr;
 }
 
+"""Extract the operand of a `type(...)` call, or None."""
+impl EsastGenPass._type_call_subject_param(call: uni.FuncCall) -> (uni.Expr | None) {
+    if (
+        not isinstance(call.target, uni.Name)
+        or call.target.sym_name != "type"
+        or len(call.params) != 1
+    ) {
+        return None;
+    }
+    param = call.params[0];
+    if isinstance(param, uni.Expr) {
+        return param;
+    }
+    return None;
+}
+
+"""Render a Jac expression's generated ES AST as a JS source fragment."""
+impl EsastGenPass._expr_to_js_string(expr: uni.Expr) -> str {
+    import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+    if not expr.gen.es_ast {
+        return "";
+    }
+    return JSCodeGenerator().generate(cast(es.Expression, expr.gen.es_ast));
+}
+
+"""Lower `type(x) is <builtin>` to a JS typeof / Array.isArray check."""
+impl EsastGenPass._try_type_is_compare(
+    left_node: uni.Expr, right_node: uni.Expr, negate: bool, jac_node: uni.UniNode
+) -> (es.Expression | None) {
+    if not isinstance(left_node, uni.FuncCall) {
+        return None;
+    }
+    subject_expr = self._type_call_subject_param(left_node);
+    if subject_expr is None {
+        return None;
+    }
+    type_name: (str | None) = None;
+    if isinstance(right_node, (uni.BuiltinType, uni.Name)) {
+        type_name = right_node.sym_name;
+    }
+    if not type_name or type_name == "None" {
+        return None;
+    }
+    if type_name == "any" {
+        check_js = "false" if negate else "true";
+        return self.sync_loc(es.Identifier(name=check_js), jac_node=jac_node);
+    }
+    template = TYPE_IS_JS_CHECKS.get(type_name);
+    if not template {
+        return None;
+    }
+    subject_js = self._expr_to_js_string(subject_expr);
+    if not subject_js {
+        return None;
+    }
+    check_js = template.replace("{0}", subject_js);
+    if negate {
+        check_js = "!(" + check_js + ")";
+    }
+    return self.sync_loc(es.Identifier(name=check_js), jac_node=jac_node);
+}
+
 """Process compare expression."""
 impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
     if (not nd.rights or not nd.ops) {
@@ -2262,6 +2324,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
                     else es.Identifier(name='left')
         )
     );
+    compare_left_node: uni.Expr = nd.left;
     for (op_token, right_node) in zip(nd.ops, nd.rights, strict=False) {
         right: es.Expression = cast(
             es.Expression,
@@ -2274,6 +2337,18 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             )
         );
         op_tok = Tok(op_token.name) if (op_token.name in Tok.__members__) else None;
+        # `type(x) is str` / `is not dict` → typeof / Array.isArray (issue #6149)
+        if op_tok in (Tok.KW_IS, Tok.KW_ISN) {
+            _type_cmp = self._try_type_is_compare(
+                compare_left_node, right_node, op_tok == Tok.KW_ISN, nd
+            );
+            if _type_cmp is not None {
+                comparisons.append(_type_cmp);
+                compare_left_node = right_node;
+                left = right;
+                continue;
+            }
+        }
         # Type-aware comparison primitive dispatch
         _cmp_emit_name = CMP_EMIT_MAP.get(op_tok) if op_tok else None;
         if _cmp_emit_name {
@@ -2358,6 +2433,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             );
         }
         comparisons.append(comparison);
+        compare_left_node = right_node;
         left = right;
     }
     if (len(comparisons) == 1) {

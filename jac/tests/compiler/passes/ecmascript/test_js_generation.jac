@@ -1437,6 +1437,34 @@ test "is and is not emit identity comparison operators" {
     }
 }
 
+test "type is builtin emits typeof and array checks not bare identifiers" {
+    # BUG (#6149): `type(x) is str` lowered to `typeof x === str`, referencing
+    # undeclared globals in strict ES modules. Map Jac builtin typenames to JS.
+    jac_code = "\"\"\"Test type() is <builtin> codegen.\"\"\"\n\ncl def TypeIsRepro() -> str {\n    has msg: str = \"\";\n    can with entry {\n        x = 42;\n        if type(x) is str {\n            msg = \"is str\";\n        } elif type(x) is not dict {\n            msg = \"not dict\";\n        } elif type(x) is list {\n            msg = \"is list\";\n        }\n    }\n    return msg;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert 'typeof x === "string"' in js_code , (
+            f"`type(x) is str` must emit typeof string check, got:\n{js_code}"
+        );
+        assert (
+            '!(typeof x === "object" && x !== null && !Array.isArray(x))' in js_code
+        ) , (f"`type(x) is not dict` must negate object check, got:\n{js_code}");
+        assert "Array.isArray(x)" in js_code , (
+            f"`type(x) is list` must emit Array.isArray, got:\n{js_code}"
+        );
+        for bare in ["=== str", "!== dict", "=== list", "typeof x === str"] {
+            assert bare not in js_code , (
+                f"Must not emit bare typename identifier: {bare} in:\n{js_code}"
+            );
+        }
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "fstring format spec invokes runtime format helper" {
     # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
     # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
