@@ -32,7 +32,18 @@ glob _SV_SUFFIX: str = ".sv.jac",
      _IMPL_SUFFIX: str = ".impl.jac",
      _TEST_SUFFIX: str = ".test.jac",
      # Directories never traversed when collecting source files.
-     _SKIP_DIRS: set = {".jac",".git",".venv","venv","node_modules","__pycache__",".mypy_cache",".pytest_cache","dist","build"};
+     _SKIP_DIRS: set = {
+         ".jac",
+         ".git",
+         ".venv",
+         "venv",
+         "node_modules",
+         "__pycache__",
+         ".mypy_cache",
+         ".pytest_cache",
+         "dist",
+         "build"
+     };
 
 
 """Resolve the output directory for `jac eject`.

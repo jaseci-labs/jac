@@ -369,7 +369,7 @@ impl ViteCompiler.compile_dependencies_recursively(
             );
         } elif (path_obj.suffix == '.js') {
             self._copy_js_file(path_obj, source_root);
-        } elif (path_obj.suffix in {'.ts','.tsx'}) {
+        } elif (path_obj.suffix in {'.ts', '.tsx'}) {
             self._copy_ts_file(path_obj, source_root);
         } elif path_obj.is_file() {
             self._copy_asset_file(path_obj, source_root);

@@ -140,7 +140,13 @@ test "all in one app endpoints" {
             for entry in os.listdir(all_in_one_path) {
                 src = os.path.join(all_in_one_path, entry);
                 dst = os.path.join(project_path, entry);
-                if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
+                if entry in {
+                    "node_modules",
+                    "build",
+                    "dist",
+                    ".pytest_cache",
+                    ".jac"
+                } {
                     continue;
                 }
                 if os.path.isdir(src) {
@@ -1026,7 +1032,13 @@ test "configurable api base url in bundle" {
             for entry in os.listdir(all_in_one_path) {
                 src = os.path.join(all_in_one_path, entry);
                 dst = os.path.join(project_path, entry);
-                if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
+                if entry in {
+                    "node_modules",
+                    "build",
+                    "dist",
+                    ".pytest_cache",
+                    ".jac"
+                } {
                     continue;
                 }
                 if os.path.isdir(src) {
@@ -1209,7 +1221,7 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
     for entry in os.listdir(all_in_one_path) {
         src = os.path.join(all_in_one_path, entry);
         dst = os.path.join(project_path, entry);
-        if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
+        if entry in {"node_modules", "build", "dist", ".pytest_cache", ".jac"} {
             continue;
         }
         if os.path.isdir(src) {
@@ -2055,6 +2067,8 @@ entry-point = "main.jac"
 
 [serve]
 base_route_app = "app"
+
+[plugins.client]
 """
         );
         (project_dir / "main.jac").write_text('with entry { print("test"); }');
@@ -2085,6 +2099,8 @@ base_route_app = "app"
             """[project]
 name = "test-project"
 version = "1.0.0"
+
+[plugins.client]
 
 [dependencies.npm]
 jac-client-node = "1.0.7"

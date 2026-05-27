@@ -50,7 +50,20 @@ test "get_microservices_config preserves all sections (regression guard)" {
         }
     };
     out = cfg.get_microservices_config();
-    expected_keys: set[str] = {"enabled","gateway_port","gateway_host","drain_timeout_seconds","http_forward_timeout","routes","services","rate_limit","cors","client","ingress","logs"};
+    expected_keys: set[str] = {
+        "enabled",
+        "gateway_port",
+        "gateway_host",
+        "drain_timeout_seconds",
+        "http_forward_timeout",
+        "routes",
+        "services",
+        "rate_limit",
+        "cors",
+        "client",
+        "ingress",
+        "logs"
+    };
     missing = expected_keys - set(out.keys());
     assert not missing , f"missing keys: {missing}";
 }

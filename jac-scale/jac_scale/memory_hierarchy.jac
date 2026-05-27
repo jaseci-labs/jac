@@ -99,11 +99,13 @@ obj MongoBackend(PersistentMemory) {
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
+        _l2_ref: (any | None) = None,
         fetch_count: int = 0,
         put_count: int = 0;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
+    def set_cache_ref(cache: (any | None)) -> None;
     def is_available -> bool;
     def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
