@@ -713,9 +713,11 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
 }
 
 """IfStmt node type for Jac Ast."""
-obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode, ConditionalNode) {
+obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
     has condition: Expr,
-        body: Sequence[CodeBlockStmt];
+        body: Sequence[CodeBlockStmt],
+        sc_true_target: (UniCFGNode | None) = None,
+        sc_false_target: (UniCFGNode | None) = None;
 
     def postinit -> None;
 }

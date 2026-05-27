@@ -542,7 +542,9 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="else_body", kind=6),
                  FieldDesc(name="condition", kind=4),
-                 FieldDesc(name="body", kind=5)
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="sc_true_target", kind=6),
+                 FieldDesc(name="sc_false_target", kind=6)
              )
          ),
          NodeSpec(
@@ -791,7 +793,9 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="else_body", kind=6),
                  FieldDesc(name="condition", kind=4),
-                 FieldDesc(name="body", kind=5)
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="sc_true_target", kind=6),
+                 FieldDesc(name="sc_false_target", kind=6)
              )
          ),
          NodeSpec(
