@@ -164,7 +164,12 @@ impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
 impl SqliteIdentityStorage._update_fields(
     user_id: str, fields: dict[str, any]
 ) -> bool {
-    allowed = {c.name for c in self._table.columns} - {'user_id','created_at','identities','credentials'};
+    allowed = {c.name for c in self._table.columns} - {
+        'user_id',
+        'created_at',
+        'identities',
+        'credentials'
+    };
     safe_fields = {
         k: v
         for (k, v) in fields.items()

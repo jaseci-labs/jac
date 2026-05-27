@@ -2625,7 +2625,43 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
 }
 
 # Known exception types that map to _jac.exc.X in generated JS.
-glob _KNOWN_EXCEPTIONS: set[str] = {'BaseException','Exception','ArithmeticError','ZeroDivisionError','OverflowError','FloatingPointError','LookupError','IndexError','KeyError','ValueError','TypeError','AttributeError','RuntimeError','NotImplementedError','RecursionError','OSError','FileNotFoundError','FileExistsError','PermissionError','TimeoutError','IsADirectoryError','NotADirectoryError','AssertionError','ImportError','ModuleNotFoundError','NameError','UnboundLocalError','StopIteration','StopAsyncIteration','EOFError','MemoryError','ReferenceError','KeyboardInterrupt','SystemExit','GeneratorExit'};
+glob _KNOWN_EXCEPTIONS: set[str] = {
+         'BaseException',
+         'Exception',
+         'ArithmeticError',
+         'ZeroDivisionError',
+         'OverflowError',
+         'FloatingPointError',
+         'LookupError',
+         'IndexError',
+         'KeyError',
+         'ValueError',
+         'TypeError',
+         'AttributeError',
+         'RuntimeError',
+         'NotImplementedError',
+         'RecursionError',
+         'OSError',
+         'FileNotFoundError',
+         'FileExistsError',
+         'PermissionError',
+         'TimeoutError',
+         'IsADirectoryError',
+         'NotADirectoryError',
+         'AssertionError',
+         'ImportError',
+         'ModuleNotFoundError',
+         'NameError',
+         'UnboundLocalError',
+         'StopIteration',
+         'StopAsyncIteration',
+         'EOFError',
+         'MemoryError',
+         'ReferenceError',
+         'KeyboardInterrupt',
+         'SystemExit',
+         'GeneratorExit'
+     };
 
 """Process raise statement.
 

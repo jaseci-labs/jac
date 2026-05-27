@@ -22,7 +22,7 @@ base_route_app = "app"
 
 [jacpack]
 name = "fullstack"
-description = "Full-stack Jac app with authenticated todo list example"
+description = "Minimal full-stack Jac app (server walkers + client UI)"
 jaclang = "0.9.8"
 
 [[jacpack.plugins]]

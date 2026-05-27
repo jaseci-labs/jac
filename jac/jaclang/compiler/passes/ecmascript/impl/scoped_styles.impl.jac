@@ -1,6 +1,12 @@
 """Implementation for scoped-style annex support."""
 
-glob _GROUPING_AT_RULES: set[str] = {'media','supports','container','layer','scope'};
+glob _GROUPING_AT_RULES: set[str] = {
+         'media',
+         'supports',
+         'container',
+         'layer',
+         'scope'
+     };
 
 impl ScopedStyleSheet.postinit -> None {
     self.scoped_css = scope_stylesheet(
