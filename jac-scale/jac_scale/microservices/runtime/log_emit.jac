@@ -91,7 +91,7 @@ the JSON formatter promotes it). Extras land under the `extras` key
 of the JSON output, not as top-level keys, so caller-supplied names
 can't collide with the stable schema.
 """
-def emit_log_record(level_name: str, msg: str, **extras: Any) -> None {
+def emit_log_record(level_name: str, msg: str, **extras: Any) {
     # Cast to int because Jac's type-checker widens `getattr(...)` to Any|Final
     # and the makeRecord(level=...) parameter is typed `int`.
     level_int: int = int(getattr(logging, level_name.upper(), logging.INFO));
@@ -113,19 +113,19 @@ def emit_log_record(level_name: str, msg: str, **extras: Any) -> None {
 }
 
 
-def info(msg: str, **extras: Any) -> None {
+def info(msg: str, **extras: Any) {
     emit_log_record("INFO", msg, **extras);
 }
 
-def warning(msg: str, **extras: Any) -> None {
+def warning(msg: str, **extras: Any) {
     emit_log_record("WARNING", msg, **extras);
 }
 
-def error(msg: str, **extras: Any) -> None {
+def error(msg: str, **extras: Any) {
     emit_log_record("ERROR", msg, **extras);
 }
 
-def debug(msg: str, **extras: Any) -> None {
+def debug(msg: str, **extras: Any) {
     emit_log_record("DEBUG", msg, **extras);
 }
 
@@ -139,7 +139,7 @@ on every record before formatting.
 Called from gateway.setup and jfast_api request handlers - i.e. once
 per process - so emission shape is stable from process start.
 """
-def install_structured_logging -> None {
+def install_structured_logging {
     global _structured_installed;
     if _structured_installed {
         return;
