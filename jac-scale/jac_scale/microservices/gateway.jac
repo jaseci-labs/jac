@@ -25,7 +25,12 @@ import from jac_scale.microservices.runtime.util {
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 
 glob logger = logging.getLogger(__name__),
-     HOP_BY_HOP_HEADERS: set[str] = {"host","transfer-encoding","connection","keep-alive"};
+     HOP_BY_HOP_HEADERS: set[str] = {
+         "host",
+         "transfer-encoding",
+         "connection",
+         "keep-alive"
+     };
 
 """API Gateway that routes requests to microservices by path prefix.
 
