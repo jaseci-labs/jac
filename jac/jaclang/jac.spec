@@ -519,7 +519,7 @@ impl_target_name ::=
 
 impl_enum_body ::= ((NAME | KWESC_NAME) (":" pipe)? ("=" expression)? ","?)*
 
-sem_def ::= "sem" impl_target_name ("." impl_target_name)* ("=" | "is") STRING ";"?
+sem_def ::= "sem" impl_target_name ("." impl_target_name)* ("=" | "is") STRING* ";"?
 
 type_alias ::= "type" access_tag (NAME | KWESC_NAME) ("[" type_params "]")? "=" pipe ";"
 
