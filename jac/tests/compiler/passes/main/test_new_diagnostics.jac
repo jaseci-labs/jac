@@ -890,8 +890,16 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
-     IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
+glob IMPLEMENTED_REJECT: set[str] = {
+         "E0062_nonlocal_module",
+         "E0071_bare_except_first",
+         "E0075_dup_base"
+     },
+     IMPLEMENTED_VALIDATE: set[str] = {
+         "E0055_yield_in_entry",
+         "E0058_break_no_loop",
+         "E0058_continue_no_loop"
+     };
 
 def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;

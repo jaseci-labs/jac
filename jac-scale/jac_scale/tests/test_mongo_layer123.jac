@@ -8,20 +8,31 @@ Locally they require Docker; in CI they run against a throwaway Mongo
 instance. Skipped automatically if Docker is unavailable.
 """
 
+import json;
 import os;
 import from typing { cast }
 import from uuid { uuid4, UUID }
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.redis { RedisContainer }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root, NodeArchetype }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
+import from jac_scale.memory_hierarchy {
+    _process_cache,
+    MongoBackend,
+    ScaleTieredMemory
+}
 
 
 obj _MongoLayer123Person(Root) {
     has name: str = "",
         age: int = 0;
+}
+
+# Used by the field-failure quarantine reason test: name has NO default.
+obj _MongoRequiredField(Root) {
+    has name: str;
 }
 
 
@@ -90,6 +101,104 @@ test "MongoBackend quarantines un-deserializable documents instead of dropping" 
         assert quarantined_doc.get('error');
         main = client["jac_test_l123"]["_anchors"];
         assert main.find_one({'_id': bad_id}) is None;
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend recovers null field to class default and loads anchor normally" {
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        arch_mod = getattr(_MongoLayer123Person, '__module__');
+        bad_id = str(uuid4());
+        backend.collection.insert_one(
+            {
+                '_id': bad_id,
+                'type': 'NodeAnchor',
+                'arch_module': arch_mod,
+                'arch_type': '_MongoLayer123Person',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': bad_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': '_MongoLayer123Person',
+                        '__module__': arch_mod,
+                        'name': None,
+                        'age': 0
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-26T00:00:00'
+            }
+        );
+        loaded = backend.get(UUID(bad_id));
+        assert loaded is not None , "anchor with null field must load after fix";
+        arch = cast(_MongoLayer123Person, cast(NodeAnchor, loaded).archetype);
+        assert arch.name == "" , (
+            f"null field must be restored to class default ''; got '{arch.name}'"
+        );
+        client = MongoClient(uri);
+        q = client["jac_test_l123"]["_anchors_quarantine"];
+        assert q.find_one({'_id': bad_id}) is None , "recovered anchor must NOT be quarantined";
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend quarantine reason identifies field failure not class unresolvable" {
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        arch_mod = getattr(_MongoRequiredField, '__module__');
+        bad_id = str(uuid4());
+        backend.collection.insert_one(
+            {
+                '_id': bad_id,
+                'type': 'NodeAnchor',
+                'arch_module': arch_mod,
+                'arch_type': '_MongoRequiredField',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': bad_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': '_MongoRequiredField',
+                        '__module__': arch_mod,
+                        'name': None
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-26T00:00:00'
+            }
+        );
+        loaded = backend.get(UUID(bad_id));
+        assert loaded is None , "anchor with no-default null field must be quarantined";
+        client = MongoClient(uri);
+        q = client["jac_test_l123"]["_anchors_quarantine"];
+        q_doc = cast(dict, q.find_one({'_id': bad_id}));
+        assert q_doc is not None , "anchor must be in quarantine";
+        reason = cast(str, q_doc.get('error', ''));
+        assert "archetype field deserialization failed" in reason , (
+            f"reason must identify field failure, not class-unresolvable; got: '{reason}'"
+        );
         client.close();
         backend.close();
     } finally {
@@ -682,5 +791,154 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
         backend2.close();
     } finally {
         container.stop();
+    }
+}
+
+
+test "cascade quarantine invalidates Redis L2 cache for connected live nodes" {
+    mongo_container = MongoDbContainer("mongo:latest");
+    redis_container = RedisContainer("redis:latest");
+    mongo_container.start();
+    redis_container.start();
+    try {
+        mongo_uri = mongo_container.get_connection_url();
+        redis_host = redis_container.get_container_host_ip();
+        redis_port = redis_container.get_exposed_port(6379);
+        redis_url = f"redis://{redis_host}:{redis_port}/0";
+
+        _process_cache.clear();
+        os.environ["MONGODB_URI"] = mongo_uri;
+        os.environ["REDIS_URL"] = redis_url;
+
+        mem = ScaleTieredMemory();
+        mem.postinit();
+        assert mem.l3 is not None , "MongoDB backend must be available";
+        assert mem.l2 is not None , "Redis backend must be available";
+
+        col = mem.l3.collection;
+
+        source_id = str(uuid4());
+        edge_id = str(uuid4());
+        bar_id = str(uuid4());
+
+        col.insert_one(
+            {
+                '_id': source_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'Root',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': source_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': 'Root',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    },
+                    'edges': [edge_id]
+                },
+                'format_version': 1,
+                'updated_at': '2026-01-01T00:00:00'
+            }
+        );
+        col.insert_one(
+            {
+                '_id': edge_id,
+                'type': 'EdgeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'GenericEdge',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'EdgeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': edge_id,
+                    'persistent': True,
+                    'source': source_id,
+                    'target': bar_id,
+                    'is_undirected': False,
+                    'archetype': {
+                        '__type__': 'GenericEdge',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    }
+                },
+                'format_version': 1,
+                'updated_at': '2026-01-01T00:00:00'
+            }
+        );
+        col.insert_one(
+            {
+                '_id': bar_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'Root',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': bar_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': 'Root',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-01-01T00:00:00'
+            }
+        );
+
+        source_anchor = mem.get(UUID(source_id));
+        assert source_anchor is not None , "source must load from Mongo";
+        assert mem.l2.redis_client.get(f"anchor:{source_id}") is not None , (
+            "source must be cached in Redis after tiered get"
+        );
+
+        mem.__mem__.clear();
+        col.update_one(
+            {'_id': bar_id},
+            {
+                '$set': {
+                    'arch_module': 'no.such',
+                    'arch_type': 'Missing',
+                    'data.archetype.__module__': 'no.such',
+                    'data.archetype.__type__': 'Missing'
+                }
+            }
+        );
+        bar_result = mem.get(UUID(bar_id));
+        assert bar_result is None , "corrupt bar must not rehydrate";
+
+        source_doc = col.find_one({'_id': source_id});
+        assert source_doc is not None , "source node must still be live in Mongo";
+        live_edges = source_doc.get('data', {}).get('edges', []);
+        assert edge_id not in live_edges , (
+            f"orphaned edge must be stripped from source.data.edges in Mongo; got: {live_edges}"
+        );
+
+        source_in_redis = mem.l2.redis_client.get(f"anchor:{source_id}");
+        assert source_in_redis is None , (
+            f"source Redis entry must be invalidated after cascade quarantine; "
+            f"got: {json.loads(source_in_redis) if source_in_redis else None}"
+        );
+
+        mem.__mem__.clear();
+        source_reloaded = mem.get(UUID(source_id));
+        assert source_reloaded is not None , "source must still be loadable after cascade";
+        reloaded_edges = source_reloaded.edges;
+        assert reloaded_edges == [] , (
+            f"tiered read must return source with empty edges after cascade; "
+            f"got: {reloaded_edges}"
+        );
+
+        mem.l3.close();
+    } finally {
+        _process_cache.clear();
+        os.environ.pop("MONGODB_URI", None);
+        os.environ.pop("REDIS_URL", None);
+        mongo_container.stop();
+        redis_container.stop();
     }
 }

@@ -202,7 +202,8 @@ def _mongo_quarantine(
     fingerprint: (str | None),
     data: any,
     error: str,
-    from_format_version: (int | None) = None
+    from_format_version: (int | None) = None,
+    l2: (any | None) = None
 ) {
     try {
         q_col = _mongo_q_collection(backend);
@@ -224,6 +225,9 @@ def _mongo_quarantine(
             upsert=True
         );
         backend.collection.delete_one({'_id': id_str});
+        if l2 {
+            l2.delete(to_uuid(id_str));
+        }
         # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
         if anchor_type == 'NodeAnchor' {
             orphaned_edges = list(
@@ -236,6 +240,16 @@ def _mongo_quarantine(
             );
             if orphaned_edges {
                 orphan_edge_ids = [e['_id'] for e in orphaned_edges];
+                # Capture nodes whose edge lists will be mutated BEFORE the update_many
+                # so we can invalidate their Redis entries after the Mongo write.
+                affected_node_ids = [];
+                if l2 {
+                    affected_nodes = backend.collection.find(
+                        {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
+                        {'_id': 1}
+                    );
+                    affected_node_ids = [doc['_id'] for doc in affected_nodes];
+                }
                 cascade_error = f"cascade quarantine: connected node {id_str} was quarantined";
                 cascade_ops = [
                     UpdateOne(
@@ -257,10 +271,20 @@ def _mongo_quarantine(
                 ];
                 q_col.bulk_write(cascade_ops, ordered=False);
                 backend.collection.delete_many({'_id': {'$in': orphan_edge_ids}});
+                if l2 {
+                    for eid in orphan_edge_ids {
+                        l2.delete(to_uuid(eid));
+                    }
+                }
                 backend.collection.update_many(
                     {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
                     {'$pullAll': {'data.edges': orphan_edge_ids}}
                 );
+                if l2 {
+                    for nid in affected_node_ids {
+                        l2.delete(to_uuid(nid));
+                    }
+                }
                 logger.info(
                     f"MongoBackend: cascade-quarantined {len(orphan_edge_ids)} edge(s) "
                     f"connected to quarantined node {id_str}."
@@ -275,6 +299,11 @@ def _mongo_quarantine(
 """Set reference to parent TieredMemory's __mem__ for sync()."""
 impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
     self._mem_ref = mem;
+}
+
+"""Store a reference to the L2 cache so quarantine operations can invalidate it."""
+impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
+    self._l2_ref = cache;
 }
 
 """Check if MongoDB is available and connected."""
@@ -362,15 +391,30 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             fingerprint,
             data,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
     if anchor is None {
-        logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {id}. Moving to quarantine."
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
         );
+        if cls_resolved is None {
+            reason = f"class {arch_module}.{arch_type} unresolvable";
+            logger.warning(
+                f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
+                f"for anchor {id}. Moving to quarantine."
+            );
+        } else {
+            reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            logger.warning(
+                f"MongoBackend: archetype field deserialization failed for "
+                f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
+            );
+        }
         _mongo_quarantine(
             self,
             str(_id),
@@ -379,8 +423,9 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
-            from_format_version=fmt_version
+            reason,
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
@@ -463,6 +508,7 @@ impl MongoBackend.close -> None {
     # Don't close the shared process-level client; just drop local reference.
     self.client = None;
     self._mem_ref = None;
+    self._l2_ref = None;
 }
 
 """Check if an anchor exists in MongoDB."""
@@ -532,7 +578,7 @@ The planner combines these with the topology_index narrowing automatically
 — see `jaclang.runtimelib.planner` for the strategy chooser.
 """
 impl MongoBackend.capabilities -> set[str] {
-    return {'type_pushdown','field_pushdown','id_in','slice'};
+    return {'type_pushdown', 'field_pushdown', 'id_in', 'slice'};
 }
 
 
@@ -864,7 +910,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             fingerprint,
             data,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
@@ -882,7 +929,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             fingerprint,
             data,
             f"class {arch_module}.{arch_type} unresolvable",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
