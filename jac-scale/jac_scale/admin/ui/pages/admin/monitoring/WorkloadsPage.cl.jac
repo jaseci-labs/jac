@@ -80,85 +80,31 @@ cl {
             return str(int(b)) + " B";
         }
 
-        def statusBadge(status: str) -> JsxElement {
-            classes = {
-                "Healthy": "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-                "Starting": "bg-amber-500/20 text-amber-300 border-amber-500/40",
-                "Unstable": "bg-orange-500/20 text-orange-300 border-orange-500/40",
-                "Broken": "bg-red-500/20 text-red-300 border-red-500/40"
-            };
-            cls = classes[status]
-            or "bg-slate-700/40 text-slate-300 border-slate-600/40";
-            dotClasses = {
-                "Healthy": "bg-emerald-400",
-                "Starting": "bg-amber-400",
-                "Unstable": "bg-orange-400",
-                "Broken": "bg-red-400"
-            };
-            dotCls = dotClasses[status] or "bg-slate-400";
-            return
-                <span
-                    className={"inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border " + cls}
-                >
-                    <span className={"w-1.5 h-1.5 rounded-full " + dotCls}></span>
-                    {status}
-                </span>;
-        }
-
-        def kindBadge(kind: str) -> JsxElement {
-            return
-                <span
-                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700"
-                >
-                    {kind}
-                </span>;
-        }
-
-        def phaseBadge(phase: str) -> JsxElement {
-            phaseMap = {
-                "Running": "Healthy",
-                "Pending": "Starting",
-                "Succeeded": "Healthy",
-                "Failed": "Broken",
-                "Unknown": "Unknown"
-            };
-            return statusBadge(phaseMap[phase] or phase);
-        }
-
-        def renderStatCard(
-            label: str, value: any, sub: str = "", tone: str = "white"
-        ) -> JsxElement {
-            colors = {
-                "white": "text-white",
-                "good": "text-emerald-300",
-                "warn": "text-amber-300",
-                "bad": "text-red-300"
-            };
-            valueCls = "text-2xl font-semibold mt-1 " + (colors[tone] or "text-white");
-            return
-                <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">
-                        {label}
-                    </p>
-                    <p className={valueCls}>{value}</p>
-                    {sub and <p className="text-xs text-slate-500 mt-1">{sub}</p>}
-                </div>;
-        }
-
-        def chip(label: str, active: bool) -> JsxElement {
-            base = "px-3 py-1 rounded-full text-xs font-medium cursor-pointer border ";
-            cls = base + ("bg-teal-500/20 text-teal-200 border-teal-500/40"
-                if active
-                else "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200");
-            return
-                <button
-                    key={label}
-                    className={cls}
-                    onClick={lambda e: any { kindFilter = label; }}
-                >
-                    {label}
-                </button>;
-        }
+        statusClasses = {
+            "Healthy": "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+            "Starting": "bg-amber-500/20 text-amber-300 border-amber-500/40",
+            "Unstable": "bg-orange-500/20 text-orange-300 border-orange-500/40",
+            "Broken": "bg-red-500/20 text-red-300 border-red-500/40"
+        };
+        statusDotClasses = {
+            "Healthy": "bg-emerald-400",
+            "Starting": "bg-amber-400",
+            "Unstable": "bg-orange-400",
+            "Broken": "bg-red-400"
+        };
+        toneClasses = {
+            "white": "text-white",
+            "good": "text-emerald-300",
+            "warn": "text-amber-300",
+            "bad": "text-red-300"
+        };
+        phaseToStatus = {
+            "Running": "Healthy",
+            "Pending": "Starting",
+            "Succeeded": "Healthy",
+            "Failed": "Broken",
+            "Unknown": "Unknown"
+        };
 
         if isLoading {
             return
@@ -210,8 +156,59 @@ cl {
             errTone = "bad";
         }
 
-        # Apply the chip filter to the in-memory list. "Pods" switches to the
-        # per-pod data shape; everything else filters the aggregated rows.
+        primaryCards = [
+            {
+                "label": "Healthy",
+                "value": running,
+                "sub": "pods running",
+                "tone": "good"
+            },
+            {
+                "label": "Starting",
+                "value": pending,
+                "sub": "pods pending",
+                "tone": pendingTone
+            },
+            {
+                "label": "Broken",
+                "value": failed,
+                "sub": "pods failing",
+                "tone": failedTone
+            },
+            {
+                "label": "Traffic",
+                "value": str(rps) + " r/s",
+                "sub": "requests per second",
+                "tone": "white"
+            },
+            {
+                "label": "Errors",
+                "value": str(errPct) + "%",
+                "sub": "of requests are errors",
+                "tone": errTone
+            }
+        ];
+        secondaryCards = [
+            {
+                "label": "Cluster nodes",
+                "value": str(nodesReady) + " / " + str(nodesTotal),
+                "sub": "ready",
+                "tone": "white"
+            },
+            {
+                "label": "Response time (p95)",
+                "value": str(p95) + " ms",
+                "sub": "95% of requests under",
+                "tone": "white"
+            },
+            {
+                "label": "Namespace",
+                "value": summary["namespace"] or "default",
+                "sub": "",
+                "tone": "white"
+            }
+        ];
+
         filteredWorkloads = [];
         if kindFilter == "All" {
             filteredWorkloads = workloads;
@@ -231,25 +228,58 @@ cl {
 
         showPods = kindFilter == "Pods";
 
+        chipLabels = ["All", "Deployments", "StatefulSets", "DaemonSets", "Pods"];
+        activeChipCls = "bg-teal-500/20 text-teal-200 border-teal-500/40";
+        inactiveChipCls = "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200";
+        chipBase = "px-3 py-1 rounded-full text-xs font-medium cursor-pointer border ";
+
         return
             <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {renderStatCard("Healthy", running, "pods running", "good")}{renderStatCard(
-                        "Starting", pending, "pods pending", pendingTone
-                    )}{renderStatCard("Broken", failed, "pods failing", failedTone)}{renderStatCard(
-                        "Traffic", str(rps) + " r/s", "requests per second"
-                    )}{renderStatCard(
-                        "Errors", str(errPct) + "%", "of requests are errors", errTone
-                    )}
+                    {[
+                        <div
+                            key={c["label"]}
+                            className="bg-slate-900 border border-slate-800 rounded-lg p-4"
+                        >
+                            <p
+                                className="text-xs text-slate-500 uppercase tracking-wider"
+                            >
+                                {c["label"]}
+                            </p>
+                            <p
+                                className={"text-2xl font-semibold mt-1 " + str(toneClasses[c["tone"]] or "text-white")}
+                            >
+                                {c["value"]}
+                            </p>
+                            {c["sub"]
+                            and <p className="text-xs text-slate-500 mt-1">
+                                {c["sub"]}
+                            </p>}
+                        </div> for c in primaryCards
+                    ]}
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {renderStatCard(
-                        "Cluster nodes",
-                        str(nodesReady) + " / " + str(nodesTotal),
-                        "ready"
-                    )}{renderStatCard(
-                        "Response time (p95)", str(p95) + " ms", "95% of requests under"
-                    )}{renderStatCard("Namespace", summary["namespace"] or "default")}
+                    {[
+                        <div
+                            key={c["label"]}
+                            className="bg-slate-900 border border-slate-800 rounded-lg p-4"
+                        >
+                            <p
+                                className="text-xs text-slate-500 uppercase tracking-wider"
+                            >
+                                {c["label"]}
+                            </p>
+                            <p
+                                className={"text-2xl font-semibold mt-1 " + str(toneClasses[c["tone"]] or "text-white")}
+                            >
+                                {c["value"]}
+                            </p>
+                            {c["sub"]
+                            and <p className="text-xs text-slate-500 mt-1">
+                                {c["sub"]}
+                            </p>}
+                        </div> for c in secondaryCards
+                    ]}
                 </div>
                 <div
                     className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden"
@@ -263,9 +293,15 @@ cl {
                         </p>
                     </div>
                     <div className="flex gap-2 px-4 py-3 border-b border-slate-800">
-                        {[chip(k, kindFilter == k) for k in [
-                            "All", "Deployments", "StatefulSets", "DaemonSets", "Pods"
-                        ]]}
+                        {[
+                            <button
+                                key={k}
+                                className={chipBase + (activeChipCls if kindFilter == k else inactiveChipCls)}
+                                onClick={lambda e: any { kindFilter = k; }}
+                            >
+                                {k}
+                            </button> for k in chipLabels
+                        ]}
                     </div>
                     {not showPods and len(filteredWorkloads) == 0
                     and <div className="p-6 text-center text-sm text-slate-500">
@@ -311,10 +347,21 @@ cl {
                                             {w["name"]}
                                         </td>
                                         <td className="px-4 py-2">
-                                            {kindBadge(w["kind"])}
+                                            <span
+                                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700"
+                                            >
+                                                {w["kind"]}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-2">
-                                            {statusBadge(w["status"])}
+                                            <span
+                                                className={"inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border " + str(statusClasses[w["status"]] or "bg-slate-700/40 text-slate-300 border-slate-600/40")}
+                                            >
+                                                <span
+                                                    className={"w-1.5 h-1.5 rounded-full " + str(statusDotClasses[w["status"]] or "bg-slate-400")}
+                                                ></span>
+                                                {w["status"]}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
                                             {w["replicas_ready"]}{" / "}{w[
@@ -382,7 +429,14 @@ cl {
                                             {p["owner"]}
                                         </td>
                                         <td className="px-4 py-2">
-                                            {phaseBadge(p["phase"])}
+                                            <span
+                                                className={"inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border " + str(statusClasses[phaseToStatus[p["phase"]] or p["phase"]] or "bg-slate-700/40 text-slate-300 border-slate-600/40")}
+                                            >
+                                                <span
+                                                    className={"w-1.5 h-1.5 rounded-full " + str(statusDotClasses[phaseToStatus[p["phase"]] or p["phase"]] or "bg-slate-400")}
+                                                ></span>
+                                                {phaseToStatus[p["phase"]] or p["phase"]}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
                                             {p["node"]}
