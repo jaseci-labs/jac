@@ -61,20 +61,40 @@ obj TurnStatsView {
         has_run: bool = False;
 }
 
+"""One recorded ledger step: which phase produced it and a one-line summary."""
+obj LedgerEntry {
+    has phase: str = "",
+        summary: str = "";
+}
+
+"""The durable session ledger as the UI shows it: per-phase change entries plus
+free-form notes. Mirrors the backend `Ledger` (changes + notes)."""
+obj LedgerView {
+    has changes: list[LedgerEntry] = [],
+        notes: list[str] = [];
+}
+
 """The per-tick poll payload: the event feed plus the live walker position."""
 obj PollResult {
     has events: list[UiEvent] = [],
         status: str = "idle",
         active: str = "",
         path: list[str] = [],
-        stats: TurnStatsView = TurnStatsView();
+        stats: TurnStatsView = TurnStatsView(),
+        ledger: LedgerView = LedgerView();
 }
 
-"""A phase node in the agent's state graph (Plan/Build/QA/Done)."""
+"""A phase node in the agent's state graph (Plan/Build/QA/Done).
+
+`desc` is the short blurb under the node; `sem` is the node's full role prompt
+(its `_jac_semstr`) and `tools` the tool names it exposes -- both shown in the
+UI's phase inspector when the node is clicked."""
 obj GraphNode {
     has id: str = "",
         label: str = "",
-        desc: str = "";
+        desc: str = "",
+        sem: str = "",
+        tools: list[str] = [];
 }
 
 """A legal transition between two phase nodes."""
@@ -121,12 +141,23 @@ def _to_poll(snap: dict) -> PollResult {
         health_loaded=bool(s.get("health_loaded", False)),
         has_run=bool(s.get("has_run", False))
     );
+    led = snap.get("ledger", {}) or {};
+    changes: list[LedgerEntry] = [];
+    for c in led.get("changes", []) {
+        changes.append(
+            LedgerEntry(
+                phase=str(c.get("phase", "")), summary=str(c.get("summary", ""))
+            )
+        );
+    }
+    ledger = LedgerView(changes=changes, notes=[str(n) for n in led.get("notes", [])]);
     return PollResult(
         events=evs,
         status=str(snap.get("status", "idle")),
         active=str(snap.get("active", "")),
         path=[str(p) for p in snap.get("path", [])],
-        stats=stats
+        stats=stats,
+        ledger=ledger
     );
 }
 
@@ -149,7 +180,9 @@ def:pub agent_graph -> GraphData {
             GraphNode(
                 id=str(n.get("id", "")),
                 label=str(n.get("label", "")),
-                desc=str(n.get("desc", ""))
+                desc=str(n.get("desc", "")),
+                sem=str(n.get("sem", "")),
+                tools=[str(t) for t in n.get("tools", [])]
             )
         );
     }

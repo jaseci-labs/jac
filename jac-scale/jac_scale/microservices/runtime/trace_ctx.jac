@@ -48,15 +48,36 @@ def ensure_trace_id(incoming: str | None) -> str {
     return str(uuid.uuid4());
 }
 
-"""A logging filter that prepends the current trace id (short form) to
-every log record's message. Installed once per service on import.
+"""A logging filter that surfaces the current trace id on every record.
 
-The short form is the first 8 hex chars of the UUID, which is plenty
-for log correlation and keeps lines readable.
+Two ways the trace id is exposed:
+
+1. **As a record attribute** (`record.trace_id`) - read by the
+   M-14.b `_JacJsonFormatter` and emitted as a top-level JSON field.
+   None when outside a request context. This is the canonical source
+   for trace correlation queries in Loki / Grafana / the admin logs UI.
+
+2. **As an `[trace=...]` prefix on `record.msg`** - kept for plain-text
+   consumers (`kubectl logs`, local dev terminal). Slight redundancy
+   under JSON output, but harmless and preserves existing UX for
+   anyone tailing pods directly.
+
+Short form (first 8 hex chars of UUID4) is what gets prefixed; the
+full id stays in the `trace_id` field.
 """
 class TraceIdLogFilter(logging.Filter) {
-    def filter(record: logging.LogRecord) -> bool {
+    # `self: any` is required because we subclass a Python class
+    # (`logging.Filter`); Python's logging framework calls `filter.filter(record)`
+    # as a bound method (self + record), so the method MUST accept `self`
+    # explicitly. Earlier versions omitted it and only worked when no
+    # records actually flowed through the filter (latent bug).
+    def filter(self: any, record: logging.LogRecord) -> bool {
         tid = get_current_trace();
+        # Always set the field, even when empty, so JSON output has a
+        # stable schema (`trace_id: null` when outside a request).
+        # setattr (vs `record.trace_id =`) because LogRecord allows
+        # dynamic attrs but the Jac type checker doesn't know that.
+        setattr(record, "trace_id", tid or None);
         if tid {
             short = tid.split("-")[0];
             record.msg = f"[trace={short}] {record.msg}";
