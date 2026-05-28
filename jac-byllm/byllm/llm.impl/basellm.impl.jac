@@ -1611,7 +1611,9 @@ impl BaseLLM._invoke_streaming(
                         # Execute via dispatch_batch, emit results as they complete
                         raw_results: list = [];
                         for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
-                            truncated_result = result_msg.content[:max_result_len];
+                            truncated_result = content_preview(
+                                result_msg.content, max_result_len
+                            );
                             last_tool = btc.tool.get_name();
                             last_result = truncated_result;
                             yield StreamEvent(
