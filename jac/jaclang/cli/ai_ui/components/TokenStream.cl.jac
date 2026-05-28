@@ -2,7 +2,8 @@
 tokens that went into and came out of each call -- input (with a magnitude bar
 so an oversized prompt stands out), output, cache read/created, and latency,
 tagged by the phase it belongs to (or "route" for the routing decision). Makes
-context-size spikes and cache (re)use visible as the agent works.
+context-size spikes and cache (re)use visible as the agent works. Clicking a row
+opens its detail (full input, the diff vs the prior call, and the output).
 """
 
 import from react { useRef, useEffect }
@@ -13,7 +14,9 @@ def _k(n: int) -> str {
     return (str(n // 1000) + "k") if n >= 1000 else str(n);
 }
 
-def:pub TokenStream(events: list[UiEvent], live: bool) -> JsxElement {
+def:pub TokenStream(
+    events: list[UiEvent], live: bool, selected: int, onSelect: Callable[[int], None]
+) -> JsxElement {
     endRef: any = useRef(None);
     calls = [
         e
@@ -49,7 +52,13 @@ def:pub TokenStream(events: list[UiEvent], live: bool) -> JsxElement {
                     else <div className="tokfeed">
                         {[
                             (
-                                <div className="tokrow" key={e.id}>
+                                <div
+                                    className={"tokrow clickable" + (
+                                        " sel" if e.id == selected else ""
+                                    )}
+                                    key={e.id}
+                                    onClick={lambda { onSelect(e.id); }}
+                                >
                                     <span className={"tok-chip tok-" + e.node}>
                                         {e.node}
                                     </span>

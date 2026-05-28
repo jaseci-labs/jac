@@ -9,8 +9,9 @@ updates at token granularity rather than on a poll timer.
 
 import from react { useEffect, useRef }
 sv import from .server { agent_send, agent_graph, agent_reset, agent_stop }
-sv import from .server { agent_settings, agent_apply_settings }
+sv import from .server { agent_settings, agent_apply_settings, agent_call_detail }
 sv import from .server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
+sv import from .server { CallDetail }
 import from .components.PhaseGraph { PhaseGraph }
 import from .components.Conversation { Conversation }
 import from .components.ActivityFeed { ActivityFeed }
@@ -20,6 +21,7 @@ import from .components.LedgerPane { LedgerPane }
 import from .components.PhaseInspector { PhaseInspector }
 import from .components.ResizeHandle { ResizeHandle }
 import from .components.SettingsModal { SettingsModal }
+import from .components.CallDetailModal { CallDetailModal }
 import "./global.css";
 
 def:pub app -> JsxElement {
@@ -37,6 +39,10 @@ def:pub app -> JsxElement {
         ledger: any = {"changes": [], "notes": []},
         # The graph node the user clicked, shown in the phase inspector.
         selected: str = "",
+        # The token-usage row (model call id) the user clicked, and its fetched
+        # detail; -1 / None when the call-detail modal is closed.
+        selectedCall: int = -1,
+        callDetail: any = None,
         # Drag-resizable pane sizes (px): left column width, right-column graph
         # height, and bottom-pane height. The handles mutate these.
         leftW: int = 460,
@@ -247,11 +253,26 @@ def:pub app -> JsxElement {
         ledgerRef.current = {"changes": [], "notes": []};
         ledger = {"changes": [], "notes": []};
         selected = "";
+        selectedCall = -1;
+        callDetail = None;
     }
 
     # Stop the running turn at the next checkpoint.
     async def stop {
         await agent_stop();
+    }
+
+    # Fetch and show one model call's detail (input/diff/output). Used by a
+    # token-usage row click and the modal's Prev/Next; a negative id closes it.
+    async def openCall(id: int) -> None {
+        if id < 0 {
+            selectedCall = -1;
+            callDetail = None;
+            return;
+        }
+        selectedCall = id;
+        d = await agent_call_detail(id);
+        callDetail = d;
     }
 
     # First paint: the static phase graph (nodes/edges the stream doesn't carry)
@@ -367,7 +388,12 @@ def:pub app -> JsxElement {
                 ); }}
             />
             <div className="bottompane" style={{"height": str(bottomH) + "px"}}>
-                <TokenStream events={events} live={status == "running"}/>
+                <TokenStream
+                    events={events}
+                    live={status == "running"}
+                    selected={selectedCall}
+                    onSelect={lambda id: int { openCall(id); }}
+                />
                 <LedgerPane {ledger}/>
                 <PhaseInspector {nodes} {selected}/>
             </div>
@@ -394,6 +420,14 @@ def:pub app -> JsxElement {
                 onClose={lambda { showSettings = False; }}
             />
                 if showSettings
+                else <span/>}
+            {<CallDetailModal
+                detail={callDetail}
+                onPrev={lambda { openCall(int(callDetail.prev_id)); }}
+                onNext={lambda { openCall(int(callDetail.next_id)); }}
+                onClose={lambda { openCall(-1); }}
+            />
+                if (selectedCall >= 0 and callDetail)
                 else <span/>}
         </div>;
 }

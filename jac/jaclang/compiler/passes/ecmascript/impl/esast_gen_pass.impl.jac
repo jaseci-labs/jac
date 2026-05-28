@@ -1784,9 +1784,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    if (
-        isinstance(nd.target, uni.Name) and nd.target.sym_name in self._emitter_builtins
-    ) {
+    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+    _call_kind = classify_call(nd);
+    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1813,17 +1813,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
-    callee_type = None;
-    if isinstance(nd.target, uni.Name) {
-        try {
-            _te = self.prog.get_type_evaluator();
-            if _te {
-                callee_type = _te.get_type_of_expression(nd.target);
-            }
-        } except Exception {
-            callee_type = None;
-        }
-    }
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = args;
@@ -1847,11 +1836,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if (
-        isinstance(callee_type, jtypes.ClassType)
-        and callee_type.is_instantiable()
-        and isinstance(callee, es.Expression)
-    ) {
+    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -2146,8 +2131,6 @@ impl EsastGenPass._ensure_emitters -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
     self._primitives_es_mod = _pes;
-    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
-    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -2166,21 +2149,9 @@ Returns the matching primitive name if ``_obj_type`` is a ``ClassType`` whose
 ``LiteralString`` resolve to ``str`` consistently.
 """
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
-    import from jaclang.compiler.type_system { types as jtypes }
+    import from jaclang.compiler.type_system.type_utils { primitive_type_name_of }
     self._ensure_emitters();
-    if not isinstance(_obj_type, jtypes.ClassType) {
-        return "";
-    }
-    if _obj_type.shared.class_name in self._primitive_type_names {
-        return _obj_type.shared.class_name;
-    }
-    # Walk the MRO to catch subtypes like LiteralString → str.
-    for _base in _obj_type.shared.mro {
-        if _base.shared.class_name in self._primitive_type_names {
-            return _base.shared.class_name;
-        }
-    }
-    return "";
+    return primitive_type_name_of(_obj_type) or "";
 }
 
 """Try to dispatch an operator through the primitive emitter system.
@@ -5672,11 +5643,7 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
 """Initialize the pass."""
 impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
-    self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
-    self.imports: list[es.ImportDeclaration] = [];
-    self.exports: list[es.ExportNamedDeclaration] = [];
-    self.scope_stack: list[ScopeInfo] = [];
-    self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
+    self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
     # Endpoint effects are computed by WalkerEffectsPass (which runs before
     # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
@@ -5689,36 +5656,7 @@ impl EsastGenPass.before_pass -> None {
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and
     # JSX `className` literals can be rewritten during traversal.
-    self.scoped_styles: (ScopedStyleSheet | None) = load_style_annex(
+    self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path
     );
-    # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
-    self.reactive_vars: dict[str, str] = {};
-    # Stack to save/restore reactive_vars per function boundary
-    self.reactive_vars_stack: list[dict[str, str]] = [];
-    # Track which runtime imports have been auto-injected to avoid duplicates
-    self.injected_imports: set[str] = set();
-    # JSX `{...}` slot view-lowering state. `_view_stack` holds the
-    # accumulator name of each enclosing slot scope (a `str`), or `None` for
-    # a nested-`def` barrier that suspends lowering. The topmost `str` is the
-    # accumulator a JSX statement pushes into; a `None` on top means we are
-    # inside a nested function and JSX should NOT be accumulated. The counter
-    # gives nested slot scopes (try/awaiting/except arms) unique local names.
-    self._view_stack: list[(str | None)] = [];
-    # The first slot keeps the bare `__jac_view_kids` name; every later slot
-    # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
-    self._view_used_base: bool = False;
-    self._view_acc_counter: int = 0;
-    # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
-    # the clause handlers know to scope their own accumulators.
-    self._view_awaiting_tries: set[int] = set();
-    # Accumulate JS function stubs for def:pub functions imported via sv import
-    self.sv_import_stubs: list[es.Statement] = [];
-    # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)
-    self.needs_jac_runtime: bool = False;
-    # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
-    self._primitive_emitters: dict[str, object] | None = None;
-    self._builtin_emitter: object | None = None;
-    self._primitive_type_names: set[str] | None = None;
-    self._emitter_builtins: set[str] | None = None;
 }

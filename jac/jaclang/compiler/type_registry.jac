@@ -48,6 +48,11 @@ obj JacTypeRegistry {
         return set(self._entries.keys());
     }
 
+    """True if name is a primitive type."""
+    def is_primitive(name: str) -> bool {
+        return name in self._entries;
+    }
+
     """List of (name, emitter_suffix) pairs for building emitter dicts."""
     def emitter_items -> list[tuple[str, str]] {
         return [(e.name, e.emitter_suffix) for e in self._entries.values()];
@@ -65,6 +70,11 @@ obj JacTypeRegistry {
     """Set of all builtin function names."""
     def builtin_names -> set[str] {
         return set(self._builtin_names);
+    }
+
+    """True if name is a builtin function."""
+    def is_builtin(name: str) -> bool {
+        return name in self._builtin_names;
     }
 
     """Numeric kind for a primitive type name; NotNumeric if unknown / non-numeric."""
