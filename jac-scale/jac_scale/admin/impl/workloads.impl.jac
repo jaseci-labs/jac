@@ -94,6 +94,25 @@ def _match_owner(pod: str, names: list) -> str {
     return best or _owner_name_from_pod(pod);
 }
 
+"""Return a user-facing reason string when metrics can't be shown, else "".
+
+Distinguishes "monitoring disabled in jac.toml" (the stack was never deployed)
+from "Prometheus URL unresolved" so the UI can tell the user to enable
+monitoring rather than implying a transient outage.
+"""
+def _unavailable_reason() -> str {
+    try {
+        import from jac_scale.config_loader { get_scale_config }
+        if not bool(get_scale_config().get_monitoring_config().get('enabled', False)) {
+            return "Monitoring is disabled. Set [plugins.scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
+        }
+    } except Exception {}
+    if resolve_prometheus_url() is None {
+        return "Prometheus URL not configured (K8S_APP_NAME unset).";
+    }
+    return "";
+}
+
 """Register all workloads endpoints under /admin/workloads/*."""
 impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     async def summary_handler(request: Request) -> TransportResponse {
@@ -259,11 +278,12 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
         return error;
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
+    reason = _unavailable_reason();
+    if reason {
         return TransportResponse.success(
             data={
                 'metrics_available': False,
-                'reason': 'Prometheus URL not configured (K8S_APP_NAME unset)',
+                'reason': reason,
                 'namespace': namespace
             },
             meta=Meta(extra={'http_status': 200})
@@ -349,9 +369,10 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         return error;
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
+    reason = _unavailable_reason();
+    if reason {
         return TransportResponse.success(
-            data={'metrics_available': False, 'workloads': []},
+            data={'metrics_available': False, 'reason': reason, 'workloads': []},
             meta=Meta(extra={'http_status': 200})
         );
     }
@@ -589,9 +610,10 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
         return error;
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
+    reason = _unavailable_reason();
+    if reason {
         return TransportResponse.success(
-            data={'metrics_available': False, 'pods': []},
+            data={'metrics_available': False, 'reason': reason, 'pods': []},
             meta=Meta(extra={'http_status': 200})
         );
     }
@@ -899,10 +921,12 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
         return error;
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
+    reason = _unavailable_reason();
+    if reason {
         return TransportResponse.success(
             data={
                 'metrics_available': False,
+                'reason': reason,
                 'range_minutes': range_minutes,
                 'workloads': []
             },
