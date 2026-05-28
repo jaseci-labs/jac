@@ -1137,7 +1137,6 @@ impl AgentEventBus.emit_stream(kind: str, token: str) -> None {
     ) {
         self.events[-1]["text"] = str(self.events[-1].get("text", "")) + token;
         # Re-push the grown event so the client sees the cleaned text grow live.
-        # The firehose is fed separately from the raw stream (see feed_token).
         self.publish(self.events[-1]);
     } else {
         ev = {"id": self._next_id, "kind": kind, "text": token, "streaming": True};
@@ -1147,25 +1146,6 @@ impl AgentEventBus.emit_stream(kind: str, token: str) -> None {
             self.events = self.events[-self._cap:];
         }
         self.publish(ev);
-    }
-}
-
-"""Push one raw model token to the live firehose, without touching the event
-log. Fed from the unsplit stream, so it includes the tokens that form tool
-calls -- which the cleaned reasoning view deliberately hides.
-"""
-impl AgentEventBus.feed_token(token: str) -> None {
-    if not self.active_feed or not self._subscribers {
-        return;
-    }
-    # Token-only message (no `ev`): the client appends it to the firehose and
-    # refreshes top-level state, but the event log is untouched.
-    msg = self._state();
-    msg["token"] = token;
-    for q in list(self._subscribers) {
-        try {
-            q.put_nowait(msg);
-        } except Exception { }
     }
 }
 
@@ -1232,7 +1212,7 @@ impl AgentEventBus.publish_ledger -> None {
         return;
     }
     # A ledger-only message: no `ev`/`token`, so the client refreshes its ledger
-    # panel and top-level state without touching the event log or firehose.
+    # panel and top-level state without touching the event log.
     msg = self._state();
     msg["ledger"] = self.ledger_view();
     for q in list(self._subscribers) {
@@ -1629,6 +1609,34 @@ impl TurnRenderer._ci_event(info: any) {
     );
 }
 
+"""Emit one per-model-call usage record to the UI bus from a byLLM `llm_timing`
+event's data, tagged with the phase it belongs to ("Plan"/"Build"/"QA", or
+"route" for the routing call). Drives the live token-usage stream in `--ui`;
+a no-op on the terminal path (the bus is inactive there)."""
+impl TurnRenderer._emit_call_usage(data: any, phase: str) -> None {
+    if not agent.bus.active_feed {
+        return;
+    }
+    d = data if isinstance(data, dict) else {};
+    tin = int(d.get("prompt_tokens", 0) or 0);
+    tout = int(d.get("completion_tokens", 0) or 0);
+    # Skip empty records (a backend that returned no streamed usage).
+    if tin == 0 and tout == 0 {
+        return;
+    }
+    agent.bus.emit(
+        "call",
+        {
+            "node": phase,
+            "tokens_in": tin,
+            "tokens_out": tout,
+            "cache_read": int(d.get("cache_read_input_tokens", 0) or 0),
+            "cache_create": int(d.get("cache_creation_input_tokens", 0) or 0),
+            "ms": float(d.get("duration_ms", 0) or 0)
+        }
+    );
+}
+
 """Consume one byLLM phase event stream, rendering it live.
 
 A phase ability calls this with the stream returned by the `run_phase` byLLM
@@ -1679,7 +1687,7 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         }
         (result, ms) = (pend_result["result"], pend_result["ms"]);
         pend_result = None;
-        agent.bus.emit("tool_result", {"text": truncate(str(result), 600)});
+        agent.bus.emit("tool_result", {"text": truncate(str(result), 4000)});
         lines = agent.view._result_snippet(result, 3 if agent.cfg.verbose else 1);
         tail = f"   {agent.view._fmt_ms(ms)}"
             if (agent.cfg.verbose and ms is not None)
@@ -1706,9 +1714,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 if not tok {
                     continue;
                 }
-                # Raw firehose: every generated token, including the ones that
-                # form tool calls (which the cleaned reasoning below hides).
-                agent.bus.feed_token(tok);
                 if step_t0 == 0.0 {
                     step_t0 = time.time();
                 }
@@ -1740,15 +1745,13 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 out.write(tok);
                 out.flush();
                 streamed = True;
-                # Stream the answer into the conversation token-by-token, and
-                # the raw token into the firehose.
+                # Stream the answer into the conversation token-by-token.
                 agent.bus.emit_stream("answer", tok);
-                if tok {
-                    agent.bus.feed_token(tok);
-                }
             } elif kind == "llm_timing" {
                 last_llm_ms = float(data.get("duration_ms", 0) or 0);
                 last_llm_tokens = int(data.get("completion_tokens", 0) or 0);
+                # Feed the live per-call token-usage stream (--ui only).
+                agent.view._emit_call_usage(data, agent.bus.active);
             } elif kind == "tool_call" {
                 clear_think();
                 end_line();
@@ -2042,9 +2045,10 @@ impl PhaseState.run{
         # Several successors (QA -> Build / Plan / Done) and the project
         # compiles: let the model choose along this node's own out-edges,
         # reading each candidate state's `sem`, the objective, and the ledger.
-        # Streamed via a stream_handler so the routing call's tokens reach the
-        # live firehose, while `visit [-->] by` still constrains the choice to a
-        # real successor edge (no free-text parsing, no manual default).
+        # Streamed via a stream_handler so the routing call's reasoning reaches
+        # the live feed and its token usage the token-usage stream, while
+        # `visit [-->] by` still constrains the choice to a real successor edge
+        # (no free-text parsing, no manual default).
         visit [-->] by agent_model(
             stream=True,
             stream_handler=agent.view.route_stream_event,
@@ -2061,25 +2065,30 @@ impl PhaseState.run{
 """Forward one byLLM StreamEvent from a `visit [-->] by model` routing call.
 
 Passed as the `stream_handler` to the QA routing model so the structured
-edge selection still streams: every raw token is teed to the live firehose
-and any clean reasoning prose is shown in the feed, while `visit [-->] by`
-keeps the choice constrained to a real successor edge. Lighter than
-`render_stream` -- routing is one cheap call, not a phase, so it skips the
-tool and turn-stat bookkeeping.
+edge selection still streams: clean reasoning prose is shown in the feed and
+the call's synthetic `llm_timing` feeds the token-usage stream (tagged
+"route"), while `visit [-->] by` keeps the choice constrained to a real
+successor edge. Lighter than `render_stream` -- routing is one cheap call,
+not a phase, so it skips the tool and turn-stat bookkeeping.
 """
 impl TurnRenderer.route_stream_event(event: any) -> None {
     # Stop pressed in the UI: drop further routing tokens immediately.
     if agent.bus.cancel_requested {
         return;
     }
+    # The routing call runs outside the ReAct loop, so byLLM emits one synthetic
+    # `llm_timing` carrying this call's usage -- feed it to the token-usage stream
+    # tagged "route" so the expensive routing decision is visible.
+    if event.event_type == "llm_timing" {
+        self._emit_call_usage(event.data, "route");
+        return;
+    }
     tok = str(event.data.get("content", "")) if event.data else "";
     if not tok {
         return;
     }
-    # Every routing token is raw model output -- the structured choice JSON, or
-    # reasoning a backend streams ahead of it. Tee it all to the firehose; show
-    # only clean reasoning prose (`thought`) in the live reasoning feed.
-    agent.bus.feed_token(tok);
+    # Routing tokens are the structured choice JSON, or reasoning a backend
+    # streams ahead of it; show only clean reasoning prose in the live feed.
     if event.event_type == "thought" {
         cleaned = self._strip_control(tok);
         if cleaned {

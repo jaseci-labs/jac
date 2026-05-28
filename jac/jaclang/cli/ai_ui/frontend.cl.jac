@@ -32,8 +32,6 @@ def:pub app -> JsxElement {
         # Server-shaped TurnStatsView; the server constructs it, so the client
         # only ever holds a plain object (never instantiate the sv type here).
         stats: any = {"has_run": False},
-        # Raw firehose of every streamed token, concatenated (capped).
-        tokens: str = "",
         # The durable session ledger ({changes, notes}); refreshed whenever a
         # ledger message arrives so the bottom-pane panel mirrors it live.
         ledger: any = {"changes": [], "notes": []},
@@ -71,10 +69,8 @@ def:pub app -> JsxElement {
     doc: any = document;
     # The live event list is kept in a ref so the stream handler (captured once
     # by the effect) always upserts against the current list, not a stale render
-    # closure -- otherwise each delta would rebuild from an empty `events`. Same
-    # reason for the token firehose buffer.
+    # closure -- otherwise each delta would rebuild from an empty `events`.
     eventsRef: any = useRef([]);
-    tokensRef: any = useRef("");
     # Held in a ref for the same reason as events: ledger messages are sparse, so
     # the handler must read the latest value, not a stale render closure.
     ledgerRef: any = useRef({"changes": [], "notes": []});
@@ -111,16 +107,6 @@ def:pub app -> JsxElement {
             }
             eventsRef.current = out;
             events = out;
-        }
-        # Firehose: append the raw token (delta msgs carry it; empty otherwise),
-        # capped to the most recent stretch.
-        if msg.token {
-            nt = tokensRef.current + msg.token;
-            if len(nt) > 4000 {
-                nt = nt[len(nt) - 4000:];
-            }
-            tokensRef.current = nt;
-            tokens = nt;
         }
         # Ledger messages are sparse (only when a phase records or a note lands);
         # apply whenever present, otherwise keep the last value.
@@ -258,8 +244,6 @@ def:pub app -> JsxElement {
         active = "";
         path = [];
         stats = {"has_run": False};
-        tokensRef.current = "";
-        tokens = "";
         ledgerRef.current = {"changes": [], "notes": []};
         ledger = {"changes": [], "notes": []};
         selected = "";
@@ -383,7 +367,7 @@ def:pub app -> JsxElement {
                 ); }}
             />
             <div className="bottompane" style={{"height": str(bottomH) + "px"}}>
-                <TokenStream text={tokens} live={status == "running"}/>
+                <TokenStream events={events} live={status == "running"}/>
                 <LedgerPane {ledger}/>
                 <PhaseInspector {nodes} {selected}/>
             </div>
