@@ -5,6 +5,8 @@ ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
 
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision
@@ -563,37 +565,19 @@ obj MicroserviceManifestBuilder {
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
-        min_r: int = int(cfg.get("min", 1));
-        max_r: int = int(cfg.get("max", 3));
-        cpu: int = int(cfg.get("cpu_target", 70));
-        return {
-            "apiVersion": "autoscaling/v2",
-            "kind": "HorizontalPodAutoscaler",
-            "metadata": {
-                "name": f"{k8s_name}-hpa",
-                "namespace": self.k8s_config.namespace,
-                "labels": {"app": k8s_name, "managed": "jac-scale"}
-            },
-            "spec": {
-                "scaleTargetRef": {
-                    "apiVersion": "apps/v1",
-                    "kind": "Deployment",
-                    "name": f"{k8s_name}-deployment"
-                },
-                "minReplicas": min_r,
-                "maxReplicas": max_r,
-                "metrics": [
-                    {
-                        "type": "Resource",
-                        "resource": {
-                            "name": "cpu",
-                            "target": {"type": "Utilization", "averageUtilization": cpu}
-                        }
-                    }
-                ]
-            }
-        };
+        spec = AutoscalerSpec(
+            target_name=f"{k8s_name}-deployment",
+            namespace=self.k8s_config.namespace,
+            min_replicas=int(cfg.get("min", 1)),
+            max_replicas=int(cfg.get("max", 3)),
+            triggers=[
+                Trigger(
+                    type="cpu",
+                    metadata={"averageUtilization": str(cfg.get("cpu_target", 70))}
+                )
+            ]
+        );
+        return HPAAutoscaler()._build_manifests(spec);
     }
 
     """Single Ingress -> gateway Service; HTTP only; controller-agnostic.
