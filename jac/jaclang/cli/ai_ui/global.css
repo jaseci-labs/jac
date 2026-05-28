@@ -92,8 +92,7 @@ body {
 }
 
 .workspace {
-    display: grid;
-    grid-template-columns: minmax(360px, 1.1fr) minmax(420px, 1fr);
+    display: flex;
     flex: 1;
     min-height: 0;
 }
@@ -105,14 +104,46 @@ body {
     min-width: 0;
 }
 
+/* Left column width is driven by an inline style the resize handle updates; it
+   must not shrink below that, so the right column takes the remaining space. */
 .col.left {
-    border-right: 1px solid var(--border);
+    flex: 0 0 auto;
+    min-width: 280px;
 }
 
 .col.right {
-    display: grid;
-    grid-template-rows: minmax(220px, 0.9fr) 1.1fr;
-    min-height: 0;
+    flex: 1;
+    min-width: 0;
+    /* Safety net: if the graph pane is dragged taller than the column, clip
+       rather than letting it spill into the bottom pane. */
+    overflow: hidden;
+}
+
+/* ---- Resize handles --------------------------------------------------- */
+.resize-handle {
+    flex: 0 0 6px;
+    background: var(--border);
+    transition: background 0.15s ease;
+}
+
+.resize-handle:hover {
+    background: var(--primary);
+}
+
+.resize-handle.v {
+    cursor: col-resize;
+    width: 6px;
+}
+
+.resize-handle.h {
+    cursor: row-resize;
+    height: 6px;
+}
+
+/* Freeze cursor + suppress selection across the page while a handle drags. */
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
 }
 
 .pane {
@@ -473,6 +504,69 @@ body {
     overflow-y: auto;
 }
 
+/* ---- Tool dropdown (call header + collapsible scrollable output) ------ */
+.toolrow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+}
+
+.tool-head {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    width: 100%;
+    padding: 7px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.tool-head:hover {
+    background: var(--panel-2);
+}
+
+.tool-head .chev {
+    width: 10px;
+    color: #6b7077;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tool-head .tag {
+    flex-shrink: 0;
+    width: 96px;
+    color: var(--accent);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tool-head .body {
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tool-body {
+    padding: 4px 16px 10px 34px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    max-height: 260px;
+    overflow-y: auto;
+    border-top: 1px solid rgba(38, 40, 44, 0.4);
+}
+
 /* ---- Graph ------------------------------------------------------------ */
 .graph-wrap {
     position: relative;
@@ -509,31 +603,228 @@ body {
     border-radius: 3px;
 }
 
-/* ---- Token firehose (lower-left live stream) -------------------------- */
+/* The conversation fills the whole left column now that the token stream moved
+   to the bottom pane. */
 .col.left > .pane {
     flex: 1;
     min-height: 0;
 }
 
-.tokenstream {
-    flex-shrink: 0;
-    height: 160px;
+/* Right column: the graph pane keeps the height the handle sets; the activity
+   feed below it takes the rest. */
+.col.right > .pane:first-child {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.col.right > .pane:last-child {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ---- Bottom pane: token stream | ledger | inspector ------------------- */
+.bottompane {
+    flex: 0 0 auto;
     display: flex;
-    flex-direction: column;
+    min-height: 0;
     border-top: 1px solid var(--border);
     background: var(--panel);
 }
 
-.tokenstream-body {
+/* Three equal sections divided by vertical rules. */
+.bp-section {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.bp-section + .bp-section {
+    border-left: 1px solid var(--border);
+}
+
+.bp-body {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 14px 10px;
+    min-height: 0;
+}
+
+/* ---- Token-usage stream (one row per model call) --------------------- */
+.tokusage-body {
+    padding: 2px 0 8px;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11.5px;
-    line-height: 1.45;
-    color: #9aa0a8;
+    font-size: 11px;
+}
+
+.tokfeed {
+    display: flex;
+    flex-direction: column;
+}
+
+.tokrow {
+    display: grid;
+    grid-template-columns: 48px minmax(60px, 1fr) auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 4px 12px;
+    border-bottom: 1px solid rgba(38, 40, 44, 0.5);
+    font-variant-numeric: tabular-nums;
+}
+
+.tok-chip {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 4px;
+    border-radius: 4px;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--muted);
+}
+
+.tok-chip.tok-Plan {
+    color: #a5b4fc;
+}
+
+.tok-chip.tok-Build {
+    color: var(--green);
+}
+
+.tok-chip.tok-QA {
+    color: var(--amber);
+}
+
+.tok-chip.tok-route {
+    color: var(--accent);
+    background: rgba(34, 211, 238, 0.12);
+}
+
+.tok-inwrap {
+    position: relative;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 16px;
+}
+
+.tokbar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    min-width: 2px;
+    background: rgba(248, 113, 113, 0.22);
+    border-radius: 3px;
+}
+
+.tok-in {
+    position: relative;
+    padding-left: 6px;
+    color: var(--fg);
+}
+
+.tok-out {
+    color: var(--green);
+}
+
+.tok-cache {
+    color: #6b7077;
+}
+
+.tok-ms {
+    color: var(--muted);
+    min-width: 46px;
+    text-align: right;
+}
+
+/* ---- Ledger panel ----------------------------------------------------- */
+.ledger-list {
+    display: flex;
+    flex-direction: column;
+    font-size: 12.5px;
+}
+
+.ledger-row {
+    display: flex;
+    gap: 9px;
+    padding: 6px 14px;
+    border-bottom: 1px solid rgba(38, 40, 44, 0.5);
+    align-items: baseline;
+}
+
+.ledger-phase {
+    flex-shrink: 0;
+    width: 46px;
+    color: #a5b4fc;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+.ledger-row.note .ledger-phase {
+    color: var(--amber);
+}
+
+.ledger-summary {
+    flex: 1;
+    min-width: 0;
+    color: var(--fg);
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* ---- Phase inspector -------------------------------------------------- */
+.insp-name {
+    margin-left: auto;
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+}
+
+.insp-body {
+    padding: 10px 14px 14px;
+}
+
+.insp-desc {
+    color: var(--fg);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.insp-label {
+    color: var(--muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+
+.insp-sem {
+    color: #c3c6cc;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 12px;
+}
+
+.insp-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.insp-tool {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--accent);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
 }
 
 /* ---- Stats bar -------------------------------------------------------- */
@@ -606,4 +897,158 @@ body {
 
 .stat.health.err {
     color: var(--red);
+}
+
+/* ---- Topbar icon button (settings gear) ------------------------------- */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+    background: var(--panel-2);
+    color: var(--fg);
+}
+
+/* A dot on the gear when the model still needs a key. */
+.icon-btn.attn {
+    color: var(--amber);
+    border-color: rgba(251, 191, 36, 0.45);
+    background: rgba(251, 191, 36, 0.1);
+}
+
+/* ---- Settings modal --------------------------------------------------- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.modal {
+    width: 480px;
+    max-width: 92vw;
+    max-height: 86vh;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.modal-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.modal-x {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.modal-x:hover {
+    color: var(--fg);
+}
+
+.modal-body {
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.field > label {
+    font-size: 11.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.field-row {
+    display: flex;
+    gap: 12px;
+}
+
+.field-hint {
+    font-size: 11px;
+    color: #6b7077;
+}
+
+.preset-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.preset {
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.preset:hover {
+    color: var(--fg);
+    border-color: var(--primary);
+}
+
+.modal-note {
+    padding: 9px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.08);
+    color: var(--amber);
+    font-size: 12.5px;
+}
+
+.modal-err {
+    color: var(--red);
+    font-size: 12.5px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
 }
