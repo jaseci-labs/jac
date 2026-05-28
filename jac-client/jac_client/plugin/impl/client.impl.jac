@@ -164,18 +164,16 @@ impl JacClient.render_page(
     <link rel="manifest" href="{base_prefix}static/manifest.json">
     <meta name="theme-color" content="{pwa_theme_color}">
     <link rel="apple-touch-icon" href="{base_prefix}static/pwa-192x192.png">''';
-        pwa_body = '''
+        pwa_body = f'''
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+      if ('serviceWorker' in navigator) {{
+        window.addEventListener('load', () => {{
           navigator.serviceWorker.register('{base_prefix}static/sw.js')
             .then((reg) => console.log('SW registered:', reg.scope))
             .catch((err) => console.log('SW registration failed:', err));
-        });
-      }
-    </script>'''.replace(
-            '{base_prefix}', base_prefix
-        );
+        }});
+      }}
+    </script>''';
     }
     # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
     init_data = {
