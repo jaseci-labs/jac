@@ -22,6 +22,7 @@ class JacClientConfig(PluginConfigBase) {
     def get_base_path(self: JacClientConfig) -> str;
     def get_vite_config(self: JacClientConfig) -> dict[str, Any];
     def get_static_base_path(self: JacClientConfig) -> str;
+    def get_trust_forwarded_headers(self: JacClientConfig) -> bool;
     def get_ts_config(self: JacClientConfig) -> dict[str, Any];
     def get_configs(self: JacClientConfig) -> dict[str, Any];
     def get_package_config(self: JacClientConfig) -> dict[str, Any];

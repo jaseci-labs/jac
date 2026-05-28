@@ -151,6 +151,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
     return {
         'api': {'base_url': ''},
         'static_base_path': '',
+        'trust_forwarded_headers': False,
         'vite': {
             'plugins': [],
             'lib_imports': [],
@@ -230,6 +231,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
         'static_base_path': client_config.get('static_base_path', ''),
+        'trust_forwarded_headers': client_config.get('trust_forwarded_headers', False),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
@@ -276,6 +278,12 @@ impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, any] {
 impl JacClientConfig.get_static_base_path(self: JacClientConfig) -> str {
     config = self.load();
     return str(config.get('static_base_path', ''));
+}
+
+"""Get trust_forwarded_headers for backend dynamic proxy headers."""
+impl JacClientConfig.get_trust_forwarded_headers(self: JacClientConfig) -> bool {
+    config = self.load();
+    return bool(config.get('trust_forwarded_headers', False));
 }
 
 """Get TypeScript-specific configuration for tsconfig.json customization."""

@@ -271,9 +271,49 @@ def _generate_index_html(
 
 """Resolve asset base path dynamically based on runtime context headers."""
 impl WebTarget.resolve_asset_base(headers: dict[str, str]) -> str {
+    import re;
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jac_client.plugin.src.config_loader { JacClientConfig }
+
+    try {
+        p_dir = self.project_dir;
+        if not p_dir {
+            import from jaclang.project.config { find_project_root }
+            base_path_dir = Path(Jac.get_base_path_dir() or ".");
+            project_root_result = find_project_root(base_path_dir);
+            if project_root_result {
+                (base_path, _) = project_root_result;
+            } else {
+                base_path = base_path_dir;
+            }
+            p_dir = base_path;
+        }
+        config = JacClientConfig(project_dir=p_dir);
+        trust_forwarded = config.get_trust_forwarded_headers();
+    } except (
+        AttributeError,
+        ImportError,
+        ValueError,
+        KeyError,
+        FileNotFoundError,
+        OSError
+    ) {
+        trust_forwarded = False;
+    }
+
+    if not trust_forwarded {
+        return "/";
+    }
+
     prefix = headers.get("x-forwarded-prefix")
     or headers.get("X-Forwarded-Prefix")
     or "/";
+
+    # Validate against strict regex: ^/[a-zA-Z0-9_\-/]*$
+    if not re.match(r"^/[a-zA-Z0-9_\-/]*$", prefix) {
+        return "/";
+    }
+
     if prefix and not prefix.endswith('/') {
         prefix = prefix + '/';
     }

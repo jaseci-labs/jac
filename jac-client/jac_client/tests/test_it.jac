@@ -2290,44 +2290,73 @@ test "multi_segment_route_asset_resolution" {
 
 test "polymorphic client target asset base path resolution" {
     import from pathlib { Path }
+    import tempfile;
     import from jac_client.plugin.src.targets.registry {
         get_target_factory,
         TargetType
     }
 
-    # Setup a dummy project directory for factory instantiation
-    dummy_dir = Path("/tmp/dummy_jac_project");
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir);
+        # Scenario 1: Default Behavior (trust_forwarded_headers = false)
+        # No configuration in jac.toml -> should ignore headers entirely
+        factory = get_target_factory();
+        web_target = factory.create_by_type(TargetType.WEB, project_dir);
+        assert web_target.resolve_asset_base({}) == "/";
+        assert web_target.resolve_asset_base({"x-forwarded-prefix": "/my-prefix"}) == "/";
+        assert web_target.resolve_asset_base({"X-Forwarded-Prefix": "/my-prefix/"}) == "/";
+        # Scenario 2: Configured to Trust Forwarded Headers but with Malicious payloads
+        # Write jac.toml to enable trust_forwarded_headers
+        jac_toml = project_dir / "jac.toml";
+        jac_toml.write_text(
+            """[project]
+name = "test-project"
+version = "1.0.0"
 
-    # 1. Get WebTarget from factory
-    factory = get_target_factory();
-    web_target = factory.create_by_type(TargetType.WEB, dummy_dir);
-
-    # Test WebTarget resolve_asset_base
-    # Case A: Standard root-relative fallback
-    assert web_target.resolve_asset_base({}) == "/";
-
-    # Case B: Standard lowercase header
-    assert web_target.resolve_asset_base(
-        {"x-forwarded-prefix": "/my-custom-prefix"}
-    ) == "/my-custom-prefix/";
-    assert web_target.resolve_asset_base(
-        {"x-forwarded-prefix": "/my-custom-prefix/"}
-    ) == "/my-custom-prefix/";
-
-    # Case C: Case-insensitive header fallback
-    assert web_target.resolve_asset_base({"X-Forwarded-Prefix": "/Another-Prefix"}) == "/Another-Prefix/";
-
-    # 2. Get DesktopTarget from factory
-    desktop_target = factory.create_by_type(TargetType.DESKTOP, dummy_dir);
-
-    # Test DesktopTarget resolve_asset_base (always root-relative)
-    assert desktop_target.resolve_asset_base({"x-forwarded-prefix": "/ignored"}) == "/";
-    assert desktop_target.resolve_asset_base({}) == "/";
-
-    # 3. Get PWATarget from factory and verify it inherits web behavior
-    pwa_target = factory.create_by_type(TargetType.PWA, dummy_dir);
-    assert pwa_target.resolve_asset_base({"x-forwarded-prefix": "/my-pwa"}) == "/my-pwa/";
-    assert pwa_target.resolve_asset_base({}) == "/";
+[plugins.client]
+trust_forwarded_headers = true
+"""
+        );
+        # Invalidate config cache
+        import from jac_client.plugin.src.config_loader { JacClientConfig }
+        config = JacClientConfig(project_dir=project_dir);
+        config.invalidate();
+        web_target_trusted = factory.create_by_type(TargetType.WEB, project_dir);
+        # Test WebTarget resolve_asset_base under trust
+        # Case A: Standard root-relative fallback
+        assert web_target_trusted.resolve_asset_base({}) == "/";
+        # Case B: Standard lowercase header
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/my-custom-prefix"}
+        ) == "/my-custom-prefix/";
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/my-custom-prefix/"}
+        ) == "/my-custom-prefix/";
+        # Case C: Case-insensitive header fallback
+        assert web_target_trusted.resolve_asset_base(
+            {"X-Forwarded-Prefix": "/Another-Prefix"}
+        ) == "/Another-Prefix/";
+        # Case D: Malicious payload XSS script tag injection attempt
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "\"><script>alert(1)</script>"}
+        ) == "/";
+        # Case E: Malicious payload absolute URL host hijacking attempt
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "//evil.com/"}
+        ) == "/";
+        # Case F: Malicious payload path traversal / relative breaks
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/../etc/"}
+        ) == "/";
+        # 2. Get DesktopTarget from factory and verify it is always root-relative
+        desktop_target = factory.create_by_type(TargetType.DESKTOP, project_dir);
+        assert desktop_target.resolve_asset_base({"x-forwarded-prefix": "/ignored"}) == "/";
+        assert desktop_target.resolve_asset_base({}) == "/";
+        # 3. Get PWATarget from factory and verify it inherits web behavior under trust
+        pwa_target = factory.create_by_type(TargetType.PWA, project_dir);
+        assert pwa_target.resolve_asset_base({"x-forwarded-prefix": "/my-pwa"}) == "/my-pwa/";
+        assert pwa_target.resolve_asset_base({}) == "/";
+    }
 }
 
 # Mock introspector using standard module introspector mock structure
@@ -2349,25 +2378,73 @@ obj MockIntrospector {
 
 test "render_page base tag injection" {
     import from pathlib { Path }
+    import tempfile;
+    import from jaclang { JacRuntime as Jac }
     import from jac_client.plugin.client { JacClient }
 
     intro = MockIntrospector();
 
-    # 1. Render without headers (standard default)
-    res = JacClient.render_page(intro, "app", {}, "guest");
-    assert "html" in res;
-    html = res["html"];
-    assert '<base href="/">' in html;
-    assert 'src="/static/client.js' in html;
+    with tempfile.TemporaryDirectory() as temp_dir {
+        orig_base = Jac.get_base_path_dir();
+        Jac.set_base_path(temp_dir);
+        try {
+            # Scenario 1: Untrusted by default
+            # 1.1 Render without headers (standard default)
+            res = JacClient.render_page(intro, "app", {}, "guest");
+            assert "html" in res;
+            html = res["html"];
+            assert '<base href="/">' in html;
+            assert 'src="/static/client.js' in html;
 
-    # 2. Render with proxy headers (e.g. dynamic subpath behind Nginx)
-    headers = {"X-Forwarded-Prefix": "/my-reverse-proxy"};
-    res_proxy = JacClient.render_page(
-        intro, "app", {}, "guest", request_ctx={"headers": headers}
-    );
-    html_proxy = res_proxy["html"];
-    assert '<base href="/my-reverse-proxy/">' in html_proxy;
-    assert 'src="/my-reverse-proxy/static/client.js' in html_proxy;
+            # 1.2 Render with proxy headers but untrusted by default
+            headers = {"X-Forwarded-Prefix": "/my-reverse-proxy"};
+            res_proxy = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers}
+            );
+            html_proxy = res_proxy["html"];
+            # Should be ignored (falls back to /)
+            assert '<base href="/">' in html_proxy;
+            assert 'src="/static/client.js' in html_proxy;
+
+            # Scenario 2: Trust Enabled in jac.toml
+            project_dir = Path(temp_dir);
+            jac_toml = project_dir / "jac.toml";
+            jac_toml.write_text(
+                """[project]
+name = "test-project"
+version = "1.0.0"
+
+[plugins.client]
+trust_forwarded_headers = true
+"""
+            );
+
+            # Invalidate config cache
+            import from jac_client.plugin.src.config_loader { JacClientConfig }
+            config = JacClientConfig(project_dir=project_dir);
+            config.invalidate();
+
+            # 2.1 Render under trust with valid prefix
+            res_proxy_trusted = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers}
+            );
+            html_proxy_trusted = res_proxy_trusted["html"];
+            assert '<base href="/my-reverse-proxy/">' in html_proxy_trusted;
+            assert 'src="/my-reverse-proxy/static/client.js' in html_proxy_trusted;
+
+            # 2.2 Render under trust with escaping / invalid payload
+            headers_xss = {"X-Forwarded-Prefix": "/prefix-with-\"-quotes"};
+            res_xss = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers_xss}
+            );
+            html_xss = res_xss["html"];
+            # Since quotes fail validation, falls back to /
+            assert '<base href="/">' in html_xss;
+            assert 'src="/static/client.js' in html_xss;
+        } finally {
+            Jac.set_base_path(orig_base);
+        }
+    }
 }
 
 test "live server dynamic base resolution" {

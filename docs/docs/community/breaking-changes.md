@@ -31,6 +31,33 @@ static_base_path = "/admin/"
 
 **Why:** The `base_path` naming was ambiguous as it sounded like it controlled dynamic/runtime route prefixes. Renaming to `static_base_path` clarifies that this prefix is purely for compiling static assets for CDN edge-cases. Dynamic runtime path prefixes are now handled automatically via the polymorphic `ClientTarget` and server-side request headers.
 
+#### 2. Secure-by-Default Reverse Proxy Prefix Resolution (`trust_forwarded_headers`)
+
+Dynamic subpath prefix parsing from `X-Forwarded-Prefix` HTTP headers (which automatically injects `<base href="...">` and prepends prefixes to static asset paths) is now **disabled by default (secure-by-default)**. This prevents Reflected Cross-Site Scripting (XSS) and remote resource hijack vulnerabilities.
+
+**Impact:** Applications fronted by reverse proxies (e.g. Nginx, Cloudflare, Traefik) relying on automatic dynamic subpath routing will no longer resolve subpaths automatically unless explicitly configured.
+
+**Configuration (`jac.toml`):**
+
+To trust incoming proxy headers and enable dynamic subpath routing, you must explicitly opt-in:
+
+```toml
+[plugins.client]
+trust_forwarded_headers = true
+```
+
+#### 3. Wide Side-Effects of `<base href>` Tag Injection
+
+When dynamic proxy subpath resolution is active, a `<base href="...">` tag is injected into the HTML `<head>` at render-time.
+
+**Impact:** The HTML `<base>` tag modifies the absolute resolution base of every relative URL inside the document. This includes:
+
+* Relative anchors (`<a href="about">`)
+* Form actions (`<form action="submit">`)
+* Relative AJAX/fetch API calls in the client-side JavaScript (`fetch("./api/data")`)
+
+If your client application assumes root-relative routing (e.g., expecting relative calls to resolve to domain root `/api`), these routes will now be resolved relative to the proxy subpath. Ensure all client-side requests use absolute path prefixes (e.g., `/api`) or handle subpath routing explicitly.
+
 ---
 
 ### jac-scale 0.2.15
@@ -90,9 +117,9 @@ Content-Type: application/json
 }
 ```
 
-- At least one identity is required at registration; additional identities can be added later.
-- Login accepts any identity the user has registered (`username` **or** `email`); the server resolves it to the same account.
-- `identity.value` and `credential.password` enforce `min_length=1`; empty strings are rejected with `VALIDATION_ERROR`.
+* At least one identity is required at registration; additional identities can be added later.
+* Login accepts any identity the user has registered (`username` **or** `email`); the server resolves it to the same account.
+* `identity.value` and `credential.password` enforce `min_length=1`; empty strings are rejected with `VALIDATION_ERROR`.
 
 ##### JWT `user_id` Claim
 
@@ -112,8 +139,8 @@ JWT tokens previously encoded `username` as the subject. They now encode `user_i
 
 **Migration:**
 
-- Any middleware or downstream service that reads `username` from the decoded JWT must read `user_id` instead and resolve it to a user record via the user manager if the username is still required.
-- Existing tokens issued before the upgrade are no longer valid; users must log in again to receive a new token.
+* Any middleware or downstream service that reads `username` from the decoded JWT must read `user_id` instead and resolve it to a user record via the user manager if the username is still required.
+* Existing tokens issued before the upgrade are no longer valid; users must log in again to receive a new token.
 
 ##### Password Hashing Switched to bcrypt
 
@@ -192,20 +219,20 @@ No code changes are required - the same APIs, configuration, and behavior apply.
 
 `.jac` source no longer treats `any` as bidirectionally compatible with concrete types. A value of type `any` cannot be silently assigned to a destination with a declared non-`any`, non-`object` type. The check fires at every site where the destination has a declared type:
 
-- annotated assignment (`x: T = src;`)
-- `has`-var initializer (`has x: T = src;`)
-- function argument (`f(src)` against a declared `param: T`)
-- return statement (`return src` from `def f -> T`)
-- yield expression in a typed generator
-- edge-connection assignment (`a ++>:Edge:val=src`)
+* annotated assignment (`x: T = src;`)
+* `has`-var initializer (`has x: T = src;`)
+* function argument (`f(src)` against a declared `param: T`)
+* return statement (`return src` from `def f -> T`)
+* yield expression in a typed generator
+* edge-connection assignment (`a ++>:Edge:val=src`)
 
 The check recurses element-wise into containers, so `list[any] -> list[Task]` is rejected the same way `any -> Task` is.
 
 **Permissive cases that still work without ceremony:**
 
-- Inferred locals: `x = py_call();` keeps `x: any` (no annotation, no error).
-- Explicit `any` annotation: `x: any = py_call();` opts in to permissive flow.
-- `any -> object` and `any -> TypeVar`: needed for `print(x)` and generic-bound calls.
+* Inferred locals: `x = py_call();` keeps `x: any` (no annotation, no error).
+* Explicit `any` annotation: `x: any = py_call();` opts in to permissive flow.
+* `any -> object` and `any -> TypeVar`: needed for `print(x)` and generic-bound calls.
 
 `.py` and `.pyi` files keep PEP 484 semantics -- `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site.
 
@@ -278,10 +305,10 @@ See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-
 
 **Impact:** Bare `root` is the canonical form in `.jac` source and continues to work as before in walkers, graph operations, and edge expressions. However:
 
-- **Backtick escaping is required to shadow it.** Use `` `root `` to declare a parameter, field, or local named `root`.
-- **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` in a `.jac` file and lowers it to the same `Jac.root()` call so existing code keeps working.
-- **AST introspection sees `SpecialVarRef` with `KW_ROOT` again.** Code that special-cased the post-0.12.3 `Name` shape needs to update.
-- **Bytecode cache must be cleared.** The AST shape for `root` changes from `Name` to `SpecialVarRef`. Run `rm -rf ~/.cache/jac/bytecode/ .jac/cache/` (or your project's configured cache dir) after upgrading.
+* **Backtick escaping is required to shadow it.** Use `` `root `` to declare a parameter, field, or local named `root`.
+* **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` in a `.jac` file and lowers it to the same `Jac.root()` call so existing code keeps working.
+* **AST introspection sees `SpecialVarRef` with `KW_ROOT` again.** Code that special-cased the post-0.12.3 `Name` shape needs to update.
+* **Bytecode cache must be cleared.** The AST shape for `root` changes from `Name` to `SpecialVarRef`. Run `rm -rf ~/.cache/jac/bytecode/ .jac/cache/` (or your project's configured cache dir) after upgrading.
 
 !!! note "`.jac` source vs library mode"
     The deprecation applies to `.jac` source only. In **library mode** (Python files using `from jaclang.lib import root, connect, spawn, ...`), `root` is a Python function and **must be called as `root()`** -- it is not a keyword in that context. See [Library Mode](../reference/language/library-mode.md) for the full Python-side surface.
@@ -416,10 +443,10 @@ test "walker visits all nodes" {
 
 **Key Changes:**
 
-- Test names must be quoted strings: `test "description" { ... }` instead of `test name { ... }`
-- Spaces, punctuation, and mixed case are now allowed in test names
-- The string description is displayed as-is in test output (pytest, `jac test`)
-- A valid Python identifier is derived automatically for internal use (lowercased, non-alphanumeric replaced with `_`)
+* Test names must be quoted strings: `test "description" { ... }` instead of `test name { ... }`
+* Spaces, punctuation, and mixed case are now allowed in test names
+* The string description is displayed as-is in test output (pytest, `jac test`)
+* A valid Python identifier is derived automatically for internal use (lowercased, non-alphanumeric replaced with `_`)
 
 **Migration:** Replace `test identifier_name {` with `test "identifier name" {` in all `.jac` files (convert underscores to spaces).
 
@@ -431,11 +458,11 @@ test "walker visits all nodes" {
 
 The `jac add`, `jac install`, `jac remove`, and `jac update` commands were redesigned. Key behavioral changes:
 
-- `jac add` now **requires** at least one package argument (previously, calling `jac add` with no args silently fell through to install)
-- `jac add` without a version spec now queries the installed version and records `~=X.Y` (previously recorded `>=0.0.0`)
-- `jac install` now syncs all dependency types (pip, git, and plugin-provided like npm)
-- New `jac update` command for updating dependencies to latest compatible versions
-- Virtual environment is now at `.jac/venv/` instead of `.jac/packages/`
+* `jac add` now **requires** at least one package argument (previously, calling `jac add` with no args silently fell through to install)
+* `jac add` without a version spec now queries the installed version and records `~=X.Y` (previously recorded `>=0.0.0`)
+* `jac install` now syncs all dependency types (pip, git, and plugin-provided like npm)
+* New `jac update` command for updating dependencies to latest compatible versions
+* Virtual environment is now at `.jac/venv/` instead of `.jac/packages/`
 
 ---
 
@@ -591,10 +618,10 @@ http://localhost:8000/user/123
 
 **Key Changes:**
 
-- `HashRouter` replaced with `BrowserRouter` in the React Router integration
-- `navigate()` now uses `window.history.pushState` instead of `window.location.hash`
-- The vanilla runtime's `__jacGetHashPath` renamed to `__jacGetPath`, returns `window.location.pathname` instead of hash fragment
-- Server-side SPA catch-all automatically serves app HTML for clean URL paths when `base_route_app` is configured
+* `HashRouter` replaced with `BrowserRouter` in the React Router integration
+* `navigate()` now uses `window.history.pushState` instead of `window.location.hash`
+* The vanilla runtime's `__jacGetHashPath` renamed to `__jacGetPath`, returns `window.location.pathname` instead of hash fragment
+* Server-side SPA catch-all automatically serves app HTML for clean URL paths when `base_route_app` is configured
 
 **Migration Steps:**
 
@@ -641,10 +668,10 @@ jac remove lodash --npm
 
 **Key Changes:**
 
-- `jac create --cl` → `jac create --use client`
-- `jac add --cl` → `jac add --npm`
-- `jac remove --cl` → `jac remove --npm`
-- The `--skip` flag remains available for `jac create --use client --skip` to skip npm package installation
+* `jac create --cl` → `jac create --use client`
+* `jac add --cl` → `jac add --npm`
+* `jac remove --cl` → `jac remove --npm`
+* The `--skip` flag remains available for `jac create --use client --skip` to skip npm package installation
 
 #### 2. `.cl.jac` Files No Longer Auto-Imported as Annexes
 
@@ -695,10 +722,10 @@ def:pub app -> JsxElement {
 
 **Key Changes:**
 
-- `.cl.jac` files are no longer automatically annexed to matching `.jac` files
-- Client code must be explicitly imported using `cl import` or imported inside a `cl {}` block
-- The main entry point must re-export the client app through a `cl {}` block to trigger client compilation
-- Use uppercase aliases when importing components (e.g., `app as ClientApp`) so JSX compiles to component references instead of strings
+* `.cl.jac` files are no longer automatically annexed to matching `.jac` files
+* Client code must be explicitly imported using `cl import` or imported inside a `cl {}` block
+* The main entry point must re-export the client app through a `cl {}` block to trigger client compilation
+* Use uppercase aliases when importing components (e.g., `app as ClientApp`) so JSX compiles to component references instead of strings
 
 **Migration Steps:**
 
@@ -842,10 +869,10 @@ jac start main.jac --scale --build  # with build
 
 **Key Changes:**
 
-- `jac serve` → `jac start`
-- `jac scale` → `jac start --scale`
-- `jac scale -b` → `jac start --scale --build` (or `jac start --scale -b`)
-- The `jac destroy` command remains unchanged for removing Kubernetes deployments
+* `jac serve` → `jac start`
+* `jac scale` → `jac start --scale`
+* `jac scale -b` → `jac start --scale --build` (or `jac start --scale -b`)
+* The `jac destroy` command remains unchanged for removing Kubernetes deployments
 
 #### 2. Build Artifacts Consolidated to `.jac/` Directory
 
@@ -918,12 +945,12 @@ my-project/
 
 **Key Changes:**
 
-- Bytecode cache moved from `.jaccache/` to `.jac/cache/`
-- Python packages moved from `packages/` to `.jac/packages/`
-- Client build artifacts moved from `.client-build/` to `.jac/client/`
-- Client configs moved from `.jac-client.configs/` to `.jac/client/configs/`
-- ShelfDB files moved to `.jac/data/`
-- New `[build].dir` config option allows customizing the base directory
+* Bytecode cache moved from `.jaccache/` to `.jac/cache/`
+* Python packages moved from `packages/` to `.jac/packages/`
+* Client build artifacts moved from `.client-build/` to `.jac/client/`
+* Client configs moved from `.jac-client.configs/` to `.jac/client/configs/`
+* ShelfDB files moved to `.jac/data/`
+* New `[build].dir` config option allows customizing the base directory
 
 ---
 
@@ -953,9 +980,9 @@ with entry {
 
 **Key Changes:**
 
-- Remove the `let` keyword from all variable declarations
-- Use direct assignment (`x = value`) instead of `let x = value`
-- This applies to all contexts including destructuring assignments
+* Remove the `let` keyword from all variable declarations
+* Use direct assignment (`x = value`) instead of `let x = value`
+* This applies to all contexts including destructuring assignments
 
 > **Note for client-side code:** In `cl {}` blocks and `.cl.jac` files, prefer using `has` for reactive state (see v0.9.5 reactive state feature) instead of explicit `useState` destructuring.
 
@@ -1045,10 +1072,10 @@ test "function result" {
 
 **Key Changes:**
 
-- Replace all `check` statements with `assert` statements in test blocks
-- `assert` statements in test blocks report test failures without raising exceptions
-- `assert` statements outside test blocks continue to raise `AssertionError` as before
-- Optional error messages can be added: `assert condition, "Error message";`
+* Replace all `check` statements with `assert` statements in test blocks
+* `assert` statements in test blocks report test failures without raising exceptions
+* `assert` statements outside test blocks continue to raise `AssertionError` as before
+* Optional error messages can be added: `assert condition, "Error message";`
 
 This change unifies the testing and validation syntax, making the language more consistent while maintaining all testing capabilities.
 
@@ -1422,9 +1449,9 @@ walker PersonVisitor {
 
 This change makes the code more intuitive by clearly distinguishing between:
 
-- `self`: The current object (node or edge) referring to itself
-- `visitor`: The walker interacting with a node/edge
-- `here`: Used only in walker abilities to reference the current node/edge being visited
+* `self`: The current object (node or edge) referring to itself
+* `visitor`: The walker interacting with a node/edge
+* `here`: Used only in walker abilities to reference the current node/edge being visited
 
 #### 5. Lambda Syntax Updated
 

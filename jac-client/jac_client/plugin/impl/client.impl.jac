@@ -128,7 +128,10 @@ impl JacClient.render_page(
     headers = request_ctx.get("headers", {}) if request_ctx else {};
     resolved_base = target.resolve_asset_base(headers);
 
-    base_prefix = resolved_base or "/";
+    import html;
+    escaped_base = html.escape(resolved_base) if resolved_base else "";
+
+    base_prefix = escaped_base or "/";
     if not base_prefix.endswith('/') {
         base_prefix += '/';
     }
@@ -149,7 +152,7 @@ impl JacClient.render_page(
 
     # Inject base href tag if resolved_base is present
     if resolved_base {
-        head_content = f'<base href="{resolved_base}">\n            {head_content}';
+        head_content = f'<base href="{escaped_base}">\n            {head_content}';
     }
 
     pwa_head = '';
