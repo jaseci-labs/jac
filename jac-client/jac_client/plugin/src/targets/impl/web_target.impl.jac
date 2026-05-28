@@ -305,9 +305,8 @@ impl WebTarget.resolve_asset_base(headers: dict[str, str]) -> str {
         return "/";
     }
 
-    prefix = headers.get("x-forwarded-prefix")
-    or headers.get("X-Forwarded-Prefix")
-    or "/";
+    norm_headers = {k.lower(): v for (k, v) in headers.items()};
+    prefix = norm_headers.get("x-forwarded-prefix") or "/";
 
     # Validate against strict regex: ^/[a-zA-Z0-9_\-/]*$
     if not re.match(r"^/[a-zA-Z0-9_\-/]*$", prefix) {
