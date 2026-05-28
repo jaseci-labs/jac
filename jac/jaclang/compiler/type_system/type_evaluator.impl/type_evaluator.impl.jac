@@ -3801,8 +3801,8 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
         if isinstance(_cur, uni.IfElseExpr) {
             _cond_key = self.create_key_for_reference(_cur.condition.expr);
             if _cond_key is not None and _cond_key == key {
-                _is_true = (_prev is _cur.value);
-                _is_false = (_prev is _cur.else_value);
+                _is_true = _prev is _cur.value;
+                _is_false = _prev is _cur.else_value;
                 if _is_true or _is_false {
                     import from jaclang.compiler.type_system.type_evaluator {
                         NarrowingTarget
