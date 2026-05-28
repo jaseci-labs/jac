@@ -141,8 +141,23 @@ glob _T = TypeVar('_T', bound=es.Node),
      # type of the receiver cannot be proven (issue #5508 / #5453), the
      # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
      # which dispatches to the native JS operation at runtime.
-     POLYMORPHIC_METHODS: set[str] = {"lower","upper","strip","lstrip","rstrip","append","extend","pop"},
+     POLYMORPHIC_METHODS: set[str] = {
+         "lower",
+         "upper",
+         "strip",
+         "lstrip",
+         "rstrip",
+         "append",
+         "extend",
+         "pop"
+     },
      LiteralValue = str | bool | int | float | None;
+
+"""Name of the synthesized children accumulator local for a JSX `{...}`
+slot. The outermost slot in a given scope uses this name; nested slot
+scopes (a `try`/`awaiting`/`except` arm's own accumulator) get a unique
+`__jac_view_kids_N` suffix so hoisted `let` bindings never collide."""
+glob VIEW_ACC: str = "__jac_view_kids";
 
 """Track declarations within a lexical scope."""
 obj ScopeInfo {
@@ -233,7 +248,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
-    def _analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> dict;
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
         nd: (uni.UniNode | None),
@@ -274,14 +288,52 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def enter_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
+    def enter_try_stmt(nd: uni.TryStmt) -> None;
+    def enter_except(nd: uni.Except) -> None;
+    def enter_awaiting_clause(nd: uni.AwaitingClause) -> None;
+    def exit_awaiting_clause(nd: uni.AwaitingClause) -> None;
+    # ----- JSX `{...}` slot view-lowering (direct es_ast) ------------------
+    """Name of the slot accumulator currently in scope, or None when not
+    directly inside a slot body (e.g. inside a nested `def` barrier)."""
+    def _cur_view_acc -> (str | None);
+
+    """Push a fresh slot-accumulator scope and return its local name."""
+    def _push_view_acc -> str;
+
+    """Build `acc.push(<value>);` — accumulate one template element."""
+    def _view_push_stmt(
+        acc_name: str, value: es.Expression, anchor: uni.UniNode
+    ) -> es.ExpressionStatement;
+
+    """Build `<>{children...}</>` as a `__jacJsx(null, {}, [children])` call."""
+    def _jsx_fragment(
+        children: list[es.Expression], anchor: uni.UniNode
+    ) -> es.CallExpression;
+
+    """Build `return <>{acc}</>;` — the fragment of all content so far."""
+    def _view_fragment_return(
+        acc_name: str, anchor: uni.UniNode
+    ) -> es.ReturnStatement;
+
+    """Wrap a lowered slot body in an inline accumulator IIFE expression."""
+    def _build_view_iife(
+        body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
+    ) -> es.CallExpression;
+
+    """Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
+    slot `try { ... } awaiting { ... } except { ... }` on the cl target."""
+    def _build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None;
+
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
+    def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;
     def exit_try_stmt(nd: uni.TryStmt) -> None;
     def exit_except(nd: uni.Except) -> None;
     def exit_finally_stmt(nd: uni.FinallyStmt) -> None;

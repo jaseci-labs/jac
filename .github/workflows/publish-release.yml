@@ -16,7 +16,7 @@ jobs:
       github.repository == 'Jaseci-Labs/jaseci' &&
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'release/')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
       contents: read
@@ -53,7 +53,7 @@ jobs:
   approve-release:
     needs: parse-release
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: pypi
     timeout-minutes: 60
     steps:
@@ -71,7 +71,7 @@ jobs:
   precompile:
     needs: [parse-release, approve-release]
     if: needs.parse-release.outputs.has_precompile == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -96,7 +96,7 @@ jobs:
         run: pip install -e ./${{ matrix.dir }}
 
       - name: Precompile bytecode
-        run: jac run jac/scripts/precompile_bytecode.jac ./${{ matrix.dir }}
+        run: jac run jac/jaclang/utils/precompile_bytecode.jac ./${{ matrix.dir }}
 
       - name: Upload precompiled artifacts
         uses: actions/upload-artifact@v4
@@ -116,7 +116,7 @@ jobs:
       needs.parse-release.outputs.has_releases == 'true' &&
       needs.approve-release.result == 'success' &&
       (needs.precompile.result == 'success' || needs.precompile.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -204,7 +204,7 @@ jobs:
   publish-tier1:
     needs: [parse-release, build]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -235,7 +235,7 @@ jobs:
   wait-tier1:
     needs: [parse-release, publish-tier1]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -262,7 +262,7 @@ jobs:
   publish-tier2:
     needs: [parse-release, build, wait-tier1]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -293,7 +293,7 @@ jobs:
   wait-tier2:
     needs: [parse-release, publish-tier2]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -320,7 +320,7 @@ jobs:
   publish-tier3:
     needs: [parse-release, build, wait-tier2]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -351,7 +351,7 @@ jobs:
   wait-tier3:
     needs: [parse-release, publish-tier3]
     if: needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -381,7 +381,7 @@ jobs:
       always() &&
       needs.parse-release.outputs.has_releases == 'true' &&
       (needs.publish-tier1.result == 'success' || needs.publish-tier2.result == 'success' || needs.publish-tier3.result == 'success')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: write
@@ -446,7 +446,7 @@ jobs:
   create-github-release:
     needs: [parse-release, push-tags]
     if: always() && needs.push-tags.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: write
@@ -514,7 +514,7 @@ jobs:
   summary:
     needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Release Summary

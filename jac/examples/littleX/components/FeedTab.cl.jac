@@ -7,18 +7,18 @@ import from .WelcomeBanner { WelcomeBanner }
 
 def:pub FeedTab(
     showWelcome: bool,
-    onDismissWelcome: any,
+    onDismissWelcome: Callable[[], None],
     profileAvatar: str,
     profileUsername: str,
     composerText: str,
-    onComposerChange: any,
-    onPost: any,
+    onComposerChange: Callable[[str], None],
+    onPost: Callable[[], None],
     feedLoading: bool,
     tweets: list[TweetView],
-    onLike: any,
-    onComment: any,
-    onDelete: any,
-    onRepost: any,
+    onLike: Callable[[str], None],
+    onComment: Callable[[str, str], None],
+    onDelete: Callable[[str], None],
+    onRepost: Callable[[str, str, str], None],
 ) -> JsxElement {
     return
         <div>

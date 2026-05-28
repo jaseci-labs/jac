@@ -16,8 +16,10 @@ import from jac_scale._optdeps.kubernetes {
 }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
-    create_k8s_secret
+    create_k8s_secret,
+    get_cluster_provider
 }
+import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder,
     GATEWAY_NAME,
@@ -26,6 +28,8 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
 import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
+import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
+import from jac_scale.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
 
@@ -153,15 +157,178 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
+        # Observability stack (M-14.a): opt-in centralised logs via
+        # `[plugins.scale.microservices.logs].enabled`. Surfaces a failure
+        # in `details` but does not fail the deploy - the app is healthy
+        # without logs; the operator can re-run once Loki settles.
+        observability_err: str = "";
+        try {
+            self._deploy_observability(app_name);
+        } except Exception as e {
+            observability_err = str(e);
+            bundle["observability_error"] = observability_err;
+            if self.logger {
+                self.logger.warn(
+                    f"Observability stack deploy reported a non-fatal error: {e}",
+                    {"app_name": app_name}
+                );
+            }
+        }
+
         svc_count = len(bundle["pod_specs"]) - 1;
-        return DeploymentResult(
-            success=True,
-            message=(
-                f"Applied {svc_count} service Deployment+Service pair(s) "
-                f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
-            ),
-            details=bundle
+        success_msg = (
+            f"Applied {svc_count} service Deployment+Service pair(s) "
+            f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
         );
+        # Append the observability error to the message so a user
+        # watching stdout sees the failure instead of assuming
+        # everything worked. The deploy is still success=True because
+        # the app pods are healthy without logs.
+        if observability_err {
+            success_msg = (
+                f"{success_msg} "
+                f"NOTE: observability stack deploy failed - "
+                f"`{observability_err}`. The app is running but pod logs "
+                f"are not being shipped to Loki. Re-run `jac start --scale` "
+                f"once the underlying issue is fixed."
+            );
+        }
+        return DeploymentResult(success=True, message=success_msg, details=bundle);
+    }
+
+    """M-14.a: deploy Loki + Grafana Alloy (+ the surrounding Prometheus
+    / Grafana stack the Pod Logs dashboard depends on) when
+    `[plugins.scale.microservices.logs].enabled = true`. No-op otherwise.
+
+    Reuses the same `MonitoringDeployer` the monolith target uses, so
+    microservice mode is the second caller of one builder. The
+    monitoring stack is gated on `KubernetesConfig.monitoring_enabled`
+    and Loki specifically on `loki_enabled`; the deploy path hands
+    `MonitoringDeployer` a fresh `KubernetesConfig` clone with both
+    flags set (see `_build_observability_config`). The destroy path
+    deletes resources by name unconditionally so it stays idempotent
+    regardless of the toggle state at teardown time."""
+    def _deploy_observability(app_name: str) -> None {
+        logs_cfg = self._read_microservices_logs_config();
+        if not logs_cfg.get("enabled", False) {
+            return;
+        }
+
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        # MonitoringDeployer.deploy expects a ClusterProvider object
+        # (Strategy refactor in 5840.feature.md), not the legacy
+        # `cluster_type()` string. Use the factory so prometheus /
+        # grafana can read provider.prometheus_scrape_port,
+        # provider.service_type, etc.
+        provider = get_cluster_provider();
+
+        obs_config = self._build_observability_config();
+        # node-exporter + Alloy DaemonSets need hostPath volumes
+        # (`/proc`, `/sys`, `/var/log/pods`). Pod Security Admission
+        # `baseline` enforcement blocks hostPath, so namespaces that
+        # default to baseline (vanilla minikube, fresh EKS, etc.) reject
+        # the DaemonSet pods and the deploy stalls with `FailedCreate`.
+        # Stamp the `privileged` label when the namespace has no policy
+        # set yet so common-case deploys just work. Existing policy
+        # values (restricted / baseline / privileged / etc.) are left
+        # untouched - downgrading them would be a security regression;
+        # we warn instead and let the operator relabel by hand.
+        self._ensure_privileged_namespace(core_v1, obs_config.namespace);
+        if self.logger {
+            self.logger.info(
+                f"Deploying observability stack (Prometheus + Grafana + "
+                f"Loki + Alloy) for '{app_name}'",
+                {"namespace": obs_config.namespace, "provider": type(provider).__name__}
+            );
+        }
+        monitoring = MonitoringDeployer(obs_config, self.logger);
+        monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1, provider);
+    }
+
+    """Label namespace `pod-security.kubernetes.io/enforce=privileged` so
+    hostPath-using DaemonSets (node-exporter, Alloy) can schedule. Only
+    stamps the label when it's MISSING - any existing value (including
+    `restricted` / `baseline` set by a compliance policy) is left alone
+    and surfaces as a warning telling the operator the manual relabel
+    command. Never downgrade a stricter policy silently.
+
+    API errors are also non-fatal and warn-only so a sealed-namespace
+    cluster doesn't break the deploy - the operator will see the
+    FailedCreate event anyway and can label the namespace by hand."""
+    def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
+        try {
+            ns = core_v1.read_namespace(name=namespace);
+            labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
+            current: str = labels.get("pod-security.kubernetes.io/enforce", "");
+            if current {
+                if self.logger {
+                    self.logger.warn(
+                        f"namespace '{namespace}' has "
+                        f"pod-security.kubernetes.io/enforce={current}; "
+                        f"hostPath DaemonSets (node-exporter, Alloy) may be "
+                        f"rejected. Relabel manually with `kubectl label "
+                        f"namespace {namespace} "
+                        f"pod-security.kubernetes.io/enforce=privileged "
+                        f"--overwrite` if you want to enable them."
+                    );
+                }
+                return;
+            }
+            patch = {
+                "metadata": {
+                    "labels": {"pod-security.kubernetes.io/enforce": "privileged"}
+                }
+            };
+            core_v1.patch_namespace(name=namespace, body=patch);
+            if self.logger {
+                self.logger.info(
+                    f"Labeled namespace '{namespace}' with "
+                    "pod-security.kubernetes.io/enforce=privileged "
+                    "(required for hostPath DaemonSets)"
+                );
+            }
+        } except Exception as e {
+            if self.logger {
+                self.logger.warn(
+                    f"Could not label namespace '{namespace}' privileged - "
+                    f"hostPath DaemonSets may be rejected by PodSecurity. "
+                    f"Run `kubectl label namespace {namespace} "
+                    f"pod-security.kubernetes.io/enforce=privileged "
+                    f"--overwrite` manually. Cause: {e}"
+                );
+            }
+        }
+    }
+
+    """Clone `self.k8s_config` with `monitoring_enabled` and `loki_enabled`
+    forced to True. logs.enabled implies the full monitoring stack so
+    Grafana can host the Pod Logs dashboard; cloning preserves user-set
+    knobs (probes, replicas, dashboard creds, ...) without mutating the
+    shared config object for the rest of the deploy() call path."""
+    def _build_observability_config -> KubernetesConfig {
+        overrides: dict[str, Any] = dict(self.k8s_config.to_dict());
+        overrides["monitoring_enabled"] = True;
+        overrides["loki_enabled"] = True;
+        return KubernetesConfig.from_dict(KubernetesConfig, overrides);
+    }
+
+    """Read `[plugins.scale.microservices.logs]`. Empty dict on any
+    failure (missing block, malformed TOML, loader exception)."""
+    def _read_microservices_logs_config -> dict[str, Any] {
+        try {
+            ms_cfg = get_scale_config().get_microservices_config();
+            return dict(ms_cfg.get("logs", {}));
+        } except Exception as e {
+            if self.logger {
+                self.logger.warn(
+                    f"Could not read [plugins.scale.microservices.logs] - "
+                    f"observability stack will not be deployed: {e}"
+                );
+            }
+            return {};
+        }
     }
 
     """Delegates to MicroserviceManifestBuilder. deploy() populates
@@ -557,6 +724,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status != 404 {
                 raise;
+            }
+        }
+
+        # M-14.a: tear down the observability stack symmetrically to
+        # `_deploy_observability`. Unconditional (mirroring the monolith
+        # destroy at kubernetes_target.jac) because MonitoringDeployer
+        # treats every API not-found as a no-op; calling it on a stack
+        # that was never deployed is harmless.
+        try {
+            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+            monitoring.destroy(app_name, namespace, apps_v1, core_v1);
+        } except Exception as e {
+            if self.logger {
+                self.logger.info(
+                    f"Observability stack destroy reported a non-fatal error: {e}",
+                    {"app_name": app_name}
+                );
             }
         }
     }

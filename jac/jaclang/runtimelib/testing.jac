@@ -37,11 +37,9 @@ obj TestResponse {
         _json_cache: (dict[str, any] | None) = None;
 
     def json -> dict[str, any];
-    @property
-    def ok -> bool;
 
-    @property
-    def data -> (dict[str, any] | None);
+    has ok: bool { getter; }
+    has data: (dict[str, any] | None) { getter; }
 }
 
 """Test client for JacAPIServer - no socket/port required.
@@ -101,11 +99,9 @@ obj JacTestClient {
     ) -> TestResponse;
 
     def _parse_response(raw_response: bytes) -> TestResponse;
-    @property
-    def server -> JacAPIServer;
 
-    @property
-    def user_manager -> any;
+    has server: JacAPIServer { getter; }
+    has user_manager: any { getter; }
 
     def reload -> None;
     def close -> None;

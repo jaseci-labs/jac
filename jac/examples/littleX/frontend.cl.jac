@@ -134,9 +134,9 @@ def:pub app -> JsxElement {
         else profileUsername;
     profileAvatar = "https://i.pravatar.cc/150?u=fake@" + profileUsername;
     myProfileId = myProfile.id if myProfile else "";
-    followingIds = [f.id for f in myProfile.following]
-        if myProfile and myProfile.following
-        else [];
+    followingIds = [
+        f.id for f in (myProfile.following if myProfile and myProfile.following else [])
+    ];
     toFollow = [
         u
         for u in allProfiles

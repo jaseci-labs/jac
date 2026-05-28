@@ -84,17 +84,25 @@ def test_list_index_oob() -> int {
     return result;
 }
 
-# Test 7: List negative index (out of bounds)
+# Test 7: Negative index out of range (|idx| > len) raises. A plain `nums[-1]`
+# is NOT out of bounds — it is Python's last element (see
+# test_list_negative_valid) — so use a clearly out-of-range negative index.
 def test_list_negative_index() -> int {
     result: int = 0;
     nums: list[int] = [10, 20, 30];
     try {
-        x: int = nums[-1];
+        x: int = nums[-10];
         result = -1;
     } except IndexError {
         result = 1;
     }
     return result;
+}
+
+# Test 7b: Valid negative indexing (Python semantics: idx += len).
+def test_list_negative_valid() -> int {
+    nums: list[int] = [10, 20, 30];
+    return nums[-1];
 }
 
 # Test 8: List index at exact length (off-by-one)

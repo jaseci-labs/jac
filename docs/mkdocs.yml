@@ -88,7 +88,6 @@ nav:
       - Breaking Changes: "community/breaking-changes.md"
       - PR Leaderboard: "community/contributors.md"
       - Jac Playground: https://playground.jaseci.org/cl/app
-      - Jac GPT: https://jac-gpt.jaseci.org
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
@@ -102,6 +101,8 @@ nav:
       - Import Patterns: "internals/jac_import_patterns.md"
       - UniIR Nodes: "internals/uniir_node.md"
       - Compiler Architecture: "internals/compiler_architecture.md"
+
+  - Ask Jac GPT ✨: https://jac-gpt.jaseci.org
 
 theme:
   logo: "assets/logo.png"

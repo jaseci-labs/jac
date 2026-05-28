@@ -5,6 +5,26 @@ description: Writing a client-side UI component - shape, reactive state, mount e
 
 `.cl.jac` files are client-side Jac. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `to cl:` header - the extension sets client context.
 
+## This is Jac, not React or JavaScript
+
+A `.cl.jac` component *compiles to* React, but you **write Jac** - Python-with-braces, not JSX/JS. This is the single most common mistake: do not reach for React/JS syntax. Translate every React habit to its Jac form:
+
+| React / JavaScript (WRONG in a `.jac` file) | Jac (correct) |
+|---|---|
+| `function App() { ... }` / `const App = () => ...` | `def:pub app() -> JsxElement { ... }` |
+| `class X extends Component { render() {...} }` | `def:pub X() -> JsxElement { ... }` (no classes, no `render`, no `constructor`) |
+| `const [n, setN] = useState(0)` ; `setN(n+1)` | `has n: int = 0;` then `n = n + 1;` (direct assign re-renders) |
+| `useEffect(() => {...}, [])` | `async can with entry { ... }` |
+| `onClick={() => doThing()}` | `onClick={handle}` with `def handle(e: MouseEvent) { doThing(); }` |
+| `this.props.x` / `props.x` | `x` - props are plain function parameters |
+| `import React from 'react'` | nothing - `JsxElement` and DOM events are built-in (never import them) |
+| `const`, `let`, `var x = 1` | `x: int = 1;` (typed assignment) |
+| `=== / !==` ; `null` / `undefined` ; `cond ? a : b` | `== / !=` ; `None` ; `a if cond else b` |
+| `items.map(x => <li>{x}</li>)` | `{for x in items { <li>{x}</li> }}` (statement slot) |
+| a `.js` / `.ts` / `.jsx` / `.tsx` file | a `.cl.jac` file - every component is `.cl.jac` |
+
+If you find yourself writing `function`, `=>`, `this.`, `export`, `import React`, or a `.js` file, stop - that is JavaScript. Write the Jac form from the table above.
+
 ```jac
 def:pub Counter() -> JsxElement {
     has count: int = 0;
@@ -165,10 +185,22 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 **For server response objects (dicts/lists from `sv import` calls), prefer truthy checks (`if result {`) over `!= None`.** The `!=` operator uses deep equality which calls `Object.keys()` - crashes with `"Cannot convert undefined or null to object"` if the value is `null`/`undefined`. `!= None` is safe for primitives (strings, ints, bools) but not for complex objects returned from server calls.
 
 - **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, use the base `Event` type - not `any`, which earns a `W1037` warning (and capital `Any` is not the keyword, warning `W2001` "Name 'Any' may be undefined").
+- **Inline anonymous functions in JSX use `lambda`, NOT `def`.** Prefer named `def` methods (see the Counter example above); reach for inline `lambda` only for trivial one-liners. Anonymous `def (...)` is a parse error, *regardless of return type* - `def` requires a name.
+
+  ```
+  # CORRECT
+  onClick={lambda (e: MouseEvent) { count = count + 1; }}
+
+  # WRONG - anonymous `def` is a parse error (return type does not rescue it)
+  onClick={def (e: MouseEvent) { count = count + 1; }}
+  onClick={def (e: MouseEvent) -> None { count = count + 1; }}
+  ```
+
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
+- **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX.
 
 ## See also
 

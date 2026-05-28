@@ -12,28 +12,21 @@ def:pub ChannelsTab(
     channelPosts: list[TweetView],
     profileAvatar: str,
     profileUsername: str,
-    onCreateChannel: any,
-    onJoinChannel: any,
-    onLeaveChannel: any,
-    onSelectChannel: any,
-    onChannelPost: any,
-    onBackToChannels: any,
-    onLike: any,
-    onComment: any,
-    onDelete: any,
-    onRepost: any,
+    onCreateChannel: Callable[[str, str], None],
+    onJoinChannel: Callable[[str], None],
+    onLeaveChannel: Callable[[str], None],
+    onSelectChannel: Callable[[str], None],
+    onChannelPost: Callable[[str], None],
+    onBackToChannels: Callable[[], None],
+    onLike: Callable[[str], None],
+    onComment: Callable[[str, str], None],
+    onDelete: Callable[[str], None],
+    onRepost: Callable[[str, str, str], None],
 ) -> JsxElement {
     has showCreateChannel: bool = False,
         newChannelName: str = "",
         newChannelDescription: str = "",
         channelComposerText: str = "";
-
-    createFn = onCreateChannel;
-    joinFn = onJoinChannel;
-    leaveFn = onLeaveChannel;
-    selectFn = onSelectChannel;
-    postFn = onChannelPost;
-    backFn = onBackToChannels;
 
     return
         <div>
@@ -66,8 +59,7 @@ def:pub ChannelsTab(
                                 className="lx-post-btn"
                                 disabled={not newChannelName.strip()}
                                 onClick={lambda {
-                                    createFn.call(
-                                        None,
+                                    onCreateChannel(
                                         newChannelName.strip(),
                                         newChannelDescription.strip()
                                     );
@@ -106,7 +98,7 @@ def:pub ChannelsTab(
                     <div
                         className="lx-channel-item"
                         key={ch.id}
-                        onClick={lambda { selectFn.call(None, ch.id); }}
+                        onClick={lambda { onSelectChannel(ch.id); }}
                     >
                         <div className="lx-channel-icon">
                             <Hash size={20}/>
@@ -138,7 +130,7 @@ def:pub ChannelsTab(
                 <div className="lx-channel-header">
                     <button
                         className="lx-edit-profile-btn"
-                        onClick={lambda { backFn.call(None); }}
+                        onClick={lambda { onBackToChannels(); }}
                         style={{
                             "display": "flex",
                             "alignItems": "center",
@@ -170,7 +162,7 @@ def:pub ChannelsTab(
                             <button
                                 className="lx-edit-profile-btn"
                                 onClick={lambda { if selectedChannel {
-                                    leaveFn.call(None, selectedChannel.id);
+                                    onLeaveChannel(selectedChannel.id);
                                 }}}
                             >
                                 Leave
@@ -179,7 +171,7 @@ def:pub ChannelsTab(
                             <button
                                 className="lx-follow-btn"
                                 onClick={lambda { if selectedChannel {
-                                    joinFn.call(None, selectedChannel.id);
+                                    onJoinChannel(selectedChannel.id);
                                 }}}
                             >
                                 Join
@@ -195,7 +187,7 @@ def:pub ChannelsTab(
                         value={channelComposerText}
                         onChange={lambda v: str { channelComposerText = v; }}
                         onPost={lambda {
-                            postFn.call(None, channelComposerText);
+                            onChannelPost(channelComposerText);
                             channelComposerText = "";
                         }}
                         rows={2}
