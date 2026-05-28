@@ -27,3 +27,4 @@ watchdog = ">=3.0.0"
 base_route_app = "app"
 
 [plugins.client]
+trust_forwarded_headers = true
