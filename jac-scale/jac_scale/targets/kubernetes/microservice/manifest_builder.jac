@@ -565,6 +565,7 @@ obj MicroserviceManifestBuilder {
         if not cfg.get("enabled", True) {
             return None;
         }
+        k8s_name = self._k8s_safe_name(svc_name);
         spec = AutoscalerSpec(
             target_name=f"{k8s_name}-deployment",
             namespace=self.k8s_config.namespace,
