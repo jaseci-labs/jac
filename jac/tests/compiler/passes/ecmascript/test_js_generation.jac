@@ -1028,6 +1028,35 @@ test "convert to js import path preserves js format" {
     assert convert_to_js_import_path("lodash") == "lodash";
 }
 
+test "for-of tuple targets destructure into binding patterns" {
+    jac_code = (
+        "cl def f() {\n"
+        "    pairs = [[1, 2]];\n"
+        "    nested = [[[1, 2], 3]];\n"
+        "    rows = [[1, 2, 3]];\n"
+        "    for x in pairs {  }\n"
+        "    for (a, b) in pairs {  }\n"
+        "    for (i, p) in enumerate(pairs) {  }\n"
+        "    for ((c, d), e) in nested {  }\n"
+        "    for (g, *rest) in rows {  }\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "for (const x of pairs)" in js_code;
+        assert "for (const [a, b] of pairs)" in js_code;
+        assert "for (const [i, p] of _jac.builtin.enumerate(pairs))" in js_code;
+        assert "for (const [[c, d], e] of nested)" in js_code;
+        assert "for (const [g, ...rest] of rows)" in js_code;
+        assert "_item" not in js_code;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 # ============================================================================
 # Comprehension → JavaScript Tests
 # ============================================================================

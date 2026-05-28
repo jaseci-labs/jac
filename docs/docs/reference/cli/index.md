@@ -1354,12 +1354,13 @@ jac purge
 Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`. For the full end-to-end workflow, see the [Publishing Packages](../publishing.md) guide.
 
 ```bash
-jac bundle [-h] [-o OUTPUT]
+jac bundle [-h] [-o OUTPUT] [-p]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-o, --output` | Directory to write the `.whl` file | `dist` |
+| `-p, --precompile` | Compile `.jac` → `.jir` bytecode for every `python3.X` found on `PATH` before packaging | off |
 
 **What it does:**
 
@@ -1368,7 +1369,7 @@ jac bundle [-h] [-o OUTPUT]
 3. Generates a PEP 427-compliant `.whl` archive with `METADATA`, `WHEEL`, `RECORD`, `top_level.txt`, and optional `entry_points.txt`. The build is reproducible (fixed ZIP timestamps).
 4. Writes `<name>-<version>-py3-none-any.whl` to the output directory.
 
-> **Note on bytecode:** `jac bundle` ships `.jir` files only if they already exist in your source tree. To pre-compile `.jac` → `.jir` before bundling (so installs skip compilation), run `jac` precompilation first; `jac bundle` itself does not regenerate stale `.jir` files.
+> **Note on bytecode:** `jac bundle` ships `.jir` files only if they already exist in your source tree. Use `--precompile` to auto-generate `.jir` files for every `python3.X` interpreter on `PATH` before packaging, each version gets its own isolated venv so compilation is clean.
 
 **Examples:**
 
@@ -1379,8 +1380,11 @@ jac bundle
 # Build to a custom directory
 jac bundle -o /tmp/wheels
 
+# Pre-compile for all Python versions on PATH, then build
+jac bundle --precompile
+
 # Upload to PyPI after building
-jac bundle && twine upload dist/*
+jac bundle --precompile && twine upload dist/*
 
 # Install locally to test before publishing
 pip install dist/mylib-1.0.0-py3-none-any.whl

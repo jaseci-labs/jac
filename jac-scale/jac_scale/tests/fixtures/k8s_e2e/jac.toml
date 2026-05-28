@@ -53,6 +53,13 @@ entry = "main.jac"
 dist_dir = ".jac/client/dist"
 base_route = "/"
 
+# M-14.a: centralised logs. Opt in so the e2e covers the full
+# Loki + Alloy DaemonSet path on every run (script verifies pods are
+# Ready + queries Loki for namespace streams). Local-mode deploys
+# ignore this section entirely.
+[plugins.scale.microservices.logs]
+enabled = true
+
 # K10: Ingress for K8s deploys. Enabled here so the CI real-app e2e
 # (.github/workflows/k8s-microservice-real-e2e.yml) exercises the
 # full external-URL path (Ingress -> gateway -> services). Local-mode

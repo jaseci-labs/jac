@@ -26,7 +26,7 @@ import os;
 import time;
 
 import from concurrent.futures { ThreadPoolExecutor, as_completed }
-import from byllm.types { ToolCallResultMsg }
+import from byllm.types { ToolCallResultMsg, normalize_tool_result }
 
 glob _plog = logging.getLogger("byllm.parallel"),
      # ---------------------------------------------------------------------------
@@ -134,7 +134,9 @@ def _call_async(tc: any, timeout: any) -> any {
     }
     result_val = asyncio.run(_run());
     return ToolCallResultMsg(
-        content=str(result_val), tool_call_id=tc.call_id, name=tc.tool.get_name()
+        content=normalize_tool_result(result_val),
+        tool_call_id=tc.call_id,
+        name=tc.tool.get_name()
     );
 }
 
