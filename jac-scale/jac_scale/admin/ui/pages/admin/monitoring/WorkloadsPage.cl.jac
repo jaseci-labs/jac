@@ -80,6 +80,30 @@ cl {
             return str(int(b)) + " B";
         }
 
+        def formatAge(createdSecs: float) -> str {
+            if createdSecs <= 0 {
+                return "-";
+            }
+            ageSecs = (Date.now() / 1000) - createdSecs;
+            if ageSecs < 0 {
+                return "-";
+            }
+            if ageSecs < 60 {
+                return str(int(ageSecs)) + "s";
+            }
+            if ageSecs < 3600 {
+                return str(int(ageSecs / 60)) + "m";
+            }
+            if ageSecs < 86400 {
+                hrs = int(ageSecs / 3600);
+                mins = int((ageSecs % 3600) / 60);
+                return str(hrs) + "h " + str(mins) + "m";
+            }
+            days = int(ageSecs / 86400);
+            hrs = int((ageSecs % 86400) / 3600);
+            return str(days) + "d " + str(hrs) + "h";
+        }
+
         statusClasses = {
             "Healthy": "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
             "Starting": "bg-amber-500/20 text-amber-300 border-amber-500/40",
@@ -335,6 +359,9 @@ cl {
                                     <th className="text-left px-4 py-2 font-medium">
                                         Restarts (1h)
                                     </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Age
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -377,6 +404,9 @@ cl {
                                         <td className="px-4 py-2 text-slate-300">
                                             {w["restarts_last_hour"]}
                                         </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {formatAge(w["created"])}
+                                        </td>
                                     </tr> for w in filteredWorkloads
                                 ]}
                             </tbody>
@@ -414,6 +444,9 @@ cl {
                                     <th className="text-left px-4 py-2 font-medium">
                                         Restarts (1h)
                                     </th>
+                                    <th className="text-left px-4 py-2 font-medium">
+                                        Age
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -449,6 +482,9 @@ cl {
                                         </td>
                                         <td className="px-4 py-2 text-slate-300">
                                             {p["restarts_last_hour"]}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-300">
+                                            {formatAge(p["created"])}
                                         </td>
                                     </tr> for p in pods
                                 ]}

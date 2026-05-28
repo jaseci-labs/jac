@@ -356,6 +356,24 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
     or [];
+    dep_created = prom_query(
+        f'kube_deployment_created{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_deployment_created'
+    )
+    or [];
+    sts_created = prom_query(
+        f'kube_statefulset_created{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_statefulset_created'
+    )
+    or [];
+    ds_created = prom_query(
+        f'kube_daemonset_created{{{ns_filter}}}'
+            if ns_filter
+            else 'kube_daemonset_created'
+    )
+    or [];
 
     def _index_by_label(rows: list, label: str) -> dict {
         out: dict = {};
@@ -372,6 +390,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     dep_desired_by = _index_by_label(dep_desired, "deployment");
     sts_desired_by = _index_by_label(sts_desired, "statefulset");
     ds_desired_by = _index_by_label(ds_desired, "daemonset");
+    dep_created_by = _index_by_label(dep_created, "deployment");
+    sts_created_by = _index_by_label(sts_created, "statefulset");
+    ds_created_by = _index_by_label(ds_created, "daemonset");
 
     cpu_by_owner: dict = {};
     mem_by_owner: dict = {};
@@ -403,7 +424,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
 
     workloads: list = [];
 
-    def _append(name: str, kind: str, ready: int, desired: int) {
+    def _append(name: str, kind: str, ready: int, desired: int, created: int) {
         restarts = restarts_by_owner.get(name, 0);
         status = _phase_to_status(ready, desired, restarts);
         workloads.append(
@@ -415,7 +436,8 @@ impl JacAPIServerWorkloads.admin_workloads_list(
                 'replicas_desired': desired,
                 'cpu_cores': round(cpu_by_owner.get(name, 0.0), 3),
                 'memory_bytes': int(mem_by_owner.get(name, 0.0)),
-                'restarts_last_hour': restarts
+                'restarts_last_hour': restarts,
+                'created': created
             }
         );
     }
@@ -428,7 +450,13 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             continue;
         }
         ready = int(float(v[1])) if len(v) > 1 else 0;
-        _append(name, "Deployment", ready, dep_desired_by.get(name, ready));
+        _append(
+            name,
+            "Deployment",
+            ready,
+            dep_desired_by.get(name, ready),
+            dep_created_by.get(name, 0)
+        );
     }
     for entry in sts_ready {
         m = entry.get("metric", {});
@@ -438,7 +466,13 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             continue;
         }
         ready = int(float(v[1])) if len(v) > 1 else 0;
-        _append(name, "StatefulSet", ready, sts_desired_by.get(name, ready));
+        _append(
+            name,
+            "StatefulSet",
+            ready,
+            sts_desired_by.get(name, ready),
+            sts_created_by.get(name, 0)
+        );
     }
     for entry in ds_ready {
         m = entry.get("metric", {});
@@ -448,7 +482,13 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             continue;
         }
         ready = int(float(v[1])) if len(v) > 1 else 0;
-        _append(name, "DaemonSet", ready, ds_desired_by.get(name, ready));
+        _append(
+            name,
+            "DaemonSet",
+            ready,
+            ds_desired_by.get(name, ready),
+            ds_created_by.get(name, 0)
+        );
     }
 
     def _wl_name(d: dict) -> str {
@@ -511,6 +551,9 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     node_by_pod = prom_query(f'kube_pod_info{{{ns_filter}}}' if ns_filter
         else 'kube_pod_info')
     or [];
+    started_by_pod = prom_query(f'kube_pod_start_time{{{ns_filter}}}' if ns_filter
+        else 'kube_pod_start_time')
+    or [];
 
     def _index_float_by_pod(rows: list) -> dict {
         out: dict = {};
@@ -526,6 +569,7 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     cpu = _index_float_by_pod(cpu_by_pod);
     mem = _index_float_by_pod(mem_by_pod);
     restarts = _index_float_by_pod(restarts_by_pod);
+    started = _index_float_by_pod(started_by_pod);
     node_for: dict = {};
     for entry in node_by_pod {
         m = entry.get("metric", {});
@@ -551,7 +595,8 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
                 'node': node_for.get(pod, ''),
                 'cpu_cores': round(cpu.get(pod, 0.0), 3),
                 'memory_bytes': int(mem.get(pod, 0.0)),
-                'restarts_last_hour': int(restarts.get(pod, 0.0))
+                'restarts_last_hour': int(restarts.get(pod, 0.0)),
+                'created': int(started.get(pod, 0.0))
             }
         );
     }
