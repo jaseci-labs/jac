@@ -44,8 +44,7 @@ impl HPAAutoscaler.apply{
     for trigger in spec.triggers {
         if trigger.type not in ["cpu", "memory"] {
             raise ValueError(
-                f"Trigger type '{trigger.type}' is not supported by engine='hpa'."
-                f"Set autoscaler_engine in jac.toml."
+                f"Trigger type '{trigger.type}' is not supported by engine='hpa'. Use an engine that supports this trigger type in jac.toml."
             );
         }
     }
