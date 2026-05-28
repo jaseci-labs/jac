@@ -126,7 +126,7 @@ impl JacClient.render_page(
     factory = get_target_factory();
     target = factory.get_default(base_path);
     headers = request_ctx.get("headers", {}) if request_ctx else {};
-    resolved_base = target.resolve_asset_base(headers);
+    resolved_base = target.resolve_asset_base(headers) if target else "/";
 
     import html;
     escaped_base = html.escape(resolved_base) if resolved_base else "";
