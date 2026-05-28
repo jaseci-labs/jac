@@ -271,14 +271,19 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
     mock_config = MagicMock();
 
     # Simulate watchdog not being installed, and a jac.toml that does NOT list watchdog
-    with patch.dict(sys.modules, {"watchdog": None}) {
+    with patch(
+        "jaclang.cli.commands.execution._watchdog_importable",
+        side_effect=[False, True],
+    ) {
         with patch(
             "jaclang.project.dependencies.DependencyInstaller"
         ) as mock_di_class {
             with patch("jaclang.project.config.get_config") as mock_get_config {
-                mock_di_class.return_value = mock_installer;
-                mock_get_config.return_value = mock_config;
-                result = execution._ensure_watchdog_installed();
+                with patch("jaclang.project.dependencies.add_venv_to_path") {
+                    mock_di_class.return_value = mock_installer;
+                    mock_get_config.return_value = mock_config;
+                    result = execution._ensure_watchdog_installed();
+                }
             }
         }
     }

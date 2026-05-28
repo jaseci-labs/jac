@@ -2183,9 +2183,7 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing (first deploy) so create path is taken
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
-        status=404
-    );
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2229,9 +2227,7 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing for both main and Redis ingresses
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
-        status=404
-    );
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)

@@ -213,6 +213,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0062 = _err("E0062", Category.SYNTAX, "'nonlocal' is not valid at module level"),
+     E0063 = _err(
+         "E0063",
+         Category.SYNTAX,
+         "'glob' is only valid at module level",
+         help="Move the glob declaration to the top of the file, outside any function or code block."
+     ),
      E0065 = _err("E0065", Category.SYNTAX, "Duplicate keyword argument '{name}'"),
      E0066 = _err(
          "E0066", Category.SYNTAX, "Positional argument follows keyword argument"

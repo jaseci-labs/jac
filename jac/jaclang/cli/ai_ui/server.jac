@@ -37,7 +37,14 @@ obj UiEvent {
         kind: str = "",
         text: str = "",
         name: str = "",
-        node: str = "";
+        node: str = "",
+        # Populated only for `call` events (one per model call): the token usage
+        # the token-usage stream renders. Zero on every other kind.
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cache_read: int = 0,
+        cache_create: int = 0,
+        ms: float = 0.0;
 }
 
 """The latest turn's summary stats -- the same set the CLI prints after a turn.
@@ -131,7 +138,12 @@ def _to_poll(snap: dict) -> PollResult {
                 kind=str(e.get("kind", "")),
                 text=str(e.get("text", "")),
                 name=str(e.get("name", "")),
-                node=str(e.get("node", ""))
+                node=str(e.get("node", "")),
+                tokens_in=int(e.get("tokens_in", 0) or 0),
+                tokens_out=int(e.get("tokens_out", 0) or 0),
+                cache_read=int(e.get("cache_read", 0) or 0),
+                cache_create=int(e.get("cache_create", 0) or 0),
+                ms=float(e.get("ms", 0.0) or 0.0)
             )
         );
     }
