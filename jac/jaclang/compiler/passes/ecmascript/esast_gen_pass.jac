@@ -30,6 +30,7 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.jac0core.codeinfo { ClientManifest }
 import from jaclang.compiler.passes.ecmascript.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -200,8 +201,39 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
-"""Jac to ECMAScript AST transpilation pass."""
+"""Jac to ECMAScript AST transpilation pass.
+
+`before_pass` (re)initializes most of these fields on every pass instantiation;
+declaring them here gives the type checker the pass's state surface so reads of
+`self.client_manifest` / `self.scope_stack` / etc. type-check instead of being
+"no attribute" errors. `postinit` seeds the by-postinit defaults so the schema
+is complete before `before_pass` runs.
+"""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
+    has child_passes: list[EsastGenPass] by postinit,
+        imports: list[es.ImportDeclaration] by postinit,
+        exports: list[es.ExportNamedDeclaration] by postinit,
+        scope_stack: list[ScopeInfo] by postinit,
+        scope_map: dict[(uni.UniScopeNode, ScopeInfo)] by postinit,
+        client_manifest: ClientManifest by postinit,
+        jsx_processor: (EsJsxProcessor | None) = None,
+        scoped_styles: (ScopedStyleSheet | None) = None,
+        reactive_vars: dict[str, str] by postinit,
+        reactive_vars_stack: list[dict[str, str]] by postinit,
+        injected_imports: set[str] by postinit,
+        _view_stack: list[(str | None)] by postinit,
+        _view_used_base: bool = False,
+        _view_acc_counter: int = 0,
+        _view_awaiting_tries: set[int] by postinit,
+        sv_import_stubs: list[es.Statement] by postinit,
+        needs_jac_runtime: bool = False,
+        _primitive_emitters: (dict[str, object] | None) = None,
+        _builtin_emitter: (object | None) = None,
+        _primitive_type_names: (set[str] | None) = None,
+        _emitter_builtins: (set[str] | None) = None,
+        _primitives_es_mod: (object | None) = None;
+
+    def postinit -> None;
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;

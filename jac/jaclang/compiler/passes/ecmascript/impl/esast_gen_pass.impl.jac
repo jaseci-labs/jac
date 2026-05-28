@@ -5706,6 +5706,29 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
     super.enter_node(nd);
 }
 
+"""Seed by-postinit fields with empty defaults.
+
+`before_pass` re-initializes these per its existing logic; `postinit` just
+makes sure the declared-but-unset fields have valid values before any code
+(e.g. logging in `super.postinit()`) might read them.
+"""
+impl EsastGenPass.postinit -> None {
+    import from jaclang.jac0core.codeinfo { ClientManifest }
+    self.child_passes = [];
+    self.imports = [];
+    self.exports = [];
+    self.scope_stack = [];
+    self.scope_map = {};
+    self.client_manifest = ClientManifest();
+    self.reactive_vars = {};
+    self.reactive_vars_stack = [];
+    self.injected_imports = `set();
+    self._view_stack = [];
+    self._view_awaiting_tries = `set();
+    self.sv_import_stubs = [];
+    super.postinit();
+}
+
 """Initialize the pass."""
 impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
