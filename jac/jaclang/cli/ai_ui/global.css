@@ -504,6 +504,69 @@ body.resizing {
     overflow-y: auto;
 }
 
+/* ---- Tool dropdown (call header + collapsible scrollable output) ------ */
+.toolrow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+}
+
+.tool-head {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    width: 100%;
+    padding: 7px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.tool-head:hover {
+    background: var(--panel-2);
+}
+
+.tool-head .chev {
+    width: 10px;
+    color: #6b7077;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tool-head .tag {
+    flex-shrink: 0;
+    width: 96px;
+    color: var(--accent);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tool-head .body {
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tool-body {
+    padding: 4px 16px 10px 34px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    max-height: 260px;
+    overflow-y: auto;
+    border-top: 1px solid rgba(38, 40, 44, 0.4);
+}
+
 /* ---- Graph ------------------------------------------------------------ */
 .graph-wrap {
     position: relative;
@@ -587,14 +650,92 @@ body.resizing {
     min-height: 0;
 }
 
-.tokenstream-body {
-    padding: 8px 14px 10px;
+/* ---- Token-usage stream (one row per model call) --------------------- */
+.tokusage-body {
+    padding: 2px 0 8px;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11.5px;
-    line-height: 1.45;
-    color: #9aa0a8;
-    white-space: pre-wrap;
-    word-break: break-word;
+    font-size: 11px;
+}
+
+.tokfeed {
+    display: flex;
+    flex-direction: column;
+}
+
+.tokrow {
+    display: grid;
+    grid-template-columns: 48px minmax(60px, 1fr) auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 4px 12px;
+    border-bottom: 1px solid rgba(38, 40, 44, 0.5);
+    font-variant-numeric: tabular-nums;
+}
+
+.tok-chip {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 4px;
+    border-radius: 4px;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--muted);
+}
+
+.tok-chip.tok-Plan {
+    color: #a5b4fc;
+}
+
+.tok-chip.tok-Build {
+    color: var(--green);
+}
+
+.tok-chip.tok-QA {
+    color: var(--amber);
+}
+
+.tok-chip.tok-route {
+    color: var(--accent);
+    background: rgba(34, 211, 238, 0.12);
+}
+
+.tok-inwrap {
+    position: relative;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 16px;
+}
+
+.tokbar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    min-width: 2px;
+    background: rgba(248, 113, 113, 0.22);
+    border-radius: 3px;
+}
+
+.tok-in {
+    position: relative;
+    padding-left: 6px;
+    color: var(--fg);
+}
+
+.tok-out {
+    color: var(--green);
+}
+
+.tok-cache {
+    color: #6b7077;
+}
+
+.tok-ms {
+    color: var(--muted);
+    min-width: 46px;
+    text-align: right;
 }
 
 /* ---- Ledger panel ----------------------------------------------------- */

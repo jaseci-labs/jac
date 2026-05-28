@@ -35,6 +35,38 @@ def _mark_message_for_caching(msg: dict) {
 }
 
 
+"""Read an int usage field from a litellm usage dict-or-object, 0 if absent.
+
+For `cache_read_input_tokens`, falls back to the `prompt_tokens_details.cached_tokens`
+alias some providers nest it under.
+"""
+def _usage_int(usage: any, key: str) -> int {
+    if usage is None {
+        return 0;
+    }
+    val = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None);
+    if val is None and key == "cache_read_input_tokens" {
+        ptd = (
+            usage.get("prompt_tokens_details")
+                if isinstance(usage, dict)
+                else usage?.prompt_tokens_details
+        );
+        if ptd is not None {
+            val = (
+                ptd.get("cached_tokens")
+                    if isinstance(ptd, dict)
+                    else ptd?.cached_tokens
+            );
+        }
+    }
+    try {
+        return int(val or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
 """Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
 def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
@@ -428,6 +460,33 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
             }
         } finally {
             mt_run.write_back_conversation();
+        }
+        # This branch streams only content tokens (no ReAct loop), so it never
+        # emits the per-call `llm_timing` the loop does. Surface this call's usage
+        # to the handler too, so structured/routing calls report tokens + cache.
+        if self._usage_history {
+            u = self._usage_history[-1];
+            try {
+                on_event(
+                    StreamEvent(
+                        event_type="llm_timing",
+                        data={
+                            "duration_ms": 0.0,
+                            "iteration": 0,
+                            "completion_tokens": _usage_int(u, "completion_tokens"),
+                            "prompt_tokens": _usage_int(u, "prompt_tokens"),
+                            "cache_read_input_tokens": _usage_int(
+                                u, "cache_read_input_tokens"
+                            ),
+                            "cache_creation_input_tokens": _usage_int(
+                                u, "cache_creation_input_tokens"
+                            )
+                        }
+                    )
+                );
+            } except Exception as e {
+                logger.debug(f"stream_handler raised: {e}");
+            }
         }
         return mt_run.parse_response(accumulated);
     }
@@ -1561,7 +1620,14 @@ impl BaseLLM._invoke_streaming(
                 data={
                     "duration_ms": _llm_ms,
                     "iteration": iter_count,
-                    "completion_tokens": _completion_tokens
+                    "completion_tokens": _completion_tokens,
+                    "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+                    "cache_read_input_tokens": _usage_int(
+                        usage, "cache_read_input_tokens"
+                    ),
+                    "cache_creation_input_tokens": _usage_int(
+                        usage, "cache_creation_input_tokens"
+                    )
                 }
             );
 
