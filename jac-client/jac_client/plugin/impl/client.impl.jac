@@ -128,6 +128,17 @@ impl JacClient.render_page(
     headers = request_ctx.get("headers", {}) if request_ctx else {};
     resolved_base = target.resolve_asset_base(headers) if target else "/";
 
+    # Detect precedence conflict with static_base_path and issue warning
+    static_base = config.get_static_base_path() if config else "";
+    if (static_base and resolved_base and resolved_base != "/") {
+        import from jaclang.cli.console { console }
+        console.print(
+            f"\n  [yellow]⚠[/yellow] [bold]Precedence Conflict:[/bold] Both 'static_base_path' "
+            f"({static_base}) and runtime 'X-Forwarded-Prefix' ({resolved_base}) are configured. "
+            f"The runtime 'X-Forwarded-Prefix' takes precedence."
+        );
+    }
+
     import html;
     escaped_base = html.escape(resolved_base) if resolved_base else "";
 

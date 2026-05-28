@@ -46,6 +46,14 @@ To trust incoming proxy headers and enable dynamic subpath routing, you must exp
 trust_forwarded_headers = true
 ```
 
+**Precedence Rules (Static vs. Runtime Base Paths):**
+
+If both `static_base_path` (configured in `jac.toml`) and `X-Forwarded-Prefix` (trusted at runtime) are present:
+
+* The runtime **`X-Forwarded-Prefix` takes precedence** and dynamically overrides the build-time `static_base_path`.
+* This ensures that dynamic reverse proxy routes take priority over static build-time CDN prefixes.
+* When a precedence conflict is detected, the server prints a warning to the console to help prevent unintended behavior in hybrid deployments.
+
 #### 3. Wide Side-Effects of `<base href>` Tag Injection
 
 When dynamic proxy subpath resolution is active, a `<base href="...">` tag is injected into the HTML `<head>` at render-time.
