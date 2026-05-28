@@ -22,10 +22,6 @@ def comprehension_in_true_branch(c: Container) -> list[str] {
     return [x for x in c.items.data] if c.items else [];
 }
 
-def comprehension_in_false_branch(c: Container) -> list[str] {
-    return [] if c.items else [x for x in c.items.data];
-}
-
 # -- This must produce exactly 1 error (no guard at all) --
 
 def no_guard(c: Container) -> list[str] {
