@@ -183,9 +183,14 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
-    if is_streaming and return_type is not str {
+    if is_streaming
+    and return_type is not str
+    and call_params.get("stream_handler") is None {
         raise ConfigurationError(
-            "Streaming responses are only supported for str return types."
+            "Streaming responses are only supported for str return types. "
+            "Pass a stream_handler to receive stream events for a structured "
+            "return type (e.g. `visit [-->] by model(stream=True, "
+            "stream_handler=fn)`)."
         );
     }
     if len(tools) > 0 {
