@@ -79,7 +79,7 @@ cl {
              },
              "deploy": {
                  "workloads": WorkloadsPage,
-                 "graphs": GraphsPage
+                 "usage": GraphsPage
              },
              "audit": {"activity": ActivityPage, "security": SecurityPage}
          };

@@ -1,8 +1,9 @@
-"""Graphs page: CPU + memory history per workload, like Lens.
+"""Usage page: CPU + memory history per workload.
 
 Pulls /admin/workloads/timeseries (one bulk call returning cpu+memory series
-for every workload) and renders hand-rolled SVG line charts. A time-range
-dropdown (1h / 6h / 24h / 7d) re-fetches at a coarser step.
+for every workload) and renders dependency-free SVG line charts with labeled
+axes (Y value scale, X time range) and gridlines. A time-range dropdown
+(1h / 6h / 24h / 7d) re-fetches at a coarser step.
 
 Charts are inline SVG with str-returning path helpers, because cl mode drops
 args to JSX-returning helper functions.
@@ -62,7 +63,10 @@ cl {
             return points[n - 1]["v"];
         }
 
-        def linePoints(points: list, w: float, h: float, maxV: float) -> str {
+        # Chart geometry: drawing area sits inside left/bottom margins that hold
+        # the axis labels. viewBox is 260 wide x 96 tall; drawing area is
+        # x:[44,256] y:[8,74].
+        def chartLine(points: list, maxV: float) -> str {
             n = len(points);
             if n == 0 {
                 return "";
@@ -71,14 +75,16 @@ cl {
             if mv <= 0 {
                 mv = 1.0;
             }
+            w = 212.0;
+            h = 66.0;
             out = "";
             i = 0;
             for p in points {
-                x = w / 2;
+                x = 44.0 + (w / 2);
                 if n > 1 {
-                    x = i / (n - 1) * w;
+                    x = 44.0 + (i / (n - 1) * w);
                 }
-                y = h - (p["v"] / mv * h);
+                y = 74.0 - (p["v"] / mv * h);
                 if out {
                     out = out + " ";
                 }
@@ -88,12 +94,12 @@ cl {
             return out;
         }
 
-        def areaPoints(points: list, w: float, h: float, maxV: float) -> str {
-            line = linePoints(points, w, h, maxV);
+        def chartArea(points: list, maxV: float) -> str {
+            line = chartLine(points, maxV);
             if not line {
                 return "";
             }
-            return "0," + str(h) + " " + line + " " + str(w) + "," + str(h);
+            return "44.0,74.0 " + line + " 256.0,74.0";
         }
 
         def formatBytes(b: float) -> str {
@@ -116,12 +122,22 @@ cl {
             return str(int(c * 100) / 100) + " cores";
         }
 
+        def rangeLabel(mins: int) -> str {
+            if mins >= 1440 {
+                return str(int(mins / 1440)) + "d ago";
+            }
+            if mins >= 60 {
+                return str(int(mins / 60)) + "h ago";
+            }
+            return str(mins) + "m ago";
+        }
+
         if isLoading {
             return
                 <div
                     className="bg-slate-900 border border-slate-800 rounded-lg p-8 text-center"
                 >
-                    <p className="text-sm text-slate-400">Loading graphs...</p>
+                    <p className="text-sm text-slate-400">Loading usage...</p>
                 </div>;
         }
 
@@ -138,20 +154,39 @@ cl {
                 </div>;
         }
 
+        # Detect a freshly-deployed cluster: very little history collected yet.
+        maxPoints = 0;
+        for w in workloads {
+            np = len(w["cpu"]);
+            if np > maxPoints {
+                maxPoints = np;
+            }
+        }
+        sparse = maxPoints < 5;
+
         cards = [];
         for w in workloads {
+            cpuMaxV = maxOf(w["cpu"]);
+            memMaxV = maxOf(w["memory"]);
             cards.append(
                 {
                     "name": w["name"],
                     "cpu": w["cpu"],
                     "memory": w["memory"],
-                    "cpuMax": maxOf(w["cpu"]),
-                    "memMax": maxOf(w["memory"]),
+                    "cpuMax": cpuMaxV,
+                    "memMax": memMaxV,
                     "cpuLast": lastOf(w["cpu"]),
-                    "memLast": lastOf(w["memory"])
+                    "memLast": lastOf(w["memory"]),
+                    "cpuMaxLabel": formatCores(cpuMaxV),
+                    "memMaxLabel": formatBytes(memMaxV),
+                    "cpuLine": chartLine(w["cpu"], cpuMaxV),
+                    "cpuArea": chartArea(w["cpu"], cpuMaxV),
+                    "memLine": chartLine(w["memory"], memMaxV),
+                    "memArea": chartArea(w["memory"], memMaxV)
                 }
             );
         }
+        startLabel = rangeLabel(rangeMinutes);
 
         return
             <div className="space-y-4">
@@ -172,13 +207,17 @@ cl {
                         <option value="10080">Last 7 days</option>
                     </select>
                 </div>
-                {len(cards) == 0
+                {sparse
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded-lg p-6 text-center text-sm text-slate-500"
+                    className="bg-slate-900 border border-amber-500/30 rounded-lg px-4 py-3"
                 >
-                    No workloads visible.
+                    <p className="text-xs text-amber-300">
+                        Collecting data. History builds up as the cluster runs, so
+                        graphs fill in over the next several minutes. (Prometheus
+                        history also resets if its pod restarts.)
+                    </p>
                 </div>}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {[
                         <div
                             key={c["name"]}
@@ -187,12 +226,12 @@ cl {
                             <p className="text-sm font-medium text-white mb-3">
                                 {c["name"]}
                             </p>
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 <div>
                                     <div
                                         className="flex items-center justify-between mb-1"
                                     >
-                                        <span className="text-xs text-slate-500">
+                                        <span className="text-xs text-slate-400">
                                             CPU
                                         </span>
                                         <span className="text-xs text-teal-300 font-mono">
@@ -200,17 +239,63 @@ cl {
                                         </span>
                                     </div>
                                     <svg
-                                        viewBox="0 0 200 40"
-                                        preserveAspectRatio="none"
-                                        className="w-full h-10"
+                                        viewBox="0 0 260 96"
+                                        className="w-full"
+                                        style={{"height": "110px"}}
                                     >
+                                        <line
+                                            x1="44"
+                                            y1="8"
+                                            x2="256"
+                                            y2="8"
+                                            stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <line
+                                            x1="44"
+                                            y1="74"
+                                            x2="256"
+                                            y2="74"
+                                            stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <text
+                                            x="40"
+                                            y="11"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            {c["cpuMaxLabel"]}
+                                        </text>
+                                        <text
+                                            x="40"
+                                            y="74"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            0
+                                        </text>
+                                        <text x="44" y="90" fill="#64748b" fontSize="8">
+                                            {startLabel}
+                                        </text>
+                                        <text
+                                            x="256"
+                                            y="90"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            now
+                                        </text>
                                         <polygon
-                                            points={areaPoints(c["cpu"], 200, 40, c["cpuMax"])}
+                                            points={c["cpuArea"]}
                                             fill="rgba(45,212,191,0.15)"
                                             stroke="none"
                                         />
                                         <polyline
-                                            points={linePoints(c["cpu"], 200, 40, c["cpuMax"])}
+                                            points={c["cpuLine"]}
                                             fill="none"
                                             stroke="#2dd4bf"
                                             strokeWidth="1.5"
@@ -221,7 +306,7 @@ cl {
                                     <div
                                         className="flex items-center justify-between mb-1"
                                     >
-                                        <span className="text-xs text-slate-500">
+                                        <span className="text-xs text-slate-400">
                                             Memory
                                         </span>
                                         <span className="text-xs text-purple-300 font-mono">
@@ -229,17 +314,63 @@ cl {
                                         </span>
                                     </div>
                                     <svg
-                                        viewBox="0 0 200 40"
-                                        preserveAspectRatio="none"
-                                        className="w-full h-10"
+                                        viewBox="0 0 260 96"
+                                        className="w-full"
+                                        style={{"height": "110px"}}
                                     >
+                                        <line
+                                            x1="44"
+                                            y1="8"
+                                            x2="256"
+                                            y2="8"
+                                            stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <line
+                                            x1="44"
+                                            y1="74"
+                                            x2="256"
+                                            y2="74"
+                                            stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <text
+                                            x="40"
+                                            y="11"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            {c["memMaxLabel"]}
+                                        </text>
+                                        <text
+                                            x="40"
+                                            y="74"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            0
+                                        </text>
+                                        <text x="44" y="90" fill="#64748b" fontSize="8">
+                                            {startLabel}
+                                        </text>
+                                        <text
+                                            x="256"
+                                            y="90"
+                                            textAnchor="end"
+                                            fill="#64748b"
+                                            fontSize="8"
+                                        >
+                                            now
+                                        </text>
                                         <polygon
-                                            points={areaPoints(c["memory"], 200, 40, c["memMax"])}
+                                            points={c["memArea"]}
                                             fill="rgba(168,85,247,0.15)"
                                             stroke="none"
                                         />
                                         <polyline
-                                            points={linePoints(c["memory"], 200, 40, c["memMax"])}
+                                            points={c["memLine"]}
                                             fill="none"
                                             stroke="#a855f7"
                                             strokeWidth="1.5"
