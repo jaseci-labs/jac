@@ -17,7 +17,8 @@ import from jaclang.cli.ai_agent {
     ui_stop,
     ui_stream,
     ui_settings,
-    ui_apply_settings
+    ui_apply_settings,
+    ui_call_detail
 }
 
 # Point the agent at the user's project and build its model. Runs once when the
@@ -126,6 +127,40 @@ obj GraphData {
     has nodes: list[GraphNode] = [],
         edges: list[GraphEdge] = [],
         state: PollResult = PollResult();
+}
+
+"""One conversation message in a call's detail view: a role, its (truncated)
+text, and one-line summaries of any tool calls it made."""
+obj CallMessage {
+    has role: str = "",
+        content: str = "",
+        tools: list[str] = [];
+}
+
+"""The reconstructed detail for one token-usage row (model call).
+
+`input` is the full conversation the call saw; `shared` is how many leading
+messages it carried over unchanged from the previous call (the prompt-cached
+prefix), so `input[shared:]` is the growth since then. `output` is what this
+call produced (the assistant message plus any tool result), derived as the
+forward diff to the next call. `prev_id`/`next_id` are the adjacent calls in
+the same conversation for stepping (-1 when none). `found` is False for an
+unknown id (e.g. evicted from the bounded store)."""
+obj CallDetail {
+    has found: bool = False,
+        id: int = 0,
+        node: str = "",
+        input: list[CallMessage] = [],
+        output: list[CallMessage] = [],
+        shared: int = 0,
+        total: int = 0,
+        # The call's token counts (same as the row). `tokens_in` also covers the
+        # tool JSON schemas, which the API sends separately and so are NOT among
+        # the messages -- the modal notes this so the counts reconcile.
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        prev_id: int = -1,
+        next_id: int = -1;
 }
 
 """Map a raw bus snapshot dict into a typed PollResult for the client."""
@@ -241,6 +276,44 @@ reasoning/answer tokens as they are generated, plus phase/tool/status/stats
 deltas. The client reads it with a fetch stream-reader (see frontend)."""
 def:pub agent_stream -> Iterator[dict] {
     return ui_stream();
+}
+
+"""Map raw sanitized message dicts (role/content/tools) into typed CallMessages."""
+def _to_call_msgs(raw: any) -> list[CallMessage] {
+    out: list[CallMessage] = [];
+    for m in raw {
+        out.append(
+            CallMessage(
+                role=str(m.get("role", "")),
+                content=str(m.get("content", "")),
+                tools=[str(t) for t in m.get("tools", [])]
+            )
+        );
+    }
+    return out;
+}
+
+"""Detail for one token-usage row: its full input conversation, the diff vs the
+prior call, and its output. Fetched lazily when the user clicks a row, so the
+heavy message text never rides the per-frame poll/stream."""
+def:pub agent_call_detail(call_id: int) -> CallDetail {
+    d = ui_call_detail(call_id);
+    if not d.get("found", False) {
+        return CallDetail(found=False, id=call_id);
+    }
+    return CallDetail(
+        found=True,
+        id=call_id,
+        node=str(d.get("node", "")),
+        input=_to_call_msgs(d.get("input", [])),
+        output=_to_call_msgs(d.get("output", [])),
+        shared=int(d.get("shared", 0)),
+        total=int(d.get("total", 0)),
+        tokens_in=int(d.get("tokens_in", 0) or 0),
+        tokens_out=int(d.get("tokens_out", 0) or 0),
+        prev_id=int(d.get("prev_id", -1)),
+        next_id=int(d.get("next_id", -1))
+    );
 }
 
 """The settings panel's current values. `api_key_set` reports whether a key is

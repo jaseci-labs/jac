@@ -13,7 +13,8 @@ import from server {
     agent_stop,
     agent_stream,
     agent_settings,
-    agent_apply_settings
+    agent_apply_settings,
+    agent_call_detail
 }
 import from server {
     UiEvent,
@@ -23,7 +24,9 @@ import from server {
     GraphEdge,
     GraphData,
     SettingsView,
-    SettingsResult
+    SettingsResult,
+    CallDetail,
+    CallMessage
 }
 
 to cl:

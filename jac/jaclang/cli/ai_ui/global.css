@@ -738,6 +738,20 @@ body.resizing {
     text-align: right;
 }
 
+.tokrow.clickable {
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.tokrow.clickable:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.tokrow.sel {
+    background: rgba(34, 211, 238, 0.1);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* ---- Ledger panel ----------------------------------------------------- */
 .ledger-list {
     display: flex;
@@ -1051,4 +1065,174 @@ body.resizing {
     gap: 10px;
     padding: 14px 18px;
     border-top: 1px solid var(--border);
+}
+
+/* ---- Call detail modal (token-usage row click) ------------------------ */
+.btn.ghost.sm {
+    height: 26px;
+    padding: 0 9px;
+    font-size: 12px;
+    border-radius: 7px;
+}
+
+.cd-modal {
+    width: 820px;
+}
+
+.cd-title {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+.cd-tokens {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.cd-tokens b {
+    color: var(--fg);
+}
+
+.cd-note {
+    font-size: 11px;
+    color: #6b7077;
+    font-style: italic;
+}
+
+.cd-body {
+    gap: 10px;
+}
+
+.cd-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cd-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.cd-summary b {
+    color: var(--fg);
+}
+
+.cd-sep {
+    color: #4b5057;
+}
+
+.cd-section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-top: 4px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 3px;
+}
+
+.cd-cached-note {
+    font-size: 11.5px;
+    color: #6b7077;
+    font-style: italic;
+    padding: 2px 0;
+}
+
+.cd-msgs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cd-msg {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+    overflow: hidden;
+}
+
+.cd-msg.cached {
+    opacity: 0.5;
+}
+
+.cd-msg.cd-system {
+    border-left: 2px solid #6b7077;
+}
+
+.cd-msg.cd-user {
+    border-left: 2px solid var(--accent);
+}
+
+.cd-msg.cd-assistant {
+    border-left: 2px solid var(--green);
+}
+
+.cd-msg.cd-tool {
+    border-left: 2px solid var(--amber);
+}
+
+.cd-msg-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.cd-role {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.cd-tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    color: #6b7077;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 4px;
+}
+
+.cd-content {
+    margin: 0;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--fg);
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.cd-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 10px;
+}
+
+.cd-tool {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(34, 211, 238, 0.08);
+    border-radius: 5px;
+    padding: 3px 7px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 280px;
+    overflow-y: auto;
 }

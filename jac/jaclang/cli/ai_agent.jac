@@ -214,7 +214,19 @@ obj AgentEventBus {
         # state frame so the client always knows whether a key is required.
         needs_key: bool = False,
         key_env: str = "",
-        model_name: str = "";
+        model_name: str = "",
+        # Per-call conversation capture backing the token-usage detail view. Each
+        # model call records the conversation it belongs to (`_cur_convo`) and its
+        # token counts into `call_log`; the growing message snapshot for each
+        # conversation lives once in `convos`, kept as the longest seen. From those,
+        # `ui_call_detail` reconstructs a call's full input and output using the
+        # assistant messages as call boundaries (each call yields one assistant
+        # message), plus the diff vs the prior call. Kept OUT of the event ring /
+        # `snapshot` -- heavy, fetched lazily per click, not pushed every frame.
+        call_log: list[dict] = [],
+        convos: dict[int, list] = {},
+        _cur_convo: int = 0,
+        _convo_seq: int = 0;
 
     def emit(kind: str, fields: dict) -> None;
     def emit_stream(kind: str, token: str) -> None;
@@ -229,6 +241,13 @@ obj AgentEventBus {
     def ledger_view -> dict;
     def publish_ledger -> None;
     def _state -> dict;
+    # Per-call conversation capture (token-usage detail view). `msgs` is the
+    # backend's heterogeneous message list (litellm dicts or objects), so it is
+    # `any` rather than a concrete element type.
+    def emit_call(fields: dict) -> None;
+    def open_convo(msgs: any) -> None;
+    def set_pending(msgs: any) -> None;
+    def close_convo(msgs: any) -> None;
 }
 
 
@@ -311,6 +330,11 @@ def confirm(action: str) -> bool;
 def _count_diags(diags: list) -> tuple[int, int];
 def code_intel -> any;
 
+# Flatten one conversation message (litellm dict or object) to a small JSON-safe
+# record (role + truncated content + tool-call summaries) for the token-usage
+# detail snapshots.
+def _san_msg(m: any) -> dict;
+
 
 glob AGENT_RULES = """\
 You are Jac AI, a coding agent working inside the user's terminal in their Jac
@@ -331,29 +355,10 @@ Universal habits:
   something a later state should check, call `note` -- notes stay visible to
   every later state and turn.
 
-You write JAC, not JavaScript, TypeScript, or React. Jac is Python-flavored
-with braces. A UI component looks like Python, NOT like a React class or
-function component. If you catch yourself writing React, STOP and write Jac:
-- A component is `def:pub Name(props) -> JsxElement { ... }` -- never a
-  `class`, never `function`, never `() => {}`, never `constructor`/`render`,
-  never `this.props` (props are plain function parameters; state is `has`).
-- NEVER `import React`, never `from "react"`, never `export` / `export default`.
-- Define functions with `def`, not `function`; use `lambda(x: int) -> int {...}`,
-  not `x => ...`. Declare variables `x: int = 1`, never `const`/`let`/`var`.
-- Refer to the current object as `self`, not `this`. Use `==`/`!=`, not
-  `===`/`!==`. Use `None`, not `null`/`undefined`. End statements with `;`.
-- Every source file is `.jac` (a client component is `.cl.jac`). Never create
-  a `.js`, `.ts`, `.jsx`, or `.tsx` file. JSX still uses `className` and
-  `{expr}` -- that part is the same.
-When unsure of the Jac form for any UI pattern, call read_guide("jac-cl-components")
-and copy its shapes exactly.
-
-Jac gotchas -- the type checker rejects all of these, so never write them:
-- There is no `pass` statement. For an empty block, write empty braces: `{}`.
-- A docstring (`\"\"\"...\"\"\"`) goes immediately BEFORE a declaration, never as
-  the first statement inside a function body -- in a body it is a parse error.
-- The gradual / untyped type is lowercase `any`, with no import. Never write
-  capital `Any`, and never `import from typing { Any }`.
+You write JAC -- Python-flavored with braces -- never JavaScript, TypeScript, or
+React. A UI component is Jac (`def:pub Name(props) -> JsxElement { ... }`), not a
+React class or function. Before writing any UI code, call
+read_guide("jac-cl-components") and copy its shapes exactly.
 """;
 
 
@@ -618,6 +623,9 @@ def ui_graph -> dict;
 def ui_reset -> None;
 def ui_stop -> None;
 def ui_stream -> any;
+# Lazily fetched detail for one token-usage row (model call): its full input
+# conversation, the diff vs the prior call, and its output messages.
+def ui_call_detail(call_id: int) -> dict;
 def ui_settings -> dict;
 def ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
