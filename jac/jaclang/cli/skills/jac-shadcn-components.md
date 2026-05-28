@@ -272,6 +272,7 @@ def:pub EventListPage() -> JsxElement {
     has loading: bool = True;
 
     async can with entry {
+        # sv import RPC call goes here
         loading = False;
     }
 
