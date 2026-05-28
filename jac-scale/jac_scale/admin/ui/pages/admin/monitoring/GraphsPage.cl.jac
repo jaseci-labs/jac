@@ -5,8 +5,10 @@ for every workload) and renders dependency-free SVG line charts with labeled
 axes (Y value scale, X time range) and gridlines. A time-range dropdown
 (1h / 6h / 24h / 7d) re-fetches at a coarser step.
 
-Charts are inline SVG with str-returning path helpers, because cl mode drops
-args to JSX-returning helper functions.
+Charts use a wide viewBox (900x260) and w-full with auto height so they scale
+to the full card width without letterboxing. One workload per row keeps each
+chart large and readable. Path strings are built by str-returning helpers
+because cl mode drops args to JSX-returning helper functions.
 """
 
 cl {
@@ -63,9 +65,8 @@ cl {
             return points[n - 1]["v"];
         }
 
-        # Chart geometry: drawing area sits inside left/bottom margins that hold
-        # the axis labels. viewBox is 260 wide x 96 tall; drawing area is
-        # x:[44,256] y:[8,74].
+        # Drawing area inside the 900x260 viewBox: x:[90,880] y:[20,210].
+        # Left margin (90) holds Y labels, bottom margin holds X labels.
         def chartLine(points: list, maxV: float) -> str {
             n = len(points);
             if n == 0 {
@@ -75,16 +76,14 @@ cl {
             if mv <= 0 {
                 mv = 1.0;
             }
-            w = 212.0;
-            h = 66.0;
             out = "";
             i = 0;
             for p in points {
-                x = 44.0 + (w / 2);
+                x = 90.0 + 395.0;
                 if n > 1 {
-                    x = 44.0 + (i / (n - 1) * w);
+                    x = 90.0 + (i / (n - 1) * 790.0);
                 }
-                y = 74.0 - (p["v"] / mv * h);
+                y = 210.0 - (p["v"] / mv * 190.0);
                 if out {
                     out = out + " ";
                 }
@@ -99,7 +98,7 @@ cl {
             if not line {
                 return "";
             }
-            return "44.0,74.0 " + line + " 256.0,74.0";
+            return "90.0,210.0 " + line + " 880.0,210.0";
         }
 
         def formatBytes(b: float) -> str {
@@ -154,7 +153,6 @@ cl {
                 </div>;
         }
 
-        # Detect a freshly-deployed cluster: very little history collected yet.
         maxPoints = 0;
         for w in workloads {
             np = len(w["cpu"]);
@@ -171,14 +169,12 @@ cl {
             cards.append(
                 {
                     "name": w["name"],
-                    "cpu": w["cpu"],
-                    "memory": w["memory"],
-                    "cpuMax": cpuMaxV,
-                    "memMax": memMaxV,
                     "cpuLast": lastOf(w["cpu"]),
                     "memLast": lastOf(w["memory"]),
                     "cpuMaxLabel": formatCores(cpuMaxV),
+                    "cpuMidLabel": formatCores(cpuMaxV / 2),
                     "memMaxLabel": formatBytes(memMaxV),
+                    "memMidLabel": formatBytes(memMaxV / 2),
                     "cpuLine": chartLine(w["cpu"], cpuMaxV),
                     "cpuArea": chartArea(w["cpu"], cpuMaxV),
                     "memLine": chartLine(w["memory"], memMaxV),
@@ -217,7 +213,7 @@ cl {
                         history also resets if its pod restarts.)
                     </p>
                 </div>}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div className="space-y-3">
                     {[
                         <div
                             key={c["name"]}
@@ -226,12 +222,14 @@ cl {
                             <p className="text-sm font-medium text-white mb-3">
                                 {c["name"]}
                             </p>
-                            <div className="space-y-4">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div>
                                     <div
                                         className="flex items-center justify-between mb-1"
                                     >
-                                        <span className="text-xs text-slate-400">
+                                        <span
+                                            className="text-xs font-medium text-slate-300"
+                                        >
                                             CPU
                                         </span>
                                         <span className="text-xs text-teal-300 font-mono">
@@ -239,53 +237,75 @@ cl {
                                         </span>
                                     </div>
                                     <svg
-                                        viewBox="0 0 260 96"
+                                        viewBox="0 0 900 240"
                                         className="w-full"
-                                        style={{"height": "110px"}}
+                                        role="img"
                                     >
                                         <line
-                                            x1="44"
-                                            y1="8"
-                                            x2="256"
-                                            y2="8"
+                                            x1="90"
+                                            y1="20"
+                                            x2="880"
+                                            y2="20"
                                             stroke="#1e293b"
                                             strokeWidth="1"
                                         />
                                         <line
-                                            x1="44"
-                                            y1="74"
-                                            x2="256"
-                                            y2="74"
+                                            x1="90"
+                                            y1="115"
+                                            x2="880"
+                                            y2="115"
                                             stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <line
+                                            x1="90"
+                                            y1="210"
+                                            x2="880"
+                                            y2="210"
+                                            stroke="#334155"
                                             strokeWidth="1"
                                         />
                                         <text
-                                            x="40"
-                                            y="11"
+                                            x="82"
+                                            y="24"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             {c["cpuMaxLabel"]}
                                         </text>
                                         <text
-                                            x="40"
-                                            y="74"
+                                            x="82"
+                                            y="119"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
+                                        >
+                                            {c["cpuMidLabel"]}
+                                        </text>
+                                        <text
+                                            x="82"
+                                            y="214"
+                                            textAnchor="end"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             0
                                         </text>
-                                        <text x="44" y="90" fill="#64748b" fontSize="8">
+                                        <text
+                                            x="90"
+                                            y="234"
+                                            fill="#94a3b8"
+                                            fontSize="15"
+                                        >
                                             {startLabel}
                                         </text>
                                         <text
-                                            x="256"
-                                            y="90"
+                                            x="880"
+                                            y="234"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             now
                                         </text>
@@ -298,7 +318,7 @@ cl {
                                             points={c["cpuLine"]}
                                             fill="none"
                                             stroke="#2dd4bf"
-                                            strokeWidth="1.5"
+                                            strokeWidth="2.5"
                                         />
                                     </svg>
                                 </div>
@@ -306,7 +326,9 @@ cl {
                                     <div
                                         className="flex items-center justify-between mb-1"
                                     >
-                                        <span className="text-xs text-slate-400">
+                                        <span
+                                            className="text-xs font-medium text-slate-300"
+                                        >
                                             Memory
                                         </span>
                                         <span className="text-xs text-purple-300 font-mono">
@@ -314,53 +336,75 @@ cl {
                                         </span>
                                     </div>
                                     <svg
-                                        viewBox="0 0 260 96"
+                                        viewBox="0 0 900 240"
                                         className="w-full"
-                                        style={{"height": "110px"}}
+                                        role="img"
                                     >
                                         <line
-                                            x1="44"
-                                            y1="8"
-                                            x2="256"
-                                            y2="8"
+                                            x1="90"
+                                            y1="20"
+                                            x2="880"
+                                            y2="20"
                                             stroke="#1e293b"
                                             strokeWidth="1"
                                         />
                                         <line
-                                            x1="44"
-                                            y1="74"
-                                            x2="256"
-                                            y2="74"
+                                            x1="90"
+                                            y1="115"
+                                            x2="880"
+                                            y2="115"
                                             stroke="#1e293b"
+                                            strokeWidth="1"
+                                        />
+                                        <line
+                                            x1="90"
+                                            y1="210"
+                                            x2="880"
+                                            y2="210"
+                                            stroke="#334155"
                                             strokeWidth="1"
                                         />
                                         <text
-                                            x="40"
-                                            y="11"
+                                            x="82"
+                                            y="24"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             {c["memMaxLabel"]}
                                         </text>
                                         <text
-                                            x="40"
-                                            y="74"
+                                            x="82"
+                                            y="119"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
+                                        >
+                                            {c["memMidLabel"]}
+                                        </text>
+                                        <text
+                                            x="82"
+                                            y="214"
+                                            textAnchor="end"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             0
                                         </text>
-                                        <text x="44" y="90" fill="#64748b" fontSize="8">
+                                        <text
+                                            x="90"
+                                            y="234"
+                                            fill="#94a3b8"
+                                            fontSize="15"
+                                        >
                                             {startLabel}
                                         </text>
                                         <text
-                                            x="256"
-                                            y="90"
+                                            x="880"
+                                            y="234"
                                             textAnchor="end"
-                                            fill="#64748b"
-                                            fontSize="8"
+                                            fill="#94a3b8"
+                                            fontSize="15"
                                         >
                                             now
                                         </text>
@@ -373,7 +417,7 @@ cl {
                                             points={c["memLine"]}
                                             fill="none"
                                             stroke="#a855f7"
-                                            strokeWidth="1.5"
+                                            strokeWidth="2.5"
                                         />
                                     </svg>
                                 </div>
