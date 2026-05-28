@@ -1,9 +1,10 @@
-"""Chat panel: the user's prompts, the agent's answers, and the composer.
+"""Chat panel: the user's prompts, the agent's streaming answers, and the composer.
 
 Derives its message list from the shared event feed (the `user`, `answer`,
-`system`, and `error` events), so it stays in sync with everything else the
-poll loop drives. The composer sends on Enter (Shift+Enter for a newline) and
-is disabled while a turn is running.
+`system`, and `error` events), so it stays in sync with everything else the poll
+loop drives. The answer text streams in token-by-token (one growing `answer`
+event per phase), with a live cursor on the in-progress reply. The composer
+sends on Enter (Shift+Enter for a newline); while a turn runs it offers Stop.
 """
 
 import from .ui.Button { Button }
@@ -15,7 +16,8 @@ def:pub Conversation(
     status: str,
     draft: str,
     onDraftChange: Callable[[str], None],
-    onSend: Callable[[], None]
+    onSend: Callable[[], None],
+    onStop: Callable[[], None]
 ) -> JsxElement {
     msgs = [
         e
@@ -26,6 +28,10 @@ def:pub Conversation(
         or e.kind == "error"
     ];
     running = status == "running";
+    stopping = status == "stopping";
+    busy = running or stopping;
+    # Negative indexing isn't valid in the compiled JS; index explicitly.
+    last_id = msgs[len(msgs) - 1].id if len(msgs) > 0 else -1;
     return
         <div className="pane">
             <div className="pane-head">
@@ -34,9 +40,13 @@ def:pub Conversation(
                 {<Badge label="working" variant="amber" pulse={True}/>
                     if running
                     else (
-                        <Badge label="done" variant="green"/>
-                            if status == "done"
-                            else <Badge label="idle"/>
+                        <Badge label="stopping" variant="amber" pulse={True}/>
+                            if stopping
+                            else (
+                                <Badge label="done" variant="green"/>
+                                    if status == "done"
+                                    else <Badge label="idle"/>
+                            )
                     )}
             </div>
             <div className="pane-body">
@@ -61,7 +71,13 @@ def:pub Conversation(
                                         if m.kind == "user"
                                         else ("jac ai" if m.kind == "answer" else "")}
                                 </span>
-                                <div className="bubble">{m.text}</div>
+                                <div className="bubble">
+                                    {m.text}{<span className="cursor"/>
+                                        if running
+                                        and m.id == last_id
+                                        and m.kind == "answer"
+                                        else <span/>}
+                                </div>
                             </div> for m in msgs
                         ]}
                     </div>}
@@ -71,7 +87,7 @@ def:pub Conversation(
                     className="input"
                     placeholder="Describe a change, e.g. 'add a dark-mode toggle'…"
                     value={draft}
-                    disabled={running}
+                    disabled={busy}
                     onChange={lambda e: ChangeEvent { onDraftChange(e.target.value); }}
                     onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter"
                     and not e.shiftKey {
@@ -79,11 +95,19 @@ def:pub Conversation(
                         onSend();
                     }}}
                 />
-                <Button
-                    label="Send"
-                    onClick={onSend}
-                    disabled={running or len(draft.strip()) == 0}
-                />
+                {<button className="btn stop" onClick={lambda { onStop(); }}>
+                    Stop
+                </button>
+                    if running
+                    else (
+                        <button className="btn stop" disabled={True}>Stopping…</button>
+                            if stopping
+                            else <Button
+                                label="Send"
+                                onClick={onSend}
+                                disabled={len(draft.strip()) == 0}
+                            />
+                    )}
             </div>
         </div>;
 }

@@ -968,6 +968,35 @@ test "decorated class in code block parses as archetype" {
     }
 }
 
+test "docstring attaches to all member types inside archetype body" {
+    (mod, err) = rd_parse(load_fixture("docstring_with_entry.jac"), "");
+    assert not err , "Parser reported errors for docstrings on archetype members";
+
+    def collect_doc_nodes(nd: uni.UniNode) -> list {
+        results: list = [];
+        if isinstance(nd, (uni.ArchHas, uni.Ability, uni.ModuleCode, uni.Archetype))
+        and nd.doc is not None {
+            results.append(nd);
+        }
+        for k in nd.kid {
+            results.extend(collect_doc_nodes(k));
+        }
+        return results;
+    }
+
+    doc_nodes = collect_doc_nodes(mod);
+    assert len(doc_nodes) == 4 , (
+        f"Expected 4 doc-carrying members (has, def, with entry, nested obj) "
+        f"but got {len(doc_nodes)}: {[type(n).__name__ for n in doc_nodes]}"
+    );
+
+    for nd in doc_nodes {
+        assert nd.doc is not None , (
+            f"{type(nd).__name__}.doc must be set when preceded by a docstring"
+        );
+    }
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem

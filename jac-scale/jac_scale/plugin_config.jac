@@ -329,6 +329,18 @@ class JacScalePluginConfig {
                                     "description": "SPA base route"
                                 }
                             }
+                        },
+                        "logs": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Centralised log aggregation via Loki + Grafana Alloy (M-14). Off by default. When enabled, deploys the full monitoring stack (Prometheus + Grafana + Loki + Alloy) into the app namespace; Alloy tails every pod's stdout/stderr from `/var/log/pods` and ships to Loki, queried via Grafana's `Pod Logs` dashboard. v0 uses ephemeral `emptyDir` for Loki storage (suitable for dev/staging); persistent backends land in M-14.c. **Multi-tenant note**: Alloy's ClusterRole reads pods cluster-wide and the dashboard query is `{namespace=~\".+\"}`, so anyone with Grafana access sees logs from every namespace - change the default Grafana password and only enable on clusters where this exposure is acceptable.",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Enable the Loki + Alloy logging pipeline. Implies the full monitoring stack (Prometheus + Grafana) because the Pod Logs dashboard view lives in Grafana."
+                                }
+                            }
                         }
                     }
                 },

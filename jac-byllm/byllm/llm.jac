@@ -11,7 +11,7 @@ import json;
 import random;
 import time;
 
-import from typing { Generator }
+import from typing { Callable, Generator }
 import from byllm.mtir { MTRuntime }
 import litellm;
 import from litellm._logging { _disable_debugging }
@@ -112,6 +112,7 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
     def _get_ctx_window(call_params: dict) -> int;
     def _resolve_compaction_params(mt_run: MTRuntime) -> dict;
     def _compact_messages(

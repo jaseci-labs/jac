@@ -1,10 +1,11 @@
 """Live phase-graph visualizer for the agent walker, rendered with cytoscape.
 
-Draws the Plan -> Build -> QA -> Done pipeline (with QA's loop-back edges) once
-on mount, then reflects the walker's live position: the `active` node glows and
-pulses, every node along `path` is marked visited, and each traversed edge
-lights up -- so you watch the agent move through its own object-spatial graph in
-real time as `active`/`path` update from the poll loop.
+Lays out whatever nodes/edges the backend traced from the real pipeline (see
+`ui_graph`) once on mount -- no hardcoded states or positions -- then reflects
+the walker's live position: the `active` node glows and pulses, every node along
+`path` is marked visited, and each traversed edge lights up -- so you watch the
+agent move through its own object-spatial graph in real time as `active`/`path`
+update from the poll loop.
 """
 
 import from react { useRef, useEffect }
@@ -16,7 +17,9 @@ def:pub PhaseGraph(
     edges: list[GraphEdge],
     active: str,
     path: list[str],
-    status: str
+    status: str,
+    selected: str,
+    onSelect: any
 ) -> JsxElement {
     containerRef: any = useRef(None);
     cyRef: any = useRef(None);
@@ -27,20 +30,9 @@ def:pub PhaseGraph(
     # a cleanup and throws).
     useEffect(
         lambda { if containerRef.current and len(nodes) > 0 and not cyRef.current {
-            positions = {
-                "Plan": {"x": 170, "y": 60},
-                "Build": {"x": 170, "y": 190},
-                "QA": {"x": 170, "y": 320},
-                "Done": {"x": 170, "y": 450}
-            };
             els: list = [];
             for n in nodes {
-                els.append(
-                    {
-                        "data": {"id": n.id, "label": n.label, "desc": n.desc},
-                        "position": positions.get(n.id, {"x": 170, "y": 60})
-                    }
-                );
+                els.append({"data": {"id": n.id, "label": n.label, "desc": n.desc}});
             }
             for e in edges {
                 els.append(
@@ -57,7 +49,19 @@ def:pub PhaseGraph(
                 {
                     "container": containerRef.current,
                     "elements": els,
-                    "layout": {"name": "preset", "fit": True, "padding": 36},
+                    # Auto-lay out the traced topology top-to-bottom from the
+                    # entry (always the first node) instead of preset coordinates,
+                    # so adding or rewiring a state places itself with no edit
+                    # here. `directed` follows edge direction; loop-back edges
+                    # (QA -> Build/Plan) just curve back up.
+                    "layout": {
+                        "name": "breadthfirst",
+                        "directed": True,
+                        "roots": "#" + nodes[0].id,
+                        "spacingFactor": 1.1,
+                        "fit": True,
+                        "padding": 36
+                    },
                     "userZoomingEnabled": False,
                     "userPanningEnabled": False,
                     "boxSelectionEnabled": False,
@@ -96,6 +100,10 @@ def:pub PhaseGraph(
                             }
                         },
                         {
+                            "selector": "node.selected",
+                            "style": {"border-color": "#22d3ee", "border-width": 3}
+                        },
+                        {
                             "selector": "edge",
                             "style": {
                                 "width": 2,
@@ -120,6 +128,23 @@ def:pub PhaseGraph(
                 }
             );
             cyRef.current = cy;
+            # Clicking a node selects it -- the parent shows that state's full
+            # definition in the phase inspector. A grab cursor hints it's clickable.
+            cy.on("tap", "node", lambda evt: any { onSelect(evt.target.id()); });
+            cy.on(
+                "mouseover",
+                "node",
+                lambda { if containerRef.current {
+                    containerRef.current.style.cursor = "pointer";
+                }}
+            );
+            cy.on(
+                "mouseout",
+                "node",
+                lambda { if containerRef.current {
+                    containerRef.current.style.cursor = "default";
+                }}
+            );
             # Re-fit after layout settles, in case the pane sized late.
             window.setTimeout(
                 lambda { if cyRef.current {
@@ -130,6 +155,41 @@ def:pub PhaseGraph(
             );
         }},
         [nodes]
+    );
+
+    # Keep the canvas sized to its container: when a resize handle changes this
+    # pane's dimensions the div resizes but cytoscape's canvas would not, so it
+    # would crop -- a ResizeObserver re-syncs and refits on every size change.
+    useEffect(
+        lambda -> any {
+            if not containerRef.current {
+                return None;
+            }
+            ro = new(
+                ResizeObserver,
+                lambda { if cyRef.current {
+                    cyRef.current.resize();
+                    cyRef.current.fit(cyRef.current.elements(), 36);
+                }}
+            );
+            ro.observe(containerRef.current);
+            return lambda { ro.disconnect(); };
+        },
+        []
+    );
+
+    # Highlight the node the inspector is showing; rerun when the pick changes.
+    useEffect(
+        lambda {
+            cy = cyRef.current;
+            if cy {
+                cy.nodes().removeClass("selected");
+                if selected {
+                    cy.getElementById(selected).addClass("selected");
+                }
+            }
+        },
+        [selected]
     );
 
     # Reflect the live walker position. Recreated each render, so it reads the

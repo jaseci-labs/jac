@@ -392,6 +392,19 @@ def:pub Counter() -> JsxElement {
 
 Declare `has`-fields at the component scope, never inside a `{...}` slot body. A slot body is a statement template that re-runs on every render, so a `has` there would compile to a conditional `useState` and violate React's rules of hooks -- the compiler rejects it with `E2024`.
 
+Inside a handler body (an ordinary function, not a slot), `skip;` is a plain early `return` -- the same return-family semantics it has everywhere else. Use it for guard clauses:
+
+```jac
+def handle_submit {
+    if len(value) == 0 {
+        skip;   # early return -- lowers to `return;`, not `continue`
+    }
+    value = "submitted";
+}
+```
+
+Don't confuse this with the slot-guard form above: in a slot, `skip;` yields the children accumulated so far; in a function body it simply exits the function.
+
 ### Dynamic Tags
 
 `<@expr />` chooses its element tag from an expression instead of a fixed name. The expression can be an identifier, a dotted access, or a brace-wrapped expression `<@{expr}>`, and resolves to a host-tag string, another component, or a `str | type` value:
