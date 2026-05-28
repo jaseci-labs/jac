@@ -87,9 +87,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Set up additional Python versions so jac bundle --precompile can find python3.13/3.14
+      # Set up additional Python versions needed for precompile (both plugins and jaclang itself).
       - name: Set up Python 3.13 and 3.14 (for precompile)
-        if: matrix.precompile == true && matrix.name != 'jaclang'
+        if: matrix.precompile == true
         uses: actions/setup-python@v5
         with:
           python-version: |
@@ -135,6 +135,22 @@ jobs:
       - name: Install build tools (jaclang)
         if: matrix.name == 'jaclang'
         run: pip install build
+
+      # Precompile jaclang bytecode before python -m build packages it.
+      # Uses per-version venvs (same pattern as jac bundle --precompile) since jaclang
+      # bootstraps the toolchain and cannot use jac bundle itself.
+      - name: Precompile jaclang bytecode
+        if: matrix.name == 'jaclang' && matrix.precompile == true
+        run: |
+          for pyexe in python3.12 python3.13 python3.14; do
+            if command -v "$pyexe" > /dev/null 2>&1; then
+              "$pyexe" -m venv /tmp/jac-precompile-$pyexe
+              /tmp/jac-precompile-$pyexe/bin/pip install -e ./jac --quiet
+              /tmp/jac-precompile-$pyexe/bin/jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
+            else
+              echo "Warning: $pyexe not found on PATH, skipping"
+            fi
+          done
 
       - name: Build jaclang wheel
         if: matrix.name == 'jaclang'
