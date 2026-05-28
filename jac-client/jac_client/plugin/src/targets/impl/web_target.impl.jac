@@ -313,7 +313,7 @@ impl WebTarget.resolve_asset_base(headers: dict[str, str]) -> str {
         return "/";
     }
 
-    if prefix and not prefix.endswith('/') {
+    if not prefix.endswith('/') {
         prefix = prefix + '/';
     }
     return prefix;
