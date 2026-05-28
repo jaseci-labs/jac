@@ -62,6 +62,11 @@ obj JacTypeRegistry {
         return set(self._builtin_names);
     }
 
+    """True if name is a builtin function."""
+    def is_builtin(name: str) -> bool {
+        return name in self._builtin_names;
+    }
+
     """Numeric kind for a primitive type name; NotNumeric if unknown / non-numeric."""
     def numeric_kind_of(name: str) -> NumericKind {
         entry = self._entries.get(name, None);

@@ -1784,9 +1784,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    if (
-        isinstance(nd.target, uni.Name) and nd.target.sym_name in self._emitter_builtins
-    ) {
+    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+    _call_kind = classify_call(nd);
+    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1813,17 +1813,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
-    callee_type = None;
-    if isinstance(nd.target, uni.Name) {
-        try {
-            _te = self.prog.get_type_evaluator();
-            if _te {
-                callee_type = _te.get_type_of_expression(nd.target);
-            }
-        } except Exception {
-            callee_type = None;
-        }
-    }
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = args;
@@ -1847,11 +1836,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if (
-        isinstance(callee_type, jtypes.ClassType)
-        and callee_type.is_instantiable()
-        and isinstance(callee, es.Expression)
-    ) {
+    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -2147,7 +2132,6 @@ impl EsastGenPass._ensure_emitters -> None {
     import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
     self._primitives_es_mod = _pes;
     self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
-    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -5757,5 +5741,4 @@ impl EsastGenPass.before_pass -> None {
     self._primitive_emitters: dict[str, object] | None = None;
     self._builtin_emitter: object | None = None;
     self._primitive_type_names: set[str] | None = None;
-    self._emitter_builtins: set[str] | None = None;
 }

@@ -8,7 +8,7 @@ All functions are free-standing — no pass or backend state required.
 """
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
 
 """Symbol scope category."""
 enum SymbolCategory {
@@ -18,6 +18,18 @@ enum SymbolCategory {
     GLOBAL = "global",
     BUILTIN = "builtin",
     IMPORTED = "imported"
+}
+
+"""Kind of a function-call site, classified independently of the target backend.
+
+The single authoritative answer to "what kind of call is this?" so that every
+backend dispatches the same way instead of re-deriving it from name strings.
+"""
+enum CallKind {
+    METHOD = "method",  # obj.method(...)
+    INSTANTIATION = "instantiation",  # Foo(...) where Foo is a class/archetype
+    BUILTIN = "builtin",  # len(...)/print(...): registry builtin, unshadowed
+    FUNCTION = "function"  # free function / ability / indirect / unknown
 }
 
 """Resolve a symbol from an arbitrary expression.
@@ -49,6 +61,63 @@ def resolve_expr_symbol(
         return module.lookup(expr.sym_name);
     }
     return None;
+}
+
+"""True if a symbol is defined in user code rather than a builtin/typing stub.
+
+Builtins (`len`, `print`, ...) and ambient typing names are defined in `.pyi`
+stub modules (or synthetic `stub_only` modules), so a call target that resolves
+to a real `.jac`/`.py` module is a genuine user definition that shadows any
+same-named builtin. Returns False when the owning module can't be determined,
+so unconfirmed cases fall back to name-based builtin classification (preserving
+prior behavior).
+"""
+def _is_user_symbol(sym: uni.Symbol) -> bool {
+    scope: (uni.UniScopeNode | None) = sym.parent_tab;
+    while scope is not None {
+        if isinstance(scope, uni.Module) {
+            if scope.stub_only {
+                return False;
+            }
+            return not scope.source.file_path.endswith(".pyi");
+        }
+        scope = scope.parent_scope;
+    }
+    return False;
+}
+
+"""Classify a call site as method / instantiation / builtin / free function.
+
+Uses the resolved target symbol (so a user definition shadows a same-named
+builtin or class) and the central builtin registry, never raw name matching.
+Backends consume this instead of re-deriving call kind from name strings.
+"""
+def classify_call(nd: uni.FuncCall) -> CallKind {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    # (1) Attribute-trailer call shape: obj.method(...). Shape-based and reliable.
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        return CallKind.METHOD;
+    }
+    # (2) A resolved user symbol shadows any builtin/class name.
+    sym = resolve_expr_symbol(nd.target);
+    if sym is not None and _is_user_symbol(sym) {
+        if sym.sym_type in (
+            SymbolType.OBJECT_ARCH,
+            SymbolType.NODE_ARCH,
+            SymbolType.EDGE_ARCH,
+            SymbolType.WALKER_ARCH,
+            SymbolType.ENUM_ARCH
+        ) {
+            return CallKind.INSTANTIATION;
+        }
+        return CallKind.FUNCTION;
+    }
+    # (3) Builtin function by registry name (only when not shadowed above).
+    if isinstance(nd.target, uni.Name)
+    and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name) {
+        return CallKind.BUILTIN;
+    }
+    return CallKind.FUNCTION;
 }
 
 """Resolve an attribute chain (a.b.c) to list of resolved symbols."""

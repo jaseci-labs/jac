@@ -846,3 +846,20 @@ test "skip in a plain function body lowers to an early return" {
         "skip should lower to a bare early return:\n" + js_code
     );
 }
+
+test "user function shadowing a builtin name is called, not the builtin" {
+    es_ast = compile_to_esast(fixture_path("shadow_builtin.cl.jac"));
+    user_len_calls = [
+        nd
+        for nd in walk_es_nodes(es_ast)
+        if isinstance(nd, es.CallExpression)
+        and isinstance(nd.callee, es.Identifier)
+        and nd.callee.name == "len"
+    ];
+    # The builtin path would emit a raw primitive-emitter expression instead of
+    # a CallExpression to the user-defined `len`.
+    assert len(user_len_calls) >= 1 , (
+        "expected a call to the user-defined len(), but the builtin emitter "
+        "was used instead:\n" + es_to_js(es_ast)
+    );
+}

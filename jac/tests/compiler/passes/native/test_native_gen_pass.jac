@@ -3423,3 +3423,10 @@ test "walrus expression evaluates to the assigned value" {
     # m = 10, y = 10, 20
     assert f(0) == 20;
 }
+
+test "user function shadowing a builtin name is called instead of the builtin" {
+    (eng, _) = compile_native("shadow_builtin.na.jac");
+    f = get_func(eng, "call_shadowed_len", ctypes.c_int64);
+    # User `def len(x) { return x + 99; }` must win over the `len` builtin.
+    assert f() == 100;
+}
