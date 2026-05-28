@@ -635,6 +635,14 @@ impl JacCompiler.compile(
         keep_str, file_path, actual_program, cancel_token=options.cancel_token
     );
     had_parse_errors = len(actual_program.errors_had) > had_parse_errors;
+    # Count codegen-blocking errors attributed to *this* module only. The IR
+    # schedule below recursively compiles imported modules into the same
+    # program; filtering by file path keeps a nested module's diagnostics from
+    # poisoning this module's codegen gate.
+    cur_mod_path = os.path.normpath(file_path);
+    blocking_errs_pre_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
     if options.symtab_ir_only {
         self.run_schedule(
             mod=mod_targ,
@@ -650,6 +658,15 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
+    # Diagnostics flagged blocks_codegen (e.g. E0063 glob inside a function)
+    # must prevent code generation just like parse errors, otherwise an
+    # invalid construct that happens to compile to valid Python would silently
+    # execute. Structural errors not flagged blocking (e.g. E0076 duplicate
+    # method) stay non-fatal, matching the codebase's lenient codegen policy.
+    blocking_errs_post_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
+    had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
     # Native-compiled modules consume the central type checker's results:
     # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
     # parallel AST type resolver. Run the type-check schedule for any .na.jac
@@ -719,7 +736,7 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
-    if (not had_parse_errors and not options.no_cgen) {
+    if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.
         # Earlier schedules may have invoked nested compile()s (e.g.
         # TypeCheckPass loading an imported module to resolve a symbol),
@@ -765,6 +782,26 @@ impl JacCompiler.run_schedule(
         }
         current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token);
     }
+}
+
+impl JacCompiler._count_module_blocking_errors(
+    target_program: JacProgram, mod_path: str
+) -> int {
+    count = 0;
+    for e in target_program.errors_had {
+        if e.code is None or not e.code.blocks_codegen {
+            continue;
+        }
+        try {
+            e_path = os.path.normpath(e.loc.mod_path);
+        } except Exception {
+            continue;
+        }
+        if e_path == mod_path {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 """Parse a Jac file/string and optionally load annexes for tooling passes.

@@ -127,6 +127,18 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
     if not self.evaluator.assign_type(
         returning_type, return_type, strict=self.evaluator._is_strict_site(nd)
     ) {
+        # Returning an un-awaited coroutine where its resolved value is
+        # expected: surface the missing `await` explicitly.
+        if self.evaluator._is_awaitable_type(returning_type)
+        and not self.evaluator._is_awaitable_type(return_type) {
+            self.emit(
+                E1042,
+                node_override=nd,
+                actual=str(returning_type),
+                expected=str(return_type)
+            );
+            return;
+        }
         self.emit(
             E1002,
             node_override=nd,
@@ -410,7 +422,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     right_type, left_type, strict=self.evaluator._is_strict_site(nd)
                 )
             ) {
-                self.emit(E1001, actual=str(right_type), expected=str(left_type));
+                # A coroutine assigned where its awaited value is expected is
+                # a missing-`await` bug — point at the fix rather than the
+                # generic "cannot assign Coroutine[...]" message.
+                if self.evaluator._is_awaitable_type(right_type) {
+                    self.emit(E1042, actual=str(right_type), expected=str(left_type));
+                } else {
+                    self.emit(E1001, actual=str(right_type), expected=str(left_type));
+                }
             }
         }
         # Validate augmented assignment operator (+=, -=, etc.)

@@ -99,6 +99,7 @@ obj PrefetchedTypes {
         type_class: types.ClassType | None = None,
         union_type_class: types.ClassType | None = None,
         awaitable_class: types.ClassType | None = None,
+        coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
         method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
@@ -260,6 +261,12 @@ obj TypeEvaluator {
         # when the module is Jac source (Layer 2 strict-Any applies),
         # False when it is Python source (PEP 484 stays permissive).
         _strict_site_cache: dict[int, bool] = {},
+        # Per-module set of symbol ids bound by `sv import` to a server
+        # function, keyed by `id(module)`. Calls to these are async RPC stubs
+        # on the client. Scoped per module so a server function called
+        # server-side (same shared symbol) is unaffected. Same id-keyed,
+        # recompile-invalidated pattern as `_strict_site_cache`.
+        _sv_async_syms_cache: dict[int, set[int]] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -520,6 +527,22 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    # --- async / await modeling ---
+    # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
+    # `async def` call evaluates to). Returns `inner` unchanged if Coroutine
+    # is unavailable or `inner` is already a generator-family type.
+    def _make_coroutine_type(inner: TypeBase) -> TypeBase;
+    # True if `t` is an awaitable (Coroutine/Awaitable instance, or a class
+    # implementing `__await__`).
+    def _is_awaitable_type(t: TypeBase) -> bool;
+    # Unwrap one `await`: Coroutine[Y,S,R]->R, Awaitable[T]->T, else via
+    # `__await__`. Non-awaitables pass through unchanged (lenient).
+    def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
+    # True if `expr` is a call to a function imported via `sv import` in the
+    # enclosing module — such functions lower to async RPC stubs on the
+    # client, so their calls return coroutines even though the server
+    # declaration is synchronous.
+    def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;

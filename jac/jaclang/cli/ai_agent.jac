@@ -165,6 +165,7 @@ obj TurnRenderer {
     def _ci_event(info: any);
     def render_stream(event_stream: any) -> dict;
     def route_stream_event(event: any) -> None;
+    def _emit_call_usage(data: any, phase: str) -> None;
 }
 
 """A live, in-process feed of structured agent events for the `--ui` web view.
@@ -225,7 +226,6 @@ obj AgentEventBus {
     def unsubscribe(q: any) -> None;
     def publish(ev: dict) -> None;
     def publish_full -> None;
-    def feed_token(token: str) -> None;
     def ledger_view -> dict;
     def publish_ledger -> None;
     def _state -> dict;
@@ -415,7 +415,11 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     max_tokens=8192,
     parallelize=True,
     max_react_iterations=60,
-    on_iteration=_progress_guard
+    on_iteration=_progress_guard,
+    max_tool_result_length=4000
+    # Carry up to ~4000 chars of each tool result into the stream event so the
+    # UI's collapsible tool-output dropdown can show more than a tiny preview.
+    # Display-only: full results still reach model history regardless.
 );
 
 
