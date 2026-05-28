@@ -129,7 +129,8 @@ impl JacClient.render_page(
     resolved_base = target.resolve_asset_base(headers) if target else "/";
 
     # Detect precedence conflict with static_base_path and issue warning
-    static_base = config.get_static_base_path() if config else "";
+    client_cfg = config.get_plugin_config("client") if config else None;
+    static_base = client_cfg.get("static_base_path", "") if client_cfg else "";
     if (static_base and resolved_base and resolved_base != "/") {
         import from jaclang.cli.console { console }
         console.print(
@@ -153,7 +154,6 @@ impl JacClient.render_page(
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
         css_link = f'<link rel="stylesheet" href="{base_prefix}static/styles.css?hash={css_hash}"/>';
     }
-    client_cfg = config.get_plugin_config("client") if config else None;
     meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
