@@ -201,39 +201,47 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
-"""Jac to ECMAScript AST transpilation pass.
-
-`before_pass` (re)initializes most of these fields on every pass instantiation;
-declaring them here gives the type checker the pass's state surface so reads of
-`self.client_manifest` / `self.scope_stack` / etc. type-check instead of being
-"no attribute" errors. `postinit` seeds the by-postinit defaults so the schema
-is complete before `before_pass` runs.
-"""
+"""Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has child_passes: list[EsastGenPass] by postinit,
-        imports: list[es.ImportDeclaration] by postinit,
-        exports: list[es.ExportNamedDeclaration] by postinit,
-        scope_stack: list[ScopeInfo] by postinit,
-        scope_map: dict[(uni.UniScopeNode, ScopeInfo)] by postinit,
-        client_manifest: ClientManifest by postinit,
+    has child_passes: list[EsastGenPass] = [],
+        imports: list[es.ImportDeclaration] = [],
+        exports: list[es.ExportNamedDeclaration] = [],
+        scope_stack: list[ScopeInfo] = [],
+        scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
+        client_manifest: (ClientManifest | None) = None,
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
-        reactive_vars: dict[str, str] by postinit,
-        reactive_vars_stack: list[dict[str, str]] by postinit,
-        injected_imports: set[str] by postinit,
-        _view_stack: list[(str | None)] by postinit,
+        # Reactive state variables: var_name -> setter_name (e.g., "count" -> "setCount")
+        reactive_vars: dict[str, str] = {},
+        # Stack to save/restore reactive_vars per function boundary
+        reactive_vars_stack: list[dict[str, str]] = [],
+        # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
+        injected_imports: set[str] = set(),
+        # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
+        # enclosing slot scope (a `str`), or `None` for a nested-`def` barrier that
+        # suspends lowering. The topmost `str` is the accumulator a JSX statement
+        # pushes into; a `None` on top means we are inside a nested function and
+        # JSX should NOT be accumulated. The counter gives nested slot scopes
+        # (try/awaiting/except arms) unique local names.
+        _view_stack: list[(str | None)] = [],
+        # The first slot keeps the bare `__jac_view_kids` name; every later slot
+        # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
         _view_used_base: bool = False,
         _view_acc_counter: int = 0,
-        _view_awaiting_tries: set[int] by postinit,
-        sv_import_stubs: list[es.Statement] by postinit,
+        # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
+        # the clause handlers know to scope their own accumulators.
+        _view_awaiting_tries: set[int] = set(),
+        # JS function stubs for def:pub functions imported via sv import
+        sv_import_stubs: list[es.Statement] = [],
+        # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
+        # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
         _primitive_type_names: (set[str] | None) = None,
         _emitter_builtins: (set[str] | None) = None,
         _primitives_es_mod: (object | None) = None;
 
-    def postinit -> None;
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;

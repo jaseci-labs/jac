@@ -5706,37 +5706,10 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
     super.enter_node(nd);
 }
 
-"""Seed by-postinit fields with empty defaults.
-
-`before_pass` re-initializes these per its existing logic; `postinit` just
-makes sure the declared-but-unset fields have valid values before any code
-(e.g. logging in `super.postinit()`) might read them.
-"""
-impl EsastGenPass.postinit -> None {
-    import from jaclang.jac0core.codeinfo { ClientManifest }
-    self.child_passes = [];
-    self.imports = [];
-    self.exports = [];
-    self.scope_stack = [];
-    self.scope_map = {};
-    self.client_manifest = ClientManifest();
-    self.reactive_vars = {};
-    self.reactive_vars_stack = [];
-    self.injected_imports = `set();
-    self._view_stack = [];
-    self._view_awaiting_tries = `set();
-    self.sv_import_stubs = [];
-    super.postinit();
-}
-
 """Initialize the pass."""
 impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
-    self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
-    self.imports: list[es.ImportDeclaration] = [];
-    self.exports: list[es.ExportNamedDeclaration] = [];
-    self.scope_stack: list[ScopeInfo] = [];
-    self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
+    self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
     # Endpoint effects are computed by WalkerEffectsPass (which runs before
     # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
@@ -5749,36 +5722,7 @@ impl EsastGenPass.before_pass -> None {
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and
     # JSX `className` literals can be rewritten during traversal.
-    self.scoped_styles: (ScopedStyleSheet | None) = load_style_annex(
+    self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path
     );
-    # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
-    self.reactive_vars: dict[str, str] = {};
-    # Stack to save/restore reactive_vars per function boundary
-    self.reactive_vars_stack: list[dict[str, str]] = [];
-    # Track which runtime imports have been auto-injected to avoid duplicates
-    self.injected_imports: set[str] = set();
-    # JSX `{...}` slot view-lowering state. `_view_stack` holds the
-    # accumulator name of each enclosing slot scope (a `str`), or `None` for
-    # a nested-`def` barrier that suspends lowering. The topmost `str` is the
-    # accumulator a JSX statement pushes into; a `None` on top means we are
-    # inside a nested function and JSX should NOT be accumulated. The counter
-    # gives nested slot scopes (try/awaiting/except arms) unique local names.
-    self._view_stack: list[(str | None)] = [];
-    # The first slot keeps the bare `__jac_view_kids` name; every later slot
-    # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
-    self._view_used_base: bool = False;
-    self._view_acc_counter: int = 0;
-    # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
-    # the clause handlers know to scope their own accumulators.
-    self._view_awaiting_tries: set[int] = set();
-    # Accumulate JS function stubs for def:pub functions imported via sv import
-    self.sv_import_stubs: list[es.Statement] = [];
-    # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)
-    self.needs_jac_runtime: bool = False;
-    # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
-    self._primitive_emitters: dict[str, object] | None = None;
-    self._builtin_emitter: object | None = None;
-    self._primitive_type_names: set[str] | None = None;
-    self._emitter_builtins: set[str] | None = None;
 }
