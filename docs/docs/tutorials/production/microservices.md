@@ -344,6 +344,7 @@ The gateway exposes a standard error envelope (`{ok, error: {code, message, serv
 | Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
 | CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
+| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
 
 WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
 

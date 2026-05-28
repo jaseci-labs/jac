@@ -105,7 +105,13 @@ This writes `dist/<name>-<version>-py3-none-any.whl`. Build to a different direc
 jac bundle -o /tmp/wheels
 ```
 
-`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Pre-compile `.jac` → `.jir` first if you want installs to skip compilation. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
+`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Use `--precompile` (`-p`) to compile `.jac` → `.jir` automatically for every `python3.X` interpreter found on `PATH` before packaging:
+
+```bash
+jac bundle --precompile
+```
+
+The flag creates an isolated venv per Python version, compiles all `.jac` sources inside it, and folds the resulting `.jir` files into the wheel. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 

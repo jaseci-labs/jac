@@ -201,11 +201,19 @@ with entry {
         print("Loop completed normally");
     }
 
-    # --- break, continue, skip ---
+    # --- break, continue (loop control) ---
     for i in range(10) {
-        if i == 3 { continue; }
-        if i == 7 { break; }
+        if i == 3 { continue; }   # next iteration
+        if i == 7 { break; }      # leave the loop
         print(i);
+    }
+
+    # --- skip (return-family, NOT a loop control) ---
+    # `skip;` is an early exit, not `continue`. In a function/ability body
+    # it behaves like a bare `return;`; in a JSX slot it is the guard form
+    # (see the Client/JSX section). It is never tied to a loop.
+    if x > 100 {
+        skip;   # early return from the current function/ability
     }
 
     # --- ternary expression ---

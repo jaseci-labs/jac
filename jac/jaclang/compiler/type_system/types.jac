@@ -322,7 +322,12 @@ obj FunctionType(TypeBase) {
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
         function_flags: int = 0,
-        type_params: (list[TypeVarType] | None) = None;
+        type_params: (list[TypeVarType] | None) = None,
+        # True for `async def` / async abilities. A call to one evaluates to a
+        # coroutine (`Coroutine[Any, Any, return_type]`) at the call site, so
+        # callers must `await` it. The declared `return_type` itself stays the
+        # unwrapped type (it is what `return` statements are checked against).
+        is_async: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
