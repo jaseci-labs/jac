@@ -454,15 +454,26 @@ impl start(
     }
 }
 
+"""Return True if watchdog is importable in the current process."""
+def _watchdog_importable -> bool {
+    import importlib;
+    try {
+        importlib.invalidate_caches();
+        import watchdog;
+        return True;
+    } except ImportError {
+        return False;
+    }
+}
+
 """Ensure watchdog is installed, auto-install if missing."""
 def _ensure_watchdog_installed -> bool {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dependencies { DependencyInstaller, add_venv_to_path }
 
-    try {
-        import watchdog;
+    if _watchdog_importable() {
         return True;
-    } except ImportError { }
+    }
 
     config = get_config();
     if config is None {
@@ -476,8 +487,18 @@ def _ensure_watchdog_installed -> bool {
     );
     installer = DependencyInstaller(config=config, verbose=False);
     if installer.install_package(["watchdog>=3.0.0"]) {
-        console.success("watchdog installed");
-        return True;
+        add_venv_to_path(config);
+        if _watchdog_importable() {
+            console.success("watchdog installed");
+            return True;
+        }
+        console.error(
+            "\n  Error: watchdog was installed in the project venv but cannot be imported.\n"
+        );
+        console.error(
+            "  Run 'jac install --dev' using a Jac install that matches the project venv Python version.\n"
+        );
+        return False;
     }
     console.error("\n  Error: Failed to install watchdog\n");
     return False;
