@@ -39,7 +39,8 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
+import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 import time;
 
 """Kubernetes deployment target implementation."""
@@ -1454,12 +1455,24 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
-            create_hpa(
-                namespace=namespace,
-                deployment_name=app_name,
-                min_replicas=self.k8s_config.min_replicas,
-                max_replicas=self.k8s_config.max_replicas,
-                cpu_target=self.k8s_config.cpu_utilization_target
+            AutoscalerFactory.create(
+                self.k8s_config.autoscaler_engine, {}, self.logger
+            ).apply(
+                AutoscalerSpec(
+                    namespace=namespace,
+                    min_replicas=self.k8s_config.min_replicas,
+                    max_replicas=self.k8s_config.max_replicas,
+                    triggers=[
+                        Trigger(
+                            type="cpu",
+                            metadata={
+                                "averageUtilization": str(
+                                    self.k8s_config.cpu_utilization_target
+                                )
+                            }
+                        )
+                    ]
+                )
             );
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
