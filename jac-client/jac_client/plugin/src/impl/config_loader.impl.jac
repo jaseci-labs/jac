@@ -201,8 +201,11 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     # on disk. Reading config for a non-client project must NEVER mutate its real
     # jac.toml — otherwise merely booting the API server (or any read of client config)
     # would inject react/vite/etc. into a backend-only project's jac.toml.
-    if ('client' in jac_config.plugins)
-    or (not jac_config.toml_path or not jac_config.toml_path.exists()) {
+    if (
+        'client' in jac_config.plugins
+        or not jac_config.toml_path
+        or not jac_config.toml_path.exists()
+    ) {
         # Migrate legacy meta-packages if present
         (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
             jac_config, npm_deps, npm_dev_deps
