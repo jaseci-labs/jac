@@ -1459,6 +1459,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 self.k8s_config.autoscaler_engine, {}, self.logger
             ).apply(
                 AutoscalerSpec(
+                    target_name=app_name,
                     namespace=namespace,
                     min_replicas=self.k8s_config.min_replicas,
                     max_replicas=self.k8s_config.max_replicas,
