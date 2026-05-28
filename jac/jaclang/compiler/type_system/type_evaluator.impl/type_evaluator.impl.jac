@@ -3931,8 +3931,7 @@ impl TypeEvaluator._get_type_from_flow_node(
             if predicate is not None {
                 # Fast path: sc-targets set by the CFG build pass.
                 is_true_edge: bool = (
-                    pred.sc_true_target is not None
-                    and flow_node is pred.sc_true_target
+                    pred.sc_true_target is not None and flow_node is pred.sc_true_target
                 );
                 is_false_edge: bool = (
                     pred.sc_false_target is not None
@@ -3940,7 +3939,9 @@ impl TypeEvaluator._get_type_from_flow_node(
                 );
                 # Structural fallback for IfStmt when sc-targets were not resolved
                 # (e.g. fall-through to next sibling with no else body).
-                if not is_true_edge and not is_false_edge and isinstance(pred, uni.IfStmt) {
+                if not is_true_edge
+                and not is_false_edge
+                and isinstance(pred, uni.IfStmt) {
                     edge_kind = self._classify_edge(pred, flow_node);
                     is_true_edge = edge_kind == "true";
                     is_false_edge = edge_kind == "false";
