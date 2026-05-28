@@ -15,7 +15,9 @@ import from jaclang.cli.ai_agent {
     ui_graph,
     ui_reset,
     ui_stop,
-    ui_stream
+    ui_stream,
+    ui_settings,
+    ui_apply_settings
 }
 
 # Point the agent at the user's project and build its model. Runs once when the
@@ -74,14 +76,23 @@ obj LedgerView {
         notes: list[str] = [];
 }
 
-"""The per-tick poll payload: the event feed plus the live walker position."""
+"""The per-tick poll payload: the event feed plus the live walker position.
+
+`needs_key` is True when the active model still needs an API key the session
+does not have; `key_env` names the missing provider var (e.g.
+`ANTHROPIC_API_KEY`) and `model_name` the active model -- the client opens the
+settings panel when `needs_key` flips True.
+"""
 obj PollResult {
     has events: list[UiEvent] = [],
         status: str = "idle",
         active: str = "",
         path: list[str] = [],
         stats: TurnStatsView = TurnStatsView(),
-        ledger: LedgerView = LedgerView();
+        ledger: LedgerView = LedgerView(),
+        needs_key: bool = False,
+        key_env: str = "",
+        model_name: str = "";
 }
 
 """A phase node in the agent's state graph (Plan/Build/QA/Done).
@@ -157,7 +168,10 @@ def _to_poll(snap: dict) -> PollResult {
         active=str(snap.get("active", "")),
         path=[str(p) for p in snap.get("path", [])],
         stats=stats,
-        ledger=ledger
+        ledger=ledger,
+        needs_key=bool(snap.get("needs_key", False)),
+        key_env=str(snap.get("key_env", "")),
+        model_name=str(snap.get("model_name", ""))
     );
 }
 
@@ -215,4 +229,61 @@ reasoning/answer tokens as they are generated, plus phase/tool/status/stats
 deltas. The client reads it with a fetch stream-reader (see frontend)."""
 def:pub agent_stream -> Iterator[dict] {
     return ui_stream();
+}
+
+"""The settings panel's current values. `api_key_set` reports whether a key is
+held without ever echoing it; `temperature` is -1 when unset (provider default);
+`presets` are the quick-pick model names."""
+obj SettingsView {
+    has model: str = "",
+        api_key_set: bool = False,
+        base_url: str = "",
+        temperature: float = -1.0,
+        n_ctx: int = 0,
+        model_source: str = "",
+        needs_key: bool = False,
+        key_env: str = "",
+        presets: list[str] = [];
+}
+
+"""The outcome of applying settings: `ok` plus the resulting model and key
+status, or `ok=False` with an `error` message the panel shows inline."""
+obj SettingsResult {
+    has ok: bool = False,
+        error: str = "",
+        model: str = "",
+        needs_key: bool = False,
+        key_env: str = "";
+}
+
+"""Current settings for the panel's form (fetched when it opens)."""
+def:pub agent_settings -> SettingsView {
+    s = ui_settings();
+    return SettingsView(
+        model=str(s.get("model", "")),
+        api_key_set=bool(s.get("api_key_set", False)),
+        base_url=str(s.get("base_url", "")),
+        temperature=float(s.get("temperature", -1.0) or -1.0),
+        n_ctx=int(s.get("n_ctx", 0) or 0),
+        model_source=str(s.get("model_source", "")),
+        needs_key=bool(s.get("needs_key", False)),
+        key_env=str(s.get("key_env", "")),
+        presets=[str(p) for p in s.get("presets", [])]
+    );
+}
+
+"""Apply settings (model/key/base_url/temperature/context) and rebuild the model
+live. `temperature`/`n_ctx` are strings (blank = default); a blank `api_key`
+keeps the held one."""
+def:pub agent_apply_settings(
+    model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
+) -> SettingsResult {
+    r = ui_apply_settings(model, api_key, base_url, temperature, n_ctx);
+    return SettingsResult(
+        ok=bool(r.get("ok", False)),
+        error=str(r.get("error", "")),
+        model=str(r.get("model", "")),
+        needs_key=bool(r.get("needs_key", False)),
+        key_env=str(r.get("key_env", ""))
+    );
 }

@@ -347,10 +347,10 @@ jobs:
 
     - name: Precompile all packages
       run: |
-        jac run jac/scripts/precompile_bytecode.jac ./jac
-        jac run jac/scripts/precompile_bytecode.jac ./jac-client
-        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
-        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-client
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-scale
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
 
     - name: Pre-build admin dashboard UI
       run: |

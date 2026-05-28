@@ -36,7 +36,8 @@ import from byllm.types {
     Message,
     MessageRole,
     IterationAction,
-    IterationContext
+    IterationContext,
+    content_preview
 }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }

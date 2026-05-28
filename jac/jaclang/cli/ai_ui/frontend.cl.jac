@@ -9,6 +9,7 @@ updates at token granularity rather than on a poll timer.
 
 import from react { useEffect, useRef }
 sv import from .server { agent_send, agent_graph, agent_reset, agent_stop }
+sv import from .server { agent_settings, agent_apply_settings }
 sv import from .server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
 import from .components.PhaseGraph { PhaseGraph }
 import from .components.Conversation { Conversation }
@@ -18,6 +19,7 @@ import from .components.TokenStream { TokenStream }
 import from .components.LedgerPane { LedgerPane }
 import from .components.PhaseInspector { PhaseInspector }
 import from .components.ResizeHandle { ResizeHandle }
+import from .components.SettingsModal { SettingsModal }
 import "./global.css";
 
 def:pub app -> JsxElement {
@@ -42,7 +44,24 @@ def:pub app -> JsxElement {
         leftW: int = 460,
         graphH: int = 300,
         bottomH: int = 200,
-        draft: str = "";
+        draft: str = "",
+        # Settings panel: open flag + the live key status the stream pushes in
+        # every frame (so the panel auto-opens the moment a model needs a key).
+        showSettings: bool = False,
+        needsKey: bool = False,
+        keyEnv: str = "",
+        modelName: str = "",
+        # Controlled settings-form fields, filled from `agent_settings` on open.
+        sModel: str = "",
+        sKey: str = "",
+        sBaseUrl: str = "",
+        sTemp: str = "",
+        sNctx: str = "",
+        sApiKeySet: bool = False,
+        sPresets: list[str] = [],
+        sModelSource: str = "",
+        sError: str = "",
+        sBusy: bool = False;
 
     unmountedRef: any = useRef(False);
     ctrlRef: any = useRef(None);
@@ -59,6 +78,11 @@ def:pub app -> JsxElement {
     # Held in a ref for the same reason as events: ledger messages are sparse, so
     # the handler must read the latest value, not a stale render closure.
     ledgerRef: any = useRef({"changes": [], "notes": []});
+    # Last seen key-needed flag, so the panel auto-opens only on the rising edge
+    # (false -> true): closing it without fixing the key won't immediately
+    # reopen, but a fresh auth failure later will. A ref because the stream
+    # handler is captured once (render state would be stale).
+    needsKeyRef: any = useRef(False);
 
     # Apply one stream message: a full snapshot replaces the feed; a delta
     # upserts the changed event by id (so a token re-push grows that event in
@@ -108,6 +132,52 @@ def:pub app -> JsxElement {
         active = msg.active;
         path = msg.path;
         stats = msg.stats;
+        # Key status rides along in every state frame. Auto-open the settings
+        # panel on the rising edge of needs_key (incl. a mid-turn auth failure).
+        needsKey = msg.needs_key;
+        keyEnv = msg.key_env;
+        modelName = msg.model_name;
+        if msg.needs_key and not needsKeyRef.current {
+            openSettings();
+        }
+        needsKeyRef.current = msg.needs_key;
+    }
+
+    # Fetch the current settings into the form fields, then open the panel.
+    async def openSettings {
+        s = await agent_settings();
+        sModel = s.model;
+        sBaseUrl = s.base_url;
+        sTemp = "" if s.temperature < 0 else str(s.temperature);
+        sNctx = "" if s.n_ctx == 0 else str(s.n_ctx);
+        sApiKeySet = s.api_key_set;
+        sPresets = s.presets;
+        sModelSource = s.model_source;
+        keyEnv = s.key_env;
+        needsKey = s.needs_key;
+        sKey = "";
+        sError = "";
+        showSettings = True;
+    }
+
+    # Apply the form. Temperature/context go as strings (blank = default); the
+    # server parses, rebuilds the model, and pushes fresh state. On success the
+    # panel closes; on failure it shows the error inline.
+    async def applySettings {
+        sBusy = True;
+        sError = "";
+        res = await agent_apply_settings(
+            sModel.strip(), sKey, sBaseUrl.strip(), sTemp.strip(), sNctx.strip()
+        );
+        sBusy = False;
+        needsKey = res.needs_key;
+        keyEnv = res.key_env;
+        if res.ok {
+            modelName = res.model;
+            showSettings = False;
+        } else {
+            sError = res.error;
+        }
     }
 
     # Read the SSE body frame by frame, parsing `data: {json}` messages.
@@ -213,6 +283,13 @@ def:pub app -> JsxElement {
         stats = g.state.stats;
         ledger = g.state.ledger;
         ledgerRef.current = g.state.ledger;
+        needsKey = g.state.needs_key;
+        keyEnv = g.state.key_env;
+        modelName = g.state.model_name;
+        if g.state.needs_key and not needsKeyRef.current {
+            openSettings();
+        }
+        needsKeyRef.current = g.state.needs_key;
     }
 
     # Open the live stream; abort it on unmount.
@@ -238,10 +315,19 @@ def:pub app -> JsxElement {
                     <span className="dot">●</span>
                     ai
                 </span>
-                <span className="meta">agent control room</span>
+                <span className="meta">
+                    {("agent control room" + (" · " + modelName if modelName else ""))}
+                </span>
                 <span className="spacer"/>
                 <button className="btn ghost" onClick={lambda { reset(); }}>
                     New session
+                </button>
+                <button
+                    className={"icon-btn attn" if needsKey else "icon-btn"}
+                    title="Settings"
+                    onClick={lambda { openSettings(); }}
+                >
+                    ⚙
                 </button>
             </div>
             <div className="workspace">
@@ -302,5 +388,28 @@ def:pub app -> JsxElement {
                 <PhaseInspector {nodes} {selected}/>
             </div>
             <StatsBar {stats} {active}/>
+            {<SettingsModal
+                model={sModel}
+                apiKeySet={sApiKeySet}
+                keyDraft={sKey}
+                baseUrl={sBaseUrl}
+                temp={sTemp}
+                nctx={sNctx}
+                presets={sPresets}
+                modelSource={sModelSource}
+                needsKey={needsKey}
+                keyEnv={keyEnv}
+                error={sError}
+                busy={sBusy}
+                onModel={lambda v: str { sModel = v; }}
+                onKey={lambda v: str { sKey = v; }}
+                onBaseUrl={lambda v: str { sBaseUrl = v; }}
+                onTemp={lambda v: str { sTemp = v; }}
+                onNctx={lambda v: str { sNctx = v; }}
+                onApply={applySettings}
+                onClose={lambda { showSettings = False; }}
+            />
+                if showSettings
+                else <span/>}
         </div>;
 }

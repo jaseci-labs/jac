@@ -1,10 +1,15 @@
 """Direct implementations of project CLI commands."""
 
+import sys;
+import shutil;
 import subprocess;
+import tempfile;
 import shlex;
 import base64;
+import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.project.config { JacConfig }
 
 """Initialize a new Jac project."""
 impl create(
@@ -1096,11 +1101,132 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-impl bundle(output: str = "dist") -> int {
-    import from pathlib { Path }
+"""Return (executable, version_tag) for every python3.X found on PATH."""
+def _find_precompile_pythons -> list[tuple[str, str]] {
+    found: list[tuple[str, str]] = [];
+    for minor in _PRECOMPILE_MINOR_RANGE {
+        exe: str | None = shutil.which(f"python3.{minor}");
+        if not exe {
+            continue;
+        }
+        found.append((exe, f"cpython-3{minor}"));
+    }
+    return found;
+}
+
+"""Run precompile script for pyexe in a temp venv. Returns None on success or an error string."""
+def _run_precompile_in_venv(
+    pyexe: str, script_path: str, project_root: str, dep_specs: list[str],
+) -> str | None {
+    jac_version = importlib.metadata.version("jaclang");
+
+    with tempfile.TemporaryDirectory() as tmp {
+        venv_dir = Path(tmp) / "venv";
+        venv_result = subprocess.run(
+            [pyexe, "-m", "venv", str(venv_dir)], capture_output=True
+        );
+        if venv_result.returncode != 0 {
+            return f"venv creation failed:\n{venv_result.stderr.decode(
+                errors='replace'
+            )}";
+        }
+        if sys.platform == "win32" {
+            venv_python = str(venv_dir / "Scripts" / "python");
+            venv_jac = str(venv_dir / "Scripts" / "jac");
+        } else {
+            venv_python = str(venv_dir / "bin" / "python");
+            venv_jac = str(venv_dir / "bin" / "jac");
+        }
+        jac_install = subprocess.run(
+            [venv_python, "-m", "pip", "install", f"jaclang=={jac_version}", "--quiet"],
+            capture_output=True
+        );
+        if jac_install.returncode != 0 {
+            return f"pip install jaclang=={jac_version} failed:\n{jac_install.stderr.decode(
+                errors='replace'
+            )}";
+        }
+        if dep_specs {
+            deps_install = subprocess.run(
+                [venv_python, "-m", "pip", "install"] + dep_specs + ["--quiet"],
+                capture_output=True
+            );
+            if deps_install.returncode != 0 {
+                return f"pip install project deps failed:\n{deps_install.stderr.decode(
+                    errors='replace'
+                )}";
+            }
+        }
+        result = subprocess.run([venv_jac, "run", script_path, project_root]);
+        if result.returncode != 0 {
+            return "precompile script exited with non-zero status";
+        }
+        return None;
+    }
+}
+
+"""Run precompile for all Python versions found on PATH. Returns 0 on success, 1 on error."""
+def _precompile_all_pythons(config: JacConfig) -> int {
+    import from jaclang.project.dependencies { DependencyInstaller }
+
+    _jac_path = sys.modules.get("jaclang")?.__path__;
+    _jac_root: Path | None = None;
+    if _jac_path {
+        _jac_root = Path(str(_jac_path[0]));
+    }
+    if _jac_root is None {
+        console.error("Cannot locate jaclang package root for precompile script.");
+        return 1;
+    }
+    script_path = str(_jac_root / "utils" / "precompile_bytecode.jac");
+    if not Path(script_path).exists() {
+        console.error(f"Precompile script not found: {script_path}");
+        return 1;
+    }
+
+    project_root_str = str(config.project_root);
+    pythons = _find_precompile_pythons();
+
+    if not pythons {
+        console.warning(
+            "No matching Python executables found on PATH — skipping precompilation."
+        );
+        return 0;
+    }
+
+    installer = DependencyInstaller(config=config);
+    dep_specs = installer.get_pip_package_specs(include_dev=False);
+    console.print(
+        f"\n  Precompiling for {len(pythons)} Python version(s)...", style="muted"
+    );
+    failed_versions: list[str] = [];
+    for (pyexe, pyver) in pythons {
+        console.print(f"    → {pyver}...", style="muted");
+        err = _run_precompile_in_venv(pyexe, script_path, project_root_str, dep_specs);
+        if err is not None {
+            console.warning(f"  ✘ {pyver} skipped: {err}");
+            failed_versions.append(pyver);
+        } else {
+            console.print(f"  ✔ {pyver}", style="success");
+        }
+    }
+    if failed_versions {
+        console.warning(
+            "Precompilation incomplete — "
+            f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
+            f"{', '.join(failed_versions)}"
+        );
+        if len(failed_versions) == len(pythons) {
+            console.error("All precompilation targets failed — aborting bundle.");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+impl bundle(output: str = "dist", precompile: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.publish.builder { WheelBuilder }
-    import from jaclang.publish.wheel_meta { wheel_filename }
 
     config = get_config();
     if config is None {
@@ -1122,6 +1248,12 @@ impl bundle(output: str = "dist") -> int {
         f"v{config.project.version}",
         style="bold"
     );
+
+    if precompile {
+        if _precompile_all_pythons(config) != 0 {
+            return 1;
+        }
+    }
 
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
