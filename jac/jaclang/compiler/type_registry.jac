@@ -172,37 +172,81 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
          },
          _builtin_names=frozenset(
              {
-             # I/O
-             "print","input",
-             # Aggregation
-             "len","abs","round","min","max","sum",
-             # Iteration
-             "sorted","reversed","enumerate","zip","map","filter","any","all",
-             # Type checking
-             "isinstance","issubclass","type","callable",
-             # Identity / hashing
-             "id","hash","jid",
-             # Portable constructor (server: Cls(*args); cl: Reflect.construct)
-             "new",
-             # JSX raw-HTML opt-in (returns a marker recognised by __jacJsx)
-             "unsafe_html",
-             # Representation
-             "repr","format","ascii",
-             # Char/ord conversion
-             "chr","ord",
-             # Number formatting
-             "hex","oct","bin",
-             # Arithmetic
-             "pow","divmod",
-             # Iteration protocol
-             "iter","next",
-             # Attribute access
-             "getattr","setattr","hasattr","delattr",
-             # Introspection
-             "vars","dir",
-             # File I/O
-             "open",
-             # Type conversions
-             "str","int","float","bool","list","dict","set","tuple","frozenset","bytes","complex","range","slice","bytearray",}
+                 # I/O
+                 "print",
+                 "input",
+                 # Aggregation
+                 "len",
+                 "abs",
+                 "round",
+                 "min",
+                 "max",
+                 "sum",
+                 # Iteration
+                 "sorted",
+                 "reversed",
+                 "enumerate",
+                 "zip",
+                 "map",
+                 "filter",
+                 "any",
+                 "all",
+                 # Type checking
+                 "isinstance",
+                 "issubclass",
+                 "type",
+                 "callable",
+                 # Identity / hashing
+                 "id",
+                 "hash",
+                 "jid",
+                 # Portable constructor (server: Cls(*args); cl: Reflect.construct)
+                 "new",
+                 # JSX raw-HTML opt-in (returns a marker recognised by __jacJsx)
+                 "unsafe_html",
+                 # Representation
+                 "repr",
+                 "format",
+                 "ascii",
+                 # Char/ord conversion
+                 "chr",
+                 "ord",
+                 # Number formatting
+                 "hex",
+                 "oct",
+                 "bin",
+                 # Arithmetic
+                 "pow",
+                 "divmod",
+                 # Iteration protocol
+                 "iter",
+                 "next",
+                 # Attribute access
+                 "getattr",
+                 "setattr",
+                 "hasattr",
+                 "delattr",
+                 # Introspection
+                 "vars",
+                 "dir",
+                 # File I/O
+                 "open",
+                 # Type conversions
+                 "str",
+                 "int",
+                 "float",
+                 "bool",
+                 "list",
+                 "dict",
+                 "set",
+                 "tuple",
+                 "frozenset",
+                 "bytes",
+                 "complex",
+                 "range",
+                 "slice",
+                 "bytearray",
+
+             }
          )
      );

@@ -1177,16 +1177,16 @@ impl CommentStore.postinit -> None {
 }
 
 """Return the final line this comment occupies."""
-impl CommentInfo.last_line -> int {
+impl CommentInfo.last_line.getter -> int {
     return self.token.loc.last_line;
 }
 
 """Return the starting line for quick range comparisons."""
-impl CommentInfo.first_line -> int {
+impl CommentInfo.first_line.getter -> int {
     return self.token.loc.first_line;
 }
 
 """Return True when the comment attaches to a token on the same line."""
-impl CommentInfo.is_inline -> bool {
+impl CommentInfo.is_inline.getter -> bool {
     return (self.anchor_token_id is not None);
 }

@@ -317,13 +317,33 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
+        # the enum name from the AST sig so the marshaller maps the ordinal back
+        # to the Python enum member.
+        ret_enum: (str | None) = None;
+        if ret_type == "i64" {
+            _fsig = self.method_ast_sigs.get(fname);
+            if _fsig and _fsig.return_type {
+                _rt = _fsig.return_type;
+                # Peel `T | None` (and general unions) to the first member.
+                if isinstance(_rt, uni.BinaryExpr)
+                and getattr(_rt.op, 'value', '') == "|" {
+                    _rt = _rt.left;
+                }
+                _rname = self._get_name(_rt);
+                if _rname is not None and _rname in self.enum_types {
+                    ret_enum = _rname;
+                }
+            }
+        }
         layout.functions[fname] = NativeFuncLayout(
             name=fname,
             param_types=param_types,
             param_names=param_names,
             ret_type=ret_type,
             ret_struct_name=ret_struct,
-            ret_tuple_layout=ret_tuple
+            ret_tuple_layout=ret_tuple,
+            ret_enum_type=ret_enum
         );
     }
     # Methods

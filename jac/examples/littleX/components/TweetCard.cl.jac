@@ -6,18 +6,13 @@ sv import from ..server { TweetView }
 def:pub TweetCard(
     tweet: TweetView,
     myUsername: str,
-    onLike: any,
-    onComment: any,
-    onDelete: any,
-    onRepost: any,
+    onLike: Callable[[str], None],
+    onComment: Callable[[str, str], None],
+    onDelete: Callable[[str], None],
+    onRepost: Callable[[str, str, str], None],
 ) -> JsxElement {
     has showComments: bool = False,
         commentText: str = "";
-
-    likeFn = onLike;
-    commentFn = onComment;
-    deleteFn = onDelete;
-    repostFn = onRepost;
 
     is_liked = myUsername in tweet.likes;
     like_count = str(len(tweet.likes));
@@ -74,8 +69,8 @@ def:pub TweetCard(
                     </button>
                     <button
                         className="lx-act-btn lx-act-repost"
-                        onClick={lambda { repostFn.call(
-                            None, tweet.id, tweet.content, tweet.author_username
+                        onClick={lambda { onRepost(
+                            tweet.id, tweet.content, tweet.author_username
                         ); }}
                         title="Repost"
                     >
@@ -85,7 +80,7 @@ def:pub TweetCard(
                         className={"lx-act-btn lx-act-liked"
                             if is_liked
                             else "lx-act-btn lx-act-like"}
-                        onClick={lambda { likeFn.call(None, tweet.id); }}
+                        onClick={lambda { onLike(tweet.id); }}
                     >
                         <Heart size={16}/>
                         <span>{like_count}</span>
@@ -96,7 +91,7 @@ def:pub TweetCard(
                             onClick={lambda { if confirm(
                                 "Delete this post? This cannot be undone."
                             ) {
-                                deleteFn.call(None, tweet.id);
+                                onDelete(tweet.id);
                             }}}
                         >
                             <Trash2 size={16}/>
@@ -132,14 +127,14 @@ def:pub TweetCard(
                                 onChange={lambda e: ChangeEvent { commentText = e.target.value; }}
                                 onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter"
                                 and commentText.strip() {
-                                    commentFn.call(None, tweet.id, commentText);
+                                    onComment(tweet.id, commentText);
                                     commentText = "";
                                 }}}
                             />
                             <button
                                 className="lx-comment-submit"
                                 onClick={lambda { if commentText.strip() {
-                                    commentFn.call(None, tweet.id, commentText);
+                                    onComment(tweet.id, commentText);
                                     commentText = "";
                                 }}}
                             >

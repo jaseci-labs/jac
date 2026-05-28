@@ -716,18 +716,36 @@ impl TypeCheckPass._check_event_trigger_archetype(
         return False;
     }
 
-    # Tuple form `(A, B)` desugars to a union annotation in pyast_gen —
-    # validate per element so each bad type gets its own diagnostic.
+    def collect_union_leaves(expr: uni.Expr) -> list[uni.Expr] {
+        if (
+            isinstance(expr, uni.BinaryExpr)
+            and isinstance(expr.op, uni.Token)
+            and expr.op.name == Tok.BW_OR
+        ) {
+            return collect_union_leaves(expr.left) + collect_union_leaves(expr.right);
+        }
+        return [expr];
+    }
+
+    # Tuple form `(A, B)` and union form `A | B` are both expanded
+    # per element so each bad type (including `root` keyword) gets its
+    # own diagnostic rather than being masked by type evaluation.
     targets: list[uni.Expr] = (
         list(sig.arch_tag_info.values)
             if (
                 isinstance(sig.arch_tag_info, uni.TupleVal) and sig.arch_tag_info.values
             )
-            else [sig.arch_tag_info]
+            else collect_union_leaves(sig.arch_tag_info)
     );
     err = E1116 if walker_owner else E1117;
     for arg in targets {
         ty = self.evaluator.get_type_of_expression(arg);
+        if isinstance(ty, types.ClassType) and ty.is_instance() {
+            # Only name leaves carry `.value`; other exprs (e.g. `N()`) fall back to the type name.
+            label = arg.value if isinstance(arg, uni.Name) else str(ty);
+            self.emit(err, node_override=arg, type=label);
+            continue;
+        }
         if not is_valid(ty) {
             self.emit(err, node_override=arg, type=str(ty));
         }

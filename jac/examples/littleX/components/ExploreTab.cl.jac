@@ -6,12 +6,9 @@ def:pub ExploreTab(
     allProfiles: list[UserView],
     followingIds: list[str],
     myProfileId: str,
-    onFollow: any,
-    onUnfollow: any,
+    onFollow: Callable[[str], None],
+    onUnfollow: Callable[[str], None],
 ) -> JsxElement {
-    followFn = onFollow;
-    unfollowFn = onUnfollow;
-
     return
         <div>
             {if not allProfiles {
@@ -41,14 +38,14 @@ def:pub ExploreTab(
                     {if u.id in followingIds {
                         <button
                             className="lx-unfollow-btn"
-                            onClick={lambda { unfollowFn.call(None, u.id); }}
+                            onClick={lambda { onUnfollow(u.id); }}
                         >
                             Following
                         </button>
                     } elif u.id != myProfileId {
                         <button
                             className="lx-follow-btn"
-                            onClick={lambda { followFn.call(None, u.id); }}
+                            onClick={lambda { onFollow(u.id); }}
                         >
                             Follow
                         </button>

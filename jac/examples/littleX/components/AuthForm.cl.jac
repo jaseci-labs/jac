@@ -6,10 +6,10 @@ def:pub AuthForm(
     password: str,
     error: str,
     loading: bool,
-    onUsernameChange: any,
-    onPasswordChange: any,
-    onSubmit: any,
-    onToggleMode: any,
+    onUsernameChange: Callable[[ChangeEvent], None],
+    onPasswordChange: Callable[[ChangeEvent], None],
+    onSubmit: Callable[[FormEvent], None],
+    onToggleMode: Callable[[], None],
 ) -> JsxElement {
     return
         <div className="lx-auth-root">

@@ -1173,7 +1173,9 @@ impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
 }
 
 """JsxSlot: statement-form `{...}` slot — emit each kid in order so the
-raw `{ stmt; stmt; ... }` shape round-trips through the formatter."""
+raw `{ stmt; stmt; ... }` shape round-trips. The slot body is never
+desugared in place (the cl accumulator lowering happens at codegen, in
+EsastGenPass), so the kids are always faithful surface tokens."""
 impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     parts: list[str] = [];
     for k in nd.kid {

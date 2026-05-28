@@ -37,19 +37,15 @@ impl app.handleLogin -> None {
         return;
     }
     authLoading = True;
-    result: any = await jacLogin(authUsername, authPassword);
+    result: bool = await jacLogin(authUsername, authPassword);
     authLoading = False;
-    if result and (result["ok"] or result == True) {
+    if result {
         localStorage.setItem("lx_username", authUsername);
         isLoggedIn = True;
         authPassword = "";
         authError = "";
     } else {
-        authError = str(
-            result["error"]["message"]
-                if result and result["error"] and result["error"]["message"]
-                else "Invalid username or password"
-        );
+        authError = "Invalid username or password";
     }
 }
 
@@ -64,13 +60,13 @@ impl app.handleSignup -> None {
         return;
     }
     authLoading = True;
-    result: any = await jacSignup(authUsername, authPassword);
-    if result["ok"] or result["success"] {
+    result: dict[str, any] = await jacSignup(authUsername, authPassword);
+    if result["success"] {
         # jacSignup only registers the account; establish a session by
         # logging in so the first walker calls aren't rejected with 401.
-        loginResult: any = await jacLogin(authUsername, authPassword);
+        loginResult: bool = await jacLogin(authUsername, authPassword);
         authLoading = False;
-        if loginResult and (loginResult["ok"] or loginResult == True) {
+        if loginResult {
             localStorage.setItem("lx_username", authUsername);
             isLoggedIn = True;
             authPassword = "";
@@ -81,11 +77,7 @@ impl app.handleSignup -> None {
         }
     } else {
         authLoading = False;
-        authError = str(
-            result["error"]["message"]
-                if result["error"] and result["error"]["message"]
-                else (result["error"] if result["error"] else "Signup failed")
-        );
+        authError = str(result["error"] if result["error"] else "Signup failed");
     }
 }
 

@@ -10,18 +10,14 @@ def:pub ProfileTab(
     profileUsername: str,
     editingBio: bool,
     bioText: str,
-    onBioChange: any,
-    onSaveBio: any,
-    onCancelEditBio: any,
-    onLike: any,
-    onComment: any,
-    onDelete: any,
-    onRepost: any,
+    onBioChange: Callable[[str], None],
+    onSaveBio: Callable[[], None],
+    onCancelEditBio: Callable[[], None],
+    onLike: Callable[[str], None],
+    onComment: Callable[[str, str], None],
+    onDelete: Callable[[str], None],
+    onRepost: Callable[[str, str, str], None],
 ) -> JsxElement {
-    bioChangeFn = onBioChange;
-    saveBioFn = onSaveBio;
-    cancelFn = onCancelEditBio;
-
     followingCount = len(myProfile.following)
         if myProfile and myProfile.following
         else 0;
@@ -51,20 +47,20 @@ def:pub ProfileTab(
                             rows={3}
                             placeholder="Write your bio..."
                             value={bioText}
-                            onChange={lambda e: ChangeEvent { bioChangeFn.call(
-                                None, e.target.value
+                            onChange={lambda e: ChangeEvent { onBioChange(
+                                e.target.value
                             ); }}
                         />
                         <div style={{"display": "flex", "gap": "0.5rem"}}>
                             <button
                                 className="lx-bio-save-btn"
-                                onClick={lambda { saveBioFn.call(None); }}
+                                onClick={lambda { onSaveBio(); }}
                             >
                                 Save
                             </button>
                             <button
                                 className="lx-edit-profile-btn"
-                                onClick={lambda { cancelFn.call(None); }}
+                                onClick={lambda { onCancelEditBio(); }}
                             >
                                 Cancel
                             </button>

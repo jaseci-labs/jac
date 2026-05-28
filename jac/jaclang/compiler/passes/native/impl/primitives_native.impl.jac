@@ -2473,6 +2473,18 @@ impl NativeStrEmitter.emit_encode(
     return target;
 }
 
+impl NativeStrEmitter.emit_decode(
+    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # decode(): the result of `.encode()` is an i8* the type system tracks as
+    # `str`, so `.decode()` dispatches here. Native strings are already a
+    # UTF-8 i8* buffer — return as-is (mirrors emit_encode). Makes
+    # `s.encode("utf-8")[a:b].decode("utf-8")` a portable byte-range -> str
+    # slice, matching the Python backend, which the rune-aware lexer uses for
+    # token-value extraction.
+    return target;
+}
+
 # Translation
 impl NativeStrEmitter.emit_translate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
@@ -2490,7 +2502,11 @@ impl NativeStrEmitter.emit_maketrans(
 impl NativeBytesEmitter.emit_decode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    # decode(): native bytes are already a UTF-8 i8* buffer — return as-is,
+    # mirroring emit_encode. This makes `s.encode("utf-8")[a:b].decode("utf-8")`
+    # a portable byte-range -> str slice (identical to the Python backend),
+    # which the rune-aware lexer relies on for token-value extraction.
+    return target;
 }
 
 impl NativeBytesEmitter.emit_hex(

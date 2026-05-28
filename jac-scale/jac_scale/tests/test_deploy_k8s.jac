@@ -224,6 +224,7 @@ test "deploy all in one" {
     target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
+    target_config["loki_enabled"] = True;
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -573,8 +574,12 @@ test "deploy all in one" {
         name=f"{grafana_name}-datasources", namespace=namespace
     );
     assert "datasource.yaml" in grafana_ds.data;
-    assert "prometheus" in grafana_ds.data["datasource.yaml"];
-    print("Grafana datasource ConfigMap exists with Prometheus datasource");
+    ds_yaml = grafana_ds.data["datasource.yaml"];
+    assert "prometheus" in ds_yaml.lower();
+    assert "loki" in ds_yaml.lower();
+    assert "uid: loki" in ds_yaml;
+    assert "type: loki" in ds_yaml;
+    print("Grafana datasource ConfigMap exists with Prometheus and Loki datasources");
 
     grafana_dashboard = core_v1.read_namespaced_config_map(
         name=f"{grafana_name}-dashboard", namespace=namespace
@@ -583,8 +588,10 @@ test "deploy all in one" {
     assert "Jac Scale - App Metrics" in grafana_dashboard.data["jac-scale.json"];
     assert "k8s-metrics.json" in grafana_dashboard.data;
     assert "Kubernetes Cluster Metrics" in grafana_dashboard.data["k8s-metrics.json"];
+    assert "pod-logs.json" in grafana_dashboard.data;
+    assert "Pod Logs" in grafana_dashboard.data["pod-logs.json"];
     print(
-        "Grafana dashboard ConfigMap exists with Jac Scale + Kubernetes Cluster Metrics dashboards"
+        "Grafana dashboard ConfigMap exists with Jac Scale + K8s Metrics + Pod Logs dashboards"
     );
 
     grafana_provider = core_v1.read_namespaced_config_map(
@@ -592,6 +599,87 @@ test "deploy all in one" {
     );
     assert "provider.yaml" in grafana_provider.data;
     print("Grafana dashboard provider ConfigMap exists");
+
+    # Validate Loki Deployment, Service, ConfigMap, and ServiceAccount
+    loki_name = f"{app_name}-loki";
+    loki_deploy = apps_v1.read_namespaced_deployment(
+        name=loki_name, namespace=namespace
+    );
+    assert loki_deploy.metadata.name == loki_name;
+    assert loki_deploy.spec.replicas == 1;
+    loki_container = loki_deploy.spec.template.spec.containers[0];
+    assert loki_container.image == "grafana/loki:3.4.2";
+    loki_sc = loki_container.security_context;
+    assert loki_sc.run_as_non_root is True;
+    assert loki_sc.read_only_root_filesystem is True;
+    assert loki_sc.allow_privilege_escalation is False;
+    assert loki_sc.capabilities.drop == ["ALL"];
+    print(f"Loki Deployment '{loki_name}' exists with hardened security context");
+
+    loki_service = core_v1.read_namespaced_service(
+        name=f"{loki_name}-service", namespace=namespace
+    );
+    assert loki_service.spec.type == "ClusterIP";
+    assert loki_service.spec.ports[0].port == 3100;
+    print(f"Loki Service '{loki_name}-service' (ClusterIP:3100) exists");
+
+    loki_config = core_v1.read_namespaced_config_map(
+        name=f"{loki_name}-config", namespace=namespace
+    );
+    assert "loki.yaml" in loki_config.data;
+    assert "http_listen_port: 3100" in loki_config.data["loki.yaml"];
+    assert "store: tsdb" in loki_config.data["loki.yaml"];
+    print(f"Loki ConfigMap '{loki_name}-config' exists with correct config");
+
+    loki_sa = core_v1.read_namespaced_service_account(
+        name=f"{loki_name}-sa", namespace=namespace
+    );
+    assert loki_sa.metadata.name == f"{loki_name}-sa";
+    assert loki_sa.automount_service_account_token is False;
+    print(f"Loki ServiceAccount '{loki_name}-sa' exists with token automount disabled");
+
+    # Validate Alloy DaemonSet, ConfigMap, ServiceAccount, ClusterRole, ClusterRoleBinding
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
+
+    alloy_ds = apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+    assert alloy_ds.metadata.name == alloy_name;
+    alloy_container = alloy_ds.spec.template.spec.containers[0];
+    assert alloy_container.image.startswith("grafana/alloy:") , (
+        f"expected grafana/alloy image, got {alloy_container.image}"
+    );
+    tolerations = alloy_ds.spec.template.spec.tolerations;
+    assert any(
+        t.operator == "Exists" and t.effect == "NoSchedule" for t in tolerations
+    ) , "Alloy must tolerate NoSchedule to run on all nodes";
+    print(f"Alloy DaemonSet '{alloy_name}' exists with NoSchedule toleration");
+
+    alloy_config = core_v1.read_namespaced_config_map(
+        name=f"{alloy_name}-config", namespace=namespace
+    );
+    assert "config.alloy" in alloy_config.data;
+    alloy_river = alloy_config.data["config.alloy"];
+    assert "/loki/api/v1/push" in alloy_river;
+    assert f"{loki_name}-service" in alloy_river;
+    # Alloy uses River blocks; assert the two components that drive
+    # K8s SD + Loki push, equivalent to Promtail's kubernetes_sd_configs.
+    assert "discovery.kubernetes" in alloy_river;
+    assert "loki.write" in alloy_river;
+    print(f"Alloy ConfigMap '{alloy_name}-config' exists pointing to Loki with K8s SD");
+
+    alloy_sa = core_v1.read_namespaced_service_account(
+        name=f"{alloy_name}-sa", namespace=namespace
+    );
+    assert alloy_sa.metadata.name == f"{alloy_name}-sa";
+    print(f"Alloy ServiceAccount '{alloy_name}-sa' exists");
+
+    alloy_cr = rbac_v1.read_cluster_role(name=alloy_cr_name);
+    assert alloy_cr.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRole '{alloy_cr_name}' exists");
+
+    alloy_crb = rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+    assert alloy_crb.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRoleBinding '{alloy_cr_name}' exists");
 
     # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole,ClusterRoleBinding
     ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
@@ -1411,6 +1499,81 @@ test "deploy all in one" {
             assert e.status == 404 , f"Expected 404 for '{cm_name}', got {e.status}";
         }
     }
+
+    # Verify Loki resources are gone
+    loki_name = f"{app_name}-loki";
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
+
+    try {
+        apps_v1.read_namespaced_deployment(loki_name, namespace=namespace);
+        raise AssertionError("Loki Deployment should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{loki_name}-service", namespace=namespace);
+        raise AssertionError("Loki Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(f"{loki_name}-config", namespace=namespace);
+        raise AssertionError("Loki ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{loki_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Loki ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Alloy resources are gone
+    try {
+        apps_v1.read_namespaced_daemon_set(alloy_name, namespace=namespace);
+        raise AssertionError("Alloy DaemonSet should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(f"{alloy_name}-config", namespace=namespace);
+        raise AssertionError("Alloy ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{alloy_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Alloy ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRole should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRoleBinding should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Loki and Alloy cleanup verified");
 
     # Verify MongoDB ServiceAccount is gone
     try {

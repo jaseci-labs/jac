@@ -50,7 +50,36 @@ test "get_microservices_config preserves all sections (regression guard)" {
         }
     };
     out = cfg.get_microservices_config();
-    expected_keys: set[str] = {"enabled","gateway_port","gateway_host","drain_timeout_seconds","http_forward_timeout","routes","services","rate_limit","cors","client","ingress"};
+    expected_keys: set[str] = {
+        "enabled",
+        "gateway_port",
+        "gateway_host",
+        "drain_timeout_seconds",
+        "http_forward_timeout",
+        "routes",
+        "services",
+        "rate_limit",
+        "cors",
+        "client",
+        "ingress",
+        "logs"
+    };
     missing = expected_keys - set(out.keys());
     assert not missing , f"missing keys: {missing}";
+}
+
+
+test "get_microservices_config logs block defaults to {} when absent" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"enabled": True}};
+    out = cfg.get_microservices_config();
+    assert out["logs"] == {};
+}
+
+
+test "get_microservices_config logs block round-trips enabled flag" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"enabled": True, "logs": {"enabled": True}}};
+    out = cfg.get_microservices_config();
+    assert out["logs"] == {"enabled": True};
 }

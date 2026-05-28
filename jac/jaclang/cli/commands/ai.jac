@@ -49,6 +49,21 @@ glob registry = get_registry();
             default=False,
             help="Confirm every file write and code execution (off by default)"
         ),
+        Arg.create(
+            "quiet",
+            kind=ArgKind.FLAG,
+            typ=bool,
+            default=False,
+            help="Compact output: hide live reasoning, timings, and step detail",
+            short="q"
+        ),
+        Arg.create(
+            "ui",
+            kind=ArgKind.FLAG,
+            typ=bool,
+            default=False,
+            help="Open the agent in a web UI with a live phase-graph visualizer"
+        ),
 
     ],
     examples=[
@@ -58,8 +73,20 @@ glob registry = get_registry();
         ("jac ai -m local:gemma-4-e2b", "Use a smaller/faster local model"),
         ("jac ai --n_ctx 32768", "Give the local model a larger context window"),
         ("jac ai --safe", "Approve each file write and command before it runs"),
+        (
+            "jac ai -q \"fix the build\"",
+            "Compact output -- just tool calls and the answer"
+        ),
+        ("jac ai --ui", "Open a web UI with a live agent phase-graph visualizer"),
 
     ],
     group="general"
 )
-def ai(prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False) -> int;
+def ai(
+    prompt: str = "",
+    model: str = "",
+    n_ctx: int = 0,
+    safe: bool = False,
+    quiet: bool = False,
+    ui: bool = False
+) -> int;

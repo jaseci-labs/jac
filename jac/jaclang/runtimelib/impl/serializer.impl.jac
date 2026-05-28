@@ -278,7 +278,7 @@ impl Serializer._deserialize_value(val: object) -> object {
         return [Serializer._deserialize_value(v) for v in val];
     }
     if isinstance(val, dict) {
-        if '$ref' in val and val.keys() <= {'$ref','$type'} {
+        if '$ref' in val and val.keys() <= {'$ref', '$type'} {
             return Serializer._deserialize_jac_ref(val);
         }
         return Serializer.deserialize(val)
@@ -682,11 +682,34 @@ impl Serializer._deserialize_archetype(
                     (origin is Union or origin is UnionType) and NoneType in args
                 );
                 if deser_v is None and not is_optional {
-                    raise TypeError(
-                        f"{module_name}.{type_name}.{k}: stored value is None "
-                        f"but field type {target} does not allow None — "
-                        "nested class likely removed"
+                    recovered: object = None;
+                    has_default = False;
+                    for fd in fields(cls) {
+                        if fd.name == k {
+                            if fd.default_factory is not MISSING {
+                                recovered = fd.default_factory();
+                                has_default = True;
+                            } elif fd.default is not MISSING {
+                                recovered = fd.default;
+                                has_default = True;
+                            }
+                            break;
+                        }
+                    }
+                    if not has_default {
+                        logger.warning(
+                            f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                            f"on non-Optional field {target} and no class default "
+                            "available; cannot recover."
+                        );
+                        return None;
+                    }
+                    logger.warning(
+                        f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                        f"on non-Optional field {target}; restored class default."
                     );
+                    setattr(arch, k, recovered);
+                    continue;
                 }
                 logger.warning(
                     f"Serializer: coercion fallback on {module_name}."
