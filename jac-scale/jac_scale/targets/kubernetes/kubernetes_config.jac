@@ -55,6 +55,7 @@ obj KubernetesConfig(BaseConfig) {
         plugin_versions: dict[str, str] = {},
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
+        loki_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
         # Dashboard configuration
         redis_dashboard: bool = False,
@@ -138,6 +139,7 @@ obj KubernetesConfig(BaseConfig) {
                 # Monitoring configuration
                 'monitoring_enabled': self.monitoring_enabled,
                 'k8s_metrics_enabled': self.k8s_metrics_enabled,
+                'loki_enabled': self.loki_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
                 # Dashboard configuration
                 'redis_dashboard': self.redis_dashboard,
@@ -215,6 +217,7 @@ obj KubernetesConfig(BaseConfig) {
             plugin_versions=config.get('plugin_versions', {}),
             monitoring_enabled=config.get('monitoring_enabled', False),
             k8s_metrics_enabled=config.get('k8s_metrics_enabled', True),
+            loki_enabled=config.get('loki_enabled', False),
             prometheus_admin_password=config.get(
                 'prometheus_admin_password', 'Adminpassword123'
             ),

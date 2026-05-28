@@ -24,6 +24,8 @@ impl ScaleTieredMemory.postinit -> None {
         self.l3 = mongo_backend;
         # Give MongoDB access to L1 memory for sync()
         mongo_backend.set_memory_ref(self.__mem__);
+        # Give MongoDB access to L2 cache so quarantine ops can invalidate Redis
+        mongo_backend.set_cache_ref(self.l2);
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
         # Show subtle message (optional - uncomment to enable)
