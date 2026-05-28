@@ -414,6 +414,25 @@ test "E0062: nonlocal at module level" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
 }
 
+test "E0063: glob at module level is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
+}
+
+test "E0063: glob in statement position is always rejected" {
+    sources = [
+        "with entry { glob a = 90; }",
+        "with entry { glob a = 90 }",
+        "with entry { glob a = }",
+        "with entry { glob a }",
+        "with entry { glob }",
+        "def foo() -> int { glob a = 1; return a; }"
+    ];
+    for src in sources {
+        (has_err, _) = parse_and_validate(src);
+        assert has_err , f"Expected error for: {src}";
+    }
+}
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 3: NAME RESOLUTION / SCOPE DIAGNOSTICS (E/W 2020-2037)
@@ -892,6 +911,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
 
 glob IMPLEMENTED_REJECT: set[str] = {
          "E0062_nonlocal_module",
+         "E0063_glob_inside_func",
          "E0071_bare_except_first",
          "E0075_dup_base"
      },
