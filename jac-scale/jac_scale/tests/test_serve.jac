@@ -2207,6 +2207,133 @@ test "server startup - port fallback integration" {
     }
 }
 
+# =============================================================================
+# HEALTH CHECK FILTER UNIT TESTS
+# =============================================================================
+"""Test that HealthCheckFilter is not attached by default (suppress_health_check_logs defaults to false)."""
+test "health check filter is disabled by default" {
+    import logging;
+    import from jac_scale.config_loader { get_scale_config, reset_scale_config }
+    import from jac_scale.jserver.jfast_api { ConsoleLogHandler, HealthCheckFilter }
+
+    reset_scale_config();
+    cfg = get_scale_config();
+    server_cfg = cfg.get_server_config();
+
+    assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
+
+    # Verify that when False, no HealthCheckFilter is added to the handler
+    handler = ConsoleLogHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    if server_cfg.get('suppress_health_check_logs', False) {
+        handler.addFilter(HealthCheckFilter());
+    }
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
+
+    reset_scale_config();
+}
+
+"""Test HealthCheckFilter suppresses noisy health-check access log entries."""
+test "health check filter suppresses health endpoint log records" {
+    import logging;
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    f = HealthCheckFilter();
+
+    # These should be suppressed (filter returns False)
+    suppressed = [
+        '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/ready HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/live HTTP/1.1" 200',
+
+    ];
+    for msg in suppressed {
+        assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
+    }
+
+    # These should pass through (filter returns True)
+    allowed = [
+        '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',
+
+    ];
+    for msg in allowed {
+        assert f.filter(make_record(msg)) , f"Expected allowed: {msg}";
+    }
+}
+
+"""Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
+test "health check filter blocks records when attached to a handler" {
+    import logging;
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
+
+    class _CapturingHandler(logging.Handler) {
+        has captured: list = [];
+
+        def emit(self: _CapturingHandler, record: logging.LogRecord) {
+            self.captured.append(record.getMessage());
+        }
+    }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    handler = _CapturingHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    handler.addFilter(HealthCheckFilter());
+
+    records = [
+        ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/ready HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/live HTTP/1.1" 200', False),
+        ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
+        ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
+
+    ];
+
+    for (msg, should_appear) in records {
+        handler.captured = [];
+        handler.handle(make_record(msg));
+        if should_appear {
+            assert len(handler.captured) == 1 , f"Expected handler to receive: {msg}";
+        } else {
+            assert len(handler.captured) == 0 , f"Expected handler to suppress: {msg}";
+        }
+    }
+}
+
 """Test that jac start --client pwa uses jac-scale server (422 from /user/login = FastAPI validation)."""
 test "pwa target uses jac-scale server" {
     import tempfile;

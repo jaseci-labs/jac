@@ -748,24 +748,33 @@ impl ensure_namespace_exists(namespace: str) -> None {
             config.load_incluster_config();
         }
         core_v1 = client.CoreV1Api();
-        core_v1.read_namespace(name=namespace);
+        existing_ns = core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
-        try {
-            core_v1.patch_namespace(
-                name=namespace,
-                body={
-                    'metadata': {
-                        'labels': {
-                            'pod-security.kubernetes.io/enforce': 'baseline',
-                            'pod-security.kubernetes.io/warn': 'restricted'
-                        }
-                    }
-                }
-            );
-        } except ApiException as patch_err {
-            console.print(
-                f"Warning: could not apply PSS labels to namespace '{namespace}': {patch_err}"
-            );
+        # Only stamp the PSS labels when they're MISSING. Overwriting
+        # existing labels would either downgrade a stricter policy
+        # (e.g. enforce=restricted set by an operator for compliance)
+        # or upgrade a looser one (e.g. enforce=privileged set by an
+        # earlier deploy that needs hostPath DaemonSets like
+        # M-14.a's Alloy + node-exporter). Either direction is the
+        # wrong default - leave operator + caller intent intact.
+        existing_labels: dict = dict(getattr(existing_ns.metadata, "labels", {}) or {});
+        patch_labels: dict = {};
+        if not existing_labels.get("pod-security.kubernetes.io/enforce") {
+            patch_labels["pod-security.kubernetes.io/enforce"] = "baseline";
+        }
+        if not existing_labels.get("pod-security.kubernetes.io/warn") {
+            patch_labels["pod-security.kubernetes.io/warn"] = "restricted";
+        }
+        if patch_labels {
+            try {
+                core_v1.patch_namespace(
+                    name=namespace, body={'metadata': {'labels': patch_labels}}
+                );
+            } except ApiException as patch_err {
+                console.print(
+                    f"Warning: could not apply PSS labels to namespace '{namespace}': {patch_err}"
+                );
+            }
         }
     } except ApiException as e {
         if (e.status == 404) {

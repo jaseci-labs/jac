@@ -86,7 +86,7 @@ repos:
       - id: no-ai-coauthor
         name: Block AI co-author attribution
         language: pygrep
-        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'
+        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|composer|cursor|gpt|gemini|ai|bot)\b'
         stages: [commit-msg]
 
       - id: check-release-notes
