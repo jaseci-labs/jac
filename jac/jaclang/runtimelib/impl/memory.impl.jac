@@ -136,7 +136,7 @@ def _is_legacy_schema(conn: sqlite3.Connection) -> bool {
         return False;
     }
     cols = {row[1] for row in rows};
-    return cols == {'id','data'};
+    return cols == {'id', 'data'};
 }
 
 """Create the anchors + quarantine + schema_meta tables (new schema)."""
@@ -715,16 +715,25 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         if anchor is None {
-            # Either the row couldn't deserialize at all, or the archetype
-            # class was unresolvable (even after alias lookup). Quarantine
-            # rather than drop — class rename/move is recoverable via the
-            # @archetype_alias decorator. The source of truth for "can't
-            # reconstruct" lives inside Serializer._deserialize_anchor so
-            # every persistence backend gets the same guarantee.
-            logger.warning(
-                f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "
-                f"for anchor {id}. Moving to anchors_quarantine."
+            cls_resolved = (
+                Serializer._get_class(arch_module, arch_type)
+                    if (arch_module and arch_type)
+                    else None
             );
+            if cls_resolved is None {
+                reason = f"class {arch_module}.{arch_type} unresolvable";
+                logger.warning(
+                    f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "
+                    f"for anchor {id}. Moving to anchors_quarantine."
+                );
+            } else {
+                reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+                logger.warning(
+                    f"SqliteMemory: archetype field deserialization failed for "
+                    f"{arch_module}.{arch_type} (anchor {id}). "
+                    f"Moving to anchors_quarantine."
+                );
+            }
             _quarantine(
                 self.__conn__,
                 str(id),
@@ -733,7 +742,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
                 arch_type,
                 fingerprint,
                 data_json,
-                f"class {arch_module}.{arch_type} unresolvable",
+                reason,
                 from_format_version=fmt_version
             );
             return None;
@@ -1300,6 +1309,11 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
                         f"to node {node_id} failed: {relink_err}"
                     );
                 }
+            } else {
+                logger.warning(
+                    f"SqliteMemory: recover re-link of edge {row_id} "
+                    f"to node {node_id} skipped: node not found in live anchors"
+                );
             }
         }
     }
@@ -1487,6 +1501,8 @@ impl SqliteMemory.recover_all -> tuple {
             )
         )
     );
+    # Process NodeAnchors before EdgeAnchors so re-link finds live nodes.
+    rows.sort(key=lambda r : 0 if r[1] == 'NodeAnchor' else 1);
     recovered = 0;
     still_stuck: list = [];
     for r in rows {

@@ -522,8 +522,8 @@ test "run specific test only" {
 test "graph coverage" {
     graph_params = set(inspect.signature(tools.dot).parameters.keys());
     printgraph_params = set(inspect.signature(printgraph).parameters.keys());
-    printgraph_params = printgraph_params - {"nd","file","edge_type"};
-    printgraph_params.update({"initial","saveto","connection","session"});
+    printgraph_params = printgraph_params - {"nd", "file", "edge_type"};
+    printgraph_params.update({"initial", "saveto", "connection", "session"});
     assert printgraph_params.issubset(graph_params);
     assert len(printgraph_params) + 2 == len(graph_params);
 }

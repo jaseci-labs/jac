@@ -700,7 +700,22 @@ impl EsastGenPass.exit_dict_val(nd: uni.DictVal) -> None {
 impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
-        if item.gen.es_ast {
+        # `(*xs, y)` / a starred for-loop target element is a spread, not a `!`
+        # unary. Emit a SpreadElement over the operand (mirrors exit_list_val).
+        if (
+            isinstance(item, uni.UnaryExpr)
+            and item.op.name == Tok.STAR_MUL.value
+            and item.operand.gen.es_ast
+        ) {
+            elements.append(
+                self.sync_loc(
+                    es.SpreadElement(
+                        argument=cast(es.Expression, item.operand.gen.es_ast)
+                    ),
+                    jac_node=item
+                )
+            );
+        } elif item.gen.es_ast {
             elements.append(cast(es.Expression, item.gen.es_ast));
         }
     }
@@ -2550,7 +2565,7 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     nd.gen.es_ast = expr_stmt;
 }
 
-"""Process control statement (break/continue)."""
+"""Process control statement (break/continue/skip)."""
 impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     # `skip;` inside a slot is the early-exit guard: return the fragment of
     # everything accumulated so far, abandoning the rest of the slot body.
@@ -2559,9 +2574,15 @@ impl EsastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
         nd.gen.es_ast = self._view_fragment_return(acc, nd);
         return;
     }
-    stmt: (es.BreakStatement | es.ContinueStatement);
+    stmt: (es.BreakStatement | es.ContinueStatement | es.ReturnStatement);
     if (nd.ctrl.name == Tok.KW_BREAK) {
         stmt = self.sync_loc(es.BreakStatement(), jac_node=nd);
+    } elif (nd.ctrl.name == Tok.KW_SKIP) {
+        # `skip` is a Return-family keyword (the Python target lowers it to a
+        # bare `return`). Outside a slot it is a guard-clause early return, not
+        # a loop control -- emitting `continue;` here would be illegal JS in a
+        # non-loop body and crash the client build (issue #6206).
+        stmt = self.sync_loc(es.ReturnStatement(argument=None), jac_node=nd);
     } else {
         stmt = self.sync_loc(es.ContinueStatement(), jac_node=nd);
     }
@@ -2625,7 +2646,43 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
 }
 
 # Known exception types that map to _jac.exc.X in generated JS.
-glob _KNOWN_EXCEPTIONS: set[str] = {'BaseException','Exception','ArithmeticError','ZeroDivisionError','OverflowError','FloatingPointError','LookupError','IndexError','KeyError','ValueError','TypeError','AttributeError','RuntimeError','NotImplementedError','RecursionError','OSError','FileNotFoundError','FileExistsError','PermissionError','TimeoutError','IsADirectoryError','NotADirectoryError','AssertionError','ImportError','ModuleNotFoundError','NameError','UnboundLocalError','StopIteration','StopAsyncIteration','EOFError','MemoryError','ReferenceError','KeyboardInterrupt','SystemExit','GeneratorExit'};
+glob _KNOWN_EXCEPTIONS: set[str] = {
+         'BaseException',
+         'Exception',
+         'ArithmeticError',
+         'ZeroDivisionError',
+         'OverflowError',
+         'FloatingPointError',
+         'LookupError',
+         'IndexError',
+         'KeyError',
+         'ValueError',
+         'TypeError',
+         'AttributeError',
+         'RuntimeError',
+         'NotImplementedError',
+         'RecursionError',
+         'OSError',
+         'FileNotFoundError',
+         'FileExistsError',
+         'PermissionError',
+         'TimeoutError',
+         'IsADirectoryError',
+         'NotADirectoryError',
+         'AssertionError',
+         'ImportError',
+         'ModuleNotFoundError',
+         'NameError',
+         'UnboundLocalError',
+         'StopIteration',
+         'StopAsyncIteration',
+         'EOFError',
+         'MemoryError',
+         'ReferenceError',
+         'KeyboardInterrupt',
+         'SystemExit',
+         'GeneratorExit'
+     };
 
 """Process raise statement.
 
@@ -3059,21 +3116,10 @@ impl EsastGenPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
         if nd.collection.gen.es_ast
         else self.sync_loc(es.Identifier(name='collection'), jac_node=nd.collection);
     body = self._build_block_statement(nd, nd.body);
-    pattern_nodes = (
-        es.Identifier,
-        es.ArrayPattern,
-        es.ObjectPattern,
-        es.AssignmentPattern,
-        es.RestElement
-    );
     if isinstance(left, es.VariableDeclaration) {
         decl = left;
     } else {
-        if isinstance(left, pattern_nodes) {
-            pattern = left;
-        } else {
-            pattern = self.sync_loc(es.Identifier(name='_item'), jac_node=nd.target);
-        }
+        pattern = self._target_to_pattern(left, nd.target);
         declarator = self.sync_loc(
             es.VariableDeclarator(id=pattern, `init=None), jac_node=nd.target
         );
@@ -3087,6 +3133,36 @@ impl EsastGenPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
         jac_node=nd
     );
     nd.gen.es_ast = for_stmt;
+}
+
+"""Convert a for-loop target expression into an ESTree binding pattern."""
+impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node {
+    if isinstance(target, es.SpreadElement) {
+        inner = self._target_to_pattern(target.argument, loc)
+            if target.argument
+            else self.sync_loc(es.Identifier(name='_item'), jac_node=loc);
+        return self.sync_loc(es.RestElement(argument=inner), jac_node=loc);
+    }
+    if isinstance(target, es.ArrayExpression) {
+        elements: list[(es.Node | None)] = [];
+        for elem in target.elements {
+            elements.append(
+                self._target_to_pattern(elem, loc) if elem is not None else None
+            );
+        }
+        return self.sync_loc(es.ArrayPattern(elements=elements), jac_node=loc);
+    }
+    pattern_nodes = (
+        es.Identifier,
+        es.ArrayPattern,
+        es.ObjectPattern,
+        es.AssignmentPattern,
+        es.RestElement
+    );
+    if isinstance(target, pattern_nodes) {
+        return target;
+    }
+    return self.sync_loc(es.Identifier(name='_item'), jac_node=loc);
 }
 
 """Process traditional for statement."""

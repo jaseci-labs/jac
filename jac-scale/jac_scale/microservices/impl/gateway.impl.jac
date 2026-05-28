@@ -293,7 +293,7 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user","/graph"};
+     _BUILTIN_EXACT: set[str] = {"/user", "/graph"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 
@@ -607,15 +607,19 @@ impl MicroserviceGateway.setup -> FastAPI {
         );
     }
 
-    # Install the trace-id log filter once when the gateway starts up
-    # so every subsequent log line gets a [trace=...] prefix.
+    # Install the trace-id log filter + JSON formatter (M-14.b) so
+    # every log line emitted by the gateway becomes one-line JSON on
+    # stdout with `service` / `level` / `trace_id` as queryable fields.
+    # `install_structured_logging` is idempotent and also calls
+    # `install_trace_log_filter` internally; we still import the trace
+    # helpers below because the dispatcher middleware uses them directly.
     import from jac_scale.microservices.runtime.trace_ctx {
-        install_trace_log_filter,
         set_current_trace,
         reset_current_trace,
         ensure_trace_id
     }
-    install_trace_log_filter();
+    import from jac_scale.microservices.runtime.log_emit { install_structured_logging }
+    install_structured_logging();
 
     # Build Prometheus metrics (no-ops when prometheus_client is not
     # installed). Only initialized once per gateway instance; spawning

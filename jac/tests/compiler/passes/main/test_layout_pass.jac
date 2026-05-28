@@ -34,7 +34,23 @@ def get_registry(fixture: str) -> LayoutRegistry {
 
 # ── LAYOUT_COMPATIBLE_PRIMITIVES ──────────────────────────────
 test "LAYOUT_COMPATIBLE_PRIMITIVES contains all expected types" {
-    expected = {"int","float","bool","str","bytes","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64"};
+    expected = {
+        "int",
+        "float",
+        "bool",
+        "str",
+        "bytes",
+        "i8",
+        "u8",
+        "i16",
+        "u16",
+        "i32",
+        "u32",
+        "i64",
+        "u64",
+        "f32",
+        "f64"
+    };
     assert LAYOUT_COMPATIBLE_PRIMITIVES == expected;
 }
 

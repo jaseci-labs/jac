@@ -576,7 +576,23 @@ impl InteropAnalysisPass._extract_all_subscript_types(
 impl InteropAnalysisPass._extract_all_type_names(
     self: InteropAnalysisPass, expr: (uni.UniNode | None)
 ) -> list[str] {
-    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    prims = {
+        'str',
+        'int',
+        'float',
+        'bool',
+        'None',
+        'Any',
+        'list',
+        'dict',
+        'tuple',
+        'set',
+        'frozenset',
+        'bytes',
+        'object',
+        'type',
+        'JsxElement'
+    };
     if expr is None {
         return [];
     }
@@ -619,7 +635,23 @@ impl InteropAnalysisPass._extract_all_type_names(
 impl InteropAnalysisPass._collect_boundary_type(
     self: InteropAnalysisPass, type_name: str, source_mod: (uni.Module | None)
 ) -> None {
-    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    prims = {
+        'str',
+        'int',
+        'float',
+        'bool',
+        'None',
+        'Any',
+        'list',
+        'dict',
+        'tuple',
+        'set',
+        'frozenset',
+        'bytes',
+        'object',
+        'type',
+        'JsxElement'
+    };
     if type_name in prims {
         return;
     }

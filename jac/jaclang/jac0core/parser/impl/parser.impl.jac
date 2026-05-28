@@ -4280,7 +4280,22 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_REPORT) {
         return self.parse_report_stmt();
     }
-    # Handle nested function/ability definitions
+    if self.check(TokenKind.STRING)
+    and self.check_peek_any(
+        TokenKind.KW_DEF,
+        TokenKind.KW_CAN,
+        TokenKind.KW_OVERRIDE,
+        TokenKind.KW_STATIC,
+        TokenKind.KW_ASYNC,
+        TokenKind.DECOR_OP,
+        TokenKind.KW_OBJECT,
+        TokenKind.KW_NODE,
+        TokenKind.KW_EDGE,
+        TokenKind.KW_WALKER,
+        TokenKind.KW_CLASS
+    ) {
+        return self.parse_docstring_target();
+    }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
@@ -5722,12 +5737,12 @@ impl Parser.parse_archetype -> Archetype {
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];
-    if is_async {
-        kid.append(async_uni);
-    }
     for (i, d) in enumerate(decorators) {
         kid.append(decor_unis[i]);
         kid.append(d);
+    }
+    if is_async {
+        kid.append(async_uni);
     }
     kid.append(arch_type);
     if access {
@@ -5905,7 +5920,12 @@ impl Parser.parse_archetype_member{
             ];
             kid.extend(body);
             kid.append(rb_uni);
-            return ModuleCode(name=None, body=body, kid=kid, doc=None);
+            module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
+            if doc {
+                module_code.doc = doc;
+                module_code.add_kids_left([doc]);
+            }
+            return module_code;
         }
     }
     # Parse bare names (e.g. 'pass') as expression statements so
@@ -7246,7 +7266,7 @@ impl Parser.parse_sem_def -> SemDef {
         sem_dot_unis.append(self.make_uni_token(self.previous()));
         target_names.append(self.parse_impl_target_name());
     }
-    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING SEMI
+    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING+ SEMI
     sep_uni: UniToken | None = None;
     if self.match_tok(TokenKind.EQ) {
         sep_uni = self.make_uni_token(self.previous());
@@ -7256,9 +7276,14 @@ impl Parser.parse_sem_def -> SemDef {
         self.expect(TokenKind.EQ);  # Will error with expected '='
         sep_uni = self.make_uni_token(self.previous());
     }
-    # SemDef value is a bare STRING, not a multistring expression
-    value_tok = self.expect(TokenKind.STRING);
-    value = self.make_string(value_tok);
+    # The value is one or more adjacent string literals. Several are implicitly
+    # concatenated into a MultiString, so a long semstring can wrap across source
+    # lines (the formatter rebreaks it to fit the line width).
+    str_nodes: list = [self.make_string(self.expect(TokenKind.STRING))];
+    while self.check(TokenKind.STRING) {
+        str_nodes.append(self.make_string(self.advance()));
+    }
+    value = MultiString(strings=str_nodes, kid=str_nodes);
     kid: list = [sem_kw_uni];
     for (i, n) in enumerate(target_names) {
         kid.append(n);

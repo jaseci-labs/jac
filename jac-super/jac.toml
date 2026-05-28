@@ -1,6 +1,6 @@
 [project]
 name = "jac-super"
-version = "0.1.15"
+version = "0.1.16"
 description = "Enhanced console output for Jac CLI with Rich formatting"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -20,9 +20,21 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.include]
 packages = ["jac_super*"]
 
+[project.include.data]
+jac_super = [
+    "shadcn/templates/**/*",
+    "shadcn/templates/**/.*",
+    "shadcn/registry/registry.json",
+    "shadcn/registry/themes.json",
+    "shadcn/registry/components/ui/*.cl.jac",
+    "shadcn/registry/styles/*.css",
+]
+
 [dependencies]
-jaclang = ">=0.15.3"
+jaclang = ">=0.15.4"
 rich = ">=13.0.0"
+"jac-client" = ">=0.1.0"
 
 [entrypoints.jac]
 console = "jac_super.plugin.console:JacSuperPlugin"
+shadcn = "jac_super.shadcn.plugin:JacShadcnPlugin"
