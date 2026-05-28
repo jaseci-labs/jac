@@ -1534,8 +1534,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 self.emit_diag(E1041, expr, type=target_type.name);
                 return types.UnknownType();
             }
-            # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
-            return target_type;
+            # Unwrap the awaitable: Coroutine[Y, S, R] -> R, Awaitable[T] -> T,
+            # else via the `__await__` protocol. Non-awaitables pass through.
+            return self._unwrap_awaitable_type(target_type, expr);
 
         case uni.CastExpr():
             # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
@@ -3436,6 +3437,116 @@ impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | N
     return None;
 }
 
+"""Wrap a return type as the coroutine an `async def` call evaluates to.
+
+Returns `Coroutine[Any, Any, inner]`. If the Coroutine class is unavailable
+(e.g. a minimal typeshed) or `inner` is already a generator-family type
+(async generators are async-iterated, not awaited), `inner` is returned
+unchanged.
+"""
+impl TypeEvaluator._make_coroutine_type(inner: TypeBase) -> TypeBase {
+    if self.prefetch.coroutine_class is None {
+        return inner;
+    }
+    if type_utils.is_generator_family_type(inner) {
+        return inner;
+    }
+    coro = self.prefetch.coroutine_class.clone_as_instance();
+    coro.private.type_args = [types.AnyType(), types.AnyType(), inner];
+    return coro;
+}
+
+"""True if `t` is an awaitable value (a Coroutine/Awaitable instance, or a
+class implementing the `__await__` protocol)."""
+impl TypeEvaluator._is_awaitable_type(t: TypeBase) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if t.is_builtin(["Coroutine", "Awaitable"]) {
+        return True;
+    }
+    return self.get_type_of_magic_method_call(t, "__await__", [], None) is not None;
+}
+
+"""Unwrap a single `await`.
+
+`Coroutine[Y, S, R]` -> R, `Awaitable[T]` -> T, otherwise the return of the
+`__await__` protocol. Non-awaitable and gradual (Unknown/Any) types pass
+through unchanged so incomplete async modeling never raises a false
+"not awaitable" error on otherwise-correct code.
+"""
+impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase {
+    if not isinstance(t, types.ClassType) {
+        return t;
+    }
+    if t.is_builtin("Coroutine") {
+        if t.private.type_args and len(t.private.type_args) >= 3 {
+            return t.private.type_args[2];
+        }
+        return t;
+    }
+    if t.is_builtin("Awaitable") {
+        if t.private.type_args and len(t.private.type_args) >= 1 {
+            return t.private.type_args[0];
+        }
+        return t;
+    }
+    # Generic `__await__` protocol: it returns a Generator[Any, Any, R] whose
+    # R is the awaited value.
+    await_ret = self.get_type_of_magic_method_call(t, "__await__", [], node_);
+    if await_ret is not None {
+        gen_ret = type_utils.get_declared_generator_return_type(
+            self._convert_to_instance(await_ret)
+        );
+        if gen_ret is not None {
+            return gen_ret;
+        }
+    }
+    return t;
+}
+
+"""True if `expr` calls a function bound by `sv import` in the enclosing
+module. Such functions lower to async RPC stubs on the client, so their
+calls return coroutines even though the server declaration is synchronous.
+Mirrors the codegen signal (`KW_SERVER` source-context token).
+
+Scoped per module (keyed by `id(module)`) so a server function called from
+server code — the same shared symbol — is not affected.
+"""
+impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
+    tgt = expr.target;
+    if not isinstance(tgt, uni.Name) or tgt.sym is None {
+        return False;
+    }
+    mod = expr.find_parent_of_type(uni.Module);
+    if mod is None {
+        return False;
+    }
+    mod_key = id(mod);
+    syms = self._sv_async_syms_cache.get(mod_key);
+    if syms is None {
+        syms = set();
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            tok = imp._source_context_token();
+            if tok is None or tok.name != Tok.KW_SERVER {
+                continue;
+            }
+            for item in imp.items {
+                if (
+                    isinstance(item, uni.ModuleItem)
+                    and isinstance(item.name, uni.Name)
+                    and item.name.sym is not None
+                    and item.name.sym.sym_type == SymbolType.ABILITY
+                ) {
+                    syms.add(id(item.name.sym));
+                }
+            }
+        }
+        self._sv_async_syms_cache[mod_key] = syms;
+    }
+    return id(tgt.sym) in syms;
+}
+
 """Return the prefetched types for the type evaluator."""
 impl TypeEvaluator._prefetch_types{
     # Helper to fetch a type and assert it's a ClassType
@@ -3472,7 +3583,10 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
     self.prefetch.union_type_class = get_types_class("UnionType");
-    # self.prefetch.awaitable_class =
+    # Awaitable[T] / Coroutine[Y, S, R] live in typing.pyi. Used to model
+    # `async def` call results (Coroutine) and to unwrap `await` expressions.
+    self.prefetch.awaitable_class = get_typing_class("Awaitable");
+    self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
     # self.prefetch.method_class =
     self.prefetch.tuple_class = get_builtin_class("tuple");

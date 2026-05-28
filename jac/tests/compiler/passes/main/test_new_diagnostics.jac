@@ -595,6 +595,24 @@ test "W1172: missing await on coroutine" {
     assert has_diagnostic_code(prog, "W1172", in_warnings=True);
 }
 
+test "E1042: calling an async function without await" {
+    # An `async def` call is a coroutine, not its return value. Assigning it
+    # without `await` is a type error; the awaited forms must stay clean.
+    (prog, _) = compile_and_check("type_E1042_missing_await.jac");
+    assert count_diagnostic_code(prog, "E1042") == 2 , f"expected 2 E1042 (the two un-awaited calls), got "
+    f"{count_diagnostic_code(prog, 'E1042')}; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
+test "E1042: missing await on sv-imported call (issue #6236)" {
+    # `sv import` functions are async RPC stubs on the client; calling one
+    # without `await` assigns a coroutine to a typed field and crashes at
+    # runtime. `jac check` must flag it.
+    (prog, _) = compile_and_check("type_E1042_sv_missing_await.cl.jac");
+    assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
 # --- Collections ---
 test "E1180: tuple index out of range" {
     pytest.skip("E1180 not yet implemented");

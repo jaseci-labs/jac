@@ -365,6 +365,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
+     E1042 = _err(
+         "E1042",
+         Category.TYPE,
+         "Expected {expected}, but got {actual} -- this call returns a coroutine "
+         "that was not awaited",
+         help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
+         "functions are async RPC stubs on the client and always need 'await'."
+     ),
      # Function call errors
      E1050 = _err(
          "E1050",
