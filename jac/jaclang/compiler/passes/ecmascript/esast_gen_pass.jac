@@ -30,11 +30,16 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.compiler.passes.ecmascript.scoped_styles {
+    ScopedStyleSheet,
+    load_style_annex
+}
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
 }
 import from jaclang.jac0core.diagnostics {
+    E2025,
     E5010,
     E5011,
     E5012,
@@ -259,6 +264,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _get_setter_name(var_name: str) -> str;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
+    def _inject_react_import(name: str, nd: uni.UniNode) -> None;
+    def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _register_jac_runtime_import -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;

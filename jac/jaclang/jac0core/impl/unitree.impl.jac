@@ -775,7 +775,6 @@ impl Expr.postinit -> None {
     self._type_sym_tab = None;
     self.type = None;
     self.attached_tokens = None;
-    self.backend_type_tag = None;
 }
 
 
@@ -1661,6 +1660,14 @@ impl Except.postinit -> None {
 
 
 impl FinallyStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
+impl AwaitingClause.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");

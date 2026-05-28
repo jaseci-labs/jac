@@ -18,7 +18,7 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples");
+     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 """Helper to import a jac module and capture its stdout."""
 def run_jac_import(target: str, base_path: str) -> str {
@@ -108,9 +108,7 @@ test "arch ref has sym" {
 }
 
 test "single impl annex" {
-    mypass = JacProgram().compile(
-        os.path.join(EXAMPLES, "manual_code", "circle_pure.jac")
-    );
+    mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "circle_pure.jac"));
     assert mypass.impl_mod[0].pp().count("ImplDef - impl.Circle.area") == 1;
 }
 

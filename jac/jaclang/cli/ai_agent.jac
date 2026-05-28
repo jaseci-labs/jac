@@ -924,6 +924,13 @@ def print_stats(
     if tokens {
         parts.append(tokens);
     }
+    # Generation throughput: completion tokens over the wall-clock turn time.
+    # Reported alongside the token totals so the speed of the model (local or
+    # cloud) is visible per turn.
+    completion = int(usage.get("completion_tokens", 0) or 0);
+    if completion > 0 and elapsed > 0 {
+        parts.append(f"{completion / elapsed:.1f} tok/s");
+    }
     health = _format_health();
     if health {
         parts.append(health);

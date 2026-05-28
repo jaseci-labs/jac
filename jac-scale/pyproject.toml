@@ -44,13 +44,17 @@ deploy = [
     # bundle them rather than make every user remember `[deploy,data]`.
     "jac-scale[data]",
 ]
+aws = [
+    "boto3>=1.40.0",
+]
 all = [
-    "jac-scale[data,monitoring,scheduler,deploy]",
+    "jac-scale[data,monitoring,scheduler,deploy,aws]",
 ]
 test = [
     "jac-scale[all]",
     "testcontainers[mongodb,redis]",
     "requests",
+    "moto[s3]>=5.0.0",
 ]
 
 [project.urls]
@@ -64,6 +68,7 @@ Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
 scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
+scale_plugin = "jac_scale.plugin:JacScalePlugin"
 
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]

@@ -798,6 +798,9 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
         new_kid.append(stmt);
     }
     new_kid.append(nd.gen_token(Tok.RBRACE));
+    if nd.awaiting_body {
+        new_kid.append(nd.awaiting_body);
+    }
     for exc in nd.excepts {
         new_kid.append(exc);
     }
@@ -807,6 +810,20 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
     if nd.finally_body {
         new_kid.append(nd.finally_body);
     }
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize AwaitingClause kid list."""
+impl NormalizePass.enter_awaiting_clause(nd: uni.AwaitingClause) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_AWAITING),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
@@ -1665,8 +1682,20 @@ impl NormalizePass.enter_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> Non
     nd.set_kids(nodes=new_kid);
 }
 
-"""Normalize JsxNormalAttribute kid list."""
+"""Normalize JsxNormalAttribute kid list.
+
+Two shapes are produced here. The default `name={value}` (or
+`name="literal"`) form lays out `[name, =, value]`. The `{name}`
+shorthand introduced by #6082 collapses to `[{, name, }]` — a single
+Name node referenced from both the attribute's `name` and `value`
+slots, so the kid list mentions it once."""
 impl NormalizePass.enter_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
+    if nd.is_shorthand {
+        nd.set_kids(
+            nodes=[nd.gen_token(Tok.LBRACE), nd.name, nd.gen_token(Tok.RBRACE)]
+        );
+        return;
+    }
     new_kid: list[uni.UniNode] = [nd.name];
     if nd.value {
         new_kid.append(nd.gen_token(Tok.EQ));
