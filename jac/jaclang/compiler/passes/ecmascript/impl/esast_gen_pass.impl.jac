@@ -2645,45 +2645,6 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
-# Known exception types that map to _jac.exc.X in generated JS.
-glob _KNOWN_EXCEPTIONS: set[str] = {
-         'BaseException',
-         'Exception',
-         'ArithmeticError',
-         'ZeroDivisionError',
-         'OverflowError',
-         'FloatingPointError',
-         'LookupError',
-         'IndexError',
-         'KeyError',
-         'ValueError',
-         'TypeError',
-         'AttributeError',
-         'RuntimeError',
-         'NotImplementedError',
-         'RecursionError',
-         'OSError',
-         'FileNotFoundError',
-         'FileExistsError',
-         'PermissionError',
-         'TimeoutError',
-         'IsADirectoryError',
-         'NotADirectoryError',
-         'AssertionError',
-         'ImportError',
-         'ModuleNotFoundError',
-         'NameError',
-         'UnboundLocalError',
-         'StopIteration',
-         'StopAsyncIteration',
-         'EOFError',
-         'MemoryError',
-         'ReferenceError',
-         'KeyboardInterrupt',
-         'SystemExit',
-         'GeneratorExit'
-     };
-
 """Process raise statement.
 
 Maps known exception types to _jac.exc.X for hierarchy-aware matching.
@@ -2704,8 +2665,9 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         callee = argument.callee;
         call_args = argument.arguments;
     }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
-        if callee.name in _KNOWN_EXCEPTIONS {
+        if JAC_TYPE_REGISTRY.is_exception(callee.name) {
             # Map to _jac.exc.X for hierarchy support
             self.needs_jac_runtime = True;
             exc_ref = self.sync_loc(
@@ -2988,7 +2950,8 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     exc_type_name = except_node.ex_type.value;
                 }
             }
-            if exc_type_name and exc_type_name in _KNOWN_EXCEPTIONS {
+            import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+            if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
                 self.needs_jac_runtime = True;
                 # Build: __jac_e instanceof _jac.exc.X
                 test_expr = self.sync_loc(
@@ -5101,13 +5064,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     # Inject _jac runtime object if any primitive emitter produced _jac.* calls
     if self.needs_jac_runtime {
         import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
-            JAC_RUNTIME_JS_OBJECT
+            build_jac_runtime_js
         }
         jac_rt_decl = es.VariableDeclaration(
             declarations=[
                 es.VariableDeclarator(
                     id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=JAC_RUNTIME_JS_OBJECT)
+                    init=es.Identifier(name=build_jac_runtime_js())
                 )
             ],
             kind='const'
