@@ -26,7 +26,8 @@ import from server {
     SettingsView,
     SettingsResult,
     CallDetail,
-    CallMessage
+    CallMessage,
+    CallTool
 }
 
 to cl:

@@ -8,11 +8,26 @@ the whole conversation with the carried-over messages dimmed. Prev/Next step
 through the calls of the same phase.
 """
 
-sv import from ..server { CallDetail, CallMessage }
+sv import from ..server { CallDetail, CallMessage, CallTool }
 
 """Compact a token count: 14000 -> "14.0k", 219 -> "219"."""
 def _tk(n: int) -> str {
     return (str(n / 1000) + "k") if n >= 1000 else str(n);
+}
+
+"""One available tool: its name, description, and full JSON schema (the bytes the
+API's `tools` param actually carries)."""
+def ToolBlock(t: CallTool) -> JsxElement {
+    return
+        <div className="cd-msg cd-toolschema">
+            <div className="cd-msg-head">
+                <span className="cd-role">{t.name or "?"}</span>
+            </div>
+            {<div className="cd-tooldesc">{t.description}</div>
+                if t.description
+                else <span/>}
+            <pre className="cd-content">{t.schema}</pre>
+        </div>;
 }
 
 """One message as a labeled block: role + any tool-call summaries + its content.
@@ -42,9 +57,11 @@ def:pub CallDetailModal(
     onNext: Callable[[], None],
     onClose: Callable[[], None]
 ) -> JsxElement {
-    has showFull: bool = False;
+    has showFull: bool = False,
+        showTools: bool = False;
 
     newCount = detail.total - detail.shared;
+    toolTokens = detail.tool_chars // 4;
     return
         <div className="modal-overlay" onClick={lambda { onClose(); }}>
             <div
@@ -111,7 +128,7 @@ def:pub CallDetailModal(
                                 </button>
                             </div>
                             <div className="cd-note">
-                                Tokens-in also counts the tool JSON schemas, which the API sends separately from these messages.
+                                Tokens-in spans both the messages below and the tool schemas (sent as a separate API param) — see "tools available" at the bottom.
                             </div>
                             <div className="cd-section-label">
                                 {"input — full conversation"
@@ -156,6 +173,27 @@ def:pub CallDetailModal(
                                     ) for (i, m) in enumerate(detail.output)
                                 ]}
                             </div>
+                            {<button
+                                className="cd-section-label cd-tools-head"
+                                onClick={lambda { showTools = not showTools; }}
+                            >
+                                <span className="chev">
+                                    {"▾" if showTools else "▸"}
+                                </span>
+                                {"tools available — " + str(len(detail.tools)) + " · ~" + str(
+                                    toolTokens
+                                ) + " tok (sent as schemas, not messages)"}
+                            </button>
+                                if len(detail.tools) > 0
+                                else <span/>}
+                            {<div className="cd-msgs">
+                                {[
+                                    (<ToolBlock t={t} key={"ts" + str(i)}/>)
+                                    for (i, t) in enumerate(detail.tools)
+                                ]}
+                            </div>
+                                if (showTools and len(detail.tools) > 0)
+                                else <span/>}
                         </div>}
                 </div>
             </div>

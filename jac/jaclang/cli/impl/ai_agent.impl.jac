@@ -1375,6 +1375,42 @@ impl AgentEventBus.close_convo(msgs: any) -> None {
     }
 }
 
+"""Capture the current conversation's tool JSON schemas -- the exact `tools` API
+parameter byLLM sends with every call in this phase, which the token count
+includes but the messages do not. Rebuilt from the phase's tool functions with
+the same `Tool` byLLM uses, so the schemas (and their token weight) match."""
+impl AgentEventBus.set_convo_tools(tools: list[Callable]) -> None {
+    if not self.active_feed {
+        return;
+    }
+    import json;
+    import from byllm.types { Tool }
+    recs: list[dict] = [];
+    for fn in tools {
+        name = str(getattr(fn, "__name__", "?") or "?");
+        try {
+            schema: any = Tool(fn).get_json_schema();
+            fdef: any = schema.get("function", {});
+            recs.append(
+                {
+                    "name": str(fdef.get("name", "") or name),
+                    "description": str(fdef.get("description", "")),
+                    "schema": json.dumps(schema, indent=2)
+                }
+            );
+        } except Exception as e {
+            recs.append(
+                {
+                    "name": name,
+                    "description": "",
+                    "schema": f"(schema unavailable: {e})"
+                }
+            );
+        }
+    }
+    self.convo_tools[self._cur_convo] = recs;
+}
+
 """Emit a `call` event AND record the call for the detail view.
 
 The lightweight `call` event (token counts, tagged by phase) drives the live
@@ -1407,6 +1443,11 @@ impl AgentEventBus.emit_call(fields: dict) -> None {
         self.convos = {
             k: v
             for (k, v) in self.convos.items()
+            if k in keep
+        };
+        self.convo_tools = {
+            k: v
+            for (k, v) in self.convo_tools.items()
             if k in keep
         };
     }
@@ -2124,14 +2165,18 @@ impl PhaseState.run{
     } else {
         self.ctx[0] = sysmsg;
     }
+    # Hand the phase's tools and conversation to `run_phase` via the runtime
+    # (not as parameters -- byLLM would serialize them into the prompt).
+    agent.phase_tools = self.tools();
+    agent.phase_ctx = self.ctx;
     # Open a fresh capture conversation seeded with this phase's starting
     # messages (the 1st call's input); later calls' inputs come from the
     # progress guard. Close it afterward so the last call's written-back output
     # is captured. Both are no-ops off the --ui path.
     agent.bus.open_convo(self.ctx);
-    result = agent.view.render_stream(
-        run_phase(_phase_directive(label), self.tools(), self.ctx)
-    );
+    # Capture the phase's tool schemas (the API `tools` param) for this convo.
+    agent.bus.set_convo_tools(agent.phase_tools);
+    result = agent.view.render_stream(run_phase(_phase_directive(label)));
     agent.bus.close_convo(self.ctx);
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
@@ -2746,6 +2791,15 @@ impl ui_call_detail(call_id: int) -> dict {
         for m in msgs[a_k:a_next]
         if str(m.get("role", "")) in ("assistant", "tool")
     ];
+    # The phase's tool schemas (the API `tools` param) -- the same for every call
+    # in this conversation. Their char total feeds the modal's "~tokens" estimate
+    # so the row's tokens_in reconciles (messages + tool schemas).
+    tools: list = agent.bus.convo_tools.get(convo, []);
+    tool_chars = 0;
+    for t in tools {
+        td: any = t;
+        tool_chars += len(str(td.get("schema", "")));
+    }
     return {
         "found": True,
         "id": call_id,
@@ -2757,6 +2811,8 @@ impl ui_call_detail(call_id: int) -> dict {
         "total": a_k,
         "tokens_in": int(entry.get("tokens_in", 0) or 0),
         "tokens_out": int(entry.get("tokens_out", 0) or 0),
+        "tools": tools,
+        "tool_chars": tool_chars,
         "prev_id": prev_id,
         "next_id": next_id
     };
@@ -2848,6 +2904,7 @@ impl ui_reset -> None {
     # Drop the per-call capture store too, so a fresh session starts empty.
     agent.bus.call_log = [];
     agent.bus.convos = {};
+    agent.bus.convo_tools = {};
     agent.bus.begin_turn();
     agent.bus.set_status("idle");
     # Tell live streams the feed was cleared (set_status only sends a delta).
