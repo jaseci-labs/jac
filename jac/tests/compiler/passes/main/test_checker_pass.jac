@@ -5097,3 +5097,16 @@ test "duplicate_archetype_decl_is_hard_error" {
         1
     ].pretty_print()}";
 }
+
+test "comprehension_in_ternary_narrowing" {
+    """List comprehension inside a ternary true/false branch should narrow the
+    condition variable, same as a plain expression does."""
+    path = os.path.join(CHECKER_FIXTURES, "checker_comprehension_in_ternary.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+}

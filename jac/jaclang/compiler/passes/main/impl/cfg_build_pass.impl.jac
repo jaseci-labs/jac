@@ -836,10 +836,14 @@ impl CFGBuildPass._wire_compr_filters(
     # expression with cascading E1032s. Skipping the Assignment lets the
     # narrowing engine walk to the prior statement's CFG node, where
     # the declared / last-written type for that Name is intact.
+    # CfgExpr nodes (ternary true/false branch wrappers) are NOT skipped here:
+    # when a comprehension sits inside a ternary branch, we want to link from
+    # that branch CfgExpr so the backward walk can reach the condition node
+    # and apply narrowing (e.g. `[x for x in items.data] if items else []`).
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }
