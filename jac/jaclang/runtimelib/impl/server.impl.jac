@@ -1431,7 +1431,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 }
             }
             try {
-                headers = dict(self.headers) if self?.headers and self.headers else {};
+                headers = dict(self.headers) if self?.headers else {};
                 render_payload = server.introspector.render_page(
                     func_name, args, username, request_ctx={"headers": headers}
                 );
