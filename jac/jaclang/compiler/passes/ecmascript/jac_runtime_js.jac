@@ -1121,55 +1121,45 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
-  exc: (() => {
-    class BaseException extends Error { constructor(m) { super(m); this.name = 'BaseException'; } }
-    class Exception extends BaseException { constructor(m) { super(m); this.name = 'Exception'; } }
-    class ArithmeticError extends Exception { constructor(m) { super(m); this.name = 'ArithmeticError'; } }
-    class ZeroDivisionError extends ArithmeticError { constructor(m) { super(m); this.name = 'ZeroDivisionError'; } }
-    class OverflowError extends ArithmeticError { constructor(m) { super(m); this.name = 'OverflowError'; } }
-    class FloatingPointError extends ArithmeticError { constructor(m) { super(m); this.name = 'FloatingPointError'; } }
-    class LookupError extends Exception { constructor(m) { super(m); this.name = 'LookupError'; } }
-    class IndexError extends LookupError { constructor(m) { super(m); this.name = 'IndexError'; } }
-    class KeyError extends LookupError { constructor(m) { super(m); this.name = 'KeyError'; } }
-    class ValueError extends Exception { constructor(m) { super(m); this.name = 'ValueError'; } }
-    class TypeError_ extends Exception { constructor(m) { super(m); this.name = 'TypeError'; } }
-    class AttributeError extends Exception { constructor(m) { super(m); this.name = 'AttributeError'; } }
-    class RuntimeError extends Exception { constructor(m) { super(m); this.name = 'RuntimeError'; } }
-    class NotImplementedError extends RuntimeError { constructor(m) { super(m); this.name = 'NotImplementedError'; } }
-    class RecursionError extends RuntimeError { constructor(m) { super(m); this.name = 'RecursionError'; } }
-    class OSError extends Exception { constructor(m) { super(m); this.name = 'OSError'; } }
-    class FileNotFoundError extends OSError { constructor(m) { super(m); this.name = 'FileNotFoundError'; } }
-    class FileExistsError extends OSError { constructor(m) { super(m); this.name = 'FileExistsError'; } }
-    class PermissionError extends OSError { constructor(m) { super(m); this.name = 'PermissionError'; } }
-    class TimeoutError extends OSError { constructor(m) { super(m); this.name = 'TimeoutError'; } }
-    class IsADirectoryError extends OSError { constructor(m) { super(m); this.name = 'IsADirectoryError'; } }
-    class NotADirectoryError extends OSError { constructor(m) { super(m); this.name = 'NotADirectoryError'; } }
-    class AssertionError extends Exception { constructor(m) { super(m); this.name = 'AssertionError'; } }
-    class ImportError extends Exception { constructor(m) { super(m); this.name = 'ImportError'; } }
-    class ModuleNotFoundError extends ImportError { constructor(m) { super(m); this.name = 'ModuleNotFoundError'; } }
-    class NameError extends Exception { constructor(m) { super(m); this.name = 'NameError'; } }
-    class UnboundLocalError extends NameError { constructor(m) { super(m); this.name = 'UnboundLocalError'; } }
-    class StopIteration extends Exception { constructor(m) { super(m); this.name = 'StopIteration'; } }
-    class StopAsyncIteration extends Exception { constructor(m) { super(m); this.name = 'StopAsyncIteration'; } }
-    class EOFError extends Exception { constructor(m) { super(m); this.name = 'EOFError'; } }
-    class MemoryError extends Exception { constructor(m) { super(m); this.name = 'MemoryError'; } }
-    class ReferenceError_ extends Exception { constructor(m) { super(m); this.name = 'ReferenceError'; } }
-    class KeyboardInterrupt extends BaseException { constructor(m) { super(m); this.name = 'KeyboardInterrupt'; } }
-    class SystemExit extends BaseException { constructor(m) { super(m); this.name = 'SystemExit'; } }
-    class GeneratorExit extends BaseException { constructor(m) { super(m); this.name = 'GeneratorExit'; } }
-    return {
-      BaseException, Exception,
-      ArithmeticError, ZeroDivisionError, OverflowError, FloatingPointError,
-      LookupError, IndexError, KeyError,
-      ValueError, TypeError: TypeError_, AttributeError,
-      RuntimeError, NotImplementedError, RecursionError,
-      OSError, FileNotFoundError, FileExistsError, PermissionError,
-      TimeoutError, IsADirectoryError, NotADirectoryError,
-      AssertionError, ImportError, ModuleNotFoundError,
-      NameError, UnboundLocalError,
-      StopIteration, StopAsyncIteration, EOFError, MemoryError,
-      ReferenceError: ReferenceError_,
-      KeyboardInterrupt, SystemExit, GeneratorExit
-    };
-  })()
-}""";
+  exc: __JAC_EXC_RUNTIME__
+}""",
+     # JS globals shadowed by builtin exception names; defined under an aliased
+     # local name and re-exported under their real name so generated code can
+     # reference _jac.exc.<RealName> without colliding with the host global.
+     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
+
+"""Build the `_jac.exc` IIFE from the canonical exception hierarchy.
+
+Emits one JS class per exception (in topological order so each `extends`
+references an already-declared parent) and returns the export map, all derived
+from JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
+"""
+def _build_exc_runtime_js -> str {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    lines: list[str] = ["(() => {"];
+    exports: list[str] = [];
+    for (name, parent) in JAC_TYPE_REGISTRY.exception_entries() {
+        local = (name + "_") if name in _JS_RESERVED_EXC_NAMES else name;
+        parent_local = (
+            "Error"
+                if parent is None
+                else ((parent + "_") if parent in _JS_RESERVED_EXC_NAMES else parent)
+        );
+        lines.append(
+            "    class " + local + " extends " + parent_local + " { constructor(m) { super(m); this.name = '" + name + "'; } }"
+        );
+        exports.append(
+            (name + ": " + local) if name in _JS_RESERVED_EXC_NAMES else name
+        );
+    }
+    lines.append("    return { " + ", ".join(exports) + " };");
+    lines.append("  })()");
+    return "\n".join(lines);
+}
+
+"""Return the fully-assembled `_jac` runtime object literal (raw JS string)."""
+def build_jac_runtime_js -> str {
+    return JAC_RUNTIME_JS_OBJECT.replace(
+        "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+    );
+}

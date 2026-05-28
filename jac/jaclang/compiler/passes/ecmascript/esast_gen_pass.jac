@@ -238,8 +238,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
-        _primitive_type_names: (set[str] | None) = None,
-        _emitter_builtins: (set[str] | None) = None,
         _primitives_es_mod: (object | None) = None;
 
     def before_pass -> None;

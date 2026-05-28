@@ -1784,9 +1784,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    if (
-        isinstance(nd.target, uni.Name) and nd.target.sym_name in self._emitter_builtins
-    ) {
+    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+    _call_kind = classify_call(nd);
+    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1813,17 +1813,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
-    callee_type = None;
-    if isinstance(nd.target, uni.Name) {
-        try {
-            _te = self.prog.get_type_evaluator();
-            if _te {
-                callee_type = _te.get_type_of_expression(nd.target);
-            }
-        } except Exception {
-            callee_type = None;
-        }
-    }
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = args;
@@ -1847,11 +1836,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if (
-        isinstance(callee_type, jtypes.ClassType)
-        and callee_type.is_instantiable()
-        and isinstance(callee, es.Expression)
-    ) {
+    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -2146,8 +2131,6 @@ impl EsastGenPass._ensure_emitters -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
     self._primitives_es_mod = _pes;
-    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
-    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -2166,21 +2149,9 @@ Returns the matching primitive name if ``_obj_type`` is a ``ClassType`` whose
 ``LiteralString`` resolve to ``str`` consistently.
 """
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
-    import from jaclang.compiler.type_system { types as jtypes }
+    import from jaclang.compiler.type_system.type_utils { primitive_type_name_of }
     self._ensure_emitters();
-    if not isinstance(_obj_type, jtypes.ClassType) {
-        return "";
-    }
-    if _obj_type.shared.class_name in self._primitive_type_names {
-        return _obj_type.shared.class_name;
-    }
-    # Walk the MRO to catch subtypes like LiteralString → str.
-    for _base in _obj_type.shared.mro {
-        if _base.shared.class_name in self._primitive_type_names {
-            return _base.shared.class_name;
-        }
-    }
-    return "";
+    return primitive_type_name_of(_obj_type) or "";
 }
 
 """Try to dispatch an operator through the primitive emitter system.
@@ -2645,45 +2616,6 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
-# Known exception types that map to _jac.exc.X in generated JS.
-glob _KNOWN_EXCEPTIONS: set[str] = {
-         'BaseException',
-         'Exception',
-         'ArithmeticError',
-         'ZeroDivisionError',
-         'OverflowError',
-         'FloatingPointError',
-         'LookupError',
-         'IndexError',
-         'KeyError',
-         'ValueError',
-         'TypeError',
-         'AttributeError',
-         'RuntimeError',
-         'NotImplementedError',
-         'RecursionError',
-         'OSError',
-         'FileNotFoundError',
-         'FileExistsError',
-         'PermissionError',
-         'TimeoutError',
-         'IsADirectoryError',
-         'NotADirectoryError',
-         'AssertionError',
-         'ImportError',
-         'ModuleNotFoundError',
-         'NameError',
-         'UnboundLocalError',
-         'StopIteration',
-         'StopAsyncIteration',
-         'EOFError',
-         'MemoryError',
-         'ReferenceError',
-         'KeyboardInterrupt',
-         'SystemExit',
-         'GeneratorExit'
-     };
-
 """Process raise statement.
 
 Maps known exception types to _jac.exc.X for hierarchy-aware matching.
@@ -2704,8 +2636,9 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         callee = argument.callee;
         call_args = argument.arguments;
     }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
-        if callee.name in _KNOWN_EXCEPTIONS {
+        if JAC_TYPE_REGISTRY.is_exception(callee.name) {
             # Map to _jac.exc.X for hierarchy support
             self.needs_jac_runtime = True;
             exc_ref = self.sync_loc(
@@ -2988,7 +2921,8 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     exc_type_name = except_node.ex_type.value;
                 }
             }
-            if exc_type_name and exc_type_name in _KNOWN_EXCEPTIONS {
+            import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+            if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
                 self.needs_jac_runtime = True;
                 # Build: __jac_e instanceof _jac.exc.X
                 test_expr = self.sync_loc(
@@ -5101,13 +5035,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     # Inject _jac runtime object if any primitive emitter produced _jac.* calls
     if self.needs_jac_runtime {
         import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
-            JAC_RUNTIME_JS_OBJECT
+            build_jac_runtime_js
         }
         jac_rt_decl = es.VariableDeclaration(
             declarations=[
                 es.VariableDeclarator(
                     id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=JAC_RUNTIME_JS_OBJECT)
+                    init=es.Identifier(name=build_jac_runtime_js())
                 )
             ],
             kind='const'
