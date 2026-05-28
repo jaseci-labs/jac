@@ -229,7 +229,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0063 = _err(
          "E0063",
          Category.SYNTAX,
-         "'glob' is only valid at module level",
+         "'glob' is only valid at module level, perhaps you mean global",
          help="Move the glob declaration to the top of the file, outside any function or code block.",
          blocks_codegen=True
      ),
