@@ -3,7 +3,9 @@
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
-glob registry = get_registry();
+glob registry = get_registry(),
+     # Python 3.X minor versions targeted by `jac bundle --precompile`.
+     _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
 
 """Initialize a new Jac project."""
 @registry.command(
@@ -377,13 +379,24 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             help="Output directory for the built .whl file",
             short="o"
         ),
+        Arg.create(
+            "precompile",
+            typ=bool,
+            default=False,
+            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables",
+            short="p"
+        ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
+        (
+            "jac bundle --precompile",
+            "Precompile for all Py-versions on PATH then bundle"
+        ),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def bundle(output: str = "dist") -> int;
+def bundle(output: str = "dist", precompile: bool = False) -> int;

@@ -4,14 +4,14 @@ Generates _precompiled/ directory with .jir files for the current
 Python version.  Run once per Python version during CI/release.
 
 Usage:
-    jac run scripts/precompile_bytecode.jac<package-source-dir>
+    jac run utils/precompile_bytecode.jac<package-source-dir>
 
 Examples:
-    jac run scripts/precompile_bytecode.jac./jac
-    jac run scripts/precompile_bytecode.jac./jac-scale
-    jac run scripts/precompile_bytecode.jac./jac-client
-    jac run scripts/precompile_bytecode.jac./jac-byllm
-    jac run scripts/precompile_bytecode.jac./jac-super
+    jac run utils/precompile_bytecode.jac./jac
+    jac run utils/precompile_bytecode.jac./jac-scale
+    jac run utils/precompile_bytecode.jac./jac-client
+    jac run utils/precompile_bytecode.jac./jac-byllm
+    jac run utils/precompile_bytecode.jac./jac-super
 """
 
 import hashlib;
@@ -163,11 +163,11 @@ def main {
     args = sys.argv[1:];
     if not args {
         console.print(
-            "Usage: jac run scripts/precompile_bytecode.jac<package-source-dir>"
+            "Usage: jac run utils/precompile_bytecode.jac<package-source-dir>"
         );
         console.print("\nExamples:");
-        console.print("  jac run scripts/precompile_bytecode.jac./jac");
-        console.print("  jac run scripts/precompile_bytecode.jac./jac-scale");
+        console.print("  jac run utils/precompile_bytecode.jac./jac");
+        console.print("  jac run utils/precompile_bytecode.jac./jac-scale");
         sys.exit(1);
     }
 

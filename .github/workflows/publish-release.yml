@@ -96,7 +96,7 @@ jobs:
         run: pip install -e ./${{ matrix.dir }}
 
       - name: Precompile bytecode
-        run: jac run jac/scripts/precompile_bytecode.jac ./${{ matrix.dir }}
+        run: jac run jac/jaclang/utils/precompile_bytecode.jac ./${{ matrix.dir }}
 
       - name: Upload precompiled artifacts
         uses: actions/upload-artifact@v4

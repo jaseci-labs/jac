@@ -195,3 +195,82 @@ obj Video(Media) {
     def load_frames -> None;
     def to_dict -> list[dict];
 }
+
+
+"""Serialize message content into provider content blocks.
+
+Element shapes accepted: dict (already-serialized, passed through),
+`(media, semstring)` tuple (semstring emitted as a text prelude),
+and Media (via `to_dict()`).
+"""
+def serialize_media_content(content: list) -> list[dict] {
+    blocks: list = [];
+    for item in content {
+        if isinstance(item, dict) {
+            blocks.append(item);
+            continue;
+        }
+        semstring = "";
+        if isinstance(item, tuple) {
+            semstring = item[1] or "";
+            item = item[0];
+        }
+        if semstring {
+            blocks.append({"type": "text", "text": semstring});
+        }
+        blocks.extend(item.to_dict());
+    }
+    return blocks;
+}
+
+
+"""Normalize a tool's return value into Message-compatible content.
+
+str → str (common case).  Media → `[Media]`.  `list[Media]` → unchanged.
+Anything else is stringified for back-compat with tools that return
+dicts, ints, etc.
+"""
+def normalize_tool_result(value: any) -> str | list {
+    if isinstance(value, str) {
+        return value;
+    }
+    if isinstance(value, Media) {
+        return [value];
+    }
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(elem, Media) for elem in value)
+    ) {
+        return value;
+    }
+    return str(value);
+}
+
+
+"""Build a length-bounded printable string from message content.
+
+Stream events and logging consumers expect `result` to be a string.
+Multimodal content (e.g. a screenshot returned by a tool) would otherwise
+leak ~30KB of base64 into every observability surface.
+"""
+def content_preview(content: any, max_len: int) -> str {
+    if isinstance(content, str) {
+        return content[:max_len];
+    }
+    if not isinstance(content, list) {
+        return str(content)[:max_len];
+    }
+    parts: list = [];
+    for item in content {
+        if isinstance(item, str) {
+            parts.append(item);
+        } elif isinstance(item, Text) {
+            parts.append(item.text);
+        } else {
+            kind = type(item).__name__.lower();
+            parts.append(f"[{kind}]");
+        }
+    }
+    return " ".join(parts)[:max_len];
+}
