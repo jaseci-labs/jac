@@ -1243,8 +1243,8 @@ obj KubernetesTarget(DeploymentTarget) {
             # reading before ingress is assigned, leaving nlb_url=None and silently
             # skipping the health check.
             nlb_url = None;
-            poll_interval = self.k8s_config.aws_nlb_wait;
-            nlb_deadline = 120;
+            poll_interval = self.k8s_config.nlb_poll_interval;
+            nlb_deadline = self.k8s_config.nlb_timeout;
             elapsed = 0;
             ingress_svc_name = f"{app_name}-ingress-nginx-service";
             try {
