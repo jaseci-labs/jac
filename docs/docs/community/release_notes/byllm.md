@@ -2,7 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.10 (Latest Release)
+## byllm 0.6.11 (Latest Release)
+
+### New Features
+
+- **Structured `by llm()` calls can stream**: Passing a `stream_handler` lets a structured-return `by llm()` call, including `visit [-->] by model` edge routing, stream its generation token-by-token while still returning its typed result.
+- **Feat: Multimodal tool results**: Tools can now return `Image` / `Text` / `list[Media]` and the content reaches the provider as a real image content block - previously every tool return was `str()`-ed and `ToolCallResultMsg.to_dict` dumped raw objects.
+- **Per-call token usage in streamed responses**: Streaming completions now report input-token and prompt-cache counts for each model call, not only the per-turn total.
+
+## byllm 0.6.10
 
 ### New Features
 

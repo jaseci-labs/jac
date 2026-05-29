@@ -208,6 +208,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             parameters=None,
             function_flags=flags,
             type_params=func_type_params,
+            is_async=node_.is_async,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
@@ -311,6 +312,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         parameters=parameters,
         function_flags=flags,
         type_params=func_type_params,
+        is_async=node_.is_async,
     );
     node_.name_spec.type = func_type;
     return func_type;

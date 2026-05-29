@@ -461,11 +461,9 @@ obj IngressDeployer {
             );
         }
 
-        # Always deploy with a wildcard rule (no host).
-        # The domain is stored in the jac-scale/domain annotation so that
-        # --enable-tls can read it and add the host + TLS together in one step.
-        # Setting host here without TLS causes nginx to restrict routing to that
-        # domain before the cert exists, making the app unreachable via IP/NLB.
+        # spec.tls and spec.rules[*].host are owned exclusively by enable_tls.
+        # Omitting them from the patch body means patch_namespaced_ingress never
+        # sends or overwrites them; no read-before-write needed.
         main_rule: dict = {'http': {'paths': paths}};
 
         ingress_annotations: dict = {
@@ -498,7 +496,6 @@ obj IngressDeployer {
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
         }
-
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
             'kind': 'Ingress',
@@ -511,7 +508,7 @@ obj IngressDeployer {
             'spec': {'ingressClassName': ingress_class, 'rules': [main_rule]}
         };
         try {
-            networking_v1.replace_namespaced_ingress(
+            networking_v1.patch_namespaced_ingress(
                 name=ingress_name, namespace=namespace, body=main_ingress
             );
         } except ApiException as e {
@@ -615,9 +612,8 @@ obj IngressDeployer {
                     }
                 }
             ];
-            # Same as main ingress: always wildcard rule; host added by --enable-tls.
+            # spec.tls and spec.rules[*].host are owned by enable_tls; omitted here.
             redis_rule: dict = {'http': {'paths': redis_paths}};
-
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
                 'kind': 'Ingress',
@@ -630,7 +626,7 @@ obj IngressDeployer {
                 'spec': {'ingressClassName': ingress_class, 'rules': [redis_rule]}
             };
             try {
-                networking_v1.replace_namespaced_ingress(
+                networking_v1.patch_namespaced_ingress(
                     name=redis_ingress_name, namespace=namespace, body=redis_ingress
                 );
             } except ApiException as e {
