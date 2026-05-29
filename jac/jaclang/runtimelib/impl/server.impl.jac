@@ -544,8 +544,10 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     self._load_manifest();
     self._extract_access_levels();
     self._functions = self._collect_functions();
-    self._collect_cross_boundary_endpoints();
     self._walkers = self._collect_walkers();
+    # After Path A (entry-namespace) collection, so cross-boundary additions to
+    # `_functions`/`_walkers` are not clobbered by the reassignments above.
+    self._collect_cross_boundary_endpoints();
     self._fill_endpoint_effect_defaults();
     self._bundle = None;
     self._bundle_error = None;
@@ -668,47 +670,56 @@ impl ModuleIntrospector._extract_access_levels -> None {
 
 """Register cross-boundary RPC endpoints from the compile-time interop table.
 
-`_collect_functions` registers the functions in the entry module's own
-namespace (Path A). This complements it with the functions a client (`.cl.jac`)
-calls over RPC via `sv import from <server> { fn }` that the entry module never
-re-imported -- the silent 404/405 of issue #6221.
+`_collect_functions` / `_collect_walkers` register the endpoints in the entry
+module's own namespace (Path A). This complements them with the endpoints a
+client (`.cl.jac`) calls over RPC via `sv import from <server> { ep }` that the
+entry module never re-imported -- the silent 404/405 of issue #6221. Both
+endpoint shapes are covered: `def` functions (POST /function/<name>) and walker
+archetypes (POST /walker/<name>), since a client app commonly spawns walkers
+across the boundary (e.g. littleX, whose every endpoint is a walker).
 
 These are read from the IR-resident InteropManifest, not re-derived from ASTs at
 request time: `BoundaryAnalysisPass` records each such call as a CLIENT->SERVER
 binding (`server_exports_to_client`) in the importing client module's manifest,
-and the callee's auth level in its *defining* module's `func_access`. We union
-both across the program hub (mirroring how `_load_manifest` unions
-`endpoint_effects`), then for each function binding resolve the callable from its
-source server module -- importing it if it is not already live so the callable
-exists and its module-level `with entry` side effects run. Endpoints already
-registered by Path A are left untouched; a `priv`/`prot` callee stays auth-gated
-(the cross-boundary call infers the endpoint's existence, never its auth)."""
+tagged `kind='function'` or `kind='walker'`, and the callee's auth level in its
+*defining* module's `func_access`/`walker_access`. We union these across the
+program hub (mirroring how `_load_manifest` unions `endpoint_effects`), then for
+each binding resolve the live symbol from its source server module -- importing
+it if it is not already live so the symbol exists and its module-level
+`with entry` side effects run. Endpoints already registered by Path A are left
+untouched; a `priv`/`prot` callee stays auth-gated (the cross-boundary call
+infers the endpoint's existence, never its auth)."""
 impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
     if not (self._module and Jac.program and Jac.program.mod and Jac.program.mod.hub) {
         return;
     }
     import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.jac0core.constructs { WalkerArchetype }
 
     # Pure read-only consumer of the compile-time interop table: the static
     # compiler is responsible for landing every reachable client module's
     # boundary facts in the program hub (see the client-module analysis hook in
     # the compile flow). Here we only union those facts and resolve live
-    # callables -- no AST walking, no recompilation, at request time.
+    # symbols -- no AST walking, no recompilation, at request time.
     #
     # Union the cross-boundary facts over every compiled module: client->server
     # bindings (recorded in each client module's manifest) and the per-symbol
     # auth requirement (recorded in each callee's defining module). An endpoint
     # may live in any module, so the authoritative set is the union over the hub.
-    bindings: dict[str, any] = {};
+    fn_bindings: dict[str, any] = {};
+    walker_bindings: dict[str, any] = {};
     func_access: dict[str, bool] = {};
+    walker_access: dict[str, bool] = {};
     for mod in Jac.program.mod.hub.values() {
         man = mod.gen.interop_manifest if (mod and mod.gen) else None;
         if not man {
             continue;
         }
         for binding in man.server_exports_to_client {
-            if binding.kind == 'function' {
-                bindings[binding.name] = binding;
+            if binding.kind == 'walker' {
+                walker_bindings[binding.name] = binding;
+            } else {
+                fn_bindings[binding.name] = binding;
             }
         }
         for (acc_name, auth) in man.func_access.items() {
@@ -716,18 +727,23 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
                 func_access[acc_name] = auth;
             }
         }
+        for (acc_name, auth) in man.walker_access.items() {
+            if acc_name not in walker_access {
+                walker_access[acc_name] = auth;
+            }
+        }
     }
 
-    def resolve_callable(src_path: str, name: str) -> any {
+    def resolve_symbol(src_path: str, name: str) -> any {
         # Prefer an already-live module (the common case: another symbol from
         # this server module was imported, so its `with entry` has already run).
         # Match on the source file so we do not re-import it under a second name.
         for loaded in list(Jac.loaded_modules.values()) {
             f = loaded?.__file__;
             if f and os.path.abspath(f) == os.path.abspath(src_path) {
-                fn = getattr(loaded, name, None);
-                if callable(fn) {
-                    return fn;
+                sym = getattr(loaded, name, None);
+                if sym is not None {
+                    return sym;
                 }
             }
         }
@@ -748,7 +764,23 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
         return None;
     }
 
-    for (name, binding) in bindings.items() {
+    # Honor the callee's own access level (secure by default). Prefer the
+    # compile-time access table; fall back to the binding's defining node when
+    # the source module was only parse-resolved (so its access map was never
+    # recorded in the hub -- the common cl->sv case, where the server module is
+    # reached only through `sv import` and is not itself compiled in).
+    def auth_for(name: str, table: dict, ast_node: any) -> bool {
+        auth = table.get(name, None);
+        if auth is None {
+            is_pub = ast_node is not None
+            and ast_node?.access is not None
+            and ast_node.access.tag.name == Tok.KW_PUB;
+            auth = not is_pub;
+        }
+        return auth;
+    }
+
+    for (name, binding) in fn_bindings.items() {
         # Path A wins: never override an entry-module registration.
         if name in self._functions {
             continue;
@@ -758,23 +790,30 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
         if not src_path {
             continue;
         }
-        fn = resolve_callable(src_path, name);
-        if fn is None {
+        fn = resolve_symbol(src_path, name);
+        if fn is None or not callable(fn) {
             continue;
         }
         self._functions[name] = fn;
-        # Honor the callee's own access level (secure by default). Prefer the
-        # compile-time func_access table; fall back to the binding's ability
-        # node when the defining module was only parse-resolved (so its
-        # func_access was never recorded in the hub).
-        auth = func_access.get(name, None);
-        if auth is None {
-            is_pub = ast_node is not None
-            and ast_node?.access is not None
-            and ast_node.access.tag.name == Tok.KW_PUB;
-            auth = not is_pub;
+        self._function_access[name] = auth_for(name, func_access, ast_node);
+    }
+
+    for (name, binding) in walker_bindings.items() {
+        # Path A wins: never override an entry-module registration.
+        if name in self._walkers {
+            continue;
         }
-        self._function_access[name] = auth;
+        ast_node = binding?.ast_node;
+        src_path = ast_node.loc.mod_path if (ast_node and ast_node?.loc) else None;
+        if not src_path {
+            continue;
+        }
+        wcls = resolve_symbol(src_path, name);
+        if not (isinstance(wcls, type) and issubclass(wcls, WalkerArchetype)) {
+            continue;
+        }
+        self._walkers[name] = wcls;
+        self._walker_access[name] = auth_for(name, walker_access, ast_node);
     }
 }
 
@@ -869,8 +908,8 @@ impl ModuleIntrospector._check_module_freshness -> None {
         self._load_manifest();
         self._extract_access_levels();
         self._functions = self._collect_functions();
-        self._collect_cross_boundary_endpoints();
         self._walkers = self._collect_walkers();
+        self._collect_cross_boundary_endpoints();
         self._fill_endpoint_effect_defaults();
         self._bundle = None;
         self._bundle_error = None;
@@ -891,8 +930,8 @@ impl ModuleIntrospector._check_module_freshness -> None {
         self._load_manifest();
         self._extract_access_levels();
         self._functions = self._collect_functions();
-        self._collect_cross_boundary_endpoints();
         self._walkers = self._collect_walkers();
+        self._collect_cross_boundary_endpoints();
         self._bundle = None;
         self._bundle_error = None;
     }

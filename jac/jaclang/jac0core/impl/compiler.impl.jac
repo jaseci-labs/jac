@@ -730,16 +730,17 @@ impl JacCompiler.compile(
         if is_native_mod {
             run_type_check = True;
         }
-        # A client (.cl.jac) module is always cross-boundary: its `sv import`s
-        # are client->server RPC stubs. Force type-check so BoundaryAnalysisPass
-        # can read resolved types (the single semantic source of truth) rather
-        # than re-deriving signatures from raw annotation ASTs. Detected by file
-        # suffix here (pre-type-check): interop bindings are not populated until
-        # BoundaryAnalysisPass runs, which is after this decision point.
-        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
-        if is_client_mod {
-            run_type_check = True;
-        }
+        # NOTE: client (.cl.jac) modules are deliberately NOT force-type-checked
+        # here. Unlike the native path -- where NaIRGenPass hard-depends on
+        # `Expr.type` to lower annotations -- BoundaryAnalysisPass derives every
+        # cross-boundary fact (server_exports_to_client bindings, func_access,
+        # boundary types) from the AST + symbol table alone: it reads raw
+        # annotation ASTs (`type_tag.tag`) and access tokens, never resolved
+        # `.type`. Forcing type-check on .cl.jac bought no boundary fidelity and
+        # surfaced type-checker false positives on idiomatic client code
+        # (untyped-prop access, Any-typed event handlers, kwargs override);
+        # see #6262. Plain .jac/.cl.jac modules follow the explicit
+        # `options.type_check` contract.
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
@@ -808,6 +809,19 @@ impl JacCompiler.compile(
             }
             for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
                 if not cb_imp.from_loc {
+                    continue;
+                }
+                # Skip language built-in `@jac/*` virtual modules (e.g.
+                # `@jac/runtime`, the client framework runtime). These are never
+                # user cross-boundary providers -- they carry no `sv import`
+                # bindings -- yet the alias resolves to a real `.cl.jac` under
+                # runtimelib. Pulling the framework runtime into the program
+                # makes the entry's codegen type-evaluate its browser-global
+                # bodies (document/Array/...), surfacing spurious type errors.
+                cb_tgt = cb_imp.from_loc.dot_path_str
+                    if cb_imp.from_loc?.dot_path_str
+                    else '';
+                if cb_tgt.startswith('@jac/') {
                     continue;
                 }
                 try {

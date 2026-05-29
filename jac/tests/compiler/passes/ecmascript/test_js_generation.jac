@@ -4,7 +4,6 @@ Migrated from test_js_generation.py to native Jac test format.
 """
 
 import os;
-import pytest;
 import subprocess;
 import sys;
 import tempfile;
@@ -775,10 +774,6 @@ test "sv import kwargs preserve names in jac call function" {
 }
 
 test "sv import kwargs preserve names in production jac2js path" {
-    # Skipped: forcing type-check on .cl.jac surfaces a type-checker false
-    # positive ("Cannot assign Any to str") in this client fixture, failing
-    # compilation. Re-enable once #6262 is fixed.
-    pytest.skip("blocked on client type-checker false positives (#6262)");
     fixture = "sv_import_kwargs_client.cl.jac";
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
 
@@ -822,10 +817,6 @@ test "sv import wrapper covers posonly and kwonly params" {
 }
 
 test "plain client kwargs lower to ordered js arguments" {
-    # Skipped: forcing type-check on .cl.jac surfaces a type-checker false
-    # positive ("Parameter 'b' already matched") on the valid kwargs call in
-    # this client fixture, failing compilation. Re-enable once #6262 is fixed.
-    pytest.skip("blocked on client type-checker false positives (#6262)");
     fixture = "plain_kwargs_client.cl.jac";
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
     compact_js = js_code.replace("\n", "").replace(" ", "");
