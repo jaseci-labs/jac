@@ -1892,6 +1892,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                         symbol = na_sym;
                     }
                 }
+                # Client (.cl.jac / cl {}) ambient names: ECMAScript and browser
+                # globals (Date, Math, console, window, ...). Like the native
+                # block above they override a Python builtin of the same name
+                # but never shadow a user-defined symbol, and are gated on
+                # client context so they stay invisible to server .jac code.
+                if symbol is None or symbol.parent_tab is self.builtins_module {
+                    js_sym = self.js_globals_module.names_in_scope.get(expr.value);
+                    if js_sym is not None and expr.in_client_context() {
+                        symbol = js_sym;
+                    }
+                }
                 if symbol {
                     symbol = self.resolve_imported_symbols(symbol);
                     symbol.add_use(expr);
@@ -3702,6 +3713,9 @@ impl TypeEvaluator.postinit -> None {
     self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "na_builtins.pyi"
     );
+    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "js_globals.pyi"
+    );
     self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "typing_ambient.pyi"
     );
@@ -3735,6 +3749,11 @@ impl TypeEvaluator.postinit -> None {
     # (File, native open) are resolved by a native-context-gated lookup in
     # get_type_of_expression so they stay invisible to regular .jac modules.
     self.na_builtins_module = self._load_stub_module(self._NA_BUILTINS_STUB_FILE_PATH);
+    # Client (JS) ambient stub. Like na_builtins, deliberately NOT merged into
+    # builtins: its names (Date, Math, console, window, ...) are resolved by a
+    # client-context-gated lookup in get_type_of_expression so they stay
+    # invisible to server .jac modules where they would be a real error.
+    self.js_globals_module = self._load_stub_module(self._JS_GLOBALS_STUB_FILE_PATH);
     # Read jac_builtins.pyi's __all__ as the declarative public surface.
     # Names not listed there (e.g. typing imports used only for this stub's
     # own annotations) stay private; user code must import them explicitly.
