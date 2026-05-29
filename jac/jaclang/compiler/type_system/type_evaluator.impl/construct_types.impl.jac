@@ -388,6 +388,26 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         );
         enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     }
+    # Resolve metaclass following Python's MRO: explicit metaclass= wins;
+    # otherwise inherit from the most-derived metaclass among base classes.
+    # This mirrors _PyType_CalculateMetaclass so that e.g. Color(Enum) gets
+    # EnumMeta even though Color itself doesn't declare metaclass=EnumMeta.
+    metaclass: types.ClassType | None = None;
+    if node_.metaclass_expr is not None {
+        meta_type = self.get_type_of_expression(node_.metaclass_expr);
+        if isinstance(meta_type, types.ClassType) {
+            metaclass = meta_type;
+        }
+    }
+    if metaclass is None {
+        for base in base_classes {
+            if (isinstance(base, types.ClassType)
+                    and base.shared.metaclass is not None) {
+                metaclass = base.shared.metaclass;
+                break;
+            }
+        }
+    }
     cls_type = types.ClassType(
         _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
@@ -399,6 +419,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             is_data_class=is_data_class,
             is_namedtuple=is_namedtuple,
             is_enum_class=is_enum_class,
+            metaclass=metaclass,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
@@ -450,6 +471,15 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
     mod_flags = type_utils.compute_module_source_flags(
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
     );
+    # Inherit metaclass from base classes (e.g. Color(Enum) → EnumMeta).
+    enum_metaclass: types.ClassType | None = None;
+    for base in base_classes {
+        if (isinstance(base, types.ClassType)
+                and base.shared.metaclass is not None) {
+            enum_metaclass = base.shared.metaclass;
+            break;
+        }
+    }
     cls_type = types.ClassType(
         _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
@@ -460,6 +490,7 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
             is_from_stdlib_stub=mod_flags.is_stdlib_stub,
             is_data_class=False,
             is_enum_class=True,
+            metaclass=enum_metaclass,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),

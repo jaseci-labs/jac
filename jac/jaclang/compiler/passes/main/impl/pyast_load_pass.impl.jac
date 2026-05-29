@@ -2715,6 +2715,17 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         for base in converted_base_classes
         if isinstance(base, uni.Expr)
     ];
+    # Extract metaclass= keyword argument (e.g. class Enum(metaclass=EnumMeta):)
+    metaclass_expr: uni.Expr | None = None;
+    for kw in nd.keywords {
+        if kw.arg == "metaclass" {
+            converted_meta = self.convert(kw.value);
+            if isinstance(converted_meta, uni.Expr) {
+                metaclass_expr = converted_meta;
+            }
+            break;
+        }
+    }
     converted_decorators_list = [self.convert(i) for i in nd.decorator_list];
     decorators = [
         i
@@ -2731,6 +2742,11 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     kid.append(name);
     kid.extend(base_classes);
+    # metaclass_expr is evaluated in the enclosing scope (same as base_classes),
+    # so attach it to kid here so symbol-resolution passes visit and bind it.
+    if metaclass_expr is not None {
+        kid.append(metaclass_expr);
+    }
     kid.extend(valid_body);
     if doc {
         kid.append(doc);
@@ -2743,7 +2759,8 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         body=valid,
         kid=kid,
         doc=doc,
-        decorators=valid_decorators
+        decorators=valid_decorators,
+        metaclass_expr=metaclass_expr
     );
 }
 

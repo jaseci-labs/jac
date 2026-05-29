@@ -118,7 +118,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="arch_type", kind=4),
                  FieldDesc(name="base_classes", kind=5),
-                 FieldDesc(name="type_params", kind=5)
+                 FieldDesc(name="type_params", kind=5),
+                 FieldDesc(name="metaclass_expr", kind=6)
              )
          ),
          NodeSpec(

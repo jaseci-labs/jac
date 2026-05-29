@@ -28,6 +28,7 @@ Bug index:
   #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
+  #ENUM-META-1 - Enum.__members__ falsely flagged as E1030 (metaclass attribute not in MRO)
 """
 
 import os;
@@ -781,6 +782,17 @@ test "bug_property_setter_duplicate_accessor_reported" {
         "the same property must raise E0076 — a property has at most one "
         "setter (or getter, or deleter). "
         f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+# Bug #ENUM-META-1: Enum.__members__ falsely flagged as E1030.
+# __members__ lives on EnumMeta (metaclass), not in the enum MRO.
+# _lookup_class_member only walked the class MRO and missed it.
+test "bug_enum_meta_1_members_attr_no_false_e1030" {
+    program = compile_and_check("checker_bug_enum_members.jac");
+    assert len(program.errors_had) == 0 , (
+        f"Bug #ENUM-META-1: got {len(program.errors_had)} error(s): "
+        f"{[str(e) for e in program.errors_had]}"
     );
 }
 

@@ -163,6 +163,21 @@ impl TypeEvaluator._lookup_class_member(
             return type_utils.ClassMember(sym, cls, overloaded_syms);
         }
     }
+    # General metaclass fallback: mirrors Python's type_getattro which checks
+    # the metaclass MRO when the attribute is not found in the class's own MRO.
+    # This handles EnumMeta.__members__, ABCMeta.__abstractmethods__, and any
+    # other metaclass-provided attributes generically, without enum-specific
+    # special-casing.
+    if base_type.shared.metaclass is not None {
+        for cls in base_type.shared.metaclass.shared.mro {
+            overloaded_syms: list[uni.Symbol] = [];
+            if sym := cls.lookup_member_symbol(member, overloaded_syms) {
+                return type_utils.ClassMember(
+                    sym, cls, overloaded_syms, from_metaclass=True
+                );
+            }
+        }
+    }
     return None;
 }
 

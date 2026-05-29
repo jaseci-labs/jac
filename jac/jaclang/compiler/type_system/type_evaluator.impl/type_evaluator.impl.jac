@@ -708,6 +708,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 );
                             }
                         }
+                        # Metaclass @property unwrapping: when an attribute is found
+                        # via the metaclass (from_metaclass=True), Python calls the
+                        # descriptor's __get__ with the class as the argument, so we
+                        # must return the getter's return type, not the property object.
+                        # This follows CPython type_getattro: metatype data descriptors
+                        # take priority and are invoked, returning their value directly.
+                        if member.from_metaclass {
+                            if prop_ret := self.get_getter_type_from_property(
+                                member.symbol
+                            ) {
+                                prop_ret = self.specialize_member_type(
+                                    prop_ret, lookup_type
+                                );
+                                member.symbol.add_use(expr.right);
+                                expr.right.type = prop_ret;
+                                return expr.right.type;
+                            }
+                        }
                         member.symbol.add_use(expr.right);
                         expr.right.type = overloaded_ty or member_ty;
                         return expr.right.type;

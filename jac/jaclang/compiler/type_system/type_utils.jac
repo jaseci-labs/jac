@@ -40,7 +40,8 @@ obj ClassMember {
         is_class_var: bool = False,
         is_read_only: bool = False,
         is_type_declared: bool = False,
-        skipped_undeclared_type: bool = False;
+        skipped_undeclared_type: bool = False,
+        from_metaclass: bool = False;
 }
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
