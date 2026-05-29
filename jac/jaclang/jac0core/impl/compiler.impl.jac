@@ -799,8 +799,19 @@ impl JacCompiler.compile(
         import os as _cb_os;
         cb_seen: set[str] = set();
         cb_worklist: list = [mod_targ];
+        # type_check=False is load-bearing: CompileOptions.type_check defaults
+        # to True, and BoundaryAnalysisPass derives every cross-boundary fact
+        # from the AST + symbol table alone (never resolved `.type`), so the
+        # type-check schedule buys no boundary fidelity here. Leaving it on
+        # would force the full TypeCheckPass over every reachable .cl.jac --
+        # exactly the idiomatic-client false positives (untyped JSX-returning
+        # components, untyped-prop access, Any-typed handlers) that the
+        # top-of-compile NOTE deliberately avoids on the entry; see #6262.
         cb_opts = CompileOptions(
-            no_cgen=True, force_target_program=True, cancel_token=options.cancel_token
+            type_check=False,
+            no_cgen=True,
+            force_target_program=True,
+            cancel_token=options.cancel_token
         );
         while cb_worklist {
             cb_cur = cb_worklist.pop();
