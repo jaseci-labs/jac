@@ -3,7 +3,10 @@ import from pathlib { Path }
 import from typing { Any }
 import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
-import from jac_scale.microservices.images.build_helpers { resolve_dockerfile, ensure_dockerignore }
+import from jac_scale.microservices.images.build_helpers {
+    resolve_dockerfile,
+    ensure_dockerignore
+}
 import from jaclang.cli.console { console }
 
 """DockerHub image registry implementation."""
@@ -78,13 +81,9 @@ obj DockerHubRegistry(ImageRegistry) {
         console.print(f"Pushing Docker image '{image_name}' to DockerHub...");
         try {
             client = self._get_client();
-            client.login(
-                username=self.docker_username, password=self.docker_password
-            );
+            client.login(username=self.docker_username, password=self.docker_password);
             seen_statuses: set = set();
-            for chunk in client.images.push(
-                image_name, stream=True, decode=True
-            ) {
+            for chunk in client.images.push(image_name, stream=True, decode=True) {
                 if 'error' in chunk {
                     raise RuntimeError(f"Push failed: {chunk['error']}");
                 }
