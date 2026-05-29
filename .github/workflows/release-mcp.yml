@@ -25,7 +25,7 @@ jobs:
 
       - name: Install jaclang and jac-mcp
         run: |
-          pip install jaclang
+          pip install -e ../jac
           jac install -e .
 
       - name: Bundle documentation

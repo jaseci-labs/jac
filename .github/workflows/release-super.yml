@@ -26,7 +26,7 @@ jobs:
 
       - name: Install jaclang and twine
         run: |
-          pip install jaclang
+          pip install -e ../jac
           pip install twine
 
       - name: Build and publish

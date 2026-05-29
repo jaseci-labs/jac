@@ -34,7 +34,7 @@ jobs:
 
       - name: Pre-build admin dashboard UI
         run: |
-          pip install jaclang
+          pip install -e ../jac
           jac install -e ../jac-client
           jac install -e .
           jac run scripts/build_admin_ui.jac
