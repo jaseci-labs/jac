@@ -6,9 +6,15 @@ jac-client's `jac_client/plugin/client_runtime.cl.jac` (React + React Router).
 User code is portable between the two only if the public surface stays
 aligned — issue #5847 is what happens when it drifts.
 
-This test extracts top-level `def`/`glob` symbol names from both files and
-asserts that the routing/hooks/walker surface bare-serve advertises is also
-exported by jac-client. Skipped when jac-client isn't installed.
+The surface itself is declared once in `jaclang.runtimelib.client_surface`;
+this test extracts top-level `def`/`glob` symbol names from both files and
+asserts each runtime honors its slice of that contract:
+  * both runtimes export every ALIGNED symbol;
+  * bare-serve exports every symbol the compiler emits (so emitted imports
+    always resolve);
+  * jac-client exports every PRODUCTION (jac-client-only) symbol;
+  * the routing subset matches exactly.
+Skipped when jac-client isn't installed.
 """
 
 import os;
@@ -17,44 +23,12 @@ import pytest;
 import importlib;
 import from pathlib { Path }
 import jaclang;
-
-glob ALIGNED_SURFACE = {
-         # React Router v6-shaped routing. jac-client maps `Router` to
-         # ReactRouterBrowserRouter, so the same name covers both modes.
-         "Router",
-         "Routes",
-         "Route",
-         "Link",
-         "Navigate",
-         "Outlet",
-         "useNavigate",
-         "useLocation",
-         "useParams",
-         "useRouter",
-         "navigate",
-         # Hook aliases (different semantics across runtimes, but same names)
-         "useState",
-         "useEffect",
-         # JSX factory
-         "__jacJsx",
-         # Walker / function calls
-         "__jacSpawn",
-         "jacSpawn",
-         "__jacCallFunction",
-         # Auth
-         "jacSignup",
-         "jacLogin",
-         "jacLogout",
-         "jacIsLoggedIn",
-         # Browser API shims
-         "__getLocalStorage",
-         "__setLocalStorage",
-         "__removeLocalStorage",
-         # Error reporting
-         "__jacReportError",
-         "__jacInstallErrorHandlers",
-         "__jacReactErrorHandler"
-     };
+import from jaclang.runtimelib.client_surface {
+    aligned_surface,
+    production_surface,
+    routing_surface,
+    compiler_emitted_surface
+}
 
 def _bareserve_runtime_path -> str {
     runtimelib_dir = os.path.dirname(jaclang.runtimelib.__file__);
@@ -95,41 +69,46 @@ def _extract_symbols(path: str) -> set[str] {
     return names;
 }
 
-test "bare-serve and jac-client expose the aligned @jac/runtime surface" {
+test "bare-serve exposes the aligned and compiler-emitted @jac/runtime surface" {
     bareserve_syms = _extract_symbols(_bareserve_runtime_path());
-    missing_from_bareserve = ALIGNED_SURFACE - bareserve_syms;
+    missing_from_bareserve = aligned_surface() - bareserve_syms;
     assert not missing_from_bareserve , (
         f"Aligned surface missing from bare-serve runtime: "
         f"{sorted(missing_from_bareserve)}"
     );
+    # Every `@jac/runtime` symbol the compiler emits must exist in bare-serve,
+    # or apps using that construct emit an import bare-serve can't resolve.
+    emitted_missing = compiler_emitted_surface() - bareserve_syms;
+    assert not emitted_missing , (
+        f"Compiler-emitted runtime symbols missing from bare-serve: "
+        f"{sorted(emitted_missing)}"
+    );
+}
+
+test "jac-client and bare-serve honor the @jac/runtime contract" {
+    bareserve_syms = _extract_symbols(_bareserve_runtime_path());
     jac_client_path = _jac_client_runtime_path();
     if not jac_client_path {
         pytest.skip("jac-client plugin not installed");
     }
     jac_client_syms = _extract_symbols(jac_client_path);
-    missing_from_jac_client = ALIGNED_SURFACE - jac_client_syms;
+    missing_from_jac_client = aligned_surface() - jac_client_syms;
     assert not missing_from_jac_client , (
         f"Aligned surface missing from jac-client runtime: "
         f"{sorted(missing_from_jac_client)}"
     );
-    # Drift detector: anything bare-serve adds but jac-client lacks (or vice
-    # versa) within the routing/hooks subset means user code that compiles in
-    # one mode breaks in the other.
-    routing_subset = {
-        "Router",
-        "Routes",
-        "Route",
-        "Link",
-        "Navigate",
-        "Outlet",
-        "useNavigate",
-        "useLocation",
-        "useParams",
-        "useRouter",
-        "navigate"
-    };
-    bareserve_routing = bareserve_syms & routing_subset;
-    jac_client_routing = jac_client_syms & routing_subset;
+    # jac-client must provide every production-tier (jac-client-only) symbol.
+    production_missing = production_surface() - jac_client_syms;
+    assert not production_missing , (
+        f"Production surface missing from jac-client runtime: "
+        f"{sorted(production_missing)}"
+    );
+    # Drift detector: any routing symbol present in one runtime but not the
+    # other means user routing code that compiles in one mode breaks in the
+    # other.
+    routing = routing_surface();
+    bareserve_routing = bareserve_syms & routing;
+    jac_client_routing = jac_client_syms & routing;
     drift = bareserve_routing.symmetric_difference(jac_client_routing);
     assert not drift , f"Routing surface drift between runtimes: {sorted(drift)}";
 }

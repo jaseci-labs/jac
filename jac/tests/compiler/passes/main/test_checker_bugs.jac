@@ -808,3 +808,16 @@ test "bug_stub_vguard_module_level_symbol_resolves" {
         f"Got W1051 warnings: {[str(w) for w in unresolved]}"
     );
 }
+
+# Bug #NARROW-ANY: isinstance on a symbol typed Any (e.g. the element of a
+# bare `list`) did not narrow because get_narrowed_type's guard accepted only
+# Union/Class/Unknown, so `item.label` after `isinstance(item, Foo)` stayed
+# Unknown and raised E1001/E1002.
+test "bug_narrow_any_symbol_isinstance" {
+    program = compile_and_check("checker_narrow_anytype_isinstance.jac");
+    assert program.errors_had == [] , (
+        "Bug #NARROW-ANY: isinstance must narrow an Any-typed symbol, so "
+        "accessing a member of the narrowed type does not error. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
