@@ -2,7 +2,6 @@ import from jaclang.project.config { get_config }
 import os;
 import from pathlib { Path }
 
-"""Get base path directory robustly, supporting both new class attr and old get_base_path_dir."""
 def _get_base_path_dir -> Path {
     if Jac?.base_path_dir and Jac.base_path_dir {
         return Path(Jac.base_path_dir);
