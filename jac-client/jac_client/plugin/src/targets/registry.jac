@@ -42,10 +42,14 @@ class ClientTarget {
     has name: str,
         project_dir: Optional[Path] = None,
         default: bool = False,
-        requires_setup: bool = False,
         config_section: str = "",
         required_dependencies: list[str] = [],
         output_dir: Optional[Path] = None;
+
+    @property
+    def requires_setup(self: ClientTarget) -> bool {
+        return False;
+    }
 
     """Setup the target (one-time initialization)."""
     def setup(self: ClientTarget, project_dir: Path) -> None abs;

@@ -11,9 +11,11 @@ import from jac_client.plugin.src.targets.web_target { WebTarget }
 obj DesktopTarget(WebTarget) {
     has name: str = "desktop",
         default: bool = False,
-        requires_setup: bool = True,
         config_section: str = "desktop",
         output_dir: Path = Path("src-tauri/target/release/bundle");
+
+    @property
+    def requires_setup -> bool;
 
     """Setup desktop target - scaffold Tauri project structure."""
     override def setup(project_dir: Path) -> None;

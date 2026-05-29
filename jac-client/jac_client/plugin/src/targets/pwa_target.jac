@@ -15,7 +15,6 @@ import from jac_client.plugin.src.targets.web_target { WebTarget }
 obj PWATarget(WebTarget) {
     has name: str = "pwa",
         default: bool = False,
-        requires_setup: bool = False,
         config_section: str = "plugins.client.pwa",
         output_dir: Path = Path(".jac/client/dist");
 

@@ -22,9 +22,11 @@ obj _MobileHmrHandler {
 obj MobileTarget(WebTarget) {
     has name: str = "mobile",
         default: bool = False,
-        requires_setup: bool = True,
         config_section: str = "mobile",
         output_dir: Path = Path("android/app/build/outputs");
+
+    @property
+    def requires_setup -> bool;
 
     """Setup mobile target - install Capacitor deps and scaffold platform project."""
     override def setup(project_dir: Path) -> None;

@@ -971,30 +971,21 @@ cl {
     }
 }
 
-"""Test that requires_setup evaluates dynamically."""
 test "requires_setup evaluates dynamically" {
     import from jac_client.plugin.src.targets.registry { get_target_factory }
     import from pathlib { Path }
     import tempfile;
-    import os;
 
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = Path(temp_dir);
-        # Create a dummy jac.toml so get_config works if called
         (project_dir / "jac.toml").write_text('''[project]
 name = "test-app"
 ''');
         factory = get_target_factory();
-        # Create target
         target = factory.create("desktop", project_dir);
-        # Initially, requires_setup should be True (src-tauri doesn't exist)
-        assert target.requires_setup == True , "Target should require setup initially";
-        # Create src-tauri directory
+        assert target.requires_setup is True;
         (project_dir / "src-tauri").mkdir();
-        # Check again
-        factory.clear_cache();
-        target2 = factory.create("desktop", project_dir);
-        assert target2.requires_setup == False , "Target should not require setup after src-tauri is created";
+        assert target.requires_setup is False;
     }
 }
 

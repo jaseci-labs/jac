@@ -88,7 +88,6 @@ impl TargetFactory.create_by_type(
         import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
         target = DesktopTarget();
         target.project_dir = project_dir;
-        target.requires_setup = not (project_dir / "src-tauri").exists();
     } elif target_type == TargetType.PWA {
         import from jac_client.plugin.src.targets.pwa_target { PWATarget }
         target = PWATarget();
