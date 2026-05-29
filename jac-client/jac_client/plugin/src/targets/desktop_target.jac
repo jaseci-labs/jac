@@ -1,6 +1,6 @@
 """Desktop target implementation.
 
-Extends WebTarget to add Tauri desktop app capabilities.
+Extends WebTarget to provide Tauri desktop app capabilities.
 Desktop builds use web bundle as foundation, then wrap with Tauri + sidecar.
 """
 import from pathlib { Path }
