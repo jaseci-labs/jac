@@ -4349,6 +4349,11 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
     if callable_key := self._extract_callable_info(condition) {
         return ConditionInfo(kind=NarrowingKind.CALLABLE, key=callable_key,);
     }
+    # 2b. hasattr(x, "name")
+    if hasattr_info := self._extract_hasattr_info(condition) {
+        (h_key, h_attr) = hasattr_info;
+        return ConditionInfo(kind=NarrowingKind.HASATTR, key=h_key, attr_name=h_attr);
+    }
     # 3-4. x is None / x is not None / x == None / x != None
     # `==`/`!=` against `None` narrow identically to `is`/`is not None` —
     # this matches Pyright/mypy/TypeScript and the W2058 lint already nudges
@@ -4459,7 +4464,8 @@ impl TypeEvaluator._find_predicate_for(
             return NarrowingPredicate(
                 key=inner_pred.key,
                 narrow_type=inner_pred.narrow_type,
-                is_inverted=not inner_pred.is_inverted
+                is_inverted=not inner_pred.is_inverted,
+                attr_name=inner_pred.attr_name
             );
         }
         return None;
@@ -4573,6 +4579,17 @@ impl TypeEvaluator._find_predicate_for(
                     );
                 }
 
+            case NarrowingKind.HASATTR:
+                # narrow_type is unused for HASATTR dispatch; the attr_name
+                # field drives _apply_narrowing's structural filter. Stash
+                # the declared type as a non-null placeholder.
+                return NarrowingPredicate(
+                    key=key,
+                    narrow_type=target.declared_type,
+                    is_inverted=False,
+                    attr_name=info.attr_name
+                );
+
             case NarrowingKind.NONE_IS:
                 if self.prefetch and self.prefetch.none_type_class {
                     none_inst = self._convert_to_instance(
@@ -4652,6 +4669,16 @@ impl TypeEvaluator._apply_narrowing(
     is_positive: bool = (
         is_true_branch if not predicate.is_inverted else not is_true_branch
     );
+    # HASATTR uses attribute-presence filtering, not class identity. Same
+    # filter on both branches, parameterized by `keep_with_attr`.
+    if predicate.attr_name is not None {
+        base_type: TypeBase = (
+            incoming if incoming is not None else target.declared_type
+        );
+        return self._filter_union_for_hasattr(
+            base_type, predicate.attr_name, is_positive
+        );
+    }
     if is_positive {
         # Get the base type to filter
         base_type: TypeBase;
@@ -4781,6 +4808,55 @@ impl TypeEvaluator._type_matches_isinstance(
         return True;
     }
     return False;
+}
+
+"""Static structural check: does a type carry a declared attribute?
+
+Walks the same lookup path used to resolve `x.attr`, including MRO and
+the `__getattr__` fallback. A class that defines `__getattr__` is treated
+as having every attribute (matching attribute-access semantics).
+"""
+impl TypeEvaluator._type_has_attribute(t: TypeBase, attr_name: str) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if self._lookup_class_member(t, attr_name) is not None {
+        return True;
+    }
+    if self._get_getattr_return_type(t) is not None {
+        return True;
+    }
+    return False;
+}
+
+"""Filter a union type by attribute presence.
+
+When `keep_with_attr` is True (positive `hasattr` branch), returns members
+that have the attribute. When False (else / `not hasattr` branch), returns
+members that do not. Returns None if nothing matches.
+"""
+impl TypeEvaluator._filter_union_for_hasattr(
+    base_type: TypeBase, attr_name: str, keep_with_attr: bool
+) -> TypeBase | None {
+    matching: list[TypeBase] = [];
+    if isinstance(base_type, types.UnionType) and base_type.types {
+        for t in base_type.types {
+            if self._type_has_attribute(t, attr_name) == keep_with_attr {
+                matching.append(t);
+            }
+        }
+    } else {
+        if self._type_has_attribute(base_type, attr_name) == keep_with_attr {
+            matching.append(base_type);
+        }
+    }
+    if len(matching) == 0 {
+        return None;
+    } elif len(matching) == 1 {
+        return matching[0];
+    } else {
+        return types.UnionType(types=matching);
+    }
 }
 
 """Union multiple narrowed types at a join point."""
@@ -5013,6 +5089,50 @@ impl TypeEvaluator._extract_callable_info(condition: uni.Expr) -> str | None {
         return None;
     }
     return self.create_key_for_reference(condition.params[0]);
+}
+
+"""Parse hasattr(x, "name") → (narrowing_key, attr_name) or None.
+
+Only narrows when the attribute name is a string literal. Dynamic attr
+names like `hasattr(x, some_var)` cannot be statically narrowed and
+return None (the call still type-checks as bool).
+"""
+impl TypeEvaluator._extract_hasattr_info(
+    condition: uni.Expr
+) -> tuple[str, str] | None {
+    if not isinstance(condition, uni.FuncCall) {
+        return None;
+    }
+    if not isinstance(condition.target, uni.Name)
+    or condition.target.value != "hasattr" {
+        return None;
+    }
+    if not condition.params or len(condition.params) != 2 {
+        return None;
+    }
+    narrowing_key = self.create_key_for_reference(condition.params[0]);
+    if narrowing_key is None {
+        return None;
+    }
+    # String literals parse as MultiString wrapping one or more String parts.
+    # Only narrow on a single-part, non-formatted literal: `hasattr(x, "foo")`.
+    attr_arg = condition.params[1];
+    if (
+        isinstance(attr_arg, uni.MultiString)
+        and len(attr_arg.strings) == 1
+        and isinstance(attr_arg.strings[0], uni.String)
+    ) {
+        str_node = attr_arg.strings[0];
+    } elif isinstance(attr_arg, uni.String) {
+        str_node = attr_arg;
+    } else {
+        return None;
+    }
+    attr_name = str_node.lit_value;
+    if not isinstance(attr_name, str) {
+        return None;
+    }
+    return (narrowing_key, attr_name);
 }
 
 """Check whether a type is callable (FunctionType or Callable annotation)."""
