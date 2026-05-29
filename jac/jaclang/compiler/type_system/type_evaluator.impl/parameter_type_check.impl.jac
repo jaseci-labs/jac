@@ -174,11 +174,19 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         bindings = self._collect_type_var_bindings(
             caller_type, expr, is_unbound_call=is_unbound_call
         );
+        ret: TypeBase = caller_type.return_type or types.UnknownType();
         if bindings {
             specialized = caller_type.specialize_func_type_vars(bindings);
-            return specialized.return_type or types.UnknownType();
+            ret = specialized.return_type or types.UnknownType();
         }
-        return caller_type.return_type or types.UnknownType();
+        # An `async def` call (or an `sv import` RPC stub, which is async on
+        # the client) evaluates to a coroutine, not the bare return type —
+        # the caller must `await` it. Model that here so a missing `await`
+        # surfaces as a type error at the use site.
+        if caller_type.is_async or self._is_sv_async_call(expr) {
+            ret = self._make_coroutine_type(ret);
+        }
+        return ret;
     }
     if isinstance(caller_type, types.OverloadedType) {
         # Prefer overloads with concrete (non-Unknown) return types

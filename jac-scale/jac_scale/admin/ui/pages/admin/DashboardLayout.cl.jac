@@ -15,6 +15,7 @@ cl {
     import from .monitoring.MetricsPage { MetricsPage }
     import from .monitoring.LLMMetricsPage { LLMMetricsPage }
     import from .monitoring.LLMTracesPage { LLMTracesPage }
+    import from .logs.LogsPage { LogsPage }
     import from .placeholder.PlaceholderPage {
         SessionsPage,
         ApiKeysPage,
@@ -24,7 +25,6 @@ cl {
         WalkersPage,
         JobsPage,
         WebhooksPage,
-        LogsPage,
         HealthPage,
         AlertsConfigPage,
         ConfigPage,

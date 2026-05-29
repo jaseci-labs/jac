@@ -28,6 +28,7 @@ import from jaclang.jac0core.diagnostics {
     E0055,
     E0058,
     E0062,
+    E0063,
     E0065,
     E0066,
     E0071,
@@ -62,6 +63,7 @@ class ASTValidationPass(UniPass) {
     def enter_yield_expr(self: ASTValidationPass, nd: uni.YieldExpr) -> None;
     def enter_ctrl_stmt(self: ASTValidationPass, nd: uni.CtrlStmt) -> None;
     def enter_non_local_stmt(self: ASTValidationPass, nd: uni.NonLocalStmt) -> None;
+    def enter_global_vars(self: ASTValidationPass, nd: uni.GlobalVars) -> None;
     def enter_func_call(self: ASTValidationPass, nd: uni.FuncCall) -> None;
     def enter_archetype(self: ASTValidationPass, nd: uni.Archetype) -> None;
     # ----- JSX `{...}` slot body rules ------------------------------------

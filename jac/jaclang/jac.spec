@@ -319,6 +319,7 @@ statement ::=
     | raise_stmt
     | assert_stmt
     | delete_stmt
+    | global_var
     | global_stmt
     | nonlocal_stmt
     | visit_stmt

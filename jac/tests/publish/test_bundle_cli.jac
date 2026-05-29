@@ -3,6 +3,7 @@
 import os;
 import tempfile;
 import shutil;
+import jaclang;
 import from pathlib { Path }
 import from subprocess { run }
 import from jaclang.cli.commands.project { _PRECOMPILE_MINOR_RANGE }
@@ -81,6 +82,13 @@ test "bundle --precompile generates .jir files per version and produces wheel" {
         return;
     }
 
+    # Point precompile at the local jaclang source so the test passes on release
+    # PRs where the bumped version isn't yet on PyPI. The jac/ source root is the
+    # parent of the jaclang/ package directory and contains pyproject.toml.
+    jac_source_root = str(Path(jaclang.__path__[0]).parent);
+    prev_local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
+    os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = jac_source_root;
+
     tmp_path = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     try {
@@ -111,5 +119,10 @@ test "bundle --precompile generates .jir files per version and produces wheel" {
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
+        if prev_local_install is None {
+            os.environ.pop("JAC_PRECOMPILE_LOCAL_INSTALL", None);
+        } else {
+            os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = prev_local_install;
+        }
     }
 }

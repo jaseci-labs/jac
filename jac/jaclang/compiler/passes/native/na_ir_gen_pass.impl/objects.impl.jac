@@ -94,11 +94,11 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                             self.method_funcs[full_name] = func;
                             self.has_native_code = True;
                         }
+                    } elif isinstance(stmt.signature, uni.EventSignature) {
+                        # Object-spatial ability (`can ... with T entry/exit`):
+                        # lower as a two-arg method (self, here/visitor).
+                        self._forward_declare_event_method(arch_name, stmt);
                     } else {
-                        # Walker `can ... with N entry/exit` abilities use
-                        # EventSignature — NA can't lower the OSP traversal
-                        # model yet, so the body would silently be skipped.
-                        # Surface a clear error instead of dropping it.
                         _sig_kind = (
                             type(stmt.signature).__name__
                                 if stmt.signature is not None
@@ -238,6 +238,8 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                     if stmt.signature is not None
                     and isinstance(stmt.signature, uni.FuncSignature) {
                         self._codegen_method(arch_name, stmt);
+                    } elif isinstance(stmt.signature, uni.EventSignature) {
+                        self._codegen_event_method(arch_name, stmt);
                     } elif stmt.signature is None and stmt.body is not None {
                         # Generate body for methods without FuncSignature (e.g., postinit)
                         self._codegen_no_sig_method(arch_name, stmt);
@@ -666,6 +668,137 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self._param_promoted = saved_param_promoted;
 }
 
+"""Forward-declare an Object-Spatial ability (`can ... with T entry/exit`).
+
+An ability with an EventSignature is lowered like a two-parameter method:
+`<Arch>.<name>(self, here|visitor)` returning void. The implicit location
+parameter is named `here` for a walker ability and `visitor` for a node/edge
+ability, typed by the event's archetype tag (the trigger type). `spawn` emits
+direct calls to these functions.
+"""
+impl NaIRGenPass._forward_declare_event_method(
+    arch_name: str, method: uni.Ability
+) -> None {
+    method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
+    full_name = f"{arch_name}.{method_name}";
+    if full_name in self.method_funcs {
+        return;
+    }
+    sig = method.signature;
+    struct_type = self.struct_types.get(arch_name);
+    if struct_type is None or not isinstance(sig, uni.EventSignature) {
+        return;
+    }
+    loc_type: ir.Type = ir.IntType(8).as_pointer();
+    if sig.arch_tag_info is not None {
+        loc_type = self._resolve_jac_type(sig.arch_tag_info);
+    }
+    fnty = ir.FunctionType(ir.VoidType(), [struct_type.as_pointer(), loc_type]);
+    func = ir.Function(self.llvm_module, fnty, name=full_name);
+    func.args[0].name = "self";
+    func.args[1].name = "here" if sig.from_walker else "visitor";
+    self.method_funcs[full_name] = func;
+    self.func_symtab[full_name] = func;
+}
+
+"""Generate the body of an Object-Spatial ability.
+
+Mirrors `_codegen_no_sig_method` but also binds the implicit location parameter
+(`here`/`visitor`) and tracks its trigger type so `here.x` resolves against the
+node struct.
+"""
+impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> None {
+    method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
+    full_name = f"{arch_name}.{method_name}";
+    func = self.method_funcs.get(full_name);
+    sig = method.signature;
+    if func is None or not isinstance(sig, uni.EventSignature) {
+        return;
+    }
+    block = func.append_basic_block(name="entry");
+    saved_builder = self.builder;
+    saved_locals = self.local_vars;
+    saved_param_vars = self.param_vars;
+    saved_type_map = dict(self.type_var_map);
+    saved_type_node = dict(self.var_type_node);
+    saved_list_elem = dict(self.var_list_elem_type);
+    saved_dict_type = dict(self.var_dict_type);
+    saved_set_elem = dict(self.var_set_elem_type);
+    saved_tuple_type = dict(self.var_tuple_type);
+    saved_param_store_instr = self._param_store_instr;
+    saved_param_promoted = self._param_promoted;
+    self.builder = ir.IRBuilder(block);
+    self.local_vars = {};
+    self.param_vars = set();
+    self.var_type_node = {};
+    self.var_list_elem_type = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
+    self.var_tuple_type = {};
+    self._param_store_instr = {};
+    self._param_promoted = set();
+    self._attach_di_subprogram(
+        func, full_name, method.loc.first_line if method.loc else 0
+    );
+    self_alloca = self.builder.alloca(func.args[0].type, name="self");
+    self.builder.store(func.args[0], self_alloca);
+    self.local_vars["self"] = self_alloca;
+    self.type_var_map["self"] = arch_name;
+    if arch_name in self.field_type_node {
+        for (fname, ftn) in self.field_type_node[arch_name].items() {
+            qname = f"self.{fname}";
+            self.var_type_node[qname] = ftn;
+            ename = self._get_list_elem_from_type_node(ftn);
+            if ename is not None {
+                self.var_list_elem_type[qname] = ename;
+            }
+        }
+    }
+    # Bind the implicit location parameter (here / visitor).
+    loc_name = "here" if sig.from_walker else "visitor";
+    loc_arg = func.args[1];
+    loc_alloca = self.builder.alloca(loc_arg.type, name=loc_name);
+    self.builder.store(loc_arg, loc_alloca);
+    self.local_vars[loc_name] = loc_alloca;
+    self.param_vars.add(loc_name);
+    if sig.arch_tag_info is not None {
+        self.var_type_node[loc_name] = sig.arch_tag_info;
+        loc_tname = self._get_name(sig.arch_tag_info);
+        if loc_tname is not None and loc_tname in self.struct_types {
+            self.type_var_map[loc_name] = loc_tname;
+        }
+        if loc_tname is not None and loc_tname in self.field_type_node {
+            for (fname, ftn) in self.field_type_node[loc_tname].items() {
+                self.var_type_node[f"{loc_name}.{fname}"] = ftn;
+            }
+        }
+    }
+    body = ModuleCodegenPass.unwrap_body(method);
+    if body is not None {
+        self._codegen_body(body);
+    }
+    if not self.builder.block.is_terminated {
+        _ev_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+            if method.loc
+            else 0}";
+        self._emit_scope_cleanup(skip_var=None, loc=_ev_loc);
+        self.builder.ret_void();
+    }
+    method.gen.llvm_ir = func;
+    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
+    self.builder = saved_builder;
+    self.local_vars = saved_locals;
+    self.param_vars = saved_param_vars;
+    self.type_var_map = saved_type_map;
+    self.var_type_node = saved_type_node;
+    self.var_list_elem_type = saved_list_elem;
+    self.var_dict_type = saved_dict_type;
+    self.var_set_elem_type = saved_set_elem;
+    self.var_tuple_type = saved_tuple_type;
+    self._param_store_instr = saved_param_store_instr;
+    self._param_promoted = saved_param_promoted;
+}
+
 """Generate object instantiation: allocate struct, init fields, call postinit."""
 impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     type_name = self._get_name(nd.target);
@@ -969,6 +1102,50 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
+    # --- Callable struct field: `obj.field(args)` where `field` is a
+    # function-pointer field (not a method). Load the pointer and indirect-call.
+    # (Method dispatch handles real methods; fields are checked here first.)
+    _fld_struct = self.type_var_map.get(target_name)
+        if target_name is not None
+        else None;
+    if (
+        _fld_struct is not None
+        and _fld_struct in self.struct_field_types
+        and method_name in self.struct_field_types[_fld_struct]
+    ) {
+        _fld_ty = self.struct_field_types[_fld_struct][method_name];
+        if (
+            isinstance(_fld_ty, ir.PointerType)
+            and isinstance(_fld_ty.pointee, ir.FunctionType)
+        ) {
+            _obj_v = self._codegen_expr(trailer.target);
+            if _obj_v is not None {
+                _idx = self.struct_field_indices[_fld_struct][method_name];
+                _fld_ptr = self.builder.gep(
+                    _obj_v,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _idx)],
+                    name=f"{method_name}.fldptr"
+                );
+                _fnp = self.builder.load(_fld_ptr, name=f"{method_name}.fn");
+                _fn_ty = _fld_ty.pointee;
+                _cargs: list[ir.Value] = [];
+                for (_i, _p) in enumerate(nd.params or []) {
+                    _pv = self._codegen_expr(_p);
+                    if _pv is not None {
+                        if _i < len(_fn_ty.args) {
+                            _pv = self._coerce_type(_pv, _fn_ty.args[_i]);
+                        }
+                        _cargs.append(_pv);
+                    }
+                }
+                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                if isinstance(_fn_ty.return_type, ir.VoidType) {
+                    return None;
+                }
+                return _r;
+            }
+        }
+    }
     # --- Native stdlib module method calls: sys.exit() ---
     if (
         target_name == "sys"
@@ -1141,13 +1318,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Int methods (on any target expression whose type is i64)
-    if method_name in (
-        "conjugate",
-        "bit_length",
-        "bit_count",
-        "as_integer_ratio",
-        "to_bytes"
-    ) {
+    if method_name in self._primitive_method_names("int") {
         int_val = self._codegen_expr(trailer.target);
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             params = nd.params or [];
@@ -1167,7 +1338,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Float methods (on any target expression whose type is double)
-    if method_name in ("is_integer", "conjugate", "as_integer_ratio", "hex") {
+    if method_name in self._primitive_method_names("float") {
         float_val = self._codegen_expr(trailer.target);
         if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
             params = nd.params or [];
@@ -1187,7 +1358,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Complex methods (conjugate)
-    if method_name == "conjugate" {
+    if method_name in self._primitive_method_names("complex") {
         cval = self._codegen_expr(trailer.target);
         if cval is not None and cval.type == self.complex_struct_type.as_pointer() {
             result = self._dispatch_primitive_method(
@@ -1222,53 +1393,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # String methods (on any target expression whose type is i8*)
-    if method_name in (
-        "strip",
-        "lstrip",
-        "rstrip",
-        "split",
-        "upper",
-        "lower",
-        "capitalize",
-        "casefold",
-        "swapcase",
-        "title",
-        "find",
-        "rfind",
-        "count",
-        "startswith",
-        "endswith",
-        "replace",
-        "removeprefix",
-        "removesuffix",
-        "ljust",
-        "rjust",
-        "zfill",
-        "isalpha",
-        "isdigit",
-        "isalnum",
-        "isspace",
-        "islower",
-        "isupper",
-        "isascii",
-        "isdecimal",
-        "isnumeric",
-        "isprintable",
-        "isidentifier",
-        "istitle",
-        "index",
-        "rindex",
-        "center",
-        "expandtabs",
-        "join",
-        "rsplit",
-        "splitlines",
-        "partition",
-        "rpartition",
-        "encode",
-        "decode",
-        "format"
-    ) {
+    if method_name in self._primitive_method_names("str") {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
             params = nd.params or [];
