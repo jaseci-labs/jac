@@ -15,19 +15,6 @@ cl {
         return await get("/admin/workloads/pods", token);
     }
 
-    async def:pub getWorkloadDetail(token: str, name: str) -> dict {
-        return await get("/admin/workloads/" + name, token);
-    }
-
-    async def:pub getWorkloadTimeseries(
-        token: str, name: str, metric: str = "cpu", rangeMinutes: int = 60
-    ) -> dict {
-        path = "/admin/workloads/" + name + "/timeseries" + "?metric=" + metric + "&range_minutes=" + str(
-            rangeMinutes
-        );
-        return await get(path, token);
-    }
-
     async def:pub getWorkloadsTimeseries(token: str, rangeMinutes: int = 60) -> dict {
         return await get(
             "/admin/workloads/timeseries?range_minutes=" + str(rangeMinutes), token

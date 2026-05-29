@@ -19,17 +19,6 @@ obj JacAPIServerWorkloads {
     def admin_workloads_summary(Authorization: str | None = None) -> TransportResponse;
     def admin_workloads_list(Authorization: str | None = None) -> TransportResponse;
     def admin_workloads_pods(Authorization: str | None = None) -> TransportResponse;
-    def admin_workload_detail(
-        name: str, Authorization: str | None = None
-    ) -> TransportResponse;
-
-    def admin_workload_timeseries(
-        name: str,
-        metric: str = "cpu",
-        range_minutes: int = 60,
-        Authorization: str | None = None
-    ) -> TransportResponse;
-
     def admin_workloads_timeseries(
         range_minutes: int = 60, Authorization: str | None = None
     ) -> TransportResponse;

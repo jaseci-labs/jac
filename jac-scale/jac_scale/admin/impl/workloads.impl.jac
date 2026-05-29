@@ -29,8 +29,7 @@ import from jac_scale.utilities.metrics.prometheus_client {
 import from jac_scale.admin.workload_helpers {
     phase_to_status,
     owner_name_from_pod,
-    match_owner,
-    is_valid_workload_name
+    match_owner
 }
 
 glob logger = logging.getLogger(__name__);
@@ -132,7 +131,6 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
             description='Per-pod health table for the admin dashboard (admin only)'
         )
     );
-    # Registered before the '{name}' route so the static path wins the match.
     async def all_timeseries_handler(
         request: Request, range_minutes: int = 60
     ) -> TransportResponse {
@@ -158,76 +156,6 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
             tags=['Admin'],
             summary='All-workload time-series',
             description='CPU + memory time-series for every workload over a range (admin only)'
-        )
-    );
-    async def detail_handler(request: Request, name: str) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(self.admin_workload_detail, name, authorization);
-    }
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/admin/workloads/{name}',
-            callback=detail_handler,
-            parameters=[
-                APIParameter(
-                    name='name',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Workload name',
-                    type=ParameterType.PATH
-                )
-            ],
-            response_model=None,
-            tags=['Admin'],
-            summary='Workload detail',
-            description='Per-pod breakdown for a single workload (admin only)'
-        )
-    );
-    async def timeseries_handler(
-        request: Request, name: str, metric: str = "cpu", range_minutes: int = 60
-    ) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(
-            self.admin_workload_timeseries, name, metric, range_minutes, authorization
-        );
-    }
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/admin/workloads/{name}/timeseries',
-            callback=timeseries_handler,
-            parameters=[
-                APIParameter(
-                    name='name',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Workload name',
-                    type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='metric',
-                    data_type='string',
-                    required=False,
-                    default='cpu',
-                    description='Metric (cpu, memory, requests)',
-                    type=ParameterType.QUERY
-                ),
-                APIParameter(
-                    name='range_minutes',
-                    data_type='integer',
-                    required=False,
-                    default=60,
-                    description='Range in minutes (e.g. 60 for last hour)',
-                    type=ParameterType.QUERY
-                )
-            ],
-            response_model=None,
-            tags=['Admin'],
-            summary='Workload time-series',
-            description='Time-series for CPU/memory/requests on a single workload (admin only)'
         )
     );
 }
@@ -632,169 +560,6 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     pods = sorted(pods, key=_pod_name);
     return TransportResponse.success(
         data={'metrics_available': True, 'namespace': namespace, 'pods': pods},
-        meta=Meta(extra={'http_status': 200})
-    );
-}
-
-"""Per-pod breakdown for one workload plus requested-vs-used resources."""
-impl JacAPIServerWorkloads.admin_workload_detail(
-    name: str, Authorization: str | None = None
-) -> TransportResponse {
-    error = self.require_admin(Authorization);
-    if error {
-        return error;
-    }
-    if not is_valid_workload_name(name) {
-        return TransportResponse.fail(
-            code='INVALID_NAME',
-            message='Invalid workload name',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
-        return TransportResponse.success(
-            data={'metrics_available': False, 'name': name, 'pods': []},
-            meta=Meta(extra={'http_status': 200})
-        );
-    }
-    ns_filter = f'namespace="{namespace}"' if namespace else '';
-    ns_and = f',{ns_filter}' if ns_filter else '';
-    pod_filter = f'pod=~"{name}-.+"';
-    cpu_by_pod = prom_query(
-        f'sum(rate(container_cpu_usage_seconds_total{{{pod_filter},container!=""{ns_and}}}[5m])) by (pod)'
-    )
-    or [];
-    mem_by_pod = prom_query(
-        f'sum(container_memory_working_set_bytes{{{pod_filter},container!=""{ns_and}}}) by (pod)'
-    )
-    or [];
-    cpu_request_by_pod = prom_query(
-        f'sum(kube_pod_container_resource_requests{{resource="cpu",{pod_filter}{ns_and}}}) by (pod)'
-    )
-    or [];
-    mem_request_by_pod = prom_query(
-        f'sum(kube_pod_container_resource_requests{{resource="memory",{pod_filter}{ns_and}}}) by (pod)'
-    )
-    or [];
-    phase_by_pod = prom_query(f'kube_pod_status_phase{{{pod_filter}{ns_and}}} == 1')
-    or [];
-    restarts_by_pod = prom_query(
-        f'sum(increase(kube_pod_container_status_restarts_total{{{pod_filter}{ns_and}}}[1h])) by (pod)'
-    )
-    or [];
-    cpu_used = _index_by(cpu_by_pod, "pod");
-    mem_used = _index_by(mem_by_pod, "pod");
-    cpu_req = _index_by(cpu_request_by_pod, "pod");
-    mem_req = _index_by(mem_request_by_pod, "pod");
-    restarts = _index_by(restarts_by_pod, "pod");
-    phase_for: dict = {};
-    for entry in phase_by_pod {
-        m = entry.get("metric", {});
-        pod = m.get("pod", "");
-        phase = m.get("phase", "");
-        if pod and phase {
-            phase_for[pod] = phase;
-        }
-    }
-    all_pods = set();
-    for d in [cpu_used, mem_used, cpu_req, mem_req, phase_for, restarts] {
-        for k in d {
-            all_pods.add(k);
-        }
-    }
-    pods = [];
-    for pod in sorted(all_pods) {
-        pods.append(
-            {
-                'pod': pod,
-                'phase': phase_for.get(pod, 'Unknown'),
-                'cpu_cores': round(cpu_used.get(pod, 0.0), 3),
-                'cpu_requested_cores': round(cpu_req.get(pod, 0.0), 3),
-                'memory_bytes': int(mem_used.get(pod, 0.0)),
-                'memory_requested_bytes': int(mem_req.get(pod, 0.0)),
-                'restarts_last_hour': int(restarts.get(pod, 0.0))
-            }
-        );
-    }
-    return TransportResponse.success(
-        data={
-            'metrics_available': True,
-            'name': name,
-            'namespace': namespace,
-            'pods': pods
-        },
-        meta=Meta(extra={'http_status': 200})
-    );
-}
-
-"""Range query for one workload (CPU cores, memory bytes, or request rate)."""
-impl JacAPIServerWorkloads.admin_workload_timeseries(
-    name: str,
-    metric: str = "cpu",
-    range_minutes: int = 60,
-    Authorization: str | None = None
-) -> TransportResponse {
-    error = self.require_admin(Authorization);
-    if error {
-        return error;
-    }
-    if not is_valid_workload_name(name) {
-        return TransportResponse.fail(
-            code='INVALID_NAME',
-            message='Invalid workload name',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    namespace = os.environ.get("K8S_NAMESPACE", "");
-    if resolve_prometheus_url() is None {
-        return TransportResponse.success(
-            data={
-                'metrics_available': False,
-                'name': name,
-                'metric': metric,
-                'points': []
-            },
-            meta=Meta(extra={'http_status': 200})
-        );
-    }
-    ns_filter = f'namespace="{namespace}"' if namespace else '';
-    ns_and = f',{ns_filter}' if ns_filter else '';
-    pod_filter = f'pod=~"{name}-.+"';
-    if metric == "memory" {
-        promql = f'sum(container_memory_working_set_bytes{{{pod_filter},container!=""{ns_and}}})';
-    } elif metric == "requests" {
-        promql = 'sum(rate({__name__=~".+_http_requests_total"}[1m]))';
-    } else {
-        promql = f'sum(rate(container_cpu_usage_seconds_total{{{pod_filter},container!=""{ns_and}}}[5m]))';
-    }
-    now = time.time();
-    start = now - (range_minutes * 60);
-    step = "30s" if range_minutes <= 60 else "5m";
-    result = prom_query_range(promql, start, now, step);
-    points: list = [];
-    if result {
-        for entry in result {
-            values = entry.get("values", []);
-            for v in values {
-                if len(v) >= 2 {
-                    try {
-                        points.append({'t': float(v[0]), 'v': float(v[1])});
-                    } except (ValueError, TypeError) {
-                        continue;
-                    }
-                }
-            }
-        }
-    }
-    return TransportResponse.success(
-        data={
-            'metrics_available': result is not None,
-            'name': name,
-            'metric': metric,
-            'range_minutes': range_minutes,
-            'points': points
-        },
         meta=Meta(extra={'http_status': 200})
     );
 }

@@ -4,7 +4,6 @@ These are side-effect-free functions (no I/O) extracted from the endpoint
 implementation so they can be unit-tested directly. They encode the tricky
 Kubernetes pod-naming and status heuristics that the endpoints rely on.
 """
-import re;
 
 """Map replica counts to a UI-friendly status.
 
@@ -70,17 +69,4 @@ def match_owner(pod: str, names: list[str]) -> str {
         }
     }
     return best or owner_name_from_pod(pod);
-}
-
-"""Validate a workload name before interpolating it into a PromQL selector.
-
-Kubernetes workload names are RFC1123 labels (lowercase alphanumeric + '-').
-Restricting to that set blocks PromQL/regex injection via a path param (e.g. a
-stray `"` breaking the query, or `.` acting as a regex wildcard).
-"""
-def is_valid_workload_name(name: str) -> bool {
-    if not name {
-        return False;
-    }
-    return re.match(r'^[a-z0-9][a-z0-9-]*$', name) is not None;
 }

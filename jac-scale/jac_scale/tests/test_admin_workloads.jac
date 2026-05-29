@@ -9,8 +9,7 @@ import from jac_scale.tests.scale_test_client { make_client, extract_data }
 import from jac_scale.admin.workload_helpers {
     phase_to_status,
     owner_name_from_pod,
-    match_owner,
-    is_valid_workload_name
+    match_owner
 }
 
 # ============================================================================
@@ -175,19 +174,4 @@ test "match_owner: statefulset pod matches its workload" {
 
 test "match_owner: no match falls back to name heuristic" {
     assert match_owner("other-app-7d9b-xk2p9", ["jaseci"]) == "other-app";
-}
-
-# ============================================================================
-# Pure helper: is_valid_workload_name (PromQL-injection guard)
-# ============================================================================
-test "is_valid_workload_name: accepts RFC1123 names" {
-    assert is_valid_workload_name("jaseci") is True;
-    assert is_valid_workload_name("jaseci-redis-insight") is True;
-}
-
-test "is_valid_workload_name: rejects injection / bad chars" {
-    assert is_valid_workload_name('jaseci"}') is False;
-    assert is_valid_workload_name("jaseci-.+") is False;
-    assert is_valid_workload_name("UPPER") is False;
-    assert is_valid_workload_name("") is False;
 }
