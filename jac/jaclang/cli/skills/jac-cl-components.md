@@ -147,6 +147,25 @@ has_filter: bool = bool(useParams()["category"]);
 ```
 
 - **Server RPC import uses `sv import from ..services.X { fn, Types }`** (prefix required). Dot count = how many folders up from THIS file to reach `services/` - for a `components/X.cl.jac` it's 2 dots, for `components/pages/X.cl.jac` it's 3 dots (see `jac-core-cheatsheet` for dot semantics). Plain `import from` to a `.sv.jac` breaks the Vite build. Include obj/node types too - they're needed to type your `has` state (next rule). See `jac-fullstack-patterns`.
+- **Always `await` `sv import` calls.** Stubs are `async` functions -- `todos = list_todos()` assigns a `Promise`, not the data → `TypeError: todos is not iterable` at runtime. Two valid async contexts:
+
+```
+# 1. fetch on mount
+async can with entry {
+    todos = await list_todos();
+}
+
+# 2. handler that calls sv import -- use `async def` (no event param; uses `has` field closures)
+async def handle_add -> None {
+    todo = await create_todo(input_text);   # input_text is a `has` field
+    todos = [todo] + todos;
+}
+# bind as: onClick={handle_add}
+# if you need to pass a param: onClick={lambda -> None { handle_toggle(item.id); }}
+```
+
+Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.
+
 - **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
 
 ```
@@ -185,6 +204,17 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 **For server response objects (dicts/lists from `sv import` calls), prefer truthy checks (`if result {`) over `!= None`.** The `!=` operator uses deep equality which calls `Object.keys()` - crashes with `"Cannot convert undefined or null to object"` if the value is `null`/`undefined`. `!= None` is safe for primitives (strings, ints, bools) but not for complex objects returned from server calls.
 
 - **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, use the base `Event` type - not `any`, which earns a `W1037` warning (and capital `Any` is not the keyword, warning `W2001` "Name 'Any' may be undefined").
+- **Inline anonymous functions in JSX use `lambda`, NOT `def`.** Prefer named `def` methods (see the Counter example above); reach for inline `lambda` only for trivial one-liners. Anonymous `def (...)` is a parse error, *regardless of return type* - `def` requires a name.
+
+  ```
+  # CORRECT
+  onClick={lambda (e: MouseEvent) { count = count + 1; }}
+
+  # WRONG - anonymous `def` is a parse error (return type does not rescue it)
+  onClick={def (e: MouseEvent) { count = count + 1; }}
+  onClick={def (e: MouseEvent) -> None { count = count + 1; }}
+  ```
+
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.

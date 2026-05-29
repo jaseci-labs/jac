@@ -438,6 +438,11 @@ obj JacCompiler {
         cancel_token: (Event | None) = None
     ) -> None;
 
+    """Count codegen-blocking errors attributed to a specific module file."""
+    static def _count_module_blocking_errors(
+        target_program: JacProgram, mod_path: str
+    ) -> int;
+
     static def _prepare_tool_program(
         source_str: str,
         file_path: str,

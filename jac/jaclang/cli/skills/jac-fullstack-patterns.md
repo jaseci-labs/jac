@@ -27,6 +27,7 @@ cl {
 - **Adding a new endpoint is ALWAYS a 2-file change:** the `.sv.jac` service file + the import in `main.jac`. Especially easy to miss when extending a client-only app - no server import block existed before.
 - **In `main.jac`: plain `import from services.X { ... }`** (NEVER `sv import`). Plain = in-process Python import; the endpoint registers at `/function/<name>`.
 - **In `.cl.jac`: `sv import from ..services.X { ... }`** (prefix required). Generates the JS RPC stub. Plain `import from` to a `.sv.jac` fails the Vite build with `Could not resolve "services/X.js"`.
+- **Always `await` `sv import` calls.** Stubs are `async` functions -- calling without `await` assigns a `Promise` instead of the actual data, causing silent runtime failures. `items = await fetch_items()` works; `items = fetch_items()` silently assigns a Promise → runtime crash.
 - **`sv import` in `main.jac` = microservice RPC.** Spawns a separate provider server process; session cookies don't cross → `def:priv` fails with `401 Unauthorized`. Only use for actual microservices.
 - **Import obj/node TYPES alongside functions** in both places. Missing types → server `NameError` at runtime or lost typed attribute access on the client.
 - **Call server endpoints with POSITIONAL args, not kwargs.** `save_profile(name, email)` works; `save_profile(name=name, email=email)` sends empty body → `422 Field required`.
