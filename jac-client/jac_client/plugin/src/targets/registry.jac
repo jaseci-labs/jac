@@ -72,6 +72,9 @@ class ClientTarget {
     def start(
         self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None abs;
+
+    """Resolve asset base path dynamically based on runtime context headers."""
+    def resolve_asset_base(self: ClientTarget, headers: dict[str, str]) -> str abs;
 }
 
 """Central registry for build targets.

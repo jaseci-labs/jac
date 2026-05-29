@@ -270,7 +270,13 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
+"""Resolve static base path for bundler CDN assets."""
+impl ViteBundler._resolve_static_base_path(self: ViteBundler) -> str {
+    return self.config_loader.get_static_base_path();
+}
 
+
+"""Get a valid JavaScript variable name from plugin module name."""
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
     name = name.replace('-', '_').replace('.', '_');
@@ -355,6 +361,8 @@ impl ViteBundler._generate_vite_config_content(
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
+    static_base = self._resolve_static_base_path();
+    base_path = static_base or ("/" if is_dev else "./");
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();

@@ -66,8 +66,9 @@ class JacClient {
         introspector: ModuleIntrospector,
         function_name: str,
         args: dict[(str, Any)],
-        username: str
-    ) -> dict[str, any];
+        username: str,
+        request_ctx: Optional[dict] = None
+    ) -> dict[str, Any];
 
     @hookimpl
     static def get_client_js(introspector: ModuleIntrospector) -> str;

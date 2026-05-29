@@ -150,7 +150,8 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any] {
     return {
         'api': {'base_url': ''},
-        'base_path': '/',
+        'static_base_path': '',
+        'trust_forwarded_headers': False,
         'vite': {
             'plugins': [],
             'lib_imports': [],
@@ -196,10 +197,15 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
 
     # Self-healing dependency management (migration + injection) only runs for
     # projects that have explicitly opted into the client via a [plugins.client]
-    # section. Reading config for a non-client project must NEVER mutate jac.toml
-    # — otherwise merely booting the API server (or any read of client config)
+    # section, or in temporary/test environments where no physical jac.toml exists
+    # on disk. Reading config for a non-client project must NEVER mutate its real
+    # jac.toml — otherwise merely booting the API server (or any read of client config)
     # would inject react/vite/etc. into a backend-only project's jac.toml.
-    if 'client' in jac_config.plugins {
+    if (
+        'client' in jac_config.plugins
+        or not jac_config.toml_path
+        or not jac_config.toml_path.exists()
+    ) {
         # Migrate legacy meta-packages if present
         (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
             jac_config, npm_deps, npm_dev_deps
@@ -236,7 +242,8 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     # Build user config in the expected internal format
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
-        'base_path': client_config.get('base_path', '/'),
+        'static_base_path': client_config.get('static_base_path', ''),
+        'trust_forwarded_headers': client_config.get('trust_forwarded_headers', False),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
@@ -277,6 +284,18 @@ impl JacClientConfig.get_base_path(self: JacClientConfig) -> str {
 impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('vite', {});
+}
+
+"""Get static base path for the dynamic asset resolution."""
+impl JacClientConfig.get_static_base_path(self: JacClientConfig) -> str {
+    config = self.load();
+    return str(config.get('static_base_path', ''));
+}
+
+"""Get trust_forwarded_headers for backend dynamic proxy headers."""
+impl JacClientConfig.get_trust_forwarded_headers(self: JacClientConfig) -> bool {
+    config = self.load();
+    return bool(config.get('trust_forwarded_headers', False));
 }
 
 """Get TypeScript-specific configuration for tsconfig.json customization."""

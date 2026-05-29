@@ -8,7 +8,7 @@ entry-point = "main.jac"
 base_route_app = "app"
 
 [plugins.client]
-base_path = "/admin/"
+static_base_path = "/admin/"
 
 [plugins.client.app_meta_data]
 title = "JAC-Scale Admin"

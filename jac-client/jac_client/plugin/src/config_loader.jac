@@ -20,11 +20,13 @@ class JacClientConfig(PluginConfigBase) {
     def save(self: JacClientConfig) -> None;
     def get_api_config(self: JacClientConfig) -> dict[str, any];
     def get_base_path(self: JacClientConfig) -> str;
-    def get_vite_config(self: JacClientConfig) -> dict[str, any];
-    def get_ts_config(self: JacClientConfig) -> dict[str, any];
-    def get_configs(self: JacClientConfig) -> dict[str, any];
-    def get_package_config(self: JacClientConfig) -> dict[str, any];
-    def get_npm_config(self: JacClientConfig) -> dict[str, any];
+    def get_vite_config(self: JacClientConfig) -> dict[str, Any];
+    def get_static_base_path(self: JacClientConfig) -> str;
+    def get_trust_forwarded_headers(self: JacClientConfig) -> bool;
+    def get_ts_config(self: JacClientConfig) -> dict[str, Any];
+    def get_configs(self: JacClientConfig) -> dict[str, Any];
+    def get_package_config(self: JacClientConfig) -> dict[str, Any];
+    def get_npm_config(self: JacClientConfig) -> dict[str, Any];
     def add_dependency(
         self: JacClientConfig, name: str, version: str, is_dev: bool = False
     ) -> None;

@@ -943,9 +943,12 @@ impl ModuleIntrospector.ensure_bundle -> str {
 
 """Render HTML page for client function."""
 impl ModuleIntrospector.render_page(
-    function_name: str, args: dict[(str, Any)], username: str
-) -> dict[str, any] {
-    return Jac.render_page(self, function_name, args, username);
+    function_name: str,
+    args: dict[(str, Any)],
+    username: str,
+    request_ctx: Optional[dict] = None
+) -> dict[str, Any] {
+    return Jac.render_page(self, function_name, args, username, request_ctx);
 }
 
 """Check if authentication is required for a function based on its access level.
@@ -1406,8 +1409,9 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 }
             }
             try {
+                headers = dict(self.headers) if self?.headers else {};
                 render_payload = server.introspector.render_page(
-                    func_name, args, username
+                    func_name, args, username, request_ctx={"headers": headers}
                 );
                 Jac.send_html(self, 200, render_payload['html']);
             } except ValueError as exc {

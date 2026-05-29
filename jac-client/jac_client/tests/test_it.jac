@@ -1558,6 +1558,97 @@ test "vite env and define config" {
     }
 }
 
+"""Create a minimal jac.toml file for static_base_path testing."""
+def _create_jac_toml_with_static_base(
+    temp_dir: str, static_base_path: str | None = None
+) -> str {
+    client_section = "";
+    if static_base_path is not None {
+        client_section = f'\n[plugins.client]\nstatic_base_path = "{static_base_path}"\n';
+    }
+
+    toml_content = f'''[project]
+name = "test-static-base-app"
+version = "1.0.0"
+description = "Test static base path project"
+entry-point = "main.jac"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+{client_section}
+''';
+    config_path = os.path.join(temp_dir, "jac.toml");
+    with open(config_path, "w") as f {
+        f.write(toml_content);
+    }
+    return config_path;
+}
+
+"""Test that Vite config base is set to './' in production by default."""
+test "vite config base defaults to relative path in prod" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            _create_jac_toml_with_static_base(temp_dir);
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry");
+
+            vite_config_path = bundler.create_vite_config(entry_file, is_dev=False);
+            vite_content = vite_config_path.read_text();
+
+            # Verify that base: "./" is set in the config content
+            assert 'base: "./"' in vite_content , "Base path in production should default to relative path './'";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+"""Test that Vite config base is set to custom static base path when configured."""
+test "vite config base uses custom static base path when configured" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            _create_jac_toml_with_static_base(
+                temp_dir, "https://cdn.example.com/assets/"
+            );
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry");
+
+            vite_config_path = bundler.create_vite_config(entry_file, is_dev=False);
+            vite_content = vite_config_path.read_text();
+
+            # Verify that base: "https://cdn.example.com/assets/" is set in the config content
+            assert 'base: "https://cdn.example.com/assets/"' in vite_content , "Custom base path should be set in production config";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 """Test that jac build --client pwa generates manifest.json and sw.js."""
 test "pwa build generates manifest and service worker" {
     print("[DEBUG] Starting test_pwa_build_generates_manifest_and_service_worker");
@@ -2209,6 +2300,228 @@ test "multi_segment_route_asset_resolution" {
             }
         }
     } finally {
+        os.chdir(original_cwd);
+    }
+}
+
+test "polymorphic client target asset base path resolution" {
+    import from pathlib { Path }
+    import tempfile;
+    import from jac_client.plugin.src.targets.registry {
+        get_target_factory,
+        TargetType
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir);
+        # Scenario 1: Default Behavior (trust_forwarded_headers = false)
+        # No configuration in jac.toml -> should ignore headers entirely
+        factory = get_target_factory();
+        web_target = factory.create_by_type(TargetType.WEB, project_dir);
+        assert web_target.resolve_asset_base({}) == "/";
+        assert web_target.resolve_asset_base({"x-forwarded-prefix": "/my-prefix"}) == "/";
+        assert web_target.resolve_asset_base({"X-Forwarded-Prefix": "/my-prefix/"}) == "/";
+        # Scenario 2: Configured to Trust Forwarded Headers but with Malicious payloads
+        # Write jac.toml to enable trust_forwarded_headers
+        jac_toml = project_dir / "jac.toml";
+        jac_toml.write_text(
+            """[project]
+name = "test-project"
+version = "1.0.0"
+
+[plugins.client]
+trust_forwarded_headers = true
+"""
+        );
+        # Invalidate config cache
+        import from jac_client.plugin.src.config_loader { JacClientConfig }
+        config = JacClientConfig(project_dir=project_dir);
+        config.invalidate();
+        web_target_trusted = factory.create_by_type(TargetType.WEB, project_dir);
+        # Test WebTarget resolve_asset_base under trust
+        # Case A: Standard root-relative fallback
+        assert web_target_trusted.resolve_asset_base({}) == "/";
+        # Case B: Standard lowercase header
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/my-custom-prefix"}
+        ) == "/my-custom-prefix/";
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/my-custom-prefix/"}
+        ) == "/my-custom-prefix/";
+        # Case C: Case-insensitive header fallback
+        assert web_target_trusted.resolve_asset_base(
+            {"X-Forwarded-Prefix": "/Another-Prefix"}
+        ) == "/Another-Prefix/";
+        # Case D: Malicious payload XSS script tag injection attempt
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "\"><script>alert(1)</script>"}
+        ) == "/";
+        # Case E: Malicious payload absolute URL host hijacking attempt
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "//evil.com/"}
+        ) == "/";
+        # Case F: Malicious payload path traversal / relative breaks
+        assert web_target_trusted.resolve_asset_base(
+            {"x-forwarded-prefix": "/../etc/"}
+        ) == "/";
+        # 2. Get DesktopTarget from factory and verify it is always root-relative
+        desktop_target = factory.create_by_type(TargetType.DESKTOP, project_dir);
+        assert desktop_target.resolve_asset_base({"x-forwarded-prefix": "/ignored"}) == "/";
+        assert desktop_target.resolve_asset_base({}) == "/";
+        # 3. Get PWATarget from factory and verify it inherits web behavior under trust
+        pwa_target = factory.create_by_type(TargetType.PWA, project_dir);
+        assert pwa_target.resolve_asset_base({"x-forwarded-prefix": "/my-pwa"}) == "/my-pwa/";
+        assert pwa_target.resolve_asset_base({}) == "/";
+    }
+}
+
+# Mock introspector using standard module introspector mock structure
+obj MockIntrospector {
+    has _module: Any = None,
+        module_name: str = "main",
+        _client_manifest: dict = {"exports": ["app"]},
+        _bundle: Any = None;
+
+    def load { }
+    def get_client_functions -> dict {
+        return {"app": None};
+    }
+
+    def ensure_bundle -> str {
+        return "abc123hash";
+    }
+}
+
+test "render_page base tag injection" {
+    import from pathlib { Path }
+    import tempfile;
+    import from jaclang { JacRuntime as Jac }
+    import from jac_client.plugin.client { JacClient }
+
+    intro = MockIntrospector();
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        orig_base = Jac.get_base_path_dir();
+        Jac.set_base_path(temp_dir);
+        try {
+            # Scenario 1: Untrusted by default
+            # 1.1 Render without headers (standard default)
+            res = JacClient.render_page(intro, "app", {}, "guest");
+            assert "html" in res;
+            html = res["html"];
+            assert '<base href="/">' in html;
+            assert 'src="/static/client.js' in html;
+
+            # 1.2 Render with proxy headers but untrusted by default
+            headers = {"X-Forwarded-Prefix": "/my-reverse-proxy"};
+            res_proxy = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers}
+            );
+            html_proxy = res_proxy["html"];
+            # Should be ignored (falls back to /)
+            assert '<base href="/">' in html_proxy;
+            assert 'src="/static/client.js' in html_proxy;
+
+            # Scenario 2: Trust Enabled in jac.toml
+            project_dir = Path(temp_dir);
+            jac_toml = project_dir / "jac.toml";
+            jac_toml.write_text(
+                """[project]
+name = "test-project"
+version = "1.0.0"
+
+[plugins.client]
+trust_forwarded_headers = true
+"""
+            );
+
+            # Invalidate config cache
+            import from jac_client.plugin.src.config_loader { JacClientConfig }
+            config = JacClientConfig(project_dir=project_dir);
+            config.invalidate();
+
+            # 2.1 Render under trust with valid prefix
+            res_proxy_trusted = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers}
+            );
+            html_proxy_trusted = res_proxy_trusted["html"];
+            assert '<base href="/my-reverse-proxy/">' in html_proxy_trusted;
+            assert 'src="/my-reverse-proxy/static/client.js' in html_proxy_trusted;
+
+            # 2.2 Render under trust with escaping / invalid payload
+            headers_xss = {"X-Forwarded-Prefix": "/prefix-with-\"-quotes"};
+            res_xss = JacClient.render_page(
+                intro, "app", {}, "guest", request_ctx={"headers": headers_xss}
+            );
+            html_xss = res_xss["html"];
+            # Since quotes fail validation, falls back to /
+            assert '<base href="/">' in html_xss;
+            assert 'src="/static/client.js' in html_xss;
+        } finally {
+            Jac.set_base_path(orig_base);
+        }
+    }
+}
+
+test "live server dynamic base resolution" {
+    import from pathlib { Path }
+    import from subprocess { Popen }
+    import from urllib.request { Request, urlopen }
+    import gc;
+    import os;
+    import shutil;
+
+    # 1. Resolve paths to the existing fixture
+    tests_dir = os.path.dirname(__file__);
+    fixture_path = os.path.join(tests_dir, "fixtures", "multi_segment_app");
+    assert os.path.isdir(fixture_path) , f"Fixture directory missing at {fixture_path}";
+
+    # Clean stale local compiler cache to prevent import conflicts
+    shutil.rmtree(Path(fixture_path) / ".jac" / "cache", ignore_errors=True);
+
+    original_cwd = os.getcwd();
+    server = None;
+    try {
+        os.chdir(fixture_path);
+
+        # Note: The client is already built by the preceding test in this file
+        port = get_free_port();
+
+        # 2. Spin up the live server
+        server = Popen(
+            get_jac_command() + ["start", "main.jac", "--port", str(port)],
+            stdout=None,
+            stderr=None,
+            text=True,
+            env=get_env_with_npm()
+        );
+        wait_for_port("127.0.0.1", port, timeout=300.0);
+        base_url = f"http://localhost:{port}";
+        _wait_for_endpoint(base_url, timeout=300.0);
+
+        # 3. Assert direct GET (no header) has root base path
+        req_direct = Request(f"{base_url}/dashboard/settings");
+        with urlopen(req_direct, timeout=30) as resp {
+            html_direct = resp.read().decode("utf-8");
+            assert '<base href="/">' in html_direct;
+            assert 'src="/static/client.js' in html_direct;
+        }
+
+        # 4. Assert proxied GET (with header) has custom base path
+        req_proxy = Request(
+            f"{base_url}/dashboard/settings",
+            headers={"X-Forwarded-Prefix": "/my-reverse-proxy"}
+        );
+        with urlopen(req_proxy, timeout=30) as resp {
+            html_proxy = resp.read().decode("utf-8");
+            assert '<base href="/my-reverse-proxy/">' in html_proxy;
+            assert 'src="/my-reverse-proxy/static/client.js' in html_proxy;
+        }
+    } finally {
+        if server {
+            server.terminate();
+            server.wait(timeout=5);
+        }
         os.chdir(original_cwd);
     }
 }

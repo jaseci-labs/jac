@@ -185,19 +185,16 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
 }
 
 """Build CSS link tag if CSS file exists."""
-def _build_css_link(bundler: ViteBundler) -> str {
+def _build_css_link(bundler: ViteBundler, base_path: str = "") -> str {
     import hashlib;
 
     css_file = bundler.find_css();
     if not css_file {
         return '';
     }
-    if css_file.exists() {
-        css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-        base_path = bundler.config_loader.get_base_path();
-        return f'<link rel="stylesheet" href="{base_path}styles.css?hash={css_hash}"/>';
-    }
-    return '';
+    css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
+    href = base_path + css_file.name if base_path else css_file.name;
+    return f'<link rel="stylesheet" href="{href}?hash={css_hash}"/>';
 }
 
 """Get app meta data from project config."""
@@ -227,10 +224,18 @@ def _generate_index_html(
     import json;
     import from jac_client.plugin.client { HeaderBuilder }
 
+    static_base = bundler.config_loader.get_static_base_path();
+    if not static_base {
+        static_base = "/";
+    }
+    if static_base and not static_base.endswith('/') {
+        static_base = static_base + '/';
+    }
+
     function_name = _get_client_function_name(loaded_mod);
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
-    css_link = _build_css_link(bundler);
+    css_link = _build_css_link(bundler, static_base);
     meta_data = _get_app_meta_data();
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
@@ -247,19 +252,69 @@ def _generate_index_html(
     # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
     init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
-    base_path = bundler.config_loader.get_base_path();
+    src_path = static_base + bundle_filename if static_base else bundle_filename;
 
     html_content = f'''<!DOCTYPE html>
 <html lang="en">
   <head>
-{head_content}
+    {head_content}
   </head>
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="{base_path}{bundle_filename}"></script>
+    <script type="module" src="{src_path}"></script>
   </body>
 </html>''';
     index_html = dist_dir / 'index.html';
     index_html.write_text(html_content, encoding='utf-8');
+}
+
+"""Resolve asset base path dynamically based on runtime context headers."""
+impl WebTarget.resolve_asset_base(headers: dict[str, str]) -> str {
+    import re;
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jac_client.plugin.src.config_loader { JacClientConfig }
+
+    try {
+        p_dir = self.project_dir;
+        if not p_dir {
+            import from jaclang.project.config { find_project_root }
+            base_path_dir = Path(Jac.get_base_path_dir() or ".");
+            project_root_result = find_project_root(base_path_dir);
+            if project_root_result {
+                (base_path, _) = project_root_result;
+            } else {
+                base_path = base_path_dir;
+            }
+            p_dir = base_path;
+        }
+        config = JacClientConfig(project_dir=p_dir);
+        trust_forwarded = config.get_trust_forwarded_headers();
+    } except (
+        AttributeError,
+        ImportError,
+        ValueError,
+        KeyError,
+        FileNotFoundError,
+        OSError
+    ) {
+        trust_forwarded = False;
+    }
+
+    if not trust_forwarded {
+        return "/";
+    }
+
+    norm_headers = {k.lower(): v for (k, v) in headers.items()};
+    prefix = norm_headers.get("x-forwarded-prefix") or "/";
+
+    # Validate against strict regex: ^/[a-zA-Z0-9_\-/]*$
+    if not re.match(r"^/[a-zA-Z0-9_\-/]*$", prefix) {
+        return "/";
+    }
+
+    if not prefix.endswith('/') {
+        prefix = prefix + '/';
+    }
+    return prefix;
 }

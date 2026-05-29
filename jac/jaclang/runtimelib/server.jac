@@ -171,8 +171,11 @@ obj ModuleIntrospector {
     def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;
     def render_page(
-        function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, any];
+        function_name: str,
+        args: dict[(str, Any)],
+        username: str,
+        request_ctx: Optional[dict] = None
+    ) -> dict[str, Any];
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
