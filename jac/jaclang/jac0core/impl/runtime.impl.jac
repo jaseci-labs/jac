@@ -366,6 +366,34 @@ impl JacWalker.`visit(
     }
 }
 
+"""Classify an ability's trigger once and cache it on the function.
+
+    Replaces the per-dispatch `all_issubclass` reflection: the trigger type is
+    resolved (via the compiler-stamped thunk) and bucketed into a TriggerKind
+    the traversal loop can compare as an int. OTHER is a truthy trigger that is
+    neither a location nor a walker type — it fires in no phase, matching the
+    legacy `all_issubclass` guards.
+    """
+impl JacWalker._trigger_kind(i: ObjectSpatialFunction) -> TriggerKind {
+    import from jaclang.runtimelib.utils { all_issubclass }
+    if i.kind != TriggerKind.UNRESOLVED {
+        return i.kind;
+    }
+    trigger = i.trigger;
+    if trigger is None {
+        i.kind = TriggerKind.UNTYPED;
+    } elif (
+        all_issubclass(trigger, NodeArchetype) or all_issubclass(trigger, EdgeArchetype)
+    ) {
+        i.kind = TriggerKind.ON_LOC;
+    } elif all_issubclass(trigger, WalkerArchetype) {
+        i.kind = TriggerKind.ON_WALKER;
+    } else {
+        i.kind = TriggerKind.OTHER;
+    }
+    return i.kind;
+}
+
 """Execute all entry abilities for current location.
 
     Returns True if walker should continue, False if disengaged.
@@ -375,14 +403,9 @@ impl JacWalker._execute_entries(
     `walker: WalkerAnchor,
     current_loc: (NodeArchetype | EdgeArchetype)
 ) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
     for i in warch._jac_entry_funcs_ {
         if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
+            JacWalker._trigger_kind(i) == TriggerKind.ON_LOC
             and isinstance(current_loc, i.trigger)
         ) {
             i.func(warch, current_loc);
@@ -392,7 +415,7 @@ impl JacWalker._execute_entries(
         }
     }
     for i in current_loc._jac_entry_funcs_ {
-        if not i.trigger {
+        if JacWalker._trigger_kind(i) == TriggerKind.UNTYPED {
             i.func(current_loc, warch);
         }
         if `walker.disengaged {
@@ -401,8 +424,7 @@ impl JacWalker._execute_entries(
     }
     for i in current_loc._jac_entry_funcs_ {
         if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
+            JacWalker._trigger_kind(i) == TriggerKind.ON_WALKER
             and isinstance(warch, i.trigger)
         ) {
             i.func(current_loc, warch);
@@ -423,11 +445,9 @@ impl JacWalker._execute_exits(
     `walker: WalkerAnchor,
     current_loc: (NodeArchetype | EdgeArchetype)
 ) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
     for i in current_loc._jac_exit_funcs_ {
         if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
+            JacWalker._trigger_kind(i) == TriggerKind.ON_WALKER
             and isinstance(warch, i.trigger)
         ) {
             i.func(current_loc, warch);
@@ -437,7 +457,7 @@ impl JacWalker._execute_exits(
         }
     }
     for i in current_loc._jac_exit_funcs_ {
-        if not i.trigger {
+        if JacWalker._trigger_kind(i) == TriggerKind.UNTYPED {
             i.func(current_loc, warch);
         }
         if `walker.disengaged {
@@ -446,11 +466,7 @@ impl JacWalker._execute_exits(
     }
     for i in warch._jac_exit_funcs_ {
         if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
+            JacWalker._trigger_kind(i) == TriggerKind.ON_LOC
             and isinstance(current_loc, i.trigger)
         ) {
             i.func(warch, current_loc);
@@ -501,19 +517,11 @@ impl JacWalker._visit_node_recursive(
 impl JacWalker.spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
     walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
+    report_scope = _osp_host.open_walk_scope();
     try {
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
@@ -549,25 +557,11 @@ impl JacWalker.spawn_call(
         walker_succeeded = True;
         return warch;
     } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # Flush deferred persistence at the outermost spawn boundary, on
-            # success only — mirrors ExecutionManager.spawn_walker so direct
-            # `walker spawn node` flows (tests, `jac run`, CLI) persist without
-            # callers having to call Jac.commit() manually. Skipped on
-            # exception so partial walker state is dropped with the L1 buffer.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
-        }
+        # Outermost spawn: collect reports onto the walker, then flush deferred
+        # persistence — both no-ops for a nested spawn. (Server-side these drain
+        # the CallState contextvar and commit the L1 buffer.)
+        _osp_host.close_walk_scope(report_scope, warch);
+        _osp_host.on_spawn_complete(report_scope, walker_succeeded);
     }
 }
 
@@ -580,14 +574,9 @@ impl JacWalker._async_execute_entries(
     `walker: WalkerAnchor,
     current_loc: (NodeArchetype | EdgeArchetype)
 ) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
     for i in warch._jac_entry_funcs_ {
         if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
+            JacWalker._trigger_kind(i) == TriggerKind.ON_LOC
             and isinstance(current_loc, i.trigger)
         ) {
             result = i.func(warch, current_loc);
@@ -600,7 +589,7 @@ impl JacWalker._async_execute_entries(
         }
     }
     for i in current_loc._jac_entry_funcs_ {
-        if not i.trigger {
+        if JacWalker._trigger_kind(i) == TriggerKind.UNTYPED {
             result = i.func(current_loc, warch);
             if isinstance(result, Coroutine) {
                 await result;
@@ -612,8 +601,7 @@ impl JacWalker._async_execute_entries(
     }
     for i in current_loc._jac_entry_funcs_ {
         if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
+            JacWalker._trigger_kind(i) == TriggerKind.ON_WALKER
             and isinstance(warch, i.trigger)
         ) {
             result = i.func(current_loc, warch);
@@ -637,11 +625,9 @@ impl JacWalker._async_execute_exits(
     `walker: WalkerAnchor,
     current_loc: (NodeArchetype | EdgeArchetype)
 ) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
     for i in current_loc._jac_exit_funcs_ {
         if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
+            JacWalker._trigger_kind(i) == TriggerKind.ON_WALKER
             and isinstance(warch, i.trigger)
         ) {
             result = i.func(current_loc, warch);
@@ -654,7 +640,7 @@ impl JacWalker._async_execute_exits(
         }
     }
     for i in current_loc._jac_exit_funcs_ {
-        if not i.trigger {
+        if JacWalker._trigger_kind(i) == TriggerKind.UNTYPED {
             result = i.func(current_loc, warch);
             if isinstance(result, Coroutine) {
                 await result;
@@ -666,11 +652,7 @@ impl JacWalker._async_execute_exits(
     }
     for i in warch._jac_exit_funcs_ {
         if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
+            JacWalker._trigger_kind(i) == TriggerKind.ON_LOC
             and isinstance(current_loc, i.trigger)
         ) {
             result = i.func(warch, current_loc);
@@ -726,19 +708,11 @@ impl JacWalker._async_visit_node_recursive(
 impl JacWalker.async_spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
     warch = `walker.archetype;
     `walker.path = [];
     current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
     walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
+    report_scope = _osp_host.open_walk_scope();
     try {
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
@@ -782,21 +756,8 @@ impl JacWalker.async_spawn_call(
         walker_succeeded = True;
         return warch;
     } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # See spawn_call: flush deferred persistence on success only.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
-        }
+        _osp_host.close_walk_scope(report_scope, warch);
+        _osp_host.on_spawn_complete(report_scope, walker_succeeded);
     }
 }
 
@@ -1096,14 +1057,19 @@ impl JacBasics.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         (fn.name, fn) for fn in cls._jac_exit_funcs_
     );
     for func in cls.__dict__.values() {
-        if callable(func) {
+        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
+            # Trigger is compiler-stamped via @set_trigger; absent only for
+            # hand-built/dynamic archetypes, where DSFunc falls back to inspect.
+            dsfunc = JacRuntimeInterface.DSFunc(
+                func.__name__, func, func.__jac_trigger__
+            )
+                if func?.__jac_trigger__
+                else JacRuntimeInterface.DSFunc(func.__name__, func);
             if func?.__jac_entry {
-                entries[func.__name__] = JacRuntimeInterface.DSFunc(
-                    func.__name__, func
-                );
+                entries[func.__name__] = dsfunc;
             }
             if func?.__jac_exit {
-                exits[func.__name__] = JacRuntimeInterface.DSFunc(func.__name__, func);
+                exits[func.__name__] = dsfunc;
             }
         }
     }
@@ -1326,7 +1292,7 @@ impl JacBasics.jac_test(description: str = "") -> Callable {
         file_path = getfile(test_fun);
         func_name = test_fun.__name__;
         def test_deco {
-            test_fun(JacTestCheck());
+            test_fun();
         }
         test_deco.__name__ = test_fun.__name__;
         JacTestCheck.add_test(
@@ -1447,17 +1413,80 @@ impl JacBasics.field(
     return field(`init=`init);
 }
 
+"""Record a report value in the current walk scope.
+
+    Server behavior: enqueue onto the request-scoped CallState (a thread-safe
+    queue keyed by a contextvar), which the outermost spawn drains onto the
+    walker. A no-op when no scope is active.
+    """
+impl OspHost.record_report(expr: any) -> None {
+    ctx = JacRuntimeInterface.get_context();
+    call_state = ctx.call_state.get(None);
+    if call_state {
+        call_state.reports.put_nowait(expr);
+    }
+}
+
+"""Open a report scope at a spawn.
+
+    Server behavior: if no scope is active this spawn is the outermost — create
+    a CallState, bind it to the contextvar, and return the reset token. A nested
+    spawn returns None and shares the outermost scope.
+    """
+impl OspHost.open_walk_scope -> object {
+    import from jaclang.runtimelib.context { CallState }
+    ctx = JacRuntimeInterface.get_context();
+    if ctx.call_state.get(None) is None {
+        return ctx.call_state.set(CallState());
+    }
+    return None;
+}
+
+"""Close a report scope opened by `open_walk_scope`.
+
+    For the outermost spawn (truthy token) drain the accumulated reports onto
+    the walker and reset the contextvar; nested spawns (None) do nothing.
+    """
+impl OspHost.close_walk_scope(scope: object, warch: WalkerArchetype) -> None {
+    if scope is None {
+        return;
+    }
+    ctx = JacRuntimeInterface.get_context();
+    call_state = ctx.call_state.get(None);
+    if call_state {
+        reports = [];
+        while not call_state.reports.empty() {
+            item = call_state.reports.get_nowait();
+            if item is not call_state._sentinel {
+                reports.append(item);
+            }
+        }
+        warch.reports = reports;
+    }
+    ctx.call_state.reset(scope);
+}
+
+"""Finalize persistence at the outermost spawn boundary.
+
+    Server behavior: on the outermost spawn (truthy scope) and on success only,
+    flush the deferred L1 buffer to durable storage — mirrors
+    ExecutionManager.spawn_walker so direct `walker spawn node` flows (tests,
+    `jac run`, CLI) persist without callers calling Jac.commit() manually.
+    Skipped on a nested spawn or on failure so partial state drops with L1.
+    """
+impl OspHost.on_spawn_complete(scope: object, succeeded: bool) -> None {
+    if (scope is not None) and succeeded {
+        JacRuntimeInterface.get_context().mem.commit();
+    }
+}
+
 """Jac's report stmt feature."""
 impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
-    ctx = JacRuntimeInterface.get_context();
     if custom {
-        ctx.custom = expr;
+        JacRuntimeInterface.get_context().custom = expr;
     } else {
         JacConsole.get_console().print(expr);
-        call_state = ctx.call_state.get(None);
-        if call_state {
-            call_state.reports.put_nowait(expr);
-        }
+        _osp_host.record_report(expr);
     }
 }
 
@@ -1773,6 +1802,17 @@ impl JacBasics.on_entry(func: Callable) -> Callable {
 impl JacBasics.on_exit(func: Callable) -> Callable {
     setattr(func, '__jac_exit', True);
     return func;
+}
+
+"""Stamp an ability with its compiler-known trigger type (a lazy thunk)."""
+impl JacBasics.set_trigger(
+    trigger_thunk: Callable
+) -> Callable[([Callable], Callable)] {
+    def deco(func: Callable) -> Callable {
+        setattr(func, '__jac_trigger__', trigger_thunk);
+        return func;
+    }
+    return deco;
 }
 
 """Get the client bundle builder instance."""

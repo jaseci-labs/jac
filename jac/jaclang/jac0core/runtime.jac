@@ -36,7 +36,8 @@ import from jaclang.jac0core.archetype {
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
-    Root
+    Root,
+    TriggerKind
 }
 import from jaclang.jac0core.constant { EdgeDir, colors }
 import from jaclang.jac0core.constructs {
@@ -219,6 +220,40 @@ class JacEdge {
     static def detach(`edge: EdgeAnchor) -> None;
 }
 
+"""Backend seam for object-spatial side effects.
+
+The traversal engine talks to this plain interface (a normal method call the
+native/JS backends can lower to a vtable dispatch) instead of reaching for
+sv-only machinery directly. The default instance below carries the server
+behavior — bridging to the ExecutionContext's `CallState`/contextvar — so sv is
+unchanged; native/client builds will supply a subclass with trivial impls.
+
+This first slice covers the report sink (the `report` statement and the
+spawn-boundary report collection); persistence/permission/identity move behind
+the same seam in later changes.
+"""
+obj OspHost {
+    """Record a `report` value in the current walk scope."""
+    def record_report(expr: any) -> None;
+
+    """Open a report scope at a spawn. Returns an opaque token if this spawn
+        owns the scope (outermost), else None."""
+    def open_walk_scope -> object;
+
+    """Close a report scope: when the token marks the outermost spawn, collect
+        the accumulated reports onto the walker and tear the scope down."""
+    def close_walk_scope(scope: object, warch: WalkerArchetype) -> None;
+
+    """Finalize persistence at the outermost spawn boundary (truthy scope), on
+        success only. Server: flush the L1 buffer via commit; native/client:
+        no-op."""
+    def on_spawn_complete(scope: object, succeeded: bool) -> None;
+}
+
+"""Active object-spatial host. Defaults to the server-backed behavior; a
+native/client build swaps in a subclass with no-op persistence."""
+glob _osp_host = OspHost();
+
 """Jac Edge Operations."""
 class JacWalker {
     """Jac's visit stmt feature."""
@@ -232,6 +267,11 @@ class JacWalker {
             ),
         insert_loc: int = -1
     ) -> bool;
+
+    """Classify an ability's trigger (location/walker/untyped), caching the
+        result on the ObjectSpatialFunction so dispatch avoids re-running
+        `all_issubclass` on every visited location."""
+    static def _trigger_kind(i: ObjectSpatialFunction) -> TriggerKind;
 
     """Execute all entry abilities for current location.
 
@@ -557,6 +597,18 @@ system,
 
     """Mark a method as jac exit with this decorator."""
     static def on_exit(func: Callable) -> Callable;
+
+    """Stamp an ability with its compiler-known trigger type.
+
+    Emitted by codegen for every `with <T> entry/exit` ability so the trigger
+    is carried as data rather than recovered at runtime via `inspect`. The
+    argument is a no-arg thunk (`lambda: <T>`) that resolves the trigger lazily
+    at first dispatch — deferring evaluation so forward-referenced types (e.g.
+    a node ability triggered by a walker defined later) resolve correctly. Read
+    by `make_archetype` into `ObjectSpatialFunction.trigger_override`."""
+    static def set_trigger(
+        trigger_thunk: Callable
+    ) -> Callable[([Callable], Callable)];
 }
 
 """Jac Client Bundle Operations - Generic interface for client bundling."""

@@ -17,518 +17,548 @@ impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
 
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+    _call_kind = classify_call(nd);
     # Handle method calls: obj.method(args)
-    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+    if _call_kind == CallKind.METHOD {
         return self._codegen_method_call(nd);
     }
     func_name = self._get_name(nd.target);
     if func_name is None {
         return None;
     }
-    # Handle print() specially
-    if func_name == "print" {
-        return self._emit_print(nd);
-    }
-    # Handle RC debug toggle builtins (zero-argument functions)
-    if func_name == "__rc_debug_enable" {
-        if self.rc_alloc_fn is None {
-            self._emit_rc_helpers();
+    # Builtin fast-paths fire only when the call actually resolves to a builtin.
+    # classify_call is shadow-aware, so a user symbol named e.g. `len` is
+    # FUNCTION and falls through to the free-function path below instead of
+    # being hijacked by the builtin handling.
+    if _call_kind == CallKind.BUILTIN {
+        # Handle print() specially
+        if func_name == "print" {
+            return self._emit_print(nd);
         }
-        en_fn = self.llvm_module.get_global("__rc_debug_enable");
-        self.builder.call(en_fn, []);
-        return None;
-    }
-    if func_name == "__rc_debug_disable" {
-        if self.rc_alloc_fn is None {
-            self._emit_rc_helpers();
-        }
-        dis_fn = self.llvm_module.get_global("__rc_debug_disable");
-        self.builder.call(dis_fn, []);
-        return None;
-    }
-    # GC on/off switch builtins
-    if func_name == "__rc_gc_disable" {
-        if self.rc_alloc_fn is None {
-            self._emit_rc_helpers();
-        }
-        self.builder.call(self.rc_gc_disable_fn, []);
-        return None;
-    }
-    if func_name == "__rc_gc_enable" {
-        if self.rc_alloc_fn is None {
-            self._emit_rc_helpers();
-        }
-        self.builder.call(self.rc_gc_enable_fn, []);
-        return None;
-    }
-    # __float_bits(d: float)->int64 / __bits_float(b: int64)->float: IEEE-754 bitcast intrinsics.
-    # Each compiles to a single LLVM bitcast (used by NaN-boxed JSValue helpers in jac-bun).
-    if func_name == "__float_bits" {
-        params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                if not isinstance(arg_val.type, ir.DoubleType) {
-                    arg_val = self._coerce_type(arg_val, ir.DoubleType());
-                }
-                return self.builder.bitcast(arg_val, ir.IntType(64), name="float_bits");
+        # Handle RC debug toggle builtins (zero-argument functions)
+        if func_name == "__rc_debug_enable" {
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
             }
+            en_fn = self.llvm_module.get_global("__rc_debug_enable");
+            self.builder.call(en_fn, []);
+            return None;
         }
-        return ir.Constant(ir.IntType(64), 0);
-    }
-    if func_name == "__bits_float" {
-        params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                if not isinstance(arg_val.type, ir.IntType) {
-                    arg_val = self._coerce_type(arg_val, ir.IntType(64));
-                } elif arg_val.type.width != 64 {
-                    arg_val = self._coerce_type(arg_val, ir.IntType(64));
-                }
-                return self.builder.bitcast(
-                    arg_val, ir.DoubleType(), name="bits_float"
-                );
+        if func_name == "__rc_debug_disable" {
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
             }
+            dis_fn = self.llvm_module.get_global("__rc_debug_disable");
+            self.builder.call(dis_fn, []);
+            return None;
         }
-        return ir.Constant(ir.DoubleType(), 0.0);
-    }
-    # Handle len() builtin for lists, dicts, sets, and strings
-    if func_name == "len" {
-        params_l = nd.params or [];
-        if params_l {
-            arg_name = self._get_name(params_l[0]);
-            elem_type_name: (str | None) = None;
-            if arg_name is not None and arg_name in self.var_list_elem_type {
-                elem_type_name = self.var_list_elem_type[arg_name];
+        # GC on/off switch builtins
+        if func_name == "__rc_gc_disable" {
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
             }
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                _len_result: (ir.Value | None) = None;
-                # Check for dict type first
-                if arg_name is not None and arg_name in self.var_dict_type {
-                    dict_key = self.var_dict_type[arg_name];
-                    helpers = self.dict_helpers.get(dict_key);
-                    if helpers is not None {
-                        _len_result = self.builder.call(
-                            helpers["len"], [arg_val], name="dict.len"
-                        );
+            self.builder.call(self.rc_gc_disable_fn, []);
+            return None;
+        }
+        if func_name == "__rc_gc_enable" {
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
+            }
+            self.builder.call(self.rc_gc_enable_fn, []);
+            return None;
+        }
+        # __float_bits(d: float)->int64 / __bits_float(b: int64)->float: IEEE-754 bitcast intrinsics.
+        # Each compiles to a single LLVM bitcast (used by NaN-boxed JSValue helpers in jac-bun).
+        if func_name == "__float_bits" {
+            params_l = nd.params or [];
+            if params_l {
+                arg_val = self._codegen_expr(params_l[0]);
+                if arg_val is not None {
+                    if not isinstance(arg_val.type, ir.DoubleType) {
+                        arg_val = self._coerce_type(arg_val, ir.DoubleType());
                     }
+                    return self.builder.bitcast(
+                        arg_val, ir.IntType(64), name="float_bits"
+                    );
                 }
-                # Check for dict type by inferring from value
-                if _len_result is None {
-                    for (dict_key, helpers) in self.dict_helpers.items() {
-                        dict_type = self.dict_types.get(dict_key);
-                        if dict_type is not None
-                        and arg_val.type == dict_type.as_pointer() {
+            }
+            return ir.Constant(ir.IntType(64), 0);
+        }
+        if func_name == "__bits_float" {
+            params_l = nd.params or [];
+            if params_l {
+                arg_val = self._codegen_expr(params_l[0]);
+                if arg_val is not None {
+                    if not isinstance(arg_val.type, ir.IntType) {
+                        arg_val = self._coerce_type(arg_val, ir.IntType(64));
+                    } elif arg_val.type.width != 64 {
+                        arg_val = self._coerce_type(arg_val, ir.IntType(64));
+                    }
+                    return self.builder.bitcast(
+                        arg_val, ir.DoubleType(), name="bits_float"
+                    );
+                }
+            }
+            return ir.Constant(ir.DoubleType(), 0.0);
+        }
+        # Handle len() builtin for lists, dicts, sets, and strings
+        if func_name == "len" {
+            params_l = nd.params or [];
+            if params_l {
+                arg_name = self._get_name(params_l[0]);
+                elem_type_name: (str | None) = None;
+                if arg_name is not None and arg_name in self.var_list_elem_type {
+                    elem_type_name = self.var_list_elem_type[arg_name];
+                }
+                arg_val = self._codegen_expr(params_l[0]);
+                if arg_val is not None {
+                    _len_result: (ir.Value | None) = None;
+                    # Check for dict type first
+                    if arg_name is not None and arg_name in self.var_dict_type {
+                        dict_key = self.var_dict_type[arg_name];
+                        helpers = self.dict_helpers.get(dict_key);
+                        if helpers is not None {
                             _len_result = self.builder.call(
                                 helpers["len"], [arg_val], name="dict.len"
                             );
-                            break;
                         }
                     }
-                }
-                # Check for set type
-                if _len_result is None
-                and arg_name is not None
-                and arg_name in self.var_set_elem_type {
-                    set_key = self.var_set_elem_type[arg_name];
-                    helpers = self.set_helpers.get(set_key);
-                    if helpers is not None {
-                        _len_result = self.builder.call(
-                            helpers["len"], [arg_val], name="set.len"
-                        );
+                    # Check for dict type by inferring from value
+                    if _len_result is None {
+                        for (dict_key, helpers) in self.dict_helpers.items() {
+                            dict_type = self.dict_types.get(dict_key);
+                            if dict_type is not None
+                            and arg_val.type == dict_type.as_pointer() {
+                                _len_result = self.builder.call(
+                                    helpers["len"], [arg_val], name="dict.len"
+                                );
+                                break;
+                            }
+                        }
                     }
-                }
-                # Check for set type by inferring from value
-                if _len_result is None {
-                    for (set_key, helpers) in self.set_helpers.items() {
-                        set_type = self.set_types.get(set_key);
-                        if set_type is not None
-                        and arg_val.type == set_type.as_pointer() {
+                    # Check for set type
+                    if _len_result is None
+                    and arg_name is not None
+                    and arg_name in self.var_set_elem_type {
+                        set_key = self.var_set_elem_type[arg_name];
+                        helpers = self.set_helpers.get(set_key);
+                        if helpers is not None {
                             _len_result = self.builder.call(
                                 helpers["len"], [arg_val], name="set.len"
                             );
-                            break;
                         }
                     }
-                }
-                # Check for list type
-                if _len_result is None {
-                    if elem_type_name is None {
-                        elem_type_name = self._infer_list_elem_type(arg_val);
-                    }
-                    if elem_type_name is not None {
-                        helpers = self.list_helpers.get(elem_type_name);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="list.len"
-                            );
+                    # Check for set type by inferring from value
+                    if _len_result is None {
+                        for (set_key, helpers) in self.set_helpers.items() {
+                            set_type = self.set_types.get(set_key);
+                            if set_type is not None
+                            and arg_val.type == set_type.as_pointer() {
+                                _len_result = self.builder.call(
+                                    helpers["len"], [arg_val], name="set.len"
+                                );
+                                break;
+                            }
                         }
                     }
-                }
-                # String len: call strlen
-                if _len_result is None and arg_val.type == ir.IntType(8).as_pointer() {
-                    strlen_fn = self._get_or_declare_extern(
-                        "strlen", ir.IntType(64), [ir.IntType(8).as_pointer()]
-                    );
-                    _len_result = self.builder.call(
-                        strlen_fn, [arg_val], name="str.len"
-                    );
-                }
-                if _len_result is not None {
-                    # len() borrows the arg; release if caller owns it (e.g. inline fstring)
-                    if isinstance(arg_val.type, ir.PointerType)
-                    and self._is_owned(arg_val) {
-                        self._emit_rc_release_simple(arg_val, op="len_arg", loc="");
+                    # Check for list type
+                    if _len_result is None {
+                        if elem_type_name is None {
+                            elem_type_name = self._infer_list_elem_type(arg_val);
+                        }
+                        if elem_type_name is not None {
+                            helpers = self.list_helpers.get(elem_type_name);
+                            if helpers is not None {
+                                _len_result = self.builder.call(
+                                    helpers["len"], [arg_val], name="list.len"
+                                );
+                            }
+                        }
                     }
-                    return _len_result;
+                    # String len: call strlen
+                    if _len_result is None
+                    and arg_val.type == ir.IntType(8).as_pointer() {
+                        strlen_fn = self._get_or_declare_extern(
+                            "strlen", ir.IntType(64), [ir.IntType(8).as_pointer()]
+                        );
+                        _len_result = self.builder.call(
+                            strlen_fn, [arg_val], name="str.len"
+                        );
+                    }
+                    if _len_result is not None {
+                        # len() borrows the arg; release if caller owns it (e.g. inline fstring)
+                        if isinstance(arg_val.type, ir.PointerType)
+                        and self._is_owned(arg_val) {
+                            self._emit_rc_release_simple(arg_val, op="len_arg", loc="");
+                        }
+                        return _len_result;
+                    }
                 }
             }
         }
-    }
-    # Handle complex() constructor: complex(real, imag) -> JacComplex*
-    if func_name == "complex" {
-        params_l = nd.params or [];
-        if len(params_l) >= 2 {
-            real_val = self._codegen_expr(params_l[0]);
-            imag_val = self._codegen_expr(params_l[1]);
-            if real_val is not None and imag_val is not None {
-                f64 = ir.DoubleType();
-                i64 = ir.IntType(64);
-                real_f = self._coerce_type(real_val, f64)
-                    if not isinstance(real_val.type, ir.DoubleType)
-                    else real_val;
-                imag_f = self._coerce_type(imag_val, f64)
-                    if not isinstance(imag_val.type, ir.DoubleType)
-                    else imag_val;
-                ctype = self.complex_struct_type;
+        # Handle complex() constructor: complex(real, imag) -> JacComplex*
+        if func_name == "complex" {
+            params_l = nd.params or [];
+            if len(params_l) >= 2 {
+                real_val = self._codegen_expr(params_l[0]);
+                imag_val = self._codegen_expr(params_l[1]);
+                if real_val is not None and imag_val is not None {
+                    f64 = ir.DoubleType();
+                    i64 = ir.IntType(64);
+                    real_f = self._coerce_type(real_val, f64)
+                        if not isinstance(real_val.type, ir.DoubleType)
+                        else real_val;
+                    imag_f = self._coerce_type(imag_val, f64)
+                        if not isinstance(imag_val.type, ir.DoubleType)
+                        else imag_val;
+                    ctype = self.complex_struct_type;
+                    raw = self.builder.call(
+                        self.rc_alloc_fn, [ir.Constant(i64, 16)], name="complex.raw"
+                    );
+                    ptr = self.builder.bitcast(
+                        raw, ctype.as_pointer(), name="complex.ptr"
+                    );
+                    rp = self.builder.gep(
+                        ptr,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), 0)
+                        ],
+                        name="complex.re.ptr"
+                    );
+                    ip = self.builder.gep(
+                        ptr,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), 1)
+                        ],
+                        name="complex.im.ptr"
+                    );
+                    self.builder.store(real_f, rp);
+                    self.builder.store(imag_f, ip);
+                    return ptr;
+                }
+            }
+        }
+        # Handle range() constructor: range(stop), range(start,stop), range(start,stop,step)
+        if func_name == "range" {
+            params_l = nd.params or [];
+            i64 = ir.IntType(64);
+            i32 = ir.IntType(32);
+            start_v: (ir.Value | None) = None;
+            stop_v: (ir.Value | None) = None;
+            step_v: (ir.Value | None) = None;
+            if len(params_l) == 1 {
+                start_v = ir.Constant(i64, 0);
+                stop_v = self._codegen_expr(params_l[0]);
+                step_v = ir.Constant(i64, 1);
+            } elif len(params_l) == 2 {
+                start_v = self._codegen_expr(params_l[0]);
+                stop_v = self._codegen_expr(params_l[1]);
+                step_v = ir.Constant(i64, 1);
+            } elif len(params_l) >= 3 {
+                start_v = self._codegen_expr(params_l[0]);
+                stop_v = self._codegen_expr(params_l[1]);
+                step_v = self._codegen_expr(params_l[2]);
+            }
+            if start_v is not None and stop_v is not None and step_v is not None {
+                start_v = self._coerce_type(start_v, i64);
+                stop_v = self._coerce_type(stop_v, i64);
+                step_v = self._coerce_type(step_v, i64);
+                rtype = self.range_struct_type;
                 raw = self.builder.call(
-                    self.rc_alloc_fn, [ir.Constant(i64, 16)], name="complex.raw"
+                    self.rc_alloc_fn, [ir.Constant(i64, 24)], name="range.raw"
                 );
-                ptr = self.builder.bitcast(raw, ctype.as_pointer(), name="complex.ptr");
-                rp = self.builder.gep(
-                    ptr,
-                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
-                    name="complex.re.ptr"
+                ptr = self.builder.bitcast(raw, rtype.as_pointer(), name="range.ptr");
+                z0 = ir.Constant(i32, 0);
+                self.builder.store(
+                    start_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="range.sp")
                 );
-                ip = self.builder.gep(
-                    ptr,
-                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
-                    name="complex.im.ptr"
+                self.builder.store(
+                    stop_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="range.ep")
                 );
-                self.builder.store(real_f, rp);
-                self.builder.store(imag_f, ip);
+                self.builder.store(
+                    step_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="range.tp")
+                );
                 return ptr;
             }
         }
-    }
-    # Handle range() constructor: range(stop), range(start,stop), range(start,stop,step)
-    if func_name == "range" {
-        params_l = nd.params or [];
-        i64 = ir.IntType(64);
-        i32 = ir.IntType(32);
-        start_v: (ir.Value | None) = None;
-        stop_v: (ir.Value | None) = None;
-        step_v: (ir.Value | None) = None;
-        if len(params_l) == 1 {
-            start_v = ir.Constant(i64, 0);
-            stop_v = self._codegen_expr(params_l[0]);
-            step_v = ir.Constant(i64, 1);
-        } elif len(params_l) == 2 {
-            start_v = self._codegen_expr(params_l[0]);
-            stop_v = self._codegen_expr(params_l[1]);
-            step_v = ir.Constant(i64, 1);
-        } elif len(params_l) >= 3 {
-            start_v = self._codegen_expr(params_l[0]);
-            stop_v = self._codegen_expr(params_l[1]);
-            step_v = self._codegen_expr(params_l[2]);
-        }
-        if start_v is not None and stop_v is not None and step_v is not None {
-            start_v = self._coerce_type(start_v, i64);
-            stop_v = self._coerce_type(stop_v, i64);
-            step_v = self._coerce_type(step_v, i64);
-            rtype = self.range_struct_type;
-            raw = self.builder.call(
-                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="range.raw"
-            );
-            ptr = self.builder.bitcast(raw, rtype.as_pointer(), name="range.ptr");
-            z0 = ir.Constant(i32, 0);
-            self.builder.store(
-                start_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="range.sp")
-            );
-            self.builder.store(
-                stop_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="range.ep")
-            );
-            self.builder.store(
-                step_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="range.tp")
-            );
-            return ptr;
-        }
-    }
-    # Handle slice() constructor: slice(stop), slice(start,stop), slice(start,stop,step)
-    if func_name == "slice" {
-        params_l = nd.params or [];
-        i64 = ir.IntType(64);
-        i32 = ir.IntType(32);
-        start_v: (ir.Value | None) = None;
-        stop_v: (ir.Value | None) = None;
-        step_v: (ir.Value | None) = None;
-        if len(params_l) == 1 {
-            start_v = ir.Constant(i64, 0);
-            stop_v = self._codegen_expr(params_l[0]);
-            step_v = ir.Constant(i64, 1);
-        } elif len(params_l) == 2 {
-            start_v = self._codegen_expr(params_l[0]);
-            stop_v = self._codegen_expr(params_l[1]);
-            step_v = ir.Constant(i64, 1);
-        } elif len(params_l) >= 3 {
-            start_v = self._codegen_expr(params_l[0]);
-            stop_v = self._codegen_expr(params_l[1]);
-            step_v = self._codegen_expr(params_l[2]);
-        }
-        if start_v is not None and stop_v is not None and step_v is not None {
-            start_v = self._coerce_type(start_v, i64);
-            stop_v = self._coerce_type(stop_v, i64);
-            step_v = self._coerce_type(step_v, i64);
-            stype = self.slice_struct_type;
-            raw = self.builder.call(
-                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="slice.raw"
-            );
-            ptr = self.builder.bitcast(raw, stype.as_pointer(), name="slice.ptr");
-            z0 = ir.Constant(i32, 0);
-            self.builder.store(
-                start_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="slice.sp")
-            );
-            self.builder.store(
-                stop_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="slice.ep")
-            );
-            self.builder.store(
-                step_v,
-                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="slice.tp")
-            );
-            return ptr;
-        }
-    }
-    # Handle multi-arg builtins via emitter dispatch
-    if func_name in (
-        "abs",
-        "min",
-        "max",
-        "pow",
-        "divmod",
-        "sum",
-        "any",
-        "all",
-        "format"
-    ) {
-        params_l = nd.params or [];
-        arg_vals: list[ir.Value] = [];
-        for param in params_l {
-            v = self._codegen_expr(param);
-            if v is not None {
-                arg_vals.append(v);
+        # Handle slice() constructor: slice(stop), slice(start,stop), slice(start,stop,step)
+        if func_name == "slice" {
+            params_l = nd.params or [];
+            i64 = ir.IntType(64);
+            i32 = ir.IntType(32);
+            start_v: (ir.Value | None) = None;
+            stop_v: (ir.Value | None) = None;
+            step_v: (ir.Value | None) = None;
+            if len(params_l) == 1 {
+                start_v = ir.Constant(i64, 0);
+                stop_v = self._codegen_expr(params_l[0]);
+                step_v = ir.Constant(i64, 1);
+            } elif len(params_l) == 2 {
+                start_v = self._codegen_expr(params_l[0]);
+                stop_v = self._codegen_expr(params_l[1]);
+                step_v = ir.Constant(i64, 1);
+            } elif len(params_l) >= 3 {
+                start_v = self._codegen_expr(params_l[0]);
+                stop_v = self._codegen_expr(params_l[1]);
+                step_v = self._codegen_expr(params_l[2]);
+            }
+            if start_v is not None and stop_v is not None and step_v is not None {
+                start_v = self._coerce_type(start_v, i64);
+                stop_v = self._coerce_type(stop_v, i64);
+                step_v = self._coerce_type(step_v, i64);
+                stype = self.slice_struct_type;
+                raw = self.builder.call(
+                    self.rc_alloc_fn, [ir.Constant(i64, 24)], name="slice.raw"
+                );
+                ptr = self.builder.bitcast(raw, stype.as_pointer(), name="slice.ptr");
+                z0 = ir.Constant(i32, 0);
+                self.builder.store(
+                    start_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="slice.sp")
+                );
+                self.builder.store(
+                    stop_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="slice.ep")
+                );
+                self.builder.store(
+                    step_v,
+                    self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="slice.tp")
+                );
+                return ptr;
             }
         }
-        if arg_vals {
-            result = self._dispatch_builtin(func_name, arg_vals);
-            # dispatch borrows each arg; release any owned temporaries (e.g. fstrings)
-            for _barg in arg_vals {
-                if isinstance(_barg.type, ir.PointerType) and self._is_owned(_barg) {
-                    self._emit_rc_release_simple(_barg, op="builtin_arg", loc="");
+        # Handle multi-arg builtins via emitter dispatch
+        if func_name in (
+            "abs",
+            "min",
+            "max",
+            "pow",
+            "divmod",
+            "sum",
+            "any",
+            "all",
+            "format"
+        ) {
+            params_l = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params_l {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
             }
-            if result is not None {
-                return result;
-            }
-        }
-    }
-    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
-    if func_name in (
-        "ord",
-        "int",
-        "chr",
-        "str",
-        "hex",
-        "oct",
-        "bin",
-        "round",
-        "float",
-        "bool",
-        "sorted",
-        "reversed",
-        "list",
-        "set",
-        "frozenset",
-        "dict",
-        "bytes",
-        "bytearray",
-        "id",
-        "hash",
-        "repr",
-        "ascii"
-    ) {
-        params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                result = self._dispatch_builtin(func_name, [arg_val]);
-                # dispatch borrows the arg; release if caller owns it (e.g. fstring)
-                if isinstance(arg_val.type, ir.PointerType)
-                and self._is_owned(arg_val) {
-                    self._emit_rc_release_simple(arg_val, op="builtin1_arg", loc="");
+            if arg_vals {
+                result = self._dispatch_builtin(func_name, arg_vals);
+                # dispatch borrows each arg; release any owned temporaries (e.g. fstrings)
+                for _barg in arg_vals {
+                    if isinstance(_barg.type, ir.PointerType)
+                    and self._is_owned(_barg) {
+                        self._emit_rc_release_simple(_barg, op="builtin_arg", loc="");
+                    }
                 }
                 if result is not None {
                     return result;
                 }
             }
         }
-    }
-    # Handle input() builtin: printf prompt, fgets from stdin
-    if func_name == "input" {
-        i8p = ir.IntType(8).as_pointer();
-        params_l = nd.params or [];
-        # Print prompt if provided
-        if params_l {
-            prompt_val = self._codegen_expr(params_l[0]);
-            if prompt_val is not None {
-                _prompt_orig = prompt_val;
-                printf = self._get_printf();
-                fmt = self._get_fmt_string("%s");
-                fmt_ptr = self.builder.bitcast(fmt, i8p, name="fmt.ptr");
-                # Ensure prompt is i8* (bitcast if needed)
-                if isinstance(prompt_val.type, ir.PointerType)
-                and prompt_val.type != i8p {
-                    prompt_val = self.builder.bitcast(
-                        prompt_val, i8p, name="prompt.cast"
-                    );
-                }
-                self.builder.call(printf, [fmt_ptr, prompt_val]);
-                # printf borrows the prompt; release if we own it (e.g. fstring result)
-                if isinstance(_prompt_orig.type, ir.PointerType)
-                and self._is_owned(_prompt_orig) {
-                    self._emit_rc_release_simple(
-                        _prompt_orig, op="input_prompt", loc=""
-                    );
+        # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
+        if func_name in (
+            "ord",
+            "int",
+            "chr",
+            "str",
+            "hex",
+            "oct",
+            "bin",
+            "round",
+            "float",
+            "bool",
+            "sorted",
+            "reversed",
+            "list",
+            "set",
+            "frozenset",
+            "dict",
+            "bytes",
+            "bytearray",
+            "id",
+            "hash",
+            "repr",
+            "ascii"
+        ) {
+            params_l = nd.params or [];
+            if params_l {
+                arg_val = self._codegen_expr(params_l[0]);
+                if arg_val is not None {
+                    result = self._dispatch_builtin(func_name, [arg_val]);
+                    # dispatch borrows the arg; release if caller owns it (e.g. fstring)
+                    if isinstance(arg_val.type, ir.PointerType)
+                    and self._is_owned(arg_val) {
+                        self._emit_rc_release_simple(
+                            arg_val, op="builtin1_arg", loc=""
+                        );
+                    }
+                    if result is not None {
+                        return result;
+                    }
                 }
             }
         }
-        # Allocate buffer, call fgets
-        buf_size = 256;
-        buf_type = ir.ArrayType(ir.IntType(8), buf_size);
-        buf = self.builder.alloca(buf_type, name="input.buf");
-        buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
-        # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
-        # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
-        import platform;
-        stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
-        if stdin_name not in self.extern_funcs {
-            stdin_type = i8p;
-            stdin_global = ir.GlobalVariable(
-                self.llvm_module, stdin_type, name=stdin_name
+        # Handle input() builtin: printf prompt, fgets from stdin
+        if func_name == "input" {
+            i8p = ir.IntType(8).as_pointer();
+            params_l = nd.params or [];
+            # Print prompt if provided
+            if params_l {
+                prompt_val = self._codegen_expr(params_l[0]);
+                if prompt_val is not None {
+                    _prompt_orig = prompt_val;
+                    printf = self._get_printf();
+                    fmt = self._get_fmt_string("%s");
+                    fmt_ptr = self.builder.bitcast(fmt, i8p, name="fmt.ptr");
+                    # Ensure prompt is i8* (bitcast if needed)
+                    if isinstance(prompt_val.type, ir.PointerType)
+                    and prompt_val.type != i8p {
+                        prompt_val = self.builder.bitcast(
+                            prompt_val, i8p, name="prompt.cast"
+                        );
+                    }
+                    self.builder.call(printf, [fmt_ptr, prompt_val]);
+                    # printf borrows the prompt; release if we own it (e.g. fstring result)
+                    if isinstance(_prompt_orig.type, ir.PointerType)
+                    and self._is_owned(_prompt_orig) {
+                        self._emit_rc_release_simple(
+                            _prompt_orig, op="input_prompt", loc=""
+                        );
+                    }
+                }
+            }
+            # Allocate buffer, call fgets
+            buf_size = 256;
+            buf_type = ir.ArrayType(ir.IntType(8), buf_size);
+            buf = self.builder.alloca(buf_type, name="input.buf");
+            buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
+            # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
+            # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
+            import platform;
+            stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
+            if stdin_name not in self.extern_funcs {
+                stdin_type = i8p;
+                stdin_global = ir.GlobalVariable(
+                    self.llvm_module, stdin_type, name=stdin_name
+                );
+                stdin_global.linkage = "external";
+                self.extern_funcs[stdin_name] = stdin_global;
+            }
+            stdin_var = self.extern_funcs[stdin_name];
+            stdin_val = self.builder.load(stdin_var, name="stdin.val");
+            fgets = self._get_or_declare_extern(
+                "fgets", i8p, [i8p, ir.IntType(32), i8p]
             );
-            stdin_global.linkage = "external";
-            self.extern_funcs[stdin_name] = stdin_global;
+            size_val = ir.Constant(ir.IntType(32), buf_size);
+            fgets_ret = self.builder.call(
+                fgets, [buf_ptr, size_val, stdin_val], name="fgets.result"
+            );
+            # Check for EOF (fgets returns NULL)
+            func = self.builder.function;
+            eof_bb = func.append_basic_block(name="input.eof");
+            ok_bb = func.append_basic_block(name="input.ok");
+            merge_bb = func.append_basic_block(name="input.merge");
+            null_ptr = ir.Constant(i8p, None);
+            is_eof = self.builder.icmp_signed("==", fgets_ret, null_ptr, name="is.eof");
+            self.builder.cbranch(is_eof, eof_bb, ok_bb);
+            # EOF path: return empty string
+            self.builder.position_at_start(eof_bb);
+            eof_str = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
+            );
+            self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
+            self.builder.branch(merge_bb);
+            eof_bb_end = self.builder.block;
+            # OK path: process input normally
+            self.builder.position_at_start(ok_bb);
+            # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
+            strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
+            slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
+            # Copy to RC-managed string
+            alloc_size = self.builder.add(
+                slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
+            );
+            result_ptr = self.builder.call(
+                self.rc_alloc_fn, [alloc_size], name="input.result"
+            );
+            memcpy = self._get_or_declare_extern(
+                "memcpy", i8p, [i8p, i8p, ir.IntType(64)]
+            );
+            self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
+            # Strip trailing newline if present (only if slen > 0)
+            has_len = self.builder.icmp_signed(
+                ">", slen, ir.Constant(ir.IntType(64), 0), name="has.len"
+            );
+            strip_bb = func.append_basic_block(name="input.strip");
+            nostrip_bb = func.append_basic_block(name="input.nostrip");
+            self.builder.cbranch(has_len, strip_bb, nostrip_bb);
+            self.builder.position_at_start(strip_bb);
+            last_idx = self.builder.sub(
+                slen, ir.Constant(ir.IntType(64), 1), name="last.idx"
+            );
+            last_ptr = self.builder.gep(result_ptr, [last_idx], name="last.ptr");
+            last_byte = self.builder.load(last_ptr, name="last.byte");
+            is_newline = self.builder.icmp_signed(
+                "==", last_byte, ir.Constant(ir.IntType(8), 10), name="is.nl"
+            );
+            # Conditionally null-terminate at newline position
+            null_byte = ir.Constant(ir.IntType(8), 0);
+            store_val = self.builder.select(
+                is_newline, null_byte, last_byte, name="strip.nl"
+            );
+            self.builder.store(store_val, last_ptr);
+            # Also strip \r if present (for \r\n line endings in WSL2/Windows)
+            strip_cr_bb = func.append_basic_block(name="input.strip.cr");
+            self.builder.cbranch(is_newline, strip_cr_bb, nostrip_bb);
+            self.builder.position_at_start(strip_cr_bb);
+            # Check if slen >= 2 (need at least 2 chars for \r\n)
+            has_cr_len = self.builder.icmp_signed(
+                ">=", slen, ir.Constant(ir.IntType(64), 2), name="has.cr.len"
+            );
+            strip_cr_check_bb = func.append_basic_block(name="input.strip.cr.check");
+            self.builder.cbranch(has_cr_len, strip_cr_check_bb, nostrip_bb);
+            self.builder.position_at_start(strip_cr_check_bb);
+            # Check if char at slen-2 is \r (13)
+            cr_idx = self.builder.sub(
+                slen, ir.Constant(ir.IntType(64), 2), name="cr.idx"
+            );
+            cr_ptr = self.builder.gep(result_ptr, [cr_idx], name="cr.ptr");
+            cr_byte = self.builder.load(cr_ptr, name="cr.byte");
+            is_cr = self.builder.icmp_signed(
+                "==", cr_byte, ir.Constant(ir.IntType(8), 13), name="is.cr"
+            );
+            # Conditionally null-terminate at CR position
+            store_cr_val = self.builder.select(
+                is_cr, null_byte, cr_byte, name="strip.cr"
+            );
+            self.builder.store(store_cr_val, cr_ptr);
+            self.builder.branch(nostrip_bb);
+            self.builder.position_at_start(nostrip_bb);
+            self.builder.branch(merge_bb);
+            ok_bb_end = self.builder.block;
+            # Merge: phi for result
+            self.builder.position_at_start(merge_bb);
+            phi = self.builder.phi(i8p, name="input.phi");
+            phi.add_incoming(eof_str, eof_bb_end);
+            phi.add_incoming(result_ptr, ok_bb_end);
+            return phi;
         }
-        stdin_var = self.extern_funcs[stdin_name];
-        stdin_val = self.builder.load(stdin_var, name="stdin.val");
-        fgets = self._get_or_declare_extern("fgets", i8p, [i8p, ir.IntType(32), i8p]);
-        size_val = ir.Constant(ir.IntType(32), buf_size);
-        fgets_ret = self.builder.call(
-            fgets, [buf_ptr, size_val, stdin_val], name="fgets.result"
-        );
-        # Check for EOF (fgets returns NULL)
-        func = self.builder.function;
-        eof_bb = func.append_basic_block(name="input.eof");
-        ok_bb = func.append_basic_block(name="input.ok");
-        merge_bb = func.append_basic_block(name="input.merge");
-        null_ptr = ir.Constant(i8p, None);
-        is_eof = self.builder.icmp_signed("==", fgets_ret, null_ptr, name="is.eof");
-        self.builder.cbranch(is_eof, eof_bb, ok_bb);
-        # EOF path: return empty string
-        self.builder.position_at_start(eof_bb);
-        eof_str = self.builder.call(
-            self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
-        );
-        self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
-        self.builder.branch(merge_bb);
-        eof_bb_end = self.builder.block;
-        # OK path: process input normally
-        self.builder.position_at_start(ok_bb);
-        # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
-        strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
-        slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
-        # Copy to RC-managed string
-        alloc_size = self.builder.add(
-            slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
-        );
-        result_ptr = self.builder.call(
-            self.rc_alloc_fn, [alloc_size], name="input.result"
-        );
-        memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
-        self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
-        # Strip trailing newline if present (only if slen > 0)
-        has_len = self.builder.icmp_signed(
-            ">", slen, ir.Constant(ir.IntType(64), 0), name="has.len"
-        );
-        strip_bb = func.append_basic_block(name="input.strip");
-        nostrip_bb = func.append_basic_block(name="input.nostrip");
-        self.builder.cbranch(has_len, strip_bb, nostrip_bb);
-        self.builder.position_at_start(strip_bb);
-        last_idx = self.builder.sub(
-            slen, ir.Constant(ir.IntType(64), 1), name="last.idx"
-        );
-        last_ptr = self.builder.gep(result_ptr, [last_idx], name="last.ptr");
-        last_byte = self.builder.load(last_ptr, name="last.byte");
-        is_newline = self.builder.icmp_signed(
-            "==", last_byte, ir.Constant(ir.IntType(8), 10), name="is.nl"
-        );
-        # Conditionally null-terminate at newline position
-        null_byte = ir.Constant(ir.IntType(8), 0);
-        store_val = self.builder.select(
-            is_newline, null_byte, last_byte, name="strip.nl"
-        );
-        self.builder.store(store_val, last_ptr);
-        # Also strip \r if present (for \r\n line endings in WSL2/Windows)
-        strip_cr_bb = func.append_basic_block(name="input.strip.cr");
-        self.builder.cbranch(is_newline, strip_cr_bb, nostrip_bb);
-        self.builder.position_at_start(strip_cr_bb);
-        # Check if slen >= 2 (need at least 2 chars for \r\n)
-        has_cr_len = self.builder.icmp_signed(
-            ">=", slen, ir.Constant(ir.IntType(64), 2), name="has.cr.len"
-        );
-        strip_cr_check_bb = func.append_basic_block(name="input.strip.cr.check");
-        self.builder.cbranch(has_cr_len, strip_cr_check_bb, nostrip_bb);
-        self.builder.position_at_start(strip_cr_check_bb);
-        # Check if char at slen-2 is \r (13)
-        cr_idx = self.builder.sub(slen, ir.Constant(ir.IntType(64), 2), name="cr.idx");
-        cr_ptr = self.builder.gep(result_ptr, [cr_idx], name="cr.ptr");
-        cr_byte = self.builder.load(cr_ptr, name="cr.byte");
-        is_cr = self.builder.icmp_signed(
-            "==", cr_byte, ir.Constant(ir.IntType(8), 13), name="is.cr"
-        );
-        # Conditionally null-terminate at CR position
-        store_cr_val = self.builder.select(is_cr, null_byte, cr_byte, name="strip.cr");
-        self.builder.store(store_cr_val, cr_ptr);
-        self.builder.branch(nostrip_bb);
-        self.builder.position_at_start(nostrip_bb);
-        self.builder.branch(merge_bb);
-        ok_bb_end = self.builder.block;
-        # Merge: phi for result
-        self.builder.position_at_start(merge_bb);
-        phi = self.builder.phi(i8p, name="input.phi");
-        phi.add_incoming(eof_str, eof_bb_end);
-        phi.add_incoming(result_ptr, ok_bb_end);
-        return phi;
-    }
-    # Handle open() builtin for file I/O
-    if func_name == "open" {
-        return self._emit_open(nd);
+        # Handle open() builtin for file I/O
+        if func_name == "open" {
+            return self._emit_open(nd);
+        }
     }
     # Handle object instantiation: ClassName(args)
     if func_name in self.struct_types {
