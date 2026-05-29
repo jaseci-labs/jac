@@ -388,10 +388,8 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         );
         enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     }
-    # Resolve metaclass following Python's MRO: explicit metaclass= wins;
-    # otherwise inherit from the most-derived metaclass among base classes.
-    # This mirrors _PyType_CalculateMetaclass so that e.g. Color(Enum) gets
-    # EnumMeta even though Color itself doesn't declare metaclass=EnumMeta.
+    # Resolve metaclass: explicit metaclass= wins, else inherit from base classes
+    # (e.g. Color(Enum) gets EnumMeta even though Color doesn't declare it).
     metaclass: types.ClassType | None = None;
     if node_.metaclass_expr is not None {
         meta_type = self.get_type_of_expression(node_.metaclass_expr);

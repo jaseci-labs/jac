@@ -2742,8 +2742,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     kid.append(name);
     kid.extend(base_classes);
-    # metaclass_expr is evaluated in the enclosing scope (same as base_classes),
-    # so attach it to kid here so symbol-resolution passes visit and bind it.
+    # Add to kid so symbol-resolution visits and binds the metaclass name.
     if metaclass_expr is not None {
         kid.append(metaclass_expr);
     }
