@@ -5033,7 +5033,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
         if stmt.gen.es_ast {
-            if getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT {
+            is_shared_arch = (
+                isinstance(stmt, uni.Archetype)
+                and (stmt.name is not None)
+                and (stmt.name.value in self.shared_arch_names)
+            );
+            if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
+            or is_shared_arch {
                 client_items.append(cast(es.Statement, stmt.gen.es_ast));
             } else {
                 ;
@@ -5554,7 +5560,18 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Allow a shared module-level archetype referenced by client code to
+        # reach exit_archetype so its JS class is emitted (mirrors enter_node).
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             return;
         }
     }
@@ -5590,7 +5607,18 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Don't prune a shared module-level archetype referenced by client code:
+        # it must reach exit_archetype to emit its JS class.
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             self.prune();
             return;
         }
@@ -5632,6 +5660,18 @@ impl EsastGenPass.before_pass -> None {
     self.client_manifest.endpoint_effects = dict(
         self.ir_in.gen.interop_manifest.endpoint_effects
     );
+    # Module-level (shared) archetypes referenced by client code. They live in
+    # SERVER context (their default) but client code uses them, so they must be
+    # emitted as JS classes rather than pruned/filtered out -- the same sharing
+    # rule the native backend applies via ModuleCodegenPass.
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    self.shared_arch_names: set[str] = {
+        a.name.value
+        for a in ModuleCodegenPass.shared_archetypes_for_context(
+            self.ir_in, CodeContext.CLIENT
+        )
+        if a.name is not None
+    };
     self.jsx_processor = EsJsxProcessor(self);
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and
