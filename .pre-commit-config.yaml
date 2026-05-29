@@ -65,7 +65,8 @@ repos:
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$
+              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
+              ^jac/examples/littleX/assets/littlex-logo\.png$
           )
 
       - id: validate-fragments
@@ -85,7 +86,7 @@ repos:
       - id: no-ai-coauthor
         name: Block AI co-author attribution
         language: pygrep
-        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'
+        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|composer|cursor|gpt|gemini|ai|bot)\b'
         stages: [commit-msg]
 
       - id: check-release-notes

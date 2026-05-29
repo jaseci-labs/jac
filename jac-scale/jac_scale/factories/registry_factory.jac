@@ -3,11 +3,11 @@
 Supports both built-in registries (dockerhub) and plugin-registered registries.
 External packages can register custom registries via ImageRegistryFactory.register().
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 
 """Type alias for registry factory callables.""" type RegistryFactory = Callable[
-    [dict[str, Any]],
+    [dict[str, any]],
     ImageRegistry
 ];
 
@@ -53,7 +53,7 @@ class ImageRegistryFactory {
         ValueError: If registry_type is not supported
         NotImplementedError: If registry is not yet implemented
     """
-    static def create(registry_type: str, config: dict[str, Any]) -> ImageRegistry {
+    static def create(registry_type: str, config: dict[str, any]) -> ImageRegistry {
         # Check plugin registry first
         if registry_type in ImageRegistryFactory._registry {
             factory = ImageRegistryFactory._registry[registry_type];

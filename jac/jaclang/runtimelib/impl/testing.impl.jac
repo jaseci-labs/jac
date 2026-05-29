@@ -5,14 +5,13 @@ import json;
 import re;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
-import from typing { Any }
 import from urllib.parse { urlencode, urlparse }
 
 import from jaclang { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer }
 
 """Parse response body as JSON."""
-impl TestResponse.json -> dict[str, Any] {
+impl TestResponse.json -> dict[str, any] {
     if self._json_cache is None {
         try {
             self._json_cache = json.loads(self.text);
@@ -24,12 +23,12 @@ impl TestResponse.json -> dict[str, Any] {
 }
 
 """Check if response indicates success."""
-impl TestResponse.ok -> bool {
+impl TestResponse.ok.getter -> bool {
     return 200 <= self.status_code < 300;
 }
 
 """Get data from response, handling TransportResponse envelope."""
-impl TestResponse.data -> (dict[str, Any] | None) {
+impl TestResponse.data.getter -> (dict[str, any] | None) {
     response_json = self.json();
     # Handle TransportResponse envelope format
     if "data" in response_json {
@@ -64,8 +63,16 @@ impl JacTestClient._ensure_initialized -> None {
     }
     # Set base path for isolated storage
     Jac.set_base_path(self._base_path);
-    # Create execution context
-    mach = Jac.create_j_context(user_root=None);
+    # Create execution context with this client's OWN base_path + target.
+    # Passing them explicitly is what isolates one in-process client from
+    # another: if a prior client (or CLI command) left a bootstrap seed
+    # pointing at a different app, the new ctx would otherwise inherit
+    # that stale identity and `allroots()` / L3 file routing would mix
+    # across clients. See test_context_isolation for the contract this
+    # pins.
+    mach = Jac.create_j_context(
+        user_root=None, base_path_dir=self._base_path, full_target_path=self._jac_file
+    );
     Jac.set_context(mach);
     # Load the Jac module
     Jac.jac_import(target=mod, base_path=base, lng="jac");
@@ -80,7 +87,7 @@ impl JacTestClient._ensure_initialized -> None {
 """Make a GET request."""
 impl JacTestClient.get(
     path: str,
-    params: (dict[str, Any] | None) = None,
+    params: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("GET", path, params=params, headers=headers);
@@ -89,7 +96,7 @@ impl JacTestClient.get(
 """Make a POST request with JSON body."""
 impl JacTestClient.post(
     path: str,
-    json: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("POST", path, json=json, headers=headers);
@@ -98,7 +105,7 @@ impl JacTestClient.post(
 """Make a PUT request with JSON body."""
 impl JacTestClient.put(
     path: str,
-    json: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("PUT", path, json=json, headers=headers);
@@ -108,8 +115,8 @@ impl JacTestClient.put(
 impl JacTestClient.request(
     method: str,
     path: str,
-    json: (dict[str, Any] | None) = None,
-    params: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
+    params: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     import json as json_mod;
@@ -229,7 +236,7 @@ impl JacTestClient._execute_request(
             mock_self.requestline = f"{method} {path} HTTP/1.1";
         }
 
-        def log_message(mock_self: MockHandler, format: str, *args: Any) {
+        def log_message(mock_self: MockHandler, format: str, *args: any) {
             # Suppress logging during tests
             ;
         }
@@ -275,13 +282,13 @@ impl JacTestClient._parse_response(raw_response: bytes) -> TestResponse {
 }
 
 """Get the underlying server instance."""
-impl JacTestClient.server -> JacAPIServer {
+impl JacTestClient.server.getter -> JacAPIServer {
     self._ensure_initialized();
     return self._server;
 }
 
 """Get the user manager."""
-impl JacTestClient.user_manager -> Any {
+impl JacTestClient.user_manager.getter -> any {
     self._ensure_initialized();
     return self._server.user_manager;
 }
@@ -305,7 +312,7 @@ impl JacTestClient.reload -> None {
         class MockWatcher {
             has additional_patterns: list[str] = [];
 
-            def add_callback(cb: Any) { }
+            def add_callback(cb: any) { }
             def start { }
             def stop { }
         }

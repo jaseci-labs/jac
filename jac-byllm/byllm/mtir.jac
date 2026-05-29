@@ -30,10 +30,7 @@ obj MTIR {
         call_params: dict[(str, object)],
         ir_info: Info;
 
-    @property
-    def runtime -> MTRuntime {
-        return MTRuntime.factory(self);
-    }
+    has runtime: MTRuntime { getter; }
 }
 
 """Runtime context for LLM interactions.
@@ -52,7 +49,12 @@ obj MTRuntime {
         _scaffolding_ids: list[int] = [],
         # Caller's list bound via `by llm(conversation=<list>)`, written
         # back in place after the ReAct loop. None when not conversational.
-        _conversation_list: object = None;
+        _conversation_list: object = None,
+        # Structured final value captured during a streamed ReAct loop so a
+        # handler-driven invoke can return the parsed result after the event
+        # stream is fully consumed.
+        _final_output: object = None,
+        _has_final_output: bool = False;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def dispatch_params -> dict[str, object];

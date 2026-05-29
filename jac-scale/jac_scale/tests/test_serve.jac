@@ -22,7 +22,6 @@ import pytest;
 import jwt as pyjwt;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from typing { Any }
 import from jac_scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
@@ -33,7 +32,7 @@ import from jac_scale.tests.scale_test_client {
 # HELPER FUNCTIONS
 # =============================================================================
 """Build identity-based register payload."""
-def register_payload(username: str, password: str) -> dict[str, Any] {
+def register_payload(username: str, password: str) -> dict[str, any] {
     return {
         "identities": [{"type": "username", "value": username}],
         "credential": {"type": "password", "password": password}
@@ -41,7 +40,7 @@ def register_payload(username: str, password: str) -> dict[str, Any] {
 }
 
 """Build identity-based login payload."""
-def login_payload(username: str, password: str) -> dict[str, Any] {
+def login_payload(username: str, password: str) -> dict[str, any] {
     return {
         "identity": {"type": "username", "value": username},
         "credential": {"type": "password", "password": password}
@@ -49,19 +48,19 @@ def login_payload(username: str, password: str) -> dict[str, Any] {
 }
 
 """Register a user via the test client, return the response data."""
-def do_register(client: Any, username: str, password: str) -> dict[str, Any] {
+def do_register(client: any, username: str, password: str) -> dict[str, any] {
     response = client.post("/user/register", json=register_payload(username, password));
     return extract_data(response.json());
 }
 
 """Login a user via the test client, return the response data (includes token)."""
-def do_login(client: Any, username: str, password: str) -> dict[str, Any] {
+def do_login(client: any, username: str, password: str) -> dict[str, any] {
     response = client.post("/user/login", json=login_payload(username, password));
     return extract_data(response.json());
 }
 
 """Register + login, return token."""
-def register_and_get_token(client: Any, username: str, password: str) -> str {
+def register_and_get_token(client: any, username: str, password: str) -> str {
     do_register(client, username, password);
     result = do_login(client, username, password);
     return result["token"];
@@ -79,10 +78,10 @@ def get_free_port -> int {
 
 """Extract data from TransportResponse envelope format."""
 def _extract_transport_response_data(
-    json_response: dict[str, Any] | list[Any]
-) -> dict[str, Any] | list[Any] {
+    json_response: dict[str, any] | list[any]
+) -> dict[str, any] | list[any] {
     if isinstance(json_response, list) and len(json_response) == 2 {
-        body: dict[str, Any] = json_response[1];
+        body: dict[str, any] = json_response[1];
         json_response = body;
     }
 
@@ -95,7 +94,7 @@ def _extract_transport_response_data(
             return json_response["data"];
         } elif not json_response.get("ok") and json_response.get("error") {
             error_info = json_response["error"];
-            result: dict[str, Any] = {
+            result: dict[str, any] = {
                 "error": error_info.get("message", "Unknown error")
             };
             if "code" in error_info {
@@ -790,9 +789,9 @@ def _me_register_and_login(
     client: ScaleTestClient,
     username: str,
     password: str = "pw12345",
-    profile: dict[str, Any] | None = None
+    profile: dict[str, any] | None = None
 ) -> tuple[str, str] {
-    body: dict[str, Any] = {
+    body: dict[str, any] = {
         "identities": [{"type": "username", "value": username}],
         "credential": {"type": "password", "password": password}
     };
@@ -1653,7 +1652,7 @@ glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      dm_base_url: str = f"http://localhost:{dm_api_port}";
 
 """Extract data from TransportResponse envelope for dev mode."""
-def _extract_data_dev(json_response: dict[str, Any]) -> dict[str, Any] {
+def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     if isinstance(json_response, dict) and "ok" in json_response {
         if json_response.get("ok") and json_response.get("data") is not None {
             return json_response["data"];
@@ -2205,6 +2204,133 @@ test "server startup - port fallback integration" {
             _stop_server(sp1);
         }
         _cleanup_db_files(sv_fixtures_dir);
+    }
+}
+
+# =============================================================================
+# HEALTH CHECK FILTER UNIT TESTS
+# =============================================================================
+"""Test that HealthCheckFilter is not attached by default (suppress_health_check_logs defaults to false)."""
+test "health check filter is disabled by default" {
+    import logging;
+    import from jac_scale.config_loader { get_scale_config, reset_scale_config }
+    import from jac_scale.jserver.jfast_api { ConsoleLogHandler, HealthCheckFilter }
+
+    reset_scale_config();
+    cfg = get_scale_config();
+    server_cfg = cfg.get_server_config();
+
+    assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
+
+    # Verify that when False, no HealthCheckFilter is added to the handler
+    handler = ConsoleLogHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    if server_cfg.get('suppress_health_check_logs', False) {
+        handler.addFilter(HealthCheckFilter());
+    }
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
+
+    reset_scale_config();
+}
+
+"""Test HealthCheckFilter suppresses noisy health-check access log entries."""
+test "health check filter suppresses health endpoint log records" {
+    import logging;
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    f = HealthCheckFilter();
+
+    # These should be suppressed (filter returns False)
+    suppressed = [
+        '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/ready HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/live HTTP/1.1" 200',
+
+    ];
+    for msg in suppressed {
+        assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
+    }
+
+    # These should pass through (filter returns True)
+    allowed = [
+        '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',
+
+    ];
+    for msg in allowed {
+        assert f.filter(make_record(msg)) , f"Expected allowed: {msg}";
+    }
+}
+
+"""Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
+test "health check filter blocks records when attached to a handler" {
+    import logging;
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
+
+    class _CapturingHandler(logging.Handler) {
+        has captured: list = [];
+
+        def emit(self: _CapturingHandler, record: logging.LogRecord) {
+            self.captured.append(record.getMessage());
+        }
+    }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    handler = _CapturingHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    handler.addFilter(HealthCheckFilter());
+
+    records = [
+        ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/ready HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/live HTTP/1.1" 200', False),
+        ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
+        ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
+
+    ];
+
+    for (msg, should_appear) in records {
+        handler.captured = [];
+        handler.handle(make_record(msg));
+        if should_appear {
+            assert len(handler.captured) == 1 , f"Expected handler to receive: {msg}";
+        } else {
+            assert len(handler.captured) == 0 , f"Expected handler to suppress: {msg}";
+        }
     }
 }
 

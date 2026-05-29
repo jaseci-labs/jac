@@ -95,7 +95,6 @@ class Constants(StrEnum) {
         ROOT = 'root';
         VISITOR = 'visitor';
         GUEST = '__guest__';
-        JAC_CHECK = '_check';
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
@@ -113,20 +112,11 @@ enum CodeContext {
             return self.value;
         }
 
-        @property
-        def is_server(self: CodeContext) -> bool {
-            return (self == CodeContext.SERVER);
-        }
+        has is_server: bool { getter; }
 
-        @property
-        def is_client(self: CodeContext) -> bool {
-            return (self == CodeContext.CLIENT);
-        }
+        has is_client: bool { getter; }
 
-        @property
-        def is_native(self: CodeContext) -> bool {
-            return (self == CodeContext.NATIVE);
-        }
+        has is_native: bool { getter; }
     }
 }
 
@@ -250,6 +240,7 @@ class Tokens(StrEnum) {
         KW_TRY = 'KW_TRY';
         KW_EXCEPT = 'KW_EXCEPT';
         KW_FINALLY = 'KW_FINALLY';
+        KW_AWAITING = 'KW_AWAITING';
         KW_RAISE = 'KW_RAISE';
         ELLIPSIS = 'ELLIPSIS';
         DOT = 'DOT';
@@ -490,6 +481,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_OBJECT': 'obj',
          'KW_OR': '|',
          'KW_OVERRIDE': 'override',
+         'KW_AWAITING': 'awaiting',
          'KW_POST_INIT': 'postinit',
          'KW_PRIV': 'priv',
          'KW_PROPS': 'props',

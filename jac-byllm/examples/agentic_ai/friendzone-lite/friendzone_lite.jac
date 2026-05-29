@@ -1,5 +1,5 @@
 import from byllm { Model, Image }
-import from typing { List, Dict, Any }
+import from typing { List, Dict }
 import os;
 
 def clear_terminal {

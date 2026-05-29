@@ -77,7 +77,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `self` | Reference | Current instance |
 | `Self` | Type | Enclosing archetype type (used in `class def` and type annotations) |
 | `sem` | Declaration | Semantic string |
-| `skip` | Control | Skip (nested context) |
+| `skip` | Return | Early exit: bare `return` in a function/ability; slot guard in JSX |
 | `spawn` | OSP | Spawn walker |
 | `static` | Modifier | Static member |
 | `super` | Reference | Parent class |
@@ -173,9 +173,9 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 module        : STRING? element*              # Optional module docstring
 element       : STRING? toplevel_stmt         # Optional statement docstring
 toplevel_stmt : import | archetype | ability | impl | test | entry
-              | "to" (cl | sv | na) ":"              # Section header (preferred at module scope)
+              | (cl | sv | na) "{" toplevel_stmt* "}"  # Braced block (recommended)
+              | "to" (cl | sv | na) ":"              # Section header
               | (cl | sv | na) toplevel_stmt         # Single-statement prefix
-              | (cl | sv | na) "{" toplevel_stmt* "}"  # Braced block (W0064 at module scope)
 
 archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"

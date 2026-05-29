@@ -35,6 +35,38 @@ def _mark_message_for_caching(msg: dict) {
 }
 
 
+"""Read an int usage field from a litellm usage dict-or-object, 0 if absent.
+
+For `cache_read_input_tokens`, falls back to the `prompt_tokens_details.cached_tokens`
+alias some providers nest it under.
+"""
+def _usage_int(usage: any, key: str) -> int {
+    if usage is None {
+        return 0;
+    }
+    val = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None);
+    if val is None and key == "cache_read_input_tokens" {
+        ptd = (
+            usage.get("prompt_tokens_details")
+                if isinstance(usage, dict)
+                else usage?.prompt_tokens_details
+        );
+        if ptd is not None {
+            val = (
+                ptd.get("cached_tokens")
+                    if isinstance(ptd, dict)
+                    else ptd?.cached_tokens
+            );
+        }
+    }
+    try {
+        return int(val or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
 """Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
 def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
@@ -351,6 +383,14 @@ Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
 impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
+    # A stream_handler turns this into a streamed call whose events are pushed
+    # to the handler as they arrive, while invoke still returns the final
+    # (parsed) value. This is what lets `visit [-->] by model(stream=True,
+    # stream_handler=fn)` surface live tokens yet receive the routing result.
+    handler = mt_run.call_params.get("stream_handler");
+    if mt_run.stream and handler is not None {
+        return self._invoke_with_handler(mt_run, handler);
+    }
     # If logging is enabled with streaming, yield StreamEvent objects
     if mt_run.stream and mt_run.call_params.get("logging", False) {
         return self._invoke_streaming(mt_run);
@@ -386,6 +426,90 @@ impl BaseLLM._invoke_react_loop_streaming(
     } finally {
         mt_run.write_back_conversation();
     }
+}
+
+
+"""Drive a streamed invocation through a per-event callback.
+
+Forwards every StreamEvent to `on_event` as it arrives, then returns the
+final value: the parsed structured result for a structured return type, or
+the accumulated answer text otherwise. Backs `visit [-->] by model` and any
+structured `by llm()` call that wants live tokens via a stream_handler.
+"""
+impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object {
+    # No tools + structured return: the model output is JSON constrained by the
+    # response-format schema. Stream those tokens to the handler, accumulate,
+    # and parse them into the expected type.
+    if len(mt_run.tools) == 0
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        self._usage_history = [];
+        accumulated = "";
+        try {
+            for token in self.dispatch_streaming(mt_run) {
+                if token {
+                    accumulated += token;
+                    try {
+                        on_event(
+                            StreamEvent(event_type="chunk", data={"content": token})
+                        );
+                    } except Exception as e {
+                        logger.debug(f"stream_handler raised: {e}");
+                    }
+                }
+            }
+        } finally {
+            mt_run.write_back_conversation();
+        }
+        # This branch streams only content tokens (no ReAct loop), so it never
+        # emits the per-call `llm_timing` the loop does. Surface this call's usage
+        # to the handler too, so structured/routing calls report tokens + cache.
+        if self._usage_history {
+            u = self._usage_history[-1];
+            try {
+                on_event(
+                    StreamEvent(
+                        event_type="llm_timing",
+                        data={
+                            "duration_ms": 0.0,
+                            "iteration": 0,
+                            "completion_tokens": _usage_int(u, "completion_tokens"),
+                            "prompt_tokens": _usage_int(u, "prompt_tokens"),
+                            "cache_read_input_tokens": _usage_int(
+                                u, "cache_read_input_tokens"
+                            ),
+                            "cache_creation_input_tokens": _usage_int(
+                                u, "cache_creation_input_tokens"
+                            )
+                        }
+                    )
+                );
+            } except Exception as e {
+                logger.debug(f"stream_handler raised: {e}");
+            }
+        }
+        return mt_run.parse_response(accumulated);
+    }
+    # Tools (ReAct) or str return: drive the full streaming loop, forwarding
+    # reasoning, tool, and answer events, then return the captured structured
+    # output when present, else the streamed answer text.
+    parts: list[str] = [];
+    for ev in self._invoke_streaming(mt_run) {
+        try {
+            on_event(ev);
+        } except Exception as e {
+            logger.debug(f"stream_handler raised: {e}");
+        }
+        if ev.event_type == "chunk" {
+            parts.append(str(ev.data.get("content", "")));
+        }
+    }
+    if mt_run._has_final_output
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        return mt_run._final_output;
+    }
+    return "".join(parts);
 }
 
 
@@ -709,6 +833,13 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     # default to the first allowed enum value for every input. No-op when
     # response_format has no enum-typed properties.
     params = inject_schema_hint(params);
+    # Backends without server-side tool calling (in-process llama.cpp) get the
+    # tool schemas + call protocol rendered straight into the system prompt;
+    # the structured `tools` field is dropped so their unreliable native tool
+    # template is not engaged. The cloud/litellm path keeps `tools` untouched.
+    if not self.supports_native_tools {
+        params = inject_tool_hint(params);
+    }
     return params;
 }
 
@@ -765,6 +896,102 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     return log;
 }
 
+"""Build a ToolCall that reports a malformed-call error back to the model.
+
+When the model emits a tool call byLLM cannot honour - invalid JSON arguments,
+or a tool name that does not exist - the ReAct loop must still answer that
+call_id with a tool result (the provider API requires tool_use/tool_result
+pairing) and let the model retry. This wraps the failure as an ordinary tool
+result so the turn recovers gracefully instead of crashing.
+"""
+def _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
+    name = tool_name or "unknown_tool";
+    def _report_error -> str {
+        return (
+            f"Tool error: {reason}. "
+            f"Re-send the {name} call with corrected arguments."
+        );
+    }
+    _report_error.__name__ = name;
+    return ToolCall(call_id=call_id, tool=Tool(func=_report_error), args={});
+}
+
+
+"""Parse raw LLM tool calls into ToolCall objects, tolerating malformed calls.
+
+A tool call the model botches - invalid JSON arguments, or a tool name that
+does not exist - becomes an error ToolCall (see `_error_tool_call`) instead of
+a raised exception. The ReAct loop then answers it with a normal tool result
+so the model can retry, rather than the whole turn crashing on one bad call.
+"""
+def _parse_tool_calls(mt_run: MTRuntime, tool_calls_list: list) -> list[ToolCall] {
+    parsed: list[ToolCall] = [];
+    for tool_call in tool_calls_list {
+        fn = tool_call?.function;
+        call_id = str(tool_call?.id or "");
+        tool_name = str(fn?.name or "") if fn else "";
+        tool = mt_run.get_tool(tool_name);
+        if tool is None {
+            parsed.append(
+                _error_tool_call(call_id, tool_name, f"unknown tool '{tool_name}'")
+            );
+            continue;
+        }
+        try {
+            raw_args = (fn?.arguments or "") if fn else "";
+            args_json = json.loads(raw_args) if raw_args else {};
+            args = tool.parse_arguments(args_json);
+        } except Exception as e {
+            parsed.append(
+                _error_tool_call(call_id, tool_name, f"invalid tool arguments ({e})")
+            );
+            continue;
+        }
+        parsed.append(ToolCall(call_id=call_id, tool=tool, args=args));
+    }
+    return parsed;
+}
+
+
+"""Repair malformed tool-call arguments on an assistant message, in place.
+
+A tool call whose `arguments` string is not valid JSON cannot be replayed to
+the provider API on the next turn - the provider rejects the entire request
+(`Expecting value: line 1 column 1`). Rewrite any such arguments to `"{}"` so
+the message persists and replays cleanly. The model still sees the failure as a
+recoverable tool result: the now-empty arguments make the tool run without its
+required inputs and fail the ordinary, caught way.
+"""
+def _sanitize_tool_calls(message: object) {
+    tool_calls = (message or {}).get("tool_calls") or [];
+    for tc in tool_calls {
+        fn = tc?.function;
+        if fn is None {
+            continue;
+        }
+        raw = fn?.arguments;
+        valid = False;
+        if isinstance(raw, str) and raw.strip() {
+            try {
+                json.loads(raw);
+                valid = True;
+            } except Exception {
+                valid = False;
+            }
+        }
+        if not valid {
+            try {
+                fn.arguments = "{}";
+            } except Exception {
+                if isinstance(fn, dict) {
+                    fn["arguments"] = "{}";
+                }
+            }
+        }
+    }
+}
+
+
 """Dispatch the LLM call without streaming.
 
 Makes a synchronous API call and processes the response, including
@@ -794,22 +1021,19 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     message: LiteLLMMessage = response.get("choices", [])[0].get(
         "message"
     );  # type: ignore
+    # For backends without native tool calling, lift any tool call the model
+    # emitted as plain text into the structured `tool_calls` field so the
+    # ReAct loop below sees it. No-op once `tool_calls` is already populated.
+    if not self.supports_native_tools {
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    }
+    _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    for tool_call in tool_calls_list {
-        if tool := mt_run.get_tool(tool_call.function.name) {
-            args_json = json.loads(tool_call.function.arguments);
-            args = tool.parse_arguments(args_json);
-            tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
-        } else {
-            raise UnknownToolError(
-                f"Attempted to call tool: '{tool_call.function.name}' which was not present."
-            );
-        }
-    }
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
     # Only parse the content as the final output when there are no tool calls.
     # gpt-4o may return non-JSON content alongside tool calls (e.g. "I'll handle that."),
     # which would cause json.loads to fail if we parsed it as the typed response.
@@ -848,6 +1072,103 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     }
 }
 
+"""Dispatch a tool-enabled LLM call with streaming.
+
+Streams the model's content tokens (yielded as they arrive) while collecting
+the full response - content, tool calls and usage - which is reassembled and
+appended to `out` as a single CompletionResult. This lets the ReAct loop
+surface the model's reasoning live, token by token, instead of waiting for the
+whole step to finish. Backends without streaming (e.g. MockLLM) transparently
+fall back to one non-streaming call.
+"""
+impl BaseLLM.dispatch_streaming_with_tools(
+    mt_run: MTRuntime, out: list[CompletionResult]
+) -> Generator[str, None, None] {
+    params = self.make_model_params(mt_run);
+    log_params = self.format_prompt(params);
+    self.log_info(
+        f"Calling LLM (streaming): {self.model_name} with params:\n{log_params}"
+    );
+    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    params.pop("api_key", None);
+    chunks: list = [];
+    content_buf = "";
+    no_stream = False;
+    try {
+        for chunk in self.model_call_with_stream(params) {
+            chunks.append(chunk);
+            delta_content = "";
+            if chunk?.choices and chunk?.choices?[0]?.delta {
+                delta_content = chunk.choices[0].delta?.content or "";
+            } elif isinstance(chunk, dict) {
+                _choices = chunk.get("choices") or [];
+                if _choices {
+                    delta_content = (_choices[0].get("delta") or {}).get("content")
+                    or "";
+                }
+            }
+            if delta_content {
+                content_buf += str(delta_content);
+                yield str(delta_content);
+            }
+        }
+    } except NotImplementedError {
+        # Backend has no streaming - fall back to a single non-streaming call.
+        no_stream = True;
+    }
+    if no_stream {
+        out.append(self.dispatch_no_streaming(mt_run));
+        return;
+    }
+    # Reassemble the streamed chunks into one complete response. litellm's
+    # builder merges native tool-call fragments; the fallback covers backends
+    # whose chunk shape it cannot parse (e.g. in-process llama.cpp).
+    message: object = None;
+    usage_data: dict = {};
+    try {
+        rebuilt = litellm.stream_chunk_builder(chunks);
+        if rebuilt {
+            message = rebuilt.get("choices", [])[0].get("message");
+            usage_data = rebuilt.get("usage", {}) or {};
+        }
+    } except Exception as e {
+        logger.debug(f"stream_chunk_builder failed, using accumulated text: {e}");
+        message = None;
+    }
+    if message is None {
+        message = {"role": "assistant", "content": content_buf};
+    }
+    # Lift any tool call emitted as plain text into the structured `tool_calls`
+    # field (see dispatch_no_streaming). Some native providers (e.g. ollama)
+    # stream a tool call as plain content text that litellm.stream_chunk_builder
+    # cannot reassemble into `tool_calls`, so the native path silently drops it.
+    # When tools were offered but no structured tool_calls came back, rebuild the
+    # message as a plain dict from the accumulated text -- recover_tool_calls
+    # requires a dict and `message` here is a litellm `Message` object -- then
+    # recover the call. recover_tool_calls is idempotent and name-filtered, so it
+    # is a no-op for a genuine native tool_calls field or a plain-text answer.
+    has_native_tool_calls = bool((message or {}).get("tool_calls"));
+    if (not self.supports_native_tools)
+    or (mt_run.tools and not has_native_tool_calls) {
+        if not has_native_tool_calls and not isinstance(message, dict) {
+            message = {"role": "assistant", "content": content_buf};
+        }
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    }
+    _sanitize_tool_calls(message);
+    mt_run.add_message(message);
+    output_content: str = message.get("content") or "";
+    tool_calls: list[ToolCall] = [];
+    tool_calls_list = (message or {}).get("tool_calls") or [];
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
+    output_value = mt_run.parse_response(output_content)
+        if not tool_calls_list
+        else output_content;
+    out.append(
+        CompletionResult(output=output_value, tool_calls=tool_calls, usage=usage_data)
+    );
+}
+
 """Async dispatch: mirrors dispatch_no_streaming but calls model_call_no_stream_async."""
 impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
@@ -865,22 +1186,19 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     message: LiteLLMMessage = response.get("choices", [])[0].get(
         "message"
     );  # type: ignore
+    # For backends without native tool calling, lift any tool call the model
+    # emitted as plain text into the structured `tool_calls` field so the
+    # ReAct loop below sees it. No-op once `tool_calls` is already populated.
+    if not self.supports_native_tools {
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    }
+    _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    for tool_call in tool_calls_list {
-        if tool := mt_run.get_tool(tool_call.function.name) {
-            args_json = json.loads(tool_call.function.arguments);
-            args = tool.parse_arguments(args_json);
-            tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
-        } else {
-            raise UnknownToolError(
-                f"Attempted to call tool: '{tool_call.function.name}' which was not present."
-            );
-        }
-    }
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
         else output_content;
@@ -1208,7 +1526,22 @@ impl BaseLLM._invoke_streaming(
             import time as _time;
             _llm_t0 = _time.time();
             try {
-                resp = self.dispatch_no_streaming(mt_run);
+                # Stream the model's content tokens live as `thought` events
+                # while collecting the full response (content + tool calls).
+                _stream_out: list[CompletionResult] = [];
+                for _tok in self.dispatch_streaming_with_tools(mt_run, _stream_out) {
+                    if _tok {
+                        yield StreamEvent(
+                            event_type="thought",
+                            data={
+                                "content": _tok,
+                                "iteration": iter_count,
+                                "streaming": True
+                            }
+                        );
+                    }
+                }
+                resp = _stream_out[0];
             } except litellm.exceptions.ContextWindowExceededError {
                 if not comp_enabled {
                     raise;
@@ -1275,20 +1608,31 @@ impl BaseLLM._invoke_streaming(
                 }
             }
 
-            # Metrics: emit LLM call duration for this iteration
+            # Metrics: emit LLM call duration and completion-token count for this
+            # iteration so consumers can show generation speed (tokens/sec).
+            _completion_tokens = int(
+                usage.get("completion_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "completion_tokens", 0)
+            );
             yield StreamEvent(
                 event_type="llm_timing",
-                data={"duration_ms": _llm_ms, "iteration": iter_count}
+                data={
+                    "duration_ms": _llm_ms,
+                    "iteration": iter_count,
+                    "completion_tokens": _completion_tokens,
+                    "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+                    "cache_read_input_tokens": _usage_int(
+                        usage, "cache_read_input_tokens"
+                    ),
+                    "cache_creation_input_tokens": _usage_int(
+                        usage, "cache_creation_input_tokens"
+                    )
+                }
             );
 
-            # Yield thought if the LLM produced reasoning text
-            if resp.output and str(resp.output).strip() {
-                yield StreamEvent(
-                    event_type="thought",
-                    data={"content": str(resp.output).strip(), "iteration": iter_count}
-                );
-            }
-
+            # The model's reasoning already streamed above as incremental
+            # `thought` events while the call was in flight.
             if resp.tool_calls {
                 # Split at first finish_tool - normalizes history for both modes.
                 non_finish_calls: list = [];
@@ -1333,7 +1677,9 @@ impl BaseLLM._invoke_streaming(
                         # Execute via dispatch_batch, emit results as they complete
                         raw_results: list = [];
                         for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
-                            truncated_result = result_msg.content[:max_result_len];
+                            truncated_result = content_preview(
+                                result_msg.content, max_result_len
+                            );
                             last_tool = btc.tool.get_name();
                             last_result = truncated_result;
                             yield StreamEvent(
@@ -1371,14 +1717,23 @@ impl BaseLLM._invoke_streaming(
 
                 if finish_tc {
                     mt_run.add_message(finish_tc());
+                    # Capture the structured result so a handler-driven invoke
+                    # can return it once this generator is consumed.
+                    mt_run._final_output = finish_tc.get_output();
+                    mt_run._has_final_output = True;
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        if token {
-                            yield StreamEvent(
-                                event_type="chunk", data={"content": token}
-                            );
+                    # A structured return already carries its value in the finish
+                    # tool output; only stream a textual final answer for str/None
+                    # returns (the common `by llm() -> str` case).
+                    if mt_run.resp_type is None or mt_run.resp_type is str {
+                        for token in self._stream_final_answer(mt_run) {
+                            if token {
+                                yield StreamEvent(
+                                    event_type="chunk", data={"content": token}
+                                );
+                            }
                         }
                     }
                     break;
@@ -1389,15 +1744,11 @@ impl BaseLLM._invoke_streaming(
                 # this branch handles MockLLM which bypasses parse_response.)
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
-                    # Plain string return or no finish_tool - yield and exit
+                    # Plain string return or no finish_tool. The answer already
+                    # streamed above as `thought` events, so just close out.
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-                    if resp.output {
-                        yield StreamEvent(
-                            event_type="chunk", data={"content": str(resp.output)}
-                        );
-                    }
                     break;
                 }
                 yield from self._yield_recovery_result(

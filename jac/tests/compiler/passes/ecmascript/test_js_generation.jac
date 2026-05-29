@@ -947,7 +947,7 @@ test "jsx text with quotes does not produce double-double quotes" {
     import re;
     unescaped_double_quotes = re.findall(r'(?<!\\)""', js_code);
     assert len(unescaped_double_quotes) == 0 , (
-        f"Unescaped double-double quotes found in generated JS — "
+        "Unescaped double-double quotes found in generated JS — "
         f"quote characters in JSX text are being double-wrapped:\n{js_code}"
     );
 
@@ -1026,6 +1026,35 @@ test "convert to js import path preserves js format" {
     # NPM packages should pass through unchanged
     assert convert_to_js_import_path("react") == "react";
     assert convert_to_js_import_path("lodash") == "lodash";
+}
+
+test "for-of tuple targets destructure into binding patterns" {
+    jac_code = (
+        "cl def f() {\n"
+        "    pairs = [[1, 2]];\n"
+        "    nested = [[[1, 2], 3]];\n"
+        "    rows = [[1, 2, 3]];\n"
+        "    for x in pairs {  }\n"
+        "    for (a, b) in pairs {  }\n"
+        "    for (i, p) in enumerate(pairs) {  }\n"
+        "    for ((c, d), e) in nested {  }\n"
+        "    for (g, *rest) in rows {  }\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "for (const x of pairs)" in js_code;
+        assert "for (const [a, b] of pairs)" in js_code;
+        assert "for (const [i, p] of _jac.builtin.enumerate(pairs))" in js_code;
+        assert "for (const [[c, d], e] of nested)" in js_code;
+        assert "for (const [g, ...rest] of rows)" in js_code;
+        assert "_item" not in js_code;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
 }
 
 # ============================================================================
@@ -1400,7 +1429,7 @@ test "jsx preserves single-space whitespace between adjacent expression children
 
     # Second span: `{amount} {unit}` — two adjacent expressions only.
     assert "[amount, \" \", unit]" in js_code , (
-        f"Same-line adjacent `{{amount}} {{unit}}` must emit a `\" \"` "
+        "Same-line adjacent `{amount} {unit}` must emit a `\" \"` "
         f"separator child, got:\n{js_code}"
     );
 
@@ -1495,10 +1524,10 @@ test "issue 5930 sibling if else branches each get block scoped let" {
         # And follow-up reassignments inside each branch must NOT redeclare.
         # We assert the absence of `let x = 2` / `let x = 4` to lock that in.
         assert "let x = 2" not in js_code , (
-            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+            "in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
         );
         assert "let x = 4" not in js_code , (
-            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+            "in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
         );
 
         # And the emitted JS must actually execute in strict mode without
@@ -1515,12 +1544,12 @@ test "issue 5930 sibling if else branches each get block scoped let" {
             timeout=30
         );
         assert result.returncode == 0 , (
-            f"strict-mode node run failed (#5930 regression):\n"
+            "strict-mode node run failed (#5930 regression):\n"
             f"stdout={result.stdout!r}\nstderr={result.stderr!r}\n"
             f"js:\n{js_code}"
         );
         assert "ok" in result.stdout , (
-            f"node run did not reach the success print:\n"
+            "node run did not reach the success print:\n"
             f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
         );
 
@@ -1557,7 +1586,7 @@ test "sibling block scopes — elif chain each branch gets its own let" {
             timeout=30
         );
         assert result.returncode == 0 , (
-            f"strict-mode elif chain run failed:\n"
+            "strict-mode elif chain run failed:\n"
             f"stderr={result.stderr!r}\njs:\n{js_code}"
         );
         assert "ok" in result.stdout;
@@ -1592,8 +1621,8 @@ test "walrus in if-condition still hoists its let despite alt-branch scope final
         # stack-pop and map-pop in `_pop_scope`, this declaration was
         # silently dropped when the if had an else branch.
         assert "let n" in js_code , (
-            f"walrus name `n` from the if-condition must still be hoisted "
-            f"as a `let` declaration when an else branch is present, "
+            "walrus name `n` from the if-condition must still be hoisted "
+            "as a `let` declaration when an else branch is present, "
             f"got:\n{js_code}"
         );
         # And both branches must still get their per-branch `let x`
@@ -1635,7 +1664,7 @@ test "sibling block scopes — try except finally each get their own let" {
             timeout=30
         );
         assert result.returncode == 0 , (
-            f"strict-mode try/except/finally run failed:\n"
+            "strict-mode try/except/finally run failed:\n"
             f"stderr={result.stderr!r}\njs:\n{js_code}"
         );
         assert "ok" in result.stdout;
@@ -1664,7 +1693,7 @@ test "in/not in on unknown-typed containers matches Python semantics" {
         "(raw JS `in` rejects string/array operands):\n"
         f"stderr={result.stderr!r}\njs:\n{js_code}"
     );
-    got: dict = json.loads(result.stdout.strip());
+    got: dict[str, bool] = json.loads(result.stdout.strip());
     expected = {
         "str_hit": True,
         "str_miss": False,

@@ -29,11 +29,15 @@ cd myapp
 myapp/
 ├── jac.toml           # Project configuration
 ├── main.jac           # Entry point with app() function
+├── README.md          # Project readme
+├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
-│   └── Button.tsx     # TypeScript components supported
-└── styles/            # CSS files
-    └── main.css
+│   └── Button.cl.jac  # Example component (.cl.jac = client-side)
+└── assets/            # Static assets (images, fonts)
 ```
+
+TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
+a `.css` file anywhere in the project and import it from your Jac code.
 
 ### The `.cl.jac` Convention
 
@@ -165,11 +169,11 @@ node Task {
 
 # Server: return typed objects directly
 def:pub get_tasks -> list[Task] {
-    return [root()-->][?:Task];
+    return [root-->][?:Task];
 }
 
 def:pub create_task(title: str) -> Task {
-    task = root() ++> Task(title=title);
+    task = root ++> Task(title=title);
     return task[0];
 }
 
@@ -233,7 +237,23 @@ with entry {
 
 ## Client Sections
 
-Use the `to cl:` section header to tag every following module-level element as client-side (React) code:
+Wrap client-side (React) code in a `cl { ... }` block -- the braces bracket exactly the tagged region, which is the clearest way to mix client and server code in one file:
+
+```jac
+cl {
+    def:pub app() -> JsxElement {
+        return <div>
+            <h1>Hello, World!</h1>
+        </div>;
+    }
+}
+```
+
+A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
+
+### Section Headers
+
+As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
 
 ```jac
 to cl:
@@ -245,7 +265,7 @@ def:pub app() -> JsxElement {
 }
 ```
 
-A section header applies until the next `to X:` header or end of file. You can switch back with `to sv:`, `to na:`, or end the file.
+You can switch back with `to sv:`, `to na:`, or end the file.
 
 ### Single-Statement Forms
 
@@ -256,7 +276,7 @@ cl import from react { useState }
 cl glob THEME: str = "dark";
 ```
 
-This also works for component definitions -- the preferred shorthand for a single tagged declaration inside a mostly-server file:
+This also works for component definitions -- a handy shorthand for a single tagged declaration inside a mostly-server file:
 
 ```jac
 cl def:pub app -> JsxElement {
@@ -264,10 +284,6 @@ cl def:pub app -> JsxElement {
     return <div>Count: {count}</div>;
 }
 ```
-
-### Braced Blocks (legacy / inner-scope)
-
-The older `cl { ... }` braced block still works and is useful for **inner-scope overrides** inside a function or class, but at module scope it emits **W0064** pointing at the section-header form. In `.cl.jac` files or after a `to cl:` header, no wrapper is needed at all.
 
 ### Export Requirement
 
@@ -287,15 +303,20 @@ def:pub app() -> JsxElement {  # :pub required
 
 ### Function Components
 
+Declare each prop as a named, typed parameter -- the type-checker validates
+every JSX call site per attribute. `children` is the special prop that holds
+the JSX nested between a component's tags:
+
 ```jac
 to cl:
 
-def:pub Button(props: dict) -> JsxElement {
-    return <button
-        className={props.get("className", "")}
-        onClick={props.get("onClick")}
-    >
-        {props.children}
+def:pub Button(
+    className: str = "",
+    onClick: MouseEventHandler = None,
+    children: any = None
+) -> JsxElement {
+    return <button className={className} onClick={onClick}>
+        {children}
     </button>;
 }
 ```
@@ -305,11 +326,11 @@ def:pub Button(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(props: dict) -> JsxElement {
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
     return <div className="card">
-        <h2>{props["title"]}</h2>
-        <p>{props["description"]}</p>
-        {props.children}
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
     </div>;
 }
 ```
@@ -336,7 +357,7 @@ def:pub app() -> JsxElement {
 
 ### The `has` Keyword
 
-Inside client-tagged code (`to cl:` sections, `.cl.jac` files, or `cl { }` blocks), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
 
 ```jac
 to cl:
@@ -481,11 +502,11 @@ import from react { createContext, useContext }
 
 glob AppContext = createContext(None);
 
-def:pub AppProvider(props: dict) -> JsxElement {
+def:pub AppProvider(children: any = None) -> JsxElement {
     has theme: str = "light";
 
     return <AppContext.Provider value={{"theme": theme}}>
-        {props.children}
+        {children}
     </AppContext.Provider>;
 }
 
@@ -550,7 +571,7 @@ def:pub TaskList() -> JsxElement {
 
     # Fetch data on component mount
     async can with entry {
-        result = root() spawn get_tasks();
+        result = root spawn get_tasks();
         if result.reports and result.reports.length > 0 {
             tasks = result.reports[0];
         }
@@ -580,8 +601,8 @@ The `spawn` call returns a result object:
 
 | Syntax | Description |
 |--------|-------------|
-| `root() spawn WalkerName()` | Spawn walker from root node |
-| `root() spawn WalkerName(arg=value)` | Spawn with parameters |
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
 | `node_id spawn WalkerName()` | Spawn from specific node |
 
 The spawn call returns a result object with:
@@ -601,7 +622,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Create
     async def handle_add(title: str) -> None {
-        result = root() spawn add_task(title=title);
+        result = root spawn add_task(title=title);
         if result.reports and result.reports.length > 0 {
             tasks = tasks + [result.reports[0]];
         }
@@ -609,7 +630,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Update
     async def handle_toggle(task_id: str) -> None {
-        result = root() spawn toggle_task(task_id=task_id);
+        result = root spawn toggle_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [
                 {**t, "completed": not t["completed"]} if t["id"] == task_id else t
@@ -620,7 +641,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Delete
     async def handle_delete(task_id: str) -> None {
-        result = root() spawn delete_task(task_id=task_id);
+        result = root spawn delete_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [t for t in tasks if t["id"] != task_id];
         }
@@ -645,7 +666,7 @@ def:pub SafeDataView() -> JsxElement {
     async can with entry {
         loading = True;
         try {
-            result = root() spawn get_data();
+            result = root spawn get_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -679,7 +700,7 @@ def:pub LiveData() -> JsxElement {
     has data: any = None;
 
     async def fetch_data() -> None {
-        result = root() spawn get_live_data();
+        result = root spawn get_live_data();
         if result.reports and result.reports.length > 0 {
             data = result.reports[0];
         }
@@ -687,9 +708,11 @@ def:pub LiveData() -> JsxElement {
 
     async can with entry { await fetch_data(); }
 
-    useEffect(lambda -> None {
-        interval = setInterval(lambda -> None { fetch_data(); }, 5000);
-        return lambda -> None { clearInterval(interval); };
+    # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
+    # returns a function, so `-> None` would be a type error.
+    useEffect(lambda {
+        interval = setInterval(lambda { fetch_data(); }, 5000);
+        return lambda { clearInterval(interval); };
     }, []);
 
     return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
@@ -745,7 +768,7 @@ def:pub page() -> JsxElement {
     params = useParams();
     return <div>
         <Link to="/users">Back</Link>
-        <h1>User {params.id}</h1>
+        <h1>User {params["id"]}</h1>
     </div>;
 }
 ```
@@ -863,7 +886,7 @@ Import from `@jac/runtime`:
 
 | Hook | Returns | Usage |
 |------|---------|-------|
-| `useParams()` | dict | Access URL parameters: `params.id` |
+| `useParams()` | dict | Access URL parameters: `params["id"]` |
 | `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
 | `useLocation()` | object | Current location: `location.pathname`, `location.search` |
 | `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
@@ -1059,6 +1082,72 @@ to cl:
 import "./styles/main.css";
 ```
 
+### Scoped CSS (`.style.css` annexes)
+
+A `.style.css` file that **shares a base name** with a `.cl.jac` module is
+treated as a scoped-style annex -- the two files form one logical module. The
+compiler hashes every class selector the annex declares with a per-module
+digest, rewrites the CSS rule selectors, and rewrites JSX `className`/`class`
+literals in the module that reference a declared class to the same hashed
+form. Class names are scoped to the component automatically, so two modules
+can both declare `.card` without colliding.
+
+Given `Card.style.css` beside `Card.cl.jac`:
+
+```css
+/* Card.style.css */
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+.card-title { font-weight: 600; }
+
+/* :global(...) opts out of scoping -- the inner selector is kept verbatim. */
+:global(html) { box-sizing: border-box; }
+```
+
+```jac
+# Card.cl.jac
+def:pub Card(title: str, body: str) -> JsxElement {
+    return <article className="card">
+        <h2 className="card-title">{title}</h2>
+        <p>{body}</p>
+    </article>;
+}
+```
+
+the compiler hashes the selectors and rewrites the matching `className`
+literals to agree (hashes are stable per module):
+
+```js
+import "./Card.css";
+function Card(props) {
+  const {title, body} = props;
+  return __jacJsx("article", {"className": "card-1419142b"},
+    [__jacJsx("h2", {"className": "card-title-769bf254"}, [title]),
+     __jacJsx("p", {}, [body])]);
+}
+```
+
+```css
+/* emitted sidecar Card.css */
+.card-1419142b { padding: 1rem; border: 1px solid #ccc; }
+.card-title-769bf254 { font-weight: 600; }
+html { box-sizing: border-box; }   /* :global(...) unwrapped */
+```
+
+Key points:
+
+- **No import needed.** The annex is paired by base name; the compiler injects
+  the side-effect `import "./<base>.css";` for you.
+- **Only declared classes are rewritten.** A `className` token with no matching
+  selector in the annex is left untouched, so you can mix scoped and global
+  (e.g. Tailwind) classes in the same `className`.
+- **`:global(...)` is the escape hatch** for selectors that must stay
+  unscoped (resets, third-party class targets, element selectors).
+- Scoped styles are per-module; for app-wide styles (themes, resets, Tailwind)
+  use a plain shared `import "./global.css";` instead.
+
 ### cn() Utility (Tailwind/shadcn)
 
 ```jac
@@ -1118,10 +1207,50 @@ def:pub JsxExamples() -> JsxElement {
 
         {items}
 
-        <button {...props}>Click</button>
+        <button {**props} {variable}>Click</button>
     </div>;
 }
 ```
+
+Two brace forms appear in attribute position. `{**props}` is a **spread** -- it forwards every key of `props` as an attribute. The JS-idiomatic `{...props}` spread is also accepted but emits `W0063` ("prefer `{**expr}`"), so `{**props}` is the canonical Jac form. `{variable}` is the **`{name}` shorthand** -- when an attribute's value is a variable of the same name it expands to `variable={variable}`, so `<Box {title} {count} {onClick}/>` is sugar for `<Box title={title} count={count} onClick={onClick}/>`. The shorthand is still validated per-attribute against the component signature.
+
+### Suspense Fallbacks: `try` with `awaiting`
+
+A `try` slot whose body needs to wait on async work can name its loading state with an `awaiting` clause. The cl lowering wraps the slot in `<JacAwaiting fallback={...}>{...}</JacAwaiting>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On `sv` and `na` targets the `awaiting` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
+
+```jac
+to cl:
+
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        }}
+    </article>;
+}
+```
+
+Add an `except` arm to name the error state. On the cl target the slot then lowers to a `<JacClientErrorBoundary fallback={...}>` (auto-imported from `@jac/runtime`, where it re-exports [`react-error-boundary`'s `ErrorBoundary`](#jacclienterrorboundary)) **wrapping** the `<JacAwaiting>` node, so a throw in the resolved `try` body -- including from data the suspense shim awaited -- is caught and the `except` body renders in its place:
+
+```jac
+to cl:
+
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        } except Exception {
+            <p>Could not load profile.</p>
+        }}
+    </article>;
+}
+```
+
+Because a JS error boundary catches every error regardless of declared type, per-type dispatch and the optional `except ... as <name>` binding are not modeled -- the except bodies are concatenated in source order into the boundary's fallback. See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`).
 
 ### Comments inside JSX
 
@@ -1396,28 +1525,30 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system. This controls the visual style, color theme, font, and border radius used by shadcn components in your project.
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jac-super`:
+
+- `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
+- `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
+- `jac add --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
 
 ```toml
 [jac-shadcn]
-style = "nova"            # Component style variant
+style = "nova"            # Component style variant (read by `jac add`)
 baseColor = "neutral"     # Base color palette
 theme = "amber"           # Accent color theme
 font = "inter"            # Font family
 radius = "default"        # Border radius preset
 menuAccent = "subtle"     # Menu accent style
 menuColor = "default"     # Menu color scheme
-registry = "https://jac-shadcn.jaseci.org"  # Component registry URL
 ```
 
 | Key | Description | Examples |
 |-----|-------------|---------|
-| `style` | Component style variant | `"nova"`, `"default"` |
+| `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
 | `baseColor` | Base neutral color palette | `"neutral"`, `"slate"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
 | `font` | Typography font family | `"inter"`, `"geist"`, `"system"` |
 | `radius` | Border radius preset | `"default"`, `"sm"`, `"md"`, `"lg"`, `"none"` |
-| `registry` | shadcn component registry URL | Custom registry for Jac-compatible components |
 
 shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
 

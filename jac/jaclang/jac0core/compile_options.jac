@@ -3,7 +3,6 @@
 This module provides the CompileOptions obj which encapsulates
 all options that control compilation behavior.
 """
-import from typing { Any }
 
 """Options controlling Jac compilation behavior."""
 obj CompileOptions {
@@ -14,7 +13,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
-        cancel_token: Any = None;
+        cancel_token: any = None;
 
     """Return a copy with skip_native_engine set."""
     def with_skip_native_engine(`skip: bool = True) -> CompileOptions;

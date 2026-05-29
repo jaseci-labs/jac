@@ -11,7 +11,7 @@ on:
 
 jobs:
   test-core-compiler:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -35,7 +35,7 @@ jobs:
       run: pytest -x jac/tests/compiler -n auto
 
   test-core-runtime:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -59,7 +59,7 @@ jobs:
       run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
   test-client:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -104,7 +104,7 @@ jobs:
         pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
 
   test-packages-and-docs:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -150,7 +150,7 @@ jobs:
       run: pytest docs/tests/e2e/test_code_blocks.jac -v
 
   test-mcp:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -174,7 +174,7 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -218,6 +218,15 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_restspec.jac
 
+    - name: Install jac-scale[aws] and moto
+      run: |
+        pip install -e "jac-scale[aws]"
+        pip install "moto[s3]>=5.0.0"
+
+    - name: Run Storage tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_s3_storage.jac
+
     - name: Run Microservice interop tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
@@ -239,6 +248,10 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
 
+    - name: Run scalar-clobber cross-process regression tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_scalar_clobber_cross_process.jac
+
     - name: Run MongoDB user manager tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
@@ -256,7 +269,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -304,7 +317,7 @@ jobs:
           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -334,10 +347,10 @@ jobs:
 
     - name: Precompile all packages
       run: |
-        jac run jac/scripts/precompile_bytecode.jac ./jac
-        jac run jac/scripts/precompile_bytecode.jac ./jac-client
-        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
-        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-client
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-scale
+        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
 
     - name: Pre-build admin dashboard UI
       run: |

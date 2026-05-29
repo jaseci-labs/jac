@@ -38,7 +38,7 @@ binary's stdin (used for the interactive chess fixture).
 """
 def _run_with_time(
     binary: str,
-    env_extra: dict | None = None,
+    env_extra: dict[str, str] | None = None,
     stdin_data: str | None = None,
     timeout: int = 120,
 ) -> tuple[int, int, str] {

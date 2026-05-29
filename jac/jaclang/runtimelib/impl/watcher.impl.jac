@@ -5,7 +5,6 @@ import logging;
 import threading;
 import time;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);

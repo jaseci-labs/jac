@@ -22,7 +22,7 @@ impl JacScaleUserManager.postinit -> None {
         client = get_mongo_client();
         db = client['jac_db'];
         self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-        # LEGACY MIGRATION (removable) — must run before ensure_indexes (old docs have user_id: null)
+        # LEGACY MIGRATION (removable) - must run before ensure_indexes (old docs have user_id: null)
         self._identity_storage.migrate_legacy_users();
         self._identity_storage.ensure_indexes();
     } else {
@@ -42,38 +42,52 @@ impl JacScaleUserManager.postinit -> None {
 # ============================================================================
 # Identity-based User CRUD
 # ============================================================================
-"""Create a user with identity-based model."""
-impl JacScaleUserManager.create_user(
-    identities: list[dict[str, Any]],
-    credential: dict[str, Any],
-    profile: dict[str, Any] | None = None
-) -> dict[str, Any] {
+"""Create a user from a username/password (the `UserManager` contract)."""
+impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, any] {
+    return self.create_user_with_identities(
+        identities=[{'type': 'username', 'value': username}],
+        credential={'type': 'password', 'password': password}
+    );
+}
+
+"""Create a user from explicit identities (username / email / SSO)."""
+impl JacScaleUserManager.create_user_with_identities(
+    identities: list[dict[str, any]],
+    credential: dict[str, any],
+    profile: dict[str, any] | None = None
+) -> dict[str, any] {
     return self._identity_storage.create_user(identities, credential, profile);
 }
 
 """Convenience method for creating internal users (guest, system, admin)."""
 impl JacScaleUserManager.create_internal_user(
     username: str, password: str, role: str = 'user'
-) -> dict[str, Any] {
-    result = self.create_user(
-        identities=[{'type': 'username', 'value': username}],
-        credential={'type': 'password', 'password': password}
-    );
+) -> dict[str, any] {
+    result = self.create_user(username, password);
     if result.get('user_id') and role != 'user' {
         self.set_user_role(result['user_id'], role);
     }
     return result;
 }
 
-"""Authenticate by any identity value (username or email) + password."""
+"""Authenticate by any identity value (username or email) + password.
+
+The `UserManager` contract (jaclang's `AuthHandler.login`) expects the
+authenticated result to carry a `token`. Identity storage only verifies the
+credential, so the JWT is minted here before the result is returned.
+"""
 impl JacScaleUserManager.authenticate(
     identifier: str, password: str
-) -> dict[str, Any] | None {
-    return self._identity_storage.authenticate(identifier, password);
+) -> dict[str, any] | None {
+    result = self._identity_storage.authenticate(identifier, password);
+    if result is not None {
+        result['token'] = self.create_jwt_token(result.get('user_id', ''));
+    }
+    return result;
 }
 
 """Find a user by any identity value."""
-impl JacScaleUserManager.find_user_by_identity(value: str) -> dict[str, Any] | None {
+impl JacScaleUserManager.find_user_by_identity(value: str) -> dict[str, any] | None {
     return self._identity_storage.find_user_by_identity(value);
 }
 
@@ -86,7 +100,7 @@ impl JacScaleUserManager.user_exists(user_id: str) -> bool {
 }
 
 """Get user by user_id or identity value."""
-impl JacScaleUserManager.get_user(user_id: str) -> dict[str, Any] | None {
+impl JacScaleUserManager.get_user(user_id: str) -> dict[str, any] | None {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {
         user = self._identity_storage.find_user_by_identity(user_id);
@@ -129,15 +143,44 @@ impl JacScaleUserManager.update_password(
     );
 }
 
+"""Set a new password without verifying the current one.
+
+Intended for password-reset flows where the caller has already authenticated
+the user via a single-use reset token (see auth_tokens.AuthTokenStore).
+Replaces the existing password credential, or creates one if none exists.
+"""
+impl JacScaleUserManager.reset_password_by_user_id(
+    user_id: str, new_password: str
+) -> dict[str, str] {
+    return self._identity_storage.reset_password(user_id, new_password);
+}
+
+"""Append an identity (email, username, etc.) to an existing user."""
+impl JacScaleUserManager.add_identity(user_id: str, identity: dict[str, Any]) -> bool {
+    return self._identity_storage._add_identity(user_id, identity);
+}
+
+"""Check whether the given normalized identity value is already taken."""
+impl JacScaleUserManager.is_identity_taken(value: str) -> bool {
+    return self._identity_storage.identity_taken(value);
+}
+
+"""Mark an identity (matched by value_normalized) as verified for a user."""
+impl JacScaleUserManager.set_identity_verified(
+    user_id: str, value_normalized: str
+) -> bool {
+    return self._identity_storage._set_identity_verified(user_id, value_normalized);
+}
+
 impl JacScaleUserManager.update_profile(
-    user_id: str, profile_updates: dict[str, Any]
-) -> dict[str, Any] {
+    user_id: str, profile_updates: dict[str, any]
+) -> dict[str, any] {
     user = self.get_user(user_id);
     if not user {
         return {'error': 'User not found'};
     }
     raw_profile = user.get('profile');
-    current_profile: dict[str, Any] = (
+    current_profile: dict[str, any] = (
         raw_profile if isinstance(raw_profile, dict) else {}
     );
     merged = dict(current_profile);
@@ -163,7 +206,7 @@ impl JacScaleUserManager.get_username(user_id: str) -> str | None {
 }
 
 # ============================================================================
-# JWT Methods — now use user_id as the primary claim
+# JWT Methods - now use user_id as the primary claim
 # ============================================================================
 impl JacScaleUserManager.create_jwt_token(
     user_id: str, include_role: bool = True
@@ -346,14 +389,14 @@ impl JacScaleUserManager.sso_callback(
             # touched — developer-set profile fields are untouched.
             if sso_fields {
                 raw_profile = existing.get('profile') if existing else None;
-                current_profile: dict[str, Any] = (
+                current_profile: dict[str, any] = (
                     raw_profile if isinstance(raw_profile, dict) else {}
                 );
                 # Defensive: legacy users from before reserved-key enforcement
                 # may have a non-dict at profile.sso. Treat as empty rather
                 # than crashing on dict-style assignment below.
                 raw_sso = current_profile.get('sso');
-                current_sso: dict[str, Any] = (
+                current_sso: dict[str, any] = (
                     raw_sso if isinstance(raw_sso, dict) else {}
                 );
                 current_sso[platform] = sso_fields;
@@ -376,7 +419,7 @@ impl JacScaleUserManager.sso_callback(
         }
         # Create user with verified email identity (provider already verified it)
         sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
-        result = self.create_user(
+        result = self.create_user_with_identities(
             identities=[{'type': 'email', 'value': email, 'verified': True}],
             credential={'type': 'password', 'password': generate_random_password()},
             profile=sso_profile
@@ -494,7 +537,7 @@ impl JacScaleUserManager.is_password_required(user_id: str) -> bool {
 
 impl JacScaleUserManager.list_all_users(
     limit: int = 100, offset: int = 0
-) -> list[dict[str, Any]] {
+) -> list[dict[str, any]] {
     return self._identity_storage.list_all_users(limit, offset);
 }
 
@@ -559,7 +602,7 @@ impl JacScaleUserManager.create_user_as_admin(
     password: str,
     role: str = 'user',
     requires_password_reset: bool = True
-) -> dict[str, Any] {
+) -> dict[str, any] {
     valid_roles = [r.value for r in UserRole];
     if role not in valid_roles {
         return {'error': f"Invalid role. Must be one of: {', '.join(valid_roles)}"};

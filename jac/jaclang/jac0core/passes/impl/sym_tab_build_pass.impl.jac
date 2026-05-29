@@ -24,8 +24,7 @@ impl SymTabBuildPass.pop_scope(self: SymTabBuildPass) -> UniScopeNode {
 }
 
 """Return current scope."""
-@property
-impl SymTabBuildPass.cur_scope(self: SymTabBuildPass) -> UniScopeNode {
+impl SymTabBuildPass.cur_scope.getter(self: SymTabBuildPass) -> UniScopeNode {
     return self.cur_sym_tab[-1];
 }
 
@@ -92,9 +91,30 @@ impl SymTabBuildPass.enter_global_stmt(
     # `global x;` from inside a function: pull the module-level symbol into
     # the enclosing python scope so subsequent assignments rebind the global
     # instead of creating a shadow local that bind_assignment_targets would
-    # type as Unknown.
+    # type as Unknown. For impl-file bodies the decl module is not reachable
+    # yet (decl_link unset), so this is a no-op here and re-run by
+    # DeclImplMatchPass.connect_impls.
+    bind_global_stmt(nd);
+}
+
+impl bind_global_stmt(nd: uni.GlobalStmt) -> None {
     py_scope = find_python_scope_node_of(nd);
     if py_scope is None or isinstance(py_scope, uni.Module) {
+        return;
+    }
+    # The global is owned by the module that holds the *declaration*. For an
+    # impl body that is the decl module reached via decl_link; for an inline
+    # body it is simply the enclosing module. decl_link is unset until
+    # DeclImplMatchPass, so impl bodies resolve to None here (no-op) and are
+    # re-run by connect_impls once the link is wired.
+    impl_def = nd.find_parent_of_type(uni.ImplDef);
+    module: (uni.Module | None) = None;
+    if impl_def is not None and impl_def.decl_link is not None {
+        module = impl_def.decl_link.find_parent_of_type(uni.Module);
+    } else {
+        module = py_scope.find_parent_of_type(uni.Module);
+    }
+    if module is None {
         return;
     }
     for name_atom in nd.target {
@@ -103,10 +123,6 @@ impl SymTabBuildPass.enter_global_stmt(
             continue;
         }
         if sym_name in py_scope.names_in_scope {
-            continue;
-        }
-        module = py_scope.find_parent_of_type(uni.Module);
-        if module is None {
             continue;
         }
         global_sym = module.names_in_scope.get(sym_name);
@@ -273,6 +289,27 @@ impl SymTabBuildPass.exit_module_item(
 }
 
 impl SymTabBuildPass.enter_archetype(self: SymTabBuildPass, nd: uni.Archetype) -> None {
+    # Jac supports decl/impl separation, not decl/decl. A second
+    # `obj/node/edge/walker Foo` block when one already exists in the
+    # same scope is a hard error -- inline bodies don't merge, and the
+    # silent collision used to produce empty class scopes that cascaded
+    # into spurious E1030 "no attribute" errors downstream.
+    if self.cur_sym_tab {
+        existing_sym = self.cur_scope.names_in_scope.get(nd.sym_name, None);
+        if existing_sym {
+            for d in existing_sym.defn {
+                if isinstance(d.name_of, uni.Archetype) {
+                    self.emit(
+                        E0077,
+                        node_override=nd,
+                        name=nd.sym_name,
+                        kind=d.name_of.arch_type.value
+                    );
+                    break;
+                }
+            }
+        }
+    }
     self.push_scope_and_link(nd);
     assert (nd.parent_scope is not None);
     nd.parent_scope.def_insert(nd, access_spec=nd, single_decl='archetype');
@@ -759,41 +796,18 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     ) {
                         outer.add_use(i.name_spec);
                     } else {
-                        # No local binding yet — if the name exists at module
-                        # scope, treat this as a global assignment instead of
-                        # creating a function-local that shadows it.
-                        module_a = i.find_parent_of_type(uni.Module);
-                        if (
-                            module_a is not None
-                            and i.sym_name in module_a.names_in_scope
-                            and not isinstance(py_scope, uni.Module)
-                        ) {
-                            module_a.names_in_scope[i.sym_name].add_use(i.name_spec);
-                            py_scope.names_in_scope[i.sym_name] = module_a.names_in_scope[
-                                i.sym_name
-                            ];
-                        } else {
-                            py_scope.def_insert(i, single_decl='local var');
-                        }
+                        # Python semantics: a function-scope assignment binds a
+                        # NEW local, even when a module global of the same name
+                        # exists. Rebinding the global requires an explicit
+                        # `global x;` (handled by enter_global_stmt, which puts
+                        # the module symbol in scope so the branch above fires).
+                        # Keeping this a local is what makes na ⊆ sv hold: the
+                        # native and sv pathways then agree on scoping.
+                        py_scope.def_insert(i, single_decl='local var');
                     }
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
-            } elif (
-                (nd.type_tag is None)
-                and isinstance(i.sym_tab, uni.Ability)
-                and (module := i.find_parent_of_type(uni.Module)) is not None
-                and i.sym_name in module.names_in_scope
-            ) {
-                # Function-scope unannotated assignment to a name that already
-                # exists at module scope: rebind the global rather than
-                # creating a shadow local. Mirrors the behaviour the user
-                # gets by writing `global x;` first, but lets long-standing
-                # native code skip the redundant declaration.
-                module.names_in_scope[i.sym_name].add_use(i.name_spec);
-                i.sym_tab.names_in_scope[i.sym_name] = module.names_in_scope[
-                    i.sym_name
-                ];
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {

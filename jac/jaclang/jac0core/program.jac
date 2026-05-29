@@ -23,13 +23,21 @@ class JacProgram {
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
     # Reverse-dependency map: target_path -> set of importer_paths that
-    # resolved an import to it. Populated by the import resolver and used
-    # by long-lived clients (the LSP) to fan out re-checks when a module
-    # changes.
+    # resolved an import to it. Used by long-lived clients (the LSP, the
+    # agent's CodeIntelligence) to fan out re-checks when a module changes.
+    # Fed two ways: opportunistically by the import resolver, and -- when
+    # `_track_dependencies` is set -- completely by `record_module_dependencies`
+    # on every compile, which is the only source that survives cache hits.
     def record_dependency(
         self: JacProgram, importer_path: str, target_path: str
     ) -> None;
 
+    # Walk a freshly compiled module's `Import` AST nodes and record every
+    # edge structurally, so `transitive_dependents` stays complete even when
+    # the importer (or its targets) is served from the JIR/hub cache and its
+    # imports are never re-resolved. Called from `compile`/`parse_str` when
+    # `_track_dependencies` is on. No-op for non-`.jac` modules.
+    def record_module_dependencies(self: JacProgram, mod: uni.Module) -> None;
     def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
     # Coordinated eviction across hub, type-cache, native cache, and the
     # rdep stamps. Invariant: after `invalidate_module(p)`, no consumer of

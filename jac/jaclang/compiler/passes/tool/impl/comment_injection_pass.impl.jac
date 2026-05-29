@@ -800,7 +800,7 @@ impl CommentInjectionPass._inject_into_parts(
         ];
         if (real_tokens and self._comments) {
             last_token = max(
-                real_tokens, key=lambda t: Any : (t.loc.last_line, t.loc.col_end)
+                real_tokens, key=lambda t: any : (t.loc.last_line, t.loc.col_end)
             );
             token_id: int = hash(
                 (
@@ -1052,7 +1052,7 @@ impl CommentStore.drain_unattached -> list[CommentInfo] {
             leftovers.append(info);
         }
     }
-    leftovers.sort(key=lambda c: Any : (c.first_line, c.index));
+    leftovers.sort(key=lambda c: any : (c.first_line, c.index));
     return leftovers;
 }
 
@@ -1123,7 +1123,7 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         items.append(('comment', idx, comment));
     }
     items.sort(
-        key=lambda `entry: Any : (`entry[2].loc.first_line, `entry[2].loc.col_start)
+        key=lambda `entry: any : (`entry[2].loc.first_line, `entry[2].loc.col_start)
     );
     inline: dict[(int, list[CommentInfo])] = {};
     standalone: list[CommentInfo] = [];
@@ -1164,9 +1164,9 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         }
     }
     for collection in inline.values() {
-        collection.sort(key=lambda c: Any : (c.first_line, c.index));
+        collection.sort(key=lambda c: any : (c.first_line, c.index));
     }
-    standalone.sort(key=lambda c: Any : (c.first_line, c.index));
+    standalone.sort(key=lambda c: any : (c.first_line, c.index));
     return CommentStore(_inline=inline, _standalone=standalone);
 }
 
@@ -1177,16 +1177,16 @@ impl CommentStore.postinit -> None {
 }
 
 """Return the final line this comment occupies."""
-impl CommentInfo.last_line -> int {
+impl CommentInfo.last_line.getter -> int {
     return self.token.loc.last_line;
 }
 
 """Return the starting line for quick range comparisons."""
-impl CommentInfo.first_line -> int {
+impl CommentInfo.first_line.getter -> int {
     return self.token.loc.first_line;
 }
 
 """Return True when the comment attaches to a token on the same line."""
-impl CommentInfo.is_inline -> bool {
+impl CommentInfo.is_inline.getter -> bool {
     return (self.anchor_token_id is not None);
 }

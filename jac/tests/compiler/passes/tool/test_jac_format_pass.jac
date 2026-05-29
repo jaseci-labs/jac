@@ -169,11 +169,11 @@ test "fstring comment not injected" {
     assert fstring_idx is not None , "f-string statement was lost";
     assert after_idx is not None , "'# Comment after' was lost";
     assert before_idx < fstring_idx , (
-        f"Comment before f-string was displaced after it "
+        "Comment before f-string was displaced after it "
         f"(comment at line {before_idx + 1}, f-string at line {fstring_idx + 1}):\n" + formatted
     );
     assert after_idx > fstring_idx , (
-        f"Comment after f-string was displaced before it "
+        "Comment after f-string was displaced before it "
         f"(comment at line {after_idx + 1}, f-string at line {fstring_idx + 1}):\n" + formatted
     );
 
@@ -390,6 +390,80 @@ test "jsx and lambda inline compact forms stay flat" {
     );
 }
 
+test "JSX slot statement bodies round-trip through the formatter" {
+    # `{...}` slots with statement-form bodies (control flow yielding JSX,
+    # `return` guards) get lowered by ViewLowerPass into an accumulator
+    # IIFE; the formatter pipeline doesn't run that pass, so it must see
+    # and preserve the original slot syntax verbatim.
+    source = (
+        'def:pub Greeting(name: str) -> JsxElement {\n'
+        '    return <div>\n'
+        '        {if name == "" {\n'
+        '            <p>anon</p>\n'
+        '        } else {\n'
+        '            <h1>Hello, {name}</h1>\n'
+        '        }}\n'
+        '    </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    # The slot keyword `if` must survive verbatim -- never expanded into
+    # a comprehension or ternary.
+    assert "{if name" in formatted , (
+        "the statement-form `if` slot must survive formatting:\n" + str(formatted)
+    );
+    assert "} else {" in formatted , (
+        "the `else` branch must survive formatting:\n" + str(formatted)
+    );
+    # The lowering must never leak into formatted source.
+    assert "__jac_view_kids" not in formatted , (
+        "formatter must not expose the lowering accumulator:\n" + str(formatted)
+    );
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , ("slot formatting is not idempotent");
+}
+
+test "dynamic JSX tags round-trip through the formatter" {
+    # `<@expr ...>` syntax must survive formatting verbatim — the `@`-led
+    # dynamic-tag form is parsed into the JSX kid list and the structural
+    # formatter must emit it back in the same shape.
+    source = (
+        'def:pub Box(as_: str, children: any = None) -> JsxElement {\n'
+        '    return <@as_ class="box">{children}</@as_>;\n'
+        '}\n'
+        '\n'
+        'def:pub Icon(glyph: type) -> JsxElement {\n'
+        '    return <@{glyph} class="icon"/>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    assert "<@as_" in formatted , (
+        "identifier-form dynamic open tag must survive formatting:\n" + str(formatted)
+    );
+    assert "</@as_>" in formatted , (
+        "identifier-form dynamic close tag must survive formatting:\n" + str(formatted)
+    );
+    assert "<@{glyph}" in formatted , (
+        "brace-wrapped dynamic tag must survive formatting:\n" + str(formatted)
+    );
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "dynamic-tag formatting is not idempotent"
+    );
+}
+
 """Regression: top-level and multi-statement `if` blocks must still break —
 the flat-capable rule is strictly scoped to single-statement, no-else `if`
 statements whose direct parent is a `LambdaExpr`. Anywhere else, the
@@ -577,6 +651,62 @@ test "genai ability with kwargs preserves by and arguments" {
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
+}
+
+"""Regression: set literals must space after commas like lists, tuples, and
+dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
+crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space."""
+test "set literal spaces after commas like other collections" {
+    source = "glob a = {1,2,3};\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "{1, 2, 3}" in formatted , (
+        f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
+}
+
+"""Regression: a set literal wider than the print width must break one element
+per line, exactly like a list. `exit_set_val` had no broken layout at all, so
+long sets stayed on a single overlong line."""
+test "long set literal wraps one element per line like a list" {
+    source = (
+        'glob a = {"alpha","bravo","charlie","delta","echo","foxtrot",'
+        '"golf","hotel","india","juliet","kilo","lima"};\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    assert len(lines) > 3 , (
+        f"long set literal must break across lines, got:\n{formatted}"
+    );
+    # No two elements may share a line once broken.
+    assert not any(('"alpha"' in ln) and ('"bravo"' in ln) for ln in lines) , (
+        f"broken set must place one element per line, got:\n{formatted}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
+}
+
+"""Regression: assign comprehensions must space after commas the same way
+filter comprehensions do. `exit_assign_compr` stripped every space, so
+`(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space."""
+test "assign comprehension spaces after commas like filter comprehension" {
+    source = "with entry { x = (a)(=foo=1,bar=2); }\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "=foo=1, bar=2" in formatted , (
+        f"assign comprehension must space after commas, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
 }
 
 """Regression: jac_str_formatter must populate errors_had on syntax error

@@ -22,29 +22,25 @@ glob BOARD_SIZE: int = 0o10,  # Octal 8
 
 # Piece symbol mappings (dict values)
 glob WHITE_SYMBOLS: dict[PieceKind, str] = {
-    PieceKind.PAWN: "P",
-    PieceKind.KNIGHT: "N",
-    PieceKind.BISHOP: "B",
-    PieceKind.ROOK: "R",
-    PieceKind.QUEEN: "Q",
-    PieceKind.KING: "K"
-};
+         PieceKind.PAWN: "P",
+         PieceKind.KNIGHT: "N",
+         PieceKind.BISHOP: "B",
+         PieceKind.ROOK: "R",
+         PieceKind.QUEEN: "Q",
+         PieceKind.KING: "K"
+     };
 
 glob BLACK_SYMBOLS: dict[PieceKind, str] = {
-    PieceKind.PAWN: "p",
-    PieceKind.KNIGHT: "n",
-    PieceKind.BISHOP: "b",
-    PieceKind.ROOK: "r",
-    PieceKind.QUEEN: "q",
-    PieceKind.KING: "k"
-};
+         PieceKind.PAWN: "p",
+         PieceKind.KNIGHT: "n",
+         PieceKind.BISHOP: "b",
+         PieceKind.ROOK: "r",
+         PieceKind.QUEEN: "q",
+         PieceKind.KING: "k"
+     };
 
 # Column names as string (bytes literal for reference: b"abcdefgh")
 glob COL_NAMES: str = "abcdefgh";
-
-# ===================== Forward Declarations =====================
-obj Board;
-obj Piece;
 
 # ===================== Position as Tuple Helper =====================
 def pos_to_tuple(row: int, col: int) -> tuple[int, int] {
@@ -136,13 +132,9 @@ obj Piece {
             while board.is_valid_pos(r, c) {
                 target: Piece | None = board.get_piece(r, c);
                 if target is None {
-                    moves.append(
-                        Move(from_pos=self.pos, to_pos=(r, c))
-                    );
+                    moves.append(Move(from_pos=self.pos, to_pos=(r, c)));
                 } elif target.color != self.color {
-                    moves.append(
-                        Move(from_pos=self.pos, to_pos=(r, c))
-                    );
+                    moves.append(Move(from_pos=self.pos, to_pos=(r, c)));
                     break;
                 } else {
                     break;
@@ -168,15 +160,10 @@ obj Pawn(Piece) {
 
         # Forward one
         new_row = row + direction;
-        if board.is_valid_pos(new_row, col)
-        and board.get_piece(new_row, col) is None {
+        if board.is_valid_pos(new_row, col) and board.get_piece(new_row, col) is None {
             is_promo = new_row == promo_row;
             moves.append(
-                Move(
-                    from_pos=self.pos,
-                    to_pos=(new_row, col),
-                    is_promotion=is_promo
-                )
+                Move(from_pos=self.pos, to_pos=(new_row, col), is_promotion=is_promo)
             );
             # Forward two from start
             if row == start_row {
@@ -194,7 +181,7 @@ obj Pawn(Piece) {
         }
 
         # Diagonal captures using set of offsets
-        capture_offsets: set[int] = {-1, 1};  # Set value
+        capture_offsets: set[int] = {-1,1};  # Set value
         for dc in capture_offsets {
             nc = col + dc;
             if board.is_valid_pos(new_row, nc) {
@@ -214,9 +201,7 @@ obj Pawn(Piece) {
                 if new_row == ep_row and nc == ep_col {
                     moves.append(
                         Move(
-                            from_pos=self.pos,
-                            to_pos=(new_row, nc),
-                            is_en_passant=True
+                            from_pos=self.pos, to_pos=(new_row, nc), is_en_passant=True
                         )
                     );
                 }
@@ -232,8 +217,14 @@ obj Knight(Piece) {
     def get_raw_moves(board: Board) -> list[Move] {
         # Knight offsets as list of tuples
         offsets: list[tuple[int, int]] = [
-            (-2, -1), (-2, 1), (-1, -2), (-1, 2),
-            (1, -2), (1, 2), (2, -1), (2, 1)
+            (-2, -1),
+            (-2, 1),
+            (-1, -2),
+            (-1, 2),
+            (1, -2),
+            (1, 2),
+            (2, -1),
+            (2, 1)
         ];
 
         row = self.get_row();
@@ -285,8 +276,14 @@ obj Queen(Piece) {
     def get_raw_moves(board: Board) -> list[Move] {
         # All 8 directions as tuples
         directions: list[tuple[int, int]] = [
-            (-1, -1), (-1, 0), (-1, 1), (0, -1),
-            (0, 1), (1, -1), (1, 0), (1, 1)
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1)
         ];
         return self.slide_moves(board, directions);
     }
@@ -301,8 +298,7 @@ obj King(Piece) {
 
         # Generate all adjacent positions using list comprehension
         adjacent: list[tuple[int, int]] = [
-            (row + dr, col + dc)
-            for dr in [-1, 0, 1]
+            (row + dr, col + dc) for dr in [-1, 0, 1]
             for dc in [-1, 0, 1]
             if not (dr == 0 and dc == 0)
         ];
@@ -344,8 +340,12 @@ def count_pieces_by_kind(pieces: list[Piece]) -> dict[PieceKind, int] {
     # Count pieces by kind (sum with generator not yet supported in native)
     counts: dict[PieceKind, int] = {};
     all_kinds: list[PieceKind] = [
-        PieceKind.PAWN, PieceKind.KNIGHT, PieceKind.BISHOP,
-        PieceKind.ROOK, PieceKind.QUEEN, PieceKind.KING
+        PieceKind.PAWN,
+        PieceKind.KNIGHT,
+        PieceKind.BISHOP,
+        PieceKind.ROOK,
+        PieceKind.QUEEN,
+        PieceKind.KING
     ];
     for kind in all_kinds {
         count = 0;
@@ -408,17 +408,20 @@ obj Board {
 
     def postinit() {
         # Initialize board using list comprehension
-        self.squares = [
-            [None for _ in range(BOARD_SIZE)]
-            for _ in range(BOARD_SIZE)
-        ];
+        self.squares = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)];
         self.setup_pieces();
     }
 
     def setup_pieces() -> None {
         back_rank: list[PieceKind] = [
-            PieceKind.ROOK, PieceKind.KNIGHT, PieceKind.BISHOP, PieceKind.QUEEN,
-            PieceKind.KING, PieceKind.BISHOP, PieceKind.KNIGHT, PieceKind.ROOK
+            PieceKind.ROOK,
+            PieceKind.KNIGHT,
+            PieceKind.BISHOP,
+            PieceKind.QUEEN,
+            PieceKind.KING,
+            PieceKind.BISHOP,
+            PieceKind.KNIGHT,
+            PieceKind.ROOK
         ];
         for col in range(BOARD_SIZE) {
             self.squares[0][col] = create_piece(back_rank[col], Color.BLACK, 0, col);
@@ -529,9 +532,7 @@ obj Board {
         if move.is_promotion {
             move.promoted_from = piece;
             queen: Piece = Queen(
-                color=piece.color,
-                kind=PieceKind.QUEEN,
-                pos=(to_row, to_col)
+                color=piece.color, kind=PieceKind.QUEEN, pos=(to_row, to_col)
             );
             queen.has_moved = True;
             self.set_piece(to_row, to_col, queen);
@@ -755,7 +756,7 @@ obj Board {
 
 # ===================== Game =====================
 obj Game {
-    has board: Board | None = None,
+    has board: Board by postinit,
         current_turn: Color = Color.WHITE,
         is_over: bool = False,
         move_count: int = 0;
@@ -820,13 +821,20 @@ obj Game {
             ks_right = CASTLE_WK if color == Color.WHITE else CASTLE_BK;
             if (self.board.castling_rights & ks_right) != 0 {
                 rook_ks: Piece | None = self.board.get_piece(back_rank, 7);
-                if (rook_ks is not None and rook_ks.kind == PieceKind.ROOK
-                    and not rook_ks.has_moved) {
-                    if (self.board.get_piece(back_rank, 5) is None
-                        and self.board.get_piece(back_rank, 6) is None) {
-                        if (not self.is_in_check(color)
+                if (
+                    rook_ks is not None
+                    and rook_ks.kind == PieceKind.ROOK
+                    and not rook_ks.has_moved
+                ) {
+                    if (
+                        self.board.get_piece(back_rank, 5) is None
+                        and self.board.get_piece(back_rank, 6) is None
+                    ) {
+                        if (
+                            not self.is_in_check(color)
                             and not self.is_square_attacked(back_rank, 5, opp)
-                            and not self.is_square_attacked(back_rank, 6, opp)) {
+                            and not self.is_square_attacked(back_rank, 6, opp)
+                        ) {
                             castle_move: Move = Move(
                                 from_pos=(back_rank, 4),
                                 to_pos=(back_rank, 6),
@@ -844,14 +852,21 @@ obj Game {
             qs_right = CASTLE_WQ if color == Color.WHITE else CASTLE_BQ;
             if (self.board.castling_rights & qs_right) != 0 {
                 rook_qs: Piece | None = self.board.get_piece(back_rank, 0);
-                if (rook_qs is not None and rook_qs.kind == PieceKind.ROOK
-                    and not rook_qs.has_moved) {
-                    if (self.board.get_piece(back_rank, 1) is None
+                if (
+                    rook_qs is not None
+                    and rook_qs.kind == PieceKind.ROOK
+                    and not rook_qs.has_moved
+                ) {
+                    if (
+                        self.board.get_piece(back_rank, 1) is None
                         and self.board.get_piece(back_rank, 2) is None
-                        and self.board.get_piece(back_rank, 3) is None) {
-                        if (not self.is_in_check(color)
+                        and self.board.get_piece(back_rank, 3) is None
+                    ) {
+                        if (
+                            not self.is_in_check(color)
                             and not self.is_square_attacked(back_rank, 2, opp)
-                            and not self.is_square_attacked(back_rank, 3, opp)) {
+                            and not self.is_square_attacked(back_rank, 3, opp)
+                        ) {
                             castle_move: Move = Move(
                                 from_pos=(back_rank, 4),
                                 to_pos=(back_rank, 2),
@@ -892,8 +907,10 @@ obj Game {
         from_row = BOARD_SIZE - int(from_sq[1]);
         to_col = ord(to_sq[0]) - ord("a");
         to_row = BOARD_SIZE - int(to_sq[1]);
-        if (not self.board.is_valid_pos(from_row, from_col)
-            or not self.board.is_valid_pos(to_row, to_col)) {
+        if (
+            not self.board.is_valid_pos(from_row, from_col)
+            or not self.board.is_valid_pos(to_row, to_col)
+        ) {
             return None;
         }
         return (from_row, from_col, to_row, to_col);  # Return as tuple
@@ -902,7 +919,7 @@ obj Game {
     def get_move_history_summary() -> str {
         # Use modulo and floor division for move numbering
         full_moves = self.move_count // 2;  # Floor division
-        half_move = self.move_count % 2;    # Modulo
+        half_move = self.move_count % 2;  # Modulo
         return f"Move {full_moves + 1}" + ("..." if half_move == 1 else "");
     }
 
@@ -923,10 +940,13 @@ obj Game {
 
             # Create piece summary
             piece_info: dict[str, int] = merge_piece_info(
-                white_counts[PieceKind.PAWN],
-                black_counts[PieceKind.PAWN]
+                white_counts[PieceKind.PAWN], black_counts[PieceKind.PAWN]
             );
-            print(f"Pawns - W: {piece_info['white_pawns']}, B: {piece_info['black_pawns']}");
+            print(
+                f"Pawns - W: {piece_info['white_pawns']}, B: {piece_info[
+                    'black_pawns'
+                ]}"
+            );
 
             print(self.get_move_history_summary());
 
@@ -934,7 +954,9 @@ obj Game {
                 print(f"{color_name} is in CHECK!");
             }
 
-            move_str = input(f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): ");
+            move_str = input(
+                f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): "
+            );
 
             if move_str == "quit" {
                 print("Game ended.");
@@ -965,27 +987,24 @@ obj Game {
                     print("Invalid input. Use format like: e2 e4");
                     continue;
                 }
-
                 (from_row, from_col, to_row, to_col) = coords;  # Tuple unpacking
-
                 # Check that selected piece belongs to current player
                 selected: Piece | None = self.board.get_piece(from_row, from_col);
                 if selected is None or selected.color != self.current_turn {
                     print("No valid piece at that square.");
                     continue;
                 }
-
                 # Find matching legal move using comprehension filter
                 matching: list[Move] = [
-                    m for m in legal_moves
-                    if m.from_pos == (from_row, from_col) and m.to_pos == (to_row, to_col)
+                    m
+                    for m in legal_moves
+                    if m.from_pos == (from_row, from_col)
+                    and m.to_pos == (to_row, to_col)
                 ];
-
                 if len(matching) == 0 {
                     print("Illegal move. Try again.");
                     continue;
                 }
-
                 found = matching[0];
             }
 

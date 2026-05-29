@@ -230,46 +230,6 @@ impl NaIRGenPass._emit_runtime_raise(
 }
 
 # ─── Exception Type Registry ────────────────────────────────
-
-# Canonical exception hierarchy: child → direct parent.
-# Used by _get_exc_descendants to enable hierarchy-aware matching.
-glob _EXC_PARENT: dict[str, str] = {
-         "Exception": "BaseException",
-         "ArithmeticError": "Exception",
-         "ZeroDivisionError": "ArithmeticError",
-         "OverflowError": "ArithmeticError",
-         "FloatingPointError": "ArithmeticError",
-         "LookupError": "Exception",
-         "IndexError": "LookupError",
-         "KeyError": "LookupError",
-         "ValueError": "Exception",
-         "TypeError": "Exception",
-         "AttributeError": "Exception",
-         "RuntimeError": "Exception",
-         "NotImplementedError": "RuntimeError",
-         "RecursionError": "RuntimeError",
-         "OSError": "Exception",
-         "FileNotFoundError": "OSError",
-         "FileExistsError": "OSError",
-         "PermissionError": "OSError",
-         "TimeoutError": "OSError",
-         "IsADirectoryError": "OSError",
-         "NotADirectoryError": "OSError",
-         "AssertionError": "Exception",
-         "ImportError": "Exception",
-         "ModuleNotFoundError": "ImportError",
-         "NameError": "Exception",
-         "UnboundLocalError": "NameError",
-         "StopIteration": "Exception",
-         "StopAsyncIteration": "Exception",
-         "EOFError": "Exception",
-         "MemoryError": "Exception",
-         "ReferenceError": "Exception",
-         "KeyboardInterrupt": "BaseException",
-         "SystemExit": "BaseException",
-         "GeneratorExit": "BaseException"
-     };
-
 """Get or register an exception type ID for type-based matching."""
 impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
@@ -288,23 +248,15 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
 
 """Get all descendant type names for a given exception type.
 
-Walks _EXC_PARENT to find all types whose ancestor chain includes type_name.
-Registers each descendant via _get_or_register_exc_type to ensure IDs exist.
+Reads the canonical exception hierarchy from JAC_TYPE_REGISTRY and registers
+each descendant via _get_or_register_exc_type to ensure IDs exist.
 Returns the list of descendant names (NOT including type_name itself).
 """
 impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
-    descendants: list[str] = [];
-    for (child, parent) in _EXC_PARENT.items() {
-        # Walk the ancestor chain of child to see if type_name is an ancestor.
-        cur = child;
-        while cur in _EXC_PARENT {
-            if _EXC_PARENT[cur] == type_name {
-                descendants.append(child);
-                self._get_or_register_exc_type(child);
-                break;
-            }
-            cur = _EXC_PARENT[cur];
-        }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    descendants = JAC_TYPE_REGISTRY.exception_descendants(type_name);
+    for desc_name in descendants {
+        self._get_or_register_exc_type(desc_name);
     }
     return descendants;
 }

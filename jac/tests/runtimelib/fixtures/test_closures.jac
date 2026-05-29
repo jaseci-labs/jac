@@ -2,7 +2,7 @@
 
 cl {
     # Test 1: Simple closure with outer variable
-    def make_counter()  -> Any {
+    def make_counter()  -> any {
         count = 0;
 
         def increment()  -> int {
@@ -14,14 +14,14 @@ cl {
     }
 
     # Test 2: Closure returning getter/setter pair
-    def create_signal_simple(initialValue: Any) -> list {
+    def create_signal_simple(initialValue: any) -> list {
         value = initialValue;
 
-        def readVal()  -> Any {
+        def readVal()  -> any {
             return value;
         }
 
-        def writeVal(newValue: Any) -> None {
+        def writeVal(newValue: any) -> None {
             value = newValue;
         }
 
@@ -29,7 +29,7 @@ cl {
     }
 
     # Test 3: Lambda closures
-    def make_adder(x: int) -> Any {
+    def make_adder(x: int) -> any {
         return lambda  y: int: x + y;
     }
 

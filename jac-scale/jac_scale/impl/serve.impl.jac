@@ -1,7 +1,7 @@
 """Helper function to convert TransportResponse to dict for JSONResponse."""
 def _transport_response_to_dict(
     transport_response: TransportResponse
-) -> dict[str, Any] {
+) -> dict[str, any] {
     result = {
         'ok': transport_response.ok,
         'type': transport_response.type,

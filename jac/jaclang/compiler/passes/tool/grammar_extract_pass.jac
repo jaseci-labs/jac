@@ -211,6 +211,7 @@ obj GrammarExtractPass(UniPass) {
     def _stage_unwrap_top_opt(rules: list) -> list;
     def _stage_dedup_tokens(rules: list) -> list;
     def _stage_remove_errors(rules: list) -> list;
+    def _is_redundant_slot_wrap_recovery(expr: GExpr) -> bool;
     def _stage_remove_unreachable(rules: list) -> list;
     # Post-processing helpers
     def _dedup_parent_child_tokens(expr: GExpr, rule_map: dict) -> GExpr;

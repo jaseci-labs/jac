@@ -1,10 +1,5 @@
 import from jaclang.cli.console { console }
 
-"""Make convenient check.Equal(...) etc."""
-impl JacTestCheck.__getattr__(name: str) -> object {
-    return getattr(JacTestCheck.test_case, name);
-}
-
 """Create a new test."""
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""
@@ -80,7 +75,6 @@ impl JacTestCheck.run_test(
 
 """Clear the test suite."""
 impl JacTestCheck.reset -> None {
-    JacTestCheck.test_case = unittest.TestCase();
     JacTestCheck.test_suite = unittest.TestSuite();
     JacTestCheck.test_suite_path = {};
 }
@@ -93,7 +87,7 @@ impl JacTextTestRunner._makeResult -> JacTestResult {
 }
 
 """Initialize JacTextTestRunner object."""
-impl JacTextTestRunner.init(max_failures: (int | None) = None, **kwargs: Any) -> None {
+impl JacTextTestRunner.init(max_failures: (int | None) = None, **kwargs: any) -> None {
     self.max_failures = max_failures;
     super.init(**kwargs);
 }
@@ -104,7 +98,7 @@ impl JacTestResult.stop -> None {
 }
 
 """Count failures and stop."""
-impl JacTestResult.addFailure(`test: Any, err: Any) -> None {
+impl JacTestResult.addFailure(`test: any, err: any) -> None {
     super.addFailure(`test, err);
     self.failures_count += 1;
     if (
@@ -133,7 +127,7 @@ impl parametrize(
         param_id = id_fn(param) if id_fn else str(param);
         display = f"{base_name} [{param_id}]";
         func_name = f"{base_name}_{param_id}";
-        def make_fn(p: Any) -> Callable {
+        def make_fn(p: any) -> Callable {
             def fn {
                 test_func(p);
             }

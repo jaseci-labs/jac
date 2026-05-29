@@ -173,6 +173,32 @@ test "E0117: mixed tabs and spaces" {
     assert prog is not None and has_diagnostic_code(prog, "E0117", in_warnings=True);
 }
 
+test "W0100: invalid escape sequence warns" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "press \\q now"; }', file_path="test.jac");
+    assert has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: valid escapes do not warn" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='with entry { x = "tab\\there\\nline\\x41"; }', file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: raw string keeps backslashes and is exempt" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = r"press \\q"; }', file_path="test.jac");
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: each invalid escape warns once" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "\\q then \\e"; }', file_path="test.jac");
+    assert count_diagnostic_code(prog, "W0100", in_warnings=True) == 2;
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 2: PARSER / SYNTAX DIAGNOSTICS (E0052-E0078)
@@ -388,6 +414,46 @@ test "E0062: nonlocal at module level" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
 }
 
+test "E0063: glob at module level is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
+}
+
+test "E0063: glob in statement position is always rejected" {
+    sources = [
+        "with entry { glob a = 90; }",
+        "with entry { glob a = 90 }",
+        "with entry { glob a = }",
+        "with entry { glob a }",
+        "with entry { glob }",
+        "def foo() -> int { glob a = 1; return a; }",
+        "test \"t\" { glob sneaky = 1; assert True; }"
+    ];
+    for src in sources {
+        (has_err, _) = parse_and_validate(src);
+        assert has_err , f"Expected error for: {src}";
+    }
+}
+
+test "E0063: glob inside a codespace block is valid" {
+    # glob is a declaration, so it is allowed directly under cl/sv/na blocks.
+    for src in ["cl { glob counter: int = 0; }", "sv { glob token = \"x\"; }"] {
+        (has_err, _) = parse_and_validate(src);
+        assert not has_err , f"Unexpected error for: {src}";
+    }
+}
+
+test "E0063: glob inside a function produces no runnable bytecode" {
+    # Detected by ASTValidationPass (not the parser), and the structural
+    # error must block codegen so the invalid module cannot silently execute.
+    prog = JacProgram();
+    mod = prog.compile(
+        file_path="/tmp/test_e0063_gate.jac",
+        use_str="def foo() -> int { glob a = 1; return a; }"
+    );
+    assert has_diagnostic_code(prog, "E0063");
+    assert not mod.gen.py_bytecode;
+}
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 3: NAME RESOLUTION / SCOPE DIAGNOSTICS (E/W 2020-2037)
@@ -548,6 +614,24 @@ test "W1172: missing await on coroutine" {
     pytest.skip("W1172 not yet implemented");
     (prog, _) = compile_and_check("type_W1172_missing_await.jac");
     assert has_diagnostic_code(prog, "W1172", in_warnings=True);
+}
+
+test "E1042: calling an async function without await" {
+    # An `async def` call is a coroutine, not its return value. Assigning it
+    # without `await` is a type error; the awaited forms must stay clean.
+    (prog, _) = compile_and_check("type_E1042_missing_await.jac");
+    assert count_diagnostic_code(prog, "E1042") == 2 , f"expected 2 E1042 (the two un-awaited calls), got "
+    f"{count_diagnostic_code(prog, 'E1042')}; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
+test "E1042: missing await on sv-imported call (issue #6236)" {
+    # `sv import` functions are async RPC stubs on the client; calling one
+    # without `await` assigns a coroutine to a typed field and crashes at
+    # runtime. `jac check` must flag it.
+    (prog, _) = compile_and_check("type_E1042_sv_missing_await.cl.jac");
+    assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
+    f"errors={[str(e) for e in prog.errors_had]}";
 }
 
 # --- Collections ---
@@ -864,8 +948,17 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
-     IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
+glob IMPLEMENTED_REJECT: set[str] = {
+         "E0062_nonlocal_module",
+         "E0063_glob_inside_func",
+         "E0071_bare_except_first",
+         "E0075_dup_base"
+     },
+     IMPLEMENTED_VALIDATE: set[str] = {
+         "E0055_yield_in_entry",
+         "E0058_break_no_loop",
+         "E0058_continue_no_loop"
+     };
 
 def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
@@ -942,6 +1035,68 @@ test "valid: function with return on all paths" {
         'def foo(x: int) -> int { if x > 0 { return x; } else { return -x; } }'
     );
     assert not has_err;
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  view_body_check — `view` declarator body rules (ViewLowerPass)
+# ══════════════════════════════════════════════════════════════════
+test "view body check flags a value-returning return (E2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    assert has_diagnostic_code(program, "E2019") , (
+        "a `return <value>;` in a view body should raise E2019"
+    );
+}
+
+test "view body check flags bare return; in any slot position (E2020)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Bare `return;` is now forbidden ANYWHERE inside a slot body — the
+    # "use `skip;`" guidance applies in loops, outside loops, and nested
+    # under control flow (`match` / `try` / etc.). Fixture has three
+    # call sites: ReturnInLoop, ReturnAtTopLevel, ReturnInLoopUnderMatch.
+    n = count_diagnostic_code(program, "E2020");
+    assert n >= 3 , (
+        f"E2020 should fire for each bare `return;` in a slot body (loop, top-level, and nested), got {n}"
+    );
+}
+
+test "view body check flags break inside a template loop (E2021)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `for { break; }` AND nested `for { try { break; } except: ... }`
+    # should both fire — verifies `_check_body` recurses through `try`.
+    # `skip;` is NO LONGER in E2021 (it's the slot early-exit now).
+    n = count_diagnostic_code(program, "E2021");
+    assert n >= 2 , (
+        f"E2021 should fire for both shallow and nested `break;` in loops, got {n}"
+    );
+}
+
+test "redundant `{...}` slot wrapping inside slot body raises E2023" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # `RedundantSlotWrap` has two redundant `{...}` slots inside the
+    # outer slot body (`{if ... }}` and `{for ... }}`) — each drives
+    # E2023, and no cascade of E0001/E0002 parse errors should fire.
+    n = count_diagnostic_code(program, "E2023");
+    assert n >= 2 , (
+        f"E2023 should fire once per redundant inner `{{...}}` slot, got {n}"
+    );
+    # Critically, the recovery path must NOT produce a parse-error
+    # cascade — the redundant-slot diagnostic replaces it.
+    parse_cascade = count_diagnostic_code(program, "E0002");
+    assert parse_cascade == 0 , (
+        f"E2023 recovery must avoid the E0001/E0002 parse cascade, got {parse_cascade} E0002 errors"
+    );
+}
+
+test "view body check warns on a keyless while (W2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `while { <span/> }` AND nested `while { try { <span/> } }` AND
+    # `while { switch { case _: <span/> } }` should all fire — verifies
+    # `_emits_keyless_jsx` recurses through `try` and `switch`.
+    n = count_diagnostic_code(program, "W2019", in_warnings=True);
+    assert n >= 3 , (
+        f"W2019 should fire for shallow, try-wrapped, and switch-wrapped keyless `while`, got {n}"
+    );
 }
 
 

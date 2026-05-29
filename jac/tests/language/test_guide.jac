@@ -173,7 +173,8 @@ test "guide store strips frontmatter from the guide body" {
 }
 
 test "guide store maps diagnostic codes to guides" {
-    assert guide_for_diagnostic("W0064", "syntax") == "jac-fullstack-patterns";
+    # Type-category diagnostics route to the jac-types guide via the
+    # category fallback; codes with no mapping return None.
     assert guide_for_diagnostic("E1001", "type") == "jac-types";
     assert guide_for_diagnostic("E0001", "syntax") is None;
 }

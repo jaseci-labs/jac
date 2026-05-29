@@ -51,6 +51,10 @@ obj DocIRGenPass(UniPass) {
     ) -> doc.DocType;
 
     def format_comprehension(parts: list[doc.DocType]) -> doc.DocType;
+    """Lay out a comma-delimited literal (list/set/tuple): flat with a space
+    after each comma, or one element per line when it must break."""
+    def format_comma_collection(nd: uni.UniNode) -> doc.DocType;
+
     def is_one_line(nd: uni.UniNode) -> bool;
     def has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool;
     def add_body_stmt_with_spacing(
@@ -180,5 +184,6 @@ obj DocIRGenPass(UniPass) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
 }
