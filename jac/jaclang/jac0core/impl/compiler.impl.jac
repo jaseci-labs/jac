@@ -730,6 +730,16 @@ impl JacCompiler.compile(
         if is_native_mod {
             run_type_check = True;
         }
+        # A client (.cl.jac) module is always cross-boundary: its `sv import`s
+        # are client->server RPC stubs. Force type-check so BoundaryAnalysisPass
+        # can read resolved types (the single semantic source of truth) rather
+        # than re-deriving signatures from raw annotation ASTs. Detected by file
+        # suffix here (pre-type-check): interop bindings are not populated until
+        # BoundaryAnalysisPass runs, which is after this decision point.
+        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
+        if is_client_mod {
+            run_type_check = True;
+        }
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
@@ -767,6 +777,74 @@ impl JacCompiler.compile(
             passes=get_boundary_analysis_sched(),
             cancel_token=options.cancel_token
         );
+    }
+    # Boundary completion for cross-boundary apps. A plain top-level compile runs
+    # BoundaryAnalysisPass only on the entry; the client (.cl.jac) modules reached
+    # through its `to cl:` imports -- which carry the client->server `sv import`
+    # bindings the serve runtime needs -- are not pulled into the program by a
+    # normal compile/import (only the bundle/ecmascript build compiles them).
+    # Walk the entry's client import graph and front-end-compile each reachable
+    # `.cl.jac` into THIS program so BoundaryAnalysisPass records its
+    # `server_exports_to_client` bindings in the hub. The serve runtime then
+    # reads the endpoint set from that table rather than re-deriving it at
+    # request time. Gated to the real top-level compile (not the lightweight
+    # symtab_ir_only / no_cgen provider resolutions that nest under it).
+    if (
+        not had_parse_errors
+        and not had_blocking_errors
+        and not options.symtab_ir_only
+        and not options.no_cgen
+    ) {
+        import os as _cb_os;
+        cb_seen: set[str] = set();
+        cb_worklist: list = [mod_targ];
+        cb_opts = CompileOptions(
+            no_cgen=True, force_target_program=True, cancel_token=options.cancel_token
+        );
+        while cb_worklist {
+            cb_cur = cb_worklist.pop();
+            if cb_cur is None {
+                continue;
+            }
+            for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
+                if not cb_imp.from_loc {
+                    continue;
+                }
+                try {
+                    cb_src = cb_imp.from_loc.resolve_relative_path();
+                } except Exception {
+                    continue;
+                }
+                if not (isinstance(cb_src, str) and cb_src.endswith('.cl.jac')) {
+                    continue;
+                }
+                cb_src = _cb_os.path.abspath(cb_src);
+                if cb_src in cb_seen {
+                    continue;
+                }
+                cb_seen.add(cb_src);
+                cb_mod = actual_program.mod.hub.get(cb_src);
+                cb_has_facts = (
+                    cb_mod is not None
+                    and cb_mod.gen
+                    and cb_mod.gen.interop_manifest
+                    and bool(cb_mod.gen.interop_manifest.bindings)
+                );
+                if not cb_has_facts {
+                    try {
+                        cb_mod = self.compile(
+                            file_path=cb_src,
+                            target_program=actual_program,
+                            options=cb_opts
+                        );
+                    } except Exception {
+                        cb_mod = actual_program.mod.hub.get(cb_src);
+                    }
+                }
+                cb_worklist.append(cb_mod);
+            }
+        }
+        actual_program._compile_options = options;
     }
     if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.

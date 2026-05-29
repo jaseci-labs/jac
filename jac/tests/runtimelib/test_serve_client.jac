@@ -73,6 +73,31 @@ def make_fullstack_app_client(base_path: str) -> JacTestClient {
     );
 }
 
+"""Create a client for the multi-file cross-boundary (Path B) app.
+
+The entry module (`crossbound_app.jac`) opens the client but imports no server
+endpoint; the endpoints live in `crossbound_server.jac` and are reached only
+through the client's `sv import`. Copied into an isolated dir so relative
+imports resolve.
+"""
+def make_crossboundary_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    # Unique entry module name so repeated runs in one process do not collide in
+    # the program/module cache (mirrors make_client_app_client).
+    module_name = f"crossbound_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "crossbound_app.jac", dest / f"{module_name}.jac");
+    shutil.copy(fixtures_src / "crossbound_server.jac", dest / "crossbound_server.jac");
+    shutil.copy(
+        fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
+    );
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
 """Create test client with base_route_app configured for SPA catch-all."""
 def make_spa_client(tmp_path: str) -> JacTestClient {
     import from jaclang.project.config { JacConfig, ServeConfig, set_config }
@@ -1111,6 +1136,51 @@ test "serve client page html and bundle" {
         # Module registered
         assert "__jacRegisterClientModule" in bundle_js;
         assert "function app()" in bundle_js;
+        client.close();
+    }
+}
+
+# =============================================================================
+# TestCrossBoundaryEndpoints (Path B / issue 6221) (3 tests)
+# =============================================================================
+test "issue 6221: client-called def:pub endpoint registers without entry re-import" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # cross_pub is def:pub and the client calls it via `sv import`, but it is
+        # NOT imported into the entry module. Whole-program detection (Path B)
+        # must register it anyway, instead of the old silent 404/405.
+        response = client.post("/function/cross_pub", json={});
+        assert response.ok , f"cross_pub should be callable: {response.data}";
+        assert response.data["result"]["msg"] == "pub-ok";
+        client.close();
+    }
+}
+
+test "issue 6221: cross-boundary def:priv endpoint registers but requires auth" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # Reached via the same `sv import`, so it registers -- but its own `priv`
+        # access level must still be honored: rejected without auth, callable
+        # with auth (proving it is registered, just gated -- never auto-public).
+        unauth = client.post("/function/cross_priv", json={});
+        assert not unauth.ok , "cross_priv must require auth";
+        client.register_user("cb_user", "pw_12345678");
+        authed = client.post("/function/cross_priv", json={});
+        assert authed.ok , f"cross_priv should be callable with auth: {authed.data}";
+        assert authed.data["result"]["msg"] == "priv-ok";
+        client.close();
+    }
+}
+
+test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # cross_orphan is def:pub but nothing calls it across the boundary and the
+        # entry never imports it. Path B is call-scoped (not "expose every pub"),
+        # so it must stay unregistered even for an authenticated caller.
+        client.register_user("cb_user2", "pw_12345678");
+        response = client.post("/function/cross_orphan", json={});
+        assert not response.ok , "uncalled cross_orphan should not be registered";
         client.close();
     }
 }
