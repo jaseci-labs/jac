@@ -1102,6 +1102,44 @@ body.resizing {
     font-style: italic;
 }
 
+.cd-tools-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 0 3px;
+    margin-top: 4px;
+}
+
+.cd-tools-head:hover {
+    color: var(--fg);
+}
+
+.cd-tools-head .chev {
+    color: var(--accent);
+}
+
+.cd-msg.cd-toolschema {
+    border-left: 2px solid var(--accent);
+}
+
+.cd-tooldesc {
+    padding: 6px 10px 0;
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
 .cd-body {
     gap: 10px;
 }

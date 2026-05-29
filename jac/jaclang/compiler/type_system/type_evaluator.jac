@@ -188,7 +188,8 @@ obj NarrowingTarget {
 obj NarrowingPredicate {
     has key: str,
         narrow_type: TypeBase,
-        is_inverted: bool = False;
+        is_inverted: bool = False,
+        attr_name: str | None = None;
 }
 
 """Classification of a leaf narrowing condition."""
@@ -199,7 +200,8 @@ enum NarrowingKind {
     NONE_IS_NOT = "none_is_not",
     TRUTHINESS = "truthiness",
     LITERAL_EQ = "literal_eq",
-    LITERAL_NE = "literal_ne"
+    LITERAL_NE = "literal_ne",
+    HASATTR = "hasattr"
 }
 
 """Result of classifying a leaf condition node.
@@ -211,7 +213,8 @@ before reaching classification.
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
-        narrow_type: (TypeBase | None) = None;
+        narrow_type: (TypeBase | None) = None,
+        attr_name: str | None = None;
 }
 
 """Type evaluator for JacLang."""
@@ -700,6 +703,12 @@ obj TypeEvaluator {
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
     def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _extract_hasattr_info(condition: uni.Expr) -> tuple[str, str] | None;
+    def _type_has_attribute(t: TypeBase, attr_name: str) -> bool;
+    def _filter_union_for_hasattr(
+        base_type: TypeBase, attr_name: str, keep_with_attr: bool
+    ) -> TypeBase | None;
+
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
     def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;

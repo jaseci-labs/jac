@@ -11,6 +11,7 @@ directly and builds the model from them before the session starts.
 """
 
 # Implementations live in impl/ai_agent.impl.jac.
+import from typing { Callable }
 import from byllm.lib { Model }
 import from byllm.parallel { mark_serialize }
 
@@ -225,6 +226,11 @@ obj AgentEventBus {
         # `snapshot` -- heavy, fetched lazily per click, not pushed every frame.
         call_log: list[dict] = [],
         convos: dict[int, list] = {},
+        # The tool JSON schemas the phase sends with every call in a conversation.
+        # These ride the API's `tools` parameter -- NOT the messages -- so they
+        # are captured separately (per convo, since a phase's tool set is fixed)
+        # and surfaced in the detail view so the row's `tokens_in` reconciles.
+        convo_tools: dict[int, list] = {},
         _cur_convo: int = 0,
         _convo_seq: int = 0;
 
@@ -248,6 +254,8 @@ obj AgentEventBus {
     def open_convo(msgs: any) -> None;
     def set_pending(msgs: any) -> None;
     def close_convo(msgs: any) -> None;
+    # Capture the current conversation's tool JSON schemas (the `tools` API param).
+    def set_convo_tools(tools: list[Callable]) -> None;
 }
 
 
@@ -292,7 +300,16 @@ obj AgentRuntime {
         guides: GuideTools = GuideTools(),
         web: BrowseTools = BrowseTools(),
         # The live terminal view and turn-summary renderer.
-        view: TurnRenderer = TurnRenderer();
+        view: TurnRenderer = TurnRenderer(),
+        # The current phase's tools and conversation, set by `PhaseState.run`
+        # right before it calls `run_phase`. They live here -- not as `run_phase`
+        # parameters -- because byLLM serializes a `by` function's parameters into
+        # the prompt as text inputs; passing the conversation as a parameter would
+        # duplicate the whole history (it is already fed via `conversation=`) and
+        # dump the tool list as object reprs. As globals the `by` clause reads,
+        # only `directive` remains a (genuine) prompt input.
+        phase_tools: list = [],
+        phase_ctx: list = [];
 
     def note(text: str) -> str;
 }
@@ -350,7 +367,8 @@ Universal habits:
   exact; reserve grep for plain text -- comments, strings, TODOs.
 - Never guess. Read a file before editing it, and consult the bundled guides
   before writing unfamiliar Jac -- they are the authoritative spec for correct,
-  idiomatic Jac.
+  idiomatic Jac. read_guide("jac-core-cheatsheet") is the core-syntax primer;
+  read it before writing Jac when you are unsure of the basics.
 - Leave a note. When you make a decision, rely on an assumption, or spot
   something a later state should check, call `note` -- notes stay visible to
   every later state and turn.
@@ -409,11 +427,16 @@ obj Prompt {
 
 
 # One byLLM ReAct call serving every phase. `max_tokens=8192` is a generous
-# ceiling so large write_file arguments are not truncated mid-stream.
-"""Run the current phase: the LLM works with `tools` over the phase's own `ctx`."""
-def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
-    tools=tools,
-    conversation=ctx,
+# ceiling so large write_file arguments are not truncated mid-stream. The phase's
+# tools and conversation are read from the `agent` glob (set by `PhaseState.run`)
+# rather than passed as parameters: byLLM serializes a `by` function's parameters
+# into the prompt, so passing them would duplicate the whole conversation and dump
+# the tool list as object reprs. Only `directive` stays a parameter -- it is the
+# real per-call instruction byLLM should put in the prompt.
+"""Run the current phase: the LLM works with the phase's tools over its own ctx."""
+def run_phase(directive: str) -> str by agent_model(
+    tools=agent.phase_tools,
+    conversation=agent.phase_ctx,
     stream=True,
     logging=True,
     temperature=agent.cfg.temperature,
@@ -422,10 +445,28 @@ def run_phase(directive: str, tools: list, ctx: list) -> str by agent_model(
     max_react_iterations=60,
     on_iteration=_progress_guard,
     max_tool_result_length=4000
-    # Carry up to ~4000 chars of each tool result into the stream event so the
-    # UI's collapsible tool-output dropdown can show more than a tiny preview.
-    # Display-only: full results still reach model history regardless.
 );
+
+
+# The read-only fast path's triage. A single typed-bool model call (no tools, no
+# conversation) decides, after Plan, whether the request actually needs code
+# written -- so a pure question or inspection can finish at Done without entering
+# Build (and its wrote-nothing nudge loop) or QA. A bool return routes
+# deterministically in Jac, sidestepping `visit [-->] by`'s LLM edge filter,
+# which a weak model can crash with an out-of-range index. Biased toward True
+# (Build) so a misjudgement never silently skips real work.
+"""True if carrying out the request requires creating or editing any file.
+
+Return True for ANYTHING that writes or changes code -- this is the default, so
+when in doubt return True. Return False only for a pure question, explanation,
+or read-only inspection that changes no files at all (e.g. "what does this do?",
+"list the files", "is there a bug here?")."""
+def request_needs_code_changes(objective: str, plan: str) -> bool by agent_model(
+    temperature=agent.cfg.temperature
+);
+
+sem request_needs_code_changes.objective = "The user's original request for this turn.";
+sem request_needs_code_changes.plan = "The plan and findings produced by the Plan phase so far.";
 
 
 # The single source of truth for the agent's tools. Each row pairs a tool

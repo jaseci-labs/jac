@@ -1,5 +1,6 @@
 """Direct implementations of project CLI commands."""
 
+import os;
 import sys;
 import shutil;
 import subprocess;
@@ -1117,6 +1118,10 @@ def _run_precompile_in_venv(
     pyexe: str, script_path: str, project_root: str, dep_specs: list[str],
 ) -> str | None {
     jac_version = importlib.metadata.version("jaclang");
+    # Release-PR/CI escape hatch: install jaclang from a local path (sdist, wheel,
+    # or source tree) instead of PyPI when the named version isn't yet published.
+    local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
+    jac_spec = local_install or f"jaclang=={jac_version}";
 
     with tempfile.TemporaryDirectory() as tmp {
         venv_dir = Path(tmp) / "venv";
@@ -1136,11 +1141,11 @@ def _run_precompile_in_venv(
             venv_jac = str(venv_dir / "bin" / "jac");
         }
         jac_install = subprocess.run(
-            [venv_python, "-m", "pip", "install", f"jaclang=={jac_version}", "--quiet"],
+            [venv_python, "-m", "pip", "install", jac_spec, "--quiet"],
             capture_output=True
         );
         if jac_install.returncode != 0 {
-            return f"pip install jaclang=={jac_version} failed:\n{jac_install.stderr.decode(
+            return f"pip install {jac_spec} failed:\n{jac_install.stderr.decode(
                 errors='replace'
             )}";
         }

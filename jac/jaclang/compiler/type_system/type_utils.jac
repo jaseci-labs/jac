@@ -45,6 +45,15 @@ obj ClassMember {
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
 
+"""Resolve a type to its primitive type name (str/int/list/...), or None.
+
+Returns the primitive name if `ty` is a primitive `ClassType` (per
+JAC_TYPE_REGISTRY), walking the MRO so subtypes like `LiteralString` resolve to
+`str`. The single source of truth for "what primitive is this type", shared by
+codegen backends instead of each re-deriving it.
+"""
+def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
+
 """
 Tracks parameter assignments for function calls.
 

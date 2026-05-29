@@ -1076,17 +1076,15 @@ impl BrowseTools._browse_shutdown{
     }
 }
 
-"""Build the agent's system message: rules, the guide index, and the cheatsheet."""
+"""Build the agent's system message: the rules and the guide index."""
 impl system_prompt -> str {
     index_lines: list[str] = [];
     for g in gs_list() {
         index_lines.append(f"- {g.name}: {g.description}");
     }
     guide_index = "\n".join(index_lines);
-    cheatsheet = gs_get("jac-core-cheatsheet");
-    cheatsheet_body = cheatsheet.body if cheatsheet is not None else "";
     return (
-        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index + "\n\n## Jac core cheatsheet\n\n" + cheatsheet_body
+        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index
     );
 }
 
@@ -1375,6 +1373,42 @@ impl AgentEventBus.close_convo(msgs: any) -> None {
     }
 }
 
+"""Capture the current conversation's tool JSON schemas -- the exact `tools` API
+parameter byLLM sends with every call in this phase, which the token count
+includes but the messages do not. Rebuilt from the phase's tool functions with
+the same `Tool` byLLM uses, so the schemas (and their token weight) match."""
+impl AgentEventBus.set_convo_tools(tools: list[Callable]) -> None {
+    if not self.active_feed {
+        return;
+    }
+    import json;
+    import from byllm.types { Tool }
+    recs: list[dict] = [];
+    for fn in tools {
+        name = str(getattr(fn, "__name__", "?") or "?");
+        try {
+            schema: any = Tool(fn).get_json_schema();
+            fdef: any = schema.get("function", {});
+            recs.append(
+                {
+                    "name": str(fdef.get("name", "") or name),
+                    "description": str(fdef.get("description", "")),
+                    "schema": json.dumps(schema, indent=2)
+                }
+            );
+        } except Exception as e {
+            recs.append(
+                {
+                    "name": name,
+                    "description": "",
+                    "schema": f"(schema unavailable: {e})"
+                }
+            );
+        }
+    }
+    self.convo_tools[self._cur_convo] = recs;
+}
+
 """Emit a `call` event AND record the call for the detail view.
 
 The lightweight `call` event (token counts, tagged by phase) drives the live
@@ -1407,6 +1441,11 @@ impl AgentEventBus.emit_call(fields: dict) -> None {
         self.convos = {
             k: v
             for (k, v) in self.convos.items()
+            if k in keep
+        };
+        self.convo_tools = {
+            k: v
+            for (k, v) in self.convo_tools.items()
             if k in keep
         };
     }
@@ -2124,14 +2163,18 @@ impl PhaseState.run{
     } else {
         self.ctx[0] = sysmsg;
     }
+    # Hand the phase's tools and conversation to `run_phase` via the runtime
+    # (not as parameters -- byLLM would serialize them into the prompt).
+    agent.phase_tools = self.tools();
+    agent.phase_ctx = self.ctx;
     # Open a fresh capture conversation seeded with this phase's starting
     # messages (the 1st call's input); later calls' inputs come from the
     # progress guard. Close it afterward so the last call's written-back output
     # is captured. Both are no-ops off the --ui path.
     agent.bus.open_convo(self.ctx);
-    result = agent.view.render_stream(
-        run_phase(_phase_directive(label), self.tools(), self.ctx)
-    );
+    # Capture the phase's tool schemas (the API `tools` param) for this convo.
+    agent.bus.set_convo_tools(agent.phase_tools);
+    result = agent.view.render_stream(run_phase(_phase_directive(label)));
     agent.bus.close_convo(self.ctx);
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
@@ -2177,8 +2220,25 @@ impl PhaseState.run{
             style="yellow"
         );
         visit self;
+    } elif label == "Plan" {
+        # Read-only fast path: classify whether carrying out the request needs
+        # any file created or edited. A pure question/inspection finishes
+        # straight from Plan (skipping Build and its wrote-nothing nudge loop,
+        # and QA); anything that touches code routes to Build, the default. Uses
+        # a typed bool classifier with a Build-biased default -- robust where
+        # `visit [-->] by`'s LLM edge filter can crash on a weak model's bad
+        # index.
+        if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
+            visit [-->][?:Build];
+        } else {
+            console.print(
+                "  ↳ read-only request -- answered in Plan, skipping Build/QA",
+                style="green"
+            );
+            visit [-->][?:Done];
+        }
     } elif len([-->]) == 1 {
-        # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
+        # Single successor (Build -> QA): advance, no LLM call.
         visit [-->];
     } elif _project_errors() {
         # Hard gate: the project does not compile, so finishing is not an option.
@@ -2261,7 +2321,7 @@ impl TurnRenderer.route_stream_event(event: any) -> None {
     }
 }
 
-sem Done = "the DONE state: choose this only when the objective is fully built AND QA has actually verified it (type-checked, and for an app, run and exercised). Ends the session.";
+sem Done = "the DONE state: the session is complete. Reach it from QA once the objective is fully built AND verified (type-checked, and for an app, run and exercised), or directly from Plan when the request was a pure question or read-only inspection that needed no file changes and has been answered. Ends the session.";
 impl Done.finish{
     # No onward visit: the walker's queue empties here and the session ends.
     console.print("\n  ● Done", style="bold green");
@@ -2277,14 +2337,19 @@ here updates the agent's behavior and the rendered graph at once.
 """
 impl build_pipeline -> Plan {
     # Wire the phase pipeline. The edges ARE the legal transitions: Plan -> Build
-    # -> QA, with QA looping back to Build/Plan or finishing at Done. This is the
-    # only place the topology is written down; `ui_graph` traces these same nodes
-    # and edges so the rendered graph can never drift from the real workflow.
+    # -> QA, with QA looping back to Build/Plan or finishing at Done, plus a
+    # read-only fast path Plan -> Done for requests that change no files. This is
+    # the only place the topology is written down; `ui_graph` traces these same
+    # nodes and edges so the rendered graph can never drift from the real workflow.
     plan = Plan();
     build = Build();
     qa = QA();
     done = Done();
     plan ++> build;
+    # Read-only fast path: a pure question or inspection that needs no file
+    # changes finishes straight from Plan, so it never enters Build (and its
+    # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
+    plan ++> done;
     build ++> qa;
     qa ++> build;
     qa ++> plan;
@@ -2746,6 +2811,15 @@ impl ui_call_detail(call_id: int) -> dict {
         for m in msgs[a_k:a_next]
         if str(m.get("role", "")) in ("assistant", "tool")
     ];
+    # The phase's tool schemas (the API `tools` param) -- the same for every call
+    # in this conversation. Their char total feeds the modal's "~tokens" estimate
+    # so the row's tokens_in reconciles (messages + tool schemas).
+    tools: list = agent.bus.convo_tools.get(convo, []);
+    tool_chars = 0;
+    for t in tools {
+        td: any = t;
+        tool_chars += len(str(td.get("schema", "")));
+    }
     return {
         "found": True,
         "id": call_id,
@@ -2757,6 +2831,8 @@ impl ui_call_detail(call_id: int) -> dict {
         "total": a_k,
         "tokens_in": int(entry.get("tokens_in", 0) or 0),
         "tokens_out": int(entry.get("tokens_out", 0) or 0),
+        "tools": tools,
+        "tool_chars": tool_chars,
         "prev_id": prev_id,
         "next_id": next_id
     };
@@ -2848,6 +2924,7 @@ impl ui_reset -> None {
     # Drop the per-call capture store too, so a fresh session starts empty.
     agent.bus.call_log = [];
     agent.bus.convos = {};
+    agent.bus.convo_tools = {};
     agent.bus.begin_turn();
     agent.bus.set_status("idle");
     # Tell live streams the feed was cleared (set_status only sends a delta).
