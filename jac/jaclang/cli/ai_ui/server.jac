@@ -137,6 +137,15 @@ obj CallMessage {
         tools: list[str] = [];
 }
 
+"""One tool available to the call: its name, description, and full JSON schema.
+These ride the API's `tools` parameter (not the messages), so they are shown
+separately in the detail view to account for the rest of `tokens_in`."""
+obj CallTool {
+    has name: str = "",
+        description: str = "",
+        schema: str = "";
+}
+
 """The reconstructed detail for one token-usage row (model call).
 
 `input` is the full conversation the call saw; `shared` is how many leading
@@ -156,9 +165,13 @@ obj CallDetail {
         total: int = 0,
         # The call's token counts (same as the row). `tokens_in` also covers the
         # tool JSON schemas, which the API sends separately and so are NOT among
-        # the messages -- the modal notes this so the counts reconcile.
+        # the messages -- they are surfaced in `tools` so the counts reconcile.
         tokens_in: int = 0,
         tokens_out: int = 0,
+        # The tool schemas sent with this call (the `tools` API param), and their
+        # total character count for the modal's "~tokens" estimate.
+        tools: list[CallTool] = [],
+        tool_chars: int = 0,
         prev_id: int = -1,
         next_id: int = -1;
 }
@@ -293,6 +306,21 @@ def _to_call_msgs(raw: any) -> list[CallMessage] {
     return out;
 }
 
+"""Map raw tool-schema records (name/description/schema) into typed CallTools."""
+def _to_call_tools(raw: any) -> list[CallTool] {
+    out: list[CallTool] = [];
+    for t in raw {
+        out.append(
+            CallTool(
+                name=str(t.get("name", "")),
+                description=str(t.get("description", "")),
+                schema=str(t.get("schema", ""))
+            )
+        );
+    }
+    return out;
+}
+
 """Detail for one token-usage row: its full input conversation, the diff vs the
 prior call, and its output. Fetched lazily when the user clicks a row, so the
 heavy message text never rides the per-frame poll/stream."""
@@ -311,6 +339,8 @@ def:pub agent_call_detail(call_id: int) -> CallDetail {
         total=int(d.get("total", 0)),
         tokens_in=int(d.get("tokens_in", 0) or 0),
         tokens_out=int(d.get("tokens_out", 0) or 0),
+        tools=_to_call_tools(d.get("tools", [])),
+        tool_chars=int(d.get("tool_chars", 0) or 0),
         prev_id=int(d.get("prev_id", -1)),
         next_id=int(d.get("next_id", -1))
     );
