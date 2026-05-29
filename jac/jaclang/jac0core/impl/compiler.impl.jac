@@ -287,7 +287,7 @@ impl JacCompiler._load_native_from_cache(
         target = llvm.Target.from_default_triple();
         target_machine = target.create_target_machine();
         engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-        import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+        import from jaclang.jac0core.codeinfo { CodeGenTarget }
         gen = CodeGenTarget();
         gen.native_engine = engine;
         py_func_table: dict = {};
@@ -295,21 +295,8 @@ impl JacCompiler._load_native_from_cache(
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
-            import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
             import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-            manifest = InteropManifest();
-            for (name, data) in cached_interop.get('bindings', {}).items() {
-                binding = InteropBinding(
-                    name=name,
-                    source_context=InteropContext(data['source_context']),
-                    callers={InteropContext(c) for c in data.get('callers', [])},
-                    ret_type=data.get('ret_type', 'int'),
-                    param_types=data.get('param_types', []),
-                    param_names=data.get('param_names', []),
-                    source_module=data.get('source_module')
-                );
-                manifest.bindings[name] = binding;
-            }
+            manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
                 register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -546,6 +533,36 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     return interop_data;
 }
 
+"""Rebuild an InteropManifest from a cached interop dict.
+
+Shared by the native cache loaders so the bindings deserialization lives
+in exactly one place. ast_node is intentionally left None: it is a live
+AST node that is never reserialized and no cache-hit consumer derefs it.
+"""
+impl JacCompiler._deserialize_interop_table(
+    cached_interop: dict[str, any]
+) -> InteropManifest {
+    import from jaclang.jac0core.codeinfo {
+        InteropManifest,
+        InteropBinding,
+        InteropContext
+    }
+    manifest = InteropManifest();
+    for (name, data) in cached_interop.get('bindings', {}).items() {
+        binding = InteropBinding(
+            name=name,
+            source_context=InteropContext(data['source_context']),
+            callers={InteropContext(c) for c in data.get('callers', [])},
+            ret_type=data.get('ret_type', 'int'),
+            param_types=data.get('param_types', []),
+            param_names=data.get('param_names', []),
+            source_module=data.get('source_module')
+        );
+        manifest.bindings[name] = binding;
+    }
+    return manifest;
+}
+
 """Parse source string into AST module."""
 impl JacCompiler.parse_str(
     source_str: str,
@@ -733,6 +750,21 @@ impl JacCompiler.compile(
             mod=mod_targ,
             target_program=actual_program,
             passes=passes,
+            cancel_token=options.cancel_token
+        );
+    }
+    # Single front-end producer of cross-boundary (interop) facts. Runs after
+    # type-check and before any codegen, for EVERY module (server / client /
+    # native), independent of the codegen gate — so client (.cl.jac) modules
+    # and --no-client / --dev compiles still get their boundary facts. Skipped
+    # for symtab_ir_only provider resolutions (lightweight, no codegen need).
+    if (
+        not had_parse_errors and not had_blocking_errors and not options.symtab_ir_only
+    ) {
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=get_boundary_analysis_sched(),
             cancel_token=options.cancel_token
         );
     }

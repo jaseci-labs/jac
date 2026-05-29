@@ -988,34 +988,6 @@ impl EsastGenPass._ability_from_symbol(
     return None;
 }
 
-"""Resolve an sv-imported function to its source ability."""
-impl EsastGenPass._resolve_sv_import_ability(name: str) -> (uni.Ability | None) {
-    for imp in self.get_main_mod().get_all_sub_nodes(uni.Import) {
-        if imp.code_context == CodeContext.CLIENT
-        or not imp.from_loc
-        or not imp.items
-        or imp._source_context_token() is None
-        or imp._source_context_token().name != Tok.KW_SERVER {
-            continue;
-        }
-        for item in imp.items {
-            if not isinstance(item, uni.ModuleItem)
-            or not isinstance(item.name, uni.Name) {
-                continue;
-            }
-            local_name = item.alias.sym_name if item.alias else item.name.sym_name;
-            if local_name != name {
-                continue;
-            }
-            source_mod = self._resolve_source_module(imp);
-            if not source_mod {
-                return None;
-            }
-            return self._ability_from_symbol(source_mod.lookup(item.name.sym_name));
-        }
-    }
-    return None;
-}
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
@@ -1028,7 +1000,15 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
         if ability_node {
             return ability_node;
         }
-        return self._resolve_sv_import_ability(nd.target.sym_name);
+        # sv-imported name: read the source ability off the cross-boundary
+        # binding that BoundaryAnalysisPass already resolved (no independent
+        # import re-resolution here).
+        manifest = self.ir_in.gen.interop_manifest;
+        binding = manifest.bindings.get(nd.target.sym_name) if manifest else None;
+        if binding and isinstance(binding.ast_node, uni.Ability) {
+            return binding.ast_node;
+        }
+        return None;
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
@@ -1574,7 +1554,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
-    # Endpoint effects for func:<func_name> are precomputed by WalkerEffectsPass.
+    # Endpoint effects for func:<func_name> are precomputed by BoundaryAnalysisPass.
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
         ability_node
@@ -2424,7 +2404,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
             # Endpoint effects for walker:<name> are precomputed (at the
-            # walker's declaration, in its own module) by WalkerEffectsPass and
+            # walker's declaration, in its own module) by BoundaryAnalysisPass and
             # propagated into this manifest via _populate_client_manifest.
         }
         return;
@@ -4251,9 +4231,9 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                     ability_node, func_name, nd.gen.interop_manifest
                 );
                 # Carry the source module's precomputed effect (from
-                # WalkerEffectsPass) into this client bundle's manifest so the
+                # BoundaryAnalysisPass) into this client bundle's manifest so the
                 # sv-imported endpoint self-registers with the right effects.
-                src_effect = source_mod.gen.client_manifest.endpoint_effects.get(
+                src_effect = source_mod.gen.interop_manifest.endpoint_effects.get(
                     f"func:{func_name}"
                 );
                 if src_effect is not None {
@@ -4359,7 +4339,7 @@ impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
     for sub_mod in nd.gen.client_manifest.params {
         self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
     }
-    for (ename, eeffect) in nd.gen.client_manifest.endpoint_effects.items() {
+    for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
     }
 }
@@ -5645,12 +5625,12 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
-    # Endpoint effects are computed by WalkerEffectsPass (which runs before
-    # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
-    # it so the registration emit and cross-module merge carry them through;
-    # this pass no longer classifies effects itself.
+    # Endpoint effects are computed by BoundaryAnalysisPass (front-end) into
+    # mod.gen.interop_manifest. Seed the fresh accumulator from it so the
+    # registration emit and cross-module merge carry them through; this pass
+    # no longer classifies effects itself.
     self.client_manifest.endpoint_effects = dict(
-        self.ir_in.gen.client_manifest.endpoint_effects
+        self.ir_in.gen.interop_manifest.endpoint_effects
     );
     self.jsx_processor = EsJsxProcessor(self);
     # Load the `.style.css` scoped-style annex (if any) keyed off the head

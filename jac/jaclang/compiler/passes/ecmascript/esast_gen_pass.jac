@@ -405,7 +405,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
-    def _resolve_sv_import_ability(name: str) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];

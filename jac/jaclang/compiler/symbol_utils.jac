@@ -275,7 +275,7 @@ def get_expr_key(expr: uni.Expr) -> str | None {
     return None;
 }
 
-"""Extract narrowing key from the first argument of a builtin call (isinstance/callable).
+"""Extract narrowing key from the first argument of a builtin call (isinstance/callable/hasattr).
 
 Handles unwrapping parentheses, Name, AtomTrailer, and walrus expressions.
 """
@@ -331,10 +331,10 @@ Free-standing function for use in symbol_utils where TypeEvaluator is unavailabl
 Returns the narrowing key or None.
 """
 def classify_condition_key(condition: uni.Expr) -> str | None {
-    # isinstance(x, T) or callable(x)
+    # isinstance(x, T), callable(x), or hasattr(x, "name")
     if isinstance(condition, uni.FuncCall) and isinstance(condition.target, uni.Name) {
         if (
-            condition.target.value in ("isinstance", "callable")
+            condition.target.value in ("isinstance", "callable", "hasattr")
             and len(condition.params) >= 1
         ) {
             return _extract_first_arg_key(condition.params[0]);

@@ -1076,17 +1076,15 @@ impl BrowseTools._browse_shutdown{
     }
 }
 
-"""Build the agent's system message: rules, the guide index, and the cheatsheet."""
+"""Build the agent's system message: the rules and the guide index."""
 impl system_prompt -> str {
     index_lines: list[str] = [];
     for g in gs_list() {
         index_lines.append(f"- {g.name}: {g.description}");
     }
     guide_index = "\n".join(index_lines);
-    cheatsheet = gs_get("jac-core-cheatsheet");
-    cheatsheet_body = cheatsheet.body if cheatsheet is not None else "";
     return (
-        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index + "\n\n## Jac core cheatsheet\n\n" + cheatsheet_body
+        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index
     );
 }
 
@@ -2222,8 +2220,25 @@ impl PhaseState.run{
             style="yellow"
         );
         visit self;
+    } elif label == "Plan" {
+        # Read-only fast path: classify whether carrying out the request needs
+        # any file created or edited. A pure question/inspection finishes
+        # straight from Plan (skipping Build and its wrote-nothing nudge loop,
+        # and QA); anything that touches code routes to Build, the default. Uses
+        # a typed bool classifier with a Build-biased default -- robust where
+        # `visit [-->] by`'s LLM edge filter can crash on a weak model's bad
+        # index.
+        if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
+            visit [-->][?:Build];
+        } else {
+            console.print(
+                "  ↳ read-only request -- answered in Plan, skipping Build/QA",
+                style="green"
+            );
+            visit [-->][?:Done];
+        }
     } elif len([-->]) == 1 {
-        # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
+        # Single successor (Build -> QA): advance, no LLM call.
         visit [-->];
     } elif _project_errors() {
         # Hard gate: the project does not compile, so finishing is not an option.
@@ -2306,7 +2321,7 @@ impl TurnRenderer.route_stream_event(event: any) -> None {
     }
 }
 
-sem Done = "the DONE state: choose this only when the objective is fully built AND QA has actually verified it (type-checked, and for an app, run and exercised). Ends the session.";
+sem Done = "the DONE state: the session is complete. Reach it from QA once the objective is fully built AND verified (type-checked, and for an app, run and exercised), or directly from Plan when the request was a pure question or read-only inspection that needed no file changes and has been answered. Ends the session.";
 impl Done.finish{
     # No onward visit: the walker's queue empties here and the session ends.
     console.print("\n  ● Done", style="bold green");
@@ -2322,14 +2337,19 @@ here updates the agent's behavior and the rendered graph at once.
 """
 impl build_pipeline -> Plan {
     # Wire the phase pipeline. The edges ARE the legal transitions: Plan -> Build
-    # -> QA, with QA looping back to Build/Plan or finishing at Done. This is the
-    # only place the topology is written down; `ui_graph` traces these same nodes
-    # and edges so the rendered graph can never drift from the real workflow.
+    # -> QA, with QA looping back to Build/Plan or finishing at Done, plus a
+    # read-only fast path Plan -> Done for requests that change no files. This is
+    # the only place the topology is written down; `ui_graph` traces these same
+    # nodes and edges so the rendered graph can never drift from the real workflow.
     plan = Plan();
     build = Build();
     qa = QA();
     done = Done();
     plan ++> build;
+    # Read-only fast path: a pure question or inspection that needs no file
+    # changes finishes straight from Plan, so it never enters Build (and its
+    # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
+    plan ++> done;
     build ++> qa;
     qa ++> build;
     qa ++> plan;

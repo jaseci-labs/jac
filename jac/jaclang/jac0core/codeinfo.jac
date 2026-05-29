@@ -93,7 +93,7 @@ obj NativeFuncLayout {
 
 """Resolve a module name to a .na.jac file path.
 
-Shared resolver used by both InteropAnalysisPass and NaIRGenPass to
+Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
 ensure consistent native module path resolution across the compiler.
 
 Returns (source_module_str, full_path) or (None, None) if not found.
@@ -141,7 +141,7 @@ obj NativeModuleLayout {
 
 """Metadata for a type (obj, node, enum) that crosses a codespace boundary.
 
-    Collected by InteropAnalysisPass, consumed by EsastGenPass to emit
+    Collected by BoundaryAnalysisPass, consumed by EsastGenPass to emit
     JS class stubs with __from_wire/__to_wire methods.
     """
 obj BoundaryTypeInfo {
@@ -180,11 +180,19 @@ obj InteropBinding {
 
 """All cross-boundary function bindings for a module.
 
-    Built by InteropAnalysisPass, consumed by codegen passes.
+    Built by BoundaryAnalysisPass (front-end), consumed by codegen + serve.
     """
 obj InteropManifest {
     has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
         boundary_types: dict[(str, BoundaryTypeInfo)] = field(default_factory=`dict),
+        # Graph-effect contract per RPC endpoint, keyed `walker:<name>` /
+        # `func:<name>` -> {is_writer, touches}. Produced by the boundary
+        # analysis pass (formerly WalkerEffectsPass -> client_manifest).
+        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        # Per-symbol auth requirement (True = auth required, secure-by-default),
+        # computed at compile time so the serve runtime never re-walks ASTs.
+        func_access: dict[(str, bool)] = field(default_factory=`dict),
+        walker_access: dict[(str, bool)] = field(default_factory=`dict),
         native_module_imports: dict[(str, NativeModuleInfo)] = field(
             default_factory=`dict
         ),
