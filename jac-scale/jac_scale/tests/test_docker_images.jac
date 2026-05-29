@@ -73,15 +73,16 @@ test "end to end build and push produces correct image url and side effects" {
             final_url = registry.build_and_push(tmpdir, image_name="myservice:v1");
             # Verify final URL
             assert final_url == "integuser/myservice:v1" , f"Unexpected URL: {final_url}";
-            # Dockerfile must have been generated from template (no Dockerfile existed)
-            jac_dir: str = os.path.join(str(tmpdir), ".jac");
-            dockerfile_path = os.path.join(jac_dir, "Dockerfile.gen");
-            assert os.path.exists(dockerfile_path) , "Dockerfile.gen should have been generated under .jac/";
-            with open(dockerfile_path) as f {
+            # resolve_dockerfile must have passed a real file path to images.build
+            build_kwargs = mock_client.images.build.call_args[1];
+            resolved_dockerfile: str = build_kwargs["dockerfile"];
+            assert os.path.exists(resolved_dockerfile) , (
+                f"dockerfile kwarg must point to a real file, got: {resolved_dockerfile}"
+            );
+            with open(resolved_dockerfile) as f {
                 dockerfile_content = f.read();
             }
-            assert "jaclang" in dockerfile_content , "Generated Dockerfile should reference jaclang";
-            assert "jac install" in dockerfile_content , "Generated Dockerfile should run jac install";
+            assert "jac install" in dockerfile_content , "Resolved Dockerfile should run jac install";
             # .dockerignore must contain both required entries (no duplicates)
             ignore_path = os.path.join(tmpdir, ".dockerignore");
             assert os.path.exists(ignore_path) , ".dockerignore should have been created";
@@ -98,7 +99,6 @@ test "end to end build and push produces correct image url and side effects" {
             assert ignore_lines.count("jac.*.toml") == 1 , "No duplicate .dockerignore entries";
             # docker build must have been called with the right platform and tag
             mock_client.images.build.assert_called_once();
-            build_kwargs = mock_client.images.build.call_args[1];
             assert build_kwargs["tag"] == "integuser/myservice:v1";
             assert build_kwargs["platform"] == "linux/amd64";
             assert build_kwargs["rm"] is True;
