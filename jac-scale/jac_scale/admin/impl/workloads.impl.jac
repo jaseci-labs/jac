@@ -135,7 +135,9 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
         request: Request, range_minutes: int = 60
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(self.admin_workloads_timeseries, range_minutes, authorization);
+        return await run_in_threadpool(
+            self.admin_workloads_timeseries, range_minutes, authorization
+        );
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -285,21 +287,11 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             meta=Meta(extra={'http_status': 200})
         );
     }
-    dep_desired = prom_query(
-        _scoped('kube_deployment_spec_replicas', ns_filter)
-    )
+    dep_desired = prom_query(_scoped('kube_deployment_spec_replicas', ns_filter)) or [];
+    sts_ready = prom_query(_scoped('kube_statefulset_status_replicas_ready', ns_filter))
     or [];
-    sts_ready = prom_query(
-        _scoped('kube_statefulset_status_replicas_ready', ns_filter)
-    )
-    or [];
-    sts_desired = prom_query(
-        _scoped('kube_statefulset_replicas', ns_filter)
-    )
-    or [];
-    ds_ready = prom_query(
-        _scoped('kube_daemonset_status_number_available', ns_filter)
-    )
+    sts_desired = prom_query(_scoped('kube_statefulset_replicas', ns_filter)) or [];
+    ds_ready = prom_query(_scoped('kube_daemonset_status_number_available', ns_filter))
     or [];
     ds_desired = prom_query(
         _scoped('kube_daemonset_status_desired_number_scheduled', ns_filter)
@@ -319,18 +311,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
     or [];
-    dep_created = prom_query(
-        _scoped('kube_deployment_created', ns_filter)
-    )
-    or [];
-    sts_created = prom_query(
-        _scoped('kube_statefulset_created', ns_filter)
-    )
-    or [];
-    ds_created = prom_query(
-        _scoped('kube_daemonset_created', ns_filter)
-    )
-    or [];
+    dep_created = prom_query(_scoped('kube_deployment_created', ns_filter)) or [];
+    sts_created = prom_query(_scoped('kube_statefulset_created', ns_filter)) or [];
+    ds_created = prom_query(_scoped('kube_daemonset_created', ns_filter)) or [];
 
     dep_desired_by = _index_by(dep_desired, "deployment", True);
     sts_desired_by = _index_by(sts_desired, "statefulset", True);
@@ -511,14 +494,8 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
     or [];
-    node_by_pod = prom_query(
-        _scoped('kube_pod_info', ns_filter)
-    )
-    or [];
-    started_by_pod = prom_query(
-        _scoped('kube_pod_start_time', ns_filter)
-    )
-    or [];
+    node_by_pod = prom_query(_scoped('kube_pod_info', ns_filter)) or [];
+    started_by_pod = prom_query(_scoped('kube_pod_start_time', ns_filter)) or [];
 
     cpu = _index_by(cpu_by_pod, "pod");
     mem = _index_by(mem_by_pod, "pod");
