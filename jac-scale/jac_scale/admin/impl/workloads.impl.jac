@@ -12,6 +12,7 @@ import os;
 import time;
 import logging;
 import from fastapi { Request }
+import from starlette.concurrency { run_in_threadpool }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.jserver.jserver {
     HTTPMethod,
@@ -25,73 +26,41 @@ import from jac_scale.utilities.metrics.prometheus_client {
     scalar as prom_scalar,
     resolve_prometheus_url
 }
+import from jac_scale.admin.workload_helpers {
+    phase_to_status,
+    owner_name_from_pod,
+    match_owner,
+    is_valid_workload_name
+}
 
 glob logger = logging.getLogger(__name__);
 
-"""Map replica counts to a UI-friendly status.
+"""Index a `by (<label>)` Prometheus result into {label_value: number}.
 
-Picks the worst-case label so a workload with any failing replica surfaces as
-'Broken' even if some are still running.
+Consolidates the previous per-shape indexers. `as_int` rounds to int (replica
+counts), otherwise keeps float (cpu/memory).
 """
-def _phase_to_status(ready: int, desired: int, restarts: int) -> str {
-    if desired > 0 and ready == 0 and restarts > 0 {
-        return "Broken";
-    }
-    if restarts > 0 and ready > 0 {
-        return "Unstable";
-    }
-    if desired > 0 and ready < desired {
-        return "Starting";
-    }
-    if ready > 0 {
-        return "Healthy";
-    }
-    return "Unknown";
-}
-
-"""Best-effort recovery of a pod's parent workload name from the pod name.
-
-Pod naming differs by controller:
-  - Deployment:  <name>-<replicaset_hash>-<pod_hash>   (two trailing segments)
-  - StatefulSet: <name>-<ordinal>                       (one numeric segment)
-  - DaemonSet:   <name>-<pod_hash>                       (one segment)
-Since this is ambiguous from the name alone, prefer `_match_owner` (which
-matches against the known workload-name list). This heuristic is the fallback
-for the pods endpoint where the name list isn't queried.
-"""
-def _owner_name_from_pod(pod: str) -> str {
-    if not pod {
-        return "";
-    }
-    parts = pod.split("-");
-    if len(parts) < 2 {
-        return pod;
-    }
-    # StatefulSet pod: trailing numeric ordinal.
-    if parts[-1].isdigit() {
-        return "-".join(parts[:-1]);
-    }
-    if len(parts) < 3 {
-        return pod;
-    }
-    return "-".join(parts[:-2]);
-}
-
-"""Match a pod to the longest workload name it belongs to.
-
-A pod belongs to workload `nm` when its name equals `nm` or starts with
-`nm-`. Choosing the longest match disambiguates e.g. `jaseci-redis-<hash>`
-(owner `jaseci-redis`, not `jaseci`). Falls back to the name heuristic when
-no workload matches.
-"""
-def _match_owner(pod: str, names: list) -> str {
-    best = "";
-    for nm in names {
-        if (pod == nm or pod.startswith(nm + "-")) and len(nm) > len(best) {
-            best = nm;
+def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
+    out: dict = {};
+    for entry in rows {
+        key = entry.get("metric", {}).get(label, "");
+        v = entry.get("value", [0, "0"]);
+        if key {
+            val = float(v[1]) if len(v) > 1 else 0.0;
+            out[key] = int(val) if as_int else val;
         }
     }
-    return best or _owner_name_from_pod(pod);
+    return out;
+}
+
+"""Build a namespace-scoped PromQL selector for a bare metric.
+
+`scoped("kube_deployment_created", 'namespace="x"')` ->
+`kube_deployment_created{namespace="x"}`; with an empty filter returns the
+bare metric name.
+"""
+def _scoped(metric: str, ns_filter: str) -> str {
+    return f'{metric}{{{ns_filter}}}' if ns_filter else metric;
 }
 
 """Return a user-facing reason string when metrics can't be shown, else "".
@@ -117,7 +86,7 @@ def _unavailable_reason -> str {
 impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     async def summary_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workloads_summary(authorization);
+        return await run_in_threadpool(self.admin_workloads_summary, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -133,7 +102,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
     async def list_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workloads_list(authorization);
+        return await run_in_threadpool(self.admin_workloads_list, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -149,7 +118,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
     async def pods_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workloads_pods(authorization);
+        return await run_in_threadpool(self.admin_workloads_pods, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -168,7 +137,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
         request: Request, range_minutes: int = 60
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workloads_timeseries(range_minutes, authorization);
+        return await run_in_threadpool(self.admin_workloads_timeseries, range_minutes, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -193,7 +162,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
     async def detail_handler(request: Request, name: str) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workload_detail(name, authorization);
+        return await run_in_threadpool(self.admin_workload_detail, name, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -220,8 +189,8 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
         request: Request, name: str, metric: str = "cpu", range_minutes: int = 60
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.admin_workload_timeseries(
-            name, metric, range_minutes, authorization
+        return await run_in_threadpool(
+            self.admin_workload_timeseries, name, metric, range_minutes, authorization
         );
     }
     self.server.add_endpoint(
@@ -376,9 +345,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     ns_and = f',{ns_filter}' if ns_filter else '';
     # Probe Prometheus once before fanning out queries.
     dep_available_raw = prom_query(
-        f'kube_deployment_status_replicas_available{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_deployment_status_replicas_available'
+        _scoped('kube_deployment_status_replicas_available', ns_filter)
     );
     if dep_available_raw is None {
         return TransportResponse.success(
@@ -391,33 +358,23 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         );
     }
     dep_desired = prom_query(
-        f'kube_deployment_spec_replicas{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_deployment_spec_replicas'
+        _scoped('kube_deployment_spec_replicas', ns_filter)
     )
     or [];
     sts_ready = prom_query(
-        f'kube_statefulset_status_replicas_ready{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_statefulset_status_replicas_ready'
+        _scoped('kube_statefulset_status_replicas_ready', ns_filter)
     )
     or [];
     sts_desired = prom_query(
-        f'kube_statefulset_replicas{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_statefulset_replicas'
+        _scoped('kube_statefulset_replicas', ns_filter)
     )
     or [];
     ds_ready = prom_query(
-        f'kube_daemonset_status_number_available{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_daemonset_status_number_available'
+        _scoped('kube_daemonset_status_number_available', ns_filter)
     )
     or [];
     ds_desired = prom_query(
-        f'kube_daemonset_status_desired_number_scheduled{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_daemonset_status_desired_number_scheduled'
+        _scoped('kube_daemonset_status_desired_number_scheduled', ns_filter)
     )
     or [];
     cpu_by_pod = prom_query(
@@ -435,42 +392,24 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     )
     or [];
     dep_created = prom_query(
-        f'kube_deployment_created{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_deployment_created'
+        _scoped('kube_deployment_created', ns_filter)
     )
     or [];
     sts_created = prom_query(
-        f'kube_statefulset_created{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_statefulset_created'
+        _scoped('kube_statefulset_created', ns_filter)
     )
     or [];
     ds_created = prom_query(
-        f'kube_daemonset_created{{{ns_filter}}}'
-            if ns_filter
-            else 'kube_daemonset_created'
+        _scoped('kube_daemonset_created', ns_filter)
     )
     or [];
 
-    def _index_by_label(rows: list, label: str) -> dict {
-        out: dict = {};
-        for entry in rows {
-            key = entry.get("metric", {}).get(label, "");
-            v = entry.get("value", [0, "0"]);
-            if key {
-                out[key] = int(float(v[1])) if len(v) > 1 else 0;
-            }
-        }
-        return out;
-    }
-
-    dep_desired_by = _index_by_label(dep_desired, "deployment");
-    sts_desired_by = _index_by_label(sts_desired, "statefulset");
-    ds_desired_by = _index_by_label(ds_desired, "daemonset");
-    dep_created_by = _index_by_label(dep_created, "deployment");
-    sts_created_by = _index_by_label(sts_created, "statefulset");
-    ds_created_by = _index_by_label(ds_created, "daemonset");
+    dep_desired_by = _index_by(dep_desired, "deployment", True);
+    sts_desired_by = _index_by(sts_desired, "statefulset", True);
+    ds_desired_by = _index_by(ds_desired, "daemonset", True);
+    dep_created_by = _index_by(dep_created, "deployment", True);
+    sts_created_by = _index_by(sts_created, "statefulset", True);
+    ds_created_by = _index_by(ds_created, "daemonset", True);
 
     # Build the workload entries first so we know every workload name before
     # rolling pod-level metrics up to their owner.
@@ -541,7 +480,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     for entry in cpu_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        owner = _match_owner(pod, wl_names);
+        owner = match_owner(pod, wl_names);
         cpu_by_owner[owner] = cpu_by_owner.get(owner, 0.0) + float(
             v[1] if len(v) > 1 else 0
         );
@@ -549,7 +488,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     for entry in mem_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        owner = _match_owner(pod, wl_names);
+        owner = match_owner(pod, wl_names);
         mem_by_owner[owner] = mem_by_owner.get(owner, 0.0) + float(
             v[1] if len(v) > 1 else 0
         );
@@ -557,7 +496,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     for entry in restarts_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
-        owner = _match_owner(pod, wl_names);
+        owner = match_owner(pod, wl_names);
         restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(
             float(v[1] if len(v) > 1 else 0)
         );
@@ -567,7 +506,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     for e in entries {
         name = e["name"];
         restarts = restarts_by_owner.get(name, 0);
-        status = _phase_to_status(e["ready"], e["desired"], restarts);
+        status = phase_to_status(e["ready"], e["desired"], restarts);
         workloads.append(
             {
                 'name': name,
@@ -645,29 +584,18 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     )
     or [];
     node_by_pod = prom_query(
-        f'kube_pod_info{{{ns_filter}}}' if ns_filter else 'kube_pod_info'
+        _scoped('kube_pod_info', ns_filter)
     )
     or [];
     started_by_pod = prom_query(
-        f'kube_pod_start_time{{{ns_filter}}}' if ns_filter else 'kube_pod_start_time'
+        _scoped('kube_pod_start_time', ns_filter)
     )
     or [];
 
-    def _index_float_by_pod(rows: list) -> dict {
-        out: dict = {};
-        for entry in rows {
-            pod = entry.get("metric", {}).get("pod", "");
-            v = entry.get("value", [0, "0"]);
-            if pod {
-                out[pod] = float(v[1]) if len(v) > 1 else 0.0;
-            }
-        }
-        return out;
-    }
-    cpu = _index_float_by_pod(cpu_by_pod);
-    mem = _index_float_by_pod(mem_by_pod);
-    restarts = _index_float_by_pod(restarts_by_pod);
-    started = _index_float_by_pod(started_by_pod);
+    cpu = _index_by(cpu_by_pod, "pod");
+    mem = _index_by(mem_by_pod, "pod");
+    restarts = _index_by(restarts_by_pod, "pod");
+    started = _index_by(started_by_pod, "pod");
     node_for: dict = {};
     for entry in node_by_pod {
         m = entry.get("metric", {});
@@ -689,7 +617,7 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
             {
                 'name': pod,
                 'phase': phase,
-                'owner': _owner_name_from_pod(pod),
+                'owner': owner_name_from_pod(pod),
                 'node': node_for.get(pod, ''),
                 'cpu_cores': round(cpu.get(pod, 0.0), 3),
                 'memory_bytes': int(mem.get(pod, 0.0)),
@@ -715,6 +643,13 @@ impl JacAPIServerWorkloads.admin_workload_detail(
     error = self.require_admin(Authorization);
     if error {
         return error;
+    }
+    if not is_valid_workload_name(name) {
+        return TransportResponse.fail(
+            code='INVALID_NAME',
+            message='Invalid workload name',
+            meta=Meta(extra={'http_status': 400})
+        );
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
     if resolve_prometheus_url() is None {
@@ -748,22 +683,11 @@ impl JacAPIServerWorkloads.admin_workload_detail(
         f'sum(increase(kube_pod_container_status_restarts_total{{{pod_filter}{ns_and}}}[1h])) by (pod)'
     )
     or [];
-    def _index_by_pod(rows: list) -> dict {
-        out = {};
-        for entry in rows {
-            pod = entry.get("metric", {}).get("pod", "");
-            v = entry.get("value", [0, "0"]);
-            if pod {
-                out[pod] = float(v[1]) if len(v) > 1 else 0.0;
-            }
-        }
-        return out;
-    }
-    cpu_used = _index_by_pod(cpu_by_pod);
-    mem_used = _index_by_pod(mem_by_pod);
-    cpu_req = _index_by_pod(cpu_request_by_pod);
-    mem_req = _index_by_pod(mem_request_by_pod);
-    restarts = _index_by_pod(restarts_by_pod);
+    cpu_used = _index_by(cpu_by_pod, "pod");
+    mem_used = _index_by(mem_by_pod, "pod");
+    cpu_req = _index_by(cpu_request_by_pod, "pod");
+    mem_req = _index_by(mem_request_by_pod, "pod");
+    restarts = _index_by(restarts_by_pod, "pod");
     phase_for: dict = {};
     for entry in phase_by_pod {
         m = entry.get("metric", {});
@@ -814,6 +738,13 @@ impl JacAPIServerWorkloads.admin_workload_timeseries(
     error = self.require_admin(Authorization);
     if error {
         return error;
+    }
+    if not is_valid_workload_name(name) {
+        return TransportResponse.fail(
+            code='INVALID_NAME',
+            message='Invalid workload name',
+            meta=Meta(extra={'http_status': 400})
+        );
     }
     namespace = os.environ.get("K8S_NAMESPACE", "");
     if resolve_prometheus_url() is None {
@@ -877,7 +808,7 @@ def _rollup_range(rows: list, names: list) -> dict {
     out: dict = {};
     for entry in rows {
         pod = entry.get("metric", {}).get("pod", "");
-        owner = _match_owner(pod, names);
+        owner = match_owner(pod, names);
         series = out.get(owner, {});
         for v in entry.get("values", []) {
             if len(v) >= 2 {
@@ -938,7 +869,7 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
         ('kube_statefulset_created', 'statefulset'),
         ('kube_daemonset_created', 'daemonset')
     ] {
-        rows = prom_query(f'{spec[0]}{{{ns_filter}}}' if ns_filter else spec[0]) or [];
+        rows = prom_query(_scoped(spec[0], ns_filter)) or [];
         for r in rows {
             nm = r.get("metric", {}).get(spec[1], "");
             if nm {
