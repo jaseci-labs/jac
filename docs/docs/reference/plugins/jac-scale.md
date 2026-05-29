@@ -2523,16 +2523,16 @@ Place a `Dockerfile` at your project root to use it instead of the auto-generate
 
 When `docker_username` and `docker_password` are set, a `kubernetes.io/dockerconfigjson` pull secret (`{app_name}-registry-secret`) is automatically created so Kubernetes can pull private images. The secret is updated on re-deploy and deleted on `jac destroy`.
 
-#### Cross-Platform Builds
+#### Target Platform
 
-By default, images are built for `linux/amd64`, compatible with most cloud K8s clusters. If your K8s nodes run ARM, override this:
+`build_platform` controls the single target architecture passed to the Docker build (default: `linux/amd64`). This is useful when your build machine and K8s nodes differ — for example, building on Apple Silicon for an x86_64 cluster:
 
 ```toml
 [plugins.scale.kubernetes]
 build_platform = "linux/arm64"   # default: linux/amd64
 ```
 
-This ensures images built on Apple Silicon (M1/M2/M3) or AWS Graviton machines target the correct architecture.
+> **Note:** this sets a single target arch. It is not a multi-arch build — the resulting image runs only on nodes matching the specified platform.
 
 ---
 
