@@ -3482,3 +3482,14 @@ test "primitive float is_integer via emitter dispatch" {
     f = get_func(eng, "float_is_integer", ctypes.c_int64);
     assert f() == 1;
 }
+
+# Integer enum members fold through the AST .lit_value getter (base-0), so
+# hex/oct/bin literals work (base-10 int(value) parsing would have raised).
+test "enum hex/oct/bin int members fold via lit_value" {
+    (eng, _) = compile_native("hex_enum.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    assert get_func(eng, "flag_a", ctypes.c_int64)() == 255;
+    assert get_func(eng, "flag_b", ctypes.c_int64)() == 15;
+    assert get_func(eng, "flag_c", ctypes.c_int64)() == 10;
+}

@@ -1,31 +1,54 @@
 """Archetype (object) codegen: structs, fields, methods, instantiation."""
-"""Pre-register archetype names as opaque struct types for global type resolution."""
-impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
+"""Archetypes native codegen must compile: every archetype declared in an na {}
+block, plus the module-level (shared) archetypes its code transitively references
+(constructed, used as a type, or triggered on). The type checker already resolves
+shared module-level types into native code; this makes codegen materialize them
+as structs instead of producing a NULL no-op. The shared set comes from
+ModuleCodegenPass so the cl/ES backend applies the identical sharing rule."""
+impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
+    result: dict[(str, uni.Archetype)] = {};
+    # na {}-block archetypes (full definition overrides any forward declaration).
     for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.Archetype) {
-            aname = stmt.name.value if stmt.name else None;
-            if aname is not None and aname not in self.struct_types {
-                struct_type = self.llvm_module.context.get_identified_type(aname);
-                self.struct_types[aname] = struct_type;
+            aname = stmt.name.value if stmt.name else "unknown";
+            if aname not in result or stmt.body is not None {
+                result[aname] = stmt;
             }
+        }
+    }
+    # Shared module-level archetypes referenced by native code (na-block
+    # declarations win on name collision -- they are codespace overrides).
+    for arch in ModuleCodegenPass.shared_archetypes_for_context(
+        module, CodeContext.NATIVE
+    ) {
+        aname = arch.name.value if arch.name else "unknown";
+        if aname not in result {
+            result[aname] = arch;
+        }
+    }
+    return list(result.values());
+}
+
+"""Pre-register archetype names as opaque struct types for global type resolution."""
+impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
+    for arch in self._native_archetypes(module) {
+        aname = arch.name.value if arch.name else None;
+        if aname is not None and aname not in self.struct_types {
+            struct_type = self.llvm_module.context.get_identified_type(aname);
+            self.struct_types[aname] = struct_type;
         }
     }
 }
 
 """Walk the module and register all native archetypes (obj definitions)."""
 impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
-    # Collect all archetype nodes, deduplicating forward declarations
+    # na-block archetypes plus shared module-level archetypes referenced by
+    # native code; names are already de-duplicated by _native_archetypes.
+    archetypes: list[uni.Archetype] = self._native_archetypes(module);
     arch_map: dict[(str, uni.Archetype)] = {};
-    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.Archetype) {
-            aname = stmt.name.value if stmt.name else "unknown";
-            # Full definition overrides forward declaration
-            if aname not in arch_map or stmt.body is not None {
-                arch_map[aname] = stmt;
-            }
-        }
+    for arch in archetypes {
+        arch_map[arch.name.value if arch.name else "unknown"] = arch;
     }
-    archetypes: list[uni.Archetype] = list(arch_map.values());
     # Pass 1: Create opaque identified struct types (handles forward refs)
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
