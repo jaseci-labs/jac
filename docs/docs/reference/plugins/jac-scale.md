@@ -2525,14 +2525,14 @@ When `docker_username` and `docker_password` are set, a `kubernetes.io/dockercon
 
 #### Target Platform
 
-`build_platform` controls the single target architecture passed to the Docker build (default: `linux/amd64`). This is useful when your build machine and K8s nodes differ — for example, building on Apple Silicon for an x86_64 cluster:
+`build_platform` controls the single target architecture passed to the Docker build (default: `linux/amd64`). This is useful when your build machine and K8s nodes differ, for example building on Apple Silicon for an x86_64 cluster:
 
 ```toml
 [plugins.scale.kubernetes]
 build_platform = "linux/arm64"   # default: linux/amd64
 ```
 
-> **Note:** this sets a single target arch. It is not a multi-arch build — the resulting image runs only on nodes matching the specified platform.
+> **Note:** this sets a single target arch. It is not a multi-arch build; the resulting image runs only on nodes matching the specified platform.
 
 ---
 
