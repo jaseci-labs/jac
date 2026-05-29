@@ -1,10 +1,5 @@
 import from jaclang.cli.console { console }
 
-"""Make convenient check.Equal(...) etc."""
-impl JacTestCheck.__getattr__(name: str) -> object {
-    return getattr(JacTestCheck.test_case, name);
-}
-
 """Create a new test."""
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""
@@ -80,7 +75,6 @@ impl JacTestCheck.run_test(
 
 """Clear the test suite."""
 impl JacTestCheck.reset -> None {
-    JacTestCheck.test_case = unittest.TestCase();
     JacTestCheck.test_suite = unittest.TestSuite();
     JacTestCheck.test_suite_path = {};
 }

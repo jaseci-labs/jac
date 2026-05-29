@@ -1076,17 +1076,15 @@ impl BrowseTools._browse_shutdown{
     }
 }
 
-"""Build the agent's system message: rules, the guide index, and the cheatsheet."""
+"""Build the agent's system message: the rules and the guide index."""
 impl system_prompt -> str {
     index_lines: list[str] = [];
     for g in gs_list() {
         index_lines.append(f"- {g.name}: {g.description}");
     }
     guide_index = "\n".join(index_lines);
-    cheatsheet = gs_get("jac-core-cheatsheet");
-    cheatsheet_body = cheatsheet.body if cheatsheet is not None else "";
     return (
-        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index + "\n\n## Jac core cheatsheet\n\n" + cheatsheet_body
+        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index
     );
 }
 
@@ -1275,6 +1273,184 @@ impl AgentEventBus.publish_full -> None {
     }
 }
 
+# Keep at most this many recent calls (and only the conversations they
+# reference) so a long session does not grow the capture store without bound.
+glob _CALL_LOG_CAP = 500;
+
+"""Flatten one conversation message to a JSON-safe record.
+
+Messages arrive as litellm dicts or objects; reduce each to `{role, content,
+tools}` where `content` is the full text and `tools` are one-line `name(args)`
+summaries of any tool calls, so the UI can render them without knowing the
+backend message shape. Content is kept whole -- the detail view is an inspector
+and is fetched lazily per click (never on the per-frame stream), and the modal
+scrolls long blocks rather than clipping them. Messages are already bounded
+upstream (tool reads are truncated at the source; write args by the model's
+max-token ceiling), so there is no separate cap here.
+"""
+impl _san_msg(m: any) -> dict {
+    import json;
+    role_raw: any = m.get("role") if isinstance(m, dict) else (m?.role or "");
+    role = str(role_raw or "");
+    # Roles arrive as a plain string ("assistant") or an enum repr
+    # ("MessageRole.SYSTEM"); normalize to a bare lowercase tag so the UI's
+    # `cd-<role>` class and label are clean.
+    if "." in role {
+        role = role.split(".")[-1];
+    }
+    role = role.lower();
+    content = m.get("content") if isinstance(m, dict) else (m?.content or "");
+    content = "" if content is None else str(content);
+    tcs: any = m.get("tool_calls") if isinstance(m, dict) else m?.tool_calls;
+    tools: list[str] = [];
+    if tcs {
+        for tc in tcs {
+            fn: any = tc?.function;
+            if fn is None and isinstance(tc, dict) {
+                fn = tc.get("function");
+            }
+            name: any = fn?.name;
+            if name is None and isinstance(fn, dict) {
+                name = fn.get("name");
+            }
+            raw: any = fn?.arguments;
+            if raw is None and isinstance(fn, dict) {
+                raw = fn.get("arguments");
+            }
+            args_str = "";
+            try {
+                parsed = json.loads(raw) if isinstance(raw, str) else (raw or {});
+                args_str = json.dumps(parsed) if isinstance(parsed, dict) else str(raw);
+            } except Exception {
+                args_str = str(raw);
+            }
+            tools.append(f"{name or '?'}({args_str})");
+        }
+    }
+    return {"role": role, "content": content, "tools": tools};
+}
+
+# Replace the current conversation's stored snapshot when `snap` is longer (the
+# conversation only grows), so `convos` holds the fullest message list seen.
+def _remember_convo(snap: list) {
+    cur = agent.bus.convos.get(agent.bus._cur_convo, []);
+    if len(snap) > len(cur) {
+        agent.bus.convos[agent.bus._cur_convo] = snap;
+    }
+}
+
+"""Open a fresh conversation for capture, seeded with its starting messages.
+
+Called at the start of a phase (with the phase's starting messages) and before a
+routing call (with a synthetic routing context). Each conversation gets a
+monotonic id so calls from different phases -- and re-entries of the same phase
+-- never blur together in the detail view.
+"""
+impl AgentEventBus.open_convo(msgs: any) -> None {
+    if not self.active_feed {
+        return;
+    }
+    self._convo_seq += 1;
+    self._cur_convo = self._convo_seq;
+    self.convos[self._cur_convo] = [_san_msg(m) for m in msgs];
+}
+
+"""Fold byLLM's live messages for the upcoming call (one ReAct iteration) into
+the current conversation's stored snapshot. This is the real per-call context --
+system prompt, the directive, and every prior assistant/tool turn -- captured as
+the loop runs, so the detail view shows what the model actually saw."""
+impl AgentEventBus.set_pending(msgs: any) -> None {
+    if self.active_feed {
+        _remember_convo([_san_msg(m) for m in msgs]);
+    }
+}
+
+"""Fold the phase's final written-back messages into its conversation store, so
+the last call's output (the answer byLLM appended) is present for the detail."""
+impl AgentEventBus.close_convo(msgs: any) -> None {
+    if self.active_feed {
+        _remember_convo([_san_msg(m) for m in msgs]);
+    }
+}
+
+"""Capture the current conversation's tool JSON schemas -- the exact `tools` API
+parameter byLLM sends with every call in this phase, which the token count
+includes but the messages do not. Rebuilt from the phase's tool functions with
+the same `Tool` byLLM uses, so the schemas (and their token weight) match."""
+impl AgentEventBus.set_convo_tools(tools: list[Callable]) -> None {
+    if not self.active_feed {
+        return;
+    }
+    import json;
+    import from byllm.types { Tool }
+    recs: list[dict] = [];
+    for fn in tools {
+        name = str(getattr(fn, "__name__", "?") or "?");
+        try {
+            schema: any = Tool(fn).get_json_schema();
+            fdef: any = schema.get("function", {});
+            recs.append(
+                {
+                    "name": str(fdef.get("name", "") or name),
+                    "description": str(fdef.get("description", "")),
+                    "schema": json.dumps(schema, indent=2)
+                }
+            );
+        } except Exception as e {
+            recs.append(
+                {
+                    "name": name,
+                    "description": "",
+                    "schema": f"(schema unavailable: {e})"
+                }
+            );
+        }
+    }
+    self.convo_tools[self._cur_convo] = recs;
+}
+
+"""Emit a `call` event AND record the call for the detail view.
+
+The lightweight `call` event (token counts, tagged by phase) drives the live
+token-usage stream; alongside it, this records which conversation the call
+belongs to and its token counts. The conversation's messages themselves are
+captured by `open_convo`/`set_pending`/`close_convo`; the detail view splits them
+into per-call input/output using the assistant messages as boundaries, so memory
+stays O(conversation), not O(calls x conversation).
+"""
+impl AgentEventBus.emit_call(fields: dict) -> None {
+    if not self.active_feed {
+        return;
+    }
+    # The id `emit` is about to assign, so the call_log row keys to the same id
+    # the `call` event carries (the UI fetches detail by that id).
+    cid = self._next_id;
+    self.emit("call", fields);
+    self.call_log.append(
+        {
+            "id": cid,
+            "node": str(fields.get("node", "")),
+            "convo": self._cur_convo,
+            "tokens_in": int(fields.get("tokens_in", 0) or 0),
+            "tokens_out": int(fields.get("tokens_out", 0) or 0)
+        }
+    );
+    if len(self.call_log) > _CALL_LOG_CAP {
+        self.call_log = self.call_log[-_CALL_LOG_CAP:];
+        keep = {c["convo"] for c in self.call_log};
+        self.convos = {
+            k: v
+            for (k, v) in self.convos.items()
+            if k in keep
+        };
+        self.convo_tools = {
+            k: v
+            for (k, v) in self.convo_tools.items()
+            if k in keep
+        };
+    }
+}
+
 """Stop a turn that keeps rewriting the same file without making progress.
 
 byLLM calls this before each ReAct iteration. It counts how often each file has
@@ -1288,6 +1464,11 @@ impl _progress_guard(ctx: any) -> str {
     if agent.bus.cancel_requested {
         return IterationAction.ABORT_WITH_SUMMARY;
     }
+    # Capture the conversation this iteration's model call will see, for the
+    # token-usage detail view (a no-op off the --ui path). on_iteration fires
+    # before each call from the 2nd on; the 1st call's input is seeded by
+    # `open_convo` in PhaseState.run.
+    agent.bus.set_pending(ctx.messages);
     counts: dict[str, int] = {};
     # Ordered signature ("name|args") of every tool call, to spot a model stuck
     # re-issuing the SAME call (read or write) -- e.g. read_file(main.jac) 40x.
@@ -1624,8 +1805,9 @@ impl TurnRenderer._emit_call_usage(data: any, phase: str) -> None {
     if tin == 0 and tout == 0 {
         return;
     }
-    agent.bus.emit(
-        "call",
+    # emit_call emits the `call` event AND captures this call's input snapshot
+    # for the detail view, keyed to the same event id.
+    agent.bus.emit_call(
         {
             "node": phase,
             "tokens_in": tin,
@@ -1981,9 +2163,19 @@ impl PhaseState.run{
     } else {
         self.ctx[0] = sysmsg;
     }
-    result = agent.view.render_stream(
-        run_phase(_phase_directive(label), self.tools(), self.ctx)
-    );
+    # Hand the phase's tools and conversation to `run_phase` via the runtime
+    # (not as parameters -- byLLM would serialize them into the prompt).
+    agent.phase_tools = self.tools();
+    agent.phase_ctx = self.ctx;
+    # Open a fresh capture conversation seeded with this phase's starting
+    # messages (the 1st call's input); later calls' inputs come from the
+    # progress guard. Close it afterward so the last call's written-back output
+    # is captured. Both are no-ops off the --ui path.
+    agent.bus.open_convo(self.ctx);
+    # Capture the phase's tool schemas (the API `tools` param) for this convo.
+    agent.bus.set_convo_tools(agent.phase_tools);
+    result = agent.view.render_stream(run_phase(_phase_directive(label)));
+    agent.bus.close_convo(self.ctx);
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
     # Surface the new ledger entry to the UI panel right away (the next bus emit
@@ -2028,8 +2220,25 @@ impl PhaseState.run{
             style="yellow"
         );
         visit self;
+    } elif label == "Plan" {
+        # Read-only fast path: classify whether carrying out the request needs
+        # any file created or edited. A pure question/inspection finishes
+        # straight from Plan (skipping Build and its wrote-nothing nudge loop,
+        # and QA); anything that touches code routes to Build, the default. Uses
+        # a typed bool classifier with a Build-biased default -- robust where
+        # `visit [-->] by`'s LLM edge filter can crash on a weak model's bad
+        # index.
+        if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
+            visit [-->][?:Build];
+        } else {
+            console.print(
+                "  ↳ read-only request -- answered in Plan, skipping Build/QA",
+                style="green"
+            );
+            visit [-->][?:Done];
+        }
     } elif len([-->]) == 1 {
-        # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
+        # Single successor (Build -> QA): advance, no LLM call.
         visit [-->];
     } elif _project_errors() {
         # Hard gate: the project does not compile, so finishing is not an option.
@@ -2049,6 +2258,21 @@ impl PhaseState.run{
         # the live feed and its token usage the token-usage stream, while
         # `visit [-->] by` still constrains the choice to a real successor edge
         # (no free-text parsing, no manual default).
+        # byLLM builds the routing prompt internally, so seed the capture with a
+        # synthetic input mirroring the incl_info -- enough for the detail view to
+        # show what the routing call was deciding on.
+        agent.bus.open_convo(
+            [
+                {
+                    "role": "system",
+                    "content": "Routing: pick the single next state along this node's out-edges (Build to fix, Plan to rethink, Done only once verified)."
+                },
+                {
+                    "role": "user",
+                    "content": f"Objective:\n{visitor.objective}\n\nProgress so far:\n{visitor.ledger.render()}\n\nStep: {visitor.steps} of at most {visitor.max_steps}"
+                }
+            ]
+        );
         visit [-->] by agent_model(
             stream=True,
             stream_handler=agent.view.route_stream_event,
@@ -2097,7 +2321,7 @@ impl TurnRenderer.route_stream_event(event: any) -> None {
     }
 }
 
-sem Done = "the DONE state: choose this only when the objective is fully built AND QA has actually verified it (type-checked, and for an app, run and exercised). Ends the session.";
+sem Done = "the DONE state: the session is complete. Reach it from QA once the objective is fully built AND verified (type-checked, and for an app, run and exercised), or directly from Plan when the request was a pure question or read-only inspection that needed no file changes and has been answered. Ends the session.";
 impl Done.finish{
     # No onward visit: the walker's queue empties here and the session ends.
     console.print("\n  ● Done", style="bold green");
@@ -2113,14 +2337,19 @@ here updates the agent's behavior and the rendered graph at once.
 """
 impl build_pipeline -> Plan {
     # Wire the phase pipeline. The edges ARE the legal transitions: Plan -> Build
-    # -> QA, with QA looping back to Build/Plan or finishing at Done. This is the
-    # only place the topology is written down; `ui_graph` traces these same nodes
-    # and edges so the rendered graph can never drift from the real workflow.
+    # -> QA, with QA looping back to Build/Plan or finishing at Done, plus a
+    # read-only fast path Plan -> Done for requests that change no files. This is
+    # the only place the topology is written down; `ui_graph` traces these same
+    # nodes and edges so the rendered graph can never drift from the real workflow.
     plan = Plan();
     build = Build();
     qa = QA();
     done = Done();
     plan ++> build;
+    # Read-only fast path: a pure question or inspection that needs no file
+    # changes finishes straight from Plan, so it never enters Build (and its
+    # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
+    plan ++> done;
     build ++> qa;
     qa ++> build;
     qa ++> plan;
@@ -2515,6 +2744,100 @@ impl ui_poll -> dict {
     return agent.bus.snapshot();
 }
 
+"""Reconstruct one model call's detail for the token-usage detail view.
+
+Given the `call` event's id, returns that call's full input conversation, the
+diff vs the prior call in the same conversation (`shared` = the cached prefix
+length, `new_input` = the messages added since), its output, the prior / next
+call ids for stepping, and the call's token counts. `found` is False for an
+unknown id.
+
+Call boundaries come from the assistant messages in the stored conversation:
+each model call produces exactly one assistant message, so the k-th call's input
+is everything before the k-th assistant message, and its output is that assistant
+message plus the tool result(s) up to the next one. (This is why the input shows
+the real per-call context -- system prompt, directive, prior turns -- rather than
+the seed the phase opened with.) Note the token counts ALSO include the tool JSON
+schemas, which the API sends as a separate parameter, not as a message, so they
+do not appear among the messages below.
+"""
+impl ui_call_detail(call_id: int) -> dict {
+    log = list(agent.bus.call_log);
+    entry: any = None;
+    for c in log {
+        if int(c["id"]) == call_id {
+            entry = c;
+        }
+    }
+    if entry is None {
+        return {"found": False};
+    }
+    convo: int = int(entry["convo"]);
+    msgs: list = agent.bus.convos.get(convo, []);
+    # Same-convo calls in call order (the log is appended in order).
+    same = [
+        c
+        for c in log
+        if int(c["convo"]) == convo
+    ];
+    pos = 0;
+    i = 0;
+    for c in same {
+        if int(c["id"]) == call_id {
+            pos = i;
+        }
+        i += 1;
+    }
+    # Indices of the assistant messages -- one per call -- used as boundaries.
+    asst: list = [];
+    j = 0;
+    for m in msgs {
+        if str(m.get("role", "")) == "assistant" {
+            asst.append(j);
+        }
+        j += 1;
+    }
+    n = len(asst);
+    # This call's output begins at its assistant message; its input is everything
+    # before it. When the assistant message is not captured yet (a live, still-
+    # running call), fall back to showing the whole snapshot as input.
+    a_k = int(asst[pos]) if pos < n else len(msgs);
+    a_prev = int(asst[pos - 1]) if (pos > 0 and pos - 1 < n) else 0;
+    a_next = int(asst[pos + 1]) if (pos + 1 < n) else len(msgs);
+    prev_id = int(same[pos - 1]["id"]) if pos > 0 else -1;
+    next_id = int(same[pos + 1]["id"]) if pos + 1 < len(same) else -1;
+    out_slice = [
+        m
+        for m in msgs[a_k:a_next]
+        if str(m.get("role", "")) in ("assistant", "tool")
+    ];
+    # The phase's tool schemas (the API `tools` param) -- the same for every call
+    # in this conversation. Their char total feeds the modal's "~tokens" estimate
+    # so the row's tokens_in reconciles (messages + tool schemas).
+    tools: list = agent.bus.convo_tools.get(convo, []);
+    tool_chars = 0;
+    for t in tools {
+        td: any = t;
+        tool_chars += len(str(td.get("schema", "")));
+    }
+    return {
+        "found": True,
+        "id": call_id,
+        "node": str(entry["node"]),
+        "input": msgs[:a_k],
+        "new_input": msgs[a_prev:a_k],
+        "output": out_slice,
+        "shared": a_prev,
+        "total": a_k,
+        "tokens_in": int(entry.get("tokens_in", 0) or 0),
+        "tokens_out": int(entry.get("tokens_out", 0) or 0),
+        "tools": tools,
+        "tool_chars": tool_chars,
+        "prev_id": prev_id,
+        "next_id": next_id
+    };
+}
+
 """Live SSE event stream: yields a full snapshot, then one message per bus
 emit (token by token for reasoning/answer), plus periodic heartbeats so a
 client disconnect is detected. jac-scale frames each yielded dict as an
@@ -2598,6 +2921,10 @@ impl ui_graph -> dict {
 impl ui_reset -> None {
     reset_session();
     agent.bus.events = [];
+    # Drop the per-call capture store too, so a fresh session starts empty.
+    agent.bus.call_log = [];
+    agent.bus.convos = {};
+    agent.bus.convo_tools = {};
     agent.bus.begin_turn();
     agent.bus.set_status("idle");
     # Tell live streams the feed was cleared (set_status only sends a delta).

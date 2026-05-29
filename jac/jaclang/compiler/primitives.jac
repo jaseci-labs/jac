@@ -1345,9 +1345,14 @@ class BuiltinEmitter[V, C] {
 #  Exception Types
 # =============================================================================
 #
-# Canonical exception hierarchy. All backends must implement hierarchy-aware
-# type matching so that `except ArithmeticError` catches ZeroDivisionError,
+# Exception hierarchy. All backends must implement hierarchy-aware type
+# matching so that `except ArithmeticError` catches ZeroDivisionError,
 # OverflowError, and FloatingPointError.
+#
+# The authoritative, machine-readable hierarchy consumed by every backend lives
+# in `JAC_TYPE_REGISTRY` (jaclang/compiler/type_registry.jac); the tree below is
+# the human-readable view of it. The UnicodeError subtree is aspirational and
+# not yet implemented in the registry.
 #
 #   BaseException
 #   ├── Exception

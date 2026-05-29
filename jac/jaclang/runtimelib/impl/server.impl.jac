@@ -578,12 +578,13 @@ impl ModuleIntrospector._load_manifest -> None {
     }
     # Aggregate endpoint effects across every compiled module. A walker or
     # public function spawned from the client may be declared in any imported
-    # module; WalkerEffectsPass records each endpoint's effects in its own
-    # module's manifest, so the authoritative set is the union over the hub.
+    # module; BoundaryAnalysisPass records each endpoint's effects in its own
+    # module's interop_manifest, so the authoritative set is the union over the
+    # hub.
     aggregated: dict = {};
     for hub_mod in Jac.program.mod.hub.values() {
-        if hub_mod and hub_mod.gen.client_manifest {
-            for (ekey, eeff) in hub_mod.gen.client_manifest.endpoint_effects.items() {
+        if hub_mod and hub_mod.gen.interop_manifest {
+            for (ekey, eeff) in hub_mod.gen.interop_manifest.endpoint_effects.items() {
                 aggregated[ekey] = eeff;
             }
         }
@@ -592,96 +593,73 @@ impl ModuleIntrospector._load_manifest -> None {
     self._client_manifest = base;
 }
 
-"""Extract access level information from module AST.
+"""Populate per-symbol auth requirement from the compiled interop table.
 
-Access level logic:
-- Explicitly marked with `pub`: no authentication required (stores False)
-- Explicitly marked with `protect` or `priv`: authentication required (stores True)
-- No access modifier specified: authentication required (stores True) - secure by default
-
-This method handles both directly defined and imported walkers/functions by:
-1. Processing the main module's AST for direct definitions
-2. Looking up the source module AST for imported walker classes
+Access (auth-required, secure-by-default: True for anything not `pub`) is
+computed once at compile time by BoundaryAnalysisPass and stored on each
+module's `interop_manifest`. We union those maps across the program hub —
+an endpoint may be defined in any imported module — instead of re-walking
+ASTs at request time. The main module is processed first so its definitions
+win on a name collision, matching the prior direct-defs-before-imports order.
 """
 impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
     import jaclang.jac0core.unitree as uni;
-    import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
     self._function_access = {};
     self._walker_access = {};
-
-    def get_module_ast(mod_path: str) -> (uni.Module | None) {
-        ast = Jac.program.mod.hub.get(mod_path);
-        if not ast {
-            ast = Jac.program.compile(mod_path);
-        }
-        return ast;
+    mod_path = self._module?.__file__;
+    main_mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub)
+        if mod_path
+        else None;
+    if not main_mod {
+        return;
     }
-
-    def is_public(ast_node: (uni.AstAccessNode | None)) -> bool {
-        return ast_node is not None
-        and ast_node.access is not None
-        and ast_node.access.tag.name == Tok.KW_PUB;
-    }
-
-    def _process_import(
-        item: uni.Import, func_access: dict[str, bool], walker_access: dict[str, bool]
-    ) {
-        imported_names: list[str] = [
-            imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
-            for imp_item in item.items
-            if isinstance(imp_item, uni.ModuleItem)
-        ];
-        if not imported_names {
-            return;
-        }
-        try {
-            source_file = item.from_loc.resolve_relative_path();
-            if not source_file.endswith(('.jac', '.cl.jac')) {
-                return;
-            }
-        } except Exception {
-            return;
-        }
-        source_ast = get_module_ast(source_file);
-        for name in imported_names {
-            if name in func_access or name in walker_access {
+    # Gather the source modules whose tables we read: the main module plus its
+    # directly-imported `.jac`/`.cl.jac` providers. We compile a provider only
+    # if it is not already in the hub — this populates its interop_manifest
+    # (BoundaryAnalysisPass derives access once, per module); we never re-derive
+    # access by walking ASTs here. Main module first so its defs win on a name
+    # collision (matching the prior direct-defs-before-imports order).
+    sources: list = [main_mod];
+    for item in main_mod.body {
+        if isinstance(item, uni.Import) and item.is_jac and item.from_loc {
+            try {
+                src = item.from_loc.resolve_relative_path();
+            } except Exception {
                 continue;
             }
-            sym = source_ast.lookup(name) if source_ast else None;
-            is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
-            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode)
-                if sym
-                else None;
-            if is_walker {
-                walker_access[name] = not is_public(decl_node);
-            } else {
-                func_access[name] = not is_public(decl_node);
+            if not (src and src.endswith(('.jac', '.cl.jac'))) {
+                continue;
+            }
+            prov = _lookup_module_in_hub(src, Jac.program.mod.hub);
+            if not prov {
+                try {
+                    prov = Jac.program.compile(src);
+                } except Exception {
+                    prov = None;
+                }
+            }
+            if prov {
+                sources.append(prov);
             }
         }
     }
-
-    # Get main module AST
-    mod_path = self._module?.__file__;
-    if not mod_path {
-        return;
-    }
-    mod_ast = get_module_ast(mod_path);
-    if not mod_ast {
-        return;
-    }
-
-    # Single pass over module body: direct definitions + imports
-    for item in mod_ast.body {
-        if isinstance(item, uni.Ability) and item.name_ref is not None {
-            self._function_access[item.name_ref.sym_name] = not is_public(item);
-        } elif isinstance(item, uni.Archetype)
-        and item.sym_category == SymbolType.WALKER_ARCH {
-            self._walker_access[item.name.sym_name] = not is_public(item);
-        } elif isinstance(item, uni.Import) and item.is_jac and item.from_loc {
-            _process_import(item, self._function_access, self._walker_access);
+    for src_mod in sources {
+        if not (src_mod and src_mod.gen and src_mod.gen.interop_manifest) {
+            continue;
+        }
+        man = src_mod.gen.interop_manifest;
+        for (name, auth) in man.func_access.items() {
+            if name not in self._function_access {
+                self._function_access[name] = auth;
+            }
+        }
+        for (name, auth) in man.walker_access.items() {
+            if name not in self._walker_access {
+                self._walker_access[name] = auth;
+            }
         }
     }
 }
@@ -690,7 +668,7 @@ impl ModuleIntrospector._extract_access_levels -> None {
 """Conservatively default the effect of any registered endpoint the compiler
 did not classify.
 
-Endpoint effects are computed at compile time by WalkerEffectsPass and loaded
+Endpoint effects are computed at compile time by BoundaryAnalysisPass and loaded
 (aggregated across all modules) by `_load_manifest`. This fills only the gaps:
 a runtime-registered walker / function with no compiled entry -- e.g. a
 Python-defined endpoint -- gets a conservative default (a walker is assumed a

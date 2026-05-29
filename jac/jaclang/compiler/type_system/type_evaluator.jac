@@ -99,6 +99,7 @@ obj PrefetchedTypes {
         type_class: types.ClassType | None = None,
         union_type_class: types.ClassType | None = None,
         awaitable_class: types.ClassType | None = None,
+        coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
         method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
@@ -187,7 +188,8 @@ obj NarrowingTarget {
 obj NarrowingPredicate {
     has key: str,
         narrow_type: TypeBase,
-        is_inverted: bool = False;
+        is_inverted: bool = False,
+        attr_name: str | None = None;
 }
 
 """Classification of a leaf narrowing condition."""
@@ -198,7 +200,8 @@ enum NarrowingKind {
     NONE_IS_NOT = "none_is_not",
     TRUTHINESS = "truthiness",
     LITERAL_EQ = "literal_eq",
-    LITERAL_NE = "literal_ne"
+    LITERAL_NE = "literal_ne",
+    HASATTR = "hasattr"
 }
 
 """Result of classifying a leaf condition node.
@@ -210,7 +213,8 @@ before reaching classification.
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
-        narrow_type: (TypeBase | None) = None;
+        narrow_type: (TypeBase | None) = None,
+        attr_name: str | None = None;
 }
 
 """Type evaluator for JacLang."""
@@ -260,6 +264,12 @@ obj TypeEvaluator {
         # when the module is Jac source (Layer 2 strict-Any applies),
         # False when it is Python source (PEP 484 stays permissive).
         _strict_site_cache: dict[int, bool] = {},
+        # Per-module set of symbol ids bound by `sv import` to a server
+        # function, keyed by `id(module)`. Calls to these are async RPC stubs
+        # on the client. Scoped per module so a server function called
+        # server-side (same shared symbol) is unaffected. Same id-keyed,
+        # recompile-invalidated pattern as `_strict_site_cache`.
+        _sv_async_syms_cache: dict[int, set[int]] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -520,6 +530,22 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    # --- async / await modeling ---
+    # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
+    # `async def` call evaluates to). Returns `inner` unchanged if Coroutine
+    # is unavailable or `inner` is already a generator-family type.
+    def _make_coroutine_type(inner: TypeBase) -> TypeBase;
+    # True if `t` is an awaitable (Coroutine/Awaitable instance, or a class
+    # implementing `__await__`).
+    def _is_awaitable_type(t: TypeBase) -> bool;
+    # Unwrap one `await`: Coroutine[Y,S,R]->R, Awaitable[T]->T, else via
+    # `__await__`. Non-awaitables pass through unchanged (lenient).
+    def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
+    # True if `expr` is a call to a function imported via `sv import` in the
+    # enclosing module — such functions lower to async RPC stubs on the
+    # client, so their calls return coroutines even though the server
+    # declaration is synchronous.
+    def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
@@ -677,6 +703,12 @@ obj TypeEvaluator {
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
     def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _extract_hasattr_info(condition: uni.Expr) -> tuple[str, str] | None;
+    def _type_has_attribute(t: TypeBase, attr_name: str) -> bool;
+    def _filter_union_for_hasattr(
+        base_type: TypeBase, attr_name: str, keep_with_attr: bool
+    ) -> TypeBase | None;
+
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
     def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;

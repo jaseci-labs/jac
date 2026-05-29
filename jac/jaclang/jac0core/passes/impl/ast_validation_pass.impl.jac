@@ -235,9 +235,14 @@ impl ASTValidationPass.enter_non_local_stmt(
 impl ASTValidationPass.enter_global_vars(
     self: ASTValidationPass, nd: uni.GlobalVars
 ) -> None {
-    if nd.find_parent_of_type(uni.ModuleCode) is not None
-    or nd.find_parent_of_type(uni.Ability) is not None
-    or nd.find_parent_of_type(uni.ImplDef) is not None {
+    # glob is a declaration: it is valid directly under the module or a
+    # codespace block (cl/sv/na), but never inside a function body, impl,
+    # archetype, or an executable code block ('with entry', loops, test, etc.).
+    # Whitelisting valid parents rejects unknown containers by default, which
+    # is safer than blacklisting (a new executable block type can't slip glob
+    # through).
+    valid_parents = (uni.Module, uni.ClientBlock, uni.ServerBlock, uni.NativeBlock);
+    if not isinstance(nd.parent, valid_parents) {
         self.emit(E0063, node_override=nd);
     }
 }
