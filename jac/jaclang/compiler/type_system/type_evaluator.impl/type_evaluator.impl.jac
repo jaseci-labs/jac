@@ -3708,6 +3708,9 @@ impl TypeEvaluator.postinit -> None {
     self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
+    self._CONTEXTLIB_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/contextlib.pyi"
+    );
     # Initialize objects that need constructor calls
     self.prefetch = PrefetchedTypes();
     self._flow_pending_symbols = set();

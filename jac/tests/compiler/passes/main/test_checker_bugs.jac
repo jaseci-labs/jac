@@ -28,6 +28,7 @@ Bug index:
   #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
+  #CTXMGR-1 - @contextmanager methods produce false-positive E1091/E1092 in with statements
 """
 
 import os;
@@ -789,6 +790,58 @@ test "bug_property_setter_duplicate_accessor_reported" {
         "the same property must raise E0076 — a property has at most one "
         "setter (or getter, or deleter). "
         f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+# =========================================================================
+# Bug #CTXMGR-1: @contextmanager methods produce false-positive E1091/E1092
+#
+# The type checker read `acquire -> None` literally and concluded the call
+# returns NoneType, which has no __enter__/__exit__. The fix changes the
+# return type of any @contextmanager-decorated ability to AbstractContextManager
+# inside get_type_of_ability so the with-statement protocol check passes
+# naturally — no special-casing at the call site.
+#
+# Impact: Every @contextmanager method in the codebase (e.g. ReadWriteLock
+#         in rwlock.jac) produced 2 spurious errors per with-block usage.
+# =========================================================================
+test "bug_ctxmgr_1_direct_with_no_false_positive" {
+    program = compile_and_check("checker_contextmanager_direct_with.jac");
+    assert len(program.errors_had) == 0 , (
+        "Bug #CTXMGR-1: @contextmanager method used directly in `with` must "
+        "produce 0 errors. The return type must be AbstractContextManager, "
+        f"not NoneType. Got {len(program.errors_had)} error(s): "
+        f"{[e.pretty_print() for e in program.errors_had]}"
+    );
+}
+
+test "bug_ctxmgr_1_stored_var_no_false_positive" {
+    program = compile_and_check("checker_contextmanager_stored_var.jac");
+    assert len(program.errors_had) == 0 , (
+        "Bug #CTXMGR-1: @contextmanager result stored in a variable and then "
+        "used in `with` must produce 0 errors. The variable must be typed as "
+        "AbstractContextManager, not NoneType. "
+        f"Got {len(program.errors_had)} error(s): "
+        f"{[e.pretty_print() for e in program.errors_had]}"
+    );
+}
+
+test "bug_ctxmgr_1_non_ctx_mgr_still_errors" {
+    program = compile_and_check("checker_with_stmt_invalid_ctx.jac");
+    e1091_count = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1091"
+    );
+    e1092_count = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1092"
+    );
+    assert e1091_count == 1 and e1092_count == 1 , (
+        "Bug #CTXMGR-1 regression guard: a plain method (no @contextmanager) "
+        "used in `with` must still produce E1091 + E1092. "
+        f"Got E1091={e1091_count}, E1092={e1092_count}."
     );
 }
 

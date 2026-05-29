@@ -314,6 +314,20 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         type_params=func_type_params,
         is_async=node_.is_async,
     );
+    # Apply @contextmanager: change return type to AbstractContextManager so
+    # the with-statement checker finds __enter__/__exit__ naturally.
+    if node_.decorators {
+        for decorator in node_.decorators {
+            decorator_type = self.get_type_of_expression(decorator);
+            if properties.is_contextmanager_decorator_type(decorator_type) {
+                ctx_mgr_type = self._get_contextmanager_return_type(node_);
+                if ctx_mgr_type is not None {
+                    func_type.return_type = ctx_mgr_type;
+                }
+                break;
+            }
+        }
+    }
     node_.name_spec.type = func_type;
     return func_type;
 }

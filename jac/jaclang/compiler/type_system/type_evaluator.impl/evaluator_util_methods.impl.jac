@@ -870,6 +870,33 @@ impl TypeEvaluator.get_getter_type_from_property(
     return func_type.return_type;
 }
 
+"""Return AbstractContextManager instance type for a @contextmanager-decorated ability.
+
+Lazily loads contextlib the first time it is needed, looks up
+AbstractContextManager (which directly defines __enter__ and __exit__),
+and returns it as an instance type. This is what a @contextmanager call
+actually produces at runtime — the with-statement checker then finds the
+context-manager protocol naturally without any special-casing.
+
+Returns None if contextlib cannot be loaded (graceful fallback).
+"""
+impl TypeEvaluator._get_contextmanager_return_type(
+    ability: uni.Ability
+) -> (TypeBase | None) {
+    if self.contextlib_module is None {
+        self.contextlib_module = self._load_stub_module(
+            self._CONTEXTLIB_STUB_FILE_PATH
+        );
+    }
+    ctx_mgr_class = self._get_type_from_module(
+        self.contextlib_module, "AbstractContextManager"
+    );
+    if isinstance(ctx_mgr_class, types.UnknownType) {
+        return None;
+    }
+    return self._convert_to_instance(ctx_mgr_class);
+}
+
 """Classify a symbol's writability for property-aware assignment checking.
 
 Delegates to _classify_property_symbol for the decorator walk, then
