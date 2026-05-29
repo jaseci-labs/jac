@@ -988,34 +988,6 @@ impl EsastGenPass._ability_from_symbol(
     return None;
 }
 
-"""Resolve an sv-imported function to its source ability."""
-impl EsastGenPass._resolve_sv_import_ability(name: str) -> (uni.Ability | None) {
-    for imp in self.get_main_mod().get_all_sub_nodes(uni.Import) {
-        if imp.code_context == CodeContext.CLIENT
-        or not imp.from_loc
-        or not imp.items
-        or imp._source_context_token() is None
-        or imp._source_context_token().name != Tok.KW_SERVER {
-            continue;
-        }
-        for item in imp.items {
-            if not isinstance(item, uni.ModuleItem)
-            or not isinstance(item.name, uni.Name) {
-                continue;
-            }
-            local_name = item.alias.sym_name if item.alias else item.name.sym_name;
-            if local_name != name {
-                continue;
-            }
-            source_mod = self._resolve_source_module(imp);
-            if not source_mod {
-                return None;
-            }
-            return self._ability_from_symbol(source_mod.lookup(item.name.sym_name));
-        }
-    }
-    return None;
-}
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
@@ -1028,7 +1000,15 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
         if ability_node {
             return ability_node;
         }
-        return self._resolve_sv_import_ability(nd.target.sym_name);
+        # sv-imported name: read the source ability off the cross-boundary
+        # binding that BoundaryAnalysisPass already resolved (no independent
+        # import re-resolution here).
+        manifest = self.ir_in.gen.interop_manifest;
+        binding = manifest.bindings.get(nd.target.sym_name) if manifest else None;
+        if binding and isinstance(binding.ast_node, uni.Ability) {
+            return binding.ast_node;
+        }
+        return None;
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
@@ -1574,7 +1554,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
-    # Endpoint effects for func:<func_name> are precomputed by WalkerEffectsPass.
+    # Endpoint effects for func:<func_name> are precomputed by BoundaryAnalysisPass.
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
         ability_node
@@ -1784,9 +1764,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    if (
-        isinstance(nd.target, uni.Name) and nd.target.sym_name in self._emitter_builtins
-    ) {
+    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+    _call_kind = classify_call(nd);
+    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1813,17 +1793,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
-    callee_type = None;
-    if isinstance(nd.target, uni.Name) {
-        try {
-            _te = self.prog.get_type_evaluator();
-            if _te {
-                callee_type = _te.get_type_of_expression(nd.target);
-            }
-        } except Exception {
-            callee_type = None;
-        }
-    }
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = args;
@@ -1847,11 +1816,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if (
-        isinstance(callee_type, jtypes.ClassType)
-        and callee_type.is_instantiable()
-        and isinstance(callee, es.Expression)
-    ) {
+    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -2146,8 +2111,6 @@ impl EsastGenPass._ensure_emitters -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
     self._primitives_es_mod = _pes;
-    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
-    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -2166,21 +2129,9 @@ Returns the matching primitive name if ``_obj_type`` is a ``ClassType`` whose
 ``LiteralString`` resolve to ``str`` consistently.
 """
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
-    import from jaclang.compiler.type_system { types as jtypes }
+    import from jaclang.compiler.type_system.type_utils { primitive_type_name_of }
     self._ensure_emitters();
-    if not isinstance(_obj_type, jtypes.ClassType) {
-        return "";
-    }
-    if _obj_type.shared.class_name in self._primitive_type_names {
-        return _obj_type.shared.class_name;
-    }
-    # Walk the MRO to catch subtypes like LiteralString → str.
-    for _base in _obj_type.shared.mro {
-        if _base.shared.class_name in self._primitive_type_names {
-            return _base.shared.class_name;
-        }
-    }
-    return "";
+    return primitive_type_name_of(_obj_type) or "";
 }
 
 """Try to dispatch an operator through the primitive emitter system.
@@ -2453,7 +2404,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
             # Endpoint effects for walker:<name> are precomputed (at the
-            # walker's declaration, in its own module) by WalkerEffectsPass and
+            # walker's declaration, in its own module) by BoundaryAnalysisPass and
             # propagated into this manifest via _populate_client_manifest.
         }
         return;
@@ -2645,45 +2596,6 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
-# Known exception types that map to _jac.exc.X in generated JS.
-glob _KNOWN_EXCEPTIONS: set[str] = {
-         'BaseException',
-         'Exception',
-         'ArithmeticError',
-         'ZeroDivisionError',
-         'OverflowError',
-         'FloatingPointError',
-         'LookupError',
-         'IndexError',
-         'KeyError',
-         'ValueError',
-         'TypeError',
-         'AttributeError',
-         'RuntimeError',
-         'NotImplementedError',
-         'RecursionError',
-         'OSError',
-         'FileNotFoundError',
-         'FileExistsError',
-         'PermissionError',
-         'TimeoutError',
-         'IsADirectoryError',
-         'NotADirectoryError',
-         'AssertionError',
-         'ImportError',
-         'ModuleNotFoundError',
-         'NameError',
-         'UnboundLocalError',
-         'StopIteration',
-         'StopAsyncIteration',
-         'EOFError',
-         'MemoryError',
-         'ReferenceError',
-         'KeyboardInterrupt',
-         'SystemExit',
-         'GeneratorExit'
-     };
-
 """Process raise statement.
 
 Maps known exception types to _jac.exc.X for hierarchy-aware matching.
@@ -2704,8 +2616,9 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         callee = argument.callee;
         call_args = argument.arguments;
     }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
-        if callee.name in _KNOWN_EXCEPTIONS {
+        if JAC_TYPE_REGISTRY.is_exception(callee.name) {
             # Map to _jac.exc.X for hierarchy support
             self.needs_jac_runtime = True;
             exc_ref = self.sync_loc(
@@ -2988,7 +2901,8 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     exc_type_name = except_node.ex_type.value;
                 }
             }
-            if exc_type_name and exc_type_name in _KNOWN_EXCEPTIONS {
+            import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+            if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
                 self.needs_jac_runtime = True;
                 # Build: __jac_e instanceof _jac.exc.X
                 test_expr = self.sync_loc(
@@ -4317,9 +4231,9 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                     ability_node, func_name, nd.gen.interop_manifest
                 );
                 # Carry the source module's precomputed effect (from
-                # WalkerEffectsPass) into this client bundle's manifest so the
+                # BoundaryAnalysisPass) into this client bundle's manifest so the
                 # sv-imported endpoint self-registers with the right effects.
-                src_effect = source_mod.gen.client_manifest.endpoint_effects.get(
+                src_effect = source_mod.gen.interop_manifest.endpoint_effects.get(
                     f"func:{func_name}"
                 );
                 if src_effect is not None {
@@ -4425,7 +4339,7 @@ impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
     for sub_mod in nd.gen.client_manifest.params {
         self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
     }
-    for (ename, eeffect) in nd.gen.client_manifest.endpoint_effects.items() {
+    for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
     }
 }
@@ -5101,13 +5015,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     # Inject _jac runtime object if any primitive emitter produced _jac.* calls
     if self.needs_jac_runtime {
         import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
-            JAC_RUNTIME_JS_OBJECT
+            build_jac_runtime_js
         }
         jac_rt_decl = es.VariableDeclaration(
             declarations=[
                 es.VariableDeclarator(
                     id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=JAC_RUNTIME_JS_OBJECT)
+                    init=es.Identifier(name=build_jac_runtime_js())
                 )
             ],
             kind='const'
@@ -5709,53 +5623,20 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
 """Initialize the pass."""
 impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
-    self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
-    self.imports: list[es.ImportDeclaration] = [];
-    self.exports: list[es.ExportNamedDeclaration] = [];
-    self.scope_stack: list[ScopeInfo] = [];
-    self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
+    self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
-    # Endpoint effects are computed by WalkerEffectsPass (which runs before
-    # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
-    # it so the registration emit and cross-module merge carry them through;
-    # this pass no longer classifies effects itself.
+    # Endpoint effects are computed by BoundaryAnalysisPass (front-end) into
+    # mod.gen.interop_manifest. Seed the fresh accumulator from it so the
+    # registration emit and cross-module merge carry them through; this pass
+    # no longer classifies effects itself.
     self.client_manifest.endpoint_effects = dict(
-        self.ir_in.gen.client_manifest.endpoint_effects
+        self.ir_in.gen.interop_manifest.endpoint_effects
     );
     self.jsx_processor = EsJsxProcessor(self);
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and
     # JSX `className` literals can be rewritten during traversal.
-    self.scoped_styles: (ScopedStyleSheet | None) = load_style_annex(
+    self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path
     );
-    # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
-    self.reactive_vars: dict[str, str] = {};
-    # Stack to save/restore reactive_vars per function boundary
-    self.reactive_vars_stack: list[dict[str, str]] = [];
-    # Track which runtime imports have been auto-injected to avoid duplicates
-    self.injected_imports: set[str] = set();
-    # JSX `{...}` slot view-lowering state. `_view_stack` holds the
-    # accumulator name of each enclosing slot scope (a `str`), or `None` for
-    # a nested-`def` barrier that suspends lowering. The topmost `str` is the
-    # accumulator a JSX statement pushes into; a `None` on top means we are
-    # inside a nested function and JSX should NOT be accumulated. The counter
-    # gives nested slot scopes (try/awaiting/except arms) unique local names.
-    self._view_stack: list[(str | None)] = [];
-    # The first slot keeps the bare `__jac_view_kids` name; every later slot
-    # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
-    self._view_used_base: bool = False;
-    self._view_acc_counter: int = 0;
-    # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
-    # the clause handlers know to scope their own accumulators.
-    self._view_awaiting_tries: set[int] = set();
-    # Accumulate JS function stubs for def:pub functions imported via sv import
-    self.sv_import_stubs: list[es.Statement] = [];
-    # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)
-    self.needs_jac_runtime: bool = False;
-    # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
-    self._primitive_emitters: dict[str, object] | None = None;
-    self._builtin_emitter: object | None = None;
-    self._primitive_type_names: set[str] | None = None;
-    self._emitter_builtins: set[str] | None = None;
 }

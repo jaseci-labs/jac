@@ -351,12 +351,6 @@ variables
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
     def exit_assert_stmt(nd: uni.AssertStmt) -> None;
-    """Sub objects.
-
-        target: ExprType,
-        """
-    def assert_helper(nd: uni.AssertStmt) -> None;
-
     def exit_ctrl_stmt(nd: uni.CtrlStmt) -> None;
     def exit_delete_stmt(nd: uni.DeleteStmt) -> None;
     def exit_report_stmt(nd: uni.ReportStmt) -> None;

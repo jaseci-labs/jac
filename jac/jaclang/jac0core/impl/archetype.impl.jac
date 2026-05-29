@@ -377,22 +377,35 @@ impl Root.__repr__ -> str {
 impl ObjectSpatialFunction.trigger -> (
     type | UnionType | tuple[((type | UnionType), ...)] | None
 ) {
-    parameters = signature(self.func, eval_str=True).parameters;
-    if (len(parameters) >= 2) {
+    # Resolve the trigger value. Fast path: the compiler stamps a lazy thunk
+    # (see PyastGenPass `set_trigger`) carrying the trigger type, so no runtime
+    # signature reflection is needed. The thunk defers type resolution to first
+    # access (here), after the whole module — including forward-referenced
+    # types — is defined. Fall back to inspecting the ability signature when no
+    # thunk was stamped. cached_property memoizes the resolved value.
+    if self.trigger_override is not _NO_TRIGGER {
+        ty = self.trigger_override();
+    } else {
+        parameters = signature(self.func, eval_str=True).parameters;
+        if len(parameters) < 2 {
+            return None;
+        }
         second_param = `list(parameters.values())[1];
         ty = second_param.annotation;
         if ty == _empty {
             return None;
         }
-        if isinstance(ty, Archetype) {
-            raise TypeError(
-                f"Ability trigger must be a class, not an instance of `{type(
-                    ty
-                ).__name__}`. "
-                f"Use `with {type(ty).__name__} entry` instead."
-            );
-        }
-        return ty;
     }
-    return None;
+    # An ability trigger must be a class, not an instance. Validate on both
+    # resolution paths so e.g. `with root entry` (the `root` instance) raises
+    # here instead of being silently classified as a non-matching trigger.
+    if isinstance(ty, Archetype) {
+        raise TypeError(
+            f"Ability trigger must be a class, not an instance of `{type(
+                ty
+            ).__name__}`. "
+            f"Use `with {type(ty).__name__} entry` instead."
+        );
+    }
+    return ty;
 }
