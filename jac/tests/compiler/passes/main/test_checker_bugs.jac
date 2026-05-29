@@ -485,6 +485,14 @@ test "bug_tvar5_module_typevar_shadowed_by_class_param" {
     assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
 }
 
+# Bug #TVAR-6: glob-form TypeVar not solved at free-function call sites.
+test "bug_tvar6_glob_typevar_in_free_function" {
+    program = compile_and_check("checker_bug_typevar_glob_free_func.jac");
+    assert len(program.errors_had) == 0 , f"Bug #TVAR-6: Expected 0 errors but got {len(
+        program.errors_had
+    )}: {[e.msg for e in program.errors_had]}.";
+}
+
 # =========================================================================
 # Bug #IMPL-1: `has` var reassigned in impl body shadows the parent type
 #
