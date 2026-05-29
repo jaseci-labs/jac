@@ -101,7 +101,7 @@ test "desktop setup creates directory structure" {
         assert "build" in tauri_config;
         assert "app" in tauri_config;
         app_py = (pytauri_dir / "app.py").read_text(encoding="utf-8");
-        assert "from jac_desktop.runtime import run_shell" in app_py;
+        assert "def run_shell(" in app_py;
     }
 }
 

@@ -2,7 +2,7 @@
 
 import tempfile;
 import from pathlib { Path }
-import from jac_desktop.sidecar.frozen_plugins {
+import from jac_desktop.sidecar.main {
     load_sidecar_plugins_config,
     resolve_frozen_plugin_specs
 }

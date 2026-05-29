@@ -2,7 +2,7 @@
 
 import importlib.util;
 import inspect;
-import from jac_desktop.sidecar.frozen_plugins { register_frozen_plugins }
+import from jac_desktop.sidecar.main { register_frozen_plugins }
 import from _helpers { _SIDECAR_MAIN }
 
 
@@ -34,7 +34,7 @@ test "sidecar main function exists" {
 """Verify sidecar main delegates frozen registration to frozen_plugins."""
 test "sidecar main uses data driven frozen plugin registration" {
     content = _SIDECAR_MAIN.read_text(encoding="utf-8");
-    assert "from jac_desktop.sidecar.frozen_plugins import register_frozen_plugins" in content;
+    assert "def register_frozen_plugins(" in content;
     assert "register_frozen_plugins(plugin_manager" in content;
 }
 

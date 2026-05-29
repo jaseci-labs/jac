@@ -155,15 +155,14 @@ test "setup writes stable app py stub" {
         app_py_path = project_dir / "src-pytauri" / "app.py";
         assert app_py_path.exists() , "app.py should be created by setup";
         app_py_content = app_py_path.read_text(encoding="utf-8");
-        assert "from jac_desktop.runtime import run_shell" in app_py_content , (
-            "app.py should be a stable stub delegating to jac_desktop.runtime"
+        assert "def run_shell(" in app_py_content , (
+            "app.py should include stable shell logic"
         );
-        runtime_content = _RUNTIME_PY.read_text(encoding="utf-8");
-        assert "JAC_SIDECAR_PORT=" in runtime_content , (
-            "Sidecar port discovery should live in jac_desktop.runtime"
+        assert "JAC_SIDECAR_PORT=" in app_py_content , (
+            "Sidecar port discovery should live in app.py shell runtime"
         );
-        assert "__JAC_API_BASE_URL__" in runtime_content , (
-            "API URL injection should live in jac_desktop.runtime"
+        assert "__JAC_API_BASE_URL__" in app_py_content , (
+            "API URL injection should live in app.py shell runtime"
         );
     }
 }

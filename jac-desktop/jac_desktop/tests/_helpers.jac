@@ -24,7 +24,7 @@ glob _TESTS_DIR: Path = Path(str(__file__)).parent,
          _JAC_DESKTOP_ROOT / "targets" / "pytauri_desktop_target.jac"
      ),
      _SIDECAR_MAIN: Path = _JAC_DESKTOP_ROOT / "sidecar" / "main.py",
-     _RUNTIME_PY: Path = _JAC_DESKTOP_ROOT / "runtime.py",
+     _RUNTIME_PY: Path = _DESKTOP_HELPERS_JAC,
      _JAC_CLIENT_FIXTURES: Path = _JAC_CLIENT_ROOT / "tests" / "fixtures",
      _VITE_BUNDLER_JAC: Path = _JAC_CLIENT_ROOT / "plugin" / "src" / "vite_bundler.jac",
      _VITE_BUNDLER_IMPL: Path = (
@@ -215,9 +215,9 @@ def pytauri_setup_target_active -> bool {
 
 """Skip the current test when the active jac CLI still uses legacy Rust desktop."""
 def require_pytauri_setup_target {
-    import pytest;
+    import from unittest { SkipTest }
     if not pytauri_setup_target_active() {
-        pytest.skip(
+        raise SkipTest(
             "PyTauri desktop target not active (install jac-client + jac-desktop from branch)"
         );
     }
