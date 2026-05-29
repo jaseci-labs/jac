@@ -3882,7 +3882,8 @@ impl TypeEvaluator.get_narrowed_type(
     }
     symbol_type = self.get_type_of_symbol(symbol);
     if not isinstance(
-        symbol_type, (types.UnionType, types.ClassType, types.UnknownType)
+        symbol_type,
+        (types.UnionType, types.ClassType, types.UnknownType, types.AnyType)
     ) {
         return None;
     }
