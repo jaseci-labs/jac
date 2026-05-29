@@ -16,7 +16,7 @@ jac create --use https://.../t.jacpack # from a URL
 jac create --list_jacpacks             # list available templates
 ```
 
-Always pass an explicit project name - without one, `jac create` falls back to `jactastic`, `jactastic1`, etc.
+Without a project name, `jac create` initializes the **current directory** and names the project after it (like `cargo init` / `uv init`). Pass a name to create a subdirectory instead (`jac create myapp`).
 
 **`client` and `fullstack` are provided by the `jac-client` plugin.** Only `default` ships with `jaclang`. Without `jac-client` installed, `jac create --use client` fails with `Unknown jacpack template`, and `--list_jacpacks` shows only `default`. Run `jac install` / `pip install jac-client` first, or check `--list_jacpacks` to see what is actually available.
 
@@ -57,4 +57,4 @@ After `jac create`:
 - **Match the template to the user's actual need.** Picking `fullstack` for a UI-only spike adds unused server scaffolding; picking `client` for an app that needs persistence forces a later migration.
 - **Don't scaffold into a non-empty workspace.** Inspect the workspace first; if a project exists, extend it.
 - **`-s` / `--skip` on `jac create --use client`** skips npm install - convenient for offline scaffolding, but you'll need `jac install` before running.
-- **Project-name argument is optional but defaults to `jactastic`.** Always pass an explicit name.
+- **Project-name argument is optional.** Omit it to scaffold in cwd; pass a name to create `cwd/<name>/`.

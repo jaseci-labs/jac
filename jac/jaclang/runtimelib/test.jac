@@ -24,7 +24,6 @@ obj JacTextTestRunner(unittest.TextTestRunner) {
 """Jac Testing and Checking."""
 obj JacTestCheck {
     with entry {
-        test_case = unittest.TestCase();
         test_suite = unittest.TestSuite();
     }
 
@@ -55,8 +54,6 @@ obj JacTestCheck {
     static def add_test(
         filepath: str, func_name: str, test_func: Callable, display_name: str = ""
     ) -> None;
-
-    def __getattr__(name: str) -> object;
 }
 
 """Register one test per parameter (like pytest.mark.parametrize)."""

@@ -30,6 +30,7 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.jac0core.codeinfo { ClientManifest }
 import from jaclang.compiler.passes.ecmascript.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -202,6 +203,43 @@ obj CallArgSlot {
 
 """Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
+    has child_passes: list[EsastGenPass] = [],
+        imports: list[es.ImportDeclaration] = [],
+        exports: list[es.ExportNamedDeclaration] = [],
+        scope_stack: list[ScopeInfo] = [],
+        scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
+        client_manifest: (ClientManifest | None) = None,
+        jsx_processor: (EsJsxProcessor | None) = None,
+        scoped_styles: (ScopedStyleSheet | None) = None,
+        # Reactive state variables: var_name -> setter_name (e.g., "count" -> "setCount")
+        reactive_vars: dict[str, str] = {},
+        # Stack to save/restore reactive_vars per function boundary
+        reactive_vars_stack: list[dict[str, str]] = [],
+        # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
+        injected_imports: set[str] = set(),
+        # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
+        # enclosing slot scope (a `str`), or `None` for a nested-`def` barrier that
+        # suspends lowering. The topmost `str` is the accumulator a JSX statement
+        # pushes into; a `None` on top means we are inside a nested function and
+        # JSX should NOT be accumulated. The counter gives nested slot scopes
+        # (try/awaiting/except arms) unique local names.
+        _view_stack: list[(str | None)] = [],
+        # The first slot keeps the bare `__jac_view_kids` name; every later slot
+        # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
+        _view_used_base: bool = False,
+        _view_acc_counter: int = 0,
+        # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
+        # the clause handlers know to scope their own accumulators.
+        _view_awaiting_tries: set[int] = set(),
+        # JS function stubs for def:pub functions imported via sv import
+        sv_import_stubs: list[es.Statement] = [],
+        # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
+        needs_jac_runtime: bool = False,
+        # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
+        _primitive_emitters: (dict[str, object] | None) = None,
+        _builtin_emitter: (object | None) = None,
+        _primitives_es_mod: (object | None) = None;
+
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
@@ -367,7 +405,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
-    def _resolve_sv_import_ability(name: str) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];

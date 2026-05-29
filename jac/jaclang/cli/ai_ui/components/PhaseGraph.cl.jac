@@ -31,17 +31,29 @@ def:pub PhaseGraph(
     useEffect(
         lambda { if containerRef.current and len(nodes) > 0 and not cyRef.current {
             els: list = [];
-            for n in nodes {
+            # Rank each node by its position in the (BFS-ordered) node list so an
+            # edge spanning more than one rank can be told apart from an adjacent
+            # one below.
+            ranks: dict[str, int] = {};
+            for (i, n) in enumerate(nodes) {
                 els.append({"data": {"id": n.id, "label": n.label, "desc": n.desc}});
+                ranks[n.id] = i;
             }
             for e in edges {
+                # A bidirectional pair between adjacent nodes (Build <-> QA) fans
+                # out on its own, but an edge that skips a rank (QA -> Plan jumps
+                # over Build) drawn straight runs behind the intervening node and
+                # vanishes. Tag it so its style bows it out to the side instead.
+                gap = ranks[e.source] - ranks[e.target];
+                cls = "skip" if (gap > 1 or gap < -1) else "";
                 els.append(
                     {
                         "data": {
                             "id": e.source + "->" + e.target,
                             "source": e.source,
                             "target": e.target
-                        }
+                        },
+                        "classes": cls
                     }
                 );
             }
@@ -114,6 +126,17 @@ def:pub PhaseGraph(
                                 "control-point-step-size": 60,
                                 "transition-property": "line-color, target-arrow-color, width",
                                 "transition-duration": 250
+                            }
+                        },
+                        {
+                            # A rank-skipping edge bows out to the side so it
+                            # clears the node it would otherwise run straight
+                            # behind, instead of bezier's straight default.
+                            "selector": "edge.skip",
+                            "style": {
+                                "curve-style": "unbundled-bezier",
+                                "control-point-distances": [130],
+                                "control-point-weights": [0.5]
                             }
                         },
                         {
