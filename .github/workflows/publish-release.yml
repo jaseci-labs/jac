@@ -157,9 +157,13 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: python -m build
 
+      # Plugins precompile against jaclang from the local source tree, not PyPI:
+      # this build runs before the freshly-bumped jaclang version is published.
       - name: Build plugin wheel
         if: matrix.name != 'jaclang'
         working-directory: ${{ matrix.dir }}
+        env:
+          JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
         run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
       - name: Upload package artifacts

@@ -975,9 +975,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             args=self.sync(
                 ast3.arguments(
                     posonlyargs=[],
-                    args=[
-                        self.sync(ast3.arg(arg=Con.JAC_CHECK.value, annotation=None))
-                    ],
+                    args=[],
                     kwonlyargs=[],
                     vararg=None,
                     kwarg=None,
@@ -2235,128 +2233,16 @@ impl PyastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
 }
 
 impl PyastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
-    if isinstance(nd.parent, uni.Test) {
-        self.assert_helper(nd);
-    } else {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Assert(
-                    `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
-                    msg=cast(ast3.expr, self.py_ast_val(nd.error_msg))
-                        if nd.error_msg
-                        else None
-                )
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Assert(
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
+                msg=cast(ast3.expr, self.py_ast_val(nd.error_msg))
+                    if nd.error_msg
+                    else None
             )
-        ];
-    }
-}
-
-"""Sub objects.
-
-        target: ExprType,
-        """
-impl PyastGenPass.assert_helper(nd: uni.AssertStmt) -> None {
-    @dataclass
-    class CheckNodeIsinstanceCallResult {
-        with entry {
-            isit: bool = False;
-            inst: (ast3.AST | None) = None;
-            clss: (ast3.AST | None) = None;
-        }
-    }
-    def check_node_isinstance_call(nd: uni.FuncCall) -> CheckNodeIsinstanceCallResult {
-        if not (
-            (len(nd.params) == 2)
-            and isinstance(nd.params[0], uni.Expr)
-            and isinstance(nd.params[1], uni.Expr)
-        ) {
-            return CheckNodeIsinstanceCallResult();
-        }
-        func = self.py_ast_val(nd.target);
-        if not (isinstance(func, ast3.Name) and (func.id == 'isinstance')) {
-            return CheckNodeIsinstanceCallResult();
-        }
-        return CheckNodeIsinstanceCallResult(
-            True, self.py_ast_val(nd.params[0]), self.py_ast_val(nd.params[1])
-        );
-    }
-    assert_func_name = 'assertTrue';
-    assert_args_list = nd.condition.gen.py_ast;
-    if (
-        isinstance(nd.condition, uni.CompareExpr)
-        and isinstance(self.py_ast_val(nd.condition), ast3.Compare)
-        and (len(nd.condition.ops) == 1)
-    ) {
-        expr: uni.CompareExpr = nd.condition;
-        opty: uni.Token = expr.ops[0];
-        optype2fn = {
-            Tok.EE.name: 'assertEqual',
-            Tok.NE.name: 'assertNotEqual',
-            Tok.LT.name: 'assertLess',
-            Tok.LTE.name: 'assertLessEqual',
-            Tok.GT.name: 'assertGreater',
-            Tok.GTE.name: 'assertGreaterEqual',
-            Tok.KW_IN.name: 'assertIn',
-            Tok.KW_NIN.name: 'assertNotIn',
-            Tok.KW_IS.name: 'assertIs',
-            Tok.KW_ISN.name: 'assertIsNot'
-        };
-        if (opty.name in optype2fn) {
-            assert_func_name = optype2fn[opty.name];
-            assert_args_list = [
-                self.py_ast_val(expr.left),
-                self.py_ast_val(expr.rights[0])
-            ];
-            if ((opty.name == Tok.KW_IS) and isinstance(expr.rights[0], uni.Null)) {
-                assert_func_name = 'assertIsNone';
-                assert_args_list.pop();
-            } elif (
-                (opty.name == Tok.KW_ISN) and isinstance(expr.rights[0], uni.Null)
-            ) {
-                assert_func_name = 'assertIsNotNone';
-                assert_args_list.pop();
-            }
-        }
-    } elif (
-        isinstance(nd.condition, uni.FuncCall)
-        and isinstance(self.py_ast_val(nd.condition), ast3.Call)
-    ) {
-        res = check_node_isinstance_call(nd.condition);
-        if res.isit {
-            assert isinstance(res.inst, ast3.AST);
-            assert isinstance(res.clss, ast3.AST);
-            assert_func_name = 'assertIsInstance';
-            assert_args_list = [res.inst, res.clss];
-        }
-    } elif (
-        isinstance(nd.condition, uni.UnaryExpr)
-        and isinstance(nd.condition, uni.UnaryExpr)
-        and isinstance(nd.condition.operand, uni.FuncCall)
-        and isinstance(nd.condition.operand, uni.UnaryExpr)
-    ) {
-        res = check_node_isinstance_call(nd.condition.operand);
-        if res.isit {
-            assert isinstance(res.inst, ast3.AST);
-            assert isinstance(res.clss, ast3.AST);
-            assert_func_name = 'assertIsNotInstance';
-            assert_args_list = [res.inst, res.clss];
-        }
-    }
-    assert_func_expr: ast3.Attribute = self.sync(
-        ast3.Attribute(
-            value=self.sync(ast3.Name(id=Con.JAC_CHECK.value, ctx=ast3.Load())),
-            attr=assert_func_name,
-            ctx=ast3.Load()
         )
-    );
-    assert_call_expr: ast3.Call = self.sync(
-        ast3.Call(
-            func=assert_func_expr,
-            args=[cast(ast3.expr, arg) for arg in assert_args_list],
-            keywords=[]
-        )
-    );
-    nd.gen.py_ast = [self.sync(ast3.Expr(assert_call_expr))];
+    ];
 }
 
 impl PyastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
