@@ -12,7 +12,7 @@ obj DockerHubRegistry(ImageRegistry) {
         docker_username: str by postinit,
         docker_password: str by postinit,
         build_platform: str by postinit,
-        _client: Any by postinit;
+        _client: Any = None;
 
     def postinit {
         self.docker_username = self.config.get('docker_username', '');
@@ -28,7 +28,13 @@ obj DockerHubRegistry(ImageRegistry) {
                 "docker_password is not set. Add 'docker_password' under [plugins.scale.kubernetes] in jac.local.toml."
             );
         }
-        self._client = docker.from_env();
+    }
+
+    def _get_client -> Any {
+        if self._client is None {
+            self._client = docker.from_env();
+        }
+        return self._client;
     }
 
     def build_image(code_folder: str, image_name: (str | None) = None) -> str {
@@ -45,7 +51,7 @@ obj DockerHubRegistry(ImageRegistry) {
         # Build Docker image using Docker client
         console.print(f"Building Docker image '{repository_name}'...");
         try {
-            build_logs = self._client.images.build(
+            build_logs = self._get_client().images.build(
                 path=str(context_dir),
                 tag=repository_name,
                 dockerfile=str(dockerfile_path),
@@ -71,11 +77,12 @@ obj DockerHubRegistry(ImageRegistry) {
         # Push Docker image to DockerHub
         console.print(f"Pushing Docker image '{image_name}' to DockerHub...");
         try {
-            self._client.login(
+            client = self._get_client();
+            client.login(
                 username=self.docker_username, password=self.docker_password
             );
             seen_statuses: set = set();
-            for chunk in self._client.images.push(
+            for chunk in client.images.push(
                 image_name, stream=True, decode=True
             ) {
                 if 'error' in chunk {
