@@ -178,7 +178,8 @@ impl Transform.emit(
 impl Transform._is_suppressed(
     diag: DiagnosticInfo, loc: CodeLocInfo | None = None
 ) -> bool {
-    import from jaclang.jac0core.diagnostics { LINT_ALIASES, DIAGNOSTICS }
+    import from jaclang.jac0core.diagnostics { LINT_ALIASES }
+    import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     # Check inline suppression: # jac:ignore[CODE]
     if loc {
         try {
@@ -189,14 +190,11 @@ impl Transform._is_suppressed(
                 line = loc.first_line;
                 if line in source.inline_suppressions {
                     suppressed_codes = source.inline_suppressions[line];
-                    if diag.code in suppressed_codes {
+                    (resolved_inline_codes, _) = resolve_diagnostic_tokens(
+                        list(suppressed_codes)
+                    );
+                    if diag.code in resolved_inline_codes {
                         return True;
-                    }
-                    # Also check aliases (kebab names)
-                    for alias in suppressed_codes {
-                        if alias in LINT_ALIASES and LINT_ALIASES[alias] == diag.code {
-                            return True;
-                        }
                     }
                 }
             }
@@ -213,14 +211,9 @@ impl Transform._is_suppressed(
         check = config.check;
         # Check suppress list (supports codes, old kebab names, category names)
         if check?.suppress and check.suppress {
-            for item in check.suppress {
-                if (item == diag.code) {
-                    return True;
-                }
-                # Check if it's an old lint alias
-                if (item in LINT_ALIASES and LINT_ALIASES[item] == diag.code) {
-                    return True;
-                }
+            (resolved_suppress_codes, _) = resolve_diagnostic_tokens(check.suppress);
+            if diag.code in resolved_suppress_codes {
+                return True;
             }
         }
         # Check suppress_categories

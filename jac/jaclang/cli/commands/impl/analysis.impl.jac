@@ -24,15 +24,14 @@ impl check(
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.project.config { JacConfig, get_config, set_config }
+    import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     import from time { time }
     if isinstance(paths, str) {
         paths = [paths];
     }
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
-    (suppressed_codes, unknown_codes) = _resolve_disable_error_codes(
-        disable_error_code
-    );
+    (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(disable_error_code);
     if unknown_codes {
         console.warning(
             "Ignoring unknown diagnostic codes in --disable-error-code: " + ", ".join(
@@ -189,56 +188,6 @@ impl check(
             }
         }
     }
-}
-
-"""Resolve --disable-error-code tokens into known diagnostic codes.
-
-Accepts space-separated items from CLI and also comma-delimited chunks, e.g.
-["E1030,W2001", "W3001"].
-"""
-def _resolve_disable_error_codes(
-    disable_error_codes: list
-) -> tuple[list[str], list[str]] {
-    import from jaclang.jac0core.diagnostics { DIAGNOSTICS, LINT_ALIASES }
-    resolved: list[str] = [];
-    unknown: list[str] = [];
-    seen: set[str] = set();
-    unknown_seen: set[str] = set();
-    if not disable_error_codes {
-        return (resolved, unknown);
-    }
-    for raw_item in disable_error_codes {
-        if not isinstance(raw_item, str) {
-            continue;
-        }
-        for part in raw_item.split(",") {
-            token = part.strip();
-            if not token {
-                continue;
-            }
-            canonical = token.upper();
-            if canonical in DIAGNOSTICS {
-                if canonical not in seen {
-                    seen.add(canonical);
-                    resolved.append(canonical);
-                }
-                continue;
-            }
-            alias_code = LINT_ALIASES.get(token.lower());
-            if alias_code and alias_code in DIAGNOSTICS {
-                if alias_code not in seen {
-                    seen.add(alias_code);
-                    resolved.append(alias_code);
-                }
-                continue;
-            }
-            if canonical not in unknown_seen {
-                unknown_seen.add(canonical);
-                unknown.append(canonical);
-            }
-        }
-    }
-    return (resolved, unknown);
 }
 
 """Lint .jac files and report violations."""
