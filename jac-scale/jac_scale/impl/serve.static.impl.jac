@@ -254,7 +254,30 @@ impl JacAPIServerStatic.render_base_route_callback(
 """Serve root-level assets like /img.png, /icons/logo.svg, etc.
 Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
-    allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
+    allowed_extensions = {
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.webp',
+        '.svg',
+        '.ico',
+        '.woff',
+        '.woff2',
+        '.ttf',
+        '.otf',
+        '.eot',
+        '.mp4',
+        '.webm',
+        '.mp3',
+        '.wav',
+        '.css',
+        '.js',
+        '.json',
+        '.pdf',
+        '.txt',
+        '.xml'
+    };
     file_ext = Path(file_path).suffix.lower();
     import from jaclang.project.config { get_config }
     config = get_config();

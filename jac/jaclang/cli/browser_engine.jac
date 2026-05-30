@@ -35,7 +35,22 @@ glob OP_TEXT: int = 0x1,
      OP_PONG: int = 0xA;
 
 """Accessibility roles worth assigning a @ref to in a snapshot."""
-glob INTERACTIVE_ROLES: set = {"button","link","textbox","checkbox","radio","combobox","menuitem","tab","switch","searchbox","slider","option","menuitemcheckbox",};
+glob INTERACTIVE_ROLES: set = {
+         "button",
+         "link",
+         "textbox",
+         "checkbox",
+         "radio",
+         "combobox",
+         "menuitem",
+         "tab",
+         "switch",
+         "searchbox",
+         "slider",
+         "option",
+         "menuitemcheckbox",
+
+     };
 
 """Virtual key codes for the named keys `press` understands."""
 glob KEY_CODES: dict = {

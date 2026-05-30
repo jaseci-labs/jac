@@ -103,3 +103,88 @@ test "console.print preserves bracketed content verbatim" {
     assert "[?:Task]" in out , f"console.print stripped bracketed markup-like content; captured={out!r}";
     assert "arr[0]" in out and "dict['key']" in out , f"console.print stripped bracketed code-like content; captured={out!r}";
 }
+
+
+# ---------------------------------------------------------------------------
+# Trust-boundary conformance: every method that carries caller-supplied DATA
+# must emit that data verbatim, regardless of bracket content. Markup is an
+# injection surface; a console that interprets `[...]` in data corrupts paths,
+# URLs, diagnostics, and source snippets. These pin the contract for ALL
+# data-bearing methods, not just `print`.
+# ---------------------------------------------------------------------------
+
+# A token that Rich's markup parser would consume-and-strip if (incorrectly)
+# interpreted as markup. Survival of this exact substring proves the data
+# field reached the terminal verbatim.
+glob _BRACKET_BAIT: str = "[root()-->]";
+
+
+def _cap_stdout(fn: any) -> str {
+    captured = io.StringIO();
+    saved = sys.stdout;
+    sys.stdout = captured;
+    try {
+        fn();
+    } finally {
+        sys.stdout = saved;
+    }
+    return captured.getvalue();
+}
+
+
+test "console.print honors file= routing to an arbitrary stream" {
+    # The base console forwards `file=` to builtin print(); a plugin that
+    # drops it silently sends output to the wrong stream (issue: file= drop).
+    target = io.StringIO();
+    sink = io.StringIO();
+    saved = sys.stdout;
+    sys.stdout = sink;
+    try {
+        console.print("ROUTED-TO-TARGET", file=target);
+    } finally {
+        sys.stdout = saved;
+    }
+    assert "ROUTED-TO-TARGET" in target.getvalue() , f"console.print did not route to file=; target={target.getvalue()!r} sink={sink.getvalue()!r}";
+}
+
+
+test "console.print_urls emits URL data verbatim (no markup interpretation)" {
+    out = _cap_stdout(
+        lambda : console.print_urls({"Local": f"http://{_BRACKET_BAIT}host:8080/"})
+    );
+    assert _BRACKET_BAIT in out , f"print_urls interpreted bracket data as markup; captured={out!r}";
+}
+
+
+test "console.print_list emits item data verbatim" {
+    out = _cap_stdout(lambda : console.print_list([f"item {_BRACKET_BAIT} one"]));
+    assert _BRACKET_BAIT in out , f"print_list interpreted bracket data as markup; captured={out!r}";
+}
+
+
+test "console.print_next_steps emits step data verbatim" {
+    out = _cap_stdout(lambda : console.print_next_steps([f"run {_BRACKET_BAIT} now"]));
+    assert _BRACKET_BAIT in out , f"print_next_steps interpreted bracket data as markup; captured={out!r}";
+}
+
+
+test "console.print_file_change emits filepath verbatim" {
+    out = _cap_stdout(
+        lambda : console.print_file_change(f"/tmp/{_BRACKET_BAIT}/x.jac")
+    );
+    assert _BRACKET_BAIT in out , f"print_file_change interpreted bracket data as markup; captured={out!r}";
+}
+
+
+test "console.print_watching emits pattern verbatim" {
+    out = _cap_stdout(lambda : console.print_watching(f"**/{_BRACKET_BAIT}/*.jac", 3));
+    assert _BRACKET_BAIT in out , f"print_watching interpreted bracket data as markup; captured={out!r}";
+}
+
+
+test "console.print_table emits cell data verbatim" {
+    out = _cap_stdout(
+        lambda : console.print_table(["Col"], [[f"cell {_BRACKET_BAIT}"]])
+    );
+    assert _BRACKET_BAIT in out , f"print_table interpreted bracket data as markup; captured={out!r}";
+}

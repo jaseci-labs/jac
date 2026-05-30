@@ -1812,6 +1812,16 @@ impl MultiString.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.STRING);
 }
 
+impl MultiString.lit_value.getter -> str {
+    parts: list[str] = [];
+    for s in self.strings {
+        if isinstance(s, String) {
+            parts.append(s.lit_value);
+        }
+    }
+    return "".join(parts);
+}
+
 
 impl FString.postinit -> None {
     self.parts = `list(self.parts);
@@ -2226,6 +2236,7 @@ impl Token.init(
     self.c_end = col_end;
     self.pos_start = pos_start;
     self.pos_end = pos_end;
+    self._is_synthetic = False;
     self.kid = [];
     UniNode.postinit(self);
 }

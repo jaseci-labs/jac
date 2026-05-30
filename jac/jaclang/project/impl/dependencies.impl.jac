@@ -281,7 +281,7 @@ impl DependencyInstaller.list_installed -> list[str] {
     try {
         packages_data = json.loads(stdout);
         # Filter out venv infrastructure packages
-        infrastructure = {"pip","setuptools","wheel"};
+        infrastructure = {"pip", "setuptools", "wheel"};
         return sorted(
             [
                 pkg["name"]
@@ -361,13 +361,70 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
 # ===============================================================================
 # Venv Site-Packages Helper
 # ===============================================================================
+"""Return 'major.minor' from pyvenv.cfg, or empty string if unavailable."""
+def _venv_python_version_tag(venv_dir: Path) -> str {
+    pyvenv_cfg = venv_dir / "pyvenv.cfg";
+    if not pyvenv_cfg.exists() {
+        return "";
+    }
+    for line in pyvenv_cfg.read_text(encoding="utf-8").splitlines() {
+        stripped = line.strip();
+        if stripped.startswith("version") and "=" in stripped {
+            version_str = stripped.split("=", 1)[1].strip();
+            parts = version_str.split(".");
+            if len(parts) >= 2 {
+                return f"{parts[0]}.{parts[1]}";
+            }
+        }
+    }
+    return "";
+}
+
+"""Discover lib/pythonX.Y/site-packages under a venv (Unix)."""
+def _discover_venv_site_packages(venv_dir: Path) -> Path | None {
+    lib_dir = venv_dir / "lib";
+    if not lib_dir.is_dir() {
+        return None;
+    }
+    candidates: list[Path] = [];
+    for child in lib_dir.iterdir() {
+        if child.is_dir() and child.name.startswith("python") {
+            site = child / "site-packages";
+            if site.is_dir() {
+                candidates.append(site);
+            }
+        }
+    }
+    if not candidates {
+        return None;
+    }
+    candidates.sort(key=lambda p : p.parent.name, reverse=True);
+    return candidates[0];
+}
+
 impl get_venv_site_packages(venv_dir: Path) -> Path {
     import sys;
     if sys.platform == "win32" {
         return venv_dir / "Lib" / "site-packages";
-    } else {
-        return venv_dir / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages";
     }
+    version_tag = _venv_python_version_tag(venv_dir);
+    if version_tag {
+        site_packages = venv_dir / "lib" / f"python{version_tag}" / "site-packages";
+        if site_packages.is_dir() {
+            return site_packages;
+        }
+    }
+    discovered = _discover_venv_site_packages(venv_dir);
+    if discovered is not None {
+        return discovered;
+    }
+    # Fallback for venvs not yet created (path used before site-packages exists)
+    if version_tag {
+        return venv_dir / "lib" / f"python{version_tag}" / "site-packages";
+    }
+    return (
+        venv_dir / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    );
 }
 
 # ===============================================================================

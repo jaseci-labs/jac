@@ -650,6 +650,38 @@ test "ResolvedDependency with extras" {
     reset_config();
 }
 
+# ===== TestGetVenvSitePackages =====
+test "get_venv_site_packages uses pyvenv.cfg version not host python" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        venv_dir = Path(tmp) / ".jac" / "venv";
+        site_packages = venv_dir / "lib" / "python3.11" / "site-packages";
+        site_packages.mkdir(parents=True, exist_ok=True);
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.11.0\n");
+        resolved = get_venv_site_packages(venv_dir);
+        assert resolved == site_packages;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "get_venv_site_packages discovers lib/python when pyvenv.cfg missing" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        venv_dir = Path(tmp) / "venv";
+        site_packages = venv_dir / "lib" / "python3.10" / "site-packages";
+        site_packages.mkdir(parents=True, exist_ok=True);
+        resolved = get_venv_site_packages(venv_dir);
+        assert resolved == site_packages;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 # ===== TestPathManagement =====
 test "add_venv_to_path" {
     reset_config();

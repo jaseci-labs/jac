@@ -89,12 +89,9 @@ impl NaIRGenPass.postinit -> None {
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Auto-promote a compatible .jac module to native context when requested
-    if (
-        getattr(self.prog, '_auto_promote_native', False)
-        and self.ir_in.gen.native_compat
-    ) {
+    if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
-        main_target = getattr(self.prog, '_auto_promote_target', "");
+        main_target = self.prog._auto_promote_target;
         if (
             mod_path == main_target
             and not mod_path.endswith('.na.jac')
@@ -899,6 +896,41 @@ impl NaIRGenPass._ensure_emitters -> None {
     }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
     self._native_emit_ctx_class = _pn.NativeEmitCtx;
+}
+
+"""Named (non-operator) instance methods a primitive emitter implements.
+
+The emitter (whose contract lives in primitives.jac) is the single source of
+truth for which methods a primitive supports, so dispatch keys off this instead
+of hardcoded method-name lists. Operators (emit_op_*) and static methods like
+from_bytes/fromhex (which take no target and are dispatched separately) are
+excluded. Cached per type name.
+"""
+impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
+    import inspect;
+    self._ensure_emitters();
+    if self._primitive_method_name_cache is None {
+        self._primitive_method_name_cache = {};
+    }
+    _cached = self._primitive_method_name_cache.get(type_name);
+    if _cached is not None {
+        return _cached;
+    }
+    _names: set[str] = set();
+    _emitter = self._native_emitters.get(type_name);
+    if _emitter is not None {
+        for _n in dir(_emitter) {
+            if _n.startswith("emit_") and not _n.startswith("emit_op_") {
+                _fn = getattr(_emitter, _n);
+                # Instance methods take (ctx, target, args); static ones (ctx, args).
+                if len(inspect.signature(_fn).parameters) >= 3 {
+                    _names.add(_n.removeprefix("emit_"));
+                }
+            }
+        }
+    }
+    self._primitive_method_name_cache[type_name] = _names;
+    return _names;
 }
 
 """Dispatch a primitive type method call through the emitter layer."""

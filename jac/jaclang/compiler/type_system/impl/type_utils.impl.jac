@@ -1,3 +1,20 @@
+impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if not isinstance(ty, types.ClassType) {
+        return None;
+    }
+    if JAC_TYPE_REGISTRY.is_primitive(ty.shared.class_name) {
+        return ty.shared.class_name;
+    }
+    # Walk the MRO so subtypes (e.g. LiteralString) resolve to their primitive base.
+    for base in ty.shared.mro {
+        if JAC_TYPE_REGISTRY.is_primitive(base.shared.class_name) {
+            return base.shared.class_name;
+        }
+    }
+    return None;
+}
+
 # Generator / Iterator return-type helpers.
 """Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 impl get_generator_type_args(
@@ -573,6 +590,12 @@ impl apply_solved_type_vars(
             # This handles typeshed TypeVars without bounds
             if not is_declared_class_param
             and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+            # Free-function path: no class context → per-call solution is authoritative.
+            if not is_declared_class_param
+            and class_type is None
             and ty.name in solution {
                 is_declared_class_param = True;
             }

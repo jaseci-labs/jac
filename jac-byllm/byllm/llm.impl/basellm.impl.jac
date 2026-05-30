@@ -35,6 +35,38 @@ def _mark_message_for_caching(msg: dict) {
 }
 
 
+"""Read an int usage field from a litellm usage dict-or-object, 0 if absent.
+
+For `cache_read_input_tokens`, falls back to the `prompt_tokens_details.cached_tokens`
+alias some providers nest it under.
+"""
+def _usage_int(usage: any, key: str) -> int {
+    if usage is None {
+        return 0;
+    }
+    val = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None);
+    if val is None and key == "cache_read_input_tokens" {
+        ptd = (
+            usage.get("prompt_tokens_details")
+                if isinstance(usage, dict)
+                else usage?.prompt_tokens_details
+        );
+        if ptd is not None {
+            val = (
+                ptd.get("cached_tokens")
+                    if isinstance(ptd, dict)
+                    else ptd?.cached_tokens
+            );
+        }
+    }
+    try {
+        return int(val or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
 """Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
 def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
@@ -351,6 +383,14 @@ Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
 impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
+    # A stream_handler turns this into a streamed call whose events are pushed
+    # to the handler as they arrive, while invoke still returns the final
+    # (parsed) value. This is what lets `visit [-->] by model(stream=True,
+    # stream_handler=fn)` surface live tokens yet receive the routing result.
+    handler = mt_run.call_params.get("stream_handler");
+    if mt_run.stream and handler is not None {
+        return self._invoke_with_handler(mt_run, handler);
+    }
     # If logging is enabled with streaming, yield StreamEvent objects
     if mt_run.stream and mt_run.call_params.get("logging", False) {
         return self._invoke_streaming(mt_run);
@@ -386,6 +426,90 @@ impl BaseLLM._invoke_react_loop_streaming(
     } finally {
         mt_run.write_back_conversation();
     }
+}
+
+
+"""Drive a streamed invocation through a per-event callback.
+
+Forwards every StreamEvent to `on_event` as it arrives, then returns the
+final value: the parsed structured result for a structured return type, or
+the accumulated answer text otherwise. Backs `visit [-->] by model` and any
+structured `by llm()` call that wants live tokens via a stream_handler.
+"""
+impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object {
+    # No tools + structured return: the model output is JSON constrained by the
+    # response-format schema. Stream those tokens to the handler, accumulate,
+    # and parse them into the expected type.
+    if len(mt_run.tools) == 0
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        self._usage_history = [];
+        accumulated = "";
+        try {
+            for token in self.dispatch_streaming(mt_run) {
+                if token {
+                    accumulated += token;
+                    try {
+                        on_event(
+                            StreamEvent(event_type="chunk", data={"content": token})
+                        );
+                    } except Exception as e {
+                        logger.debug(f"stream_handler raised: {e}");
+                    }
+                }
+            }
+        } finally {
+            mt_run.write_back_conversation();
+        }
+        # This branch streams only content tokens (no ReAct loop), so it never
+        # emits the per-call `llm_timing` the loop does. Surface this call's usage
+        # to the handler too, so structured/routing calls report tokens + cache.
+        if self._usage_history {
+            u = self._usage_history[-1];
+            try {
+                on_event(
+                    StreamEvent(
+                        event_type="llm_timing",
+                        data={
+                            "duration_ms": 0.0,
+                            "iteration": 0,
+                            "completion_tokens": _usage_int(u, "completion_tokens"),
+                            "prompt_tokens": _usage_int(u, "prompt_tokens"),
+                            "cache_read_input_tokens": _usage_int(
+                                u, "cache_read_input_tokens"
+                            ),
+                            "cache_creation_input_tokens": _usage_int(
+                                u, "cache_creation_input_tokens"
+                            )
+                        }
+                    )
+                );
+            } except Exception as e {
+                logger.debug(f"stream_handler raised: {e}");
+            }
+        }
+        return mt_run.parse_response(accumulated);
+    }
+    # Tools (ReAct) or str return: drive the full streaming loop, forwarding
+    # reasoning, tool, and answer events, then return the captured structured
+    # output when present, else the streamed answer text.
+    parts: list[str] = [];
+    for ev in self._invoke_streaming(mt_run) {
+        try {
+            on_event(ev);
+        } except Exception as e {
+            logger.debug(f"stream_handler raised: {e}");
+        }
+        if ev.event_type == "chunk" {
+            parts.append(str(ev.data.get("content", "")));
+        }
+    }
+    if mt_run._has_final_output
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        return mt_run._final_output;
+    }
+    return "".join(parts);
 }
 
 
@@ -1484,10 +1608,27 @@ impl BaseLLM._invoke_streaming(
                 }
             }
 
-            # Metrics: emit LLM call duration for this iteration
+            # Metrics: emit LLM call duration and completion-token count for this
+            # iteration so consumers can show generation speed (tokens/sec).
+            _completion_tokens = int(
+                usage.get("completion_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "completion_tokens", 0)
+            );
             yield StreamEvent(
                 event_type="llm_timing",
-                data={"duration_ms": _llm_ms, "iteration": iter_count}
+                data={
+                    "duration_ms": _llm_ms,
+                    "iteration": iter_count,
+                    "completion_tokens": _completion_tokens,
+                    "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+                    "cache_read_input_tokens": _usage_int(
+                        usage, "cache_read_input_tokens"
+                    ),
+                    "cache_creation_input_tokens": _usage_int(
+                        usage, "cache_creation_input_tokens"
+                    )
+                }
             );
 
             # The model's reasoning already streamed above as incremental
@@ -1536,7 +1677,9 @@ impl BaseLLM._invoke_streaming(
                         # Execute via dispatch_batch, emit results as they complete
                         raw_results: list = [];
                         for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
-                            truncated_result = result_msg.content[:max_result_len];
+                            truncated_result = content_preview(
+                                result_msg.content, max_result_len
+                            );
                             last_tool = btc.tool.get_name();
                             last_result = truncated_result;
                             yield StreamEvent(
@@ -1574,14 +1717,23 @@ impl BaseLLM._invoke_streaming(
 
                 if finish_tc {
                     mt_run.add_message(finish_tc());
+                    # Capture the structured result so a handler-driven invoke
+                    # can return it once this generator is consumed.
+                    mt_run._final_output = finish_tc.get_output();
+                    mt_run._has_final_output = True;
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        if token {
-                            yield StreamEvent(
-                                event_type="chunk", data={"content": token}
-                            );
+                    # A structured return already carries its value in the finish
+                    # tool output; only stream a textual final answer for str/None
+                    # returns (the common `by llm() -> str` case).
+                    if mt_run.resp_type is None or mt_run.resp_type is str {
+                        for token in self._stream_final_answer(mt_run) {
+                            if token {
+                                yield StreamEvent(
+                                    event_type="chunk", data={"content": token}
+                                );
+                            }
                         }
                     }
                     break;

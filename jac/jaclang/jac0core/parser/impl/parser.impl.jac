@@ -280,7 +280,7 @@ impl Parser._make_alert(
 impl Parser.error(message: str) {
     sloc = self.current().loc;
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, sloc);
         self.prog.errors_had.append(alrt);
     }
@@ -288,14 +288,14 @@ impl Parser.error(message: str) {
 
 impl Parser.error_at(message: str, loc: SourceLoc) {
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, loc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.warn_at(message: str, loc: SourceLoc) {
-    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, loc);
         self.prog.warnings_had.append(alrt);
     }
@@ -307,7 +307,7 @@ impl Parser.emit_diag(
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.errors_had.append(alrt);
     }
@@ -318,7 +318,7 @@ impl Parser.emit_warn(
 ) {
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
-    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+    if self.prog is not None {
         alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.warnings_had.append(alrt);
     }
@@ -4260,6 +4260,9 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_DELETE) {
         return self.parse_delete_stmt();
     }
+    if self.check(TokenKind.KW_GLOBAL) {
+        return self.parse_global_var();
+    }
     # Handle global statement (inside functions): global a, b;
     if self.check(TokenKind.KW_GLOBAL_REF) {
         return self.parse_global_stmt();
@@ -4280,7 +4283,22 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_REPORT) {
         return self.parse_report_stmt();
     }
-    # Handle nested function/ability definitions
+    if self.check(TokenKind.STRING)
+    and self.check_peek_any(
+        TokenKind.KW_DEF,
+        TokenKind.KW_CAN,
+        TokenKind.KW_OVERRIDE,
+        TokenKind.KW_STATIC,
+        TokenKind.KW_ASYNC,
+        TokenKind.DECOR_OP,
+        TokenKind.KW_OBJECT,
+        TokenKind.KW_NODE,
+        TokenKind.KW_EDGE,
+        TokenKind.KW_WALKER,
+        TokenKind.KW_CLASS
+    ) {
+        return self.parse_docstring_target();
+    }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
@@ -5722,12 +5740,12 @@ impl Parser.parse_archetype -> Archetype {
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];
-    if is_async {
-        kid.append(async_uni);
-    }
     for (i, d) in enumerate(decorators) {
         kid.append(decor_unis[i]);
         kid.append(d);
+    }
+    if is_async {
+        kid.append(async_uni);
     }
     kid.append(arch_type);
     if access {
@@ -5905,7 +5923,12 @@ impl Parser.parse_archetype_member{
             ];
             kid.extend(body);
             kid.append(rb_uni);
-            return ModuleCode(name=None, body=body, kid=kid, doc=None);
+            module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
+            if doc {
+                module_code.doc = doc;
+                module_code.add_kids_left([doc]);
+            }
+            return module_code;
         }
     }
     # Parse bare names (e.g. 'pass') as expression statements so
@@ -7036,7 +7059,7 @@ impl Parser.parse_impl_def -> ImplDef {
         if lb_uni {
             kid.append(lb_uni);
         }
-        impl_enum_commas = getattr(self, "_impl_enum_comma_unis", []);
+        impl_enum_commas = self._impl_enum_comma_unis;
         comma_idx = 0;
         for (i, item) in enumerate(body) {
             kid.append(item);
@@ -7246,7 +7269,7 @@ impl Parser.parse_sem_def -> SemDef {
         sem_dot_unis.append(self.make_uni_token(self.previous()));
         target_names.append(self.parse_impl_target_name());
     }
-    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING SEMI
+    # Accept either '=' or 'is' per grammar: sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING+ SEMI
     sep_uni: UniToken | None = None;
     if self.match_tok(TokenKind.EQ) {
         sep_uni = self.make_uni_token(self.previous());
@@ -7256,9 +7279,14 @@ impl Parser.parse_sem_def -> SemDef {
         self.expect(TokenKind.EQ);  # Will error with expected '='
         sep_uni = self.make_uni_token(self.previous());
     }
-    # SemDef value is a bare STRING, not a multistring expression
-    value_tok = self.expect(TokenKind.STRING);
-    value = self.make_string(value_tok);
+    # The value is one or more adjacent string literals. Several are implicitly
+    # concatenated into a MultiString, so a long semstring can wrap across source
+    # lines (the formatter rebreaks it to fit the line width).
+    str_nodes: list = [self.make_string(self.expect(TokenKind.STRING))];
+    while self.check(TokenKind.STRING) {
+        str_nodes.append(self.make_string(self.advance()));
+    }
+    value = MultiString(strings=str_nodes, kid=str_nodes);
     kid: list = [sem_kw_uni];
     for (i, n) in enumerate(target_names) {
         kid.append(n);

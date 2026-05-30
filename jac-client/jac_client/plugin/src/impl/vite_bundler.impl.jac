@@ -85,7 +85,13 @@ impl ViteBundler.create_package_json(
     };
     for (key, value) in package_config.items() {
         if (
-            key not in {'name','version','description','dependencies','devDependencies'}
+            key not in {
+                'name',
+                'version',
+                'description',
+                'dependencies',
+                'devDependencies'
+            }
         ) {
             package_data[key] = value;
         }
@@ -1028,7 +1034,7 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     npmrc_path = configs_dir / '.npmrc';
     lines: list[str] = [];
     # Process global settings: { "registry" = "...", "always-auth" = true }
-    known_keys = {'scoped_registries','auth','settings'};
+    known_keys = {'scoped_registries', 'auth', 'settings'};
     settings = npm_config.get('settings', {});
     for (key, value) in settings.items() {
         if isinstance(value, bool) {

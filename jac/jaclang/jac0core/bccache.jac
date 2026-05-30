@@ -202,7 +202,7 @@ def discover_base_file(annex_path: str) -> (str | None) {
             if parent.endswith(folder_suffix) {
                 candidates.append((src.parent.parent, parent[:-len(folder_suffix)]));
             }
-            if (parent in {'impl','test'}) {
+            if (parent in {'impl', 'test'}) {
                 candidates.append((src.parent.parent, base_name));
             }
             for (directory, name) in candidates {
