@@ -1174,16 +1174,15 @@ def:pub StylingExamples() -> JsxElement {
 }
 ```
 
-> **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
+> **Note:** In jac-shadcn projects `jac add --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
 >
 > ```jac
 > # lib/utils.cl.jac
-> import from "clsx" { clsx }
-> import from "tailwind-merge" { twMerge }
+> cl import from "clsx" { clsx }
+> cl import from "tailwind-merge" { twMerge }
 >
-> def:pub cn(inputs: any) -> str {
->     args = [].slice.call(arguments);
->     return twMerge(clsx(args));
+> def:pub cn(...inputs: Any) -> str {
+>     return twMerge(clsx(inputs));
 > }
 > ```
 >
@@ -1545,10 +1544,10 @@ menuColor = "default"     # Menu color scheme
 | Key | Description | Examples |
 |-----|-------------|---------|
 | `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
-| `baseColor` | Base neutral color palette | `"neutral"`, `"slate"`, `"zinc"`, `"gray"` |
+| `baseColor` | Base neutral color palette | `"neutral"`, `"stone"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
-| `font` | Typography font family | `"inter"`, `"geist"`, `"system"` |
-| `radius` | Border radius preset | `"default"`, `"sm"`, `"md"`, `"lg"`, `"none"` |
+| `font` | Typography font family | `"figtree"` (default), `"inter"`, `"geist"`, `"outfit"` |
+| `radius` | Border radius preset | `"default"`, `"none"`, `"small"`, `"medium"`, `"large"` |
 
 shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
 
