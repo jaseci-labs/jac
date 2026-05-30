@@ -33,19 +33,19 @@ import from jaclang.cli.browser_engine {
 # byLLM resolves config from `jac.toml` relative to its project dir. Use the
 # agent's working directory (the user's project) as the single source of truth,
 # not the process cwd -- under `jac ai --ui` the process runs in the bundled web
-# app's dir, so process cwd would read the wrong jac.toml. Empty `agent.cwd`
+# app's dir, so process cwd would read the wrong jac.toml. Empty `agent.ws.cwd`
 # (import time, before run_agent sets it) falls back to the default (cwd).
 """byLLM config rooted at the agent's working dir, not the process cwd.
 
 The single source of truth for which `jac.toml` supplies the model and byLLM
-settings: `agent.cwd` (the user's project). This matters under `jac ai --ui`,
+settings: `agent.ws.cwd` (the user's project). This matters under `jac ai --ui`,
 where the process runs in the bundled web app's directory -- resolving against
 process cwd there would read the wrong `jac.toml`. Falls back to the default
-(process cwd) only before `agent.cwd` is set (import time).
+(process cwd) only before `agent.ws.cwd` is set (import time).
 """
 impl _byllm_config -> any {
-    if agent.cwd {
-        return get_byllm_config(Path(agent.cwd));
+    if agent.ws.cwd {
+        return get_byllm_config(Path(agent.ws.cwd));
     }
     return get_byllm_config();
 }
@@ -179,19 +179,85 @@ impl _refresh_key_status -> None {
     agent.bus.model_name = name;
 }
 
-"""Resolve a tool path against the session working directory.
+"""Resolve a tool path against the workspace's working directory.
 
-Absolute paths pass through; relative paths are joined onto `agent.cwd` so
-every file tool agrees on what `main.jac` means, regardless of where `jac ai`
-was launched or which subfolder the model has `cd`'d into.
+Absolute paths pass through; relative paths are joined onto `cwd` so every file
+tool agrees on what `main.jac` means, regardless of where `jac ai` was launched
+or which subfolder the model has `cd`'d into.
 """
-impl _resolve(path: str) -> str {
+impl Workspace.resolve(path: str) -> str {
     p = path or ".";
     if os.path.isabs(p) {
         return os.path.normpath(p);
     }
-    base = agent.cwd or os.getcwd();
+    base = self.cwd or os.getcwd();
     return os.path.normpath(os.path.join(base, p));
+}
+
+"""Point the workspace (and its code intelligence) at a new working directory.
+
+Called when a `run_command` changes the shell's directory. Re-roots the shared
+CodeIntelligence at the new project root (the nearest ancestor holding a
+`jac.toml`, else the directory itself) so semantic queries and the health line
+reflect the project the model actually moved into -- e.g. a freshly scaffolded
+app subfolder -- not the launch directory.
+"""
+impl Workspace.set_cwd(new_dir: str) {
+    real = os.path.normpath(new_dir);
+    if not os.path.isdir(real) or real == self.cwd {
+        return;
+    }
+    prev_root = _project_root_of(self.cwd) if self.cwd else "";
+    self.cwd = real;
+    new_root = _project_root_of(real);
+    # Only rebuild code intelligence when the *project* changed -- a `cd` within
+    # the same project keeps the existing (warm) handle.
+    if self.ci is not None and new_root != prev_root {
+        try {
+            new_ci = CodeIntelligence(proj_dir=new_root, lazy=True);
+            new_ci.on_event = self.ci.on_event;
+            self.ci = new_ci;
+            self.ci_dirty = False;
+        } except Exception as e {
+            _ = e;
+        }
+    }
+}
+
+"""The shared CodeIntelligence, rebuilding it if a write happened since the last
+query.
+
+`write_file`/`edit_file` flag the project as dirty; the first query after a write
+recompiles so symbol lookups reflect what the agent just wrote.
+"""
+impl Workspace.code_intel -> any {
+    if self.ci is None {
+        return None;
+    }
+    if self.ci_dirty {
+        try {
+            self.ci.refresh();
+        } except Exception { }
+        self.ci_dirty = False;
+    }
+    return self.ci;
+}
+
+"""The project's current error diagnostics, or [] if no model is built yet."""
+impl Workspace.project_errors -> list {
+    ci = self.code_intel();
+    if ci is None or not ci.is_loaded() {
+        return [];
+    }
+    try {
+        return [
+            d
+            for d in ci.diagnostics()
+            if d.severity == "error"
+        ];
+    } except Exception {
+        return [];
+    }
 }
 
 """The project root for a directory: nearest ancestor with a `jac.toml`, else it."""
@@ -206,36 +272,6 @@ impl _project_root_of(start: str) -> str {
             return os.path.normpath(start);
         }
         cur = parent;
-    }
-}
-
-"""Point the session (and its code intelligence) at a new working directory.
-
-Called when a `run_command` changes the shell's directory. Re-roots the shared
-CodeIntelligence at the new project root (the nearest ancestor holding a
-`jac.toml`, else the directory itself) so semantic queries and the health line
-reflect the project the model actually moved into -- e.g. a freshly scaffolded
-app subfolder -- not the launch directory.
-"""
-impl _set_session_cwd(new_dir: str) {
-    real = os.path.normpath(new_dir);
-    if not os.path.isdir(real) or real == agent.cwd {
-        return;
-    }
-    prev_root = _project_root_of(agent.cwd) if agent.cwd else "";
-    agent.cwd = real;
-    new_root = _project_root_of(real);
-    # Only rebuild code intelligence when the *project* changed -- a `cd` within
-    # the same project keeps the existing (warm) handle.
-    if agent.ci is not None and new_root != prev_root {
-        try {
-            new_ci = CodeIntelligence(proj_dir=new_root, lazy=True);
-            new_ci.on_event = agent.ci.on_event;
-            agent.ci = new_ci;
-            agent.ci_dirty = False;
-        } except Exception as e {
-            _ = e;
-        }
     }
 }
 
@@ -286,23 +322,23 @@ type surfaces as a warning, not an error. Empty string when the edit
 introduced nothing (or no code intelligence is available).
 """
 impl FileTools.write_feedback(path: str) -> str {
-    if agent.ci is None or not agent.cfg.inline_feedback {
+    if self.ws.ci is None or not self.cfg.inline_feedback {
         # Feedback off: still flag dirty so the next semantic query refreshes.
-        if agent.ci is not None and not agent.cfg.inline_feedback {
-            agent.ci_dirty = True;
+        if self.ws.ci is not None and not self.cfg.inline_feedback {
+            self.ws.ci_dirty = True;
         }
         return "";
     }
     # Mark dirty up front so a failed refresh still rebuilds on the next query.
-    agent.ci_dirty = True;
+    self.ws.ci_dirty = True;
     try {
         # refresh_and_diff returns the diagnostics this edit caused (`path`
         # plus breakage in dependent modules).
-        diags: list = list(agent.ci.refresh_and_diff(path));
+        diags: list = list(self.ws.ci.refresh_and_diff(path));
     } except Exception {
         return "";
     }
-    agent.ci_dirty = False;
+    self.ws.ci_dirty = False;
     if not diags {
         return "";
     }
@@ -397,7 +433,7 @@ sem FileTools.read_file = "Read and return the full text of a file.";
 sem FileTools.read_file.path = "Path to the file to read, relative to the project.";
 impl FileTools.read_file(path: str) -> str {
     try {
-        return truncate(Path(_resolve(path)).read_text());
+        return truncate(Path(self.ws.resolve(path)).read_text());
     } except Exception as e {
         return f"ERROR reading {path}: {e}";
     }
@@ -415,7 +451,7 @@ impl FileTools.write_file(path: str, content: str) -> str {
         return "DENIED: the user declined this write.";
     }
     try {
-        rp = _resolve(path);
+        rp = self.ws.resolve(path);
         p = Path(rp);
         p.parent.mkdir(parents=True, exist_ok=True);
         p.write_text(content);
@@ -430,14 +466,14 @@ sem FileTools.edit_file.path = "Path of the file to edit.";
 sem FileTools.edit_file.old_text = "Exact text to find; must occur exactly once in the file.";
 sem FileTools.edit_file.new_text = "Text to replace it with.";
 impl FileTools.edit_file(path: str, old_text: str, new_text: str) -> str {
-    rp = _resolve(path);
+    rp = self.ws.resolve(path);
     if not os.path.isfile(rp) {
         # A new file has nothing to edit; steer the model to write_file rather
         # than letting it retry a doomed edit (the loop earlier sessions hit).
         return (
             f"ERROR: {path} does not exist, so there is nothing to edit. "
             "Create it with write_file(path, content) instead. (Paths resolve "
-            f"against the current directory {agent.cwd or os.getcwd()}.)"
+            f"against the current directory {self.ws.cwd or os.getcwd()}.)"
         );
     }
     try {
@@ -475,7 +511,7 @@ sem FileTools.list_dir = "List the entries of a directory (hidden entries exclud
 sem FileTools.list_dir.path = "Directory path; empty string means the current directory.";
 impl FileTools.list_dir(path: str) -> str {
     try {
-        target = Path(_resolve(path));
+        target = Path(self.ws.resolve(path));
         names: list[str] = [];
         for entry in sorted(target.iterdir()) {
             if entry.name.startswith(".") {
@@ -498,7 +534,7 @@ impl FileTools.grep(pattern: str, path: str) -> str {
     } except Exception as e {
         return f"ERROR: invalid regular expression: {e}";
     }
-    search_root = Path(_resolve(path));
+    search_root = Path(self.ws.resolve(path));
     if search_root.is_file() {
         files = [search_root];
     } elif search_root.is_dir() {
@@ -538,13 +574,13 @@ impl ProcessTools._proc_output(result: any) -> str {
 """Run a `jac` subcommand on a file and return its combined output."""
 impl ProcessTools.run_jac_cli(subcommand: str, path: str) -> str {
     try {
-        return agent.proc._proc_output(
+        return self._proc_output(
             subprocess.run(
                 [sys.executable, "-m", "jaclang", subcommand, path],
                 capture_output=True,
                 text=True,
                 timeout=120,
-                cwd=agent.cwd or None
+                cwd=self.ws.cwd or None
             )
         );
     } except Exception as e {
@@ -577,7 +613,7 @@ impl ProcessTools.run_command(command: str) -> str {
     if bin_dir {
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "");
     }
-    work_dir = agent.cwd or os.getcwd();
+    work_dir = self.ws.cwd or os.getcwd();
     # Run the command, then echo the shell's final directory on its own line.
     # Because shell=True runs the whole thing in one shell, a `cd` inside
     # `command` changes that shell's cwd, and the trailing `pwd` captures it --
@@ -613,7 +649,7 @@ impl ProcessTools.run_command(command: str) -> str {
         }
     }
     if new_cwd and new_cwd != work_dir {
-        _set_session_cwd(new_cwd);
+        self.ws.set_cwd(new_cwd);
     }
     combined = ("\n".join(kept) + str(result.stderr or "")).strip();
     out = truncate(combined or f"(no output; exit code {result.returncode})");
@@ -628,18 +664,18 @@ impl ProcessTools.run_command(command: str) -> str {
 sem ProcessTools.jac_check = "Type-check and compile Jac code with `jac check`. Pass a single file, or a directory (`.` for the whole project) to check everything at once. Use this after writing or editing Jac code to confirm it is valid.";
 sem ProcessTools.jac_check.path = "File or directory to check; '.' or empty string checks the whole project.";
 impl ProcessTools.jac_check(path: str) -> str {
-    return agent.proc.run_jac_cli("check", path or ".");
+    return self.run_jac_cli("check", path or ".");
 }
 
 sem ProcessTools.start_app = "Start the app with `jac start` for ~12 seconds to confirm it boots, then stop it; returns the startup logs. Use this after building an app to catch errors that `jac check` cannot.";
 sem ProcessTools.start_app.entry_file = "Entry .jac file to start; empty string means 'main.jac'.";
 impl ProcessTools.start_app(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
-    abs_entry = _resolve(entry_path);
+    abs_entry = self.ws.resolve(entry_path);
     if not os.path.isfile(abs_entry) {
         return (
             f"ERROR: no such entry file '{entry_path}' (looked in "
-            f"{agent.cwd or os.getcwd()}). Use list_dir to find the app's "
+            f"{self.ws.cwd or os.getcwd()}). Use list_dir to find the app's "
             "main .jac file, then pass its path."
         );
     }
@@ -696,11 +732,11 @@ window.
 """
 impl ProcessTools.serve(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
-    abs_entry = _resolve(entry_path);
+    abs_entry = self.ws.resolve(entry_path);
     if not os.path.isfile(abs_entry) {
         return (
             f"ERROR: no such entry file '{entry_path}' (looked in "
-            f"{agent.cwd or os.getcwd()}). Use list_dir to find the app's "
+            f"{self.ws.cwd or os.getcwd()}). Use list_dir to find the app's "
             "main .jac file (the one with the `cl`/`sv` mount), then pass its path."
         );
     }
@@ -708,7 +744,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
         return "DENIED: the user declined to start the server.";
     }
     # Drop any server we started earlier so we don't leak ports.
-    agent.proc._serve_shutdown();
+    self._serve_shutdown();
     work_dir = os.path.dirname(abs_entry) or ".";
     target = os.path.basename(abs_entry);
     log_path = "/tmp/jac_ai_serve.log";
@@ -716,7 +752,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
         log_f = open(log_path, "w");
         # Own process group so _serve_shutdown can kill the server *and* the
         # vite/build children it spawns.
-        agent.serve_proc = subprocess.Popen(
+        self.serve_proc = subprocess.Popen(
             [sys.executable, "-m", "jaclang", "start", target],
             cwd=work_dir,
             stdout=log_f,
@@ -746,7 +782,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
     deadline = time.time() + timeout;
     url = "";
     while time.time() < deadline {
-        if agent.serve_proc.poll() is not None {
+        if self.serve_proc.poll() is not None {
             break;  # server exited before becoming ready
         }
         try {
@@ -773,7 +809,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
     } except Exception {
         tail = "(no log output)";
     }
-    agent.proc._serve_shutdown();
+    self._serve_shutdown();
     return (
         f"ERROR: the server did not become ready within {int(timeout)}s. "
         f"Last log lines:\n{tail}"
@@ -783,21 +819,21 @@ impl ProcessTools.serve(entry_file: str) -> str {
 sem ProcessTools.stop_server = "Stop the dev server started by serve. Call this when finished with browser QA.";
 """Stop the dev server started by `serve` (best-effort)."""
 impl ProcessTools.stop_server -> str {
-    agent.proc._serve_shutdown();
+    self._serve_shutdown();
     return "OK: dev server stopped.";
 }
 
 """Kill the `serve` dev server and its child processes if one is running."""
 impl ProcessTools._serve_shutdown{
-    if agent.serve_proc is not None {
+    if self.serve_proc is not None {
         try {
-            os.killpg(os.getpgid(int(agent.serve_proc.pid)), int(signal.SIGTERM));
+            os.killpg(os.getpgid(int(self.serve_proc.pid)), int(signal.SIGTERM));
         } except Exception {
             try {
-                agent.serve_proc.terminate();
+                self.serve_proc.terminate();
             } except Exception { }
         }
-        agent.serve_proc = None;
+        self.serve_proc = None;
     }
 }
 
@@ -845,28 +881,10 @@ impl GuideTools.read_guide(name: str) -> str {
     return truncate(guide.body, 16000);
 }
 
-"""Return the session's CodeIntelligence, rebuilding it if a write happened.
-
-`write_file`/`edit_file` flag the project as dirty; the first semantic query
-after a write recompiles so symbol lookups reflect what the agent just wrote.
-"""
-impl code_intel -> any {
-    if agent.ci is None {
-        return None;
-    }
-    if agent.ci_dirty {
-        try {
-            agent.ci.refresh();
-        } except Exception { }
-        agent.ci_dirty = False;
-    }
-    return agent.ci;
-}
-
 sem SemanticTools.find_symbol = "Look up a Jac symbol (node, walker, edge, obj, enum, ability, ...) by name via the compiler's symbol table. Returns its exact definition site, fields, abilities, base classes, and every place it is used. This is precise -- unlike grep it never matches a comment or an unrelated identifier. Prefer this over grep whenever you know the name of the thing you are looking for.";
 sem SemanticTools.find_symbol.name = "The symbol name to look up, e.g. 'User' or 'make_user'.";
 impl SemanticTools.find_symbol(name: str) -> str {
-    ci = code_intel();
+    ci = self.ws.code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
     }
@@ -895,7 +913,7 @@ impl SemanticTools.find_symbol(name: str) -> str {
 sem SemanticTools.find_uses = "List every definition and use of a symbol across the whole project, computed from the compiler's def/use chains. Use this before renaming or changing a symbol to see exactly what it touches.";
 sem SemanticTools.find_uses.name = "The symbol name whose references to list.";
 impl SemanticTools.find_uses(name: str) -> str {
-    ci = code_intel();
+    ci = self.ws.code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
     }
@@ -912,7 +930,7 @@ impl SemanticTools.find_uses(name: str) -> str {
 
 sem SemanticTools.project_map = "Show every node, walker, edge, and object archetype in the project with its location -- a structural overview built from the compiler, not a directory listing. Use this first to understand an unfamiliar project.";
 impl SemanticTools.project_map -> str {
-    ci = code_intel();
+    ci = self.ws.code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
     }
@@ -930,7 +948,7 @@ impl SemanticTools.project_map -> str {
 sem SemanticTools.find_walkers = "Find every walker entry point that traverses a given node type -- an Object-Spatial query the compiler answers from walker entry signatures. Use this to see how a node is visited.";
 sem SemanticTools.find_walkers.node_type = "The node archetype name, e.g. 'User'.";
 impl SemanticTools.find_walkers(node_type: str) -> str {
-    ci = code_intel();
+    ci = self.ws.code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
     }
@@ -948,7 +966,7 @@ impl SemanticTools.find_walkers(node_type: str) -> str {
 sem SemanticTools.context_slice = "Get a typed context slice for a symbol: its definition, the types it depends on, and where it is used -- a focused, compiler-accurate neighbourhood to read instead of opening whole files.";
 sem SemanticTools.context_slice.name = "The symbol to build a context slice around.";
 impl SemanticTools.context_slice(name: str) -> str {
-    ci = code_intel();
+    ci = self.ws.code_intel();
     if ci is None {
         return "ERROR: code intelligence is unavailable in this session.";
     }
@@ -979,39 +997,37 @@ impl BrowseTools._browse(confirm_msg: str, run: any, clip: bool = False) -> str 
         out = run();
         return truncate(str(out)) if clip else str(out);
     } except Exception as e {
-        return agent.web._browse_err(e);
+        return self._browse_err(e);
     }
 }
 
 sem BrowseTools.browse_open = "Launch a headless browser (or reuse the one already open) and navigate to a URL. Use this to QA a running web app, then read the page with browse_snapshot. An empty URL opens a blank page.";
 sem BrowseTools.browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Empty string opens about:blank.";
 impl BrowseTools.browse_open(url: str) -> str {
-    return agent.web._browse(
+    return self._browse(
         f"open a browser at {url}" if url else "",
-        lambda : br_open(agent.browse_session, url or None)
+        lambda : br_open(self.session_id, url or None)
     );
 }
 
 sem BrowseTools.browse_navigate = "Navigate the open browser to a different URL and wait for it to load.";
 sem BrowseTools.browse_navigate.url = "The URL to navigate to.";
 impl BrowseTools.browse_navigate(url: str) -> str {
-    return agent.web._browse(
-        f"navigate the browser to {url}",
-        lambda : br_navigate(agent.browse_session, url)
+    return self._browse(
+        f"navigate the browser to {url}", lambda : br_navigate(self.session_id, url)
     );
 }
 
 sem BrowseTools.browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
 impl BrowseTools.browse_snapshot -> str {
-    return agent.web._browse("", lambda : br_snapshot(agent.browse_session), clip=True);
+    return self._browse("", lambda : br_snapshot(self.session_id), clip=True);
 }
 
 sem BrowseTools.browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
 sem BrowseTools.browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
 impl BrowseTools.browse_click(target: str) -> str {
-    return agent.web._browse(
-        f"click {target} in the browser",
-        lambda : br_click(agent.browse_session, target)
+    return self._browse(
+        f"click {target} in the browser", lambda : br_click(self.session_id, target)
     );
 }
 
@@ -1019,9 +1035,9 @@ sem BrowseTools.browse_type = "Focus an element and type text into it as real ke
 sem BrowseTools.browse_type.target = "An @ref from browse_snapshot, or a CSS selector.";
 sem BrowseTools.browse_type.text = "The text to type.";
 impl BrowseTools.browse_type(target: str, text: str) -> str {
-    return agent.web._browse(
+    return self._browse(
         f"type into {target} in the browser",
-        lambda : br_type(agent.browse_session, target, text)
+        lambda : br_type(self.session_id, target, text)
     );
 }
 
@@ -1029,17 +1045,16 @@ sem BrowseTools.browse_fill = "Clear a field and set its value to the given text
 sem BrowseTools.browse_fill.target = "An @ref from browse_snapshot, or a CSS selector.";
 sem BrowseTools.browse_fill.text = "The text to set the field to.";
 impl BrowseTools.browse_fill(target: str, text: str) -> str {
-    return agent.web._browse(
-        f"fill {target} in the browser",
-        lambda : br_fill(agent.browse_session, target, text)
+    return self._browse(
+        f"fill {target} in the browser", lambda : br_fill(self.session_id, target, text)
     );
 }
 
 sem BrowseTools.browse_press = "Press a single key in the browser, e.g. 'Enter', 'Tab', 'Escape', or a chord like 'Ctrl+A'.";
 sem BrowseTools.browse_press.key = "The key or chord to press.";
 impl BrowseTools.browse_press(key: str) -> str {
-    return agent.web._browse(
-        f"press {key} in the browser", lambda : br_press(agent.browse_session, key)
+    return self._browse(
+        f"press {key} in the browser", lambda : br_press(self.session_id, key)
     );
 }
 
@@ -1047,30 +1062,30 @@ sem BrowseTools.browse_get = "Read a property of the current page: 'url', 'title
 sem BrowseTools.browse_get.what = "One of 'url', 'title', or 'text'.";
 sem BrowseTools.browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
 impl BrowseTools.browse_get(what: str, selector: str) -> str {
-    return agent.web._browse(
-        "", lambda : br_get(agent.browse_session, what, selector or None), clip=True
+    return self._browse(
+        "", lambda : br_get(self.session_id, what, selector or None), clip=True
     );
 }
 
 sem BrowseTools.browse_eval = "Evaluate a JavaScript expression in the page and return its result. Use this to inspect page state or check for errors, e.g. \"document.querySelectorAll('.error').length\".";
 sem BrowseTools.browse_eval.expression = "A JavaScript expression to evaluate.";
 impl BrowseTools.browse_eval(expression: str) -> str {
-    return agent.web._browse(
+    return self._browse(
         f"run JavaScript in the browser: {expression}",
-        lambda : br_eval(agent.browse_session, expression),
+        lambda : br_eval(self.session_id, expression),
         clip=True
     );
 }
 
 sem BrowseTools.browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
 impl BrowseTools.browse_close -> str {
-    return agent.web._browse("", lambda : br_close(agent.browse_session));
+    return self._browse("", lambda : br_close(self.session_id));
 }
 
 """Close the agent's browser session if one was opened (best-effort)."""
 impl BrowseTools._browse_shutdown{
     try {
-        br_close(agent.browse_session);
+        br_close(self.session_id);
     } except Exception {
     # The browser may never have been opened this session; nothing to clean.
     }
@@ -1621,7 +1636,7 @@ the model is not yet built there is nothing the turn touched, so the stat is
 simply omitted.
 """
 impl TurnRenderer._format_health -> str {
-    ci = code_intel();
+    ci = agent.ws.code_intel();
     if ci is None or not ci.is_loaded() {
         return "";
     }
@@ -2060,6 +2075,17 @@ impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
     );
 }
 
+"""Wire the shared workspace/config into the toolboxes that need them, so each
+depends on its injected collaborators rather than reaching the module glob. Runs
+once, when the `agent` singleton is constructed at import.
+"""
+impl AgentRuntime.postinit -> None {
+    self.files.ws = self.ws;
+    self.files.cfg = self.cfg;
+    self.proc.ws = self.ws;
+    self.semantic.ws = self.ws;
+}
+
 sem AgentRuntime.note = "Record a short note that stays visible to every later phase (Plan, Build, QA) and in later turns. Use it to flag a decision, an assumption, or something to verify.";
 sem AgentRuntime.note.text = "The note to remember.";
 """Record a note onto the active session's ledger (the `note` tool).
@@ -2077,22 +2103,12 @@ impl AgentRuntime.note(text: str) -> str {
     return "(no active session to note onto)";
 }
 
-# A state's tools are the TOOLS rows tagged with its phase, in registry order.
-# The phase is the node's class name lowercased (Plan -> "plan"), the same name
-# `run` uses as the phase label -- so Plan/Build/QA need no override.
-"""The tools this state exposes: the TOOLS rows tagged with its phase.
-
-Derived from the node's own class name (Plan/Build/QA -> plan/build/qa),
-so a state's allowed actions follow from its identity with no per-state
-override -- the same name `run` uses as the phase label.
-"""
+"""The tool functions this state exposes: its `Exposes`-edge neighbours, in the
+order build_pipeline connected them (the TOOL_SPECS registry order). A pure
+adjacency walk -- the state's affordances are graph structure, not a global
+lookup filtered by a phase-name string."""
 impl PhaseState.tools -> list {
-    phase = type(self).__name__.lower();
-    return [
-        t.fn
-        for t in TOOLS
-        if phase in t.phases
-    ];
+    return [t.fn for t in [self->:Exposes:->]];
 }
 
 sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac (read at least the one for the kind of code you will write -- e.g. jac-cl-components for a UI). Do not write or edit files here. Finish by stating a short, concrete plan: whether to scaffold (and which template -- client for a browser-only UI, fullstack for server/data, default for a script), the files to create or change, and what each is for.";
@@ -2101,53 +2117,25 @@ sem Build = "the BUILDING state: carry out the plan. For a new app, scaffold it 
 
 sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: call serve(entry) to start the dev server -- it waits until the server is actually ready and returns its URL (the first start is slow, as it installs client deps and builds the client). Then browse_open that URL, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop_server. If serve reports the server failed to start, read the log tail it returns and go back to Build to fix the cause -- do not conclude the app works until you have actually run and exercised it.";
 
-"""The imperative kickoff line for a phase, by state label (Plan/Build/QA).
+"""The imperative kickoff line for this phase: the turn's actual instruction.
 
-The phase `sem` describes the role; this is the turn's actual instruction. A
-weaker model tends to stop after merely exploring or describing a plan, so the
-Build line insists on writing code and the QA line insists on actually running
-the result -- finishing is not an option until the work exists and is verified.
+The phase `sem` describes the role; this is what kicks off the work. A weaker
+model tends to stop after merely exploring or describing a plan, so Build insists
+on writing code and QA insists on actually running the result -- finishing is not
+an option until the work exists and is verified. Overridden per concrete state;
+the base returns a generic fallback.
 """
-impl _phase_directive(label: str) -> str {
-    if label == "Plan" {
-        return (
-            "Investigate the request and the existing project, then state a "
-            "short, concrete plan. Do not write or edit files in this state."
-        );
-    }
-    if label == "Build" {
-        return (
-            "Build the requested feature NOW by writing real code: call "
-            "write_file to create each new file with its full contents, and "
-            "edit_file to change existing ones. Exploring or describing the "
-            "plan is NOT building -- keep working until every file the task "
-            "needs exists and the project compiles. After each write, read the "
-            "compiler feedback it returns and fix the errors before moving on. "
-            "Do not end this state with only reads."
-        );
-    }
-    if label == "QA" {
-        return (
-            "Verify the finished work end to end NOW. Run jac_check and require "
-            "zero errors. For a web or fullstack app, serve it and drive the "
-            "browser (browse_open, browse_snapshot, then click/type the real "
-            "controls) to confirm the REQUESTED feature actually works on the "
-            "page -- not just that the scaffold loads. If anything is missing, "
-            "wrong, or broken, go back to Build to fix it; choose Done only "
-            "after you have actually run and exercised the result."
-        );
-    }
-    return f"Carry out the {label} state now.";
+impl PhaseState.directive -> str {
+    return f"Carry out the {type(self).__name__} state now.";
 }
 
-sem run_phase.directive = "A short instruction kicking off the current phase.";
-impl PhaseState.run{
+"""Run this phase: the LLM works with the state's tools over its own ctx, then
+the result is folded into the walker's stats and ledger. Returns the phase
+result. No `visit` -- each concrete state's `run` ability owns routing.
+"""
+impl PhaseState.step(visitor: AgentSession) -> dict {
     agent.active_session = visitor;
     label = type(self).__name__;
-    # Stop pressed in the UI: halt the walker before entering another phase.
-    if agent.bus.cancel_requested {
-        return;
-    }
     console.print(f"\n  ● {label}", style="bold blue");
     # Move the walker on the live graph: the UI animates the edge from the
     # previous phase to this one.
@@ -2174,32 +2162,107 @@ impl PhaseState.run{
     agent.bus.open_convo(self.ctx);
     # Capture the phase's tool schemas (the API `tools` param) for this convo.
     agent.bus.set_convo_tools(agent.phase_tools);
-    result = agent.view.render_stream(run_phase(_phase_directive(label)));
+    result = agent.view.render_stream(run_phase(self.directive()));
     agent.bus.close_convo(self.ctx);
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
     # Surface the new ledger entry to the UI panel right away (the next bus emit
     # would carry it anyway, but this lands it the instant the phase records).
     agent.bus.publish_ledger();
+    return result;
+}
+
+"""Common post-phase stop guard, called before routing: True once the turn is
+cancelled or the step cap is hit. Advances the step counter as a side effect."""
+impl PhaseState.halt(visitor: AgentSession) -> bool {
     # Stop pressed during the phase: halt here, don't route onward (and don't
     # make the QA route-selection LLM call).
     if agent.bus.cancel_requested {
-        return;
+        return True;
     }
-    # Route to the next state along this node's own out-edges.
+    # Safety valve: a runaway session halts at the cap rather than looping
+    # forever. The outer verify-and-continue still applies.
     visitor.steps += 1;
     if visitor.steps > visitor.max_steps {
-        # Safety valve: a runaway session halts here (no onward visit) rather
-        # than looping forever. The outer verify-and-continue still applies.
         console.print("\n  ● step cap reached -- stopping", style="yellow");
-    } elif label == "Build"
-    and int(result.get("n_write", 0) or 0) == 0
-    and visitor.build_nudges < 2 {
-        # Build that wrote nothing -- a weaker model often "describes" code (even
-        # pastes it into its answer) without ever calling write_file. Don't let
-        # that count as building: push back into Build with a blunt instruction
-        # to actually write the files. Bounded by build_nudges so a model that
-        # truly cannot produce a file falls through instead of looping.
+        return True;
+    }
+    return False;
+}
+
+impl Plan.directive -> str {
+    return (
+        "Investigate the request and the existing project, then state a "
+        "short, concrete plan. Do not write or edit files in this state."
+    );
+}
+
+impl Build.directive -> str {
+    return (
+        "Build the requested feature NOW by writing real code: call "
+        "write_file to create each new file with its full contents, and "
+        "edit_file to change existing ones. Exploring or describing the "
+        "plan is NOT building -- keep working until every file the task "
+        "needs exists and the project compiles. After each write, read the "
+        "compiler feedback it returns and fix the errors before moving on. "
+        "Do not end this state with only reads."
+    );
+}
+
+impl QA.directive -> str {
+    return (
+        "Verify the finished work end to end NOW. Run jac_check and require "
+        "zero errors. For a web or fullstack app, serve it and drive the "
+        "browser (browse_open, browse_snapshot, then click/type the real "
+        "controls) to confirm the REQUESTED feature actually works on the "
+        "page -- not just that the scaffold loads. If anything is missing, "
+        "wrong, or broken, go back to Build to fix it; choose Done only "
+        "after you have actually run and exercised the result."
+    );
+}
+
+sem run_phase.directive = "A short instruction kicking off the current phase.";
+# Plan routes via a read-only fast path: classify whether carrying out the
+# request needs any file created or edited. A pure question/inspection finishes
+# straight from Plan (skipping Build and its wrote-nothing nudge loop, and QA);
+# anything that touches code routes to Build, the default. Uses a typed bool
+# classifier with a Build-biased default -- robust where `visit [-->] by`'s LLM
+# edge filter can crash on a weak model's bad index.
+impl Plan.run with AgentSession entry {
+    # Stop pressed in the UI: halt the walker before entering another phase.
+    if agent.bus.cancel_requested {
+        return;
+    }
+    self.step(visitor);
+    if self.halt(visitor) {
+        return;
+    }
+    if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
+        visit [->:Flow:->][?:Build];
+    } else {
+        console.print(
+            "  ↳ read-only request -- answered in Plan, skipping Build/QA",
+            style="green"
+        );
+        visit [->:Flow:->][?:Done];
+    }
+}
+
+# Build advances to its single successor (QA), unless it wrote nothing -- a
+# weaker model often "describes" code (even pastes it into its answer) without
+# ever calling write_file. Don't let that count as building: push back into
+# Build with a blunt instruction to actually write the files. Bounded by
+# build_nudges so a model that truly cannot produce a file falls through to QA
+# instead of looping.
+impl Build.run with AgentSession entry {
+    if agent.bus.cancel_requested {
+        return;
+    }
+    result = self.step(visitor);
+    if self.halt(visitor) {
+        return;
+    }
+    if int(result.get("n_write", 0) or 0) == 0 and visitor.build_nudges < 2 {
         visitor.build_nudges += 1;
         self.ctx.append(
             {
@@ -2220,44 +2283,35 @@ impl PhaseState.run{
             style="yellow"
         );
         visit self;
-    } elif label == "Plan" {
-        # Read-only fast path: classify whether carrying out the request needs
-        # any file created or edited. A pure question/inspection finishes
-        # straight from Plan (skipping Build and its wrote-nothing nudge loop,
-        # and QA); anything that touches code routes to Build, the default. Uses
-        # a typed bool classifier with a Build-biased default -- robust where
-        # `visit [-->] by`'s LLM edge filter can crash on a weak model's bad
-        # index.
-        if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
-            visit [-->][?:Build];
-        } else {
-            console.print(
-                "  ↳ read-only request -- answered in Plan, skipping Build/QA",
-                style="green"
-            );
-            visit [-->][?:Done];
-        }
-    } elif len([-->]) == 1 {
-        # Single successor (Build -> QA): advance, no LLM call.
-        visit [-->];
-    } elif _project_errors() {
-        # Hard gate: the project does not compile, so finishing is not an option.
-        # Skip the model's choice and route straight back to Build to fix it --
-        # this is what stops QA from declaring Done on broken code.
-        n = len(_project_errors());
+    } else {
+        visit [->:Flow:->];
+    }
+}
+
+# QA either hard-gates back to Build (the project does not compile, so finishing
+# is not an option -- this is what stops QA from declaring Done on broken code)
+# or, when the project compiles, lets the model choose among its successors
+# (Build / Plan / Done), reading each candidate state's `sem`, the objective, and
+# the ledger. The choice is streamed via a stream_handler so the routing call's
+# reasoning reaches the live feed and its token usage the token-usage stream,
+# while `visit [-->] by` still constrains the choice to a real successor edge (no
+# free-text parsing, no manual default).
+impl QA.run with AgentSession entry {
+    if agent.bus.cancel_requested {
+        return;
+    }
+    self.step(visitor);
+    if self.halt(visitor) {
+        return;
+    }
+    if agent.ws.project_errors() {
+        n = len(agent.ws.project_errors());
         console.print(
             f"  ↳ project has {n} compile error(s) -- returning to Build",
             style="yellow"
         );
-        visit [-->][?:Build];
+        visit [->:Flow:->][?:Build];
     } else {
-        # Several successors (QA -> Build / Plan / Done) and the project
-        # compiles: let the model choose along this node's own out-edges,
-        # reading each candidate state's `sem`, the objective, and the ledger.
-        # Streamed via a stream_handler so the routing call's reasoning reaches
-        # the live feed and its token usage the token-usage stream, while
-        # `visit [-->] by` still constrains the choice to a real successor edge
-        # (no free-text parsing, no manual default).
         # byLLM builds the routing prompt internally, so seed the capture with a
         # synthetic input mirroring the incl_info -- enough for the detail view to
         # show what the routing call was deciding on.
@@ -2273,7 +2327,7 @@ impl PhaseState.run{
                 }
             ]
         );
-        visit [-->] by agent_model(
+        visit [->:Flow:->] by agent_model(
             stream=True,
             stream_handler=agent.view.route_stream_event,
             incl_info={
@@ -2345,15 +2399,28 @@ impl build_pipeline -> Plan {
     build = Build();
     qa = QA();
     done = Done();
-    plan ++> build;
+    plan +>: Flow :+> build;
     # Read-only fast path: a pure question or inspection that needs no file
     # changes finishes straight from Plan, so it never enters Build (and its
     # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
-    plan ++> done;
-    build ++> qa;
-    qa ++> build;
-    qa ++> plan;
-    qa ++> done;
+    plan +>: Flow :+> done;
+    build +>: Flow :+> qa;
+    qa +>: Flow :+> build;
+    qa +>: Flow :+> plan;
+    qa +>: Flow :+> done;
+    # Materialize each state's tool affordances as Exposes edges from the single
+    # TOOL_SPECS registry, in registry order (the order tools are offered to the
+    # model). Built fresh per pipeline, so edges never accumulate across turns;
+    # `tools()` then just reads its Exposes-neighbours.
+    for ph in [plan, build, qa] {
+        for spec in TOOL_SPECS {
+            if type(ph) in spec.phases {
+                ph +>: Exposes :+> Tool(
+                    fn=spec.fn, category=spec.category, serialize=spec.serialize
+                );
+            }
+        }
+    }
     return plan;
 }
 
@@ -2403,7 +2470,7 @@ impl run_turn(message: str) {
         n_err = 0;
         n_warn = 0;
         health_loaded = False;
-        ci = code_intel();
+        ci = agent.ws.code_intel();
         if ci is not None and ci.is_loaded() {
             try {
                 (n_err, n_warn) = _count_diags(list(ci.diagnostics()));
@@ -2431,23 +2498,6 @@ impl run_turn(message: str) {
     }
 }
 
-"""The project's current error diagnostics, or [] if no model is built yet."""
-impl _project_errors -> list {
-    ci = code_intel();
-    if ci is None or not ci.is_loaded() {
-        return [];
-    }
-    try {
-        return [
-            d
-            for d in ci.diagnostics()
-            if d.severity == "error"
-        ];
-    } except Exception {
-        return [];
-    }
-}
-
 """After a one-shot build, keep going until the project compiles.
 
 A weaker model often declares a multi-file task done while the project still
@@ -2464,7 +2514,7 @@ impl verify_and_continue(max_rounds: int = 3) {
     rnd = 0;
     prev_count = -1;
     while rnd < max_rounds {
-        errs = _project_errors();
+        errs = agent.ws.project_errors();
         if not errs {
             break;
         }
@@ -2514,7 +2564,7 @@ impl run_agent(req: object) -> int {
     r: any = req;
     # Seed the session working directory; every file tool and run_command
     # resolves against it, and a `cd` the model issues updates it.
-    agent.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
+    agent.ws.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
     # `--ui`: hand off to the bundled web app instead of the terminal REPL. The
     # child server re-imports this module and runs the agent itself, so nothing
     # else here (model build, banner, REPL) applies to the parent process.
@@ -2524,9 +2574,9 @@ impl run_agent(req: object) -> int {
     agent.cfg.yolo_mode = not r.safe;
     agent.cfg.verbose = not bool(r?.quiet);
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
-    agent.ci = r.code_intel;
-    if agent.ci is not None {
-        agent.ci.on_event = agent.view._ci_event;
+    agent.ws.ci = r.code_intel;
+    if agent.ws.ci is not None {
+        agent.ws.ci.on_event = agent.view._ci_event;
     }
     initial_prompt = str(r.prompt);
     # Import-time `agent_model` covers jac.toml/default; rebuild only when a
@@ -2618,7 +2668,7 @@ impl run_agent(req: object) -> int {
 """Configure the agent for a UI session from the launcher's environment.
 
 Called once at the UI server's boot. Reads the user's project directory and
-model knobs from the `JAC_AI_UI_*` env vars the launcher set, points `agent.cwd`
+model knobs from the `JAC_AI_UI_*` env vars the launcher set, points `agent.ws.cwd`
 and a fresh `CodeIntelligence` at that project, builds the model, and forces
 yolo mode (the server has no terminal to confirm at). Idempotent.
 """
@@ -2626,7 +2676,7 @@ impl ui_configure -> None {
     global agent_model;
     # The launcher set these when it spawned this server process.
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
-    agent.cwd = os.path.normpath(proj);
+    agent.ws.cwd = os.path.normpath(proj);
     # No terminal here to confirm at, so writes/commands always run.
     agent.cfg.yolo_mode = True;
     agent.cfg.verbose = True;
@@ -2639,9 +2689,9 @@ impl ui_configure -> None {
     } except Exception { }
     # A project-rooted CodeIntelligence so the semantic tools work, lazily so
     # boot stays cheap. No on_event hook: its prints would only clutter the log.
-    agent.ci = CodeIntelligence(proj_dir=agent.cwd, lazy=True);
+    agent.ws.ci = CodeIntelligence(proj_dir=agent.ws.cwd, lazy=True);
     reset_session();
-    # `agent.cwd` is now set to the user's project, so build_model resolves the
+    # `agent.ws.cwd` is now set to the user's project, so build_model resolves the
     # model and byLLM config from their jac.toml (via `_byllm_config`), not this
     # child server's working directory (the bundled ai_ui dir).
     # Building the model can fail (missing API key, no local weights). Keep the
@@ -2652,12 +2702,12 @@ impl ui_configure -> None {
         agent_model = build_model(model_flag, n_ctx);
         agent.bus.emit(
             "system",
-            {"text": f"Connected to {agent.cwd} using {agent_model.model_name}."}
+            {"text": f"Connected to {agent.ws.cwd} using {agent_model.model_name}."}
         );
     } except Exception as e {
         agent.bus.emit(
             "error",
-            {"text": f"Connected to {agent.cwd}, but the model failed to load: {e}"}
+            {"text": f"Connected to {agent.ws.cwd}, but the model failed to load: {e}"}
         );
     }
     # Detect whether the chosen model still needs an API key. This rides along in
@@ -2909,7 +2959,10 @@ impl ui_graph -> dict {
                 "tools": tool_names
             }
         );
-        for succ in [nd-->] {
+        # Follow only Flow edges (the legal transitions) -- not the Exposes edges
+        # to this state's Tool nodes -- so the rendered graph is the phase
+        # pipeline, with tools carried per node in `tools` above.
+        for succ in [nd->:Flow:->] {
             edges.append({"source": nid, "target": type(succ).__name__});
             frontier.append(succ);
         }
@@ -3072,13 +3125,13 @@ impl _run_ui_server(r: any) -> int {
         return 1;
     }
     env = dict(os.environ);
-    env["JAC_AI_UI_PROJECT"] = agent.cwd;
+    env["JAC_AI_UI_PROJECT"] = agent.ws.cwd;
     env["JAC_AI_UI_MODEL"] = str(r?.model or "");
     env["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
     log_path = "/tmp/jac_ai_ui.log";
     console.print("");
     console.print("  Jac AI -- web UI", style="bold");
-    console.print(f"  project: {agent.cwd}", style="muted");
+    console.print(f"  project: {agent.ws.cwd}", style="muted");
     console.print("  building the client (first run installs deps)…", style="muted");
     proc: any = None;
     try {

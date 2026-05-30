@@ -43,10 +43,33 @@ obj AgentConfig {
         n_ctx: int = 0;
 }
 
+"""The session's view of the project on disk: the working directory and the
+shared CodeIntelligence handle (with its dirty flag), plus the operations over
+them. Path resolution, re-rooting on a `cd`, the lazily-refreshed code-intel
+handle, and the current project errors all live here as methods, so the
+file/process/semantic tools depend on this one cohesive object instead of a pile
+of module globals. Injected into those toolboxes by `AgentRuntime.postinit`.
+"""
+obj Workspace {
+    has cwd: str = "",
+        ci: any = None,
+        # Set on write; the next code-intel query rebuilds the project model.
+        ci_dirty: bool = False;
+
+    # Resolve a tool path against `cwd` (absolute paths pass through).
+    def resolve(path: str) -> str;
+    # Re-root the session (and its code intelligence) at a new working directory.
+    def set_cwd(new_dir: str);
+    # The shared CodeIntelligence, rebuilt lazily when a write marked it dirty.
+    def code_intel -> any;
+    # The project's current compiler errors (empty list if none / unavailable).
+    def project_errors -> list;
+}
+
 # ---------------------------------------------------------------------------
 # Toolboxes -- the agent's capabilities, grouped by domain. Each public method
 # is a byLLM tool (its `sem` becomes the tool's JSON-schema description); the
-# `TOOLS` registry below wires them to phases. Cross-cutting infra (path
+# `TOOL_SPECS` registry below wires them to phases. Cross-cutting infra (path
 # resolution, confirmation, code intelligence) lives in free functions and on
 # `AgentRuntime`, which the methods reach through the `agent` glob. The toolbox
 # objects are stateless: per-session state lives on `AgentRuntime`.
@@ -58,6 +81,11 @@ Paths resolve against the session working directory; writes are gated by
 successful write reports the compiler errors it introduced via `write_feedback`.
 """
 obj FileTools {
+    # Injected by AgentRuntime.postinit: the shared workspace (path resolution,
+    # code intelligence) and the session config (write feedback toggle).
+    has ws: Workspace = Workspace(),
+        cfg: AgentConfig = AgentConfig();
+
     def read_file(path: str) -> str;
     def write_file(path: str, content: str) -> str;
     def edit_file(path: str, old_text: str, new_text: str) -> str;
@@ -75,6 +103,12 @@ persists), are gated by `confirm`, and have their output truncated. `serve` /
 through `run_command` is redirected to `serve` because it would block.
 """
 obj ProcessTools {
+    # `ws` injected by AgentRuntime.postinit. `serve_proc` is this toolbox's own
+    # resource: the dev server `serve` launched, tracked so it can be polled then
+    # stopped.
+    has ws: Workspace = Workspace(),
+        serve_proc: any = None;
+
     def run_command(command: str) -> str;
     def jac_check(path: str) -> str;
     def start_app(entry_file: str) -> str;
@@ -93,6 +127,10 @@ project's archetypes, the walkers that visit a node, or a typed context slice --
 where grep would match comments and unrelated identifiers.
 """
 obj SemanticTools {
+    # Injected by AgentRuntime.postinit: the shared workspace, whose code_intel()
+    # answers every lookup.
+    has ws: Workspace = Workspace();
+
     def find_symbol(name: str) -> str;
     def find_uses(name: str) -> str;
     def project_map -> str;
@@ -111,11 +149,15 @@ obj GuideTools {
 """Browser tools: drive a headless browser over the Chrome DevTools Protocol.
 
 Built on the built-in `jac browse` engine (no npm/pip). Every call reconnects to
-one shared session (`agent.browse_session`), so they are all serialized. Reads
+one shared session (`self.session_id`), so they are all serialized. Reads
 (snapshot, get, eval) run unconfirmed; navigations and interactions are gated by
 `confirm`.
 """
 obj BrowseTools {
+    # This toolbox's own resource: the shared headless-browser session id; every
+    # browser call reconnects to it.
+    has session_id: str = "jac-ai";
+
     def browse_open(url: str) -> str;
     def browse_navigate(url: str) -> str;
     def browse_snapshot -> str;
@@ -271,29 +313,22 @@ toggles.
 """
 obj AgentRuntime {
     has cfg: AgentConfig = AgentConfig(),
-        # Logical working directory: every file tool resolves its `path` against
-        # this and `run_command` runs in it, so a `cd` the model issues in one
-        # shell command persists to the next call and to the file tools (a plain
-        # subprocess cwd does not survive between calls). Set by `run_agent`.
-        cwd: str = "",
-        # Shared CodeIntelligence the semantic tools query; set by `run_agent`.
-        ci: any = None,
-        # Set on write; the next semantic query rebuilds the project model.
-        ci_dirty: bool = False,
+        # The project on disk (cwd + code intelligence) and its operations. The
+        # file/process/semantic tools share this one object, wired to them in
+        # `postinit`.
+        ws: Workspace = Workspace(),
         # Durable cross-turn memory.
         ledger: Ledger | None = None,
         # The live walker, so the `note` tool can reach its ledger.
         active_session: AgentSession | None = None,
-        # The dev server `serve` launched, tracked so it can be polled then stopped.
-        serve_proc: any = None,
-        # Shared headless-browser session id; every browser call reconnects to it.
-        browse_session: str = "jac-ai",
         # Set by a file-writing tool; gates verify-and-continue.
         turn_wrote: bool = False,
         # Live structured event feed for the `--ui` web view; the terminal path
         # leaves it untouched (it stays empty and is never read).
         bus: AgentEventBus = AgentEventBus(),
-        # Toolboxes: the agent's capabilities, composed onto the runtime.
+        # Toolboxes: the agent's capabilities, composed onto the runtime. They own
+        # their own resources (proc the dev server, web the browser session) and
+        # take the shared workspace/config injected in `postinit`.
         files: FileTools = FileTools(),
         proc: ProcessTools = ProcessTools(),
         semantic: SemanticTools = SemanticTools(),
@@ -301,7 +336,7 @@ obj AgentRuntime {
         web: BrowseTools = BrowseTools(),
         # The live terminal view and turn-summary renderer.
         view: TurnRenderer = TurnRenderer(),
-        # The current phase's tools and conversation, set by `PhaseState.run`
+        # The current phase's tools and conversation, set by `PhaseState.step`
         # right before it calls `run_phase`. They live here -- not as `run_phase`
         # parameters -- because byLLM serializes a `by` function's parameters into
         # the prompt as text inputs; passing the conversation as a parameter would
@@ -311,30 +346,53 @@ obj AgentRuntime {
         phase_tools: list = [],
         phase_ctx: list = [];
 
+    # Inject the shared workspace/config into the toolboxes that need them, so a
+    # toolbox depends on its collaborators rather than reaching the module glob.
+    def postinit -> None;
     def note(text: str) -> str;
 }
 
 glob agent: AgentRuntime = AgentRuntime();
 
-# A tool's properties -- its stats category, whether it must be serialized, and
-# which phases may call it -- declared together on one descriptor instead of
-# spread across separate hand-kept lists. The `TOOLS` registry (built after the
-# tool functions, below) is the single source those lists are now derived from.
-obj ToolSpec {
-    has fn: any,
-        # "read" | "write" | "run"; drives the turn-stat breakdown (anything
-        # that is neither write nor run counts as a read).
-        category: str,
-        # Side-effecting: byLLM keeps any parallel batch containing it sequential.
-        serialize: bool = False,
-        # Subset of {"plan", "build", "qa"} -- the phases that expose this tool.
-        phases: set[str] = set();
+# Tools are modeled as a small graph: each capability is a `Tool` node that a
+# phase state is connected to by an `Exposes` edge (built in `build_pipeline`).
+# A state's `tools()` is then just its Exposes-neighbours -- no global lookup and
+# no stringly-typed phase match.
+enum ToolCat {
+    # Drives the turn-stat breakdown; anything that is neither Write nor Run
+    # counts as a read.
+    Read,
+    Write,
+    Run
 }
 
-def _resolve(path: str) -> str;
-def _set_session_cwd(new_dir: str);
+"""One capability the agent can call: a tool function plus its stats category and
+whether it must be serialized. Connected to the phase states that expose it by
+`Exposes` edges."""
+node Tool {
+    has fn: any,
+        category: ToolCat,
+        # Side-effecting: byLLM keeps any parallel batch containing it sequential.
+        serialize: bool = False;
+}
+
+"""Connects a phase state to a `Tool` it exposes."""
+edge Exposes {}
+
+# A tool's declaration row -- the function, its stats category, whether it must
+# be serialized, and the phase-state types that expose it -- on one descriptor
+# instead of spread across separate hand-kept lists. The `TOOL_SPECS` registry
+# (declared after the phase nodes, below) is the single source the stat groups,
+# the `Exposes` edges, and the serialize calls are all derived from.
+obj ToolSpec {
+    has fn: any,
+        category: ToolCat,
+        serialize: bool = False,
+        # The phase-state types that expose this tool (subset of {Plan,Build,QA}).
+        phases: set[type] = set();
+}
+
 def _project_root_of(start: str) -> str;
-def _phase_directive(label: str) -> str;
 def resolve_model_name(model_override: str = "") -> str;
 def _byllm_config -> any;
 def build_model(model_override: str = "", n_ctx: int = 0) -> Model;
@@ -345,7 +403,6 @@ glob agent_model = build_model();
 def truncate(text: str, limit: int = 12000) -> str;
 def confirm(action: str) -> bool;
 def _count_diags(diags: list) -> tuple[int, int];
-def code_intel -> any;
 
 # Flatten one conversation message (litellm dict or object) to a small JSON-safe
 # record (role + truncated content + tool-call summaries) for the token-usage
@@ -356,7 +413,7 @@ def _san_msg(m: any) -> dict;
 glob AGENT_RULES = """\
 You are Jac AI, a coding agent working inside the user's terminal in their Jac
 project. You read, write, and debug Jac code, and verify it really works. You
-move through states -- planning, building, QA -- and the state you are in tells
+move through states and the state you are in tells
 you what to do now; these are the habits that hold across all of them.
 
 Universal habits:
@@ -373,8 +430,8 @@ Universal habits:
   something a later state should check, call `note` -- notes stay visible to
   every later state and turn.
 
-You write JAC -- Python-flavored with braces -- never JavaScript, TypeScript, or
-React. A UI component is Jac (`def:pub Name(props) -> JsxElement { ... }`), not a
+You write only JAC -- Python-flavored with braces -- never JavaScript, TypeScript.
+A UI component is Jac (`def:pub Name(props) -> JsxElement { ... }`), not a
 React class or function. Before writing any UI code, call
 read_guide("jac-cl-components") and copy its shapes exactly.
 """;
@@ -469,155 +526,65 @@ sem request_needs_code_changes.objective = "The user's original request for this
 sem request_needs_code_changes.plan = "The plan and findings produced by the Plan phase so far.";
 
 
-# The single source of truth for the agent's tools. Each row pairs a tool
-# function with its properties; the stats categories, each PhaseState's tool
-# set (PhaseState.tools), and the serialize calls below are all derived from
-# this table, so adding a tool means adding one row here. Order is the order
-# tools are offered to the model within a phase.
-glob TOOLS: list[ToolSpec] = [
-         ToolSpec(
-             fn=agent.files.read_file, category="read", phases={"plan", "build", "qa"}
-         ),
-         ToolSpec(
-             fn=agent.files.write_file,
-             category="write",
-             serialize=True,
-             phases={"build"}
-         ),
-         ToolSpec(
-             fn=agent.files.edit_file,
-             category="write",
-             serialize=True,
-             phases={"build"}
-         ),
-         ToolSpec(fn=agent.files.list_dir, category="read", phases={"plan", "build"}),
-         ToolSpec(fn=agent.files.grep, category="read", phases={"plan", "build"}),
-         ToolSpec(
-             fn=agent.semantic.find_symbol, category="read", phases={"plan", "build"}
-         ),
-         ToolSpec(
-             fn=agent.semantic.find_uses, category="read", phases={"plan", "build"}
-         ),
-         ToolSpec(fn=agent.semantic.project_map, category="read", phases={"plan"}),
-         ToolSpec(fn=agent.semantic.find_walkers, category="read", phases={"plan"}),
-         ToolSpec(
-             fn=agent.semantic.context_slice, category="read", phases={"plan", "build"}
-         ),
-         ToolSpec(fn=agent.proc.jac_check, category="run", phases={"build", "qa"}),
-         ToolSpec(
-             fn=agent.proc.start_app, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(fn=agent.proc.serve, category="run", serialize=True, phases={"qa"}),
-         ToolSpec(
-             fn=agent.proc.stop_server, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.proc.run_command,
-             category="run",
-             serialize=True,
-             phases={"build", "qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_open, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_navigate, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_snapshot,
-             category="read",
-             serialize=True,
-             phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_click, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_type, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_fill, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_press, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_get, category="read", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_eval, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.web.browse_close, category="run", serialize=True, phases={"qa"}
-         ),
-         ToolSpec(
-             fn=agent.guides.search_guides, category="read", phases={"plan", "build"}
-         ),
-         ToolSpec(
-             fn=agent.guides.read_guide, category="read", phases={"plan", "build"}
-         ),
-         ToolSpec(
-             fn=agent.note,
-             category="read",
-             serialize=True,
-             phases={"plan", "build", "qa"}
-         )
-     ];
-
-# Tool-name groups for the turn-stat breakdown, derived from TOOLS; everything
-# not named here counts as a read.
-glob _WRITE_TOOLS: set[str] = {
-         str(t.fn.__name__)
-         for t in TOOLS
-         if t.category == "write"
-     },
-     _RUN_TOOLS: set[str] = {
-         str(t.fn.__name__)
-         for t in TOOLS
-         if t.category == "run"
-     };
-
-# Side-effecting tools must not run concurrently; serialize each one so byLLM
-# keeps any parallel batch that contains it sequential. Derived from TOOLS.
-with entry {
-    for t in TOOLS {
-        if t.serialize {
-            # Tools are toolbox methods: mark the underlying function so the flag
-            # survives (a bound method is a throwaway and rejects attributes).
-            mark_serialize(t.fn?.__func__ or t.fn);
-        }
-    }
-}
+# The `TOOL_SPECS` registry -- the single source of truth for the agent's tools
+# -- is declared below the phase nodes (so each row's `phases` can name the state
+# types directly), along with the stat-group and serialize derivations.
 
 # OSP agent: an AgentSession walker over a small state graph laid out as a
 # pipeline -- Plan --> Build --> QA, with QA looping back to Build/Plan or on to
 # Done. The legal transitions ARE the edges, so each state routes only among its
-# own successors: the shared `PhaseState.run` runs the phase, records a ledger
-# entry, then advances along the single out-edge, or lets the model pick when a
-# state has several (only QA does). Each state owns its prompt (`sem`) and tool
-# set (`tools()`).
+# own successors. Behavior is polymorphic, not branched on a label string: the
+# shared `step` runs the phase and records a ledger entry, `halt` is the common
+# stop guard, and each concrete state owns its own `run` ability -- so each owns
+# its routing (Plan's read-only fast path, Build's wrote-nothing nudge, QA's
+# model-picked edge) -- plus its `directive`, prompt (`sem`), and tool set
+# (`tools()`).
+"""A legal transition between phase states (Plan->Build->QA->Done). Distinct
+from `Exposes` so the routing traversals see only successor states, never the
+`Tool` nodes a state exposes."""
+edge Flow {}
+
 """A phase state: a self-contained step with its own prompt, tools, and context."""
 node PhaseState {
     has ctx: list = [],
+        # One-line role blurb the UI shows under the node. Lives here so tracing
+        # the real graph yields the label too -- no separate hardcoded list to
+        # keep in sync with the pipeline.
         desc: str = "";
 
-    # One-line role blurb the UI shows under the node. Lives here so tracing the
-    # real graph yields the label too -- no separate hardcoded list to keep in
-    # sync with the pipeline.
+    # The tools this state exposes (its `Exposes`-edge neighbours).
     def tools -> list;
-    can run with AgentSession entry;
+    # The imperative kickoff line for this phase; overridden per state.
+    def directive -> str;
+    # Shared phase body: run the LLM over this state's tools/ctx, fold the result
+    # into the walker's stats and ledger, and return the phase result. No `visit`
+    # -- routing is each concrete state's own `run` ability.
+    def step(visitor: AgentSession) -> dict;
+    # Common stop guard, called after `step`: True once the turn is cancelled or
+    # the step cap is hit (and it advances the step counter). Each `run` returns
+    # early on it before routing.
+    def halt(visitor: AgentSession) -> bool;
 }
 
 node Plan(PhaseState) {
     has desc: str = "Explore and decide the approach";
+
+    override def directive -> str;
+    can run with AgentSession entry;
 }
 
 node Build(PhaseState) {
     has desc: str = "Write and edit the code";
+
+    override def directive -> str;
+    can run with AgentSession entry;
 }
 
 node QA(PhaseState) {
     has desc: str = "Type-check, run, and verify";
+
+    override def directive -> str;
+    can run with AgentSession entry;
 }
 
 """The terminal state: the task is complete and verified."""
@@ -625,6 +592,147 @@ node Done {
     has desc: str = "Objective built and verified";
 
     can finish with AgentSession entry;
+}
+
+# The single source of truth for the agent's tools. Each row pairs a tool
+# function with its properties; the stat groups (_WRITE_TOOLS/_RUN_TOOLS), each
+# state's tool affordances (materialized as Exposes edges in build_pipeline), and
+# the serialize calls below are all derived from this table, so adding a tool
+# means adding one row here. Order is the order tools are offered to the model
+# within a phase. Declared after the phase nodes so each `phases` set can name
+# the state types directly.
+glob TOOL_SPECS: list[ToolSpec] = [
+         ToolSpec(
+             fn=agent.files.read_file, category=ToolCat.Read, phases={Plan, Build, QA}
+         ),
+         ToolSpec(
+             fn=agent.files.write_file,
+             category=ToolCat.Write,
+             serialize=True,
+             phases={Build}
+         ),
+         ToolSpec(
+             fn=agent.files.edit_file,
+             category=ToolCat.Write,
+             serialize=True,
+             phases={Build}
+         ),
+         ToolSpec(fn=agent.files.list_dir, category=ToolCat.Read, phases={Plan, Build}),
+         ToolSpec(fn=agent.files.grep, category=ToolCat.Read, phases={Plan, Build}),
+         ToolSpec(
+             fn=agent.semantic.find_symbol, category=ToolCat.Read, phases={Plan, Build}
+         ),
+         ToolSpec(
+             fn=agent.semantic.find_uses, category=ToolCat.Read, phases={Plan, Build}
+         ),
+         ToolSpec(fn=agent.semantic.project_map, category=ToolCat.Read, phases={Plan}),
+         ToolSpec(fn=agent.semantic.find_walkers, category=ToolCat.Read, phases={Plan}),
+         ToolSpec(
+             fn=agent.semantic.context_slice,
+             category=ToolCat.Read,
+             phases={Plan, Build}
+         ),
+         ToolSpec(fn=agent.proc.jac_check, category=ToolCat.Run, phases={Build, QA}),
+         ToolSpec(
+             fn=agent.proc.start_app, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.proc.serve, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.proc.stop_server,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.proc.run_command,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={Build, QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_open, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_navigate,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_snapshot,
+             category=ToolCat.Read,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_click,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_type, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_fill, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_press,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_get, category=ToolCat.Read, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_eval, category=ToolCat.Run, serialize=True, phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.web.browse_close,
+             category=ToolCat.Run,
+             serialize=True,
+             phases={QA}
+         ),
+         ToolSpec(
+             fn=agent.guides.search_guides, category=ToolCat.Read, phases={Plan, Build}
+         ),
+         ToolSpec(
+             fn=agent.guides.read_guide, category=ToolCat.Read, phases={Plan, Build}
+         ),
+         ToolSpec(
+             fn=agent.note,
+             category=ToolCat.Read,
+             serialize=True,
+             phases={Plan, Build, QA}
+         )
+     ];
+
+# Tool-name groups for the turn-stat breakdown, derived from TOOL_SPECS;
+# everything not named here counts as a read.
+glob _WRITE_TOOLS: set[str] = {
+         str(t.fn.__name__)
+         for t in TOOL_SPECS
+         if t.category == ToolCat.Write
+     },
+     _RUN_TOOLS: set[str] = {
+         str(t.fn.__name__)
+         for t in TOOL_SPECS
+         if t.category == ToolCat.Run
+     };
+
+# Side-effecting tools must not run concurrently; serialize each one so byLLM
+# keeps any parallel batch that contains it sequential. Derived from TOOL_SPECS.
+with entry {
+    for t in TOOL_SPECS {
+        if t.serialize {
+            # Tools are toolbox methods: mark the underlying function so the flag
+            # survives (a bound method is a throwaway and rejects attributes).
+            mark_serialize(t.fn?.__func__ or t.fn);
+        }
+    }
 }
 
 def build_pipeline -> Plan;
@@ -646,7 +754,6 @@ walker AgentSession {
 
 
 def run_turn(message: str);
-def _project_errors -> list;
 def verify_and_continue(max_rounds: int = 3);
 def run_agent(req: object) -> int;
 
