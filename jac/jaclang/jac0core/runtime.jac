@@ -273,39 +273,7 @@ class JacWalker {
         `all_issubclass` on every visited location."""
     static def _trigger_kind(i: ObjectSpatialFunction) -> TriggerKind;
 
-    """Execute all entry abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _execute_entries(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Execute all exit abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _execute_exits(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Recursively visit a node with DFS semantics.
-
-        1. Execute entries for this node
-        2. Recursively visit all children added during entry
-        3. Execute exits for this node (post-order)
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _visit_node_recursive(
-        warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
-    ) -> bool;
-
-    """Jac's spawn operator feature with recursive DFS semantics.
+    """Jac's spawn operator feature.
 
         Entry abilities execute when entering a node, exit abilities execute
         after all descendants are visited (post-order/LIFO).
