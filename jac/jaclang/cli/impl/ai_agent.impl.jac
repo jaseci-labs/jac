@@ -1076,17 +1076,15 @@ impl BrowseTools._browse_shutdown{
     }
 }
 
-"""Build the agent's system message: rules, the guide index, and the cheatsheet."""
+"""Build the agent's system message: the rules and the guide index."""
 impl system_prompt -> str {
     index_lines: list[str] = [];
     for g in gs_list() {
         index_lines.append(f"- {g.name}: {g.description}");
     }
     guide_index = "\n".join(index_lines);
-    cheatsheet = gs_get("jac-core-cheatsheet");
-    cheatsheet_body = cheatsheet.body if cheatsheet is not None else "";
     return (
-        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index + "\n\n## Jac core cheatsheet\n\n" + cheatsheet_body
+        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index
     );
 }
 
@@ -2056,7 +2054,7 @@ impl TurnStats.absorb(st: dict) {
 
 """Compose the system message for a state, given the objective and memory."""
 impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
-    role = str(getattr(state_ty, "_jac_semstr", "") or "");
+    role = str(state_ty?._jac_semstr or "");
     return (
         system_prompt() + "\n\n## Current state\n\nYou are in " + role + "\n\n## Objective\n\n" + objective + "\n\n## Progress so far (shared across states)\n\n" + ledger.render()
     );
@@ -2222,8 +2220,25 @@ impl PhaseState.run{
             style="yellow"
         );
         visit self;
+    } elif label == "Plan" {
+        # Read-only fast path: classify whether carrying out the request needs
+        # any file created or edited. A pure question/inspection finishes
+        # straight from Plan (skipping Build and its wrote-nothing nudge loop,
+        # and QA); anything that touches code routes to Build, the default. Uses
+        # a typed bool classifier with a Build-biased default -- robust where
+        # `visit [-->] by`'s LLM edge filter can crash on a weak model's bad
+        # index.
+        if request_needs_code_changes(visitor.objective, visitor.ledger.render()) {
+            visit [-->][?:Build];
+        } else {
+            console.print(
+                "  ↳ read-only request -- answered in Plan, skipping Build/QA",
+                style="green"
+            );
+            visit [-->][?:Done];
+        }
     } elif len([-->]) == 1 {
-        # Single successor (Plan -> Build, Build -> QA): advance, no LLM call.
+        # Single successor (Build -> QA): advance, no LLM call.
         visit [-->];
     } elif _project_errors() {
         # Hard gate: the project does not compile, so finishing is not an option.
@@ -2306,7 +2321,7 @@ impl TurnRenderer.route_stream_event(event: any) -> None {
     }
 }
 
-sem Done = "the DONE state: choose this only when the objective is fully built AND QA has actually verified it (type-checked, and for an app, run and exercised). Ends the session.";
+sem Done = "the DONE state: the session is complete. Reach it from QA once the objective is fully built AND verified (type-checked, and for an app, run and exercised), or directly from Plan when the request was a pure question or read-only inspection that needed no file changes and has been answered. Ends the session.";
 impl Done.finish{
     # No onward visit: the walker's queue empties here and the session ends.
     console.print("\n  ● Done", style="bold green");
@@ -2322,14 +2337,19 @@ here updates the agent's behavior and the rendered graph at once.
 """
 impl build_pipeline -> Plan {
     # Wire the phase pipeline. The edges ARE the legal transitions: Plan -> Build
-    # -> QA, with QA looping back to Build/Plan or finishing at Done. This is the
-    # only place the topology is written down; `ui_graph` traces these same nodes
-    # and edges so the rendered graph can never drift from the real workflow.
+    # -> QA, with QA looping back to Build/Plan or finishing at Done, plus a
+    # read-only fast path Plan -> Done for requests that change no files. This is
+    # the only place the topology is written down; `ui_graph` traces these same
+    # nodes and edges so the rendered graph can never drift from the real workflow.
     plan = Plan();
     build = Build();
     qa = QA();
     done = Done();
     plan ++> build;
+    # Read-only fast path: a pure question or inspection that needs no file
+    # changes finishes straight from Plan, so it never enters Build (and its
+    # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
+    plan ++> done;
     build ++> qa;
     qa ++> build;
     qa ++> plan;
@@ -2494,15 +2514,15 @@ impl run_agent(req: object) -> int {
     r: any = req;
     # Seed the session working directory; every file tool and run_command
     # resolves against it, and a `cd` the model issues updates it.
-    agent.cwd = os.path.normpath(str(getattr(r, "cwd", "") or os.getcwd()));
+    agent.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
     # `--ui`: hand off to the bundled web app instead of the terminal REPL. The
     # child server re-imports this module and runs the agent itself, so nothing
     # else here (model build, banner, REPL) applies to the parent process.
-    if bool(getattr(r, "ui", False)) {
+    if bool(r?.ui) {
         return _run_ui_server(r);
     }
     agent.cfg.yolo_mode = not r.safe;
-    agent.cfg.verbose = not bool(getattr(r, "quiet", False));
+    agent.cfg.verbose = not bool(r?.quiet);
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
     agent.ci = r.code_intel;
     if agent.ci is not None {
@@ -2885,7 +2905,7 @@ impl ui_graph -> dict {
                 "id": nid,
                 "label": nid,
                 "desc": nd.desc,
-                "sem": str(getattr(type(nd), "_jac_semstr", "") or ""),
+                "sem": str(type(nd)?._jac_semstr or ""),
                 "tools": tool_names
             }
         );
@@ -3053,8 +3073,8 @@ impl _run_ui_server(r: any) -> int {
     }
     env = dict(os.environ);
     env["JAC_AI_UI_PROJECT"] = agent.cwd;
-    env["JAC_AI_UI_MODEL"] = str(getattr(r, "model", "") or "");
-    env["JAC_AI_UI_NCTX"] = str(int(getattr(r, "n_ctx", 0) or 0));
+    env["JAC_AI_UI_MODEL"] = str(r?.model or "");
+    env["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
     log_path = "/tmp/jac_ai_ui.log";
     console.print("");
     console.print("  Jac AI -- web UI", style="bold");

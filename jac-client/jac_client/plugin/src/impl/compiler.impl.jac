@@ -302,55 +302,9 @@ impl ViteCompiler.compile_dependencies_recursively(
     output_path.parent.mkdir(parents=True, exist_ok=True);
     source_header = f"/* Source: {module_path} */\n";
     output_path.write_text(source_header + combined_js, encoding='utf-8');
-    # Generate source map for .jac → .js line mapping
-    try {
-        import from jaclang.runtimelib.source_mapping { generate_source_map_json }
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        hub_key = str(module_path);
-        hub_mod = Jac.program.mod.hub.get(hub_key);
-        if hub_mod and hub_mod.gen.es_ast {
-            import from jaclang.compiler.passes.ecmascript.es_unparse {
-                es_to_js_with_map
-            }
-            (_, line_map) = es_to_js_with_map(hub_mod.gen.es_ast);
-            if line_map {
-                # Compute exact offset: count the lines in the written file
-                # before the raw generated code starts.
-                # Written file = source_header + combined_js
-                # combined_js = runtime_imports_prefix + raw_js
-                # So offset = lines in (source_header + runtime_imports_prefix)
-                raw_js = hub_mod.gen.js or '';
-                full_output = source_header + combined_js;
-                # Find where raw_js starts in full_output
-                raw_start_idx = full_output.find(raw_js);
-                if raw_start_idx > 0 {
-                    prefix = full_output[:raw_start_idx];
-                    header_lines = prefix.count('\n');
-                } else {
-                    header_lines = 0;
-                }
-                if header_lines > 0 {
-                    line_map = [
-                        (out + header_lines, src_l, src_c)
-                        for (out, src_l, src_c) in line_map
-                    ];
-                }
-                map_json = generate_source_map_json(
-                    source_file=str(module_path),
-                    output_file=output_path.name,
-                    line_map=line_map
-                );
-                map_path = output_path.parent / f"{output_path.name}.map";
-                map_path.write_text(map_json, encoding='utf-8');
-                # Append sourceMappingURL so Vite chains through to .jac
-                with open(output_path, 'a', encoding='utf-8') as f {
-                    f.write(f"\n//# sourceMappingURL={output_path.name}.map\n");
-                }
-            }
-        }
-    } except Exception as e {
-        console.warning(f"Failed to generate source map for '{module_path}': {e}");
-    }
+    self._write_source_map(
+        mod, str(module_path), output_path, source_header + combined_js
+    );
     if (not manifest or not manifest.imports) {
         return;
     }
@@ -394,9 +348,9 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (self.compiled_dir / 'client_runtime.js').write_text(
-        runtimeutils_js, encoding='utf-8'
-    );
+    runtime_out = self.compiled_dir / 'client_runtime.js';
+    runtime_out.write_text(runtimeutils_js, encoding='utf-8');
+    self._write_source_map(mod, str(runtime_utils_path), runtime_out, runtimeutils_js);
     return (runtimeutils_js, all_exports);
 }
 
@@ -415,8 +369,61 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
     glob_names = list(pwa_manifest.globals) if pwa_manifest else [];
     all_exports = sorted(set(pwa_exports_list + glob_names));
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (self.compiled_dir / 'pwa_runtime.js').write_text(pwa_js, encoding='utf-8');
+    pwa_out = self.compiled_dir / 'pwa_runtime.js';
+    pwa_out.write_text(pwa_js, encoding='utf-8');
+    self._write_source_map(mod, str(pwa_runtime_path), pwa_out, pwa_js);
     return (pwa_js, all_exports);
+}
+
+"""Write the per-file source map for a freshly compiled module and chain the
+compiled JS to it via a `//# sourceMappingURL` comment.
+
+Maps the generated JS lines back to the original `.jac` source lines so a
+client-side error stack resolves to the real source location -- not the
+compiled-JS line. A no-op when the module produced no ES AST or no line map.
+
+Crucially this uses `mod` -- the module the bundler just compiled and already
+holds -- rather than re-fetching it from `Jac.program.mod.hub`: a fullstack /
+interop build compiles client modules into a separate codespace, leaving the
+hub empty, so a hub lookup would silently miss and skip the map. `full_output`
+is the exact text written to disk (source header + runtime-import prefix + raw
+JS); its prefix lines are counted so the map's output lines line up on disk.
+"""
+impl ViteCompiler._write_source_map(
+    self: ViteCompiler, mod: Any, source_file: str, output_path: Path, full_output: str
+) -> None {
+    if (not mod or not mod.gen.es_ast) {
+        return;
+    }
+    try {
+        import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js_with_map }
+        import from jaclang.runtimelib.source_mapping { generate_source_map_json }
+        (_, line_map) = es_to_js_with_map(mod.gen.es_ast);
+        if not line_map {
+            return;
+        }
+        # The raw generated JS sits after whatever prefix the caller prepended
+        # (source header + optional runtime-import line); shift the map's output
+        # lines past it so they match the file on disk.
+        raw_js = mod.gen.js or '';
+        raw_start = full_output.find(raw_js) if raw_js else -1;
+        header_lines = full_output[:raw_start].count('\n') if (raw_start > 0) else 0;
+        if header_lines > 0 {
+            line_map = [
+                (out + header_lines, src_l, src_c) for (out, src_l, src_c) in line_map
+            ];
+        }
+        map_json = generate_source_map_json(
+            source_file=source_file, output_file=output_path.name, line_map=line_map
+        );
+        map_path = output_path.parent / f"{output_path.name}.map";
+        map_path.write_text(map_json, encoding='utf-8');
+        with open(output_path, 'a', encoding='utf-8') as f {
+            f.write(f"\n//# sourceMappingURL={output_path.name}.map\n");
+        }
+    } except Exception as e {
+        console.warning(f"Failed to generate source map for '{source_file}': {e}");
+    }
 }
 
 """Convert a .jac relative path string to .js, handling compound extensions."""

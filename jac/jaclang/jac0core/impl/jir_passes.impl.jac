@@ -1240,18 +1240,9 @@ impl JirReader._read_name_atom_overlay(
         na_node._sym_category = ST3.UNKNOWN;
     }
 
-    # Ensure remaining defaults
-    if not hasattr(na_node, 'name_of') {
-        na_node.name_of = na_node;
-    }
-    if not hasattr(na_node, '_sym') {
-        na_node._sym = None;
-    }
-    if not hasattr(na_node, '_py_ctx_func') {
-        import ast as ast3;
-        na_node._py_ctx_func = ast3.Load;
-    }
-
+    # name_of / _sym / _py_ctx_func defaults are already seeded by `_read_node`
+    # (via setdefault) when the NameAtom is constructed, before this overlay
+    # runs, so no backfill is needed here.
     return pos;
 }
 

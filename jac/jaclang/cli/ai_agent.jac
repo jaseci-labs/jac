@@ -367,7 +367,8 @@ Universal habits:
   exact; reserve grep for plain text -- comments, strings, TODOs.
 - Never guess. Read a file before editing it, and consult the bundled guides
   before writing unfamiliar Jac -- they are the authoritative spec for correct,
-  idiomatic Jac.
+  idiomatic Jac. read_guide("jac-core-cheatsheet") is the core-syntax primer;
+  read it before writing Jac when you are unsure of the basics.
 - Leave a note. When you make a decision, rely on an assumption, or spot
   something a later state should check, call `note` -- notes stay visible to
   every later state and turn.
@@ -445,6 +446,27 @@ def run_phase(directive: str) -> str by agent_model(
     on_iteration=_progress_guard,
     max_tool_result_length=4000
 );
+
+
+# The read-only fast path's triage. A single typed-bool model call (no tools, no
+# conversation) decides, after Plan, whether the request actually needs code
+# written -- so a pure question or inspection can finish at Done without entering
+# Build (and its wrote-nothing nudge loop) or QA. A bool return routes
+# deterministically in Jac, sidestepping `visit [-->] by`'s LLM edge filter,
+# which a weak model can crash with an out-of-range index. Biased toward True
+# (Build) so a misjudgement never silently skips real work.
+"""True if carrying out the request requires creating or editing any file.
+
+Return True for ANYTHING that writes or changes code -- this is the default, so
+when in doubt return True. Return False only for a pure question, explanation,
+or read-only inspection that changes no files at all (e.g. "what does this do?",
+"list the files", "is there a bug here?")."""
+def request_needs_code_changes(objective: str, plan: str) -> bool by agent_model(
+    temperature=agent.cfg.temperature
+);
+
+sem request_needs_code_changes.objective = "The user's original request for this turn.";
+sem request_needs_code_changes.plan = "The plan and findings produced by the Plan phase so far.";
 
 
 # The single source of truth for the agent's tools. Each row pairs a tool

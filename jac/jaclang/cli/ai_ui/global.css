@@ -104,18 +104,20 @@ body {
     min-width: 0;
 }
 
-/* Left column width is driven by an inline style the resize handle updates; it
-   must not shrink below that, so the right column takes the remaining space. */
-.col.left {
+/* Left (conversation) and right (activity) column widths are driven by inline
+   styles the resize handles update; they must not shrink below that, so the
+   center column (the graph) takes the remaining space. */
+.col.left,
+.col.right {
     flex: 0 0 auto;
     min-width: 280px;
 }
 
-.col.right {
+.col.center {
     flex: 1;
     min-width: 0;
-    /* Safety net: if the graph pane is dragged taller than the column, clip
-       rather than letting it spill into the bottom pane. */
+    /* Safety net: if the graph pane somehow exceeds the column, clip rather
+       than letting it spill. */
     overflow: hidden;
 }
 
@@ -603,21 +605,11 @@ body.resizing {
     border-radius: 3px;
 }
 
-/* The conversation fills the whole left column now that the token stream moved
-   to the bottom pane. */
-.col.left > .pane {
-    flex: 1;
-    min-height: 0;
-}
-
-/* Right column: the graph pane keeps the height the handle sets; the activity
-   feed below it takes the rest. */
-.col.right > .pane:first-child {
-    flex: 0 0 auto;
-    min-height: 0;
-}
-
-.col.right > .pane:last-child {
+/* Each workspace column holds a single pane that fills it: conversation (left),
+   phase graph (center), and activity feed (right). */
+.col.left > .pane,
+.col.center > .pane,
+.col.right > .pane {
     flex: 1;
     min-height: 0;
 }
@@ -1240,6 +1232,15 @@ body.resizing {
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 0 4px;
+}
+
+/* Per-box token estimate (~chars/4), right-aligned in each block's head. */
+.cd-toks {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .cd-content {

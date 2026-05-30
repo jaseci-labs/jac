@@ -18,6 +18,7 @@ import jaclang.jac0core.parser.lexer as na_lexer;
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
+import type from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E0001,
@@ -413,8 +414,11 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None,
-        _view_body_depth: int = 0;  # > 0 while parsing inside a JSX `{...}` slot body
+        prog: (JacProgram | None) = None,
+        _view_body_depth: int = 0,  # > 0 while parsing inside a JSX `{...}` slot body
+        # Comma UniTokens captured while parsing an impl enum body, consumed
+        # when assembling the ImplDef kid list. Reset per enum body.
+        _impl_enum_comma_unis: list = [];
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;
@@ -618,7 +622,7 @@ obj Parser {
 }
 
 def parse(
-    source: str, file_path: str = "<input>", prog: object | None = None
+    source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
 ) -> tuple[Module, bool] {
     # Lex via the structured surface (tokens + comments + diagnostics).
     #
@@ -664,9 +668,9 @@ def parse(
             );
             code = DIAGNOSTICS.get(d.code_str) if d.code_str else None;
             alrt = Alert(d.message, CodeLocInfo(dtok, dtok), Lexer, code=code);
-            if d.is_error and hasattr(prog, "errors_had") {
+            if d.is_error {
                 prog.errors_had.append(alrt);
-            } elif (not d.is_error) and hasattr(prog, "warnings_had") {
+            } else {
                 prog.warnings_had.append(alrt);
             }
         }

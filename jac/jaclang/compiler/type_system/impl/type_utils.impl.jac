@@ -593,6 +593,12 @@ impl apply_solved_type_vars(
             and ty.name in solution {
                 is_declared_class_param = True;
             }
+            # Free-function path: no class context → per-call solution is authoritative.
+            if not is_declared_class_param
+            and class_type is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
         }
         if not is_declared_class_param {
             return ty;

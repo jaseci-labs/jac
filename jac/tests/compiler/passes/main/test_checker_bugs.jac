@@ -485,6 +485,14 @@ test "bug_tvar5_module_typevar_shadowed_by_class_param" {
     assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
 }
 
+# Bug #TVAR-6: glob-form TypeVar not solved at free-function call sites.
+test "bug_tvar6_glob_typevar_in_free_function" {
+    program = compile_and_check("checker_bug_typevar_glob_free_func.jac");
+    assert len(program.errors_had) == 0 , f"Bug #TVAR-6: Expected 0 errors but got {len(
+        program.errors_had
+    )}: {[e.msg for e in program.errors_had]}.";
+}
+
 # =========================================================================
 # Bug #IMPL-1: `has` var reassigned in impl body shadows the parent type
 #
@@ -798,5 +806,18 @@ test "bug_stub_vguard_module_level_symbol_resolves" {
         "Bug #STUB-VGUARD: `datetime.UTC` (defined under `if sys.version_info "
         ">= (3, 11):` in typeshed) must resolve to its declared type, not Unknown. "
         f"Got W1051 warnings: {[str(w) for w in unresolved]}"
+    );
+}
+
+# Bug #NARROW-ANY: isinstance on a symbol typed Any (e.g. the element of a
+# bare `list`) did not narrow because get_narrowed_type's guard accepted only
+# Union/Class/Unknown, so `item.label` after `isinstance(item, Foo)` stayed
+# Unknown and raised E1001/E1002.
+test "bug_narrow_any_symbol_isinstance" {
+    program = compile_and_check("checker_narrow_anytype_isinstance.jac");
+    assert program.errors_had == [] , (
+        "Bug #NARROW-ANY: isinstance must narrow an Any-typed symbol, so "
+        "accessing a member of the narrowed type does not error. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

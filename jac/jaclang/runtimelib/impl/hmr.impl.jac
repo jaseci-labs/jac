@@ -211,7 +211,8 @@ impl HotReloader._recompile_client_code(
         }
 
         # Ensure __jacJsx import is present (required for client-side rendering)
-        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
+        import from jaclang.runtimelib.client_surface { prepended_runtime_import }
+        jac_runtime_import = prepended_runtime_import();
         if '__jacJsx' in js_code and jac_runtime_import not in js_code {
             js_code = jac_runtime_import + '\n' + js_code;
         }

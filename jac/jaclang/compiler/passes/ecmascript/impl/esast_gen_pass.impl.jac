@@ -988,34 +988,6 @@ impl EsastGenPass._ability_from_symbol(
     return None;
 }
 
-"""Resolve an sv-imported function to its source ability."""
-impl EsastGenPass._resolve_sv_import_ability(name: str) -> (uni.Ability | None) {
-    for imp in self.get_main_mod().get_all_sub_nodes(uni.Import) {
-        if imp.code_context == CodeContext.CLIENT
-        or not imp.from_loc
-        or not imp.items
-        or imp._source_context_token() is None
-        or imp._source_context_token().name != Tok.KW_SERVER {
-            continue;
-        }
-        for item in imp.items {
-            if not isinstance(item, uni.ModuleItem)
-            or not isinstance(item.name, uni.Name) {
-                continue;
-            }
-            local_name = item.alias.sym_name if item.alias else item.name.sym_name;
-            if local_name != name {
-                continue;
-            }
-            source_mod = self._resolve_source_module(imp);
-            if not source_mod {
-                return None;
-            }
-            return self._ability_from_symbol(source_mod.lookup(item.name.sym_name));
-        }
-    }
-    return None;
-}
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
@@ -1028,7 +1000,15 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
         if ability_node {
             return ability_node;
         }
-        return self._resolve_sv_import_ability(nd.target.sym_name);
+        # sv-imported name: read the source ability off the cross-boundary
+        # binding that BoundaryAnalysisPass already resolved (no independent
+        # import re-resolution here).
+        manifest = self.ir_in.gen.interop_manifest;
+        binding = manifest.bindings.get(nd.target.sym_name) if manifest else None;
+        if binding and isinstance(binding.ast_node, uni.Ability) {
+            return binding.ast_node;
+        }
+        return None;
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
@@ -1574,7 +1554,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
-    # Endpoint effects for func:<func_name> are precomputed by WalkerEffectsPass.
+    # Endpoint effects for func:<func_name> are precomputed by BoundaryAnalysisPass.
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
         ability_node
@@ -2424,7 +2404,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
             # Endpoint effects for walker:<name> are precomputed (at the
-            # walker's declaration, in its own module) by WalkerEffectsPass and
+            # walker's declaration, in its own module) by BoundaryAnalysisPass and
             # propagated into this manifest via _populate_client_manifest.
         }
         return;
@@ -3398,51 +3378,35 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     }
 }
 
-"""Auto-inject a named import from @jac/runtime (e.g. useState, useEffect, __jacCallFunction)."""
+"""Auto-inject a named import for a runtime symbol (e.g. useState, useEffect,
+__jacCallFunction, useRef).
+
+The `client_surface` contract decides where each symbol resolves: `@jac/runtime`
+for everything both runtimes back, or `react` for primitives taken straight from
+React (e.g. `useRef`, which needs no `@jac/runtime` shim). Only `@jac/runtime`
+symbols register the runtime for inlining — `react` is an ordinary dependency."""
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+    import from jaclang.runtimelib.client_surface { runtime_import_source }
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
+    src = runtime_import_source(name);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
         ),
         jac_node=nd
     );
-    source = self.sync_loc(
-        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
-    );
+    source = self.sync_loc(es.Literal(value=src, raw='"' + src + '"'), jac_node=nd);
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    # Register in client manifest so bundler knows to inline the runtime
-    self._register_jac_runtime_import();
-}
-
-"""Auto-inject a named import from `react` (e.g. useRef).
-
-Unlike `_inject_runtime_import`, this targets `react` directly: `useRef`
-is a plain React primitive with no reactivity, so it needs no `@jac/runtime`
-shim (which exists only to bridge `useState`/`useEffect` into Jac's reactive
-core). No `_register_jac_runtime_import` — react is an ordinary dependency."""
-impl EsastGenPass._inject_react_import(name: str, nd: uni.UniNode) -> None {
-    if name in self.injected_imports or self._has_import(name) {
-        return;
+    if src == '@jac/runtime' {
+        # Register in client manifest so bundler knows to inline the runtime.
+        self._register_jac_runtime_import();
     }
-    specifier = self.sync_loc(
-        es.ImportSpecifier(
-            imported=es.Identifier(name=name), local=es.Identifier(name=name)
-        ),
-        jac_node=nd
-    );
-    source = self.sync_loc(es.Literal(value='react', raw='"react"'), jac_node=nd);
-    import_decl = self.sync_loc(
-        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
-    );
-    self.imports.append(import_decl);
-    self.injected_imports.add(name);
 }
 
 """Leftmost identifier of a call/subscript chain, or None.
@@ -3589,7 +3553,7 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             if ref_typed and not ref_ctor {
                 self.emit(E2025, node_override=has_var);
             }
-            self._inject_react_import('useRef', nd);
+            self._inject_runtime_import('useRef', nd);
             # The field is constructed as `= Ref()` / `= Ref(initial)` — a
             # Jac-only ambient with no JS counterpart. So we don't emit the
             # `Ref(...)` call itself; we lift its sole argument (the seed for
@@ -4251,9 +4215,9 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                     ability_node, func_name, nd.gen.interop_manifest
                 );
                 # Carry the source module's precomputed effect (from
-                # WalkerEffectsPass) into this client bundle's manifest so the
+                # BoundaryAnalysisPass) into this client bundle's manifest so the
                 # sv-imported endpoint self-registers with the right effects.
-                src_effect = source_mod.gen.client_manifest.endpoint_effects.get(
+                src_effect = source_mod.gen.interop_manifest.endpoint_effects.get(
                     f"func:{func_name}"
                 );
                 if src_effect is not None {
@@ -4359,7 +4323,7 @@ impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
     for sub_mod in nd.gen.client_manifest.params {
         self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
     }
-    for (ename, eeffect) in nd.gen.client_manifest.endpoint_effects.items() {
+    for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
     }
 }
@@ -5053,7 +5017,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
         if stmt.gen.es_ast {
-            if getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT {
+            is_shared_arch = (
+                isinstance(stmt, uni.Archetype)
+                and (stmt.name is not None)
+                and (stmt.name.value in self.shared_arch_names)
+            );
+            if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
+            or is_shared_arch {
                 client_items.append(cast(es.Statement, stmt.gen.es_ast));
             } else {
                 ;
@@ -5574,7 +5544,18 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Allow a shared module-level archetype referenced by client code to
+        # reach exit_archetype so its JS class is emitted (mirrors enter_node).
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             return;
         }
     }
@@ -5610,7 +5591,18 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Don't prune a shared module-level archetype referenced by client code:
+        # it must reach exit_archetype to emit its JS class.
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             self.prune();
             return;
         }
@@ -5645,13 +5637,25 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
-    # Endpoint effects are computed by WalkerEffectsPass (which runs before
-    # this pass) into mod.gen.client_manifest. Seed the fresh accumulator from
-    # it so the registration emit and cross-module merge carry them through;
-    # this pass no longer classifies effects itself.
+    # Endpoint effects are computed by BoundaryAnalysisPass (front-end) into
+    # mod.gen.interop_manifest. Seed the fresh accumulator from it so the
+    # registration emit and cross-module merge carry them through; this pass
+    # no longer classifies effects itself.
     self.client_manifest.endpoint_effects = dict(
-        self.ir_in.gen.client_manifest.endpoint_effects
+        self.ir_in.gen.interop_manifest.endpoint_effects
     );
+    # Module-level (shared) archetypes referenced by client code. They live in
+    # SERVER context (their default) but client code uses them, so they must be
+    # emitted as JS classes rather than pruned/filtered out -- the same sharing
+    # rule the native backend applies via ModuleCodegenPass.
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    self.shared_arch_names: set[str] = {
+        a.name.value
+        for a in ModuleCodegenPass.shared_archetypes_for_context(
+            self.ir_in, CodeContext.CLIENT
+        )
+        if a.name is not None
+    };
     self.jsx_processor = EsJsxProcessor(self);
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and
