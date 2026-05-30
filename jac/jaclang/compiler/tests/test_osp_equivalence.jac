@@ -19,5 +19,5 @@ ordering) get added as each backend's support lands.
 import from jaclang.compiler.tests.xbackend_equiv { run_with_both }
 
 test "osp acc: typed entry ability accumulates walker state across spawns" {
-    run_with_both("osp_acc.jac", "acc_py", "acc_cl", "acc_na");
+    run_with_both("osp_acc.jac", "acc_py", "acc_cl", "acc_na", require=["na"]);
 }
