@@ -1,27 +1,38 @@
 """Server binding for the portable Object-Spatial kernel.
 
-Builds the kernel's dispatch descriptors (`WalkerDesc`/`NodeDesc`) and type-tag
-relation from live archetype classes — the server's analogue of the static
-descriptors the native backend emits at compile time. The kernel itself stays
+Builds the kernel's dispatch descriptors (`WalkerDesc` / `NodeDesc`) and
+type-tag relation from live archetype classes -- the server's analogue of the
+static descriptors the native backend emits at compile time. The kernel stays
 backend-free; this module is the `OspRuntime` the server supplies.
 
-Descriptors are derived from each archetype's compiler-populated
-`_jac_entry_funcs_` / `_jac_exit_funcs_` (their `.trigger` is now compiler-known
-data) so the slot order matches the server engine. Union triggers expand into
-one slot per member; an untyped trigger becomes `UNTYPED`. Archetype classes are
-reflected dynamically, so reflected values are typed loosely (`any`).
+The sv runtime stores `NodeAnchor` / `EdgeAnchor` wrappers in
+`walker.next` / `walker.path` / `walker.ignores`, but ability functions receive
+the underlying archetype (`anchor.archetype`). The slot wrappers below unwrap
+any anchor argument before invoking the user's ability function, so the kernel
+can be anchor-agnostic and uniformly call `slot.fn(a, b)`.
+
+Reports bubble: a nested spawn forwards its collected reports up to the
+outer scope (mirroring the sv `CallState` contextvar semantics); the outermost
+spawn drains them onto the walker and commits the persistence buffer on
+success.
 """
 
 import from types { UnionType }
 import from typing { cast }
-import from jaclang.jac0core.archetype { ObjectSpatialFunction }
+import from jaclang.jac0core.archetype {
+    NodeAnchor,
+    EdgeAnchor,
+    ObjectSpatialFunction,
+    WalkerArchetype
+}
 import from jaclang.jac0core.osp_kernel {
     Slot,
     WalkerDesc,
     NodeDesc,
     WalkScope,
     OspRuntime,
-    UNTYPED
+    UNTYPED,
+    _walk_stack
 }
 
 """class -> int tag, the inverse list (index == tag), and a descriptor cache."""
@@ -54,16 +65,37 @@ def _trigger_members(trig: any) -> list[any] {
     return [trig];
 }
 
+"""Unwrap a sv `NodeAnchor` / `EdgeAnchor` to its archetype; pass through any
+non-anchor value. Lets ability functions written against archetypes be invoked
+uniformly from a kernel that carries anchors in its scope."""
+def _unwrap(x: any) -> any {
+    if isinstance(x, (NodeAnchor, EdgeAnchor)) {
+        return x.archetype;
+    }
+    return x;
+}
+
+"""Wrap an ability function so kernel-side `(a, b)` arguments are unwrapped to
+archetypes before the user's code runs. Captures `f` by default-arg so each
+slot binds its own function."""
+def _wrap_ability(f: any) -> any {
+    def call(a: any, b: any, fn: any = f) -> any {
+        return fn(_unwrap(a), _unwrap(b));
+    }
+    return call;
+}
+
 """Build the dispatch slots for one ability-function list."""
 def _slots_from(funcs: list[ObjectSpatialFunction]) -> list[Slot] {
     slots: list[Slot] = [];
     for f in funcs {
         members = _trigger_members(f.trigger);
+        wrapped = _wrap_ability(f.func);
         if not members {
-            slots.append(Slot(trig_tag=UNTYPED, fn=f.func));
+            slots.append(Slot(trig_tag=UNTYPED, fn=wrapped));
         } else {
             for m in members {
-                slots.append(Slot(trig_tag=_tag_for(m), fn=f.func));
+                slots.append(Slot(trig_tag=_tag_for(m), fn=wrapped));
             }
         }
     }
@@ -84,9 +116,10 @@ def desc_for(cls: any) -> WalkerDesc {
     return desc;
 }
 
-"""`tag_of`: archetype class tag of a node/walker instance."""
+"""`tag_of`: archetype class tag of a node / walker handle. Unwraps anchors so
+dispatch keys on the user-defined archetype class, not on the anchor wrapper."""
 def _sv_tag_of(handle: any) -> int {
-    return _tag_for(type(handle));
+    return _tag_for(`type(_unwrap(handle)));
 }
 
 """`is_a`: subtype test over the registered archetype classes."""
@@ -100,9 +133,46 @@ def _sv_node_desc(tag: int) -> NodeDesc {
     return NodeDesc(type_tag=d.type_tag, entry=d.entry, exit=d.exit);
 }
 
-"""`on_complete`: deliver collected reports onto the walker at the boundary."""
+"""`on_complete`: deliver reports + commit persistence at the spawn boundary.
+
+Nested spawns bubble their collected reports up to the outer scope (matching
+the sv `CallState` contextvar semantics where a nested spawn shares the
+outermost report queue). The outermost spawn drains `scope.reports` onto the
+walker and commits the persistence buffer on success."""
 def _sv_on_complete(scope: WalkScope, ok: bool) {
-    scope.wlk.reports = scope.reports;
+    # Mirror the kernel scope onto the walker anchor (sv legacy contract:
+    # walker.path holds the visited locations; next/ignores reset at spawn end).
+    if isinstance(scope.wlk, WalkerArchetype) {
+        anch = scope.wlk.__jac__;
+        anch.path = `list(scope.path);
+        anch.next = [];
+        anch.ignores = [];
+    }
+    if _walk_stack {
+        # Nested spawn: bubble reports up to the outer scope; the outermost
+        # spawn drains them onto the walker and commits.
+        outer = _walk_stack[-1];
+        for r in scope.reports {
+            outer.reports.append(r);
+        }
+        return;
+    }
+    # Outermost spawn: drain reports onto the walker and commit on success.
+    if isinstance(scope.wlk, WalkerArchetype) {
+        scope.wlk.reports = scope.reports;
+    }
+    if ok {
+        # Commit the deferred L1 buffer to durable storage (mirrors sv's
+        # ExecutionManager.spawn_walker so direct `walker spawn node` flows
+        # persist without manual Jac.commit()). On native / client builds the
+        # context's mem.commit is a no-op so this is safe to call uniformly.
+        import from jaclang.jac0core.runtime { JacRuntimeInterface }
+        try {
+            JacRuntimeInterface.get_context().mem.commit();
+        } except Exception {
+            ;
+        }
+    }
 }
 
 """The server's OspRuntime: type-tag intrinsics + descriptor lookup, bridged to

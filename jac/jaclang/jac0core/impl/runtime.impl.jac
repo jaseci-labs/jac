@@ -332,38 +332,48 @@ impl JacWalker.`visit(
         ),
     insert_loc: int = -1
 ) -> bool {
+    # Resolve a path expression to its archetype list, then enqueue the
+    # corresponding anchors onto the active walk via the portable kernel.
+    import from jaclang.jac0core.osp_kernel { osp_visit }
     if isinstance(expr, ObjectSpatialPath) {
         expr.from_visit = True;
         expr = JacRuntimeInterface.refs(expr);
     }
-    if isinstance(`walker, WalkerArchetype) {
-        'Walker visits node.';
-        wanch = `walker.__jac__;
-        before_len = len(wanch.next);
-        next = [];
-        for anchor in (i.__jac__ for i in expr)
-            if isinstance(expr, `list)
-            else [expr.__jac__]
-                if isinstance(expr, (NodeArchetype, EdgeArchetype))
-                else [] {
-            if (anchor not in wanch.ignores) {
-                if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
-                    next.append(anchor);
-                } else {
-                    raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.');
-                }
-            }
-        }
-        if (insert_loc < -len(wanch.next)) {
-            insert_loc = 0;
-        } elif (insert_loc < 0) {
-            insert_loc += len(wanch.next) + 1;
-        }
-        wanch.next = wanch.next[:insert_loc] + next + wanch.next[insert_loc:];
-        return (len(wanch.next) > before_len);
-    } else {
+    if not isinstance(`walker, WalkerArchetype) {
         raise TypeError('Invalid walker object');
     }
+    items: list = `list(expr)
+        if isinstance(expr, `list)
+        else ([expr] if isinstance(expr, (NodeArchetype, EdgeArchetype)) else []);
+    targets: list = [];
+    for arch in items {
+        anchor = arch.__jac__;
+        if not isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
+            raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.');
+        }
+        targets.append(anchor);
+    }
+    import from jaclang.jac0core.osp_kernel { _current_scope }
+    if _current_scope() is not None {
+        return osp_visit(targets, insert_loc);
+    }
+    # Legacy fallback: enqueue onto the walker anchor directly (the async
+    # walker engine still uses walker.__jac__.next until it migrates).
+    wanch = `walker.__jac__;
+    before_len = len(wanch.next);
+    filtered = [
+        a
+        for a in targets
+        if a not in wanch.ignores
+    ];
+    pos = insert_loc;
+    if pos < -len(wanch.next) {
+        pos = 0;
+    } elif pos < 0 {
+        pos = pos + len(wanch.next) + 1;
+    }
+    wanch.next = wanch.next[:pos] + filtered + wanch.next[pos:];
+    return (len(wanch.next) > before_len);
 }
 
 """Classify an ability's trigger once and cache it on the function.
@@ -517,52 +527,15 @@ impl JacWalker._visit_node_recursive(
 impl JacWalker.spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
+    # Lower to the portable Object-Spatial kernel. Traversal semantics
+    # (DFS recursion, post-order exits, queue-FIFO across branches, opt-in
+    # visit-once via ignores) and persistence/permission/report bookkeeping
+    # live behind `OspRuntime` -- see `osp_kernel` and `osp_kernel_sv`.
+    import from jaclang.jac0core.osp_kernel { osp_spawn }
+    import from jaclang.jac0core.osp_kernel_sv { desc_for, make_sv_runtime }
     warch = `walker.archetype;
-    `walker.path = [];
-    current_loc = nd.archetype;
-    walker_succeeded = False;
-    report_scope = _osp_host.open_walk_scope();
-    try {
-        for i in warch._jac_entry_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                `walker.ignores = [];
-                walker_succeeded = True;
-                return warch;
-            }
-        }
-        while `walker.next {
-            next_anchor = `walker.next.pop(0);
-            if (
-                (next_anchor not in `walker.ignores)
-                and not JacWalker._visit_node_recursive(warch, `walker, next_anchor)
-            ) {
-                break;
-            }
-        }
-        if `walker.path {
-            current_loc = `walker.path[-1].archetype;
-        }
-        for i in warch._jac_exit_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                break;
-            }
-        }
-        `walker.ignores = [];
-        walker_succeeded = True;
-        return warch;
-    } finally {
-        # Outermost spawn: collect reports onto the walker, then flush deferred
-        # persistence — both no-ops for a nested spawn. (Server-side these drain
-        # the CallState contextvar and commit the L1 buffer.)
-        _osp_host.close_walk_scope(report_scope, warch);
-        _osp_host.on_spawn_complete(report_scope, walker_succeeded);
-    }
+    osp_spawn(make_sv_runtime(), warch, desc_for(`type(warch)), `list(`walker.next));
+    return warch;
 }
 
 """Async version: Execute all entry abilities for current location.
@@ -813,7 +786,11 @@ impl JacWalker.`spawn(
 
 """Jac's disengage stmt feature."""
 impl JacWalker.`disengage(`walker: WalkerArchetype) -> bool {
+    import from jaclang.jac0core.osp_kernel { osp_disengage }
+    # Mirror onto the walker anchor for backwards-compatible read access while
+    # signalling the active kernel scope to halt.
     `walker.__jac__.disengaged = True;
+    osp_disengage();
     return True;
 }
 
@@ -1482,11 +1459,19 @@ impl OspHost.on_spawn_complete(scope: object, succeeded: bool) -> None {
 
 """Jac's report stmt feature."""
 impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
+    import from jaclang.jac0core.osp_kernel { osp_report, _current_scope }
     if custom {
         JacRuntimeInterface.get_context().custom = expr;
     } else {
         JacConsole.get_console().print(expr);
-        _osp_host.record_report(expr);
+        # Route into the active scope: the portable kernel when a sync spawn is
+        # in flight; the legacy CallState contextvar otherwise (the async
+        # walker engine still uses CallState until it migrates to the kernel).
+        if _current_scope() is not None {
+            osp_report(expr);
+        } else {
+            _osp_host.record_report(expr);
+        }
     }
 }
 
