@@ -6,7 +6,7 @@ import from jac_scale.config_loader { get_scale_config }
 import from jac_scale._optdeps.optional_deps { require_optional }
 import from enum { StrEnum }
 
-enum DatabaseType ( StrEnum ) { MONGODB = 'mongodb', REDIS = 'redis' }
+enum DatabaseType(StrEnum) { MONGODB = 'mongodb', REDIS = 'redis' }
 
 """Resolve database URI from parameter or configuration."""
 def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {

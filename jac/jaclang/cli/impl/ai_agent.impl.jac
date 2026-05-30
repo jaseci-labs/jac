@@ -2054,7 +2054,7 @@ impl TurnStats.absorb(st: dict) {
 
 """Compose the system message for a state, given the objective and memory."""
 impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
-    role = str(getattr(state_ty, "_jac_semstr", "") or "");
+    role = str(state_ty?._jac_semstr or "");
     return (
         system_prompt() + "\n\n## Current state\n\nYou are in " + role + "\n\n## Objective\n\n" + objective + "\n\n## Progress so far (shared across states)\n\n" + ledger.render()
     );
@@ -2514,15 +2514,15 @@ impl run_agent(req: object) -> int {
     r: any = req;
     # Seed the session working directory; every file tool and run_command
     # resolves against it, and a `cd` the model issues updates it.
-    agent.cwd = os.path.normpath(str(getattr(r, "cwd", "") or os.getcwd()));
+    agent.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
     # `--ui`: hand off to the bundled web app instead of the terminal REPL. The
     # child server re-imports this module and runs the agent itself, so nothing
     # else here (model build, banner, REPL) applies to the parent process.
-    if bool(getattr(r, "ui", False)) {
+    if bool(r?.ui) {
         return _run_ui_server(r);
     }
     agent.cfg.yolo_mode = not r.safe;
-    agent.cfg.verbose = not bool(getattr(r, "quiet", False));
+    agent.cfg.verbose = not bool(r?.quiet);
     # Surface CI recompiles in the live view so the work behind writes/queries shows.
     agent.ci = r.code_intel;
     if agent.ci is not None {
@@ -2905,7 +2905,7 @@ impl ui_graph -> dict {
                 "id": nid,
                 "label": nid,
                 "desc": nd.desc,
-                "sem": str(getattr(type(nd), "_jac_semstr", "") or ""),
+                "sem": str(type(nd)?._jac_semstr or ""),
                 "tools": tool_names
             }
         );
@@ -3073,8 +3073,8 @@ impl _run_ui_server(r: any) -> int {
     }
     env = dict(os.environ);
     env["JAC_AI_UI_PROJECT"] = agent.cwd;
-    env["JAC_AI_UI_MODEL"] = str(getattr(r, "model", "") or "");
-    env["JAC_AI_UI_NCTX"] = str(int(getattr(r, "n_ctx", 0) or 0));
+    env["JAC_AI_UI_MODEL"] = str(r?.model or "");
+    env["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
     log_path = "/tmp/jac_ai_ui.log";
     console.print("");
     console.print("  Jac AI -- web UI", style="bold");

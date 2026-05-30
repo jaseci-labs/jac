@@ -545,6 +545,24 @@ impl DocIRGenPass.exit_enum(nd: uni.Enum) -> None {
             if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
                 body_parts.append(self.line());
             }
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
+            # Typed-base colon (`enum X: int`): no space before, one after.
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.LPAREN)) {
+            # Base-class list (`enum X(A, B)`): no space before `(` or after it.
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            # Base-class separator (body commas are handled by `in_body` above).
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } elif isinstance(i, uni.SubTag) {
             parts.pop();
             parts.append(i.gen.doc_ir);

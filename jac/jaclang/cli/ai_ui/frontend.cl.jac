@@ -8,7 +8,13 @@ updates at token granularity rather than on a poll timer.
 """
 
 import from react { useEffect, useRef }
-sv import from .server { agent_send, agent_graph, agent_reset, agent_stop }
+sv import from .server {
+    agent_send,
+    agent_graph,
+    agent_reset,
+    agent_stop,
+    agent_stream
+}
 sv import from .server { agent_settings, agent_apply_settings, agent_call_detail }
 sv import from .server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
 sv import from .server { CallDetail }
@@ -43,10 +49,11 @@ def:pub app -> JsxElement {
         # detail; -1 / None when the call-detail modal is closed.
         selectedCall: int = -1,
         callDetail: any = None,
-        # Drag-resizable pane sizes (px): left column width, right-column graph
-        # height, and bottom-pane height. The handles mutate these.
+        # Drag-resizable pane sizes (px): left column (conversation) width, right
+        # column (activity) width, and bottom-pane height. The graph fills the
+        # center column between them. The handles mutate these.
         leftW: int = 460,
-        graphH: int = 300,
+        rightW: int = 380,
         bottomH: int = 200,
         draft: str = "",
         # Settings panel: open flag + the live key status the stream pushes in
@@ -69,10 +76,9 @@ def:pub app -> JsxElement {
 
     unmountedRef: any = useRef(False);
     ctrlRef: any = useRef(None);
-    # `window`/`document` typed loosely so viewport + element reads used to clamp
-    # pane sizes type-check (the client stub omits those members).
+    # `window` typed loosely so viewport reads used to clamp pane sizes type-check
+    # (the client stub omits that member).
     win: any = window;
-    doc: any = document;
     # The live event list is kept in a ref so the stream handler (captured once
     # by the effect) always upserts against the current list, not a stale render
     # closure -- otherwise each delta would rebuild from an empty `events`.
@@ -349,11 +355,11 @@ def:pub app -> JsxElement {
                 <ResizeHandle
                     vertical={True}
                     onResize={lambda dx: float { leftW = max(
-                        300, min(int(leftW + dx), int(win.innerWidth) - 380)
+                        300, min(int(leftW + dx), int(win.innerWidth) - rightW - 320)
                     ); }}
                 />
-                <div className="col right">
-                    <div className="pane" style={{"height": str(graphH) + "px"}}>
+                <div className="col center">
+                    <div className="pane">
                         <div className="pane-head">Phase graph</div>
                         <PhaseGraph
                             {nodes}
@@ -365,19 +371,14 @@ def:pub app -> JsxElement {
                             onSelect={lambda id: str { selected = id; }}
                         />
                     </div>
-                    <ResizeHandle
-                        vertical={False}
-                        onResize={lambda dy: float {
-                            # Clamp against the right column's own height so the
-                            # graph never grows past it (which would squeeze the
-                            # activity feed out); always leave it room.
-                            rc = doc.querySelector(".col.right");
-                            cap = (int(rc.clientHeight) - 120)
-                                if rc
-                                else (int(win.innerHeight) - 260);
-                            graphH = max(140, min(int(graphH + dy), cap));
-                        }}
-                    />
+                </div>
+                <ResizeHandle
+                    vertical={True}
+                    onResize={lambda dx: float { rightW = max(
+                        300, min(int(rightW - dx), int(win.innerWidth) - leftW - 320)
+                    ); }}
+                />
+                <div className="col right" style={{"width": str(rightW) + "px"}}>
                     <ActivityFeed {events} {status}/>
                 </div>
             </div>
