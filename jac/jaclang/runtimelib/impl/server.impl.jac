@@ -1525,6 +1525,23 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
     server = self;
     """Handle HTTP requests.""";
     class JacRequestHandler(BaseHTTPRequestHandler) {
+        """Dispatch one request, swallowing client-disconnect errors.
+
+        A client that reloads, navigates away, or closes the tab mid-response
+        drops the socket while the handler is still writing -- raising
+        BrokenPipeError/ConnectionResetError out of `do_GET`/`do_POST`. The base
+        handler lets that escape, so socketserver prints an alarming traceback
+        for what is a routine disconnect. There is nothing to send to a peer that
+        already hung up, so end the connection quietly instead.
+        """
+        def handle_one_request(self: JacRequestHandler) {
+            try {
+                BaseHTTPRequestHandler.handle_one_request(self);
+            } except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) {
+                self.close_connection = True;
+            }
+        }
+
         """Extract auth token from Authorization header."""
         def _get_auth_token(self: JacRequestHandler) -> (str | None) {
             auth_header = self.headers.get('Authorization');

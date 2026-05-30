@@ -41,66 +41,66 @@ cl import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn }
 ```jac
 cl import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn, useNavigate }
 
-to cl:
+cl {
+    def:pub LoginPage() -> JsxElement {
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
+        has loading: bool = False;
 
-def:pub LoginPage() -> JsxElement {
-    has username: str = "";
-    has password: str = "";
-    has error: str = "";
-    has loading: bool = False;
+        navigate = useNavigate();
 
-    navigate = useNavigate();
+        async def handleLogin(e: FormEvent) -> None {
+            e.preventDefault();
+            error = "";
 
-    async def handleLogin(e: FormEvent) -> None {
-        e.preventDefault();
-        error = "";
+            if not username or not password {
+                error = "Please fill in all fields";
+                return;
+            }
 
-        if not username or not password {
-            error = "Please fill in all fields";
-            return;
+            loading = True;
+            success = await jacLogin(username, password);
+            loading = False;
+
+            if success {
+                navigate("/");
+            } else {
+                error = "Invalid credentials";
+            }
         }
 
-        loading = True;
-        success = await jacLogin(username, password);
-        loading = False;
+        return <div style={{"maxWidth": "400px", "margin": "0 auto", "padding": "2rem"}}>
+            <h2>Login</h2>
+            <form onSubmit={handleLogin}>
+                {error and <div style={{"color": "red", "marginBottom": "1rem"}}>{error}</div>}
 
-        if success {
-            navigate("/");
-        } else {
-            error = "Invalid credentials";
-        }
+                <input
+                    type="text"
+                    value={username}
+                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                    placeholder="Username"
+                    style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
+                />
+
+                <input
+                    type="password"
+                    value={password}
+                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                    placeholder="Password"
+                    style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
+                />
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    style={{"width": "100%", "padding": "0.5rem"}}
+                >
+                    {loading and "Logging in..." or "Login"}
+                </button>
+            </form>
+        </div>;
     }
-
-    return <div style={{"maxWidth": "400px", "margin": "0 auto", "padding": "2rem"}}>
-        <h2>Login</h2>
-        <form onSubmit={handleLogin}>
-            {error and <div style={{"color": "red", "marginBottom": "1rem"}}>{error}</div>}
-
-            <input
-                type="text"
-                value={username}
-                onChange={lambda e: ChangeEvent { username = e.target.value; }}
-                placeholder="Username"
-                style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
-            />
-
-            <input
-                type="password"
-                value={password}
-                onChange={lambda e: ChangeEvent { password = e.target.value; }}
-                placeholder="Password"
-                style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
-            />
-
-            <button
-                type="submit"
-                disabled={loading}
-                style={{"width": "100%", "padding": "0.5rem"}}
-            >
-                {loading and "Logging in..." or "Login"}
-            </button>
-        </form>
-    </div>;
 }
 ```
 
@@ -115,17 +115,17 @@ Authenticates a user and stores the JWT token.
 ```jac
 cl import from "@jac/runtime" { jacLogin }
 
-to cl:
+cl {
+    async def handleLogin() -> None {
+        # jacLogin returns bool (True = success, False = failure)
+        success = await jacLogin(username, password);
 
-async def handleLogin() -> None {
-    # jacLogin returns bool (True = success, False = failure)
-    success = await jacLogin(username, password);
-
-    if success {
-        # User is now logged in, token stored automatically
-        navigate("/dashboard");
-    } else {
-        error = "Invalid credentials";
+        if success {
+            # User is now logged in, token stored automatically
+            navigate("/dashboard");
+        } else {
+            error = "Invalid credentials";
+        }
     }
 }
 ```
@@ -137,17 +137,17 @@ Registers a new user account.
 ```jac
 cl import from "@jac/runtime" { jacSignup }
 
-to cl:
+cl {
+    async def handleSignup() -> None {
+        # jacSignup returns dict with success key
+        result = await jacSignup(username, password);
 
-async def handleSignup() -> None {
-    # jacSignup returns dict with success key
-    result = await jacSignup(username, password);
-
-    if result["success"] {
-        # User registered and logged in
-        navigate("/dashboard");
-    } else {
-        error = result["error"] or "Signup failed";
+        if result["success"] {
+            # User registered and logged in
+            navigate("/dashboard");
+        } else {
+            error = result["error"] or "Signup failed";
+        }
     }
 }
 ```
@@ -159,12 +159,12 @@ Clears the authentication token.
 ```jac
 cl import from "@jac/runtime" { jacLogout }
 
-to cl:
-
-def handleLogout() -> None {
-    jacLogout();
-    # User is now logged out
-    navigate("/login");
+cl {
+    def handleLogout() -> None {
+        jacLogout();
+        # User is now logged out
+        navigate("/login");
+    }
 }
 ```
 
@@ -175,18 +175,18 @@ Checks if user is currently authenticated.
 ```jac
 cl import from "@jac/runtime" { jacIsLoggedIn }
 
-to cl:
+cl {
+    def:pub NavBar() -> JsxElement {
+        isLoggedIn = jacIsLoggedIn();
 
-def:pub NavBar() -> JsxElement {
-    isLoggedIn = jacIsLoggedIn();
-
-    return <nav>
-        {isLoggedIn and (
-            <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
-        ) or (
-            <a href="/login">Login</a>
-        )}
-    </nav>;
+        return <nav>
+            {isLoggedIn and (
+                <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
+            ) or (
+                <a href="/login">Login</a>
+            )}
+        </nav>;
+    }
 }
 ```
 
@@ -207,238 +207,238 @@ cl import from "@jac/runtime" {
     useNavigate
 }
 
-to cl:
+cl {
+    # === Login Page ===
+    def:pub LoginPage() -> JsxElement {
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
+        has loading: bool = False;
 
-# === Login Page ===
-def:pub LoginPage() -> JsxElement {
-    has username: str = "";
-    has password: str = "";
-    has error: str = "";
-    has loading: bool = False;
+        navigate = useNavigate();
 
-    navigate = useNavigate();
-
-    # Check if already logged in
-    can with entry {
-        if jacIsLoggedIn() {
-            navigate("/");
+        # Check if already logged in
+        can with entry {
+            if jacIsLoggedIn() {
+                navigate("/");
+            }
         }
+
+        async def handleLogin(e: FormEvent) -> None {
+            e.preventDefault();
+            error = "";
+
+            if not username.trim() or not password {
+                error = "Please fill in all fields";
+                return;
+            }
+
+            loading = True;
+            success = await jacLogin(username, password);
+            loading = False;
+
+            if success {
+                navigate("/");
+            } else {
+                error = "Invalid username or password";
+            }
+        }
+
+        return <div style={{"maxWidth": "400px", "margin": "2rem auto", "padding": "2rem"}}>
+            <h2>Login</h2>
+            <form onSubmit={handleLogin}>
+                {error and <div style={{"color": "#dc2626", "marginBottom": "1rem"}}>{error}</div>}
+
+                <div style={{"marginBottom": "1rem"}}>
+                    <input
+                        type="text"
+                        value={username}
+                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                        placeholder="Username"
+                        style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
+                    />
+                </div>
+
+                <div style={{"marginBottom": "1rem"}}>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                        placeholder="Password"
+                        style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                        "width": "100%",
+                        "padding": "0.75rem",
+                        "background": "#3b82f6",
+                        "color": "white",
+                        "border": "none",
+                        "borderRadius": "4px",
+                        "cursor": "pointer"
+                    }}
+                >
+                    {loading and "Logging in..." or "Login"}
+                </button>
+
+                <p style={{"textAlign": "center", "marginTop": "1rem"}}>
+                    Need an account? <Link to="/signup">Sign up</Link>
+                </p>
+            </form>
+        </div>;
     }
 
-    async def handleLogin(e: FormEvent) -> None {
-        e.preventDefault();
-        error = "";
+    # === Signup Page ===
+    def:pub SignupPage() -> JsxElement {
+        has username: str = "";
+        has password: str = "";
+        has confirmPassword: str = "";
+        has error: str = "";
+        has loading: bool = False;
 
-        if not username.trim() or not password {
-            error = "Please fill in all fields";
-            return;
+        navigate = useNavigate();
+
+        async def handleSignup(e: FormEvent) -> None {
+            e.preventDefault();
+            error = "";
+
+            if not username.trim() or not password {
+                error = "Please fill in all fields";
+                return;
+            }
+
+            if password != confirmPassword {
+                error = "Passwords don't match";
+                return;
+            }
+
+            if password.length < 6 {
+                error = "Password must be at least 6 characters";
+                return;
+            }
+
+            loading = True;
+            result = await jacSignup(username, password);
+            loading = False;
+
+            if result["success"] {
+                navigate("/");
+            } else {
+                error = result["error"] or "Signup failed";
+            }
         }
 
-        loading = True;
-        success = await jacLogin(username, password);
-        loading = False;
+        return <div style={{"maxWidth": "400px", "margin": "2rem auto", "padding": "2rem"}}>
+            <h2>Create Account</h2>
+            <form onSubmit={handleSignup}>
+                {error and <div style={{"color": "#dc2626", "marginBottom": "1rem"}}>{error}</div>}
 
-        if success {
-            navigate("/");
-        } else {
-            error = "Invalid username or password";
-        }
+                <div style={{"marginBottom": "1rem"}}>
+                    <input
+                        type="text"
+                        value={username}
+                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                        placeholder="Username"
+                        style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
+                    />
+                </div>
+
+                <div style={{"marginBottom": "1rem"}}>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                        placeholder="Password"
+                        style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
+                    />
+                </div>
+
+                <div style={{"marginBottom": "1rem"}}>
+                    <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={lambda e: ChangeEvent { confirmPassword = e.target.value; }}
+                        placeholder="Confirm Password"
+                        style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                        "width": "100%",
+                        "padding": "0.75rem",
+                        "background": "#10b981",
+                        "color": "white",
+                        "border": "none",
+                        "borderRadius": "4px",
+                        "cursor": "pointer"
+                    }}
+                >
+                    {loading and "Creating account..." or "Sign Up"}
+                </button>
+
+                <p style={{"textAlign": "center", "marginTop": "1rem"}}>
+                    Already have an account? <Link to="/login">Login</Link>
+                </p>
+            </form>
+        </div>;
     }
 
-    return <div style={{"maxWidth": "400px", "margin": "2rem auto", "padding": "2rem"}}>
-        <h2>Login</h2>
-        <form onSubmit={handleLogin}>
-            {error and <div style={{"color": "#dc2626", "marginBottom": "1rem"}}>{error}</div>}
+    # === Protected Dashboard ===
+    def:pub Dashboard() -> JsxElement {
+        navigate = useNavigate();
 
-            <div style={{"marginBottom": "1rem"}}>
-                <input
-                    type="text"
-                    value={username}
-                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
-                    placeholder="Username"
-                    style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
-                />
-            </div>
-
-            <div style={{"marginBottom": "1rem"}}>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
-                    placeholder="Password"
-                    style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
-                />
-            </div>
-
-            <button
-                type="submit"
-                disabled={loading}
-                style={{
-                    "width": "100%",
-                    "padding": "0.75rem",
-                    "background": "#3b82f6",
-                    "color": "white",
-                    "border": "none",
-                    "borderRadius": "4px",
-                    "cursor": "pointer"
-                }}
-            >
-                {loading and "Logging in..." or "Login"}
-            </button>
-
-            <p style={{"textAlign": "center", "marginTop": "1rem"}}>
-                Need an account? <Link to="/signup">Sign up</Link>
-            </p>
-        </form>
-    </div>;
-}
-
-# === Signup Page ===
-def:pub SignupPage() -> JsxElement {
-    has username: str = "";
-    has password: str = "";
-    has confirmPassword: str = "";
-    has error: str = "";
-    has loading: bool = False;
-
-    navigate = useNavigate();
-
-    async def handleSignup(e: FormEvent) -> None {
-        e.preventDefault();
-        error = "";
-
-        if not username.trim() or not password {
-            error = "Please fill in all fields";
-            return;
+        # Redirect if not logged in
+        can with entry {
+            if not jacIsLoggedIn() {
+                navigate("/login");
+            }
         }
 
-        if password != confirmPassword {
-            error = "Passwords don't match";
-            return;
-        }
-
-        if password.length < 6 {
-            error = "Password must be at least 6 characters";
-            return;
-        }
-
-        loading = True;
-        result = await jacSignup(username, password);
-        loading = False;
-
-        if result["success"] {
-            navigate("/");
-        } else {
-            error = result["error"] or "Signup failed";
-        }
-    }
-
-    return <div style={{"maxWidth": "400px", "margin": "2rem auto", "padding": "2rem"}}>
-        <h2>Create Account</h2>
-        <form onSubmit={handleSignup}>
-            {error and <div style={{"color": "#dc2626", "marginBottom": "1rem"}}>{error}</div>}
-
-            <div style={{"marginBottom": "1rem"}}>
-                <input
-                    type="text"
-                    value={username}
-                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
-                    placeholder="Username"
-                    style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
-                />
-            </div>
-
-            <div style={{"marginBottom": "1rem"}}>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
-                    placeholder="Password"
-                    style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
-                />
-            </div>
-
-            <div style={{"marginBottom": "1rem"}}>
-                <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={lambda e: ChangeEvent { confirmPassword = e.target.value; }}
-                    placeholder="Confirm Password"
-                    style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
-                />
-            </div>
-
-            <button
-                type="submit"
-                disabled={loading}
-                style={{
-                    "width": "100%",
-                    "padding": "0.75rem",
-                    "background": "#10b981",
-                    "color": "white",
-                    "border": "none",
-                    "borderRadius": "4px",
-                    "cursor": "pointer"
-                }}
-            >
-                {loading and "Creating account..." or "Sign Up"}
-            </button>
-
-            <p style={{"textAlign": "center", "marginTop": "1rem"}}>
-                Already have an account? <Link to="/login">Login</Link>
-            </p>
-        </form>
-    </div>;
-}
-
-# === Protected Dashboard ===
-def:pub Dashboard() -> JsxElement {
-    navigate = useNavigate();
-
-    # Redirect if not logged in
-    can with entry {
-        if not jacIsLoggedIn() {
+        def handleLogout() -> None {
+            jacLogout();
             navigate("/login");
         }
+
+        if not jacIsLoggedIn() {
+            return <p>Redirecting...</p>;
+        }
+
+        return <div style={{"padding": "2rem"}}>
+            <h1>Dashboard</h1>
+            <p>Welcome! You are logged in.</p>
+            <button
+                onClick={lambda -> None { handleLogout(); }}
+                style={{
+                    "padding": "0.5rem 1rem",
+                    "background": "#ef4444",
+                    "color": "white",
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer"
+                }}
+            >
+                Logout
+            </button>
+        </div>;
     }
 
-    def handleLogout() -> None {
-        jacLogout();
-        navigate("/login");
+    # === Main App ===
+    def:pub app() -> JsxElement {
+        return <Router>
+            <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+            </Routes>
+        </Router>;
     }
-
-    if not jacIsLoggedIn() {
-        return <p>Redirecting...</p>;
-    }
-
-    return <div style={{"padding": "2rem"}}>
-        <h1>Dashboard</h1>
-        <p>Welcome! You are logged in.</p>
-        <button
-            onClick={lambda -> None { handleLogout(); }}
-            style={{
-                "padding": "0.5rem 1rem",
-                "background": "#ef4444",
-                "color": "white",
-                "border": "none",
-                "borderRadius": "4px",
-                "cursor": "pointer"
-            }}
-        >
-            Logout
-        </button>
-    </div>;
-}
-
-# === Main App ===
-def:pub app() -> JsxElement {
-    return <Router>
-        <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-        </Routes>
-    </Router>;
 }
 ```
 
@@ -452,12 +452,12 @@ For file-based routing, use the built-in `AuthGuard` component:
 cl import from "@jac/runtime" { AuthGuard, Outlet }
 
 # pages/(auth)/layout.jac - Protects all routes in (auth) group
-to cl:
-
-def:pub layout() -> JsxElement {
-    return <AuthGuard redirect="/login">
-        <Outlet />
-    </AuthGuard>;
+cl {
+    def:pub layout() -> JsxElement {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
+    }
 }
 ```
 
@@ -476,54 +476,54 @@ For complex apps that need shared auth state across components:
 ```jac
 cl import from "@jac/runtime" { jacIsLoggedIn, jacLogin, jacLogout }
 
-to cl:
+cl {
+    import from react { createContext, useContext }
 
-import from react { createContext, useContext }
+    glob AuthContext = createContext(None);
 
-glob AuthContext = createContext(None);
+    # Auth Provider component -- `children` holds the nested JSX
+    def:pub AuthProvider(children: any = None) -> JsxElement {
+        has user: any = None;
+        has loading: bool = True;
 
-# Auth Provider component -- `children` holds the nested JSX
-def:pub AuthProvider(children: any = None) -> JsxElement {
-    has user: any = None;
-    has loading: bool = True;
-
-    can with entry {
-        # Check auth status on mount
-        if jacIsLoggedIn() {
-            # Optionally fetch user data from backend
-            user = {"authenticated": True};
+        can with entry {
+            # Check auth status on mount
+            if jacIsLoggedIn() {
+                # Optionally fetch user data from backend
+                user = {"authenticated": True};
+            }
+            loading = False;
         }
-        loading = False;
-    }
 
-    async def login(username: str, password: str) -> bool {
-        success = await jacLogin(username, password);
-        if success {
-            user = {"authenticated": True};
+        async def login(username: str, password: str) -> bool {
+            success = await jacLogin(username, password);
+            if success {
+                user = {"authenticated": True};
+            }
+            return success;
         }
-        return success;
+
+        def logout() -> None {
+            jacLogout();
+            user = None;
+        }
+
+        value = {
+            "user": user,
+            "loading": loading,
+            "isAuthenticated": user != None,
+            "login": login,
+            "logout": logout
+        };
+
+        return <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>;
     }
 
-    def logout() -> None {
-        jacLogout();
-        user = None;
+    def useAuth() -> dict {
+        return useContext(AuthContext);
     }
-
-    value = {
-        "user": user,
-        "loading": loading,
-        "isAuthenticated": user != None,
-        "login": login,
-        "logout": logout
-    };
-
-    return <AuthContext.Provider value={value}>
-        {children}
-    </AuthContext.Provider>;
-}
-
-def useAuth() -> dict {
-    return useContext(AuthContext);
 }
 ```
 

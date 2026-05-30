@@ -326,15 +326,15 @@ This resolves the chosen style's `.cl.jac` components into `components/ui/`, ins
 Components install as `components/ui/<name>.cl.jac`, keeping their hyphenated registry names (`button.cl.jac`, `dropdown-menu.cl.jac`). **Quote the import path** -- it is required for hyphenated names (an unquoted `dropdown-menu` is a parse error) -- and make the leading dots relative to the importing file's folder: `.components.ui.<name>` from a root file like `main.jac`, `.ui.<name>` from a file in `components/`.
 
 ```jac
-to cl:
+cl {
+    import from ".components.ui.button" { Button }
+    import from ".components.ui.dropdown-menu" { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent }
 
-import from ".components.ui.button" { Button }
-import from ".components.ui.dropdown-menu" { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent }
-
-def:pub MyPage() -> JsxElement {
-    return <div>
-        <Button variant="outline">Click me</Button>
-    </div>;
+    def:pub MyPage() -> JsxElement {
+        return <div>
+            <Button variant="outline">Click me</Button>
+        </div>;
+    }
 }
 ```
 
