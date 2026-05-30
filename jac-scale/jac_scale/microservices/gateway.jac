@@ -17,12 +17,14 @@ import from jac_scale.microservices.runtime.util {
     DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR
 }
-# A-05c: inherit the same auth + admin mixin JacAPIServer uses so the
-# gateway can register admin JSON endpoints (`/admin/login`, `/admin/me`,
-# `/admin/users`, etc.) on its own FastAPI app. Without this, the static
+# A-05c/A-05a: inherit the same admin + logs mixins JacAPIServer uses so
+# the gateway can register admin JSON endpoints (`/admin/login`,
+# `/admin/me`, `/admin/users`) and the log-query endpoints
+# (`/admin/logs/*`) on its own FastAPI app. Without these, the static
 # admin UI loads but every fetch() falls through to the SPA fallback and
-# React fails on `Unexpected token '<'`.
+# React fails on `Unexpected token '<'` (or spins on "Loading logs...").
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
+import from jac_scale.admin.logs { JacAPIServerLogs }
 
 glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {
@@ -38,13 +40,14 @@ Request handling is split into named handlers so each responsibility is
 independently testable. `setup()` wires them into a single middleware
 dispatcher.
 
-Inherits `JacAPIServerAdmin` (A-05c) so the same
-register-on-JFastApiServer machinery used by the monolith server also
-wires admin JSON routes onto this gateway. `_install_admin_api()`
-sets up a `JFastApiServer` that wraps the gateway's existing FastAPI
-app, then calls the inherited `register_admin_endpoints`.
+Inherits `JacAPIServerAdmin` (A-05c) + `JacAPIServerLogs` (A-05a) so
+the same register-on-JFastApiServer machinery used by the monolith
+server also wires admin JSON + log-query routes onto this gateway.
+`_install_admin_api()` sets up a `JFastApiServer` that wraps the
+gateway's existing FastAPI app, then calls the inherited
+`register_admin_endpoints` + `register_logs_endpoints`.
 """
-obj MicroserviceGateway(JacAPIServerAdmin) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,
@@ -148,11 +151,12 @@ obj MicroserviceGateway(JacAPIServerAdmin) {
     registered alongside the static admin assets."""
     def bootstrap_admin_ui -> None;
 
-    """A-05c: wire `JFastApiServer` + `UserManager` + `ApiKeyManager`
-    so the inherited `register_admin_endpoints` method registers
-    routes on THIS gateway's FastAPI app. Raises if dependencies
-    (Mongo for UserManager, etc.) aren't available - callers wrap in
-    try/except so admin failure doesn't take the gateway down."""
+    """A-05c/A-05a: wire `JFastApiServer` + `UserManager` +
+    `ApiKeyManager` so the inherited `register_admin_endpoints` +
+    `register_logs_endpoints` methods register routes on THIS gateway's
+    FastAPI app. Raises if dependencies (Mongo for UserManager, etc.)
+    aren't available - callers wrap in try/except so admin failure
+    doesn't take the gateway down."""
     def _install_admin_api -> None;
 
     """Serve an admin asset by path. Returns None if not found."""

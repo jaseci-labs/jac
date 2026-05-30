@@ -156,15 +156,13 @@ impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
     if isinstance(nd, uni.Int) {
-        # Use base=0 to auto-detect prefix: 0x=hex, 0o=oct, 0b=bin, else decimal
-        return ir.Constant(target_type, int(nd.value, 0));
+        return ir.Constant(target_type, nd.lit_value);
     }
     if isinstance(nd, uni.Float) {
-        return ir.Constant(target_type, float(nd.value));
+        return ir.Constant(target_type, nd.lit_value);
     }
     if isinstance(nd, uni.Bool) {
-        val = 1 if nd.value.lower() in ("true", "1") else 0;
-        return ir.Constant(target_type, val);
+        return ir.Constant(target_type, 1 if nd.lit_value else 0);
     }
     if isinstance(nd, uni.String) or isinstance(nd, uni.MultiString) {
         # String constants - create global string

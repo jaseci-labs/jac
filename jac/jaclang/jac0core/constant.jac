@@ -35,7 +35,7 @@ enum SymbolType {
 }
 
 """LSP Token types for Jac."""
-enum JacSemTokenType : int {
+enum JacSemTokenType: int {
     NAMESPACE = 0,
     TYPE = 1,
     CLASS = 2,
@@ -95,7 +95,6 @@ class Constants(StrEnum) {
         ROOT = 'root';
         VISITOR = 'visitor';
         GUEST = '__guest__';
-        JAC_CHECK = '_check';
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 

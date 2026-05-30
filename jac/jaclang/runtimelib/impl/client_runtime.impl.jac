@@ -90,6 +90,24 @@ impl __applyProp(element: any, key: str, value: any) -> None {
     }
 }
 
+impl JacAwaiting(props: dict[str, any]) -> any {
+    # Bare-serve has no React Suspense; there is no async boundary here, so the
+    # resolved try-clause children render directly. `fallback` is unused — it
+    # only has meaning under jac-client's React.Suspense backing. Returning the
+    # children array lets `__buildDom` render them as a fragment (no wrapper
+    # node), matching React.Suspense's transparent output. The view-lowering
+    # pass always emits this wrapper with a children array, so it is present.
+    return props["children"];
+}
+
+impl JacClientErrorBoundary(props: dict[str, any]) -> any {
+    # Bare-serve has no React error boundary; children render directly. The
+    # `fallback` (except-clause content) is not shown on throw — errors
+    # propagate. Surface parity only; jac-client backs this with
+    # react-error-boundary.
+    return props["children"];
+}
+
 impl createSignal(initialValue: any) -> list[any] {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
@@ -457,11 +475,131 @@ impl __jacGetPath -> str {
     return "/";
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
+# ============================================================================
+# Auto-cache infrastructure
+# ============================================================================
+impl __getEndpointEffects -> dict[str, any] {
+    if not globalThis.__jacEndpointEffects__ {
+        initEl = None;
+        try {
+            initEl = document.getElementById("__jac_init__");
+        } except Exception as e {
+            console.warn("[bare-serve] Failed to find __jac_init__ element:", e);
+        }
+        if initEl {
+            try {
+                data = JSON.parse(initEl.textContent);
+                globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
+            } except Exception as e {
+                console.warn(
+                    "[bare-serve] Failed to parse __jac_init__ data, using empty effects:",
+                    e
+                );
+                globalThis.__jacEndpointEffects__ = {};
+            }
+        } else {
+            globalThis.__jacEndpointEffects__ = {};
+        }
+    }
+    return globalThis.__jacEndpointEffects__;
+}
+
+impl __getCacheState -> dict[str, any] {
+    if not globalThis.__jacCacheState__ {
+        globalThis.__jacCacheState__ = {
+            "cache": {},
+            "order": [],
+            "pending": {},
+            "config": {"maxEntries": 500, "defaultTtlMs": 60000}
+        };
+    }
+    return globalThis.__jacCacheState__;
+}
+
+impl __isFresh(`entry: dict[str, any]) -> bool {
+    if not `entry {
+        return False;
+    }
+    age = Date.now() - `entry["timestamp"];
+    return age < `entry["ttl"];
+}
+
+impl __cacheGet(key: str) -> any {
+    state = __getCacheState();
+    entry = state["cache"][key];
+    if not entry {
+        return None;
+    }
+    # Move to end (most recently used)
+    idx = state["order"].indexOf(key);
+    if idx > -1 {
+        state["order"].splice(idx, 1);
+    }
+    state["order"].push(key);
+    return entry;
+}
+
+impl __cacheSet(key: str, data: any, ttl: int) -> None {
+    state = __getCacheState();
+    # Remove existing entry if present
+    if state["cache"][key] {
+        idx = state["order"].indexOf(key);
+        if idx > -1 {
+            state["order"].splice(idx, 1);
+        }
+    }
+    # Evict oldest while at capacity
+    while len(state["order"]) >= state["config"]["maxEntries"] {
+        __evictOldest();
+    }
+    state["cache"][key] = {"data": data, "timestamp": Date.now(), "ttl": ttl};
+    state["order"].push(key);
+}
+
+impl __evictOldest -> None {
+    state = __getCacheState();
+    if len(state["order"]) > 0 {
+        oldest = state["order"].shift();
+        if oldest and state["cache"][oldest] {
+            Reflect.deleteProperty(state["cache"], oldest);
+        }
+    }
+}
+
+impl __overlaps(list1: list[any], list2: list[any]) -> bool {
+    for item in list1 {
+        if list2.includes(item) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl __invalidateEndpoint(endpoint_key: str) -> None {
+    state = __getCacheState();
+    keys_to_delete = [];
+    for key in Object.keys(state["cache"]) {
+        if key.startsWith(endpoint_key) {
+            keys_to_delete.push(key);
+        }
+    }
+    for key in keys_to_delete {
+        Reflect.deleteProperty(state["cache"], key);
+        idx = state["order"].indexOf(key);
+        if idx > -1 {
+            state["order"].splice(idx, 1);
+        }
+    }
+}
+
+# ============================================================================
+# Raw fetch helpers (no caching)
+# ============================================================================
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict[str, any]) -> any {
     token = __getLocalStorage("jac_token");
-    url = f"/walker/{left}";
-    if right != "" {
-        url = f"/walker/{left}/{right}";
+    url = f"/walker/{`walker}";
+    if nodeId != "" {
+        url = f"/walker/{`walker}/{nodeId}";
     }
     response = await fetch(
         url,
@@ -477,12 +615,74 @@ impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any 
     );
     if not response.ok {
         error_text = await response.json();
-        walker_name = f"{left}/{right}" if right else left;
+        walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
         raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
     # Handle TransportResponse envelope format
     return payload["data"] if payload["data"] else payload;
+}
+
+# ============================================================================
+# Cache-aware dispatch shared by __jacSpawn and __jacCallFunction
+# ============================================================================
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
+    effects = __getEndpointEffects();
+    info = effects[endpoint_key];
+    state = __getCacheState();
+    # Known READER — check cache first, then dedup concurrent identical calls.
+    if info and not info["is_writer"] {
+        cached = __cacheGet(args_key);
+        if cached and __isFresh(cached) {
+            return cached["data"];
+        }
+        if state["pending"][args_key] {
+            return await state["pending"][args_key];
+        }
+        fetch_promise = fetch_fn();
+        state["pending"][args_key] = fetch_promise;
+        try {
+            data = await fetch_promise;
+            __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
+            return data;
+        } finally {
+            Reflect.deleteProperty(state["pending"], args_key);
+        }
+    }
+    # Known WRITER — fetch, then invalidate readers it touches.
+    if info and info["is_writer"] {
+        data = await fetch_fn();
+        writer_touches = info["touches"];
+        for endpoint_name in Object.keys(effects) {
+            reader_info = effects[endpoint_name];
+            if reader_info and not reader_info["is_writer"] {
+                if writer_touches.includes("*")
+                or __overlaps(reader_info["touches"], writer_touches) {
+                    __invalidateEndpoint(endpoint_name);
+                }
+            }
+        }
+        return data;
+    }
+    # Unknown endpoint (no metadata) — direct fetch, no caching.
+    return await fetch_fn();
+}
+
+impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
+    # Auth walkers must never be cached.
+    if left == "login"
+    or left == "signup"
+    or left == "logout"
+    or left == "refresh_token" {
+        return await __doWalkerFetch(left, right, fields);
+    }
+    endpoint_key = f"walker:{left}";
+    args_key = f"{endpoint_key}:{right}:{JSON.stringify(fields)}";
+    return await __cachedEndpointCall(
+        endpoint_key,
+        args_key,
+        lambda -> any { return __doWalkerFetch(left, right, fields); }
+    );
 }
 
 impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
@@ -492,7 +692,7 @@ impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
+impl __doFuncFetch(function_name: str, args: dict[str, any]) -> any {
     token = __getLocalStorage("jac_token");
     response = await fetch(
         f"/function/{function_name}",
@@ -519,6 +719,16 @@ impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
         }
     } except Exception { }
     return result;
+}
+
+impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
+    endpoint_key = f"func:{function_name}";
+    args_key = f"{endpoint_key}:{JSON.stringify(args)}";
+    return await __cachedEndpointCall(
+        endpoint_key,
+        args_key,
+        lambda -> any { return __doFuncFetch(function_name, args); }
+    );
 }
 
 def __normalizeIdentity(x: any) -> dict[str, any] {
@@ -570,6 +780,13 @@ impl jacSignup(
             }
         } except Exception { }
         if token {
+            # Signup auto-logs-in (sets the token) — an auth change, so drop
+            # all cached reader responses just like jacLogin/jacLogout.
+            state = __getCacheState();
+            for key in Object.keys(state["cache"]) {
+                Reflect.deleteProperty(state["cache"], key);
+            }
+            state["order"].splice(0, state["order"].length);
             __setLocalStorage("jac_token", token);
             return {"success": True, "token": token, "username": primary_username};
         }
@@ -620,6 +837,12 @@ impl jacLogin(
             }
         } except Exception { }
         if token {
+            # Auth change — drop all cached reader responses.
+            state = __getCacheState();
+            for key in Object.keys(state["cache"]) {
+                Reflect.deleteProperty(state["cache"], key);
+            }
+            state["order"].splice(0, state["order"].length);
             __setLocalStorage("jac_token", token);
             return True;
         }
@@ -628,6 +851,12 @@ impl jacLogin(
 }
 
 impl jacLogout -> None {
+    # Auth change — drop all cached reader responses.
+    state = __getCacheState();
+    for key in Object.keys(state["cache"]) {
+        Reflect.deleteProperty(state["cache"], key);
+    }
+    state["order"].splice(0, state["order"].length);
     __removeLocalStorage("jac_token");
 }
 

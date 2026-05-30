@@ -280,7 +280,7 @@ impl Parser._make_alert(
 impl Parser.error(message: str) {
     sloc = self.current().loc;
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, sloc);
         self.prog.errors_had.append(alrt);
     }
@@ -288,14 +288,14 @@ impl Parser.error(message: str) {
 
 impl Parser.error_at(message: str, loc: SourceLoc) {
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, loc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.warn_at(message: str, loc: SourceLoc) {
-    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+    if self.prog is not None {
         alrt = self._make_alert(message, loc);
         self.prog.warnings_had.append(alrt);
     }
@@ -307,7 +307,7 @@ impl Parser.emit_diag(
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
     self.error_count += 1;
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None {
         alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.errors_had.append(alrt);
     }
@@ -318,7 +318,7 @@ impl Parser.emit_warn(
 ) {
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
-    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+    if self.prog is not None {
         alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.warnings_had.append(alrt);
     }
@@ -4260,6 +4260,9 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_DELETE) {
         return self.parse_delete_stmt();
     }
+    if self.check(TokenKind.KW_GLOBAL) {
+        return self.parse_global_var();
+    }
     # Handle global statement (inside functions): global a, b;
     if self.check(TokenKind.KW_GLOBAL_REF) {
         return self.parse_global_stmt();
@@ -7056,7 +7059,7 @@ impl Parser.parse_impl_def -> ImplDef {
         if lb_uni {
             kid.append(lb_uni);
         }
-        impl_enum_commas = getattr(self, "_impl_enum_comma_unis", []);
+        impl_enum_commas = self._impl_enum_comma_unis;
         comma_idx = 0;
         for (i, item) in enumerate(body) {
             kid.append(item);

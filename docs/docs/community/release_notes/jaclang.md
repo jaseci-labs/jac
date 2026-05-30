@@ -2,7 +2,37 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.15.4 (Latest Release)
+## jaclang 0.15.5 (Latest Release)
+
+### New Features
+
+- **CLI: `jac bundle --precompile`**: `jac bundle` now accepts a `--precompile` (`-p`) flag that automatically discovers every `python3.X` on `PATH`, compiles `.jac` → `.jir` bytecode in an isolated venv per version, and packages the results into the wheel, replacing the manual precompile CI step.
+- **`jac ai --ui` streams every token live**: The web UI renders the agent's output token-by-token as it is generated, including the tokens behind tool calls and the QA phase's next-step routing decision, alongside a stop control and a per-turn stats summary.
+- **`jac ai --ui` adds resizable panes, a live ledger, and a phase inspector**: The agent web UI now has drag-to-resize panels, a running ledger of changes and notes, and a per-phase inspector that shows each phase's prompt and activity, with its phase graph traced from the actual workflow.
+- **`jac ai --ui` settings panel for model and credentials**: A topbar gear opens a settings dialog to pick the model (with quick-pick presets) and supply an API key, base URL, temperature, and context window, applied live in the running session. The panel auto-opens when the active model needs an API key the session does not have, detected up front and reactively on an authentication failure.
+- **`jac ai --ui` shows per-call token usage and collapsible tool outputs**: The web UI replaces the raw token firehose with a live per-call token-usage stream (tokens in/out, cache, latency, and phase), and renders each tool's output as a collapsible, scrollable dropdown.
+
+### Bug Fixes
+
+- **Fix: Docstrings before declarations inside function bodies now work correctly**: Writing a docstring before a class or function declaration inside a function body used to produce a `W0060` warning and the docstring was ignored. It now attaches to the declaration the same way it does at module level.
+- **Fix: Clear error when `glob` is used inside a function**: Using the `glob` keyword inside a function body now emits `E0063: 'glob' is only valid at module level` instead of the misleading `E0002: Missing ';'` error. Previously, `jac run` would also silently execute wrong code in this case.
+- **Fix: `jac start --dev` watchdog install on cross-version venvs**: When the Jac CLI ran on a different Python minor version than the project's `.jac/venv`, `_ensure_watchdog_installed` would pip-install `watchdog` successfully but fail to import it, because `get_venv_site_packages` resolved the path using the host interpreter's version. The venv path is now resolved from `pyvenv.cfg` (with a `lib/python*` discovery fallback), the venv is added to `sys.path` after install, and the import is re-verified before HMR is reported as ready.
+- **Fix: `jac create` without a name initializes the current directory**: Running `jac create` with no project name previously scaffolded a new `jactastic/` (or `jactastic1/`, `jactastic2/`, ...) subdirectory. It now matches `cargo init` / `uv init` behavior: it initializes the project in the current working directory and derives the project name from that directory. Passing a name (`jac create myapp`) still creates a subdirectory as before.
+- **Fix: tuple unpacking in `for` loops now works in client code**: A `for (i, item) in enumerate(items)` loop (and any tuple target, including nested `for ((a, b), c)` and starred `for (a, *rest)`) compiled without complaint but left the unpacked variables undefined at runtime in the browser, so lists rendered empty. The generated JavaScript now destructures the loop variable correctly.
+- **Fix: `skip` in a client function body now lowers to an early return**: `skip` is a Return-family keyword, but the client/ECMAScript codegen lowered it to JS `continue;` outside a JSX slot. That is illegal outside a loop and crashed the client build at runtime with no `jac check` error. It now emits a bare `return;`, matching the Python target and the documented semantics; the JSX-slot fragment-return guard is unchanged.
+- **Fix: calling an `async` function (or `sv import` RPC stub) without `await` is now a type error**: An `async def` call evaluates to a coroutine, not its return value, but the type checker modeled neither the coroutine wrapping nor `await` unwrapping, so `tasks: list[Task] = get_tasks()` (an un-awaited `sv import` call, which lowers to an async RPC stub on the client) type-checked clean and crashed at runtime with `tasks is not iterable`. Calls to async functions now resolve to `Coroutine[Any, Any, T]`, `await` unwraps them back to `T`, and assigning or returning an un-awaited coroutine raises `E1042` with a "did you forget `await`?" hint.
+- **Fix: `glob` outside module scope is now rejected before execution**: `glob` used inside a function, a `with entry` block, or a `test` block emits `E0063` and now blocks code generation, so `jac run` exits without executing the invalid module instead of running it. `glob` remains valid at module level and inside `cl`/`sv`/`na` codespace blocks.
+
+### Refactors
+
+- **Refactor: Centralize the builtin exception hierarchy**: The builtin exception hierarchy (the parent relationships behind `except ArithmeticError` catching `ZeroDivisionError`, etc.) was duplicated in three places: the native backend, the ecmascript backend, and the generated JS runtime. It now lives in a single source of truth in `JacTypeRegistry`, and the native matching, ecmascript matching, and the JS runtime exception classes are all derived from it.
+
+### Documentation
+
+- **Docs: `jac-cl-components` skill update**: Adds a pitfall on inline lambda vs anonymous `def` in JSX handlers.
+- **Docs: `sv import` await rules added to skill guides**: `sv import` stubs are `async` functions -- `items = fetch()` assigns a `Promise`, not the data. Updated `jac-fullstack-patterns`, `jac-cl-components`, and `jac-core-cheatsheet` with the `await` rule and the two valid async contexts: `async can with entry` (fetch on mount) and `async def handler -> None` (handlers that call `sv import`).
+
+## jaclang 0.15.4
 
 ### Breaking Changes
 

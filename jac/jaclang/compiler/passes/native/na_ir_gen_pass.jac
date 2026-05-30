@@ -142,6 +142,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Primitive emitter singletons
         _native_emitters: (dict[str, object] | None) = None,
         _native_builtin_emitter: (object | None) = None,
+        # Cache: primitive type name -> named methods its emitter implements
+        _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
         # Reference counting support (Phase RC)
         # Phase R2: compile-time gate on debug-only RC machinery (live-list,
         # ctx attribution, leak dump). Read from JAC_RC_DEBUG_CODEGEN env var
@@ -295,6 +297,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module(imported_mod: uni.Module) -> None;
@@ -310,6 +313,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
+    def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
+    def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
+    def _is_walker_arch(name: str) -> bool;
+    def _emit_spawn_entry_dispatch(
+        walker_name: str,
+        walker_val: ir.Value,
+        loc_name: (str | None),
+        loc_val: ir.Value
+    ) -> None;
+
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
@@ -580,6 +595,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _extract_elem_struct_hint(type_node: object) -> (str | None);
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
+    def _primitive_method_names(type_name: str) -> set[str];
     def _dispatch_primitive_method(
         type_name: str,
         method_name: str,

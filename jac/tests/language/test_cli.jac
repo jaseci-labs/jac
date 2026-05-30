@@ -1117,24 +1117,23 @@ test "jac create and run no root files" {
     }
 }
 
-test "jac create default name jactastic" {
+test "jac create without name initializes current directory" {
     _ensure_template_registry();
     _tmpdir = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     os.chdir(_tmpdir);
     try {
         cli_dir = Path(_tmpdir);
-        # First create should use jactastic
+        dir_name = cli_dir.name;
         assert project.create() == 0;
-        assert (cli_dir / "jactastic").is_dir();
+        assert (cli_dir / "jac.toml").is_file();
+        assert (cli_dir / "main.jac").is_file();
+        assert not (cli_dir / "jactastic").exists();
+        toml = (cli_dir / "jac.toml").read_text(encoding="utf-8");
+        assert f'name = "{dir_name}"' in toml;
 
-        # Second create should use jactastic1
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic1").is_dir();
-
-        # Third create should use jactastic2
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic2").is_dir();
+        # Second create in same directory should fail without --force
+        assert project.create() != 0;
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(_tmpdir, ignore_errors=True);

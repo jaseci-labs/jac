@@ -826,11 +826,12 @@ impl MicroserviceGateway.start -> None {
 
 Creates a `JFastApiServer` instance that *wraps the gateway's existing
 FastAPI app* (instead of constructing a new one), then calls the
-`register_admin_endpoints` method inherited from `JacAPIServerAdmin`.
-The method queues JEndPoints via `self.server.add_endpoint(...)` which
-the subsequent `self.server.create_server()` materializes into actual
-FastAPI routes on `self.server.app` - same object as `self.app`, so
-the admin routes coexist with the gateway's dispatcher middleware.
+`register_admin_endpoints` (JacAPIServerAdmin) + `register_logs_endpoints`
+(JacAPIServerLogs) methods. They queue JEndPoints via
+`self.server.add_endpoint(...)` which the subsequent
+`self.server.create_server()` materializes into actual FastAPI routes
+on `self.server.app` - same object as `self.app`, so the admin routes
+coexist with the gateway's dispatcher middleware.
 
 Failure modes (any exception bubbles up to caller's try/except):
   - Mongo unreachable: UserManager init can't bootstrap; admin auth dead
@@ -865,19 +866,25 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.server.set_user_manager(self.user_manager);
     self._api_key_manager = ApiKeyManager();
 
-    # 3. Queue the JSON endpoints. The call appends JEndPoint specs
+    # 3. Queue the JSON endpoints. Each call appends JEndPoint specs
     #    to self.server._endpoints (no FastAPI route is created yet).
+    #    register_admin_endpoints comes from JacAPIServerAdmin (A-05c);
+    #    register_logs_endpoints from JacAPIServerLogs (A-05a) - the
+    #    /admin/logs/* Loki-query endpoints the in-admin Logs UI hits.
     self.register_admin_endpoints();
+    self.register_logs_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()
     #    runs execute() which calls _create_fastapi_route() for every
     #    queued JEndPoint. Without this step the routes never exist
-    #    on the app and the dispatcher's call_next sees only 404s.
+    #    on the app and the dispatcher's call_next sees only 404s
+    #    (or the SPA catchall serves index.html -> the React Logs page
+    #    gets HTML where it expected JSON and spins on "Loading logs...").
     self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, ...)"
+        "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
     );
 }

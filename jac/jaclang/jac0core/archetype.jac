@@ -14,6 +14,11 @@ glob logger = getLogger(__name__),
      TANCH = TypeVar('TANCH', bound='Anchor'),
      T = TypeVar('T');
 
+"""Sentinel marking an ObjectSpatialFunction whose trigger the compiler did
+not emit (e.g. dynamically-built archetypes) — `.trigger` then falls back to
+recovering it from the ability signature via `inspect`."""
+glob _NO_TRIGGER = object();
+
 """Access level enum."""
 enum AccessLevel {
     NO_ACCESS = -1,
@@ -155,7 +160,6 @@ obj Archetype {
     def __jac__ -> Anchor;
 
     def __init_subclass__(cls: any, **kwargs: object) -> None;
-    def __setattr__(name: str, value: any) -> None;
     def postinit -> None;
     def __repr__ -> str;
     def __jac_access__ -> (AccessLevel | str | int | None);
@@ -228,10 +232,25 @@ obj Root(NodeArchetype) {
     def __repr__ -> str;
 }
 
+"""Dispatch classification of an ability's trigger, resolved once and cached
+on ObjectSpatialFunction so the traversal hot loop compares an int instead of
+calling `all_issubclass` on every ability per visited location. UNRESOLVED is
+the not-yet-classified sentinel; OTHER is a truthy trigger that is neither a
+location nor a walker type (fires in no phase, matching the legacy behavior)."""
+enum TriggerKind {
+    UNRESOLVED = -1,
+    UNTYPED = 0,
+    ON_LOC = 1,
+    ON_WALKER = 2,
+    OTHER = 3
+}
+
 """Object-Spatial Function."""
 obj ObjectSpatialFunction {
     has name: str,
-        func: Callable[([any, any], Any)];
+        func: Callable[([any, any], Any)],
+        trigger_override: any = _NO_TRIGGER,
+        kind: TriggerKind = TriggerKind.UNRESOLVED;
 
     @cached_property
     def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);

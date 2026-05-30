@@ -1242,15 +1242,10 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
     re_data = Serializer.serialize(anchor, include_type=True);
     re_data_json = json.dumps(re_data);
     live_arch = anchor?.archetype;
-    live_module = getattr(type(live_arch), '__module__', arch_module)
-        if live_arch
-        else arch_module;
-    live_type = getattr(type(live_arch), '__name__', arch_type)
-        if live_arch
-        else arch_type;
-    live_fp = getattr(type(live_arch), '__jac_fingerprint__', fingerprint)
-        if live_arch
-        else fingerprint;
+    live_module = type(live_arch).__module__ if live_arch else arch_module;
+    live_type = type(live_arch).__name__ if live_arch else arch_type;
+    _live_fp = type(live_arch)?.__jac_fingerprint__ if live_arch else None;
+    live_fp = _live_fp if _live_fp is not None else fingerprint;
     now = datetime.now(timezone.utc).isoformat();
     conn.execute(
         """

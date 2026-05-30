@@ -16,7 +16,7 @@ glob registry = get_registry(),
             "name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Project name (defaults to 'jactastic' with incrementing number if exists)"
+            help="Project name (omit to initialize the current directory)"
         ),
         Arg.create(
             "force",
@@ -41,10 +41,7 @@ glob registry = get_registry(),
 
     ],
     examples=[
-        (
-            "jac create",
-            "Create new jactastic/ directory (or jactastic1/, jactastic2/, etc.)"
-        ),
+        ("jac create", "Initialize a project in the current directory (name from cwd)"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create myapp --use client", "Create with client jacpack template"),

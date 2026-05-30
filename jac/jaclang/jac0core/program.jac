@@ -44,6 +44,14 @@ class JacProgram {
     # the program's caches references the prior IR for `p`. This is the
     # only safe entry point for in-place cache busting.
     def invalidate_module(self: JacProgram, resolved_path: str) -> None;
+    # Single source of truth for "the compiled module at <path>". A file is
+    # routed by `_resolve_program` to either this program or the compiler's
+    # internal program (jaclang-bundled files, e.g. `jac ai --ui`, land in the
+    # latter), so a consumer holding only a path must not assume which hub owns
+    # it. `find_module` spans both (with cross-platform path normalization) and
+    # never recompiles.
+    def _search_hubs(self: JacProgram) -> list[dict];
+    def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def parse_str(
         self: JacProgram,
