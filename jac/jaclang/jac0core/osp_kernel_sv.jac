@@ -18,6 +18,8 @@ success.
 """
 
 import inspect;
+import jaclang.jac0core.osp_kernel as _kernel;
+import from contextvars { ContextVar }
 import from types { UnionType }
 import from typing { cast }
 import from jaclang.jac0core.archetype {
@@ -32,8 +34,62 @@ import from jaclang.jac0core.osp_kernel {
     NodeDesc,
     WalkScope,
     OspRuntime,
-    UNTYPED,
-    _walk_stack
+    UNTYPED
+}
+
+"""ContextVar-backed list proxy. Provides per-request isolation of the OSP
+walk-scope stack so concurrent walker spawns (different requests, asyncio
+tasks) get isolated stacks -- matching the per-request isolation the legacy
+sv engine got from its `CallState` contextvar. The kernel does
+`_walk_stack.append(scope)`, `_walk_stack.pop()`, `_walk_stack[-1]`, and
+truthiness checks; this proxy delegates each to a per-context list. The
+portable kernel itself stays as a plain `glob _walk_stack: list = []`
+(correct for the single-program cl/na runtimes); the sv binding swaps in
+this proxy at module load."""
+obj _ContextStack {
+    has _var: any by postinit;
+
+    def postinit {
+        self._var = ContextVar('osp_walk_stack', default=None);
+    }
+
+    def _list -> list {
+        v = self._var.get();
+        if v is None {
+            v = [];
+            self._var.set(v);
+        }
+        return v;
+    }
+
+    def append(x: any) {
+        self._list().append(x);
+    }
+
+    def pop -> any {
+        return self._list().pop();
+    }
+
+    def __getitem__(k: any) -> any {
+        return self._list()[k];
+    }
+
+    def __bool__ -> bool {
+        return bool(self._list());
+    }
+
+    def __len__ -> int {
+        return len(self._list());
+    }
+}
+
+# Swap the kernel's plain-global walk stack for a ContextVar-backed proxy so
+# concurrent spawns in different asyncio tasks / threads (e.g. concurrent HTTP
+# requests served by sv) get isolated scope stacks. Python re-resolves module
+# globals by name on every access, so the kernel's `_walk_stack.append(...)` /
+# `_walk_stack.pop()` / `_walk_stack[-1]` keep working through the proxy.
+with entry {
+    _kernel._walk_stack = _ContextStack();
 }
 
 """class -> int tag, the inverse list (index == tag), and a descriptor cache."""
@@ -149,10 +205,10 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
         anch.next = [];
         anch.ignores = [];
     }
-    if _walk_stack {
+    if _kernel._walk_stack {
         # Nested spawn: bubble reports up to the outer scope; the outermost
         # spawn drains them onto the walker and commits.
-        outer = _walk_stack[-1];
+        outer = _kernel._walk_stack[-1];
         for r in scope.reports {
             outer.reports.append(r);
         }
@@ -162,12 +218,26 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
     if isinstance(scope.wlk, WalkerArchetype) {
         scope.wlk.reports = scope.reports;
     }
+    # Bridge collected reports into the request-scoped CallState so the sv
+    # HTTP server's `_finalize_call_response` (which serializes reports into
+    # the API response envelope) keeps working unchanged.
+    import from jaclang.jac0core.runtime { JacRuntimeInterface }
+    try {
+        ctx = JacRuntimeInterface.get_context();
+        cs = ctx.call_state.get(None);
+        if cs is not None {
+            for r in scope.reports {
+                cs.reports.put_nowait(r);
+            }
+        }
+    } except Exception {
+        ;
+    }
     if ok {
         # Commit the deferred L1 buffer to durable storage (mirrors sv's
         # ExecutionManager.spawn_walker so direct `walker spawn node` flows
         # persist without manual Jac.commit()). On native / client builds the
         # context's mem.commit is a no-op so this is safe to call uniformly.
-        import from jaclang.jac0core.runtime { JacRuntimeInterface }
         try {
             JacRuntimeInterface.get_context().mem.commit();
         } except Exception {
@@ -204,7 +274,7 @@ async def _run_typed_async(rt: OspRuntime, slots: list[Slot], a: any, b: any) ->
             if inspect.iscoroutine(result) {
                 await result;
             }
-            if _walk_stack and _walk_stack[-1].disengaged {
+            if _kernel._walk_stack and _kernel._walk_stack[-1].disengaged {
                 return;
             }
         }
@@ -219,7 +289,7 @@ async def _run_untyped_async(slots: list[Slot], a: any, b: any) -> None {
             if inspect.iscoroutine(result) {
                 await result;
             }
-            if _walk_stack and _walk_stack[-1].disengaged {
+            if _kernel._walk_stack and _kernel._walk_stack[-1].disengaged {
                 return;
             }
         }
@@ -277,7 +347,7 @@ async def osp_spawn_async(
     rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list
 ) -> any {
     scope = WalkScope(wlk=wlk, path=[], next=`list(starts), ignores=[], reports=[]);
-    _walk_stack.append(scope);
+    _kernel._walk_stack.append(scope);
     ok = False;
     try {
         if scope.next {
@@ -297,7 +367,7 @@ async def osp_spawn_async(
         }
         ok = True;
     } finally {
-        _walk_stack.pop();
+        _kernel._walk_stack.pop();
         rt.on_complete(scope, ok);
     }
     return wlk;
