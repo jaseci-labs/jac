@@ -329,7 +329,8 @@ test "pytauri target imports api base url env var" {
 test "runtime uses initialization script not eval" {
     content = _RUNTIME_PY.read_text(encoding="utf-8");
     assert "initialization_script" in content;
-    assert "WebviewWindowBuilder" in content;
+    assert "context_factory(shell_dir)" in content;
+    assert "builder_factory().build(context" in content;
 }
 
 test "pytauri runtime config has empty windows" {

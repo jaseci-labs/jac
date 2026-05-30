@@ -387,7 +387,7 @@ if sys.platform == "win32":
     import multiprocessing
     multiprocessing.freeze_support()
 
-from jac_desktop.sidecar.main import main
+from jac_client.plugin.src.targets.desktop.sidecar.main import main
 if __name__ == "__main__":
     main()
 '''
@@ -915,7 +915,7 @@ def _create_sidecar_wrapper(binaries_dir: Path, is_windows: bool) -> Path {
 REM Jac Sidecar Wrapper - Runs Jac backend using system Python
 REM This requires Python and jaclang to be installed
 
-python -m jac_desktop.sidecar.main %*
+python -m jac_client.plugin.src.targets.desktop.sidecar.main %*
 ''';
     } else {
         script_name = "jac-sidecar.sh";
@@ -923,7 +923,7 @@ python -m jac_desktop.sidecar.main %*
 # Jac Sidecar Wrapper - Runs Jac backend using system Python
 # This requires Python and jaclang to be installed
 
-exec python3 -m jac_desktop.sidecar.main "$@"
+exec python3 -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
 ''';
     }
 

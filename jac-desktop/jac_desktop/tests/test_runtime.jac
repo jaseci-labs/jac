@@ -38,7 +38,8 @@ test "runtime injects api base url via initialization script" {
     assert "initialization_script" in content , (
         "Runtime should use initialization_script to inject URL before page JS"
     );
-    assert "WebviewWindowBuilder" in content;
+    assert "context_factory(shell_dir)" in content;
+    assert "builder_factory().build(context" in content;
 }
 
 test "runtime loads tauri plugins from jac toml" {

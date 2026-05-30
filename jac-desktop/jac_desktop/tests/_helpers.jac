@@ -23,7 +23,9 @@ glob _TESTS_DIR: Path = Path(str(__file__)).parent,
      _PYTAURI_TARGET_JAC: Path = (
          _JAC_DESKTOP_ROOT / "targets" / "pytauri_desktop_target.jac"
      ),
-     _SIDECAR_MAIN: Path = _JAC_DESKTOP_ROOT / "sidecar" / "main.py",
+     _SIDECAR_MAIN: Path = (
+         _JAC_CLIENT_ROOT / "plugin" / "src" / "targets" / "desktop" / "sidecar" / "main.py"
+     ),
      _RUNTIME_PY: Path = _DESKTOP_HELPERS_JAC,
      _JAC_CLIENT_FIXTURES: Path = _JAC_CLIENT_ROOT / "tests" / "fixtures",
      _VITE_BUNDLER_JAC: Path = _JAC_CLIENT_ROOT / "plugin" / "src" / "vite_bundler.jac",

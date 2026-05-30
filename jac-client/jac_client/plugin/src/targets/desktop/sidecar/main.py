@@ -6,7 +6,7 @@ This is the entry point for the Jac backend sidecar.
 It launches the Jac runtime and starts an HTTP API server.
 
 Usage:
-    python -m jac_desktop.sidecar.main [OPTIONS]
+    python -m jac_client.plugin.src.targets.desktop.sidecar.main [OPTIONS]
     # Or via wrapper script: ./jac-sidecar.sh [OPTIONS]
 
 Options:

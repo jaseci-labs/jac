@@ -54,8 +54,7 @@ import jaclang  # noqa: F401 — bootstrap .jac imports
 from anyio.from_thread import start_blocking_portal
 from jac_desktop.config_loader import get_desktop_config
 from jac_desktop.helpers.desktop_helpers import SIDECAR_BOOT_TIMEOUT, _get_toml_api_base_url
-from pytauri import Commands, WebviewUrl
-from pytauri.webview import WebviewWindowBuilder
+from pytauri import Commands
 from pytauri_wheel.lib import builder_factory, context_factory
 
 API_BASE_URL_ENV = "JAC_PYTAURI_API_BASE_URL"
@@ -109,7 +108,7 @@ def _stop_sidecar():
     _sidecar_proc = None
 
 @commands.command()
-def jac_api_base_url():
+def jac_api_base_url() -> str:
     return _api_base_url or ""
 
 def _start_sidecar(shell_dir: Path, project_dir: Path):
@@ -152,23 +151,22 @@ def run_shell(shell_dir: Path) -> int:
     tauri_plugins = _load_tauri_plugins(project_dir)
     _start_sidecar(shell_dir, project_dir)
     with start_blocking_portal() as portal:
-        with context_factory(portal=portal):
-            builder_kwargs = {
-                "webview_window": WebviewWindowBuilder(label="main", url=WebviewUrl.App("index.html")),
-                "invoke_handler": commands.generate_handler(portal),
-                "config_override": '{"app":{"windows":[]}}',
-            }
-            if tauri_plugins:
-                builder_kwargs["plugins"] = tauri_plugins
-            if _api_base_url:
-                builder_kwargs["initialization_script"] = "globalThis.__JAC_API_BASE_URL__=" + json.dumps(_api_base_url)
-            if _sidecar_error:
-                builder_kwargs["initialization_script"] = (builder_kwargs.get("initialization_script", "") + ";globalThis.__JAC_SIDECAR_ERROR__=" + json.dumps(_sidecar_error))
-            app = builder_factory().build(**builder_kwargs)
-            try:
-                app.run()
-            finally:
-                _stop_sidecar()
+        context = context_factory(shell_dir)
+        builder_kwargs = {
+            "invoke_handler": commands.generate_handler(portal),
+            "config_override": '{"app":{"windows":[]}}',
+        }
+        if tauri_plugins:
+            builder_kwargs["plugins"] = tauri_plugins
+        if _api_base_url:
+            builder_kwargs["initialization_script"] = "globalThis.__JAC_API_BASE_URL__=" + json.dumps(_api_base_url)
+        if _sidecar_error:
+            builder_kwargs["initialization_script"] = (builder_kwargs.get("initialization_script", "") + ";globalThis.__JAC_SIDECAR_ERROR__=" + json.dumps(_sidecar_error))
+        app = builder_factory().build(context, **builder_kwargs)
+        try:
+            app.run()
+        finally:
+            _stop_sidecar()
     return 0
 
 def main() -> int:
