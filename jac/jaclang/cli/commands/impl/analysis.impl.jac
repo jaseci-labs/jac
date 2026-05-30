@@ -23,7 +23,6 @@ impl check(
     nowarn: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
-    import from jaclang.project.config { JacConfig, get_config, set_config }
     import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     import from time { time }
     if isinstance(paths, str) {
@@ -38,22 +37,6 @@ impl check(
                 unknown_codes
             )
         );
-    }
-    added_suppress_codes: list[str] = [];
-    created_config = False;
-    if suppressed_codes {
-        cfg = get_config();
-        if cfg is None {
-            cfg = JacConfig();
-            set_config(cfg);
-            created_config = True;
-        }
-        for code in suppressed_codes {
-            if code not in cfg.check.suppress {
-                cfg.check.suppress.append(code);
-                added_suppress_codes.append(code);
-            }
-        }
     }
     # Helper to process and store single file result
     def process_file_result(file_path: str, idx: int, total: int) {
@@ -105,7 +88,10 @@ impl check(
             prog.compile(
                 file_path=file_path,
                 options=CompileOptions(
-                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                    type_check=not parse_only,
+                    no_cgen=True,
+                    force_target_program=True,
+                    suppress_codes=suppressed_codes
                 )
             );
             new_errors = prog.errors_had[err_start:];
@@ -154,40 +140,24 @@ impl check(
             return (False, 1, 0, [], []);
         }
     }
-    try {
-        total_files = failed_files=total_errors=total_warnings=0;
-        prog = JacProgram();
-        (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
-        total_to_check = len(all_files);
-        for (idx, jac_file_path) in enumerate(all_files, 1) {
-            process_file_result(jac_file_path, idx, total_to_check);
-        }
-        # Print FAILURES section and summary
-        if print_errs and len(failed_results) > 0 {
-            print_failures(failed_results, nowarn);
-        }
-        if failed_files > 0 {
-            print_failed_summary(failed_results);
-        }
-        # Print final summary line
-        elapsed = time() - start_time;
-        print_final_summary(total_files - failed_files, failed_files, elapsed);
-        return 1 if (total_errors > 0 or had_path_errors) else 0;
-    } finally {
-        if added_suppress_codes {
-            cfg = get_config();
-            if cfg is not None {
-                for code in added_suppress_codes {
-                    if code in cfg.check.suppress {
-                        cfg.check.suppress.remove(code);
-                    }
-                }
-            }
-            if created_config {
-                set_config(None);
-            }
-        }
+    total_files = failed_files=total_errors=total_warnings=0;
+    prog = JacProgram();
+    (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    total_to_check = len(all_files);
+    for (idx, jac_file_path) in enumerate(all_files, 1) {
+        process_file_result(jac_file_path, idx, total_to_check);
     }
+    # Print FAILURES section and summary
+    if print_errs and len(failed_results) > 0 {
+        print_failures(failed_results, nowarn);
+    }
+    if failed_files > 0 {
+        print_failed_summary(failed_results);
+    }
+    # Print final summary line
+    elapsed = time() - start_time;
+    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
 """Lint .jac files and report violations."""

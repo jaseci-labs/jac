@@ -13,6 +13,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        suppress_codes: list[str] = [],
         cancel_token: any = None;
 
     """Return a copy with skip_native_engine set."""
