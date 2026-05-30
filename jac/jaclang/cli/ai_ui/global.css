@@ -581,6 +581,9 @@ body.resizing {
     inset: 0;
     width: 100%;
     height: 100%;
+    /* Background shows a grab cursor (drag to pan; scroll to zoom). Hovering a
+       node swaps to a pointer via a cytoscape handler. */
+    cursor: grab;
 }
 
 .graph-legend {
@@ -831,6 +834,76 @@ body.resizing {
     color: var(--accent);
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11px;
+}
+
+/* ---- Phase context (the selected phase's captured conversation) ------- */
+.insp-ctx-count {
+    color: #6b7077;
+    font-size: 10px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.insp-ctx-empty {
+    color: var(--muted);
+    font-size: 12px;
+    font-style: italic;
+    padding: 4px 0 8px;
+}
+
+.insp-ctx {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ictx-msg {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+    overflow: hidden;
+}
+
+.ictx-role {
+    display: block;
+    padding: 3px 9px;
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.ictx-body {
+    margin: 0;
+    padding: 7px 9px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg);
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.ictx-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 9px;
+}
+
+.ictx-tool {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--accent);
+    background: rgba(34, 211, 238, 0.08);
+    border-radius: 5px;
+    padding: 2px 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* ---- Stats bar -------------------------------------------------------- */
