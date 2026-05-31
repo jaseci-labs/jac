@@ -747,7 +747,7 @@ hiddenimports.extend(all_hiddenimports)
 
 # Add project .jac files (exclude build artifacts to avoid recursive nesting)
 project_dir = Path(r'{project_dir}')
-EXCLUDE_DIRS = ['src-pytauri', 'src-tauri', 'node_modules', '__pycache__', '.git', 'dist', '__jac_gen__', '.jac']
+EXCLUDE_DIRS = ['src-pytauri', 'node_modules', '__pycache__', '.git', 'dist', '__jac_gen__', '.jac']
 for jac_file in project_dir.rglob('*.jac'):
     # Skip files inside excluded directories
     if any(part in EXCLUDE_DIRS for part in jac_file.relative_to(project_dir).parts):
