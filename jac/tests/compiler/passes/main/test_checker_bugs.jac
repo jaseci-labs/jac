@@ -28,6 +28,7 @@ Bug index:
   #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
+  #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
 """
 
 import os;
@@ -819,5 +820,46 @@ test "bug_narrow_any_symbol_isinstance" {
         "Bug #NARROW-ANY: isinstance must narrow an Any-typed symbol, so "
         "accessing a member of the narrowed type does not error. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #HOGEN-1: TypeVars were not bound through function-typed arguments, so
+# `apply(f: Callable[[], T]) -> T` returned an unbound T. Fixing the binder
+# also enables generic decorator-application (e.g. @contextmanager) with no
+# name special-casing.
+test "bug_hogen_1_typevar_bound_through_callable_arg" {
+    program = compile_and_check("checker_higher_order_typevar.jac");
+    assert program.errors_had == [] , (
+        "Bug #HOGEN-1: a TypeVar passed through a Callable argument must bind "
+        "to the callable's return type. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_hogen_1_contextmanager_generic_apply" {
+    program = compile_and_check("checker_contextmanager_generic_apply.jac");
+    assert program.errors_had == [] , (
+        "Bug #HOGEN-1: an annotated-generator @contextmanager method must type "
+        "as a context manager via generic decorator-application, so `with` "
+        "produces no errors. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_hogen_1_plain_method_in_with_still_errors" {
+    program = compile_and_check("checker_with_plain_method_errors.jac");
+    e1091 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1091"
+    );
+    e1092 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1092"
+    );
+    assert e1091 == 1 and e1092 == 1 , (
+        "Bug #HOGEN-1 guard: a plain (non-context-manager) method in `with` "
+        f"must still produce E1091 + E1092. Got E1091={e1091}, E1092={e1092}."
     );
 }
