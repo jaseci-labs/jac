@@ -18,9 +18,6 @@ impl ScaleTieredMemory.postinit -> None {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
     }
-    # Register L1 evict callback for cross-pod cache invalidation via pub/sub.
-    # When another pod invalidates an anchor after an edge-delta merge, this pod
-    # drops the stale L1 entry so it cannot re-poison L2.
     if self.l2 and hasattr(self.l2, 'start_invalidation_listener') {
         mem_ref = self.__mem__;
         def _evict_from_l1(id: UUID) {
@@ -86,11 +83,6 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
             }
             self.l3.sync();
             if self.l2 {
-                # Anchors committed via _put_node_atomic have their L2 entry
-                # already invalidated (the server-side merged edge set may include
-                # concurrent writes from sibling pods that are absent from the
-                # in-memory anchor).  Writing the in-memory snapshot here would
-                # re-poison L2 with stale data, so we skip them.
                 atomic_ids = getattr(self.l3, '_atomic_written', set());
                 for mem_anchor in l2_pending {
                     if mem_anchor.id in atomic_ids {

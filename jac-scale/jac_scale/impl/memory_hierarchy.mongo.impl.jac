@@ -710,8 +710,6 @@ impl MongoBackend.sync -> None {
     if not self._mem_ref or not self.client {
         return;
     }
-    # Reset per-sync tracking set so commit() gets a fresh view of which anchors
-    # were written via the atomic edge-delta path in this cycle.
     self._atomic_written = set();
     for (_, anchor) in list(self._mem_ref.items()) {
         if not anchor.persistent {
@@ -852,7 +850,6 @@ impl MongoBackend._put_node_atomic(
         if self._l2_ref {
             try {
                 self._l2_ref.delete(anchor.id);
-                # Broadcast the invalidation so sibling pods drop their stale L1 entries.
                 if hasattr(self._l2_ref, 'publish_invalidation') {
                     self._l2_ref.publish_invalidation(anchor.id);
                 }
@@ -862,7 +859,6 @@ impl MongoBackend._put_node_atomic(
                 );
             }
         }
-        # Mark as atomic-written so commit() skips the stale L2.put() call.
         self._atomic_written.add(anchor.id);
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");

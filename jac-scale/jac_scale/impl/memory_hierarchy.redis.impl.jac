@@ -128,12 +128,7 @@ impl RedisBackend.publish_invalidation(id: UUID) -> None {
     }
 }
 
-"""Subscribe to the cross-pod invalidation channel in a background daemon thread.
-
-When an anchor UUID is received, evict_cb is called so each pod can drop the
-stale entry from its in-process L1 memory.  The thread is daemonized so it
-does not block interpreter shutdown.
-"""
+"""Subscribe to the cross-pod invalidation channel; evict stale L1 entries on receive."""
 impl RedisBackend.start_invalidation_listener(evict_cb: Any) -> None {
     if self.redis_client is None or self._pubsub_listener is not None {
         return;
