@@ -1,77 +1,85 @@
 cl import from ...lib.utils { cn }
 
 cl {
-    def:pub Table(props: Any) -> JsxElement {
+    def:pub Table(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div data-slot="table-container" className="cn-table-container">
                 <table
-                    {...props}
+                    {**attrs}
                     data-slot="table"
-                    className={cn("cn-table", props.className)}
+                    className={cn("cn-table", props["className"])}
                 />
             </div>;
     }
 
-    def:pub TableHeader(props: Any) -> JsxElement {
+    def:pub TableHeader(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <thead
-                {...props}
+                {**attrs}
                 data-slot="table-header"
-                className={cn("cn-table-header", props.className)}
+                className={cn("cn-table-header", props["className"])}
             />;
     }
 
-    def:pub TableBody(props: Any) -> JsxElement {
+    def:pub TableBody(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <tbody
-                {...props}
+                {**attrs}
                 data-slot="table-body"
-                className={cn("cn-table-body", props.className)}
+                className={cn("cn-table-body", props["className"])}
             />;
     }
 
-    def:pub TableFooter(props: Any) -> JsxElement {
+    def:pub TableFooter(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <tfoot
-                {...props}
+                {**attrs}
                 data-slot="table-footer"
-                className={cn("cn-table-footer", props.className)}
+                className={cn("cn-table-footer", props["className"])}
             />;
     }
 
-    def:pub TableRow(props: Any) -> JsxElement {
+    def:pub TableRow(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <tr
-                {...props}
+                {**attrs}
                 data-slot="table-row"
-                className={cn("cn-table-row", props.className)}
+                className={cn("cn-table-row", props["className"])}
             />;
     }
 
-    def:pub TableHead(props: Any) -> JsxElement {
+    def:pub TableHead(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <th
-                {...props}
+                {**attrs}
                 data-slot="table-head"
-                className={cn("cn-table-head", props.className)}
+                className={cn("cn-table-head", props["className"])}
             />;
     }
 
-    def:pub TableCell(props: Any) -> JsxElement {
+    def:pub TableCell(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <td
-                {...props}
+                {**attrs}
                 data-slot="table-cell"
-                className={cn("cn-table-cell", props.className)}
+                className={cn("cn-table-cell", props["className"])}
             />;
     }
 
-    def:pub TableCaption(props: Any) -> JsxElement {
+    def:pub TableCaption(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <caption
-                {...props}
+                {**attrs}
                 data-slot="table-caption"
-                className={cn("cn-table-caption", props.className)}
+                className={cn("cn-table-caption", props["className"])}
             />;
     }
 }

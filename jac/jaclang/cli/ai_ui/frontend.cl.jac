@@ -15,9 +15,14 @@ sv import from .server {
     agent_stop,
     agent_stream
 }
-sv import from .server { agent_settings, agent_apply_settings, agent_call_detail }
+sv import from .server {
+    agent_settings,
+    agent_apply_settings,
+    agent_call_detail,
+    agent_phase_context
+}
 sv import from .server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
-sv import from .server { CallDetail }
+sv import from .server { CallDetail, PhaseContext }
 import from .components.PhaseGraph { PhaseGraph }
 import from .components.Conversation { Conversation }
 import from .components.ActivityFeed { ActivityFeed }
@@ -43,8 +48,10 @@ def:pub app -> JsxElement {
         # The durable session ledger ({changes, notes}); refreshed whenever a
         # ledger message arrives so the bottom-pane panel mirrors it live.
         ledger: any = {"changes": [], "notes": []},
-        # The graph node the user clicked, shown in the phase inspector.
+        # The graph node the user clicked, shown in the phase inspector, plus its
+        # fetched context (the messages that phase last worked with).
         selected: str = "",
+        phaseCtx: any = None,
         # The token-usage row (model call id) the user clicked, and its fetched
         # detail; -1 / None when the call-detail modal is closed.
         selectedCall: int = -1,
@@ -259,6 +266,7 @@ def:pub app -> JsxElement {
         ledgerRef.current = {"changes": [], "notes": []};
         ledger = {"changes": [], "notes": []};
         selected = "";
+        phaseCtx = None;
         selectedCall = -1;
         callDetail = None;
     }
@@ -279,6 +287,17 @@ def:pub app -> JsxElement {
         selectedCall = id;
         d = await agent_call_detail(id);
         callDetail = d;
+    }
+
+    # Fetch the clicked phase's captured context (its accumulated messages) for
+    # the phase inspector; a blank id (deselect / reset) clears it.
+    async def loadPhaseCtx(id: str) -> None {
+        if not id {
+            phaseCtx = None;
+            return;
+        }
+        c = await agent_phase_context(id);
+        phaseCtx = c;
     }
 
     # First paint: the static phase graph (nodes/edges the stream doesn't carry)
@@ -368,7 +387,10 @@ def:pub app -> JsxElement {
                             {path}
                             {status}
                             {selected}
-                            onSelect={lambda id: str { selected = id; }}
+                            onSelect={lambda id: str {
+                                selected = id;
+                                loadPhaseCtx(id);
+                            }}
                         />
                     </div>
                 </div>
@@ -396,7 +418,7 @@ def:pub app -> JsxElement {
                     onSelect={lambda id: int { openCall(id); }}
                 />
                 <LedgerPane {ledger}/>
-                <PhaseInspector {nodes} {selected}/>
+                <PhaseInspector {nodes} {selected} context={phaseCtx}/>
             </div>
             <StatsBar {stats} {active}/>
             {<SettingsModal

@@ -7,79 +7,85 @@ cl import from "@hugeicons/core-free-icons" {
 }
 
 cl {
-    def:pub Breadcrumb(props: Any) -> JsxElement {
+    def:pub Breadcrumb(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <nav
-                {...props}
+                {**attrs}
                 aria-label="breadcrumb"
                 data-slot="breadcrumb"
-                className={cn("cn-breadcrumb", props.className)}
+                className={cn("cn-breadcrumb", props["className"])}
             />;
     }
 
-    def:pub BreadcrumbList(props: Any) -> JsxElement {
+    def:pub BreadcrumbList(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <ol
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-list"
                 className={cn(
                     "cn-breadcrumb-list flex flex-wrap items-center wrap-break-word",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub BreadcrumbItem(props: Any) -> JsxElement {
+    def:pub BreadcrumbItem(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <li
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-item"
                 className={cn(
-                    "cn-breadcrumb-item inline-flex items-center", props.className
+                    "cn-breadcrumb-item inline-flex items-center", props["className"]
                 )}
             />;
     }
 
-    def:pub BreadcrumbLink(props: Any) -> JsxElement {
-        asChild = props.asChild or False;
+    def:pub BreadcrumbLink(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        asChild = props["asChild"] or False;
         if asChild {
             return
                 <Slot.Root
-                    {...props}
+                    {**props}
                     data-slot="breadcrumb-link"
-                    className={cn("cn-breadcrumb-link", props.className)}
+                    className={cn("cn-breadcrumb-link", props["className"])}
                 />;
         }
         return
             <a
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-link"
-                className={cn("cn-breadcrumb-link", props.className)}
+                className={cn("cn-breadcrumb-link", props["className"])}
             />;
     }
 
-    def:pub BreadcrumbPage(props: Any) -> JsxElement {
+    def:pub BreadcrumbPage(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <span
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-page"
                 role="link"
                 aria-disabled="true"
                 aria-current="page"
-                className={cn("cn-breadcrumb-page", props.className)}
+                className={cn("cn-breadcrumb-page", props["className"])}
             />;
     }
 
-    def:pub BreadcrumbSeparator(props: Any) -> JsxElement {
+    def:pub BreadcrumbSeparator(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <li
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-separator"
                 role="presentation"
                 aria-hidden="true"
-                className={cn("cn-breadcrumb-separator", props.className)}
+                className={cn("cn-breadcrumb-separator", props["className"])}
             >
-                {props.children
+                {props["children"]
                 or <HugeiconsIcon
                     icon={ArrowRight01Icon}
                     strokeWidth={2}
@@ -88,16 +94,17 @@ cl {
             </li>;
     }
 
-    def:pub BreadcrumbEllipsis(props: Any) -> JsxElement {
+    def:pub BreadcrumbEllipsis(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <span
-                {...props}
+                {**attrs}
                 data-slot="breadcrumb-ellipsis"
                 role="presentation"
                 aria-hidden="true"
                 className={cn(
                     "cn-breadcrumb-ellipsis flex items-center justify-center",
-                    props.className
+                    props["className"]
                 )}
             >
                 <HugeiconsIcon icon={MoreHorizontalCircle01Icon} strokeWidth={2}/>

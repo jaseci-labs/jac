@@ -346,6 +346,11 @@ obj TypeEvaluator {
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
+    # Apply function-shaped decorators (e.g. contextmanager) to an ability's type.
+    def _apply_function_decorators(
+        node_: uni.Ability, func_type: types.FunctionType
+    ) -> types.FunctionType;
+
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;

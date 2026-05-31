@@ -450,6 +450,18 @@ impl TypeEvaluator._get_declared_return_type(
             );
         }
     }
+    # Body checks (return/yield) want the undecorated return type: a decorator
+    # like @contextmanager rewrites the cached type, but the body still
+    # returns/yields per its signature. (Same as the cached type when undecorated.)
+    if (
+        isinstance(scope, uni.Ability)
+        and isinstance(scope.signature, uni.FuncSignature)
+        and isinstance(scope.signature.return_type, uni.Expr)
+    ) {
+        return self._convert_to_instance(
+            self.get_type_of_expression(scope.signature.return_type)
+        );
+    }
     # Ability path — resolve via get_type_of_ability (handles both annotated
     # and unannotated cases; unannotated defaults to NoneType).
     fn_type_base = self.get_type_of_ability(scope);

@@ -3,7 +3,7 @@ cl import from "radix-ui" { Slot }
 cl import from ...lib.utils { cn }
 cl import from .separator { Separator }
 
-glob _itemVariants: Any = cva(
+glob _itemVariants: any = cva(
          "cn-item w-full group/item focus-visible:border-ring focus-visible:ring-ring/50 flex items-center flex-wrap outline-none transition-colors duration-100 focus-visible:ring-[3px]",
          {
              "variants": {
@@ -21,7 +21,7 @@ glob _itemVariants: Any = cva(
              "defaultVariants": {"variant": "default", "size": "default"}
          }
      ),
-     _itemMediaVariants: Any = cva(
+     _itemMediaVariants: any = cva(
          "cn-item-media flex shrink-0 items-center justify-center [&_svg]:pointer-events-none",
          {
              "variants": {
@@ -34,51 +34,58 @@ glob _itemVariants: Any = cva(
              "defaultVariants": {"variant": "default"}
          }
      ),
-     _itemExcludeKeys: list = ["className", "variant", "size", "asChild", "children"];
+     _itemExcludeKeys: list[str] = [
+         "className",
+         "variant",
+         "size",
+         "asChild",
+         "children"
+     ];
 
 cl {
-    def:pub ItemGroup(props: Any) -> JsxElement {
+    def:pub ItemGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 role="list"
                 data-slot="item-group"
                 className={cn(
                     "cn-item-group group/item-group flex w-full flex-col",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemSeparator(props: Any) -> JsxElement {
+    def:pub ItemSeparator(props: any) -> JsxElement {
         return
             <Separator
                 data-slot="item-separator"
                 orientation="horizontal"
-                className={cn("cn-item-separator", props.className)}
-                {...props}
+                className={cn("cn-item-separator", props["className"])}
+                {**props}
             />;
     }
 
-    def:pub Item(props: Any) -> JsxElement {
-        variant = props.variant or "default";
-        size = props.size or "default";
-        asChild = props.asChild or False;
+    def:pub Item(props: any) -> JsxElement {
+        variant = props["variant"] or "default";
+        size = props["size"] or "default";
+        asChild = props["asChild"] or False;
         computedClass = cn(
             _itemVariants.call(
-                None, {"variant": variant, "size": size, "className": props.className}
+                None,
+                {"variant": variant, "size": size, "className": props["className"]}
             )
         );
 
         restProps = {};
-        excludeKeys = _itemExcludeKeys;
-        Object.keys(props).forEach(
-            lambda (key: Any) { if excludeKeys.indexOf(key) == -1 {
+        for key in Object.keys(props) {  # jac:ignore[W6001]
+            if key not in _itemExcludeKeys {
                 restProps[key] = props[key];
-            }}
-        );
+            }
+        }
 
         if asChild {
             return
@@ -87,9 +94,9 @@ cl {
                     data-variant={variant}
                     data-size={size}
                     className={computedClass}
-                    {...restProps}
+                    {**restProps}
                 >
-                    {props.children}
+                    {props["children"]}
                 </Slot.Root>;
         }
         return
@@ -98,17 +105,18 @@ cl {
                 data-variant={variant}
                 data-size={size}
                 className={computedClass}
-                {...restProps}
+                {**restProps}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemMedia(props: Any) -> JsxElement {
-        variant = props.variant or "default";
+    def:pub ItemMedia(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        variant = props["variant"] or "default";
         computedClass = cn(
             _itemMediaVariants.call(
-                None, {"variant": variant, "className": props.className}
+                None, {"variant": variant, "className": props["className"]}
             )
         );
         return
@@ -116,94 +124,100 @@ cl {
                 data-slot="item-media"
                 data-variant={variant}
                 className={computedClass}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemContent(props: Any) -> JsxElement {
+    def:pub ItemContent(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="item-content"
                 className={cn(
                     "cn-item-content flex flex-1 flex-col [&+[data-slot=item-content]]:flex-none",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemTitle(props: Any) -> JsxElement {
+    def:pub ItemTitle(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="item-title"
                 className={cn(
                     "cn-item-title line-clamp-1 flex w-fit items-center",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemDescription(props: Any) -> JsxElement {
+    def:pub ItemDescription(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <p
                 data-slot="item-description"
                 className={cn(
                     "cn-item-description line-clamp-2 font-normal [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </p>;
     }
 
-    def:pub ItemActions(props: Any) -> JsxElement {
+    def:pub ItemActions(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="item-actions"
-                className={cn("cn-item-actions flex items-center", props.className)}
-                {...props}
+                className={cn("cn-item-actions flex items-center", props["className"])}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemHeader(props: Any) -> JsxElement {
+    def:pub ItemHeader(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="item-header"
                 className={cn(
                     "cn-item-header flex basis-full items-center justify-between",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ItemFooter(props: Any) -> JsxElement {
+    def:pub ItemFooter(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="item-footer"
                 className={cn(
                     "cn-item-footer flex basis-full items-center justify-between",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub itemVariants -> Any {
+    def:pub itemVariants -> any {
         return _itemVariants;
     }
 }

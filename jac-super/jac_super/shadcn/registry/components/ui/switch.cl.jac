@@ -2,16 +2,16 @@ cl import from "radix-ui" { Switch as SwitchPrimitive }
 cl import from ...lib.utils { cn }
 
 cl {
-    def:pub Switch(props: Any) -> JsxElement {
-        size = props.size or "default";
+    def:pub Switch(props: any) -> JsxElement {
+        size = props["size"] or "default";
         return
             <SwitchPrimitive.Root
-                {...props}
+                {**props}
                 data-slot="switch"
                 data-size={size}
                 className={cn(
                     "cn-switch peer group/switch relative inline-flex items-center transition-all outline-none after:absolute after:-inset-x-3 after:-inset-y-2 data-disabled:cursor-not-allowed data-disabled:opacity-50",
-                    props.className
+                    props["className"]
                 )}
             >
                 <SwitchPrimitive.Thumb

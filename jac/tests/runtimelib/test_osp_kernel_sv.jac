@@ -4,6 +4,8 @@ descriptors (jaclang.jac0core.osp_kernel_sv) must reproduce the live server
 untyped-entry semantics. This validates the descriptor-emission model before it
 replaces per-backend dispatch."""
 
+import asyncio;
+import jaclang.jac0core.osp_kernel as _kernel;
 import from jaclang.jac0core.osp_kernel { osp_spawn }
 import from jaclang.jac0core.osp_kernel_sv { make_sv_runtime, desc_for }
 
@@ -41,7 +43,7 @@ test "kernel parity: subtyping entry dispatch and walker state" {
     real spawn Sub(v=5);
     # Kernel + server-derived descriptors must produce the same result.
     via_kernel = Acc();
-    osp_spawn(rt, via_kernel, desc_for(Acc), Sub(v=5));
+    osp_spawn(rt, via_kernel, desc_for(Acc), [Sub(v=5)]);
     assert real.total == 5;
     assert via_kernel.total == real.total;
 }
@@ -51,7 +53,7 @@ test "kernel parity: untyped walker entry runs once at the root" {
     real = Starter();
     real spawn Base(v=0);
     via_kernel = Starter();
-    osp_spawn(rt, via_kernel, desc_for(Starter), Base(v=0));
+    osp_spawn(rt, via_kernel, desc_for(Starter), [Base(v=0)]);
     assert real.hits == 1;
     assert via_kernel.hits == real.hits;
 }
@@ -62,7 +64,41 @@ test "kernel parity: typed ability does not fire on an unrelated type" {
     real = Acc();
     real spawn Other();
     via_kernel = Acc();
-    osp_spawn(rt, via_kernel, desc_for(Acc), Other());
+    osp_spawn(rt, via_kernel, desc_for(Acc), [Other()]);
     assert real.total == 0;
     assert via_kernel.total == real.total;
+}
+
+test "sv walk-scope stack is isolated across concurrent asyncio tasks" {
+    # The sv binding swaps `osp_kernel._walk_stack` for a ContextVar-backed
+    # proxy so concurrent spawns (different requests / asyncio tasks) get
+    # isolated scope stacks. Regression guard: a ContextVar only isolates on
+    # `.set()`, so a proxy that mutated the `.get()`-ed list in place would let
+    # gather() tasks -- created under a context where the stack was already
+    # populated -- share one list and clobber each other's scopes (reports then
+    # bubble to the wrong walk). Poison the root context first to expose it.
+    stack = _kernel._walk_stack;
+    stack.append("root");
+    stack.pop();
+
+    async def probe(name: str) -> tuple {
+        stack.append(name);
+        await asyncio.sleep(0.01);
+        seen = stack[-1];
+        depth = len(stack);
+        stack.pop();
+        return (name, seen, depth);
+    }
+    async def run -> list {
+        return await asyncio.gather(probe("a"), probe("b"), probe("c"));
+    }
+    results = asyncio.run(run());
+    for (name, seen, depth) in results {
+        assert seen == name , (
+            f"task {name} saw {seen} on top of the walk stack -- scopes leaked across tasks"
+        );
+        assert depth == 1 , (
+            f"task {name} saw stack depth {depth} -- the walk stack is shared across tasks"
+        );
+    }
 }
