@@ -65,6 +65,12 @@ obj ParamAssignmentTracker {
     has params: list[types.Parameter],
         curr_param_idx: int = 0,
         matched_params: set[types.Parameter] = set(),
+        # Params *possibly* filled by a `*`/`**` spread of statically-unknown
+        # contents. Kept apart from `matched_params` (definite positional/keyword
+        # binds): a spread satisfies required-param checks but must NOT trigger a
+        # duplicate-argument error for a later explicit keyword, since we cannot
+        # prove the spread actually set that key.
+        spread_filled: set[types.Parameter] = set(),
         varargs: (types.Parameter | None) = None,
         kwargs: (types.Parameter | None) = None;
 

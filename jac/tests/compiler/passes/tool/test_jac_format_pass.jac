@@ -709,6 +709,35 @@ test "assign comprehension spaces after commas like filter comprehension" {
     assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
 }
 
+"""Regression: enum base-type declarations must space like type annotations
+and base-class lists. `exit_enum` sent the typed-base colon (`enum X: int`)
+and the base-class parens/commas (`enum X(A, B)`) through the generic kid
+branch, which appends a trailing space after every kid — yielding
+`enum X : int` and `enum X ( A , B )`."""
+test "enum base type colon and parens space correctly" {
+    source = (
+        'enum Category: int { WORK, PERSONAL }\n'
+        'enum Color(Mixin, Enum) { RED, GREEN }\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    # Typed-base colon: no space before, one space after.
+    assert "enum Category: int" in formatted , (
+        f"typed-base colon must format as `Category: int`, got:\n{repr(formatted)}"
+    );
+    assert "Category : int" not in formatted , (
+        f"typed-base colon must not have a space before `:`, got:\n{repr(formatted)}"
+    );
+    # Base-class list: no space inside parens, comma-separated like archetypes.
+    assert "enum Color(Mixin, Enum)" in formatted , (
+        f"base-class list must format as `Color(Mixin, Enum)`, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "enum base-type spacing is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

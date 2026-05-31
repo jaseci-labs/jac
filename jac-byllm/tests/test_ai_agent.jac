@@ -60,9 +60,9 @@ def arm(proj: str, events: list, feedback: bool = True) -> CodeIntelligence {
         events.append(info);
     }
     ci.on_event = on_evt;
-    ai.agent.cwd = proj;
-    ai.agent.ci = ci;
-    ai.agent.ci_dirty = False;
+    ai.agent.ws.cwd = proj;
+    ai.agent.ws.ci = ci;
+    ai.agent.ws.ci_dirty = False;
     ai.agent.cfg.yolo_mode = True;
     ai.agent.cfg.show_stats = False;
     ai.agent.cfg.inline_feedback = feedback;
@@ -134,7 +134,7 @@ test "the inline_feedback opt-out suppresses feedback but still flags dirty" {
     out = ai.agent.files.write_file(bad, "def g() -> int { return \"nope\"; }\n");
     assert "compiler feedback" not in out , out;
     # With feedback off the project model is left dirty for the next query.
-    assert ai.agent.ci_dirty , "expected ci_dirty after a feedback-off write";
+    assert ai.agent.ws.ci_dirty , "expected ci_dirty after a feedback-off write";
 
     shutil.rmtree(proj, ignore_errors=True);
 }
