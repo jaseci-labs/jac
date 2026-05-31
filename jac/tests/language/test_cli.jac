@@ -43,7 +43,7 @@ def _assert_error_pretty_found(needle: str, haystack: str) {
 }
 
 """Run jac check and return file count."""
-def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
+def _run_jac_check(test_dir: str, ignore_pattern: (list | None) = None) -> int {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -52,7 +52,7 @@ def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
     sys.stderr = captured_stderr;
 
     try {
-        analysis.check([test_dir], ignore=ignore_pattern);
+        analysis.check([test_dir], ignore=ignore_pattern or []);
         stdout = captured_stdout.getvalue();
         stderr = captured_stderr.getvalue();
     } finally {
@@ -1881,11 +1881,13 @@ test "jac check nowarn flag suppresses warnings" {
 }
 
 """Run analysis.check with captured stdout/stderr; reset global config after."""
-def _check_captured(paths: list, disable_error_code: list = []) -> tuple[int, str] {
+def _check_captured(
+    paths: list, disable_error_code: (list | None) = None
+) -> tuple[int, str] {
     (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
     _reset_config();
     try {
-        result = analysis.check(paths, disable_error_code=disable_error_code);
+        result = analysis.check(paths, disable_error_code=disable_error_code or []);
         combined = captured_stdout.getvalue() + captured_stderr.getvalue();
         return (result, combined);
     } finally {

@@ -17,8 +17,8 @@ import from jaclang.cli.check_report {
 impl check(
     paths: list,
     print_errs: bool = True,
-    ignore: list = [],
-    disable_error_code: list = [],
+    ignore: (list | None) = None,
+    disable_error_code: (list | None) = None,
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int {
@@ -29,8 +29,10 @@ impl check(
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore);
-    (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(disable_error_code);
+    ignore_list = _normalize_ignore_patterns(ignore or []);
+    (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
+        disable_error_code or []
+    );
     if unknown_codes {
         console.warning(
             "Ignoring unknown diagnostic codes in --disable-error-code: " + ", ".join(
@@ -161,12 +163,12 @@ impl check(
 }
 
 """Lint .jac files and report violations."""
-impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
+impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
-    ignore_list = _normalize_ignore_patterns(ignore);
+    ignore_list = _normalize_ignore_patterns(ignore or []);
     def lint_report_file(file_path: str) -> tuple[bool, int] {
         # Lint-only: report errors without formatting or writing files
         path_obj = Path(file_path);
@@ -688,7 +690,10 @@ impl grammar(lark: bool = False, output: str = "") -> int {
 Expands directories recursively, filters by ignore patterns.
 Returns (file_list, had_errors) where had_errors is True if any path was invalid.
 """
-def _iter_jac_files(paths: list, ignore_list: list = []) -> tuple[list[str], bool] {
+def _iter_jac_files(
+    paths: list, ignore_list: (list | None) = None
+) -> tuple[list[str], bool] {
+    ignore_list = ignore_list or [];
     result: list[str] = [];
     had_errors = False;
     for path in paths {
