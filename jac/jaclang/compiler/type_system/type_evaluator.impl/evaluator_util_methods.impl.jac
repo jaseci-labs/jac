@@ -882,6 +882,51 @@ impl TypeEvaluator.get_getter_type_from_property(
     return func_type.return_type;
 }
 
+"""Descriptor protocol: type of `obj.attr` when `attr`'s type defines __get__.
+
+Instance access evaluates to __get__'s return type. `owner_inst` (an instance
+of the accessed class) selects the instance-access overload over the
+class-access one by assignability to its `obj` parameter; TypeVars are bound
+from the descriptor instance. Returns None when `member_ty` is not a descriptor.
+"""
+impl TypeEvaluator._resolve_descriptor_get(
+    member_ty: TypeBase, owner_inst: TypeBase
+) -> (TypeBase | None) {
+    if not isinstance(member_ty, types.ClassType) or not member_ty.is_instance() {
+        return None;
+    }
+    get_member = self._lookup_class_member(member_ty, "__get__");
+    if get_member is None {
+        return None;
+    }
+    base = self.get_type_of_symbol(get_member.symbol);
+    overloads = [base] + [self.get_type_of_symbol(o) for o in get_member.overloads];
+    fallback: TypeBase | None = None;
+    for fn in overloads {
+        if not isinstance(fn, types.FunctionType) {
+            continue;
+        }
+        spec = fn.specialize(member_ty);
+        params = spec.parameters or [];
+        if len(params) < 2 or params[1].param_type is None {
+            continue;
+        }
+        if spec.return_type is None
+        or isinstance(spec.return_type, types.UnknownType) {
+            continue;
+        }
+        # Select the overload whose `obj` parameter accepts the owner instance.
+        # The class-access overload takes None and is not selected.
+        if self.assign_type(owner_inst, params[1].param_type) {
+            return spec.return_type;
+        }
+        if fallback is None {
+            fallback = spec.return_type;
+        }
+    }
+    return fallback;
+}
+
 """Classify a symbol's writability for property-aware assignment checking.
 
 Delegates to _classify_property_symbol for the decorator walk, then

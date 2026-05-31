@@ -407,6 +407,10 @@ obj TypeEvaluator {
     def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
     # Property type utilities — both delegate to _classify_property_symbol.
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
+    # Descriptor protocol: instance-access type of a member defining __get__.
+    def _resolve_descriptor_get(
+        member_ty: TypeBase, owner_inst: TypeBase
+    ) -> (TypeBase | None);
     # Classifies a property symbol's writability for assignment checking.
     # Returns a PropertyWriteResult with kind:
     #   NOT_PROPERTY → normal field, caller should fall through

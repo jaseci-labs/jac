@@ -30,6 +30,7 @@ Bug index:
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
+  #DESC-1 - Descriptor member (defines __get__) not unwrapped to __get__'s instance-access result
 """
 
 import os;
@@ -882,6 +883,18 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
     assert program.errors_had == [] , (
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #DESC-1: a member whose type is a descriptor (defines __get__) resolved
+# to the descriptor object rather than __get__'s result. Member access now
+# applies the descriptor protocol.
+test "bug_desc_1_descriptor_get_unwrapped" {
+    program = compile_and_check("checker_descriptor_get.jac");
+    assert program.errors_had == [] , (
+        "Bug #DESC-1: a descriptor member must resolve to __get__'s "
+        "instance-access return type, not the descriptor object. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

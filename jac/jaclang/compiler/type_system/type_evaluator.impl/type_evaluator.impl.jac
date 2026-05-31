@@ -889,6 +889,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                             expr.right.type = cfg_narrowed or prop_return_type;
                             return expr.right.type;
                         }
+                        # Descriptor protocol: a member whose type defines
+                        # __get__ evaluates to that method's result.
+                        if desc_ty := self._resolve_descriptor_get(
+                            member_ty, base_type
+                        ) {
+                            member.symbol.add_use(expr.right);
+                            cfg_narrowed = self.get_narrowed_type_for_expr(
+                                expr, desc_ty, expr
+                            );
+                            expr.right.type = cfg_narrowed or desc_ty;
+                            return expr.right.type;
+                        }
                         # NOTE: If this atom trailer is called `<atom_trailer>()` we can resolve
                         # which overload is being called based on the arguments, and update the type
                         # based on the call, maybe for future.
