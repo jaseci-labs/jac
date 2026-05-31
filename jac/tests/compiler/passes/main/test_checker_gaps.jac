@@ -445,35 +445,17 @@ test "gap 48 type checker self check" {
 }
 
 # =========================================================================
-# Gap #49: TYPE_CHECKING forward-reference string annotations
+# Gap #49 (resolved): TYPE_CHECKING-guarded imports in string annotations.
 #
-# Types imported under `if TYPE_CHECKING` guard should be resolvable
-# when used as string annotations in function signatures. The checker
-# should treat these imports as available for type analysis even though
-# they don't execute at runtime.
-#
-# Currently, string annotations like 'Path' (where Path is imported
-# under TYPE_CHECKING) may resolve to Literal["Path"] or Unknown instead
-# of the actual pathlib.Path class, causing false "has no attribute"
-# errors and preventing type error detection on return values.
-#
-# Impact: `def foo() -> 'Path'` where Path is TYPE_CHECKING-imported
-#         produces Unknown/Literal return type. `p = foo(); p.name`
-#         either errors falsely or misses real type mismatches.
+# Types imported under `if TYPE_CHECKING` now resolve in annotations: the
+# checker evaluates the guard as True (PEP 484), so `Path` resolves to
+# pathlib.Path rather than Literal["Path"]/Unknown.
 # =========================================================================
 test "gap 49 type checking forward ref" {
     program = compile_and_check("checker_gap_fwd_ref.jac");
 
-    # Expected: exactly 2 errors:
-    #   1. bad1: int = get_name(p)   (str not assignable to int)
-    #   2. bad2: int = p.stem        (str not assignable to int)
-    #
-    # No errors for: p.name (Path.name is str), get_name(p) (returns str),
-    # accept_path(p) (returns str) — all valid when 'Path' resolves.
-    #
-    # Actual (gap): 'Path' from TYPE_CHECKING import may resolve to
-    # Literal["Path"] or Unknown, so p has wrong type and either
-    # false positives or missed errors occur.
+    # Exactly the 2 intended mismatches remain: bad1 (int = str return) and
+    # bad2 (int = p.stem). p.name / get_name(p) / accept_path(p) all resolve.
     assert len(program.errors_had) == 2 , "Gap #49: TYPE_CHECKING forward ref. "
     f"Expected exactly 2 type errors but got {len(program.errors_had)}. "
     "String annotations referencing TYPE_CHECKING-guarded imports should "
