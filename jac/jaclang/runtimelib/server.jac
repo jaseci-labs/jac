@@ -31,7 +31,7 @@ import from jaclang.runtimelib.transport {
     Meta
 }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.project.config { get_config }
+import from jaclang.project.config { get_config, JacConfig }
 import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
 import type from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
@@ -264,6 +264,7 @@ obj JacAPIServer {
         # fall back to the normal lazy _ensure_available path for
         # anything the parent missed.
         is_sv_sibling: bool = False,
+        _app_config: (JacConfig | None) = None,
         user_manager: UserManager by postinit,
         execution_manager: ExecutionManager by postinit,
         introspector: ModuleIntrospector by postinit,

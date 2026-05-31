@@ -1511,6 +1511,15 @@ impl JacAPIServer.postinit -> None {
         user_manager=self.user_manager
     );
     self.scheduler = Scheduler.instance();
+    # Discover and snapshot config scoped to this server's base_path.
+    # Storing it here lets request handlers use server._app_config
+    # instead of the process-level get_config() singleton, which can
+    # be mutated by other in-process clients (e.g. set_config() calls
+    # in tests). This prevents cross-test config contamination under
+    # pytest-xdist parallel workers.
+    self._app_config = JacConfig.discover(
+        start_path=Path(self.base_path) if self.base_path else None
+    );
     # Only create real server if port > 0 (port=0 is test mode - no socket binding)
     if self.port > 0 {
         self.server = Jac.create_server(self, '0.0.0.0', self.port);
@@ -1710,9 +1719,13 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             is_static_path = path.startswith('/static/');
-            import from jaclang.project.config { get_config }
-
-            config = get_config();
+            # Use the server-local config snapshot (loaded from base_path at
+            # init time) rather than the process-level get_config() singleton.
+            # The singleton can be mutated by other in-process test clients
+            # (e.g. set_config(JacConfig(serve=ServeConfig(base_route_app=...)))
+            # in test_serve_client.jac), which would cause GET / to attempt
+            # _render_page on a server that has no client bundle → 500.
+            config = server._app_config;
             client_cfg = config.get_plugin_config("client") if config else None;
             assets_config = client_cfg.get("assets", {}) if client_cfg else {};
             custom_asset_extensions = set(assets_config.get("custom_extensions", []));
