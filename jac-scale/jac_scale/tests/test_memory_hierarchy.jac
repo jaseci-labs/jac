@@ -793,10 +793,11 @@ test "Redis write cycle via commit" {
             "Redis write cycle via commit() is BROKEN!"
         );
 
-        # Count must increase (4 initial + task node + edge = 6)
+        # 4 initial + task node + edge - 1 (parent node's key invalidated by
+        # atomic write path, not re-written with stale snapshot) = 5
         final_count = redis_client.dbsize();
-        assert final_count == 6 , (
-            f"Redis should have 6 entries after task creation, got {final_count}"
+        assert final_count == 5 , (
+            f"Redis should have 5 entries after task creation, got {final_count}"
         );
     } finally {
         if server {

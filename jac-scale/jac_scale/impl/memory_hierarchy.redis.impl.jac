@@ -145,9 +145,14 @@ impl RedisBackend.start_invalidation_listener(evict_cb: Any) -> None {
                 logger.debug(f"Redis invalidation handler error: {e}");
             }
         }
+        def _on_thread_error(ex: Any, pubsub: Any, thread: Any) {
+            logger.debug(f"Redis invalidation listener thread error: {ex}");
+        }
         pubsub = self.redis_client.pubsub(ignore_subscribe_messages=True);
         pubsub.subscribe(**{"jac:anchor:invalidate": _handle_invalidation});
-        self._pubsub_listener = pubsub.run_in_thread(sleep_time=0.05, daemon=True);
+        self._pubsub_listener = pubsub.run_in_thread(
+            sleep_time=0.05, daemon=True, exception_handler=_on_thread_error
+        );
         logger.debug("Redis cross-pod invalidation listener started");
     } except Exception as e {
         logger.debug(f"Redis start_invalidation_listener failed: {e}");
