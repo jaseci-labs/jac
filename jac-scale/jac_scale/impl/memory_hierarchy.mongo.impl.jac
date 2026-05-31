@@ -850,7 +850,7 @@ impl MongoBackend._put_node_atomic(
         if self._l2_ref {
             try {
                 self._l2_ref.delete(anchor.id);
-                if hasattr(self._l2_ref, 'publish_invalidation') {
+                if isinstance(self._l2_ref, RedisBackend) {
                     self._l2_ref.publish_invalidation(anchor.id);
                 }
             } except Exception as inv_err {

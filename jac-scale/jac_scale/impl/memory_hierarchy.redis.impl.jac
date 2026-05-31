@@ -105,14 +105,9 @@ impl RedisBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close Redis connection and stop pub/sub listener if running."""
+"""Close Redis connection. The pub/sub listener is process-level and outlives any single request."""
 impl RedisBackend.close -> None {
-    if self._pubsub_listener is not None {
-        try {
-            self._pubsub_listener.stop();
-        } except Exception { }
-        self._pubsub_listener = None;
-    }
+    self._pubsub_listener = None;
     self.redis_client = None;
 }
 
@@ -128,9 +123,21 @@ impl RedisBackend.publish_invalidation(id: UUID) -> None {
     }
 }
 
-"""Subscribe to the cross-pod invalidation channel; evict stale L1 entries on receive."""
+"""Subscribe to the cross-pod invalidation channel; evict stale L1 entries on receive.
+
+One listener thread is shared across all requests in the process (stored in
+_process_cache['pubsub_listener']). The callback evicts from every active L1
+registered in _process_cache['l1_registry'] so concurrent requests all benefit.
+On connection error the handler clears the _process_cache entry so the next
+request can re-register, recovering from a Redis restart automatically.
+"""
 impl RedisBackend.start_invalidation_listener(evict_cb: Any) -> None {
-    if self.redis_client is None or self._pubsub_listener is not None {
+    if self.redis_client is None {
+        return;
+    }
+    existing = _process_cache.get('pubsub_listener');
+    if existing is not None {
+        self._pubsub_listener = existing;
         return;
     }
     try {
@@ -139,7 +146,10 @@ impl RedisBackend.start_invalidation_listener(evict_cb: Any) -> None {
                 raw = message.get('data', b'');
                 id_str = raw.decode('utf-8') if isinstance(raw, bytes) else str(raw);
                 if id_str {
-                    evict_cb(UUID(id_str));
+                    anchor_id = UUID(id_str);
+                    for l1 in list(_process_cache.get('l1_registry', {}).values()) {
+                        l1.pop(anchor_id, None);
+                    }
                 }
             } except Exception as e {
                 logger.debug(f"Redis invalidation handler error: {e}");
@@ -147,12 +157,15 @@ impl RedisBackend.start_invalidation_listener(evict_cb: Any) -> None {
         }
         def _on_thread_error(ex: Any, pubsub: Any, thread: Any) {
             logger.debug(f"Redis invalidation listener thread error: {ex}");
+            _process_cache.pop('pubsub_listener', None);
+            self._pubsub_listener = None;
         }
         pubsub = self.redis_client.pubsub(ignore_subscribe_messages=True);
         pubsub.subscribe(**{"jac:anchor:invalidate": _handle_invalidation});
         self._pubsub_listener = pubsub.run_in_thread(
             sleep_time=0.05, daemon=True, exception_handler=_on_thread_error
         );
+        _process_cache['pubsub_listener'] = self._pubsub_listener;
         logger.debug("Redis cross-pod invalidation listener started");
     } except Exception as e {
         logger.debug(f"Redis start_invalidation_listener failed: {e}");

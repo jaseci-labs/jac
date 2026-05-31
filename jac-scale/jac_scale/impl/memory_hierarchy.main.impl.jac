@@ -18,13 +18,10 @@ impl ScaleTieredMemory.postinit -> None {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
     }
-    if self.l2 and hasattr(self.l2, 'start_invalidation_listener') {
-        mem_ref = self.__mem__;
-        def _evict_from_l1(id: UUID) {
-            mem_ref.pop(id, None);
-        }
+    if isinstance(self.l2, RedisBackend) {
+        _process_cache.setdefault('l1_registry', {})[id(self.__mem__)] = self.__mem__;
         try {
-            self.l2.start_invalidation_listener(_evict_from_l1);
+            self.l2.start_invalidation_listener(None);
         } except Exception as e {
             logger.debug(f"ScaleTieredMemory: invalidation listener setup failed: {e}");
         }
@@ -83,7 +80,9 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
             }
             self.l3.sync();
             if self.l2 {
-                atomic_ids = getattr(self.l3, '_atomic_written', set());
+                atomic_ids = self.l3._atomic_written
+                    if isinstance(self.l3, MongoBackend)
+                    else set();
                 for mem_anchor in l2_pending {
                     if mem_anchor.id in atomic_ids {
                         continue;
@@ -180,11 +179,10 @@ impl ScaleTieredMemory.close -> None {
     if self.l3 {
         self.l3.close();
     }
-    # Close L2 cache
     if self.l2 {
         self.l2.close();
     }
-    # Clear L1 (inherited from VolatileMemory)
+    _process_cache.get('l1_registry', {}).pop(id(self.__mem__), None);
     self.__mem__.clear();
     self.__gc__.clear();
 }
