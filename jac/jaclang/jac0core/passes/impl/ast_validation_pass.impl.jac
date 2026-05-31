@@ -156,7 +156,7 @@ impl ASTValidationPass.enter_assignment(
 ) -> None {
     # root and super compile to function calls (e.g. Jac.root()) which
     # cannot appear on the left side of an assignment in Python.
-    non_assignable = {Tok.KW_ROOT,Tok.KW_SUPER};
+    non_assignable = {Tok.KW_ROOT, Tok.KW_SUPER};
     for target in nd.target {
         ref_node: (uni.SpecialVarRef | None) = None;
         if isinstance(target, uni.SpecialVarRef) {
@@ -228,6 +228,22 @@ impl ASTValidationPass.enter_non_local_stmt(
     if nd.find_parent_of_type(uni.Ability) is None
     and nd.find_parent_of_type(uni.ImplDef) is None {
         self.emit(E0062, node_override=nd);
+    }
+}
+
+"""E0063: glob is only valid at module level."""
+impl ASTValidationPass.enter_global_vars(
+    self: ASTValidationPass, nd: uni.GlobalVars
+) -> None {
+    # glob is a declaration: it is valid directly under the module or a
+    # codespace block (cl/sv/na), but never inside a function body, impl,
+    # archetype, or an executable code block ('with entry', loops, test, etc.).
+    # Whitelisting valid parents rejects unknown containers by default, which
+    # is safer than blacklisting (a new executable block type can't slip glob
+    # through).
+    valid_parents = (uni.Module, uni.ClientBlock, uni.ServerBlock, uni.NativeBlock);
+    if not isinstance(nd.parent, valid_parents) {
+        self.emit(E0063, node_override=nd);
     }
 }
 

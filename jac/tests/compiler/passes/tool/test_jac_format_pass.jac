@@ -653,6 +653,91 @@ test "genai ability with kwargs preserves by and arguments" {
     assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
 }
 
+"""Regression: set literals must space after commas like lists, tuples, and
+dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
+crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space."""
+test "set literal spaces after commas like other collections" {
+    source = "glob a = {1,2,3};\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "{1, 2, 3}" in formatted , (
+        f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
+}
+
+"""Regression: a set literal wider than the print width must break one element
+per line, exactly like a list. `exit_set_val` had no broken layout at all, so
+long sets stayed on a single overlong line."""
+test "long set literal wraps one element per line like a list" {
+    source = (
+        'glob a = {"alpha","bravo","charlie","delta","echo","foxtrot",'
+        '"golf","hotel","india","juliet","kilo","lima"};\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    assert len(lines) > 3 , (
+        f"long set literal must break across lines, got:\n{formatted}"
+    );
+    # No two elements may share a line once broken.
+    assert not any(('"alpha"' in ln) and ('"bravo"' in ln) for ln in lines) , (
+        f"broken set must place one element per line, got:\n{formatted}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
+}
+
+"""Regression: assign comprehensions must space after commas the same way
+filter comprehensions do. `exit_assign_compr` stripped every space, so
+`(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space."""
+test "assign comprehension spaces after commas like filter comprehension" {
+    source = "with entry { x = (a)(=foo=1,bar=2); }\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "=foo=1, bar=2" in formatted , (
+        f"assign comprehension must space after commas, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
+}
+
+"""Regression: enum base-type declarations must space like type annotations
+and base-class lists. `exit_enum` sent the typed-base colon (`enum X: int`)
+and the base-class parens/commas (`enum X(A, B)`) through the generic kid
+branch, which appends a trailing space after every kid — yielding
+`enum X : int` and `enum X ( A , B )`."""
+test "enum base type colon and parens space correctly" {
+    source = (
+        'enum Category: int { WORK, PERSONAL }\n'
+        'enum Color(Mixin, Enum) { RED, GREEN }\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    # Typed-base colon: no space before, one space after.
+    assert "enum Category: int" in formatted , (
+        f"typed-base colon must format as `Category: int`, got:\n{repr(formatted)}"
+    );
+    assert "Category : int" not in formatted , (
+        f"typed-base colon must not have a space before `:`, got:\n{repr(formatted)}"
+    );
+    # Base-class list: no space inside parens, comma-separated like archetypes.
+    assert "enum Color(Mixin, Enum)" in formatted , (
+        f"base-class list must format as `Color(Mixin, Enum)`, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "enum base-type spacing is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

@@ -378,6 +378,33 @@ test "visit by for routing" {
     assert "Math Result: 35" in stdout_value;
 }
 
+test "streaming visit by routes and streams tokens to handler" {
+    # `visit [-->] by model(stream=True, stream_handler=fn)` streams the routing
+    # decision token-by-token to the handler (the jac ai --ui firehose path)
+    # while the structured choice still selects the successor edge.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_visit_by", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STREAMING_VISIT_BY_PASS" in stdout_value;
+    # The structured choice [1] picked the second successor edge.
+    assert "VISITED: green" in stdout_value;
+    assert "VISITED: red" not in stdout_value;
+}
+
+test "structured streaming without a handler is rejected" {
+    # Streaming a non-str return needs a stream_handler to consume the events;
+    # omitting it raises ConfigurationError up front (the guard the visit-by
+    # streaming path relaxes only when a handler is supplied).
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_structured_no_handler", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STREAMING_GUARD_PASS" in stdout_value;
+}
+
 test "http client with system prompt override" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

@@ -591,7 +591,7 @@ obj ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymb
 """SemDef node type for Jac Ast."""
 obj SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
     has target: Sequence[NameAtom],
-        value: String;
+        value: MultiString;
 
     def postinit -> None;
     def create_sem_name_node -> Name;
@@ -985,6 +985,10 @@ obj MultiString(AtomExpr) {
     has strings: Sequence[(String | FString)];
 
     def postinit -> None;
+    # The concatenated literal value, joining the plain-string parts (f-string
+    # parts are dynamic and contribute nothing static). Used for a `sem` value,
+    # whose parts are always plain strings.
+    has lit_value: str { getter; }
 }
 
 """FString node type for Jac Ast."""
@@ -1407,7 +1411,10 @@ obj Token(UniNode) {
         c_start: int by postinit,
         c_end: int by postinit,
         pos_start: int by postinit,
-        pos_end: int by postinit;
+        pos_end: int by postinit,
+        # True for tokens synthesized during parsing (e.g. by `gen_token`),
+        # whose source positions are approximate; comment injection skips them.
+        _is_synthetic: bool = False;
 
     def init(
         orig_src: Source,

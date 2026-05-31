@@ -2860,7 +2860,7 @@ test "union_and_optional_special_forms" {
     );
 }
 
-"""Union[('A', 'B')] with string forward references resolves to actual types, not Literal["A"]."""
+"""Union/Optional string forward refs resolve to actual types, not Literal[...]."""
 test "union_string_forward_refs" {
     program = JacProgram();
     mod = program.compile(
@@ -2868,10 +2868,36 @@ test "union_string_forward_refs" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , (
-        f"Expected 0 errors — Union[('Foo','Bar')] should resolve to Foo|Bar not "
-        f"Literal[\"Foo\"]|Literal[\"Bar\"]. Got {len(program.errors_had)}: " + "\n".join(
+        "Expected 0 errors — Union[('Foo','Bar')], Union['Foo'], and Optional['Foo'] "
+        "should resolve to real types, not Literal strings. Got "
+        f"{len(program.errors_had)}: " + "\n".join(
             [e.pretty_print() for e in program.errors_had]
         )
+    );
+}
+
+"""Unresolvable Union[('A', 'B')] strings still degrade to Literal (safety net)."""
+test "union_string_forward_refs_unresolved" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref_unresolved.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 1 , (
+        f"Expected 1 error for int return to Literal union, got {len(user_errors)}: " + "\n".join(
+            [e.pretty_print() for e in user_errors]
+        )
+    );
+    assert user_errors[0].code and user_errors[0].code.code == "E1002" , (
+        f"Expected E1002 return mismatch, got {user_errors[0].code.code
+            if user_errors[0].code
+            else '?'}"
     );
 }
 
@@ -4190,6 +4216,39 @@ test "callable_narrowing" {
     );
 }
 
+test "hasattr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_hasattr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 5 , "Expected exactly 5 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: attribute is missing from NoFoo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.bar;  # <-- Error: x is WithFoo here, no `bar`
+    """,
+        program.errors_had[1].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: x is NoFoo here, no `foo`
+    """,
+        program.errors_had[3].pretty_print()
+    );
+}
+
 """Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
 test "type_alias_narrowing" {
     program = JacProgram();
@@ -5070,4 +5129,18 @@ test "duplicate_archetype_decl_is_hard_error" {
     assert "Animal" in e0077[1].pretty_print() , f"second E0077 should name 'Animal': {e0077[
         1
     ].pretty_print()}";
+}
+
+test "spread_with_explicit_kwarg_no_false_positive" {
+    # Regression: a call that mixes a `*`/`**` spread with an explicit keyword
+    # argument must not emit E1057 "Parameter 'X' already matched". The spread
+    # contents are statically unknown, so the explicit keyword wins and the
+    # spread only satisfies the required-param check.
+    path = os.path.join(CHECKER_FIXTURES, "checker_spread_with_kwarg.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors for spread + explicit kwarg, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

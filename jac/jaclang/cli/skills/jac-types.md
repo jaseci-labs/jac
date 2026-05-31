@@ -101,7 +101,7 @@ def run_callback(cb: any, payload: str) {   # cb: an opaque function reference
 - **Every `def` parameter needs a type** (E0052). `def foo(x) -> int` is invalid - must be `def foo(x: int) -> int`.
 - **A `def` that returns a value needs a return type** (E1003). A `def` with no `return` infers `None` - **do not** annotate it `-> None`, that triggers W3037 (`unnecessary-none-return`). Write `def save(x: int) { ... }`, not `def save(x: int) -> None { ... }`.
 - **`has name;`** without a type is a parse error. Always `has name: type;`.
-- `list`, `dict`, `set` without type args default to `list[Any]` (W1036) - add args when you know the element type: `list[str]`, `dict[str, int]`.
+- `list`, `dict`, `set` without type args default to `list[any]` (W1036) - add args when you know the element type: `list[str]`, `dict[str, int]`.
 - Use **`T | None`** for optional references. NOT `Optional[T]` (Python stdlib, not idiomatic). Always check `is None` before dereferencing.
 - **The gradual / escape-hatch type is lowercase `any`** - Jac-native, no import needed, type-checks cleanly. Do **NOT** `import from typing { Any }` - that triggers `W1104` (the compiler explicitly tells you to use the `any` keyword instead). Capitalized `Any` is not the keyword: a bare `x: Any` warns `W2001` ("Name 'Any' may be undefined").
 - **Event-handler params take the event type, not `any`.** In a `.cl.jac` handler, `e: any` leaves `e.target.value` an untyped `any` that then fails when stored in typed state - annotate the real event type (`e: ChangeEvent`, `e: MouseEvent`, ...). See `jac-cl-components`.

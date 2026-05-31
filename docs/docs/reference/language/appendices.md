@@ -77,7 +77,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `self` | Reference | Current instance |
 | `Self` | Type | Enclosing archetype type (used in `class def` and type annotations) |
 | `sem` | Declaration | Semantic string |
-| `skip` | Control | Skip (nested context) |
+| `skip` | Return | Early exit: bare `return` in a function/ability; slot guard in JSX |
 | `spawn` | OSP | Spawn walker |
 | `static` | Modifier | Static member |
 | `super` | Reference | Parent class |

@@ -2,6 +2,10 @@
 
 Production-grade console with raw ANSI codes. User data is never processed
 or modified - only internal CLI chrome (prefixes, symbols) gets styled.
+
+`JacConsole` is the capability/routing facade; `ConsoleRenderer` is the ANSI
+drawing backend it delegates to. Caller data flows as styleless `Span`s so it
+is always emitted verbatim.
 """
 import os;
 import sys;
@@ -24,13 +28,252 @@ glob RESET: str = "\033[0m",
      BRIGHT_WHITE: str = "\033[97m",
      BRIGHT_BLUE: str = "\033[94m";
 
+# Map semantic style roles to raw ANSI. Roles are renderer-agnostic; this table
+# is the ANSI renderer's palette.
+glob _ANSI_ROLES: dict = {
+         'success': GREEN,
+         'error': RED,
+         'warning': YELLOW,
+         'info': CYAN,
+         'muted': DIM,
+         'highlight': CYAN,
+         'url': BRIGHT_BLUE + UNDERLINE,
+         'time': GREEN,
+         'cyan': CYAN,
+         'dim': DIM,
+         'bright_white': BRIGHT_WHITE
+     };
+
 # ===============================================================================
-# JacConsole Implementation
+# ConsoleRenderer (ANSI backend) Implementation
 # ===============================================================================
-"""Initialize the console."""
-impl JacConsole.init -> None {
+"""Sync the renderer's capability flags with the facade's resolved decision."""
+impl ConsoleRenderer.configure(use_emoji: bool, use_color: bool) -> None {
+    self.use_emoji = use_emoji;
+    self.use_color = use_color;
+}
+
+"""Write one composed line; colored spans wrap raw ANSI, data spans pass through.
+
+A span with `style is None` (caller data) is emitted verbatim — no styling, no
+interpretation — which is the trust boundary. Color is applied only when the
+facade resolved `use_color = True`.
+"""
+impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
+    out = stream if stream is not None else sys.stdout;
+    parts: list[str] = [];
+    for s in spans {
+        if self.use_color and s.style is not None and _ANSI_ROLES.get(s.style) {
+            parts.append(f"{_ANSI_ROLES.get(s.style)}{s.text}{RESET}");
+        } else {
+            parts.append(s.text);
+        }
+    }
+    try {
+        print(''.join(parts), file=out);
+    } except (BrokenPipeError, OSError) {
+        return;
+    }
+    try {
+        out.flush();
+    } except (BrokenPipeError, OSError) {
+        ;
+    }
+}
+
+"""Emit raw print() args verbatim. User data is never modified.
+
+Handles Windows console encoding (replacing unencodable chars) and broken
+pipes. `style` is ignored by the ANSI backend — `print` is a pure passthrough.
+"""
+impl ConsoleRenderer.emit_raw(
+    args: list, stream: any, style: str | None, kwargs: dict
+) -> None {
+    out = stream if stream is not None else sys.stdout;
+    # Handle Windows console encoding - replace unencodable chars
+    if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
+        encoding: str = str(out?.encoding or 'cp1252');
+        processed_args: list = [];
+        for arg in args {
+            if isinstance(arg, str) {
+                try {
+                    arg.encode(encoding);
+                    processed_args.append(arg);
+                } except UnicodeEncodeError {
+                    processed_args.append(
+                        arg.encode(encoding, errors='replace').decode(encoding)
+                    );
+                }
+            } else {
+                processed_args.append(arg);
+            }
+        }
+        try {
+            print(*processed_args, file=out, **kwargs);
+        } except (BrokenPipeError, OSError) {
+            return;
+        }
+    } else {
+        try {
+            print(*args, file=out, **kwargs);
+        } except (BrokenPipeError, OSError) {
+            return;
+        }
+    }
+    try {
+        out.flush();
+    } except (BrokenPipeError, OSError) {
+        ;
+    }
+}
+
+"""Print a header with optional version, framed by terminal-width rules."""
+impl ConsoleRenderer.header(title: str, version: str | None = None) -> None {
+    try {
+        width = os.get_terminal_size().columns;
+    } except (OSError, ValueError) {
+        width = 80;
+    }
+    rule = '─' * width;
+    if self.use_color {
+        self.emit([Span(rule, 'muted')]);
+        if version {
+            self.emit(
+                [
+                    Span(title, 'bright_white'),
+                    Span('  ', None),
+                    Span(f"v{version}", 'muted')
+                ]
+            );
+        } else {
+            self.emit([Span(title, 'bright_white')]);
+        }
+        self.emit([Span(rule, 'muted')]);
+    } else {
+        self.emit([Span(rule, None)]);
+        if version {
+            self.emit([Span(f"{title} v{version}", None)]);
+        } else {
+            self.emit([Span(title, None)]);
+        }
+        self.emit([Span(rule, None)]);
+    }
+}
+
+"""Print a list of labeled URLs. Labels and URLs are caller data (verbatim)."""
+impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
+    sym = symbol or ('➜' if self.use_emoji else '>');
+    for (label, url) in items {
+        padded_label = f"{label}:".ljust(10);
+        self.emit(
+            [
+                Span("  ", None),
+                Span(sym, 'cyan'),
+                Span("  ", None),
+                Span(padded_label, 'muted'),
+                Span(" ", None),
+                Span(str(url), 'url')
+            ]
+        );
+    }
+}
+
+"""Print a titled list of next steps. Step text is caller data (verbatim)."""
+impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> None {
+    self.emit([Span("", None)]);
+    self.emit([Span(f"{title}:", 'bright_white')]);
+    for (i, step) in enumerate(steps, 1) {
+        self.emit([Span(f"  {i}.", 'cyan'), Span(f" {step}", None)]);
+    }
+    self.emit([Span("", None)]);
+}
+
+"""Print a formatted table with colored headers. Cells are caller data."""
+impl ConsoleRenderer.table(
+    headers: list[str], rows: list[list[str]], title: str | None = None
+) -> None {
+    if title {
+        self.emit([Span(f"\n{title}:", 'bright_white')]);
+    }
+    col_widths: list[int] = [len(h) for h in headers];
+    for row in rows {
+        for (i, cell) in enumerate(row) {
+            if i < len(col_widths) {
+                col_widths[i] = max(col_widths[i], len(str(cell)));
+            }
+        }
+    }
+    # Header row: styled chrome, but separators around verbatim header text.
+    header_spans: list[Span] = [];
+    for (idx, (h, w)) in enumerate(zip(headers, col_widths)) {
+        if idx > 0 {
+            header_spans.append(Span(" | ", 'dim'));
+        }
+        header_spans.append(Span(h.ljust(w), 'bright_white'));
+    }
+    self.emit(header_spans);
+    sep_len = sum(col_widths) + (len(col_widths) - 1) * 3;
+    self.emit([Span('-' * sep_len, 'dim')]);
+    # Data rows: cells emitted verbatim, only the separators styled.
+    for row in rows {
+        row_spans: list[Span] = [];
+        for (i, cell) in enumerate(row) {
+            if i > 0 {
+                row_spans.append(Span(" | ", 'dim'));
+            }
+            width = col_widths[i] if i < len(col_widths) else 0;
+            row_spans.append(Span(str(cell).ljust(width), None));
+        }
+        self.emit(row_spans);
+    }
+    self.emit([Span("", None)]);
+}
+
+"""Context manager for status during long operations."""
+@contextmanager
+impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
+    if args {
+        msg = args[0] if isinstance(args[0], str) else str(args[0]);
+        self.emit([Span(msg, 'muted')]);
+    }
+    yield None;
+}
+
+"""Context manager for spinner during long operations."""
+@contextmanager
+impl ConsoleRenderer.spinner_ctx(text: str) -> object {
+    self.emit([Span(f"{text}...", 'muted')]);
+    try {
+        yield None;
+    } finally {
+        self.emit([Span(" done", 'success')]);
+    }
+}
+
+# ===============================================================================
+# JacConsole facade Implementation
+# ===============================================================================
+"""Detect terminal capabilities once at construction, build the renderer via
+the polymorphic factory, and push the capability decision to it.
+
+`init` is Jac's constructor (`__init__`), which runs before `by postinit`
+fields are set — so all renderer setup lives here in `postinit`, which runs
+after fields are initialized. Plugins customize the backend by overriding
+`_make_renderer`, not by re-implementing this.
+"""
+impl JacConsole.postinit -> None {
     self.use_emoji = JacConsole._should_use_emoji();
     self.use_color = JacConsole._should_use_color();
+    self._renderer = self._make_renderer();
+    self._renderer.configure(self.use_emoji, self.use_color);
+}
+
+"""Build the rendering backend. The base console renders with ANSI; plugins
+override this to return a different `ConsoleRenderer` (e.g. jac-super's Rich
+backend).
+"""
+impl JacConsole._make_renderer -> ConsoleRenderer {
+    return ConsoleRenderer();
 }
 
 """Check if emoji should be used based on environment."""
@@ -68,80 +311,41 @@ impl JacConsole._should_use_color -> bool {
     return True;
 }
 
-"""Print to stdout. User data passes through unchanged - no processing."""
+"""Resolve the output stream for a `file=` kwarg.
+
+Single source of truth for stream routing: `None` means default stdout; an
+explicit stream (`sys.stderr` or an arbitrary file object) is returned as-is.
+Both the facade and plugin renderers route through this so the
+stdout/stderr/other decision can never diverge between implementations.
+"""
+impl JacConsole._resolve_stream(file: any = None) -> any {
+    return file if file is not None else sys.stdout;
+}
+
+"""Print to stdout. User data passes through unchanged - no processing.
+
+`Content`-wrapped args are unwrapped to their raw text; `style`/`markup`/
+`highlight` kwargs are stripped for renderer compatibility; `file=` routes via
+the shared stream resolver.
+"""
 impl JacConsole.print(*args: any, **kwargs: any) -> None {
-    # Filter out Rich-specific kwargs for compatibility
+    style = kwargs.pop('style', None);
+    file = kwargs.pop('file', None);
     kwargs.pop('markup', None);
     kwargs.pop('highlight', None);
-    kwargs.pop('style', None);
-    # Handle Windows console encoding - replace unencodable chars
-    if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
-        # Windows cmd/PowerShell can't handle many Unicode chars
-        encoding: str = str(sys.stdout?.encoding or 'cp1252');
-        processed_args: list = [];
-        for arg in args {
-            if isinstance(arg, str) {
-                try {
-                    # Test if string can be encoded with current console encoding
-                    arg.encode(encoding);
-                    processed_args.append(arg);
-                } except UnicodeEncodeError {
-                    # Replace unencodable chars with ?
-                    processed_args.append(
-                        arg.encode(encoding, errors='replace').decode(encoding)
-                    );
-                }
-            } else {
-                processed_args.append(arg);
-            }
-        }
-        try {
-            print(*processed_args, **kwargs);
-        } except (BrokenPipeError, OSError) {
-            return;  # Silently ignore if pipe is broken
-        }
-    } else {
-        # Plain print - user data is never modified
-        try {
-            print(*args, **kwargs);
-        } except (BrokenPipeError, OSError) {
-            return;  # Silently ignore if pipe is broken
-        }
-    }
-    # Flush for piped/subprocess output
-    output_file = kwargs.get('file', sys.stdout);
-    try {
-        output_file.flush();
-    } except (BrokenPipeError, OSError) {
-        ;  # Ignore broken pipe errors (e.g., stdout closed in sidecar mode)
-    }
+    processed: list = [(a.text if isinstance(a, Content) else a) for a in args];
+    self._renderer.emit_raw(processed, self._resolve_stream(file), style, kwargs);
 }
 
 """Context manager for status during long operations."""
 impl JacConsole.status(*args: any, **kwargs: any) -> object {
-    if args {
-        msg = args[0] if isinstance(args[0], str) else str(args[0]);
-        if self.use_color {
-            print(f"{DIM}{msg}{RESET}");
-        } else {
-            print(msg);
-        }
-    }
-    @contextmanager
-    def _noop_status -> object {
-        yield None;
-    }
-    return _noop_status();
+    return self._renderer.status_ctx(list(args), kwargs);
 }
 
 """Print a success message with green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
-    if self.use_color {
-        print(f"{GREEN}{prefix}{RESET} {message}");
-    } else {
-        print(f"{prefix} {message}");
-    }
+    self._renderer.emit([Span(prefix, 'success'), Span(f" {message}", None)]);
 }
 
 """Print an error message with optional hint."""
@@ -149,120 +353,52 @@ impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
-    if self.use_color {
-        print(f"{RED}{prefix} Error:{RESET} {message}", file=sys.stderr);
-    } else {
-        print(f"{prefix} Error: {message}", file=sys.stderr);
-    }
+    self._renderer.emit(
+        [Span(f"{prefix} Error:", 'error'), Span(f" {message}", None)], sys.stderr
+    );
     if hint {
         hint_prefix = '💡' if self.use_emoji else 'HINT:';
-        if self.use_color {
-            print(f"{DIM}{hint_prefix} {hint}{RESET}", file=sys.stderr);
-        } else {
-            print(f"{hint_prefix} {hint}", file=sys.stderr);
-        }
+        self._renderer.emit([Span(f"{hint_prefix} {hint}", 'muted')], sys.stderr);
     }
 }
 
 """Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
-    if self.use_color {
-        print(f"{YELLOW}{prefix}{RESET} {message}", file=sys.stderr);
-    } else {
-        print(f"{prefix} {message}", file=sys.stderr);
-    }
+    self._renderer.emit(
+        [Span(prefix, 'warning'), Span(f" {message}", None)], sys.stderr
+    );
 }
 
 """Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
-    if self.use_color {
-        print(f"{CYAN}{prefix}{RESET} {message}");
-    } else {
-        print(f"{prefix} {message}");
-    }
+    self._renderer.emit([Span(prefix, 'info'), Span(f" {message}", None)]);
 }
 
 """Print a header with optional version."""
 impl JacConsole.print_header(title: str, version: str | None = None) -> None {
-    try {
-        width = os.get_terminal_size().columns;
-    } except (OSError, ValueError) {
-        width = 80;
-    }
-    rule = '─' * width;
-    if self.use_color {
-        print(f"{DIM}{rule}{RESET}");
-        if version {
-            print(f"{BRIGHT_WHITE}{title}{RESET}  {DIM}v{version}{RESET}");
-        } else {
-            print(f"{BRIGHT_WHITE}{title}{RESET}");
-        }
-        print(f"{DIM}{rule}{RESET}");
-    } else {
-        print(rule);
-        if version {
-            print(f"{title} v{version}");
-        } else {
-            print(title);
-        }
-        print(rule);
-    }
+    self._renderer.header(title, version);
 }
 
 """Print a list of labeled URLs."""
 impl JacConsole.print_urls(urls: any, symbol: str = '') -> None {
-    # Use Unicode arrow if emoji supported, otherwise ASCII
-    if not symbol {
-        symbol = '>' if not self.use_emoji else '➜';
-    }
-    items = urls.items() if isinstance(urls, dict) else urls;
-    for (label, url) in items {
-        padded_label = f"{label}:".ljust(10);
-        if self.use_color {
-            print(
-                f"  {CYAN}{symbol}{RESET}  {DIM}{padded_label}{RESET} {BRIGHT_BLUE}{UNDERLINE}{url}{RESET}"
-            );
-        } else {
-            print(f"  {symbol}  {padded_label} {url}");
-        }
-    }
+    items = list(urls.items()) if isinstance(urls, dict) else list(urls);
+    self._renderer.urls(items, symbol);
 }
 
 """Print a bordered box with next steps."""
 impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') -> None {
-    if self.use_color {
-        print(f"\n{BRIGHT_WHITE}{title}:{RESET}");
-    } else {
-        print(f"\n{title}:");
-    }
-    for (i, step) in enumerate(steps, 1) {
-        if self.use_color {
-            print(f"  {CYAN}{i}.{RESET} {step}");
-        } else {
-            print(f"  {i}. {step}");
-        }
-    }
-    print();
+    self._renderer.next_steps(steps, title);
 }
 
-"""Print a list of items with colored symbols."""
+"""Print a list of items with colored symbols. Items are caller data."""
 impl JacConsole.print_list(
     items: list[str], style: str = 'success', symbol: str = ''
 ) -> None {
-    # Use Unicode checkmark if emoji supported, otherwise ASCII
-    if not symbol {
-        symbol = '*' if not self.use_emoji else '✔';
-    }
-    color_map = {'success': GREEN, 'warning': YELLOW, 'error': RED, 'info': CYAN};
-    color = color_map.get(style, GREEN);
+    sym = symbol or ('✔' if self.use_emoji else '*');
     for item in items {
-        if self.use_color {
-            print(f"  {color}{symbol}{RESET} {item}");
-        } else {
-            print(f"  {symbol} {item}");
-        }
+        self._renderer.emit([Span(f"  {sym}", style), Span(f" {item}", None)]);
     }
 }
 
@@ -270,66 +406,14 @@ impl JacConsole.print_list(
 impl JacConsole.print_table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
-    if title {
-        if self.use_color {
-            print(f"\n{BRIGHT_WHITE}{title}:{RESET}");
-        } else {
-            print(f"\n{title}:");
-        }
-    }
-    # Calculate column widths
-    col_widths: list[int] = [len(h) for h in headers];
-    for row in rows {
-        for (i, cell) in enumerate(row) {
-            if i < len(col_widths) {
-                col_widths[i] = max(col_widths[i], len(str(cell)));
-            }
-        }
-    }
-    # Print header row
-    if self.use_color {
-        header_parts = [
-            f"{BRIGHT_WHITE}{h.ljust(w)}{RESET}" for (h, w) in zip(headers, col_widths)
-        ];
-        print(f" {DIM}|{RESET} ".join(header_parts));
-        separator = '-' * (sum(col_widths) + (len(col_widths) - 1) * 3);
-        print(f"{DIM}{separator}{RESET}");
-    } else {
-        header_row = ' | '.join(h.ljust(w) for (h, w) in zip(headers, col_widths));
-        print(header_row);
-        print('-' * len(header_row));
-    }
-    # Print data rows - user data unchanged
-    for row in rows {
-        row_parts = [
-            str(cell).ljust(col_widths[i]) if i < len(col_widths) else str(cell)
-            for (i, cell) in enumerate(row)
-        ];
-        if self.use_color {
-            print(f" {DIM}|{RESET} ".join(row_parts));
-        } else {
-            print(' | '.join(row_parts));
-        }
-    }
-    print();
+    self._renderer.table(headers, rows, title);
 }
 
 """Context manager for spinner during long operations."""
 @contextmanager
 impl JacConsole.spinner(text: str) -> object {
-    if self.use_color {
-        print(f"{DIM}{text}...{RESET}", end='', flush=True);
-    } else {
-        print(f"{text}...", end='', flush=True);
-    }
-    try {
-        yield None;
-    } finally {
-        if self.use_color {
-            print(f" {GREEN}done{RESET}");
-        } else {
-            print(" done");
-        }
+    with self._renderer.spinner_ctx(text) as s {
+        yield s;
     }
 }
 
@@ -337,50 +421,42 @@ impl JacConsole.spinner(text: str) -> object {
 impl JacConsole.print_elapsed_time(seconds: float) -> None {
     if seconds < 1 {
         ms = seconds * 1000;
-        if self.use_color {
-            print(f"  {DIM}Done in{RESET} {GREEN}{ms:.0f}ms{RESET}");
-        } else {
-            print(f"  Done in {ms:.0f}ms");
-        }
+        self._renderer.emit([Span("  Done in ", 'muted'), Span(f"{ms:.0f}ms", 'time')]);
     } else {
-        if self.use_color {
-            print(f"  {DIM}Done in{RESET} {GREEN}{seconds:.1f}s{RESET}");
-        } else {
-            print(f"  Done in {seconds:.1f}s");
-        }
+        self._renderer.emit(
+            [Span("  Done in ", 'muted'), Span(f"{seconds:.1f}s", 'time')]
+        );
     }
 }
 
-"""Print file change notification with timestamp."""
+"""Print file change notification with timestamp. Filepath is caller data."""
 impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> None {
     import from datetime { datetime }
     timestamp = datetime.now().strftime('%H:%M:%S');
     emoji_map = {'changed': '⚡', 'created': '✨', 'deleted': '🗑️'};
-    color_map = {'changed': YELLOW, 'created': GREEN, 'deleted': RED};
+    color_map = {'changed': 'warning', 'created': 'success', 'deleted': 'error'};
     emoji = emoji_map.get(action, '📝') if self.use_emoji else action.upper();
-    color = color_map.get(action, CYAN);
-    if self.use_color {
-        print(
-            f"{DIM}[{timestamp}]{RESET} {color}{emoji} {action.capitalize()}:{RESET} {filepath}"
-        );
-    } else {
-        print(f"[{timestamp}] {emoji} {action.capitalize()}: {filepath}");
-    }
+    role = color_map.get(action, 'info');
+    self._renderer.emit(
+        [
+            Span(f"[{timestamp}]", 'muted'),
+            Span(f" {emoji} {action.capitalize()}:", role),
+            Span(f" {filepath}", None)
+        ]
+    );
 }
 
-"""Print file watching status."""
+"""Print file watching status. Pattern is caller data."""
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
-    watch_emoji = '👀 ' if self.use_emoji else '';
-    if self.use_color {
-        print(f"{CYAN}{watch_emoji}Watching for changes...{RESET}");
-        print(
-            f"   {DIM}Monitoring:{RESET} {BRIGHT_WHITE}{pattern}{RESET} {DIM}({count} files){RESET}"
-        );
-    } else {
-        watch_prefix = watch_emoji or '[WATCHING] ';
-        print(f"{watch_prefix}Watching for changes...");
-        print(f"   Monitoring: {pattern} ({count} files)");
-    }
+    watch_emoji = '👀 ' if self.use_emoji else '[WATCHING] ';
+    self._renderer.emit([Span(f"{watch_emoji}Watching for changes...", 'info')]);
+    self._renderer.emit(
+        [
+            Span("   Monitoring: ", 'muted'),
+            Span(pattern, 'bright_white'),
+            Span(f" ({count} files)", 'muted')
+        ]
+    );
 }
 
 # ===============================================================================
@@ -391,8 +467,9 @@ impl _get_console -> JacConsole {
     global _console_instance;
     if _console_instance is None {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
+        # Capability detection and renderer wiring happen in `postinit` at
+        # construction; no post-construction `init()` call is needed.
         _console_instance = Jac.get_console();
-        _console_instance.init();
     }
     return _console_instance;
 }

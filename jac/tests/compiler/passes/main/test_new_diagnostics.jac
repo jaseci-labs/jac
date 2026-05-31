@@ -414,6 +414,46 @@ test "E0062: nonlocal at module level" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
 }
 
+test "E0063: glob at module level is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
+}
+
+test "E0063: glob in statement position is always rejected" {
+    sources = [
+        "with entry { glob a = 90; }",
+        "with entry { glob a = 90 }",
+        "with entry { glob a = }",
+        "with entry { glob a }",
+        "with entry { glob }",
+        "def foo() -> int { glob a = 1; return a; }",
+        "test \"t\" { glob sneaky = 1; assert True; }"
+    ];
+    for src in sources {
+        (has_err, _) = parse_and_validate(src);
+        assert has_err , f"Expected error for: {src}";
+    }
+}
+
+test "E0063: glob inside a codespace block is valid" {
+    # glob is a declaration, so it is allowed directly under cl/sv/na blocks.
+    for src in ["cl { glob counter: int = 0; }", "sv { glob token = \"x\"; }"] {
+        (has_err, _) = parse_and_validate(src);
+        assert not has_err , f"Unexpected error for: {src}";
+    }
+}
+
+test "E0063: glob inside a function produces no runnable bytecode" {
+    # Detected by ASTValidationPass (not the parser), and the structural
+    # error must block codegen so the invalid module cannot silently execute.
+    prog = JacProgram();
+    mod = prog.compile(
+        file_path="/tmp/test_e0063_gate.jac",
+        use_str="def foo() -> int { glob a = 1; return a; }"
+    );
+    assert has_diagnostic_code(prog, "E0063");
+    assert not mod.gen.py_bytecode;
+}
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 3: NAME RESOLUTION / SCOPE DIAGNOSTICS (E/W 2020-2037)
@@ -574,6 +614,24 @@ test "W1172: missing await on coroutine" {
     pytest.skip("W1172 not yet implemented");
     (prog, _) = compile_and_check("type_W1172_missing_await.jac");
     assert has_diagnostic_code(prog, "W1172", in_warnings=True);
+}
+
+test "E1042: calling an async function without await" {
+    # An `async def` call is a coroutine, not its return value. Assigning it
+    # without `await` is a type error; the awaited forms must stay clean.
+    (prog, _) = compile_and_check("type_E1042_missing_await.jac");
+    assert count_diagnostic_code(prog, "E1042") == 2 , f"expected 2 E1042 (the two un-awaited calls), got "
+    f"{count_diagnostic_code(prog, 'E1042')}; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
+test "E1042: missing await on sv-imported call (issue #6236)" {
+    # `sv import` functions are async RPC stubs on the client; calling one
+    # without `await` assigns a coroutine to a typed field and crashes at
+    # runtime. `jac check` must flag it.
+    (prog, _) = compile_and_check("type_E1042_sv_missing_await.cl.jac");
+    assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
+    f"errors={[str(e) for e in prog.errors_had]}";
 }
 
 # --- Collections ---
@@ -890,8 +948,17 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
-     IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
+glob IMPLEMENTED_REJECT: set[str] = {
+         "E0062_nonlocal_module",
+         "E0063_glob_inside_func",
+         "E0071_bare_except_first",
+         "E0075_dup_base"
+     },
+     IMPLEMENTED_VALIDATE: set[str] = {
+         "E0055_yield_in_entry",
+         "E0058_break_no_loop",
+         "E0058_continue_no_loop"
+     };
 
 def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
