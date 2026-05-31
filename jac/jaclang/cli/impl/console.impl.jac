@@ -44,6 +44,41 @@ glob _ANSI_ROLES: dict = {
          'bright_white': BRIGHT_WHITE
      };
 
+# Rich-style token names occasionally appear in legacy console.print(style=...)
+# call sites (e.g. "bold cyan"). Parse those style expressions into ANSI.
+glob _ANSI_STYLE_TOKENS: dict = {
+         'bold': BOLD,
+         'dim': DIM,
+         'underline': UNDERLINE,
+         'red': RED,
+         'green': GREEN,
+         'yellow': YELLOW,
+         'blue': BLUE,
+         'magenta': MAGENTA,
+         'cyan': CYAN,
+         'white': WHITE,
+         'bright_white': BRIGHT_WHITE,
+         'bright_blue': BRIGHT_BLUE
+     };
+
+"""Resolve a style role/expression to ANSI prefix code(s), or empty string."""
+def _resolve_ansi_style(style: str | None) -> str {
+    if not style {
+        return "";
+    }
+    mapped = _ANSI_ROLES.get(style);
+    if mapped {
+        return str(mapped);
+    }
+    codes: list[str] = [];
+    for token in style.split() {
+        if token in _ANSI_STYLE_TOKENS {
+            codes.append(str(_ANSI_STYLE_TOKENS[token]));
+        }
+    }
+    return ''.join(codes);
+}
+
 # ===============================================================================
 # ConsoleRenderer (ANSI backend) Implementation
 # ===============================================================================
@@ -84,12 +119,14 @@ impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
 """Emit raw print() args verbatim. User data is never modified.
 
 Handles Windows console encoding (replacing unencodable chars) and broken
-pipes. `style` is ignored by the ANSI backend — `print` is a pure passthrough.
+pipes. When provided, `style` is resolved into ANSI codes and applied only to
+string args.
 """
 impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
 ) -> None {
     out = stream if stream is not None else sys.stdout;
+    style_prefix = _resolve_ansi_style(style) if self.use_color else "";
     # Handle Windows console encoding - replace unencodable chars
     if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
         encoding: str = str(out?.encoding or 'cp1252');
@@ -108,14 +145,30 @@ impl ConsoleRenderer.emit_raw(
                 processed_args.append(arg);
             }
         }
+        styled_args = (
+            [
+                f"{style_prefix}{arg}{RESET}" if isinstance(arg, str) else arg
+                for arg in processed_args
+            ]
+                if style_prefix
+                else processed_args
+        );
         try {
-            print(*processed_args, file=out, **kwargs);
+            print(*styled_args, file=out, **kwargs);
         } except (BrokenPipeError, OSError) {
             return;
         }
     } else {
+        styled_args = (
+            [
+                f"{style_prefix}{arg}{RESET}" if isinstance(arg, str) else arg
+                for arg in args
+            ]
+                if style_prefix
+                else args
+        );
         try {
-            print(*args, file=out, **kwargs);
+            print(*styled_args, file=out, **kwargs);
         } except (BrokenPipeError, OSError) {
             return;
         }
