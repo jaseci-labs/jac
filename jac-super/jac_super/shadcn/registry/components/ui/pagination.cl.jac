@@ -37,8 +37,7 @@ cl {
 
     def:pub PaginationItem(props: any) -> JsxElement {
         attrs: dict[str, any] = {** props};
-        return
-            <li data-slot="pagination-item" {**attrs}/>;
+        return <li data-slot="pagination-item" {**attrs}/>;
     }
 
     def:pub PaginationLink(props: any) -> JsxElement {

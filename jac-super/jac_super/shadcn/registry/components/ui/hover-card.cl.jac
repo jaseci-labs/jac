@@ -3,13 +3,11 @@ cl import from ...lib.utils { cn }
 
 cl {
     def:pub HoverCard(props: any) -> JsxElement {
-        return
-            <HoverCardPrimitive.Root data-slot="hover-card" {**props}/>;
+        return <HoverCardPrimitive.Root data-slot="hover-card" {**props}/>;
     }
 
     def:pub HoverCardTrigger(props: any) -> JsxElement {
-        return
-            <HoverCardPrimitive.Trigger data-slot="hover-card-trigger" {**props}/>;
+        return <HoverCardPrimitive.Trigger data-slot="hover-card-trigger" {**props}/>;
     }
 
     def:pub HoverCardContent(props: any) -> JsxElement {

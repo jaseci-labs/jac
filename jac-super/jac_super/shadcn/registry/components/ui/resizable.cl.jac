@@ -15,8 +15,7 @@ cl {
     }
 
     def:pub ResizablePanel(props: any) -> JsxElement {
-        return
-            <Panel data-slot="resizable-panel" {**props}/>;
+        return <Panel data-slot="resizable-panel" {**props}/>;
     }
 
     def:pub ResizableHandle(props: any) -> JsxElement {

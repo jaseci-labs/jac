@@ -5,8 +5,7 @@ cl import from "@hugeicons/core-free-icons" { Tick02Icon, ArrowRight01Icon }
 
 cl {
     def:pub DropdownMenu(props: any) -> JsxElement {
-        return
-            <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {**props}/>;
+        return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {**props}/>;
     }
 
     def:pub DropdownMenuPortal(props: any) -> JsxElement {
@@ -41,8 +40,7 @@ cl {
     }
 
     def:pub DropdownMenuGroup(props: any) -> JsxElement {
-        return
-            <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {**props}/>;
+        return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {**props}/>;
     }
 
     def:pub DropdownMenuItem(props: any) -> JsxElement {
@@ -154,8 +152,7 @@ cl {
     }
 
     def:pub DropdownMenuSub(props: any) -> JsxElement {
-        return
-            <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {**props}/>;
+        return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {**props}/>;
     }
 
     def:pub DropdownMenuSubTrigger(props: any) -> JsxElement {

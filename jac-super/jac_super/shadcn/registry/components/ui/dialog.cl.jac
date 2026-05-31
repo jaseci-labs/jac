@@ -6,23 +6,19 @@ cl import from "@hugeicons/core-free-icons" { Cancel01Icon }
 
 cl {
     def:pub Dialog(props: any) -> JsxElement {
-        return
-            <DialogPrimitive.Root data-slot="dialog" {**props}/>;
+        return <DialogPrimitive.Root data-slot="dialog" {**props}/>;
     }
 
     def:pub DialogTrigger(props: any) -> JsxElement {
-        return
-            <DialogPrimitive.Trigger data-slot="dialog-trigger" {**props}/>;
+        return <DialogPrimitive.Trigger data-slot="dialog-trigger" {**props}/>;
     }
 
     def:pub DialogPortal(props: any) -> JsxElement {
-        return
-            <DialogPrimitive.Portal data-slot="dialog-portal" {**props}/>;
+        return <DialogPrimitive.Portal data-slot="dialog-portal" {**props}/>;
     }
 
     def:pub DialogClose(props: any) -> JsxElement {
-        return
-            <DialogPrimitive.Close data-slot="dialog-close" {**props}/>;
+        return <DialogPrimitive.Close data-slot="dialog-close" {**props}/>;
     }
 
     def:pub DialogOverlay(props: any) -> JsxElement {

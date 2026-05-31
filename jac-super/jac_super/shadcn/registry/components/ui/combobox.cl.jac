@@ -21,13 +21,11 @@ glob _comboboxInputExclude: list[str] = [
 
 cl {
     def:pub Combobox(props: any) -> JsxElement {
-        return
-            <ComboboxPrimitive.Root {**props}/>;
+        return <ComboboxPrimitive.Root {**props}/>;
     }
 
     def:pub ComboboxValue(props: any) -> JsxElement {
-        return
-            <ComboboxPrimitive.Value data-slot="combobox-value" {**props}/>;
+        return <ComboboxPrimitive.Value data-slot="combobox-value" {**props}/>;
     }
 
     def:pub ComboboxTrigger(props: any) -> JsxElement {

@@ -14,23 +14,19 @@ cl {
     }
 
     def:pub MenubarMenu(props: any) -> JsxElement {
-        return
-            <MenubarPrimitive.Menu data-slot="menubar-menu" {**props}/>;
+        return <MenubarPrimitive.Menu data-slot="menubar-menu" {**props}/>;
     }
 
     def:pub MenubarGroup(props: any) -> JsxElement {
-        return
-            <MenubarPrimitive.Group data-slot="menubar-group" {**props}/>;
+        return <MenubarPrimitive.Group data-slot="menubar-group" {**props}/>;
     }
 
     def:pub MenubarPortal(props: any) -> JsxElement {
-        return
-            <MenubarPrimitive.Portal data-slot="menubar-portal" {**props}/>;
+        return <MenubarPrimitive.Portal data-slot="menubar-portal" {**props}/>;
     }
 
     def:pub MenubarRadioGroup(props: any) -> JsxElement {
-        return
-            <MenubarPrimitive.RadioGroup data-slot="menubar-radio-group" {**props}/>;
+        return <MenubarPrimitive.RadioGroup data-slot="menubar-radio-group" {**props}/>;
     }
 
     def:pub MenubarTrigger(props: any) -> JsxElement {
@@ -157,8 +153,7 @@ cl {
     }
 
     def:pub MenubarSub(props: any) -> JsxElement {
-        return
-            <MenubarPrimitive.Sub data-slot="menubar-sub" {**props}/>;
+        return <MenubarPrimitive.Sub data-slot="menubar-sub" {**props}/>;
     }
 
     def:pub MenubarSubTrigger(props: any) -> JsxElement {

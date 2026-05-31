@@ -2,8 +2,7 @@ cl import from "radix-ui" { Collapsible as CollapsiblePrimitive }
 
 cl {
     def:pub Collapsible(props: any) -> JsxElement {
-        return
-            <CollapsiblePrimitive.Root data-slot="collapsible" {**props}/>;
+        return <CollapsiblePrimitive.Root data-slot="collapsible" {**props}/>;
     }
 
     def:pub CollapsibleTrigger(props: any) -> JsxElement {

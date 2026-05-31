@@ -156,12 +156,10 @@ cl {
     }
 
     def:pub ChartTooltip(props: any) -> JsxElement {
-        return
-            <RechartsTooltip {**props}/>;
+        return <RechartsTooltip {**props}/>;
     }
 
     def:pub ChartLegend(props: any) -> JsxElement {
-        return
-            <RechartsLegend {**props}/>;
+        return <RechartsLegend {**props}/>;
     }
 }

@@ -10,8 +10,7 @@ cl import from "@hugeicons/core-free-icons" {
 
 cl {
     def:pub Select(props: any) -> JsxElement {
-        return
-            <SelectPrimitive.Root data-slot="select" {**props}/>;
+        return <SelectPrimitive.Root data-slot="select" {**props}/>;
     }
 
     def:pub SelectGroup(props: any) -> JsxElement {

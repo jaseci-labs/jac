@@ -3,23 +3,19 @@ cl import from ...lib.utils { cn }
 
 cl {
     def:pub Drawer(props: any) -> JsxElement {
-        return
-            <DrawerPrimitive.Root data-slot="drawer" {**props}/>;
+        return <DrawerPrimitive.Root data-slot="drawer" {**props}/>;
     }
 
     def:pub DrawerTrigger(props: any) -> JsxElement {
-        return
-            <DrawerPrimitive.Trigger data-slot="drawer-trigger" {**props}/>;
+        return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {**props}/>;
     }
 
     def:pub DrawerPortal(props: any) -> JsxElement {
-        return
-            <DrawerPrimitive.Portal data-slot="drawer-portal" {**props}/>;
+        return <DrawerPrimitive.Portal data-slot="drawer-portal" {**props}/>;
     }
 
     def:pub DrawerClose(props: any) -> JsxElement {
-        return
-            <DrawerPrimitive.Close data-slot="drawer-close" {**props}/>;
+        return <DrawerPrimitive.Close data-slot="drawer-close" {**props}/>;
     }
 
     def:pub DrawerOverlay(props: any) -> JsxElement {

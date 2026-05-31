@@ -10,6 +10,5 @@ cl def RelativeImport -> JsxElement {
 }
 
 cl def:pub app -> JsxElement {
-    return
-        <RelativeImport/>;
+    return <RelativeImport/>;
 }

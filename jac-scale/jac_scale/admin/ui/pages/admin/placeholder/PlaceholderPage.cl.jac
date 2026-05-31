@@ -79,8 +79,7 @@ cl {
     }
 
     def:pub LogsPage -> JsxElement {
-        return
-            <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;
+        return <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;
     }
 
     def:pub HealthPage -> JsxElement {

@@ -4,8 +4,7 @@ cl import from .button { Button }
 
 cl {
     def:pub AlertDialog(props: any) -> JsxElement {
-        return
-            <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;
+        return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;
     }
 
     def:pub AlertDialogTrigger(props: any) -> JsxElement {
@@ -14,8 +13,7 @@ cl {
     }
 
     def:pub AlertDialogPortal(props: any) -> JsxElement {
-        return
-            <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {**props}/>;
+        return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {**props}/>;
     }
 
     def:pub AlertDialogOverlay(props: any) -> JsxElement {

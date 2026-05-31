@@ -13,13 +13,11 @@ cl {
     }
 
     def:pub Tooltip(props: any) -> JsxElement {
-        return
-            <TooltipPrimitive.Root data-slot="tooltip" {**props}/>;
+        return <TooltipPrimitive.Root data-slot="tooltip" {**props}/>;
     }
 
     def:pub TooltipTrigger(props: any) -> JsxElement {
-        return
-            <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {**props}/>;
+        return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {**props}/>;
     }
 
     def:pub TooltipContent(props: any) -> JsxElement {

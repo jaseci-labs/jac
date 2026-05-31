@@ -6,23 +6,19 @@ cl import from "@hugeicons/core-free-icons" { Cancel01Icon }
 
 cl {
     def:pub Sheet(props: any) -> JsxElement {
-        return
-            <SheetPrimitive.Root data-slot="sheet" {**props}/>;
+        return <SheetPrimitive.Root data-slot="sheet" {**props}/>;
     }
 
     def:pub SheetTrigger(props: any) -> JsxElement {
-        return
-            <SheetPrimitive.Trigger data-slot="sheet-trigger" {**props}/>;
+        return <SheetPrimitive.Trigger data-slot="sheet-trigger" {**props}/>;
     }
 
     def:pub SheetClose(props: any) -> JsxElement {
-        return
-            <SheetPrimitive.Close data-slot="sheet-close" {**props}/>;
+        return <SheetPrimitive.Close data-slot="sheet-close" {**props}/>;
     }
 
     def:pub SheetPortal(props: any) -> JsxElement {
-        return
-            <SheetPrimitive.Portal data-slot="sheet-portal" {**props}/>;
+        return <SheetPrimitive.Portal data-slot="sheet-portal" {**props}/>;
     }
 
     def:pub SheetOverlay(props: any) -> JsxElement {

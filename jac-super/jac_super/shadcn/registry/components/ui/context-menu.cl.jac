@@ -5,8 +5,7 @@ cl import from "@hugeicons/core-free-icons" { Tick02Icon, ArrowRight01Icon }
 
 cl {
     def:pub ContextMenu(props: any) -> JsxElement {
-        return
-            <ContextMenuPrimitive.Root data-slot="context-menu" {**props}/>;
+        return <ContextMenuPrimitive.Root data-slot="context-menu" {**props}/>;
     }
 
     def:pub ContextMenuTrigger(props: any) -> JsxElement {
@@ -21,18 +20,15 @@ cl {
     }
 
     def:pub ContextMenuGroup(props: any) -> JsxElement {
-        return
-            <ContextMenuPrimitive.Group data-slot="context-menu-group" {**props}/>;
+        return <ContextMenuPrimitive.Group data-slot="context-menu-group" {**props}/>;
     }
 
     def:pub ContextMenuPortal(props: any) -> JsxElement {
-        return
-            <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {**props}/>;
+        return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {**props}/>;
     }
 
     def:pub ContextMenuSub(props: any) -> JsxElement {
-        return
-            <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {**props}/>;
+        return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {**props}/>;
     }
 
     def:pub ContextMenuRadioGroup(props: any) -> JsxElement {

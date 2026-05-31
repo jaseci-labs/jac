@@ -3,18 +3,15 @@ cl import from ...lib.utils { cn }
 
 cl {
     def:pub Popover(props: any) -> JsxElement {
-        return
-            <PopoverPrimitive.Root data-slot="popover" {**props}/>;
+        return <PopoverPrimitive.Root data-slot="popover" {**props}/>;
     }
 
     def:pub PopoverTrigger(props: any) -> JsxElement {
-        return
-            <PopoverPrimitive.Trigger data-slot="popover-trigger" {**props}/>;
+        return <PopoverPrimitive.Trigger data-slot="popover-trigger" {**props}/>;
     }
 
     def:pub PopoverAnchor(props: any) -> JsxElement {
-        return
-            <PopoverPrimitive.Anchor data-slot="popover-anchor" {**props}/>;
+        return <PopoverPrimitive.Anchor data-slot="popover-anchor" {**props}/>;
     }
 
     def:pub PopoverContent(props: any) -> JsxElement {
