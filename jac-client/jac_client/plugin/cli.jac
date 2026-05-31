@@ -524,28 +524,12 @@ def _handle_start_target(ctx: HookContext) -> None {
     if target_name != "web" {
         # Check if target requires setup
         if target.requires_setup {
-            if target_name == "desktop" {
-                tauri_dir = project_dir / "src-tauri";
-                if not tauri_dir.exists() {
-                    console.error(
-                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
-                    );
-                    ctx.set_data("cancel_execution", True);
-                    ctx.set_data("cancel_return_code", 1);
-                    return;
-                }
-            } elif target_name == "mobile" {
-                android_dir = project_dir / "android";
-                ios_dir = project_dir / "ios";
-                if not android_dir.exists() and not ios_dir.exists() {
-                    console.error(
-                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
-                    );
-                    ctx.set_data("cancel_execution", True);
-                    ctx.set_data("cancel_return_code", 1);
-                    return;
-                }
-            }
+            console.error(
+                f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+            );
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
         }
         try {
             if target_name == "mobile" {

@@ -971,6 +971,24 @@ cl {
     }
 }
 
+test "requires_setup evaluates dynamically" {
+    import from jac_client.plugin.src.targets.registry { get_target_factory }
+    import from pathlib { Path }
+    import tempfile;
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir);
+        (project_dir / "jac.toml").write_text('''[project]
+name = "test-app"
+''');
+        factory = get_target_factory();
+        target = factory.create("desktop", project_dir);
+        assert target.requires_setup is True;
+        (project_dir / "src-tauri").mkdir();
+        assert target.requires_setup is False;
+    }
+}
+
 test "desktop build generates index.html with correct paths" {
     import from subprocess { run }
 

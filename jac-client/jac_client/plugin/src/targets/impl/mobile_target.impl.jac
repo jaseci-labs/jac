@@ -457,3 +457,12 @@ impl MobileTarget.start(
 impl _MobileHmrHandler.on_event(evt: FileChangeEvent) -> None {
     _mobile_hmr_on_jac_changed(evt, self.compiler, self.entry_file, self.project_dir);
 }
+
+@property
+impl MobileTarget.requires_setup -> bool {
+    return self.project_dir is None
+    or (
+        not (self.project_dir / "android").exists()
+        and not (self.project_dir / "ios").exists()
+    );
+}

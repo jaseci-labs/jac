@@ -3463,3 +3463,8 @@ impl DesktopTarget.start(
         cleanup();
     }
 }
+
+@property
+impl DesktopTarget.requires_setup -> bool {
+    return self.project_dir is None or not (self.project_dir / "src-tauri").exists();
+}
