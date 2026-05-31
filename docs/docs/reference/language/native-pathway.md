@@ -6,7 +6,7 @@
 
 - [Overview](#overview) - What native compilation is and when to use it
 - [Quick Reference](#quick-reference) - At-a-glance summary of capabilities
-- [Native Sections in Jac Applications](#native-sections-in-jac-applications) - Mixing `to na:` sections into Python-backed Jac code
+- [Native Sections in Jac Applications](#native-sections-in-jac-applications) - Mixing native sections into Python-backed Jac code
 - [Python-Native Interop](#python-native-interop) - How the two codespaces communicate
 - [Standalone Native Binaries](#standalone-native-binaries) - Compiling `.na.jac` files to executables
 - [Type System](#type-system) - Native type mappings and fixed-width types
@@ -24,7 +24,7 @@
 
 Jac's native codespace compiles code to **machine-code via LLVM** -- the same Jac syntax, but running as native instructions instead of on the Python runtime. You can use it in two ways:
 
-1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `to na:` section header (or `na` statement prefix). The compiler generates the interop layer automatically.
+1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `to na:` section header / `na` statement prefix). The compiler generates the interop layer automatically.
 2. **Standalone `.na.jac` files** -- compile an entire program to a self-contained binary with `jac nacompile`. No Python runtime, no external compiler, no external linker -- the entire toolchain from source to executable runs within Jac itself.
 
 Native compilation is ideal for:
@@ -39,7 +39,7 @@ Native compilation is ideal for:
 
 | Aspect | Details |
 |--------|---------|
-| **Inline section** | `to na:` section header (or `na` prefix) in any `.jac` file |
+| **Inline section** | `na { }` block (or `to na:` header / `na` prefix) in any `.jac` file |
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
 | **CLI command** | `jac nacompile <file> [-o output]` |
@@ -71,23 +71,21 @@ def process_data(items: list[dict]) -> list[dict] {
     return [item for item in items if item["active"]];
 }
 
-to na:
-
-# Native codespace -- compiles to machine code
-def compute_checksum(data: list[int]) -> int {
-    has result: int = 0;
-    for val in data {
-        result = (result * 31 + val) % 1000000007;
+na {
+    # Native codespace -- compiles to machine code
+    def compute_checksum(data: list[int]) -> int {
+        has result: int = 0;
+        for val in data {
+            result = (result * 31 + val) % 1000000007;
+        }
+        return result;
     }
-    return result;
-}
 
-def fibonacci(n: int) -> int {
-    if n <= 1 { return n; }
-    return fibonacci(n - 1) + fibonacci(n - 2);
+    def fibonacci(n: int) -> int {
+        if n <= 1 { return n; }
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
 }
-
-to sv:
 
 with entry {
     # Call both Python and native functions seamlessly
@@ -123,15 +121,13 @@ def py_double(x: int) -> int {
     return x * 2;
 }
 
-to na:
-
-# Native function that calls the Python function
-def native_add_one_to_doubled(x: int) -> int {
-    has doubled: int = py_double(x);
-    return doubled + 1;
+na {
+    # Native function that calls the Python function
+    def native_add_one_to_doubled(x: int) -> int {
+        has doubled: int = py_double(x);
+        return doubled + 1;
+    }
 }
-
-to sv:
 
 with entry {
     print(native_add_one_to_doubled(5));  # prints 11
@@ -589,7 +585,7 @@ The following Jac features are **not yet available** in the native codespace:
 | PyPI imports | No Python ecosystem in native binaries |
 
 !!! tip
-    If you need a feature from the list above, keep that code in the Python codespace and use `to na:` sections only for the performance-critical parts. The compiler handles the interop automatically.
+    If you need a feature from the list above, keep that code in the Python codespace and use `na { }` blocks only for the performance-critical parts. The compiler handles the interop automatically.
 
 ---
 
@@ -712,18 +708,16 @@ def serialize(data: dict) -> str {
     return dumps(data);
 }
 
-to na:
-
-# Native side -- compiled to machine code
-def sum_squares(n: int) -> int {
-    has total: int = 0;
-    for i in range(n) {
-        total += i * i;
+na {
+    # Native side -- compiled to machine code
+    def sum_squares(n: int) -> int {
+        has total: int = 0;
+        for i in range(n) {
+            total += i * i;
+        }
+        return total;
     }
-    return total;
 }
-
-to sv:
 
 with entry {
     result = sum_squares(1000);

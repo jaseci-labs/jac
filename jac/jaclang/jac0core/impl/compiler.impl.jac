@@ -721,7 +721,7 @@ impl JacCompiler.compile(
         }
         if (
             not is_native_mod
-            and getattr(actual_program, '_auto_promote_native', False)
+            and actual_program._auto_promote_native
             and mod_targ?.gen
             and mod_targ.gen.native_compat
         ) {
@@ -730,6 +730,17 @@ impl JacCompiler.compile(
         if is_native_mod {
             run_type_check = True;
         }
+        # NOTE: client (.cl.jac) modules are deliberately NOT force-type-checked
+        # here. Unlike the native path -- where NaIRGenPass hard-depends on
+        # `Expr.type` to lower annotations -- BoundaryAnalysisPass derives every
+        # cross-boundary fact (server_exports_to_client bindings, func_access,
+        # boundary types) from the AST + symbol table alone: it reads raw
+        # annotation ASTs (`type_tag.tag`) and access tokens, never resolved
+        # `.type`. Forcing type-check on .cl.jac bought no boundary fidelity and
+        # surfaced type-checker false positives on idiomatic client code
+        # (untyped-prop access, Any-typed event handlers, kwargs override);
+        # see #6262. Plain .jac/.cl.jac modules follow the explicit
+        # `options.type_check` contract.
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
@@ -767,6 +778,98 @@ impl JacCompiler.compile(
             passes=get_boundary_analysis_sched(),
             cancel_token=options.cancel_token
         );
+    }
+    # Boundary completion for cross-boundary apps. A plain top-level compile runs
+    # BoundaryAnalysisPass only on the entry; the client (.cl.jac) modules reached
+    # through its `to cl:` imports -- which carry the client->server `sv import`
+    # bindings the serve runtime needs -- are not pulled into the program by a
+    # normal compile/import (only the bundle/ecmascript build compiles them).
+    # Walk the entry's client import graph and front-end-compile each reachable
+    # `.cl.jac` into THIS program so BoundaryAnalysisPass records its
+    # `server_exports_to_client` bindings in the hub. The serve runtime then
+    # reads the endpoint set from that table rather than re-deriving it at
+    # request time. Gated to the real top-level compile (not the lightweight
+    # symtab_ir_only / no_cgen provider resolutions that nest under it).
+    if (
+        not had_parse_errors
+        and not had_blocking_errors
+        and not options.symtab_ir_only
+        and not options.no_cgen
+    ) {
+        import os as _cb_os;
+        cb_seen: set[str] = set();
+        cb_worklist: list = [mod_targ];
+        # type_check=False is load-bearing: CompileOptions.type_check defaults
+        # to True, and BoundaryAnalysisPass derives every cross-boundary fact
+        # from the AST + symbol table alone (never resolved `.type`), so the
+        # type-check schedule buys no boundary fidelity here. Leaving it on
+        # would force the full TypeCheckPass over every reachable .cl.jac --
+        # exactly the idiomatic-client false positives (untyped JSX-returning
+        # components, untyped-prop access, Any-typed handlers) that the
+        # top-of-compile NOTE deliberately avoids on the entry; see #6262.
+        cb_opts = CompileOptions(
+            type_check=False,
+            no_cgen=True,
+            force_target_program=True,
+            cancel_token=options.cancel_token
+        );
+        while cb_worklist {
+            cb_cur = cb_worklist.pop();
+            if cb_cur is None {
+                continue;
+            }
+            for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
+                if not cb_imp.from_loc {
+                    continue;
+                }
+                # Skip language built-in `@jac/*` virtual modules (e.g.
+                # `@jac/runtime`, the client framework runtime). These are never
+                # user cross-boundary providers -- they carry no `sv import`
+                # bindings -- yet the alias resolves to a real `.cl.jac` under
+                # runtimelib. Pulling the framework runtime into the program
+                # makes the entry's codegen type-evaluate its browser-global
+                # bodies (document/Array/...), surfacing spurious type errors.
+                cb_tgt = cb_imp.from_loc.dot_path_str
+                    if cb_imp.from_loc?.dot_path_str
+                    else '';
+                if cb_tgt.startswith('@jac/') {
+                    continue;
+                }
+                try {
+                    cb_src = cb_imp.from_loc.resolve_relative_path();
+                } except Exception {
+                    continue;
+                }
+                if not (isinstance(cb_src, str) and cb_src.endswith('.cl.jac')) {
+                    continue;
+                }
+                cb_src = _cb_os.path.abspath(cb_src);
+                if cb_src in cb_seen {
+                    continue;
+                }
+                cb_seen.add(cb_src);
+                cb_mod = actual_program.mod.hub.get(cb_src);
+                cb_has_facts = (
+                    cb_mod is not None
+                    and cb_mod.gen
+                    and cb_mod.gen.interop_manifest
+                    and bool(cb_mod.gen.interop_manifest.bindings)
+                );
+                if not cb_has_facts {
+                    try {
+                        cb_mod = self.compile(
+                            file_path=cb_src,
+                            target_program=actual_program,
+                            options=cb_opts
+                        );
+                    } except Exception {
+                        cb_mod = actual_program.mod.hub.get(cb_src);
+                    }
+                }
+                cb_worklist.append(cb_mod);
+            }
+        }
+        actual_program._compile_options = options;
     }
     if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.

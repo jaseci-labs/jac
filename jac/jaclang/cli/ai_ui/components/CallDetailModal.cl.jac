@@ -16,12 +16,16 @@ def _tk(n: int) -> str {
 }
 
 """One available tool: its name, description, and full JSON schema (the bytes the
-API's `tools` param actually carries)."""
+API's `tools` param actually carries). The chip shows ~chars/4 tokens for this
+schema -- the same rough estimate the modal uses for the tools total."""
 def ToolBlock(t: CallTool) -> JsxElement {
+    toks = len(t.schema) // 4;
     return
         <div className="cd-msg cd-toolschema">
             <div className="cd-msg-head">
                 <span className="cd-role">{t.name or "?"}</span>
+                <span className="spacer"/>
+                <span className="cd-toks">{"~" + str(toks) + " tok"}</span>
             </div>
             {<div className="cd-tooldesc">{t.description}</div>
                 if t.description
@@ -31,13 +35,21 @@ def ToolBlock(t: CallTool) -> JsxElement {
 }
 
 """One message as a labeled block: role + any tool-call summaries + its content.
-Dimmed when carried over (cached) unchanged from the previous call."""
+Dimmed when carried over (cached) unchanged from the previous call. The chip
+shows ~chars/4 tokens for this message (its content plus any tool-call args)."""
 def MsgBlock(m: CallMessage, cached: bool) -> JsxElement {
+    chars = len(m.content);
+    for tc in m.tools {
+        chars += len(tc);
+    }
+    toks = chars // 4;
     return
         <div className={"cd-msg cd-" + (m.role or "x") + (" cached" if cached else "")}>
             <div className="cd-msg-head">
                 <span className="cd-role">{m.role or "?"}</span>
                 {<span className="cd-tag">cached</span> if cached else <span/>}
+                <span className="spacer"/>
+                <span className="cd-toks">{"~" + str(toks) + " tok"}</span>
             </div>
             {<pre className="cd-content">{m.content}</pre> if m.content else <span/>}
             {<div className="cd-tools">
@@ -127,9 +139,13 @@ def:pub CallDetailModal(
                                         else "show full input"}
                                 </button>
                             </div>
-                            <div className="cd-note">
+                            {<div className="cd-note">
                                 Tokens-in spans both the messages below and the tool schemas (sent as a separate API param) — see "tools available" at the bottom.
                             </div>
+                                if len(detail.tools) > 0
+                                else <div className="cd-note">
+                                    No tools were sent with this call (e.g. a routing or classification call), so tokens-in covers only the messages below.
+                                </div>}
                             <div className="cd-section-label">
                                 {"input — full conversation"
                                     if showFull

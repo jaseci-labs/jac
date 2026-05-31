@@ -9,14 +9,14 @@ import type from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
 import type from jaclang.jac0core.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
-enum APIProtocol ( StrEnum ) {
+enum APIProtocol(StrEnum) {
     HTTP = 'http',
     WEBHOOK = 'webhook',
     WEBSOCKET = 'websocket'
 }
 
 """Trigger mode for a scheduled task."""
-enum ScheduleTrigger ( StrEnum ) {
+enum ScheduleTrigger(StrEnum) {
     STATIC = 'static',
     DYNAMIC = 'dynamic'
 }

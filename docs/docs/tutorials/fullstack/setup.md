@@ -1,6 +1,6 @@
 # Full-Stack Project Setup
 
-Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything under a `to cl:` section header -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
+Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything inside a `cl { }` block -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
 
 This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
 
@@ -59,14 +59,14 @@ walker:pub get_todos {
 }
 
 # Frontend code (client section)
-to cl:
+cl {
+    def:pub app() -> JsxElement {
+        has message: str = "Hello from Jac!";
 
-def:pub app() -> JsxElement {
-    has message: str = "Hello from Jac!";
-
-    return <div>
-        <h1>{message}</h1>
-    </div>;
+        return <div>
+            <h1>{message}</h1>
+        </div>;
+    }
 }
 ```
 
@@ -132,9 +132,9 @@ Open http://localhost:8000/cl/app
 
 ---
 
-## Understanding `to cl:`
+## Understanding `cl { }`
 
-The `to cl:` section header marks frontend (client) code -- everything below it, until the next `to X:` header or end of file, compiles to JavaScript/React:
+A `cl { }` block marks frontend (client) code -- everything inside the braces compiles to JavaScript/React, while everything outside stays on the server:
 
 ```jac
 # This is backend code (runs on server)
@@ -143,16 +143,16 @@ walker api_endpoint {
 }
 
 # This is frontend code (runs in browser)
-to cl:
-
-def:pub MyComponent() -> JsxElement {
-    return <div>I run in the browser</div>;
+cl {
+    def:pub MyComponent() -> JsxElement {
+        return <div>I run in the browser</div>;
+    }
 }
 ```
 
 **Key rules:**
 
-- Code under `to cl:` (or in a `.cl.jac` file) compiles to JavaScript/React
+- Code inside a `cl { }` block (or in a `.cl.jac` file) compiles to JavaScript/React
 - `def:pub` exports functions (like React components)
 - `app()` is the required entry point
 
@@ -172,10 +172,10 @@ walker get_user {
 }
 
 # Frontend
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>App</div>;
+cl {
+    def:pub app() -> JsxElement {
+        return <div>App</div>;
+    }
 }
 ```
 
@@ -194,7 +194,7 @@ myapp/
     └── About.cl.jac   # Frontend page
 ```
 
-**Note:** `.cl.jac` files are automatically client-side (no `to cl:` header needed).
+**Note:** `.cl.jac` files are automatically client-side (no `cl { }` block needed).
 
 ---
 
@@ -215,15 +215,15 @@ walker get_user {
 
 ```jac
 # main.jac
-to cl:
+cl {
+    import from "./components/Header.cl.jac" { Header }
 
-import from "./components/Header.cl.jac" { Header }
-
-def:pub app() -> JsxElement {
-    return <div>
-        <Header />
-        <main>Content</main>
-    </div>;
+    def:pub app() -> JsxElement {
+        return <div>
+            <Header />
+            <main>Content</main>
+        </div>;
+    }
 }
 ```
 
@@ -256,13 +256,13 @@ Then use in frontend:
     npm packages bundle correctly at build time, but the static checker has no `.d.ts`-like stubs for them yet, so `jac check` reports their attributes as Unknown. The code below runs as written under `jac start`.
 
 ```jac
-to cl:
+cl {
+    import lodash;
 
-import lodash;
-
-def:pub app() -> JsxElement {
-    items = lodash.sortBy(["c", "a", "b"]);
-    return <ul>{[<li>{i}</li> for i in items]}</ul>;
+    def:pub app() -> JsxElement {
+        items = lodash.sortBy(["c", "a", "b"]);
+        return <ul>{[<li>{i}</li> for i in items]}</ul>;
+    }
 }
 ```
 
@@ -301,18 +301,18 @@ watchdog = ">=3.0.0"
 Create this minimal `main.jac`:
 
 ```jac
-to cl:
+cl {
+    def:pub app() -> JsxElement {
+        has count: int = 0;
 
-def:pub app() -> JsxElement {
-    has count: int = 0;
-
-    return <div style={{"textAlign": "center", "marginTop": "50px"}}>
-        <h1>Jac Full-Stack</h1>
-        <p>Count: {count}</p>
-        <button onClick={lambda -> None { count = count + 1; }}>
-            Increment
-        </button>
-    </div>;
+        return <div style={{"textAlign": "center", "marginTop": "50px"}}>
+            <h1>Jac Full-Stack</h1>
+            <p>Count: {count}</p>
+            <button onClick={lambda -> None { count = count + 1; }}>
+                Increment
+            </button>
+        </div>;
+    }
 }
 ```
 

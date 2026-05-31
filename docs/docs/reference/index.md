@@ -295,11 +295,11 @@ VITE_API_URL=https://api.example.com
 Then access in client code:
 
 ```jac
-to cl:
-
-def:pub app() -> JsxElement {
-    api_url = import.meta.env.VITE_API_URL;
-    return <div>{api_url}</div>;
+cl {
+    def:pub app() -> JsxElement {
+        api_url = import.meta.env.VITE_API_URL;
+        return <div>{api_url}</div>;
+    }
 }
 ```
 
@@ -310,12 +310,12 @@ def:pub app() -> JsxElement {
 ### npm Packages
 
 ```jac
-to cl:
-
-import from react { useState, useEffect, useCallback }
-import from "@tanstack/react-query" { useQuery, useMutation }
-import from lodash { debounce, throttle }
-import from axios { default as axios }
+cl {
+    import from react { useState, useEffect, useCallback }
+    import from "@tanstack/react-query" { useQuery, useMutation }
+    import from lodash { debounce, throttle }
+    import from axios { default as axios }
+}
 ```
 
 ### TypeScript Configuration
@@ -334,26 +334,26 @@ exclude = ["node_modules"]
 ### Browser APIs
 
 ```jac
-to cl:
+cl {
+    def:pub app() -> JsxElement {
+        # Window
+        width = window.innerWidth;
 
-def:pub app() -> JsxElement {
-    # Window
-    width = window.innerWidth;
+        # LocalStorage
+        window.localStorage.setItem("key", "value");
+        value = window.localStorage.getItem("key");
 
-    # LocalStorage
-    window.localStorage.setItem("key", "value");
-    value = window.localStorage.getItem("key");
+        # Document
+        element = document.getElementById("my-id");
 
-    # Document
-    element = document.getElementById("my-id");
+        return <div>{width}</div>;
+    }
 
-    return <div>{width}</div>;
-}
-
-# Fetch
-async def load_data() -> None {
-    response = await fetch("/api/data");
-    data = await response.json();
+    # Fetch
+    async def load_data() -> None {
+        response = await fetch("/api/data");
+        data = await response.json();
+    }
 }
 ```
 

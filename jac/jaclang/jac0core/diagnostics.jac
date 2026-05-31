@@ -367,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1036",
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
-         " \"{type}[Any]\"; consider adding explicit type arguments"
+         " \"{type}[any]\"; consider adding explicit type arguments"
      ),
      # Explicit `any` annotation warning
      W1037 = _warn(
@@ -609,7 +609,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1102 = _warn(
          "W1102",
          Category.IMPORT,
-         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+         "Imported name '{name}' from foreign-source module '{module}' typed as any"
      ),
      W1103 = _warn(
          "W1103",

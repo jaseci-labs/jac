@@ -226,6 +226,23 @@ test "remove multiple components" {
     }
 }
 
+test "remove resolves registry filename mismatch" {
+    # `jac add --shadcn input-otp` installs as otp-input.cl.jac; remove by the
+    # same registry name must resolve to that file, not input-otp.cl.jac.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        ui_dir.mkdir(parents=True);
+        (ui_dir / "otp-input.cl.jac").write_text("// otp input");
+        obj MockConfig {
+            has project_root: str;
+        }
+        config = MockConfig(project_root=tmpdir);
+        result = remove_shadcn_components(config, ["input-otp"]);
+        assert result == True;
+        assert not (ui_dir / "otp-input.cl.jac").exists();
+    }
+}
+
 
 # ── Jacpack Template Tests ──
 test "jacpack template directory exists and loads" {

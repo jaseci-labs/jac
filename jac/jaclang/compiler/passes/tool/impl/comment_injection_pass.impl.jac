@@ -796,7 +796,7 @@ impl CommentInjectionPass._inject_into_parts(
         real_tokens = [
             t
             for t in tokens
-            if not getattr(t, '_is_synthetic', False)
+            if not t._is_synthetic
         ];
         if (real_tokens and self._comments) {
             last_token = max(

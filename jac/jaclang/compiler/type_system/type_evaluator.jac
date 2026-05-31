@@ -227,6 +227,7 @@ obj TypeEvaluator {
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         # Names made ambient by typing_ambient.pyi's __all__, keyed by the
         # source module the stub re-exports them from (typing /
@@ -283,7 +284,12 @@ obj TypeEvaluator {
         # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
         # into builtins: its names (File, native open) resolve only in native
         # context via a gated lookup, so they never leak into regular .jac.
-        na_builtins_module: uni.Module by postinit;
+        na_builtins_module: uni.Module by postinit,
+        # ECMAScript / browser ambient stub for client code. Like na_builtins
+        # (and unlike dom_types), NOT merged into builtins: its names (Date,
+        # Math, console, window, ...) resolve only in client context via a
+        # gated lookup, so they never leak into server .jac code.
+        js_globals_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;

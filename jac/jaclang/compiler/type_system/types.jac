@@ -7,7 +7,7 @@ import type from jaclang.jac0core.unitree { Expr, Symbol }
 import type from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
 
 """Enumeration of type categories."""
-enum TypeCategory ( IntEnum ) {
+enum TypeCategory(IntEnum) {
     Unbound,
     Unknown,
     Never,
@@ -282,7 +282,7 @@ class ParamKind(IntEnum) {
 Based on Pyright's FunctionTypeFlags. These flags control how the
 function type behaves during type checking.
 """
-enum FunctionTypeFlags ( IntEnum ) {
+enum FunctionTypeFlags(IntEnum) {
     Null = 0,
     # The *args and **kwargs parameters do not need to be present for this
     # function to be compatible. This is used for Callable[..., x] (gradual typing).

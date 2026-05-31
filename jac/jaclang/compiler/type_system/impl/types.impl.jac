@@ -37,7 +37,7 @@ impl NeverType.__str__ -> str {
 
 """Return a string representation of the any type."""
 impl AnyType.__str__ -> str {
-    return "<Any>";
+    return "<any>";
 }
 
 """Return a string representation of the module type."""

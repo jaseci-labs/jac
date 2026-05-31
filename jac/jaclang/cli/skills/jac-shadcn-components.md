@@ -1,36 +1,66 @@
 ---
 name: jac-shadcn-components
-description: Using pre-installed jac-shadcn primitives from components/ui/ - import patterns, component selection, composition rules, styling, icons, theming. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml. Pair with jac-cl-components (component shape) and jac-cl-organization (file layout).
+description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml. Pair with jac-cl-components (component shape) and jac-cl-organization (file layout).
 ---
 
-When `components/ui/` already exists in the project, **never re-implement any primitive** (Button, Card, Input, Dialog, Table, Badge, etc.). Import and compose from those files. Your job is to build **high-level page/feature components** using these primitives.
+shadcn primitives in Jac are delivered by the **jac-super** plugin. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
+
+**Never hand-write a primitive** (Button, Card, Input, Dialog, Table, Badge, etc.). If it already lives in `components/ui/`, import and compose it. If it does **not** exist yet, install it with `jac add --shadcn <name>` - do not re-implement it. Your job is to build **high-level page/feature components** in `components/` that compose these primitives.
+
+> The starter from `jac create --use jac-shadcn` ships with **only `button` and `card`** pre-installed. Everything else (dialog, table, select, ...) must be added on demand. Always scan `components/ui/` first, then `jac add` what's missing.
+
+## Getting components
+
+```bash
+# Create a themed project (all theme flags optional - see Theming)
+jac create --use jac-shadcn --theme rose --font inter myapp
+
+# Add primitives - resolves peer deps, patches jac.toml [dependencies.npm], offline
+jac add --shadcn dialog table badge select tabs
+
+# Remove primitives
+jac remove --shadcn dialog
+```
+
+`jac add --shadcn` is bundled and offline (no network). It writes `components/ui/<name>.cl.jac`, auto-installs any peer components, and creates `lib/utils.cl.jac` with `cn()` if missing. The add-name is the kebab-case registry name (`dropdown-menu`, `alert-dialog`, `input-group`, `input-otp`, ...).
 
 ## Import patterns
 
+**Always quote the module path, and keep the hyphens.** Installed files keep their hyphenated registry names (`dropdown-menu.cl.jac`, `alert-dialog.cl.jac`, `otp-input.cl.jac`). An **unquoted** dotted import of a hyphenated name is a **parse error** (`Unexpected token '-'`); converting the hyphen to an underscore (`dropdown_menu`) silently resolves to nothing (`Module not found` warning, component is undefined at runtime). Quoting always works - even for single-word names - so quote every UI-primitive import.
+
 ```jac
-# Primitive components - path is always .components.ui.<filename-without-ext>
-import from .components.ui.button { Button }
-import from .components.ui.card { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
-import from .components.ui.dialog { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter }
-import from .components.ui.badge { Badge }
-import from .components.ui.table { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
-import from .components.ui.input { Input }
-import from .components.ui.select { Select, SelectTrigger, SelectContent, SelectGroup, SelectItem, SelectValue }
-import from .components.ui.tabs { Tabs, TabsList, TabsTrigger, TabsContent }
-import from .components.ui.spinner { Spinner }
-import from .components.ui.skeleton { Skeleton }
-import from .components.ui.field { Field, FieldLabel, FieldGroup, FieldContent, FieldError }
-import from .components.ui.label { Label }
+# From a composite in components/ (the usual place for your components)
+import from ".ui.button" { Button }
+import from ".ui.card" { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
+import from ".ui.dropdown-menu" {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem
+}
+import from ".ui.dialog" { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter }
+import from ".ui.table" { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
 
-# cn() utility - always from lib/utils, not from @jac/runtime
-import from .lib.utils { cn }
+# cn() utility - always from lib/utils, never from @jac/runtime
+import from "..lib.utils" { cn }
 
-# Icons - HugeIcons only
+# npm packages (icons etc.) - always cl import, always a quoted bare-package string
 cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Icon, Menu01Icon }
 ```
 
+**Leading dots are relative to the importing file's folder** (1 dot = current folder, each extra dot goes up one). Pick the prefix from where your file lives:
+
+| Your file | UI primitive | `cn` (lib/utils) |
+|-----------|-------------|------------------|
+| `components/EventCard.cl.jac` | `".ui.button"` | `"..lib.utils"` |
+| `components/pages/EventsPage.cl.jac` | `"..ui.button"` | `"...lib.utils"` |
+| project root `main.jac` (use `cl import`) | `".components.ui.button"` | `".lib.utils"` |
+
+In a `.cl.jac` file plain `import` is already client-context (no `cl` needed). In a top-level `.jac` entry file (like `main.jac`) prefix with `cl import` to mark the client import.
+
+Do **not** check a `components/ui/*.cl.jac` primitive with `jac check` directly - they use a `...lib.utils` relative import that only resolves as part of the build. Validate your work by checking your composite or the entry file instead.
+
 ## Component selection
+
+Most filenames are the kebab-case of the component (`alert-dialog` → import `".ui.alert-dialog"`). The one mismatch: `jac add --shadcn input-otp` installs as `otp-input.cl.jac` and exports `InputOTP`.
 
 | Need | Component(s) |
 |------|-------------|
@@ -38,13 +68,14 @@ cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Ico
 | Text field | `Input` |
 | Multi-line text | `Textarea` |
 | Dropdown select | `Select` + `SelectTrigger` + `SelectContent` + `SelectGroup` + `SelectItem` + `SelectValue` |
-| Searchable dropdown | `Combobox` |
-| Native `<select>` | `NativeSelect` |
-| Toggle / check | `Switch`, `Checkbox`, `RadioGroup` |
-| 2–5 option toggle | `ToggleGroup` + `ToggleGroupItem` (never a Button loop) |
+| Searchable dropdown | `Combobox` + `ComboboxInput` + `ComboboxContent` + `ComboboxItem` (file `combobox`) |
+| Native `<select>` | `NativeSelect` + `NativeSelectOption` (file `native-select`) |
+| Toggle / check | `Switch`, `Checkbox`, `RadioGroup` + `RadioGroupItem` |
+| Single toggle button | `Toggle` |
+| 2–5 option toggle | `ToggleGroup` + `ToggleGroupItem` (file `toggle-group`; never a Button loop) |
 | Form field layout | `Field` + `FieldLabel` (never raw div with `space-y-*`) |
 | Form group / fieldset | `FieldGroup`, `FieldSet`, `FieldLegend` |
-| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` |
+| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` (file `input-group`) |
 | Data table | `Table` + `TableHeader` + `TableBody` + `TableRow` + `TableHead` + `TableCell` |
 | Data card | `Card` + `CardHeader` + `CardTitle` (+ optional `CardDescription`, `CardContent`, `CardFooter`) |
 | Status label | `Badge` |
@@ -54,13 +85,14 @@ cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Ico
 | Breadcrumb | `Breadcrumb` + `BreadcrumbList` + `BreadcrumbItem` + `BreadcrumbLink` |
 | Modal | `Dialog` + `DialogTrigger` + `DialogContent` + `DialogHeader` + `DialogTitle` |
 | Side panel | `Sheet` + `SheetTrigger` + `SheetContent` + `SheetHeader` + `SheetTitle` |
-| Confirmation | `AlertDialog` + `AlertDialogTrigger` + `AlertDialogContent` + `AlertDialogTitle` + `AlertDialogAction` + `AlertDialogCancel` |
-| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` |
-| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` |
+| Bottom drawer | `Drawer` |
+| Confirmation | `AlertDialog` + `AlertDialogTrigger` + `AlertDialogContent` + `AlertDialogTitle` + `AlertDialogAction` + `AlertDialogCancel` (file `alert-dialog`) |
+| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` (file `dropdown-menu`) |
+| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` (file `context-menu`) |
 | Horizontal menu bar | `Menubar` + `MenubarMenu` + `MenubarTrigger` + `MenubarContent` + `MenubarItem` |
 | Tooltip | `Tooltip` + `TooltipTrigger` + `TooltipContent` |
 | Floating panel | `Popover` + `PopoverTrigger` + `PopoverContent` |
-| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` |
+| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover-card`) |
 | Loading skeleton | `Skeleton` |
 | Loading spinner | `Spinner` |
 | Empty state | `Empty` |
@@ -69,18 +101,19 @@ cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Ico
 | Date picker | `Calendar` |
 | Slider | `Slider` |
 | Chart | `Chart` (wraps Recharts) |
-| Scrollable container | `ScrollArea` |
+| Scrollable container | `ScrollArea` + `ScrollBar` (file `scroll-area`) |
+| Fixed aspect box | `AspectRatio` (file `aspect-ratio`) |
 | Divider | `Separator` |
 | Command palette | `Command` + `CommandInput` + `CommandList` + `CommandItem` |
-| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` |
+| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` (file `button-group`) |
 | App shell navigation | `Sidebar` (⚠ never pass `className` to `Sidebar*` sub-components - className spread bug; wrap with `<div>` instead) |
-| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` |
+| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` (file `navigation-menu`) |
 | Expandable section | `Collapsible` + `CollapsibleTrigger` + `CollapsibleContent` |
 | Drag-resize panels | `Resizable` + `ResizablePanelGroup` + `ResizablePanel` + `ResizableHandle` |
 | Page navigation | `Pagination` + `PaginationContent` + `PaginationItem` + `PaginationPrevious` + `PaginationNext` |
 | Image/content carousel | `Carousel` + `CarouselContent` + `CarouselItem` + `CarouselPrevious` + `CarouselNext` |
 | Keyboard key display | `Kbd` |
-| One-time password input | `OTPInput` |
+| One-time password input | `InputOTP` + `InputOTPGroup` + `InputOTPSlot` + `InputOTPSeparator` (add `input-otp`, file `otp-input`) |
 | Generic list item | `Item` |
 
 ## Composition rules
@@ -102,15 +135,15 @@ Violations cause accessibility errors or runtime white screens.
 - **No `space-x-*` or `space-y-*`.** Use `flex gap-*` or `flex flex-col gap-*`.
 - **Equal width + height → `size-*`.** `size-10` not `w-10 h-10`.
 - **No `dark:` overrides.** CSS variables handle light/dark automatically.
-- **`cn()` always from `.lib.utils`** - never recreate it, never from `@jac/runtime`.
+- **`cn()` always from `lib/utils`** - never recreate it, never from `@jac/runtime`.
 
 Load `jac-cl-styling` for full conditional class patterns and cn() usage.
 
 ## Icon pattern
 
 ```jac
-import from .components.ui.button { Button, buttonVariants }
-import from .components.ui.dropdown_menu { DropdownMenuTrigger }
+import from ".ui.button" { Button, buttonVariants }
+import from ".ui.dropdown-menu" { DropdownMenuTrigger }
 cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Add01Icon, SearchIcon, MoreVerticalIcon }
 
@@ -136,30 +169,36 @@ def:pub RadixTriggerExample() -> JsxElement {
 
 ## Theming
 
-All theming after project initialization is done by **editing `styles/global.css` directly**. The `[jac-shadcn]` fields in `jac.toml` (`style`, `baseColor`, `theme`, `font`, `radius`, etc.) were only used during project scaffolding - changing them post-init has no effect.
+Theming is managed by the **`jac retheme`** command, which regenerates `styles`/`global.css` from the `[jac-shadcn]` section of `jac.toml` (plus any flag overrides) and persists the chosen values back to `jac.toml`.
 
-> **Style is fixed.** The visual style (nova/vega/maia/lyra/mira) is baked into the component `.cl.jac` files at template creation time and cannot be changed mid-project. The fullstack template ships with `nova`.
-
-### Changing colors
-
-Edit CSS variables in `styles/global.css` using OKLCH format (`oklch(lightness chroma hue)`):
-
-```css
-:root {
-    --primary: oklch(0.852 0.199 91.936);
-    --primary-foreground: oklch(0.421 0.095 57.708);
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-}
-.dark {
-    --primary: oklch(0.795 0.184 86.047);
-    --primary-foreground: oklch(0.421 0.095 57.708);
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-}
+```bash
+jac retheme --theme emerald --font outfit   # switch accent + font
+jac retheme --style mira                     # switch style + re-resolve installed components
+jac retheme                                  # regenerate global.css from the current [jac-shadcn] config
 ```
 
-Key color variables:
+> **`jac retheme` overwrites `global.css` wholesale.** Hand edits to `global.css` are not preserved across a `retheme`. For accent color, base palette, font, radius, and menu accent, change them through `jac retheme` flags (it also updates `jac.toml`), not by editing CSS. Only hand-edit `global.css` for one-off custom colors you won't `retheme` over.
+
+The `[jac-shadcn]` block in `jac.toml` is the source of truth (no longer just scaffolding):
+
+```toml
+[jac-shadcn]
+style = "nova"        # nova | vega | maia | lyra | mira  (--style also restyles installed components)
+baseColor = "neutral" # neutral | stone | zinc | gray
+theme = "rose"        # accent: neutral, stone, zinc, gray, amber, blue, cyan, emerald,
+                      #   fuchsia, green, indigo, lime, orange, pink, purple, red, rose,
+                      #   sky, teal, violet, yellow
+font = "inter"        # figtree (default), inter, geist, geist-mono, roboto, raleway,
+                      #   dm-sans, public-sans, outfit, noto-sans, nunito-sans, jetbrains-mono
+radius = "default"    # default | none | small | medium | large
+menuAccent = "subtle" # subtle | bold
+```
+
+`jac retheme --font <name>` patches `[dependencies.npm]` automatically - no manual font package edit, and `jac install` runs before `jac start --dev`.
+
+### Understanding / hand-editing the generated CSS
+
+`global.css` defines CSS variables in OKLCH (`oklch(lightness chroma hue)`) under `:root` and `.dark`, then registers them in an `@theme inline` block. Key variables:
 
 | Variable | Purpose |
 |----------|---------|
@@ -171,80 +210,14 @@ Key color variables:
 | `--destructive` | Error and destructive actions |
 | `--card` / `--card-foreground` | Card surfaces |
 | `--border` | Default border color |
+| `--radius` | Base radius; `rounded-sm/md/lg/xl` derive from it |
+| `--sidebar*` | Sidebar background/text/active/hover colors |
 
-### Changing border radius
-
-Edit `--radius` in `styles/global.css`. All components derive from it:
-
-```css
-:root { --radius: 0.5rem; }  /* try 0.25rem (sharp) to 1rem (pill) */
-```
-
-| Tailwind class | Derived value |
-|---|---|
-| `rounded-sm` | `calc(var(--radius) - 4px)` |
-| `rounded-md` | `calc(var(--radius) - 2px)` |
-| `rounded-lg` | `var(--radius)` |
-| `rounded-xl` | `calc(var(--radius) + 4px)` |
-
-### Changing the font
-
-The template ships with Figtree. To switch fonts, make two changes:
-
-1. In `jac.toml` `[dependencies.npm]` - replace the font package (old one can be removed since it's no longer imported):
-
-```toml
-# remove: "@fontsource-variable/figtree" = "*"
-"@fontsource-variable/inter" = "*"
-```
-
-1. In `styles/global.css` - replace the import and update `--font-sans` in the `@theme inline` block:
+To add a **custom** color the generator doesn't emit, define it in `:root`/`.dark` and register it in `@theme inline` (remember a later `jac retheme` regenerates the file and drops it):
 
 ```css
-/* replace */
-@import "@fontsource-variable/figtree";
-/* with */
-@import "@fontsource-variable/inter";
-
-/* in @theme inline, replace */
---font-sans: 'Figtree Variable', sans-serif;
-/* with */
---font-sans: 'Inter Variable', sans-serif;
-```
-
-Common packages: `inter`, `outfit`, `raleway`, `nunito`, `plus-jakarta-sans`, `geist`. Font family name = package name in title case + " Variable" (e.g. `plus-jakarta-sans` → `'Plus Jakarta Sans Variable'`). No need to run `jac install` manually - it runs automatically before `jac start --dev`.
-
-### Changing sidebar/menu colors
-
-`menuAccent` and `menuColor` were baked into `--sidebar-*` CSS variables in `global.css`. Edit them directly:
-
-```css
-:root {
-    --sidebar: oklch(0.985 0 0);                            /* sidebar background */
-    --sidebar-foreground: oklch(0.145 0 0);                 /* sidebar text */
-    --sidebar-primary: oklch(0.646 0.222 41.116);           /* active item background */
-    --sidebar-primary-foreground: oklch(0.98 0.016 73.684); /* active item text */
-    --sidebar-accent: oklch(0.97 0 0);                      /* hover background */
-    --sidebar-accent-foreground: oklch(0.205 0 0);          /* hover text */
-    --sidebar-border: oklch(0.922 0 0);
-}
-.dark {
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    /* ... same pattern */
-}
-```
-
-### Adding custom colors
-
-Define in `global.css` `:root`/`.dark` blocks, then register in the `@theme inline` block. Never create a new CSS file.
-
-```css
-/* 1. global.css - define */
 :root { --warning: oklch(0.84 0.16 84); --warning-foreground: oklch(0.28 0.07 46); }
 .dark { --warning: oklch(0.41 0.11 46); --warning-foreground: oklch(0.99 0.02 95); }
-
-/* 2. global.css - register */
 @theme inline { --color-warning: var(--warning); --color-warning-foreground: var(--warning-foreground); }
 ```
 
@@ -256,14 +229,16 @@ def:pub WarningAlert() -> JsxElement {
 
 ## Complete example
 
+A composite page in `components/` (so primitives are `".ui.<name>"`, `cn` is `"..lib.utils"`). Run `jac add --shadcn card button badge table dialog spinner` first if those aren't installed.
+
 ```jac
-import from .components.ui.card { Card, CardHeader, CardTitle, CardContent }
-import from .components.ui.button { Button }
-import from .components.ui.badge { Badge }
-import from .components.ui.table { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
-import from .components.ui.dialog { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle }
-import from .components.ui.spinner { Spinner }
-import from .lib.utils { cn }
+import from ".ui.card" { Card, CardHeader, CardTitle, CardContent }
+import from ".ui.button" { Button }
+import from ".ui.badge" { Badge }
+import from ".ui.table" { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
+import from ".ui.dialog" { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle }
+import from ".ui.spinner" { Spinner }
+import from "..lib.utils" { cn }
 cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Add01Icon }
 
@@ -332,15 +307,16 @@ def:pub EventListPage() -> JsxElement {
 
 ## Rules
 
-- **Never re-implement a primitive.** `components/ui/` has Button, Card, Input, Dialog, Table, etc. Import them; don't write them.
-- **Import path formula:** `import from .components.ui.<filename-without-extension> { ExportedName }`. Filenames match component names: `button.cl.jac` → `Button`, `card.cl.jac` → `Card, CardHeader, ...`.
-- **`cn()` always from `.lib.utils`**, not from `@jac/runtime` or anywhere else. It's pre-implemented - don't recreate it.
-- **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files.
-- **Do NOT recreate or edit `global.css` or `jac.toml`** in jac-shadcn projects - they are pre-configured. To change theme, edit CSS variables in `global.css` directly.
+- **Scan `components/ui/` first; if a primitive is missing, `jac add --shadcn <name>` - never hand-write it.** The starter ships only `button` + `card`; add the rest on demand.
+- **Quote every UI-primitive import path and keep the hyphens.** `import from ".ui.dropdown-menu" { ... }`. Unquoted hyphens are a parse error; underscores resolve to nothing.
+- **Import path = dots relative to your file's folder.** From `components/`: `".ui.<name>"` and `"..lib.utils"`. See the location table above.
+- **`cn()` always from `lib/utils`**, never from `@jac/runtime`. It's pre-implemented - don't recreate it.
+- **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
+- **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac add`/`jac retheme` manage them.
 
 ## See also
 
 - `jac-cl-components` - component shape, `has` state, event handlers, JSX rules
 - `jac-cl-organization` - file layout, hook pattern, when to extract
 - `jac-cl-styling` - conditional classes, cn() usage, semantic color tokens
-- `jac-npm-packages` - note: in jac-shadcn projects all npm packages are pre-installed
+- `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac add`/`jac retheme`

@@ -47,27 +47,11 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
         entries: list = [];
         i64 = ir.IntType(64);
         for (ordinal, (mname, vnode)) in enumerate(members) {
-            # Extract the string value (strip outer quotes)
+            # Extract the string value via the AST literal getter (handles
+            # quote/prefix stripping and MultiString concatenation).
             str_val = "";
-            if vnode is not None and isinstance(vnode, uni.String) {
-                raw = vnode.value;
-                if len(raw) >= 2 and (raw[0] == '"' or raw[0] == "'") {
-                    str_val = raw[1:-1];
-                } else {
-                    str_val = raw;
-                }
-            } elif vnode is not None and isinstance(vnode, uni.MultiString) {
-                # MultiString: concatenate sub-strings
-                parts: list[str] = [];
-                for sub in (vnode.strings or []) {
-                    raw = sub.value if isinstance(sub, uni.String) else str(sub);
-                    if len(raw) >= 2 and (raw[0] == '"' or raw[0] == "'") {
-                        parts.append(raw[1:-1]);
-                    } else {
-                        parts.append(raw);
-                    }
-                }
-                str_val = "".join(parts);
+            if vnode is not None and isinstance(vnode, (uni.String, uni.MultiString)) {
+                str_val = vnode.lit_value;
             }
             full_name = f"{enum_name}.{mname}";
             self.enum_values[full_name] = ir.Constant(i64, ordinal);
@@ -84,11 +68,9 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
         i64 = ir.IntType(64);
         name_entries: list = [];
         for (ordinal, (mname, vnode)) in enumerate(members) {
-            if vnode is not None and isinstance(vnode, uni.Int) {
-                val = int(vnode.value);
-            } else {
-                val = 0;
-            }
+            val = vnode.lit_value
+                if (vnode is not None and isinstance(vnode, uni.Int))
+                else 0;
             full_name = f"{enum_name}.{mname}";
             self.enum_values[full_name] = ir.Constant(i64, val);
             self.enum_member_ordinal[full_name] = ordinal;
