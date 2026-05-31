@@ -1542,3 +1542,133 @@ test "system root cache: N consecutive inits cost one MongoDB fetch total" {
     }
     _reset_process_cache();
 }
+
+
+test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (issue 6295)" {
+    import json;
+    import from uuid { uuid4, UUID }
+    import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
+    import from jaclang.runtimelib.utils { to_uuid }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory, MongoBackend }
+
+    _reset_mongo();
+    _reset_redis();
+    _reset_process_cache();
+    _mongo_result = _get_mongo();
+    _redis_result = _get_redis();
+    mongo_uri: str = cast(str, _mongo_result[1]);
+    redis_client: any = _redis_result[0];
+    redis_url: str = cast(str, _redis_result[1]);
+
+    os.environ["MONGODB_URI"] = mongo_uri;
+    os.environ["REDIS_URL"] = redis_url;
+
+    try {
+        mem = ScaleTieredMemory();
+        mem.postinit();
+        assert mem.l3 is not None , "MongoDB must be available for this test";
+        assert mem.l2 is not None , "Redis must be available for this test";
+
+        col: any = cast(MongoBackend, mem.l3).collection;
+
+        # --- Step 1: Seed Mongo with a root node that starts with NO edges. ---
+        # Matches the production state immediately after user registration,
+        # before the first walker run appends an edge.
+        root_id: str = str(uuid4());
+        col.insert_one(
+            {
+                '_id': root_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'Root',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': root_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': 'Root',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-01-01T00:00:00'
+            }
+        );
+
+        # --- Step 2: Tiered read — populates L2 with the empty-edges root. ---
+        root_anchor = mem.get(UUID(root_id));
+        assert root_anchor is not None , "root must load from Mongo";
+        _raw_after_read: any = redis_client.get(f"anchor:{root_id}");
+        assert _raw_after_read is not None , "root must be cached in Redis after tiered read";
+        assert json.loads(cast(bytes, _raw_after_read)).get('edges', []) == [] , (
+            "L2 must show empty edges at this point (pre-write state)"
+        );
+
+        # --- Step 3: Simulate an edge write (root ++> child). ---
+        # Set _initial_edge_ids = frozenset() so edge_delta() returns ({edge_id}, {}).
+        node_anchor = cast(NodeAnchor, root_anchor);
+        setattr(node_anchor, '_initial_edge_ids', frozenset());
+        edge_id: str = str(uuid4());
+        edge_stub = EdgeAnchor.__new__(EdgeAnchor);
+        setattr(edge_stub, 'id', to_uuid(edge_id));
+        setattr(edge_stub, 'persistent', True);
+        node_anchor.edges.append(edge_stub);
+        # Mark dirty so commit() includes it in l2_pending and sync() writes it.
+        setattr(node_anchor, 'hash', 0);
+        mem.__mem__[UUID(root_id)] = node_anchor;
+
+        # --- Step 4: Commit — triggers _put_node_atomic for root. ---
+        mem.commit();
+
+        # --- Step 5: L3 (Mongo) must have the edge. ---
+        _mongo_doc: any = col.find_one({'_id': root_id});
+        l3_edges: list[str] = cast(
+            list[str], _mongo_doc.get('data', {}).get('edges', [])
+        );
+        assert edge_id in l3_edges , (
+            f"L3 (Mongo) must contain the new edge after commit; got {l3_edges}"
+        );
+
+        # --- Step 6: L2 (Redis) must NOT hold the stale empty-edges snapshot. ---
+        # Pre-fix bug: commit() called l2.put(root_anchor) after sync() merged edges
+        # in Mongo, writing edges=[] back into Redis.
+        # After the fix: _put_node_atomic invalidates the Redis entry and commit()
+        # skips l2.put() for anchors in _atomic_written.
+        l2_raw: any = redis_client.get(f"anchor:{root_id}");
+        if l2_raw is not None {
+            l2_edges: list[str] = cast(
+                list[str], json.loads(cast(bytes, l2_raw)).get('edges', [])
+            );
+            assert l2_edges != [] , (
+                "L2 (Redis) must NOT cache empty edges when L3 has the edge "
+                "(issue #6295 regression: stale snapshot re-written after merge)"
+            );
+            assert edge_id in l2_edges , (
+                f"L2 (Redis) must carry the merged edge list, not the pre-merge snapshot; "
+                f"L3={l3_edges}, L2={l2_edges}"
+            );
+        }
+        # Key being absent is the correct invalidation outcome — no assertion needed.
+
+        # --- Step 7: _initial_edge_ids must be updated for future delta correctness. ---
+        initial_ids: frozenset[UUID] = cast(
+            frozenset[UUID], getattr(node_anchor, '_initial_edge_ids', frozenset())
+        );
+        assert len(initial_ids) > 0 , (
+            "_initial_edge_ids must be non-empty after _put_node_atomic read-back"
+        );
+        assert to_uuid(edge_id) in initial_ids , (
+            f"_initial_edge_ids must include the merged edge after read-back; "
+            f"got {initial_ids}"
+        );
+
+        mem.l3.close();
+    } finally {
+        os.environ.pop("MONGODB_URI", None);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
