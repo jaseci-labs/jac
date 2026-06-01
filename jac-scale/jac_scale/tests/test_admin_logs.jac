@@ -87,6 +87,7 @@ test "flatten newest-first vs oldest-first via ascending flag" {
     # ts_ns must survive flattening so the listing endpoint can use
     # it as a `before` cursor for older-page pagination.
     assert desc[0].get("ts_ns") == "1716412355000000000" , f"ts_ns missing: {desc[0]}";
+}
 
 
 test "trace filter renders bracket escapes Loki's parser accepts" {
