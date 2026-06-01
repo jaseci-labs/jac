@@ -15,7 +15,9 @@
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
+
+_NewT = TypeVar("_NewT")
 
 __all__ = [
     # Module dunders
@@ -64,6 +66,7 @@ __all__ = [
     "printgraph",
     "restspec",
     "schedule",
+    "unsafe_html",
     # Ambient values and constants
     "llm",
     "NoPerm",
@@ -135,7 +138,11 @@ class f64(float): ...  # noqa: N801
 
 def jid(obj: object) -> str: ...
 def jobj(id: str) -> object: ...
-def new(cls: type, *args: object) -> object: ...
+
+# Generic over the class so `new(Date, ...).getTime()` keeps the constructed
+# type instead of collapsing to `object`. Constructor args stay `object` --
+# `new` forwards them verbatim, so they are not validated here.
+def new(cls: type[_NewT], *args: object) -> _NewT: ...
 def grant(archetype: object, level: object = None) -> None: ...
 def revoke(archetype: object) -> None: ...
 def allroots() -> list[Root]: ...
@@ -159,6 +166,11 @@ def printgraph(
 ) -> str: ...
 def restspec(**specs: object) -> Callable[..., Any]: ...
 def schedule(**kwargs: object) -> Callable[..., Any]: ...
+
+# Returns a sentinel object that the JSX flattener turns into raw HTML
+# (`dangerouslySetInnerHTML` on jac-client, `innerHTML` on bare-serve).
+# Use only with content you trust -- the name is the security review hint.
+def unsafe_html(html: object) -> object: ...
 
 # ── User-facing builtin functions (from jaclang.jac0core.jaclib) ────
 # These jaclib functions are directly callable by users in Jac code.

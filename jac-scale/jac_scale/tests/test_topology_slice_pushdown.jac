@@ -71,7 +71,7 @@ def _get_redis_url -> str {
 def _reset_dbs {
     if "mongo_client" in _shared {
         for db_name in _shared["mongo_client"].list_database_names() {
-            if db_name not in {"admin","config","local"} {
+            if db_name not in {"admin", "config", "local"} {
                 _shared["mongo_client"].drop_database(db_name);
             }
         }
@@ -108,7 +108,7 @@ def _make_scale_memory -> tuple {
 """Slicing must bound MongoDB fetches to ~slice size, not all neighbors."""
 test "edge-ref slice bounds mongodb fetches" {
     _reset_dbs();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     cfg = JacConfig();
     cfg.run.topology_index = True;
     set_config(cfg);
@@ -165,7 +165,7 @@ test "edge-ref slice bounds mongodb fetches" {
 promoted to the L2 cache (today's behavior promotes every loaded item)."""
 test "edge-ref slice bounds redis cache promotions" {
     _reset_dbs();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     cfg = JacConfig();
     cfg.run.topology_index = True;
     set_config(cfg);

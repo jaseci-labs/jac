@@ -18,7 +18,7 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples");
+     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 """Helper to import a jac module and capture its stdout."""
 def run_jac_import(target: str, base_path: str) -> str {
@@ -108,9 +108,7 @@ test "arch ref has sym" {
 }
 
 test "single impl annex" {
-    mypass = JacProgram().compile(
-        os.path.join(EXAMPLES, "manual_code", "circle_pure.jac")
-    );
+    mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "circle_pure.jac"));
     assert mypass.impl_mod[0].pp().count("ImplDef - impl.Circle.area") == 1;
 }
 
@@ -221,7 +219,7 @@ test "impl has var type not shadowed" {
             "'tasks' Name node has no symbol — resolution failed"
         );
         assert not isinstance(name_node.sym.decl.name_of, uni.HasVar) , (
-            f"'tasks' should not resolve to HasVar, got "
+            "'tasks' should not resolve to HasVar, got "
             f"{type(name_node.sym.decl.name_of).__name__}"
         );
     }
@@ -312,7 +310,7 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
 
     # Collect every Load-context read in the annex whose target is a local
     # assignment (msg / local_label / v / n) and assert each has a resolved sym.
-    resolvable = {"msg","local_label","v","n"};
+    resolvable = {"msg", "local_label", "v", "n"};
     reads_checked = 0;
     for nm in impl_mod.get_all_sub_nodes(uni.Name, brute_force=True) {
         if nm.value not in resolvable {
@@ -324,7 +322,7 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
         }
         assert nm.sym is not None , (
             f"Read of local '{nm.value}' at line {nm.loc.first_line} "
-            f"in .impl.jac has unresolved .sym — resolver skipped this subtree"
+            "in .impl.jac has unresolved .sym — resolver skipped this subtree"
         );
         reads_checked += 1;
     }

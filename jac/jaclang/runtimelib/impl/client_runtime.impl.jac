@@ -1,12 +1,14 @@
-impl __jacJsx(tag: Any, props: dict = {}, children: list = []) -> JsxElement {
+impl __jacJsx(
+    tag: any, props: dict[str, any] = {}, children: list[any] = []
+) -> JsxElement {
     return JsxElement(tag=tag, props=props, children=children);
 }
 
-impl renderJsxTree(nd: JsxElement, container: Any) -> None {
+impl renderJsxTree(nd: JsxElement, container: any) -> None {
     container.replaceChildren(__buildDom(nd));
 }
 
-impl __buildDom(nd: Any) -> Any {
+impl __buildDom(nd: any) -> any {
     if nd == None {
         return document.createTextNode("");
     }
@@ -23,6 +25,14 @@ impl __buildDom(nd: Any) -> Any {
     }
     if not __isObject(nd) {
         return document.createTextNode(str(nd));
+    }
+    # `unsafe_html(...)` sentinel -- caller has asserted the content is
+    # trusted, render it as raw HTML in a wrapper <span>. The wrapper
+    # exists so adjacent siblings keep their own DOM nodes.
+    if nd.__jacUnsafeHtml != undefined {
+        span = document.createElement("span");
+        span.innerHTML = nd.__jacUnsafeHtml;
+        return span;
     }
     # Handle component functions
     tag = nd.tag;
@@ -54,7 +64,7 @@ impl __buildDom(nd: Any) -> Any {
     return element;
 }
 
-impl __applyProp(element: Any, key: str, value: Any) -> None {
+impl __applyProp(element: any, key: str, value: any) -> None {
     if key.startswith("on") {
         # Event handler: onclick -> click
         event = key[2:].lower();
@@ -80,15 +90,33 @@ impl __applyProp(element: Any, key: str, value: Any) -> None {
     }
 }
 
-impl createSignal(initialValue: Any) -> list {
+impl JacAwaiting(props: dict[str, any]) -> any {
+    # Bare-serve has no React Suspense; there is no async boundary here, so the
+    # resolved try-clause children render directly. `fallback` is unused — it
+    # only has meaning under jac-client's React.Suspense backing. Returning the
+    # children array lets `__buildDom` render them as a fragment (no wrapper
+    # node), matching React.Suspense's transparent output. The view-lowering
+    # pass always emits this wrapper with a children array, so it is present.
+    return props["children"];
+}
+
+impl JacClientErrorBoundary(props: dict[str, any]) -> any {
+    # Bare-serve has no React error boundary; children render directly. The
+    # `fallback` (except-clause content) is not shown on throw — errors
+    # propagate. Surface parity only; jac-client backs this with
+    # react-error-boundary.
+    return props["children"];
+}
+
+impl createSignal(initialValue: any) -> list[any] {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
-    def readVal -> Any {
+    def readVal -> any {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def writeVal(newValue: Any) {
+    def writeVal(newValue: any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             __jacNotifySubscribers(signalData.subscribers);
@@ -97,7 +125,7 @@ impl createSignal(initialValue: Any) -> list {
     return [readVal, writeVal];
 }
 
-impl createState(initialState: dict) -> list {
+impl createState(initialState: dict[str, any]) -> list[any] {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialState, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
@@ -121,11 +149,11 @@ impl createState(initialState: dict) -> list {
     return [readVal, writeVal];
 }
 
-impl createEffect(effectFn: Any) -> None {
+impl createEffect(effectFn: any) -> None {
     __jacRunEffect(effectFn);
 }
 
-impl onMount(mountFn: Any) -> None {
+impl onMount(mountFn: any) -> None {
     currentComponent = __jacReactiveContext.currentComponent;
     if not currentComponent {
         # Not in a component context, run immediately
@@ -151,7 +179,7 @@ impl onMount(mountFn: Any) -> None {
     }
 }
 
-impl __jacTrackDependency(subscribers: list) -> None {
+impl __jacTrackDependency(subscribers: list[any]) -> None {
     currentEffect = __jacReactiveContext.currentEffect;
     if currentEffect {
         alreadySubscribed = False;
@@ -178,7 +206,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
     }
 }
 
-impl __jacNotifySubscribers(subscribers: list) -> None {
+impl __jacNotifySubscribers(subscribers: list[any]) -> None {
     for subscriber in subscribers {
         if __isFunction(subscriber) {
             # It's an effect function - re-run it
@@ -190,7 +218,7 @@ impl __jacNotifySubscribers(subscribers: list) -> None {
     }
 }
 
-impl __jacRunEffect(effectFn: Any) -> None {
+impl __jacRunEffect(effectFn: any) -> None {
     previousEffect = __jacReactiveContext.currentEffect;
     __jacReactiveContext.currentEffect = effectFn;
     try {
@@ -201,7 +229,7 @@ impl __jacRunEffect(effectFn: Any) -> None {
     __jacReactiveContext.currentEffect = previousEffect;
 }
 
-impl __jacScheduleRerender(componentId: Any) -> None {
+impl __jacScheduleRerender(componentId: any) -> None {
     pending = __jacReactiveContext.pendingRenders;
     # Check if already scheduled
     alreadyScheduled = False;
@@ -237,7 +265,7 @@ impl __jacFlushRenders -> None {
     }
 }
 
-impl __jacRerenderComponent(componentId: Any) -> None {
+impl __jacRerenderComponent(componentId: any) -> None {
     rootEl = document.getElementById("__jac_root");
     if not rootEl {
         return;
@@ -267,7 +295,7 @@ impl __jacRerenderComponent(componentId: Any) -> None {
 # access; `_ensureRouter` is the choke point that installs the popstate listener
 # and the path signal, which `<Routes>` and the `useNavigate`/`useLocation`/
 # `useParams` hooks subscribe to.
-impl _ensureRouter -> dict {
+impl _ensureRouter -> dict[str, any] {
     existing = __jacReactiveContext.router;
     if existing {
         return existing;
@@ -276,7 +304,7 @@ impl _ensureRouter -> dict {
     [currentPath, setCurrentPath] = createSignal(initialPath);
     window.addEventListener(
         "popstate",
-        lambda event: Any {
+        lambda event: any {
             newPath = __jacGetPath();
             setCurrentPath(newPath or "/");
         }
@@ -290,7 +318,7 @@ impl _ensureRouter -> dict {
 # the extracted `:param` map on match, or `None` on miss. Bare-serve's matcher
 # is intentionally tiny: segment-count equality + per-segment string compare,
 # with `:name` segments captured into the params dict.
-impl _matchRoutePath(pattern: str, path: str) -> Any {
+impl _matchRoutePath(pattern: str, path: str) -> any {
     pattern_segs = pattern.split("/");
     path_segs = path.split("/");
     if len(pattern_segs) != len(path_segs) {
@@ -310,7 +338,7 @@ impl _matchRoutePath(pattern: str, path: str) -> Any {
     return params;
 }
 
-impl Router(children: Any = None) -> JsxElement {
+impl Router(children: any = None) -> JsxElement {
     # Identity provider — bare-serve's routing state is global; jac-client's
     # Router (= ReactRouterBrowserRouter) pushes a real React context. Both
     # render their children, so the same `<Router>...</Router>` JSX works in
@@ -318,7 +346,7 @@ impl Router(children: Any = None) -> JsxElement {
     return children;
 }
 
-impl Routes(children: Any = None) -> JsxElement {
+impl Routes(children: any = None) -> JsxElement {
     router = _ensureRouter();
     current_path = router.path();  # subscribe to path signal
     children_list = [];
@@ -350,10 +378,10 @@ impl Routes(children: Any = None) -> JsxElement {
 
 impl Route(
     path: str = "",
-    element: Any = None,
+    element: any = None,
     index: bool = False,
     caseSensitive: bool = False,
-    children: Any = None
+    children: any = None
 ) -> JsxElement {
     # Config-only component. `<Routes>` introspects path/element from the JSX
     # tree directly; rendering a Route outside Routes is a no-op.
@@ -363,13 +391,13 @@ impl Route(
 impl Link(
     `to: str,
     replace: bool = False,
-    state: Any = None,
+    state: any = None,
     className: str = "",
-    style: dict = {},
-    children: Any = None
+    style: dict[str, str] = {},
+    children: any = None
 ) -> JsxElement {
     target = `to;
-    def handleClick(event: Any) {
+    def handleClick(event: any) {
         event.preventDefault();
         navigate(target);
     }
@@ -395,11 +423,11 @@ impl Outlet -> JsxElement {
     return None;
 }
 
-impl useNavigate -> Any {
+impl useNavigate -> any {
     return navigate;
 }
 
-impl useLocation -> dict {
+impl useLocation -> dict[str, any] {
     router = _ensureRouter();
     pathname = router.path();  # subscribe to path signal
     return {
@@ -410,7 +438,7 @@ impl useLocation -> dict {
     };
 }
 
-impl useParams -> dict {
+impl useParams -> dict[str, any] {
     router = _ensureRouter();
     return router.params or {};
 }
@@ -421,7 +449,7 @@ impl navigate(path: str) -> None {
     router.setPath(path);
 }
 
-impl useRouter -> dict {
+impl useRouter -> dict[str, any] {
     router = _ensureRouter();
     pathname = router.path();  # subscribe so consumers re-render on URL change
     return {
@@ -447,11 +475,131 @@ impl __jacGetPath -> str {
     return "/";
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+# ============================================================================
+# Auto-cache infrastructure
+# ============================================================================
+impl __getEndpointEffects -> dict[str, any] {
+    if not globalThis.__jacEndpointEffects__ {
+        initEl = None;
+        try {
+            initEl = document.getElementById("__jac_init__");
+        } except Exception as e {
+            console.warn("[bare-serve] Failed to find __jac_init__ element:", e);
+        }
+        if initEl {
+            try {
+                data = JSON.parse(initEl.textContent);
+                globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
+            } except Exception as e {
+                console.warn(
+                    "[bare-serve] Failed to parse __jac_init__ data, using empty effects:",
+                    e
+                );
+                globalThis.__jacEndpointEffects__ = {};
+            }
+        } else {
+            globalThis.__jacEndpointEffects__ = {};
+        }
+    }
+    return globalThis.__jacEndpointEffects__;
+}
+
+impl __getCacheState -> dict[str, any] {
+    if not globalThis.__jacCacheState__ {
+        globalThis.__jacCacheState__ = {
+            "cache": {},
+            "order": [],
+            "pending": {},
+            "config": {"maxEntries": 500, "defaultTtlMs": 60000}
+        };
+    }
+    return globalThis.__jacCacheState__;
+}
+
+impl __isFresh(`entry: dict[str, any]) -> bool {
+    if not `entry {
+        return False;
+    }
+    age = Date.now() - `entry["timestamp"];
+    return age < `entry["ttl"];
+}
+
+impl __cacheGet(key: str) -> any {
+    state = __getCacheState();
+    entry = state["cache"][key];
+    if not entry {
+        return None;
+    }
+    # Move to end (most recently used)
+    idx = state["order"].indexOf(key);
+    if idx > -1 {
+        state["order"].splice(idx, 1);
+    }
+    state["order"].push(key);
+    return entry;
+}
+
+impl __cacheSet(key: str, data: any, ttl: int) -> None {
+    state = __getCacheState();
+    # Remove existing entry if present
+    if state["cache"][key] {
+        idx = state["order"].indexOf(key);
+        if idx > -1 {
+            state["order"].splice(idx, 1);
+        }
+    }
+    # Evict oldest while at capacity
+    while len(state["order"]) >= state["config"]["maxEntries"] {
+        __evictOldest();
+    }
+    state["cache"][key] = {"data": data, "timestamp": Date.now(), "ttl": ttl};
+    state["order"].push(key);
+}
+
+impl __evictOldest -> None {
+    state = __getCacheState();
+    if len(state["order"]) > 0 {
+        oldest = state["order"].shift();
+        if oldest and state["cache"][oldest] {
+            Reflect.deleteProperty(state["cache"], oldest);
+        }
+    }
+}
+
+impl __overlaps(list1: list[any], list2: list[any]) -> bool {
+    for item in list1 {
+        if list2.includes(item) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl __invalidateEndpoint(endpoint_key: str) -> None {
+    state = __getCacheState();
+    keys_to_delete = [];
+    for key in Object.keys(state["cache"]) {
+        if key.startsWith(endpoint_key) {
+            keys_to_delete.push(key);
+        }
+    }
+    for key in keys_to_delete {
+        Reflect.deleteProperty(state["cache"], key);
+        idx = state["order"].indexOf(key);
+        if idx > -1 {
+            state["order"].splice(idx, 1);
+        }
+    }
+}
+
+# ============================================================================
+# Raw fetch helpers (no caching)
+# ============================================================================
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict[str, any]) -> any {
     token = __getLocalStorage("jac_token");
-    url = f"/walker/{left}";
-    if right != "" {
-        url = f"/walker/{left}/{right}";
+    url = f"/walker/{`walker}";
+    if nodeId != "" {
+        url = f"/walker/{`walker}/{nodeId}";
     }
     response = await fetch(
         url,
@@ -467,7 +615,7 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     );
     if not response.ok {
         error_text = await response.json();
-        walker_name = f"{left}/{right}" if right else left;
+        walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
         raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
@@ -475,14 +623,76 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     return payload["data"] if payload["data"] else payload;
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+# ============================================================================
+# Cache-aware dispatch shared by __jacSpawn and __jacCallFunction
+# ============================================================================
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
+    effects = __getEndpointEffects();
+    info = effects[endpoint_key];
+    state = __getCacheState();
+    # Known READER — check cache first, then dedup concurrent identical calls.
+    if info and not info["is_writer"] {
+        cached = __cacheGet(args_key);
+        if cached and __isFresh(cached) {
+            return cached["data"];
+        }
+        if state["pending"][args_key] {
+            return await state["pending"][args_key];
+        }
+        fetch_promise = fetch_fn();
+        state["pending"][args_key] = fetch_promise;
+        try {
+            data = await fetch_promise;
+            __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
+            return data;
+        } finally {
+            Reflect.deleteProperty(state["pending"], args_key);
+        }
+    }
+    # Known WRITER — fetch, then invalidate readers it touches.
+    if info and info["is_writer"] {
+        data = await fetch_fn();
+        writer_touches = info["touches"];
+        for endpoint_name in Object.keys(effects) {
+            reader_info = effects[endpoint_name];
+            if reader_info and not reader_info["is_writer"] {
+                if writer_touches.includes("*")
+                or __overlaps(reader_info["touches"], writer_touches) {
+                    __invalidateEndpoint(endpoint_name);
+                }
+            }
+        }
+        return data;
+    }
+    # Unknown endpoint (no metadata) — direct fetch, no caching.
+    return await fetch_fn();
+}
+
+impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
+    # Auth walkers must never be cached.
+    if left == "login"
+    or left == "signup"
+    or left == "logout"
+    or left == "refresh_token" {
+        return await __doWalkerFetch(left, right, fields);
+    }
+    endpoint_key = f"walker:{left}";
+    args_key = f"{endpoint_key}:{right}:{JSON.stringify(fields)}";
+    return await __cachedEndpointCall(
+        endpoint_key,
+        args_key,
+        lambda -> any { return __doWalkerFetch(left, right, fields); }
+    );
+}
+
+impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
     # Sync caller — returns the promise from __jacSpawn so callers that don't
     # need the resolved value can fire-and-forget. Surface parity with
     # jac-client which exposes both `__jacSpawn` (async) and `jacSpawn` (sync).
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
+impl __doFuncFetch(function_name: str, args: dict[str, any]) -> any {
     token = __getLocalStorage("jac_token");
     response = await fetch(
         f"/function/{function_name}",
@@ -511,14 +721,24 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     return result;
 }
 
-def __normalizeIdentity(x: Any) -> dict {
+impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
+    endpoint_key = f"func:{function_name}";
+    args_key = f"{endpoint_key}:{JSON.stringify(args)}";
+    return await __cachedEndpointCall(
+        endpoint_key,
+        args_key,
+        lambda -> any { return __doFuncFetch(function_name, args); }
+    );
+}
+
+def __normalizeIdentity(x: any) -> dict[str, any] {
     if __isObject(x) {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-def __normalizeCredential(x: Any) -> dict {
+def __normalizeCredential(x: any) -> dict[str, any] {
     if __isObject(x) {
         return x;
     }
@@ -526,10 +746,10 @@ def __normalizeCredential(x: Any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
-) -> dict {
+    identities_or_username: (str | list[str]),
+    credential_or_password: (str | dict[str, any]),
+    profile: (dict[str, any] | None) = None
+) -> dict[str, any] {
     credential = __normalizeCredential(credential_or_password);
     identities = (
         identities_or_username
@@ -560,6 +780,13 @@ impl jacSignup(
             }
         } except Exception { }
         if token {
+            # Signup auto-logs-in (sets the token) — an auth change, so drop
+            # all cached reader responses just like jacLogin/jacLogout.
+            state = __getCacheState();
+            for key in Object.keys(state["cache"]) {
+                Reflect.deleteProperty(state["cache"], key);
+            }
+            state["order"].splice(0, state["order"].length);
             __setLocalStorage("jac_token", token);
             return {"success": True, "token": token, "username": primary_username};
         }
@@ -586,7 +813,8 @@ impl jacSignup(
 }
 
 impl jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
+    identity_or_username: (str | dict[str, any]),
+    credential_or_password: (str | dict[str, any])
 ) -> bool {
     identity = __normalizeIdentity(identity_or_username);
     credential = __normalizeCredential(credential_or_password);
@@ -609,6 +837,12 @@ impl jacLogin(
             }
         } except Exception { }
         if token {
+            # Auth change — drop all cached reader responses.
+            state = __getCacheState();
+            for key in Object.keys(state["cache"]) {
+                Reflect.deleteProperty(state["cache"], key);
+            }
+            state["order"].splice(0, state["order"].length);
             __setLocalStorage("jac_token", token);
             return True;
         }
@@ -617,6 +851,12 @@ impl jacLogin(
 }
 
 impl jacLogout -> None {
+    # Auth change — drop all cached reader responses.
+    state = __getCacheState();
+    for key in Object.keys(state["cache"]) {
+        Reflect.deleteProperty(state["cache"], key);
+    }
+    state["order"].splice(0, state["order"].length);
     __removeLocalStorage("jac_token");
 }
 
@@ -644,25 +884,25 @@ impl __removeLocalStorage(key: str) -> None {
     }
 }
 
-impl __isObject(value: Any) -> bool {
+impl __isObject(value: any) -> bool {
     if value == None {
         return False;
     }
     return Object.prototype.toString.call(value) == "[object Object]";
 }
 
-impl __isFunction(value: Any) -> bool {
+impl __isFunction(value: any) -> bool {
     return Object.prototype.toString.call(value) == "[object Function]";
 }
 
-impl __objectKeys(`obj: Any) -> list {
+impl __objectKeys(`obj: any) -> list[str] {
     if `obj == None {
         return [];
     }
     return Object.keys(`obj);
 }
 
-impl __jacHasOwn(`obj: Any, key: Any) -> bool {
+impl __jacHasOwn(`obj: any, key: any) -> bool {
     try {
         return Object.prototype.hasOwnProperty.call(`obj, key);
     } except Exception {
@@ -676,7 +916,7 @@ impl __jacEnsureObjectGetPolyfill -> None {
         return;
     }
     # Define the polyfill function inline
-    def get_polyfill(key: Any, defaultValue: Any = None) -> Any {
+    def get_polyfill(key: any, defaultValue: any = None) -> any {
         if __jacHasOwn(this, key) {
             return this[key];
         }
@@ -690,7 +930,7 @@ impl __jacEnsureObjectGetPolyfill -> None {
     );
 }
 
-impl __jacGetDocument(scope: Any) -> Any {
+impl __jacGetDocument(scope: any) -> any {
     try {
         return scope.document;
     } except Exception {
@@ -698,7 +938,7 @@ impl __jacGetDocument(scope: Any) -> Any {
     }
 }
 
-impl __jacParseJsonObject(text: str) -> Any {
+impl __jacParseJsonObject(text: str) -> any {
     try {
         parsed = JSON.parse(text);
         if __isObject(parsed) {
@@ -712,7 +952,7 @@ impl __jacParseJsonObject(text: str) -> Any {
     }
 }
 
-impl __jacBuildOrderedArgs(order: list, argsDict: dict) -> list {
+impl __jacBuildOrderedArgs(order: list[str], argsDict: dict[str, any]) -> list[any] {
     result = [];
     if not order {
         return result;
@@ -724,7 +964,7 @@ impl __jacBuildOrderedArgs(order: list, argsDict: dict) -> list {
     return result;
 }
 
-impl __jacResolveRenderer(scope: Any) -> Any {
+impl __jacResolveRenderer(scope: any) -> any {
     if scope.renderJsxTree {
         return scope.renderJsxTree;
     }
@@ -734,7 +974,9 @@ impl __jacResolveRenderer(scope: Any) -> Any {
     return None;
 }
 
-impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> Any {
+impl __jacResolveTarget(
+    moduleRecord: dict[str, any], registry: dict[str, any], name: str
+) -> any {
     moduleFunctions = (
         moduleRecord.moduleFunctions
             if moduleRecord and moduleRecord.moduleFunctions
@@ -751,8 +993,8 @@ impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> Any {
 }
 
 impl __jacSafeCallTarget(
-    target: Any, scope: Any, orderedArgs: list, targetName: str
-) -> dict {
+    target: any, scope: any, orderedArgs: list[any], targetName: str
+) -> dict[str, any] {
     try {
         result = target.apply(scope, orderedArgs);
         return {"ok": True, "value": result};
@@ -762,7 +1004,7 @@ impl __jacSafeCallTarget(
     }
 }
 
-impl __jacGlobalScope -> Any {
+impl __jacGlobalScope -> any {
     try {
         return globalThis;
     } except Exception { }
@@ -775,7 +1017,7 @@ impl __jacGlobalScope -> Any {
     return {};
 }
 
-impl __jacEnsureRegistry -> dict {
+impl __jacEnsureRegistry -> dict[str, any] {
     scope = __jacGlobalScope();
     registry = scope.__jacClient;
     if not registry {
@@ -810,7 +1052,7 @@ impl __jacEnsureRegistry -> dict {
     return registry;
 }
 
-impl __jacApplyRender(renderer: Any, container: Any, nd: Any) -> None {
+impl __jacApplyRender(renderer: any, container: any, nd: any) -> None {
     if not renderer or not container {
         return;
     }
@@ -880,7 +1122,7 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
         return;
     }
     # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda -> Any {
+    __jacReactiveContext.rootComponent = lambda -> any {
         __jacReactiveContext.currentComponent = "__root__";
         result = target.apply(scope, orderedArgs);
         __jacReactiveContext.currentComponent = None;
@@ -894,8 +1136,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd); }).catch(
-            lambda err: Any { console.error(
+        value.then(lambda nd: any { __jacApplyRender(renderer, rootEl, nd); }).catch(
+            lambda err: any { console.error(
                 "[Jac] Error resolving client function promise", err
             ); }
         );
@@ -927,7 +1169,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: Any { __jacExecuteHydration(); },
+            lambda _event: any { __jacExecuteHydration(); },
             {"once": True}
         );
     }
@@ -937,7 +1179,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
 }
 
 impl __jacRegisterClientModule(
-    moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
+    moduleName: str, clientFunctions: list[str] = [], clientGlobals: dict[str, any] = {}
 ) -> None {
     __jacEnsureObjectGetPolyfill();
     __jacInstallErrorHandlers();
@@ -1001,7 +1243,7 @@ Returns [value, setter] where value is the current state (not a getter function)
 When setter is called, schedules a re-render of the component.
 Uses hook index tracking to maintain state across re-renders.
 """
-impl useState(initialValue: Any) -> list {
+impl useState(initialValue: any) -> list[any] {
     # Get current hook index
     hookIndex = __jacReactiveContext.hookIndex;
     hooks = __jacReactiveContext.hooks;
@@ -1015,7 +1257,7 @@ impl useState(initialValue: Any) -> list {
     # First render: create new state
     signalData = {"value": initialValue};
     # Setter that updates value and triggers re-render
-    def writeVal(newValue: Any) {
+    def writeVal(newValue: any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             # Schedule re-render of root component
@@ -1034,7 +1276,7 @@ impl useState(initialValue: Any) -> list {
 When deps is empty [], runs once on mount (like onMount).
 Otherwise tracks dependencies and re-runs when they change.
 """
-impl useEffect(effectFn: Any, deps: list = []) -> None {
+impl useEffect(effectFn: any, deps: list[any] = []) -> None {
     # For now, always run on mount since we don't have React's dep tracking
     # This matches useEffect(() => { ... }, []) behavior
     onMount(effectFn);
@@ -1081,7 +1323,7 @@ ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
 therefore `info.componentStack`, the only thing that names user components
 when the JS stack lives inside react-dom) is exclusively delivered to onError.
 Wiring this here is the one place we can capture it."""
-impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
         stack = error.stack if error else "";
@@ -1108,7 +1350,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     scope.addEventListener(
         "error",
-        lambda event: Any { __jacReportError(
+        lambda event: any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -1118,7 +1360,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     scope.addEventListener(
         "unhandledrejection",
-        lambda event: Any {
+        lambda event: any {
             reason = event.reason;
             message = "";
             stack = "";

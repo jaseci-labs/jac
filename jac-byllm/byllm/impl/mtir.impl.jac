@@ -144,6 +144,19 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     } except Exception { }
 
+    # `by llm(system_prompt=...)` extends base. Accepts str or zero-arg callable.
+    call_system_prompt = call_params.get("system_prompt");
+    if callable(call_system_prompt) {
+        try {
+            call_system_prompt = call_system_prompt();
+        } except Exception {
+            call_system_prompt = None;
+        }
+    }
+    if call_system_prompt {
+        system_content += "\n\n" + str(call_system_prompt);
+    }
+
     # Conversational mode: `by llm(conversation=<list>)` splices the
     # caller's prior conversation between SYSTEM and USER. Entries on input
     # may be Messages or dicts; write-back always emits dicts.
@@ -153,11 +166,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if isinstance(conv_arg, list) {
         conv_list_ref = conv_arg;
         for item in conv_arg {
-            m: Any = item;
+            m: any = item;
             if isinstance(m, Message) {
                 conv_msgs.append(m);
             } elif isinstance(m, dict) {
-                reconstructed: Any = Message.from_dict(m);
+                reconstructed: any = Message.from_dict(m);
                 conv_msgs.append(reconstructed);
             } else {
                 conv_msgs.append(m);
@@ -183,9 +196,14 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
-    if is_streaming and return_type is not str {
+    if is_streaming
+    and return_type is not str
+    and call_params.get("stream_handler") is None {
         raise ConfigurationError(
-            "Streaming responses are only supported for str return types."
+            "Streaming responses are only supported for str return types. "
+            "Pass a stream_handler to receive stream events for a structured "
+            "return type (e.g. `visit [-->] by model(stream=True, "
+            "stream_handler=fn)`)."
         );
     }
     if len(tools) > 0 {
@@ -251,7 +269,7 @@ impl MTRuntime.write_back_conversation -> None {
     }
     out: list = [];
     for msg in self.get_history_for_persist() {
-        m: Any = msg;
+        m: any = msg;
         if hasattr(m, "to_dict") {
             out.append(m.to_dict());
         } elif isinstance(m, dict) {
@@ -269,7 +287,7 @@ impl MTRuntime.write_back_conversation -> None {
 
 
 # Test against finish_tool both at object level and dict level.
-def _is_finish_tool_call(tc: Any) -> bool {
+def _is_finish_tool_call(tc: any) -> bool {
     if tc?.function and hasattr(tc.function, "name") {
         return tc.function.name == "finish_tool";
     }
@@ -370,4 +388,8 @@ impl MTRuntime.get_output_schema -> dict | None {
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.
     return None;
+}
+
+impl MTIR.runtime.getter -> MTRuntime {
+    return MTRuntime.factory(self);
 }

@@ -37,7 +37,7 @@ impl NeverType.__str__ -> str {
 
 """Return a string representation of the any type."""
 impl AnyType.__str__ -> str {
-    return "<Any>";
+    return "<any>";
 }
 
 """Return a string representation of the module type."""
@@ -89,6 +89,7 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ) for param in self.parameters
         ],
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types
@@ -136,6 +137,7 @@ impl FunctionType.specialize_func_type_vars(
         ],
         function_flags=self.function_flags,
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types
@@ -474,7 +476,7 @@ impl ClassType.__str__ -> str {
 }
 
 """Non-null view of the shared details (asserted)."""
-impl ClassType.shared -> ClassType.ClassDetailsShared {
+impl ClassType.shared.getter -> ClassType.ClassDetailsShared {
     assert self._shared is not None , "ClassType.shared accessed before construction (detached property ClassType?)";
     return self._shared;
 }
@@ -517,7 +519,7 @@ impl TypeBase.unknown -> UnknownType {
 }
 
 """Returns the category of the type."""
-impl TypeBase.category -> TypeCategory {
+impl TypeBase.category.getter -> TypeCategory {
     return self.CATEGORY;
 }
 

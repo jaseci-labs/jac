@@ -99,6 +99,7 @@ obj PrefetchedTypes {
         type_class: types.ClassType | None = None,
         union_type_class: types.ClassType | None = None,
         awaitable_class: types.ClassType | None = None,
+        coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
         method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
@@ -168,18 +169,27 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
-"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression).
+
+`deps` is the set of identifier names the key textually depends on
+beyond the key itself -- the base name plus any Name indices for
+subscript expressions (`x[r]` depends on `{x, r}`). The CFG
+assignment barrier consults this set so reassigning an index
+invalidates the narrowing without re-parsing the key string.
+"""
 obj NarrowingTarget {
     has key: str,  # "x" or "bmw.speed"
         declared_type: TypeBase,
-        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+        symbol: uni.Symbol | None = None,  # None for expression-based narrowing
+        deps: frozenset[str] = frozenset();
 }
 
 """Represents a narrowing operation from a conditional predicate."""
 obj NarrowingPredicate {
     has key: str,
         narrow_type: TypeBase,
-        is_inverted: bool = False;
+        is_inverted: bool = False,
+        attr_name: str | None = None;
 }
 
 """Classification of a leaf narrowing condition."""
@@ -190,7 +200,8 @@ enum NarrowingKind {
     NONE_IS_NOT = "none_is_not",
     TRUTHINESS = "truthiness",
     LITERAL_EQ = "literal_eq",
-    LITERAL_NE = "literal_ne"
+    LITERAL_NE = "literal_ne",
+    HASATTR = "hasattr"
 }
 
 """Result of classifying a leaf condition node.
@@ -202,7 +213,8 @@ before reaching classification.
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
-        narrow_type: (TypeBase | None) = None;
+        narrow_type: (TypeBase | None) = None,
+        attr_name: str | None = None;
 }
 
 """Type evaluator for JacLang."""
@@ -214,6 +226,8 @@ obj TypeEvaluator {
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         # Names made ambient by typing_ambient.pyi's __all__, keyed by the
         # source module the stub re-exports them from (typing /
@@ -251,6 +265,12 @@ obj TypeEvaluator {
         # when the module is Jac source (Layer 2 strict-Any applies),
         # False when it is Python source (PEP 484 stays permissive).
         _strict_site_cache: dict[int, bool] = {},
+        # Per-module set of symbol ids bound by `sv import` to a server
+        # function, keyed by `id(module)`. Calls to these are async RPC stubs
+        # on the client. Scoped per module so a server function called
+        # server-side (same shared symbol) is unaffected. Same id-keyed,
+        # recompile-invalidated pattern as `_strict_site_cache`.
+        _sv_async_syms_cache: dict[int, set[int]] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -260,7 +280,16 @@ obj TypeEvaluator {
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
         jac_builtins_module: uni.Module by postinit,
-        dom_types_module: uni.Module by postinit;
+        dom_types_module: uni.Module by postinit,
+        # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
+        # into builtins: its names (File, native open) resolve only in native
+        # context via a gated lookup, so they never leak into regular .jac.
+        na_builtins_module: uni.Module by postinit,
+        # ECMAScript / browser ambient stub for client code. Like na_builtins
+        # (and unlike dom_types), NOT merged into builtins: its names (Date,
+        # Math, console, window, ...) resolve only in client context via a
+        # gated lookup, so they never leak into server .jac code.
+        js_globals_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -299,6 +328,7 @@ obj TypeEvaluator {
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
+    def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _resolve_star_import_symbol(
@@ -316,6 +346,11 @@ obj TypeEvaluator {
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
+    # Apply function-shaped decorators (e.g. contextmanager) to an ability's type.
+    def _apply_function_decorators(
+        node_: uni.Ability, func_type: types.FunctionType
+    ) -> types.FunctionType;
+
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
@@ -325,6 +360,9 @@ obj TypeEvaluator {
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
     def is_explicit_any(ty: TypeBase) -> bool;
+    # Check if a type is `NoneType` (the type of the literal `None`),
+    # in either its class or instance form.
+    def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: uni.UniNode) -> bool;
     """True when the pass is currently checking a native (.na.jac) module."""
     def _in_native_context -> bool;
@@ -399,7 +437,7 @@ obj TypeEvaluator {
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
-    def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
+    def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
     # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
@@ -503,6 +541,22 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    # --- async / await modeling ---
+    # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
+    # `async def` call evaluates to). Returns `inner` unchanged if Coroutine
+    # is unavailable or `inner` is already a generator-family type.
+    def _make_coroutine_type(inner: TypeBase) -> TypeBase;
+    # True if `t` is an awaitable (Coroutine/Awaitable instance, or a class
+    # implementing `__await__`).
+    def _is_awaitable_type(t: TypeBase) -> bool;
+    # Unwrap one `await`: Coroutine[Y,S,R]->R, Awaitable[T]->T, else via
+    # `__await__`. Non-awaitables pass through unchanged (lenient).
+    def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
+    # True if `expr` is a call to a function imported via `sv import` in the
+    # enclosing module — such functions lower to async RPC stubs on the
+    # client, so their calls return coroutines even though the server
+    # declaration is synchronous.
+    def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
@@ -529,7 +583,7 @@ obj TypeEvaluator {
 
     def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
-        method_member: Any, caller_type: types.ClassType
+        method_member: any, caller_type: types.ClassType
     ) -> TypeBase;
 
     # -------------------------------------------------------------------------
@@ -660,6 +714,12 @@ obj TypeEvaluator {
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
     def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _extract_hasattr_info(condition: uni.Expr) -> tuple[str, str] | None;
+    def _type_has_attribute(t: TypeBase, attr_name: str) -> bool;
+    def _filter_union_for_hasattr(
+        base_type: TypeBase, attr_name: str, keep_with_attr: bool
+    ) -> TypeBase | None;
+
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
     def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;

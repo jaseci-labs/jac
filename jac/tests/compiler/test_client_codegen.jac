@@ -134,6 +134,26 @@ test "def pub and endpoint effects" {
     }
 }
 
+test "endpoint effects follow helper calls" {
+    prog = JacProgram();
+
+    # A walker (and a def:pub function) whose only graph mutation happens
+    # inside a plain `def` helper. The classifier must follow the call into
+    # the helper -- otherwise the walker is misclassified as a reader and the
+    # client cache is never invalidated after the mutation.
+    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\ncl {\n    def:pub app() {\n        root spawn tag_item(label="x");\n        result = await mark_item("y");\n    }\n}\n';
+    mod = compile_inline(code, prog);
+    effects = mod.gen.client_manifest.endpoint_effects;
+
+    # The walker mutates Item.tags only inside the `_add_tag` helper.
+    assert "walker:tag_item" in effects , "tag_item should be in endpoint_effects";
+    assert effects["walker:tag_item"]["is_writer"] , "tag_item mutates the graph via a helper -- must be classified as writer";
+
+    # Same for a def:pub function delegating its write to a helper.
+    assert "func:mark_item" in effects , "mark_item should be in endpoint_effects";
+    assert effects["func:mark_item"]["is_writer"] , "mark_item mutates the graph via a helper -- must be classified as writer";
+}
+
 test "jac call function sends params directly" {
     jac_root = Path(jaclang.__file__).resolve().parent.parent.parent;
     runtime_path = (

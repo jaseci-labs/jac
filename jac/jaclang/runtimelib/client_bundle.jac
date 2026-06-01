@@ -13,11 +13,12 @@ import type from jaclang.jac0core.unitree { Module }
 """Raised when the client bundle cannot be generated."""
 class ClientBundleError(RuntimeError) {}
 
-"""Lookup module in hub with cross-platform path normalization (Windows case/separators)."""
+"""Look up a module in one program's hub (single-hub, recompiles on miss in the
+caller); see the impl for why the bundler must not span programs."""
 def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
 
 """Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
-def _ensure_js_generated(mod: Module, program: Any) -> None;
+def _ensure_js_generated(mod: Module, program: any) -> None;
 
 """Result of processing client imports."""
 class ProcessedImports(NamedTuple) {
@@ -53,7 +54,7 @@ obj ClientBundleBuilder {
     def _extract_client_exports(manifest: (ClientManifest | None)) -> list[str];
     def _extract_client_globals(
         manifest: (ClientManifest | None), module: ModuleType
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
     def _compile_to_js(source_path: Path) -> tuple[str, Module];

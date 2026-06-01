@@ -13,7 +13,6 @@ import shutil;
 import json;
 import re;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.cli.console { console }
 
 # Python imports in the ejected backend that pull in a jaclang "companion"
@@ -33,7 +32,18 @@ glob _SV_SUFFIX: str = ".sv.jac",
      _IMPL_SUFFIX: str = ".impl.jac",
      _TEST_SUFFIX: str = ".test.jac",
      # Directories never traversed when collecting source files.
-     _SKIP_DIRS: set = {".jac",".git",".venv","venv","node_modules","__pycache__",".mypy_cache",".pytest_cache","dist","build"};
+     _SKIP_DIRS: set = {
+         ".jac",
+         ".git",
+         ".venv",
+         "venv",
+         "node_modules",
+         "__pycache__",
+         ".mypy_cache",
+         ".pytest_cache",
+         "dist",
+         "build"
+     };
 
 
 """Resolve the output directory for `jac eject`.
@@ -384,7 +394,7 @@ pre-computed access sets classify walkers and abilities exactly the way
 the normal `jac start` path would — otherwise a walker that's public in
 source would end up gated at runtime.
 """
-def _has_pub_access(ast_item: Any) -> bool {
+def _has_pub_access(ast_item: any) -> bool {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { Tokens as Tok }
     if not isinstance(ast_item, uni.AstAccessNode) {
@@ -416,10 +426,11 @@ function definition signature and skip the injection to avoid a circular
 import.
 """
 def _inject_runtime_imports(js_code: str) -> str {
+    import from jaclang.runtimelib.client_surface { prepended_runtime_import }
     if "function __jacJsx(" in js_code {
         return js_code;
     }
-    return 'import {__jacJsx, __jacSpawn} from "@jac/runtime";\n' + js_code;
+    return prepended_runtime_import() + '\n' + js_code;
 }
 
 

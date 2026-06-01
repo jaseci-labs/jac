@@ -1,12 +1,11 @@
 """Plugin configuration hooks for jac-scale."""
-import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-scale."""
 class JacScalePluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "scale",
             "version": "0.1.0",
@@ -16,7 +15,7 @@ class JacScalePluginConfig {
 
     """Return the plugin's configuration schema for [plugins.scale]."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "scale",
             "options": {
@@ -187,6 +186,11 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": "0.0.0.0",
                             "description": "Server host"
+                        },
+                        "suppress_health_check_logs": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Suppress health-check endpoint access log entries (/docs, /, /openapi.json, /health, /healthz, /healthz/ready, /healthz/live) from CLI output and Kubernetes pod logs. Off by default."
                         }
                     }
                 },
@@ -323,6 +327,18 @@ class JacScalePluginConfig {
                                     "type": "string",
                                     "default": "/",
                                     "description": "SPA base route"
+                                }
+                            }
+                        },
+                        "logs": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Centralised log aggregation via Loki + Grafana Alloy (M-14). Off by default. When enabled, deploys the full monitoring stack (Prometheus + Grafana + Loki + Alloy) into the app namespace; Alloy tails every pod's stdout/stderr from `/var/log/pods` and ships to Loki, queried via Grafana's `Pod Logs` dashboard. v0 uses ephemeral `emptyDir` for Loki storage (suitable for dev/staging); persistent backends land in M-14.c. **Multi-tenant note**: Alloy's ClusterRole reads pods cluster-wide and the dashboard query is `{namespace=~\".+\"}`, so anyone with Grafana access sees logs from every namespace - change the default Grafana password and only enable on clusters where this exposure is acceptable.",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Enable the Loki + Alloy logging pipeline. Implies the full monitoring stack (Prometheus + Grafana) because the Pod Logs dashboard view lives in Grafana."
                                 }
                             }
                         }

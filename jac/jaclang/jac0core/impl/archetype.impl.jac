@@ -64,9 +64,9 @@ impl ObjectSpatialPath.convert(
     if callable(filter) {
         return filter;
     } elif isinstance(filter, `list) {
-        return lambda i: Any : (i in filter);
+        return lambda i: any : (i in filter);
     }
-    return lambda i: Any : (i == filter);
+    return lambda i: any : (i == filter);
 }
 
 """Append destination."""
@@ -282,7 +282,7 @@ impl NodeAnchor.edge_delta -> (tuple[(set[UUID], set[UUID])] | None) {
 }
 
 """Get decoded topology index (lazy-decoded from blob)."""
-impl NodeAnchor.get_topology_index -> Any {
+impl NodeAnchor.get_topology_index -> any {
     import from jaclang.runtimelib.topology_index { TopologyIndex }
     if self.topology_index_data {
         return TopologyIndex.decode(self.topology_index_data);
@@ -291,7 +291,7 @@ impl NodeAnchor.get_topology_index -> Any {
 }
 
 """Set topology index from TopologyIndex object (encodes to blob)."""
-impl NodeAnchor.set_topology_index(index: Any) -> None {
+impl NodeAnchor.set_topology_index(index: any) -> None {
     self.topology_index_data = index.encode();
 }
 
@@ -317,7 +317,7 @@ impl Archetype.__jac__ -> Anchor {
 }
 
 """Configure subclasses."""
-impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
+impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
     super.__init_subclass__(**kwargs);
     if not cls.__dict__.get('__jac_base__', False) {
         import from jaclang { JacRuntimeInterface as _ }
@@ -328,23 +328,8 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
     }
 }
 
-"""Set attribute on archetype and track dirty fields after initialization."""
-impl Archetype.__setattr__(name: str, value: Any) -> None {
-    object.__setattr__(self, name, value);
-    if self.__dict__.get('__jac_initialized__', False) and not name.startswith('_') {
-        dirty: set[str] = self.__dict__.get('__jac_dirty_fields__');
-        if not isinstance(dirty, set) {
-            dirty = set();
-            object.__setattr__(self, '__jac_dirty_fields__', dirty);
-        }
-        dirty.add(name);
-    }
-}
-
-"""Mark archetype as initialized so subsequent field changes are tracked as dirty."""
-impl Archetype.postinit -> None {
-    object.__setattr__(self, '__jac_initialized__', True);
-}
+"""No-op base post-init; exists so subclass `super.postinit()` calls resolve."""
+impl Archetype.postinit -> None { }
 
 """Override repr for archetype."""
 impl Archetype.__repr__ -> str {
@@ -377,11 +362,35 @@ impl Root.__repr__ -> str {
 impl ObjectSpatialFunction.trigger -> (
     type | UnionType | tuple[((type | UnionType), ...)] | None
 ) {
-    parameters = signature(self.func, eval_str=True).parameters;
-    if (len(parameters) >= 2) {
+    # Resolve the trigger value. Fast path: the compiler stamps a lazy thunk
+    # (see PyastGenPass `set_trigger`) carrying the trigger type, so no runtime
+    # signature reflection is needed. The thunk defers type resolution to first
+    # access (here), after the whole module — including forward-referenced
+    # types — is defined. Fall back to inspecting the ability signature when no
+    # thunk was stamped. cached_property memoizes the resolved value.
+    if self.trigger_override is not _NO_TRIGGER {
+        ty = self.trigger_override();
+    } else {
+        parameters = signature(self.func, eval_str=True).parameters;
+        if len(parameters) < 2 {
+            return None;
+        }
         second_param = `list(parameters.values())[1];
         ty = second_param.annotation;
-        return ty if (ty != _empty) else None;
+        if ty == _empty {
+            return None;
+        }
     }
-    return None;
+    # An ability trigger must be a class, not an instance. Validate on both
+    # resolution paths so e.g. `with root entry` (the `root` instance) raises
+    # here instead of being silently classified as a non-matching trigger.
+    if isinstance(ty, Archetype) {
+        raise TypeError(
+            f"Ability trigger must be a class, not an instance of `{type(
+                ty
+            ).__name__}`. "
+            f"Use `with {type(ty).__name__} entry` instead."
+        );
+    }
+    return ty;
 }

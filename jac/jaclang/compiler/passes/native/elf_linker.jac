@@ -8,8 +8,6 @@ Supports ELF64 with dynamic linking against libc.
 Architecture support: x86_64, aarch64.
 """
 
-import from typing { Any }
-
 """Parsed ELF section."""
 obj ElfSection {
     has name: str,

@@ -7,7 +7,7 @@ import type from jaclang.jac0core.unitree { Expr, Symbol }
 import type from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
 
 """Enumeration of type categories."""
-enum TypeCategory ( IntEnum ) {
+enum TypeCategory(IntEnum) {
     Unbound,
     Unknown,
     Never,
@@ -66,8 +66,7 @@ obj TypeBase(ABC) {
         CATEGORY: ClassVar[TypeCategory];
     }
 
-    @property
-    def category -> TypeCategory;
+    has category: TypeCategory { getter; }
 
     static def unknown -> UnknownType;
     def is_instantiable -> bool;
@@ -179,8 +178,7 @@ obj ClassType(TypeBase) {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
 
-    @property
-    def shared -> ClassType.ClassDetailsShared;
+    has shared: ClassType.ClassDetailsShared { getter; }
 
     """
 Holds the shared details of class type.
@@ -284,7 +282,7 @@ class ParamKind(IntEnum) {
 Based on Pyright's FunctionTypeFlags. These flags control how the
 function type behaves during type checking.
 """
-enum FunctionTypeFlags ( IntEnum ) {
+enum FunctionTypeFlags(IntEnum) {
     Null = 0,
     # The *args and **kwargs parameters do not need to be present for this
     # function to be compatible. This is used for Callable[..., x] (gradual typing).
@@ -324,7 +322,12 @@ obj FunctionType(TypeBase) {
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
         function_flags: int = 0,
-        type_params: (list[TypeVarType] | None) = None;
+        type_params: (list[TypeVarType] | None) = None,
+        # True for `async def` / async abilities. A call to one evaluates to a
+        # coroutine (`Coroutine[Any, Any, return_type]`) at the call site, so
+        # callers must `await` it. The declared `return_type` itself stays the
+        # unwrapped type (it is what `return` statements are checked against).
+        is_async: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;

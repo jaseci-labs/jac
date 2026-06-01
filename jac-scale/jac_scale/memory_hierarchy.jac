@@ -25,6 +25,7 @@ import from jaclang.runtimelib.memory {
     TieredMemory,
     SqliteMemory
 }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
@@ -34,7 +35,7 @@ glob logger = logging.getLogger(__name__),
      # Process-level singletons shared across all requests in a single server process.
      # A single dict so cross-module mutation works without global declarations in each package.
      # Keys: 'mongo_client', 'redis_client', 'mongo_available', 'redis_available', 'system_root'
-     _process_cache: dict[str, Any] = {};
+     _process_cache: dict[str, any] = {};
 
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
@@ -92,17 +93,20 @@ Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
     has client: MongoClient | None = None,
-        db: Any by postinit,
-        collection: Any by postinit,
+        db: any by postinit,
+        collection: any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
+        _l2_ref: (any | None) = None,
         fetch_count: int = 0,
-        put_count: int = 0;
+        put_count: int = 0,
+        _atomic_written: set by postinit;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
+    def set_cache_ref(cache: (any | None)) -> None;
     def is_available -> bool;
     def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
@@ -127,8 +131,12 @@ obj MongoBackend(PersistentMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
-    # PersistentMemory-specific
-    def sync -> None;
+    # Pushdown protocol — Mongo declares native type+field+id_in+slice support.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
+    # One-time index setup (idempotent). Called from postinit.
+    def ensure_indexes -> None;
+    def sync -> set;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
     # Layer 1+2+3 operator surface
     def inspect_summary -> dict;

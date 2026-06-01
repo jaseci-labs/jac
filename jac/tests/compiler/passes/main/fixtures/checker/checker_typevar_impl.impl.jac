@@ -1,7 +1,7 @@
 """Implementation with TypeVar in impl block."""
 
 impl Basics.assign_all(
-    target: list[T], attr_val: tuple[tuple[str], tuple[Any]]
+    target: list[T], attr_val: tuple[tuple[str], tuple[any]]
 ) -> list[T] {
     for `obj in target {
         (attrs, values) = attr_val;

@@ -174,11 +174,19 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         bindings = self._collect_type_var_bindings(
             caller_type, expr, is_unbound_call=is_unbound_call
         );
+        ret: TypeBase = caller_type.return_type or types.UnknownType();
         if bindings {
             specialized = caller_type.specialize_func_type_vars(bindings);
-            return specialized.return_type or types.UnknownType();
+            ret = specialized.return_type or types.UnknownType();
         }
-        return caller_type.return_type or types.UnknownType();
+        # An `async def` call (or an `sv import` RPC stub, which is async on
+        # the client) evaluates to a coroutine, not the bare return type —
+        # the caller must `await` it. Model that here so a missing `await`
+        # surfaces as a type error at the use site.
+        if caller_type.is_async or self._is_sv_async_call(expr) {
+            ret = self._make_coroutine_type(ret);
+        }
+        return ret;
     }
     if isinstance(caller_type, types.OverloadedType) {
         # Prefer overloads with concrete (non-Unknown) return types
@@ -672,7 +680,7 @@ with the caller's class type. Returns an OverloadedType when multiple signatures
 exist, otherwise returns the base FunctionType.
 """
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: Any, caller_type: types.ClassType
+    method_member: any, caller_type: types.ClassType
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);
@@ -756,6 +764,29 @@ impl TypeEvaluator.assign_type_to_type_var(
             if isinstance(member, types.TypeVarType) {
                 self.assign_type_to_type_var(member, arg_type, bindings);
             }
+        }
+        return True;
+    }
+
+    # Callable param: bind TypeVars structurally. Params contravariant
+    # (arg<-param), return covariant (param<-arg).
+    if isinstance(param_type, types.FunctionType)
+    and isinstance(arg_type, types.FunctionType) {
+        param_params = param_type.parameters or [];
+        arg_params = arg_type.parameters or [];
+        for (i, pp) in enumerate(param_params) {
+            if i < len(arg_params)
+            and pp.param_type is not None
+            and arg_params[i].param_type is not None {
+                self.assign_type_to_type_var(
+                    arg_params[i].param_type, pp.param_type, bindings
+                );
+            }
+        }
+        if param_type.return_type is not None and arg_type.return_type is not None {
+            self.assign_type_to_type_var(
+                param_type.return_type, arg_type.return_type, bindings
+            );
         }
         return True;
     }

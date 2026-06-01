@@ -9,7 +9,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 import redis;
 import requests;
 import from pymongo { MongoClient }
@@ -67,7 +67,7 @@ def _reset_mongo -> None {
     if "mongo_client" not in _shared {
         return;
     }
-    system_dbs = {"admin","config","local"};
+    system_dbs = {"admin", "config", "local"};
     for db_name in _shared["mongo_client"].list_database_names() {
         if db_name not in system_dbs {
             _shared["mongo_client"].drop_database(db_name);
@@ -84,11 +84,11 @@ def _reset_redis {
 
 """Extract data from TransportResponse envelope format."""
 def extract_transport_response_data(
-    json_response: dict[str, Any] | list[Any]
-) -> dict[str, Any] | list[Any] {
+    json_response: dict[str, any] | list[any]
+) -> dict[str, any] | list[any] {
     if isinstance(json_response, list) {
         if len(json_response) == 2 {
-            body: dict[str, Any] = json_response[1];
+            body: dict[str, any] = json_response[1];
             json_response = body;
         }
     }
@@ -102,7 +102,7 @@ def extract_transport_response_data(
             return json_response["data"];
         } elif not json_response.get("ok") and json_response.get("error") {
             error_info = json_response["error"];
-            result: dict[str, Any] = {
+            result: dict[str, any] = {
                 "error": error_info.get("message", "Unknown error")
             };
             if "code" in error_info {
@@ -137,14 +137,14 @@ def register_user(base_url: str, username: str, password: str = "password123") -
     );
     assert login_res.status_code == 200 , f"Login failed: {login_res.status_code} - {login_res.text}";
     login_data = cast(
-        dict[str, Any], extract_transport_response_data(login_res.json())
+        dict[str, any], extract_transport_response_data(login_res.json())
     );
     return login_data["token"];
 }
 
 def post_request(
     base_url: str, path: str, payload: dict, token: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     res = requests.post(
         f"{base_url}{path}",
         json=payload,
@@ -152,7 +152,7 @@ def post_request(
         timeout=2
     );
     assert res.status_code == 200 , f"POST {path} failed: {res.status_code} - {res.text}";
-    return cast(dict[str, Any], extract_transport_response_data(res.json()));
+    return cast(dict[str, any], extract_transport_response_data(res.json()));
 }
 
 """Start jac server and wait for it to become ready."""
@@ -311,7 +311,7 @@ test "data persists after server restart for mongo db" {
         # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , "Should have 1 task before restart";
@@ -330,7 +330,7 @@ test "data persists after server restart for mongo db" {
         # Verify task persists after restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , "Task should persist after restart";
@@ -507,7 +507,7 @@ test "data persists after server restart for sqlite" {
         # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , f"Should have 1 task before restart, got {len(
@@ -529,7 +529,7 @@ test "data persists after server restart for sqlite" {
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         assert res.status_code == 200 , f"Post-restart request failed: {res.status_code}";
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , f"Task should persist after SQLite restart, got {len(
@@ -642,7 +642,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_before = response_data["reports"][0];
         assert len(tasks_before) == 1 , "Should have 1 task before restart";
@@ -707,7 +707,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         assert res.status_code == 200 , f"Login failed: {res.status_code} - {res.text}";
-        login_data = cast(dict[str, Any], extract_transport_response_data(res.json()));
+        login_data = cast(dict[str, any], extract_transport_response_data(res.json()));
         token_after_restart = login_data["token"];
 
         # Verify task persists after restart (proves L3 commit worked) - use authenticated request
@@ -718,7 +718,7 @@ test "L2 and L3 commit with server restart" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks_after = response_data["reports"][0];
         assert len(tasks_after) == 1 , "Task should persist after restart (L3 commit)";
@@ -793,10 +793,11 @@ test "Redis write cycle via commit" {
             "Redis write cycle via commit() is BROKEN!"
         );
 
-        # Count must increase (4 initial + task node + edge = 6)
+        # 4 initial + task node + edge - 1 (parent node's key invalidated by
+        # atomic write path, not re-written with stale snapshot) = 5
         final_count = redis_client.dbsize();
-        assert final_count == 6 , (
-            f"Redis should have 6 entries after task creation, got {final_count}"
+        assert final_count == 5 , (
+            f"Redis should have 5 entries after task creation, got {final_count}"
         );
     } finally {
         if server {
@@ -880,7 +881,7 @@ test "sequential requests work correctly" {
 
         # Verify all 5 tasks were created
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
-        all_tasks = cast(dict[str, Any], extract_transport_response_data(res.json()))[
+        all_tasks = cast(dict[str, any], extract_transport_response_data(res.json()))[
             "reports"
         ][0];
         assert len(all_tasks) == 5 , f"Expected 5 tasks, got {len(all_tasks)}";
@@ -958,7 +959,7 @@ test "batch_get reduces MongoDB queries for edge traversals" {
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=10);
         assert res.status_code == 200;
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks = response_data["reports"][0];
         assert len(tasks) == num_tasks , (
@@ -1286,7 +1287,7 @@ test "concurrent requests do not lose edges" {
             timeout=2
         );
         response_data = cast(
-            dict[str, Any], extract_transport_response_data(res.json())
+            dict[str, any], extract_transport_response_data(res.json())
         );
         tasks = response_data["reports"][0];
         task_titles = [t.get("title", "") for t in tasks];
@@ -1320,7 +1321,7 @@ test "acommit forwards anchor argument to commit()" {
 
     received: list = [None];
 
-    def capture_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def capture_commit(self: ScaleTieredMemory, anchor: any = None) {
         received[0] = anchor;
     }
 
@@ -1354,7 +1355,7 @@ test "acommit is idempotent — _committed flag prevents second sync pass" {
 
     call_count = [0];
 
-    def mock_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def mock_commit(self: ScaleTieredMemory, anchor: any = None) {
         call_count[0] += 1;
     }
 
@@ -1384,7 +1385,7 @@ test "acommit leaves _committed False when commit() raises" {
     import from unittest.mock { patch }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
 
-    def failing_commit(self: ScaleTieredMemory, anchor: Any = None) {
+    def failing_commit(self: ScaleTieredMemory, anchor: any = None) {
         raise RuntimeError("simulated commit failure");
     }
 
@@ -1541,4 +1542,116 @@ test "system root cache: N consecutive inits cost one MongoDB fetch total" {
         );
     }
     _reset_process_cache();
+}
+
+
+test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (issue 6295)" {
+    import json;
+    import from uuid { uuid4, UUID }
+    import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
+    import from jaclang.runtimelib.utils { to_uuid }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory, MongoBackend }
+
+    _reset_mongo();
+    _reset_redis();
+    _reset_process_cache();
+    _mongo_result = _get_mongo();
+    _redis_result = _get_redis();
+    mongo_uri: str = cast(str, _mongo_result[1]);
+    redis_client: any = _redis_result[0];
+    redis_url: str = cast(str, _redis_result[1]);
+
+    os.environ["MONGODB_URI"] = mongo_uri;
+    os.environ["REDIS_URL"] = redis_url;
+
+    try {
+        mem = ScaleTieredMemory();
+        mem.postinit();
+        assert mem.l3 is not None , "MongoDB must be available for this test";
+        assert mem.l2 is not None , "Redis must be available for this test";
+
+        col: any = cast(MongoBackend, mem.l3).collection;
+
+        root_id: str = str(uuid4());
+        col.insert_one(
+            {
+                '_id': root_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'Root',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': root_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': 'Root',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    },
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-01-01T00:00:00'
+            }
+        );
+
+        root_anchor = mem.get(UUID(root_id));
+        assert root_anchor is not None , "root must load from Mongo";
+        _raw_after_read: any = redis_client.get(f"anchor:{root_id}");
+        assert _raw_after_read is not None , "root must be cached in Redis after tiered read";
+        assert json.loads(cast(bytes, _raw_after_read)).get('edges', []) == [] , (
+            "L2 must show empty edges at this point (pre-write state)"
+        );
+
+        node_anchor = cast(NodeAnchor, root_anchor);
+        setattr(node_anchor, '_initial_edge_ids', frozenset());
+        edge_id: str = str(uuid4());
+        edge_stub = EdgeAnchor.__new__(EdgeAnchor);
+        setattr(edge_stub, 'id', to_uuid(edge_id));
+        setattr(edge_stub, 'persistent', True);
+        node_anchor.edges.append(edge_stub);
+        setattr(node_anchor, 'hash', 0);
+        mem.__mem__[UUID(root_id)] = node_anchor;
+
+        mem.commit();
+
+        _mongo_doc: any = col.find_one({'_id': root_id});
+        l3_edges: list[str] = cast(
+            list[str], _mongo_doc.get('data', {}).get('edges', [])
+        );
+        assert edge_id in l3_edges , (
+            f"L3 (Mongo) must contain the new edge after commit; got {l3_edges}"
+        );
+
+        l2_raw: any = redis_client.get(f"anchor:{root_id}");
+        if l2_raw is not None {
+            l2_edges: list[str] = cast(
+                list[str], json.loads(cast(bytes, l2_raw)).get('edges', [])
+            );
+            assert l2_edges != [] , (
+                "L2 (Redis) must NOT cache empty edges when L3 has the edge "
+                "(issue #6295 regression)"
+            );
+            assert edge_id in l2_edges , (
+                f"L2 edges must match L3 after commit; L3={l3_edges}, L2={l2_edges}"
+            );
+        }
+
+        initial_ids: frozenset[UUID] = cast(
+            frozenset[UUID], getattr(node_anchor, '_initial_edge_ids', frozenset())
+        );
+        assert len(initial_ids) > 0 , (
+            "_initial_edge_ids must be non-empty after _put_node_atomic read-back"
+        );
+        assert to_uuid(edge_id) in initial_ids , (
+            f"_initial_edge_ids must include the merged edge; got {initial_ids}"
+        );
+
+        mem.l3.close();
+    } finally {
+        os.environ.pop("MONGODB_URI", None);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
 }

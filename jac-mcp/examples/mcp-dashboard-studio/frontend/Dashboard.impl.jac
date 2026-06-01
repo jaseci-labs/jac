@@ -1,6 +1,6 @@
 """Implementations for DashboardPage."""
 
-impl DashboardPage.get_first_report(spawn_res: Any) -> dict {
+impl DashboardPage.get_first_report(spawn_res: any) -> dict {
     if spawn_res {
         reps = spawn_res["reports"] if "reports" in spawn_res else [];
         if reps and len(reps) > 0 {
@@ -19,7 +19,7 @@ impl DashboardPage.busy(tool: str) -> bool {
     return loading == tool;
 }
 
-impl DashboardPage.pretty_json(val: Any) -> str {
+impl DashboardPage.pretty_json(val: any) -> str {
     return JSON.stringify(val, null, 2);
 }
 
@@ -128,7 +128,7 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
     active_tool = tool;
     notice = start_notice(tool);
     try {
-        spawn_res: Any = None;
+        spawn_res: any = None;
         if tool == "validate_jac" {
             spawn_res = await root spawn validate_jac(code=args["code"]);
         } elif tool == "check_syntax" {
@@ -201,8 +201,7 @@ impl DashboardPage.renderErr -> JsxElement {
 }
 
 impl DashboardPage.renderEmpty -> JsxElement {
-    return
-        <div className="text-xs text-zinc-600">No result yet.</div>;
+    return <div className="text-xs text-zinc-600">No result yet.</div>;
 }
 
 impl DashboardPage.renderValidationOutput -> JsxElement {
@@ -253,8 +252,7 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
     formatted: str = str(data["formatted"]) if "formatted" in data else "";
     changed: bool = data["changed"] if "changed" in data else False;
     if not formatted {
-        return
-            <div className="text-xs text-zinc-600">No output returned.</div>;
+        return <div className="text-xs text-zinc-600">No output returned.</div>;
     }
     return
         <div className="space-y-1">
@@ -406,8 +404,7 @@ impl DashboardPage.renderExamplesOutput -> JsxElement {
                 else (data["examples"] if "examples" in data else [])
         );
     if len(cats) == 0 {
-        return
-            <div className="text-xs text-zinc-500">No categories found.</div>;
+        return <div className="text-xs text-zinc-500">No categories found.</div>;
     }
     return
         <div className="flex flex-wrap gap-1.5">
@@ -436,8 +433,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
     data = current_result["data"] if "data" in current_result else {};
     content: str = str(data["content"]) if "content" in data else "";
     if not content {
-        return
-            <div className="text-xs text-zinc-500">No content found.</div>;
+        return <div className="text-xs text-zinc-500">No content found.</div>;
     }
     sections: list = [
         s
@@ -512,8 +508,7 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         if Array.isArray(data)
         else (data["results"] if "results" in data else []);
     if len(matches) == 0 {
-        return
-            <div className="text-xs text-zinc-500">No results found.</div>;
+        return <div className="text-xs text-zinc-500">No results found.</div>;
     }
     return
         <div className="space-y-3">
@@ -563,6 +558,5 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
     }
-    return
-        <div className="text-xs text-zinc-600">Run a tool to see output here.</div>;
+    return <div className="text-xs text-zinc-600">Run a tool to see output here.</div>;
 }

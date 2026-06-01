@@ -36,7 +36,7 @@ impl create_enum_member_info(
     if val := assignment.value {
         if isinstance(val, uni.Int) {
             value_type = evaluator.prefetch.int_class if evaluator.prefetch else None;
-            literal_value = int(val.value);
+            literal_value = val.lit_value;
         } elif isinstance(val, uni.String) {
             value_type = evaluator.prefetch.str_class if evaluator.prefetch else None;
             literal_value = val.value;

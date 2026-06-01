@@ -4,7 +4,6 @@ This module defines the abstract interface for SSO providers, enabling
 easy addition of new authentication vendors (Google, Microsoft, GitHub, SAML, etc.).
 """
 
-import from typing { Any }
 import from fastapi { Request, Response }
 
 """Standardized user information from SSO providers."""
@@ -19,8 +18,8 @@ obj SSOUserInfo {
     """Return populated optional profile fields as a flat dict, skipping
     any that are None. Caller decides namespacing (typically nested under
     profile.sso.<platform> using the URL platform)."""
-    def profile_fields -> dict[str, Any] {
-        fields: dict[str, Any] = {};
+    def profile_fields -> dict[str, any] {
+        fields: dict[str, any] = {};
         for key in ['display_name', 'first_name', 'last_name', 'picture'] {
             val = getattr(self, key, None);
             if val {

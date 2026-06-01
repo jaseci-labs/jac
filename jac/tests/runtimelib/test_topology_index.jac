@@ -134,7 +134,9 @@ test "deep chain" {
     idx.add_edge(r, a, "E1");
     idx.add_edge(a, b, "E2");
     idx.add_edge(b, c, "E3");
-    assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)]) == {c};
+    assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)]) == {
+        c
+    };
 }
 
 test "multi hop selective" {
@@ -168,7 +170,7 @@ test "cross root ids" {
     idx.add_node(uuid4(), "Root");
     idx.add_node(n1, "A");
     idx.add_node(n2, "B", owner_root=foreign);
-    cross = idx.get_cross_root_ids({n1,n2});
+    cross = idx.get_cross_root_ids({n1, n2});
     assert cross[foreign] == {n2};
     assert n1 not in cross.get(foreign, set());
 }
@@ -185,7 +187,7 @@ test "subtype query returns instances of all descendants" {
     idx.add_edge(r, post, "Authored");
     idx.add_edge(r, article, "Authored");
     # Query by parent type — both subtypes match.
-    assert idx.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post,article};
+    assert idx.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post, article};
     # Query by concrete subtype — only that subtype matches.
     assert idx.resolve_chain({r}, [(None, "PostNode", 2)]) == {post};
 }
@@ -286,7 +288,9 @@ test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
 
     # Re-encoding the migrated index produces a v2 blob that round-trips.
     re_decoded = TopologyIndex.decode(idx.encode());
-    assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {new_child};
+    assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {
+        new_child
+    };
 }
 
 # ── Compact-encoding fidelity ────────────────────────────────────────

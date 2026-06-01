@@ -35,7 +35,7 @@ cl {
     sv import from .typed_return_nested { get_person, list_people }
 
     def:pub app -> JsxElement {
-        has person: Any = None,
+        has person: any = None,
             loading: bool = True;
 
         async can with entry {

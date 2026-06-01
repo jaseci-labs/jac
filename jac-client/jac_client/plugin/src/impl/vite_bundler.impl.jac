@@ -85,7 +85,13 @@ impl ViteBundler.create_package_json(
     };
     for (key, value) in package_config.items() {
         if (
-            key not in {'name','version','description','dependencies','devDependencies'}
+            key not in {
+                'name',
+                'version',
+                'description',
+                'dependencies',
+                'devDependencies'
+            }
         ) {
             package_data[key] = value;
         }
@@ -283,7 +289,7 @@ Example: To replace `APP_NAME` with the string "MyApp" in source code:
   - JS parses '"MyApp"' as the string: "MyApp"
   - Replacement in source: APP_NAME -> "MyApp" (valid JS!)
 """
-def _to_js_expr(value: Any) -> str {
+def _to_js_expr(value: any) -> str {
     # Handle None -> JS null literal
     if value is None {
         return "null";
@@ -1028,7 +1034,7 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     npmrc_path = configs_dir / '.npmrc';
     lines: list[str] = [];
     # Process global settings: { "registry" = "...", "always-auth" = true }
-    known_keys = {'scoped_registries','auth','settings'};
+    known_keys = {'scoped_registries', 'auth', 'settings'};
     settings = npm_config.get('settings', {});
     for (key, value) in settings.items() {
         if isinstance(value, bool) {
@@ -1118,7 +1124,7 @@ This runs in a separate thread to avoid blocking the main thread.
 Buffers output before ready so errors can be shown if startup fails.
 """
 def _forward_vite_output(
-    proc: Any, ready_event: "threading.Event", sys_module: Any, output_buffer: list[str]
+    proc: any, ready_event: "threading.Event", sys_module: any, output_buffer: list[str]
 ) {
     try {
         for line in iter(proc.stdout.readline, '') {
@@ -1151,7 +1157,7 @@ impl ViteBundler.start_dev_server(
     port: int = 3000,
     suppress_initial_output: bool = False,
     host: str = ""
-) -> Any {
+) -> any {
     import sys;
     import time;
     import threading;
@@ -1282,8 +1288,8 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
 
 """Start Vite with output capture for clean startup messaging."""
 impl ViteBundler._start_vite_with_output_capture(
-    self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
-) -> Any {
+    self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
+) -> any {
     import threading;
     process = subprocess.Popen(
         command,

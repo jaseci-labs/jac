@@ -1,6 +1,19 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.12 (Latest Release)
+## jac-mcp 0.1.17 (Latest Release)
+
+### Refactors
+
+- **Refactor: read base path via `Jac.get_base_path_dir()`**: Migrated to the new accessor; the prior `Jac.base_path_dir` class attribute has been removed.
+- **Refactor: drop redundant `Jac.setup()` calls**: The compiler bridge no longer calls the removed `Jac.setup()` no-op before each command.
+
+## jac-mcp 0.1.16
+
+### New Features
+
+- **MCP: Serve reference guides from the shared store**: The MCP server now serves the Jac reference guides from jaclang's bundled guide store (`jac://guide/*`) instead of vendoring its own copy, keeping one source of truth.
+
+## jac-mcp 0.1.12
 
 ### New Features
 

@@ -2,7 +2,7 @@ import from jac_scale.utils { authenticate_or_fail }
 
 """Validate trigger type and trigger-specific fields. Returns error response or None."""
 def _validate_trigger(
-    trigger: str, interval: Any, cron: Any, date: Any
+    trigger: str, interval: any, cron: any, date: any
 ) -> TransportResponse | None {
     valid_triggers = ['interval', 'cron', 'date'];
     if trigger not in valid_triggers {

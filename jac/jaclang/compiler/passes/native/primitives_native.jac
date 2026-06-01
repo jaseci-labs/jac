@@ -578,6 +578,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    # Decoding (str-typed i8* from .encode(); native str is already UTF-8)
+    def emit_decode(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value]
+    ) -> (ir.Value | None);
+
     # Translation
     def emit_translate(
         self: NativeStrEmitter,

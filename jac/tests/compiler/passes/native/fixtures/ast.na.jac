@@ -17,10 +17,7 @@ obj:pub Node {
 }
 
 def:pub make_node(kind: int, value: int) -> Node {
-    n = Node();
-    n.kind = kind;
-    n.value = value;
-    return n;
+    return Node(kind=kind, value=value);
 }
 
 def:pub node_kind(n: Node) -> int {

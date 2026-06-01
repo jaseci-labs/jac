@@ -51,9 +51,11 @@ glob __all__ = [
          'get_mtir',
          'sem',
          'call_llm',
+         'acall_llm',
          'by_operator',
          'on_entry',
          'on_exit',
+         'set_trigger',
          'thread_run',
          'thread_wait'
      ],
@@ -70,6 +72,7 @@ glob __all__ = [
      build_edge = JacRuntimeInterface.build_edge,
      by_operator = JacRuntimeInterface.by_operator,
      call_llm = JacRuntimeInterface.call_llm,
+     acall_llm = JacRuntimeInterface.acall_llm,
      destroy = JacRuntimeInterface.destroy,
      field = JacRuntimeInterface.field,
      filter_on = JacRuntimeInterface.filter_on,
@@ -83,5 +86,6 @@ glob __all__ = [
      `sem = JacRuntimeInterface.sem,
      on_entry = JacRuntimeInterface.on_entry,
      on_exit = JacRuntimeInterface.on_exit,
+     set_trigger = JacRuntimeInterface.set_trigger,
      thread_run = JacRuntimeInterface.thread_run,
      thread_wait = JacRuntimeInterface.thread_wait;

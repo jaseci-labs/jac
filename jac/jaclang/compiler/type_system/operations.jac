@@ -43,7 +43,15 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.GT: ('__gt__', '__lt__'),
          Tok.GTE: ('__ge__', '__le__')
      },
-     ARITHMETIC_OPERATORS: set[str] = {Tok.PLUS,Tok.MINUS,Tok.STAR_MUL,Tok.DIV,Tok.FLOOR_DIV,Tok.MOD,Tok.STAR_POW},
+     ARITHMETIC_OPERATORS: set[str] = {
+         Tok.PLUS,
+         Tok.MINUS,
+         Tok.STAR_MUL,
+         Tok.DIV,
+         Tok.FLOOR_DIV,
+         Tok.MOD,
+         Tok.STAR_POW
+     },
      INT_LIKE_WIDTHS: dict[str, int] = {
          "i8": 8,
          "u8": 8,
@@ -54,7 +62,7 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          "i64": 64,
          "u64": 64
      },
-     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"},
+     FLOAT_LIKE_NAMES: set[str] = {"f32", "f64"},
      AUG_OPERATOR_MAP: dict[str, str] = {
          Tok.ADD_EQ: '__iadd__',
          Tok.SUB_EQ: '__isub__',
@@ -132,14 +140,20 @@ def get_numeric_promotion_type(
         return None;
     }
 
+    float_class = evaluator.prefetch.float_class;
+    int_class = evaluator.prefetch.int_class;
+    if float_class is None or int_class is None {
+        return None;
+    }
+
     # Division always returns float
     if op == Tok.DIV {
-        return evaluator._convert_to_instance(evaluator.prefetch.float_class);
+        return evaluator._convert_to_instance(float_class);
     }
 
     # If either operand is float-like, result is float
     if left_is_float or right_is_float {
-        return evaluator._convert_to_instance(evaluator.prefetch.float_class);
+        return evaluator._convert_to_instance(float_class);
     }
 
     # Both are int-like: promote to the wider type
@@ -150,7 +164,7 @@ def get_numeric_promotion_type(
 
     # If either is plain int, result is int (int is the widest integer)
     if not left_fw or not right_fw {
-        return evaluator._convert_to_instance(evaluator.prefetch.int_class);
+        return evaluator._convert_to_instance(int_class);
     }
 
     # Both are fixed-width: pick the wider one
@@ -267,8 +281,9 @@ def get_type_of_binary_operation(
                 return True;
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.
-            if isinstance(ty, jtypes.ClassType) {
-                return ty.shared == evaluator.prefetch.none_type_class.shared;
+            none_type_class = evaluator.prefetch.none_type_class;
+            if isinstance(ty, jtypes.ClassType) and none_type_class is not None {
+                return ty.shared == none_type_class.shared;
             }
             return False;
         }
@@ -314,8 +329,9 @@ def get_type_of_binary_operation(
                 return True;
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.
-            if isinstance(ty, jtypes.ClassType) {
-                return ty.shared == evaluator.prefetch.none_type_class.shared;
+            none_type_class = evaluator.prefetch.none_type_class;
+            if isinstance(ty, jtypes.ClassType) and none_type_class is not None {
+                return ty.shared == none_type_class.shared;
             }
             return False;
         }
@@ -471,8 +487,9 @@ def get_type_of_binary_operation(
                     and (assign_compr := expr.op.conn_assign)
                 ) {
                     for assign in assign_compr.assigns {
-                        if (assign.key is not None) {
-                            edge_inst_type = evaluator._convert_to_instance(conn_type);
+                        edge_inst_type = evaluator._convert_to_instance(conn_type);
+                        if (assign.key is not None)
+                        and isinstance(edge_inst_type, jtypes.ClassType) {
                             if (
                                 member := evaluator._lookup_object_member(
                                     edge_inst_type, assign.key.sym_name
@@ -617,7 +634,6 @@ def get_type_of_binary_operation(
     if isinstance(expr.op, uni.Token) and expr.op.name == Tok.WALRUS_EQ {
         # Walrus operator: (x := expr) assigns right to left and returns right's type
         if isinstance(expr.left, uni.Name) and expr.left.sym {
-            expr.left.sym.type = right_type;
             expr.left.type = right_type;
         }
         return right_type;
