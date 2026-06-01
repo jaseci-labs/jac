@@ -67,6 +67,11 @@ obj KubernetesConfig(BaseConfig) {
         redis_password: str = 'password',
         # Ingress configuration
         ingress_node_port: int = 30080,
+        # When True, skip deploying a dedicated NGINX controller and instead
+        # attach Ingress resources to an existing shared controller identified
+        # by shared_ingress_class (default 'nginx').
+        shared_ingress: bool = False,
+        shared_ingress_class: str = 'nginx',
         # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
@@ -148,6 +153,8 @@ obj KubernetesConfig(BaseConfig) {
                 'redis_password': self.redis_password,
                 # Ingress configuration
                 'ingress_node_port': self.ingress_node_port,
+                'shared_ingress': self.shared_ingress,
+                'shared_ingress_class': self.shared_ingress_class,
                 'ingress_limit_rps': self.ingress_limit_rps,
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
@@ -219,6 +226,8 @@ obj KubernetesConfig(BaseConfig) {
             redis_username=config.get('redis_username', 'admin'),
             redis_password=config.get('redis_password', 'password'),
             ingress_node_port=config.get('ingress_node_port', 30080),
+            shared_ingress=config.get('shared_ingress', False),
+            shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
             ingress_limit_rps=config.get('ingress_limit_rps', 20),
             ingress_limit_burst_multiplier=config.get(
                 'ingress_limit_burst_multiplier', 5

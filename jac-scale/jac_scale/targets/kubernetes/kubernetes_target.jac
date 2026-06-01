@@ -1175,6 +1175,56 @@ obj KubernetesTarget(DeploymentTarget) {
     ) -> str {
         path = health_check_path;
         deployment_details = "";
+
+        # In shared ingress mode the dedicated controller service (NodePort/NLB)
+        # is never created. Instead, check reachability against the domain directly.
+        # Failure is a warning, not an error — the CNAME record may not have
+        # propagated yet or DNS may not be configured yet.
+        if self.k8s_config.shared_ingress {
+            domain_url = f"http://{self.k8s_config.domain}";
+            if self.logger {
+                self.logger.info(
+                    f"Shared ingress mode: checking reachability at {domain_url}{path}"
+                );
+            }
+            (domain_status, domain_details) = check_deployment_status(
+                self.k8s_config.ingress_node_port,
+                path,
+                max_retries=48,
+                nlb_url=domain_url,
+                namespace=namespace,
+                app_name=app_name
+            );
+            if not domain_status {
+                if provider.needs_nlb_wait() {
+                    dns_hint = (
+                        f"Add a CNAME record for '{self.k8s_config.domain}' "
+                        "pointing to the shared ingress controller's NLB hostname."
+                    );
+                } else {
+                    dns_hint = (
+                        f"Add an A record for '{self.k8s_config.domain}' "
+                        "pointing to the shared ingress controller's node IP."
+                    );
+                }
+                if self.logger {
+                    self.logger.warn(
+                        f"Health check against '{domain_url}{path}' did not succeed. "
+                        "This is expected if DNS has not propagated yet. "
+                        f"The application pods are healthy. {dns_hint}"
+                    );
+                }
+                # Return an explicit warning marker so the caller's details dict
+                # clearly shows this was a DNS-propagation warning, not a clean
+                # health-check pass.  Raw domain_details (e.g. "Timeout reached")
+                # would be indistinguishable from a real failure to the caller.
+                return (
+                    f"Warning: DNS not propagated yet — health check skipped. {dns_hint}"
+                );
+            }
+            return domain_details;
+        }
+
         if provider.needs_nlb_wait() {
             time.sleep(self.k8s_config.aws_nlb_wait);
             nlb_url = None;
@@ -1285,6 +1335,14 @@ obj KubernetesTarget(DeploymentTarget) {
                 self.k8s_config.memory_limit
             );
             details["validate_resource_limits"] = "Successful";
+            if self.k8s_config.shared_ingress and not self.k8s_config.domain {
+                raise Exception(
+                    "shared_ingress=True requires 'domain' to be set so the shared controller "
+                    "can route requests by host. Set 'domain' in KubernetesConfig "
+                    "(e.g. myapp.example.com)."
+                );
+            }
+            details["validate_shared_ingress"] = "Successful";
             # 2. Initialize Kubernetes clients
             try {
                 k8s_cluster_config.load_kube_config();
@@ -1319,9 +1377,13 @@ obj KubernetesTarget(DeploymentTarget) {
             # 4. Determine cluster provider (encapsulates all provider-specific behaviour)
             provider = get_cluster_provider();
             # 4b. Validate NodePort availability (no-op on AWS, checked on local).
-            provider.validate_ports(
-                node_port=self.k8s_config.ingress_node_port, current_namespace=namespace
-            );
+            #     Skipped in shared ingress mode — no NodePort is created.
+            if not self.k8s_config.shared_ingress {
+                provider.validate_ports(
+                    node_port=self.k8s_config.ingress_node_port,
+                    current_namespace=namespace
+                );
+            }
 
             # 5. Handle image registry if build is requested
             repository_name = self._handle_image_registry(app_name, app_config);
