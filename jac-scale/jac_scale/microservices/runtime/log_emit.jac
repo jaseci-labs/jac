@@ -141,25 +141,44 @@ per process - so emission shape is stable from process start.
 """
 def install_structured_logging {
     global _structured_installed;
-    if _structured_installed {
-        return;
+
+    # The expensive root-logger reconfigure runs only once per process.
+    if not _structured_installed {
+        handler = logging.StreamHandler();
+        handler.setFormatter(_JacJsonFormatter());
+        # Note: not `root = ...` because `root` is a reserved name in Jac
+        # (graph context). Use `_log_root` instead.
+        _log_root = logging.getLogger();
+        # Replace prior handlers - downstream libraries that may have called
+        # logging.basicConfig get superseded by ours so we don't double-emit.
+        _log_root.handlers = [handler];
+        # int(...) cast because Jac models `logging.INFO` as `Final` and the
+        # checker won't accept it as the `int | str` parameter type.
+        _log_root.setLevel(int(logging.INFO));
+
+        # Make sure record.trace_id is populated before the formatter sees it.
+        import from jac_scale.microservices.runtime.trace_ctx {
+            install_trace_log_filter
+        }
+        install_trace_log_filter();
+
+        _structured_installed = True;
     }
 
-    handler = logging.StreamHandler();
-    handler.setFormatter(_JacJsonFormatter());
-    # Note: not `root = ...` because `root` is a reserved name in Jac
-    # (graph context). Use `_log_root` instead.
-    _log_root = logging.getLogger();
-    # Replace prior handlers - downstream libraries that may have called
-    # logging.basicConfig get superseded by ours so we don't double-emit.
-    _log_root.handlers = [handler];
-    # int(...) cast because Jac models `logging.INFO` as `Final` and the
-    # checker won't accept it as the `int | str` parameter type.
-    _log_root.setLevel(int(logging.INFO));
-
-    # Make sure record.trace_id is populated before the formatter sees it.
-    import from jac_scale.microservices.runtime.trace_ctx { install_trace_log_filter }
-    install_trace_log_filter();
-
-    _structured_installed = True;
+    # uvicorn / FastAPI install their own logger hierarchy with their
+    # own handlers and propagate=False, so the JSON formatter we just
+    # put on root never sees the access lines
+    # (`INFO:     192.168.0.5:42 - "GET /healthz HTTP/1.1" 200 OK`).
+    # Worse, uvicorn re-runs Config.configure_logging() at serve-time -
+    # AFTER our setup() runs but BEFORE the first request - which undoes
+    # the fixup if we only do it once. So we re-take-over these loggers
+    # on EVERY call (the request-context middleware calls us each tick).
+    # Cost is a handful of attribute writes, no allocation.
+    for noisy_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"] {
+        noisy = logging.getLogger(noisy_name);
+        if noisy.handlers or not noisy.propagate {
+            noisy.handlers = [];
+            noisy.propagate = True;
+        }
+    }
 }
