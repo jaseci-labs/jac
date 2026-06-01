@@ -17,6 +17,5 @@ def:pub CardHeader(title: str, subtitle: str = "") -> JsxElement {
 }
 
 def:pub CardBody(children: any, className: str = "p-4") -> JsxElement {
-    return
-        <div className={className}>{children}</div>;
+    return <div className={className}>{children}</div>;
 }

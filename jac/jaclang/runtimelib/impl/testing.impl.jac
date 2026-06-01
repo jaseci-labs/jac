@@ -8,6 +8,7 @@ import from pathlib { Path }
 import from urllib.parse { urlencode, urlparse }
 
 import from jaclang { JacRuntime as Jac }
+import from jaclang.project.config { JacConfig }
 import from jaclang.runtimelib.server { JacAPIServer }
 
 """Parse response body as JSON."""
@@ -37,16 +38,21 @@ impl TestResponse.data.getter -> (dict[str, any] | None) {
     return response_json;
 }
 
-"""Create test client from a .jac file path."""
+"""Create test client from a .jac file path; `config` pins its config view."""
 impl JacTestClient.from_file(
-    jac_file: str, base_path: (str | None) = None, module_name: (str | None) = None
+    jac_file: str,
+    base_path: (str | None) = None,
+    module_name: (str | None) = None,
+    config: (JacConfig | None) = None
 ) -> JacTestClient {
     resolved_path = Path(jac_file).resolve();
     if not resolved_path.exists() {
         raise FileNotFoundError(f"Jac file not found: {jac_file}");
     }
     effective_base_path = base_path or str(resolved_path.parent);
-    return JacTestClient(_jac_file=str(resolved_path), _base_path=effective_base_path);
+    return JacTestClient(
+        _jac_file=str(resolved_path), _base_path=effective_base_path, _config=config
+    );
 }
 
 """Initialize server and handler lazily."""
@@ -74,6 +80,17 @@ impl JacTestClient._ensure_initialized -> None {
         user_root=None, base_path_dir=self._base_path, full_target_path=self._jac_file
     );
     Jac.set_context(mach);
+    # Isolate config like the context above: the project config is a global
+    # singleton, so a prior client's custom config (e.g. an SPA test's
+    # `base_route_app`) would otherwise leak in and misroute this client's
+    # `GET /`. Pin ours if given, else re-discover clean from our base_path.
+    import from jaclang.project.config { set_config, get_config }
+    pinned = self._config;
+    if pinned is not None {
+        set_config(pinned);
+    } else {
+        get_config(start_path=Path(self._base_path), force_discover=True);
+    }
     # Load the Jac module
     Jac.jac_import(target=mod, base_path=base, lng="jac");
     # Create server in test mode (port=0 means no real socket binding)

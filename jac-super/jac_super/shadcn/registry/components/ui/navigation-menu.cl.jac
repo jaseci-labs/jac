@@ -4,63 +4,63 @@ cl import from ...lib.utils { cn }
 cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { ArrowDownIcon }
 
-glob _navigationMenuTriggerStyle: Any = cva(
+glob _navigationMenuTriggerStyle: any = cva(
          "cn-navigation-menu-trigger group/navigation-menu-trigger inline-flex h-9 w-max items-center justify-center disabled:pointer-events-none outline-none"
      );
 
 cl {
-    def:pub NavigationMenu(props: Any) -> JsxElement {
-        viewport = props.viewport;
-        if viewport == None {
+    def:pub NavigationMenu(props: any) -> JsxElement {
+        viewport = props["viewport"];
+        if viewport is None {
             viewport = True;
         }
         return
             <NavigationMenuPrimitive.Root
-                {...props}
+                {**props}
                 data-slot="navigation-menu"
                 data-viewport={viewport}
                 className={cn(
                     "cn-navigation-menu group/navigation-menu relative flex max-w-max flex-1 items-center justify-center",
-                    props.className
+                    props["className"]
                 )}
             >
-                {props.children}{viewport and <NavigationMenuViewport/>}
+                {props["children"]}{viewport and <NavigationMenuViewport/>}
             </NavigationMenuPrimitive.Root>;
     }
 
-    def:pub NavigationMenuList(props: Any) -> JsxElement {
+    def:pub NavigationMenuList(props: any) -> JsxElement {
         return
             <NavigationMenuPrimitive.List
-                {...props}
+                {**props}
                 data-slot="navigation-menu-list"
                 className={cn(
                     "cn-navigation-menu-list group flex flex-1 list-none items-center justify-center",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub NavigationMenuItem(props: Any) -> JsxElement {
+    def:pub NavigationMenuItem(props: any) -> JsxElement {
         return
             <NavigationMenuPrimitive.Item
-                {...props}
+                {**props}
                 data-slot="navigation-menu-item"
-                className={cn("cn-navigation-menu-item relative", props.className)}
+                className={cn("cn-navigation-menu-item relative", props["className"])}
             />;
     }
 
-    def:pub NavigationMenuTrigger(props: Any) -> JsxElement {
+    def:pub NavigationMenuTrigger(props: any) -> JsxElement {
         triggerStyleFn = _navigationMenuTriggerStyle;
         computedClass = cn(
-            triggerStyleFn.call(None, {"className": props.className}), "group"
+            triggerStyleFn.call(None, {"className": props["className"]}), "group"
         );
         return
             <NavigationMenuPrimitive.Trigger
-                {...props}
+                {**props}
                 data-slot="navigation-menu-trigger"
                 className={computedClass}
             >
-                {props.children}
+                {props["children"]}
                 <HugeiconsIcon
                     icon={ArrowDownIcon}
                     strokeWidth={2}
@@ -70,51 +70,51 @@ cl {
             </NavigationMenuPrimitive.Trigger>;
     }
 
-    def:pub NavigationMenuContent(props: Any) -> JsxElement {
+    def:pub NavigationMenuContent(props: any) -> JsxElement {
         return
             <NavigationMenuPrimitive.Content
-                {...props}
+                {**props}
                 data-slot="navigation-menu-content"
                 className={cn(
                     "cn-navigation-menu-content top-0 left-0 w-full group-data-[viewport=false]/navigation-menu:top-full group-data-[viewport=false]/navigation-menu:mt-1.5 group-data-[viewport=false]/navigation-menu:overflow-hidden md:absolute md:w-auto",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub NavigationMenuViewport(props: Any) -> JsxElement {
+    def:pub NavigationMenuViewport(props: any) -> JsxElement {
         return
             <div
                 className="cn-navigation-menu-viewport-wrapper absolute top-full left-0 isolate z-50 flex justify-center"
             >
                 <NavigationMenuPrimitive.Viewport
-                    {...props}
+                    {**props}
                     data-slot="navigation-menu-viewport"
                     className={cn(
                         "cn-navigation-menu-viewport origin-top-center relative mt-1.5 h-(--radix-navigation-menu-viewport-height) w-full overflow-hidden md:w-(--radix-navigation-menu-viewport-width)",
-                        props.className
+                        props["className"]
                     )}
                 />
             </div>;
     }
 
-    def:pub NavigationMenuLink(props: Any) -> JsxElement {
+    def:pub NavigationMenuLink(props: any) -> JsxElement {
         return
             <NavigationMenuPrimitive.Link
-                {...props}
+                {**props}
                 data-slot="navigation-menu-link"
-                className={cn("cn-navigation-menu-link", props.className)}
+                className={cn("cn-navigation-menu-link", props["className"])}
             />;
     }
 
-    def:pub NavigationMenuIndicator(props: Any) -> JsxElement {
+    def:pub NavigationMenuIndicator(props: any) -> JsxElement {
         return
             <NavigationMenuPrimitive.Indicator
-                {...props}
+                {**props}
                 data-slot="navigation-menu-indicator"
                 className={cn(
                     "cn-navigation-menu-indicator top-full z-1 flex h-1.5 items-end justify-center overflow-hidden",
-                    props.className
+                    props["className"]
                 )}
             >
                 <div
@@ -123,7 +123,7 @@ cl {
             </NavigationMenuPrimitive.Indicator>;
     }
 
-    def:pub navigationMenuTriggerStyle -> Any {
+    def:pub navigationMenuTriggerStyle -> any {
         return _navigationMenuTriggerStyle.call(None, {});
     }
 }

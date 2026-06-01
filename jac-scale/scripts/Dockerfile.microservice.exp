@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Experimental Dockerfile: installs jaclang + jac-scale + jac-client from
 # LOCAL source for testing PR code before PyPI ships. All three must be
 # local: jac-client carries a hookimpl into jaclang's app-identity API,
@@ -6,22 +7,27 @@
 
 FROM python:3.12-slim
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl \
-    && rm -rf /var/lib/apt/lists/*
+# BuildKit cache mounts survive flaky PyPI / debian mirrors across CI runs.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git curl
 
 # See Dockerfile.microservice for the safe.directory rationale.
 RUN git config --system --add safe.directory '*'
 
-RUN pip install --no-cache-dir --upgrade pip
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip
 
 WORKDIR /build
 COPY jac /build/jac
 COPY jac-scale /build/jac-scale
 COPY jac-client /build/jac-client
-RUN pip install --no-cache-dir -e /build/jac \
-    && jac install --no-cache-dir -e /build/jac-scale --extras deploy data \
-    && pip install --no-cache-dir -e /build/jac-client
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -e /build/jac \
+    && jac install -e /build/jac-scale --extras deploy data \
+    && jac install -e /build/jac-client
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
