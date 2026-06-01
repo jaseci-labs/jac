@@ -500,7 +500,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
             autoscaler.apply(
                 AutoscalerSpec(
-                    target_name=f"{k8s_name}-deployment",
+                    scale_target_name=f"{k8s_name}-deployment",
+                    autoscaler_name=f"{k8s_name}-hpa",
                     namespace=namespace,
                     min_replicas=int(cfg.get("min", 1)),
                     max_replicas=int(cfg.get("max", 3)),

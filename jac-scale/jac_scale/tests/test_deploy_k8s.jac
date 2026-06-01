@@ -823,7 +823,7 @@ test "deploy all in one" {
     # Validate HPA is updated on redeploy (not silently ignored)
     AutoscalerFactory.create("hpa", {}).apply(
         AutoscalerSpec(
-            target_name=app_name,
+            scale_target_name=app_name,
             namespace=namespace,
             min_replicas=2,
             max_replicas=5,
@@ -847,7 +847,7 @@ test "deploy all in one" {
     # Restore original HPA values for remaining tests
     AutoscalerFactory.create("hpa", {}).apply(
         AutoscalerSpec(
-            target_name=app_name,
+            scale_target_name=app_name,
             namespace=namespace,
             min_replicas=1,
             max_replicas=3,

@@ -9,12 +9,13 @@ obj Trigger {
 
 """Specification for an autoscaler resource."""
 obj AutoscalerSpec {
-    has target_name: str,
+    has scale_target_name: str,
         namespace: str,
         min_replicas: int = 1,
         max_replicas: int = 3,
         target_kind: str = "Deployment",
-        triggers: list[Trigger] = [];
+        triggers: list[Trigger] = [],
+        autoscaler_name: (str | None) = None;
 }
 
 

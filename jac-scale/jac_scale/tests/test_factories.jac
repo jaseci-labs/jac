@@ -243,7 +243,8 @@ test "autoscaler factory custom engine overrides builtin" {
 
 test "hpa autoscaler build manifests produces correct dict" {
     spec = AutoscalerSpec(
-        target_name="my-service-deployment",
+        scale_target_name="my-service-deployment",
+        autoscaler_name="my-service-hpa",
         namespace="default",
         min_replicas=1,
         max_replicas=3,

@@ -567,7 +567,8 @@ obj MicroserviceManifestBuilder {
         }
         k8s_name = self._k8s_safe_name(svc_name);
         spec = AutoscalerSpec(
-            target_name=f"{k8s_name}-deployment",
+            scale_target_name=f"{k8s_name}-deployment",
+            autoscaler_name=f"{k8s_name}-hpa",
             namespace=self.k8s_config.namespace,
             min_replicas=int(cfg.get("min", 1)),
             max_replicas=int(cfg.get("max", 3)),

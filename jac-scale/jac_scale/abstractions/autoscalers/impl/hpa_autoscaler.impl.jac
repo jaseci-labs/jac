@@ -1,6 +1,6 @@
-"""Build HPA manifest dict; strips '-deployment' suffix for the HPA name, keeps it for scaleTargetRef."""
+"""Build HPA manifest dict from spec fields; no string manipulation on names."""
 impl HPAAutoscaler._build_manifests{
-    hpa_name = f"{spec.target_name.removesuffix('-deployment')}-hpa";
+    hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
     cpu_target = int(spec.triggers[0].metadata.get("averageUtilization", "50"))
         if spec.triggers
         else 50;
@@ -10,16 +10,13 @@ impl HPAAutoscaler._build_manifests{
         "metadata": {
             "name": hpa_name,
             "namespace": spec.namespace,
-            "labels": {
-                "app": spec.target_name.removesuffix('-deployment'),
-                "managed": "jac-scale"
-            }
+            "labels": {"app": hpa_name.removesuffix('-hpa'), "managed": "jac-scale"}
         },
         "spec": {
             "scaleTargetRef": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
-                "name": spec.target_name
+                "name": spec.scale_target_name
             },
             "minReplicas": spec.min_replicas,
             "maxReplicas": spec.max_replicas,
