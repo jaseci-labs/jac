@@ -414,8 +414,18 @@ test "http client with system prompt override" {
     );
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
+
+    # Both calls' responses surface.
     assert "Hello, Alice! It's great to meet you." in stdout_value;
+    assert "Hi Alice, welcome!" in stdout_value;
+
+    # jac.toml base SYSTEM reaches the prompt for both calls.
     assert "You are a friendly assistant. Greet the person" in stdout_value;
+
+    # Per-call `system_prompt` on `say_hello_brief` extends the base — both
+    # texts must appear together in the SYSTEM payload of that second call.
+    assert "Respond in three words maximum." in stdout_value;
+
     assert (
         "'api_base': 'https://your_api_base_here/v1/chat/completions'" in stdout_value
     );

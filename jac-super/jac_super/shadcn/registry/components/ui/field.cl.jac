@@ -4,7 +4,7 @@ cl import from ...lib.utils { cn }
 cl import from .label { Label }
 cl import from .separator { Separator }
 
-glob _fieldVariants: Any = cva(
+glob _fieldVariants: any = cva(
          "cn-field data-[invalid=true]:text-destructive gap-2 group/field flex w-full",
          {
              "variants": {
@@ -19,172 +19,173 @@ glob _fieldVariants: Any = cva(
      );
 
 cl {
-    def:pub FieldSet(props: Any) -> JsxElement {
+    def:pub FieldSet(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <fieldset
-                {...props}
+                {**attrs}
                 data-slot="field-set"
                 className={cn(
                     "cn-field-set gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3 flex flex-col",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldLegend(props: Any) -> JsxElement {
-        variant = props.variant or "legend";
+    def:pub FieldLegend(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        variant = props["variant"] or "legend";
         return
             <legend
-                {...props}
+                {**attrs}
                 data-slot="field-legend"
                 data-variant={variant}
                 className={cn(
                     "cn-field-legend mb-1.5 font-medium data-[variant=label]:text-sm data-[variant=legend]:text-base",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldGroup(props: Any) -> JsxElement {
+    def:pub FieldGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="field-group"
                 className={cn(
                     "cn-field-group gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4 group/field-group @container/field-group flex w-full flex-col",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub Field(props: Any) -> JsxElement {
-        orientation = props.orientation or "vertical";
+    def:pub Field(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        orientation = props["orientation"] or "vertical";
         variantsFn = _fieldVariants;
         return
             <div
-                {...props}
+                {**attrs}
                 role="group"
                 data-slot="field"
                 data-orientation={orientation}
                 className={cn(
-                    variantsFn.call(None, {"orientation": orientation}), props.className
+                    variantsFn.call(None, {"orientation": orientation}),
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldContent(props: Any) -> JsxElement {
+    def:pub FieldContent(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="field-content"
                 className={cn(
                     "cn-field-content gap-0.5 group/field-content flex flex-1 flex-col leading-snug",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldLabel(props: Any) -> JsxElement {
+    def:pub FieldLabel(props: any) -> JsxElement {
         return
             <Label
-                {...props}
+                {**props}
                 data-slot="field-label"
                 className={cn(
                     "cn-field-label has-data-checked:bg-primary/5 has-data-checked:border-primary/30 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10 gap-2 group-data-[disabled=true]/field:opacity-50 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border *:data-[slot=field]:p-2.5 group/field-label peer/field-label flex w-fit leading-snug",
                     "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldTitle(props: Any) -> JsxElement {
+    def:pub FieldTitle(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="field-label"
                 className={cn(
                     "cn-field-title gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50 flex w-fit items-center leading-snug",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldDescription(props: Any) -> JsxElement {
+    def:pub FieldDescription(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <p
-                {...props}
+                {**attrs}
                 data-slot="field-description"
                 className={cn(
                     "cn-field-description text-muted-foreground text-left text-sm [[data-variant=legend]+&]:-mt-1.5 leading-normal font-normal group-has-data-horizontal/field:text-balance",
                     "last:mt-0 nth-last-2:-mt-1",
                     "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub FieldSeparator(props: Any) -> JsxElement {
+    def:pub FieldSeparator(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="field-separator"
-                data-content={Boolean(props.children)}
+                data-content={Boolean(props["children"])}
                 className={cn(
                     "cn-field-separator -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2 relative",
-                    props.className
+                    props["className"]
                 )}
             >
                 <Separator className="absolute inset-0 top-1/2"/>
-                {props.children
+                {props["children"]
                 and (
                     <span
                         className="text-muted-foreground px-2 bg-background relative mx-auto block w-fit"
                         data-slot="field-separator-content"
                     >
-                        {props.children}
+                        {props["children"]}
                     </span>
                 )}
             </div>;
     }
 
-    def:pub FieldError(props: Any) -> Any {
-        children = props.children;
-        errors = props.errors;
+    def:pub FieldError(props: any) -> any {
+        attrs: dict[str, any] = {** props};
+        children = props["children"];
+        errors = props["errors"];
 
         content = useMemo(
-            lambda -> Any {
+            lambda -> any {
                 if children {
                     return children;
                 }
-                if not errors or not errors.length {
+                errorList: list[any] = [e for e in (errors or [])];
+                if not len(errorList) {
                     return None;
                 }
-                uniqueMap = Reflect.construct(
-                    Map,
-                    [
-                        errors.map(
-                            lambda (error: Any) -> Any { return [
-                                error and error.message,
-                                error
-                            ]; }
-                        )
-                    ]
-                );
-                uniqueErrors = Array.from(uniqueMap.values());
-                if uniqueErrors.length == 1 {
+                uniqueMap = {};
+                for error in errorList {
+                    uniqueMap[error and error.message] = error;
+                }
+                uniqueKeys = Object.keys(uniqueMap);  # jac:ignore[W6001]
+                uniqueErrors: list[any] = [uniqueMap[k] for k in uniqueKeys];
+                if len(uniqueErrors) == 1 {
                     return uniqueErrors[0] and uniqueErrors[0].message;
                 }
                 return
                     <ul className="ml-4 flex list-disc flex-col gap-1">
-                        {uniqueErrors.map(
-                            lambda (error: Any, index: Any) -> Any {
-                                if error and error.message {
-                                    return
-                                        <li key={index}>{error.message}</li>;
-                                }
-                                return None;
+                        {for (index, error) in enumerate(uniqueErrors) {
+                            if error and error.message {
+                                <li key={index}>{error.message}</li>;
                             }
-                        )}
+                        }}
                     </ul>;
             },
             [children, errors]
@@ -196,12 +197,12 @@ cl {
 
         return
             <div
-                {...props}
+                {**attrs}
                 role="alert"
                 data-slot="field-error"
                 className={cn(
                     "cn-field-error text-destructive text-sm font-normal",
-                    props.className
+                    props["className"]
                 )}
             >
                 {content}

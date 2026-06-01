@@ -768,6 +768,29 @@ impl TypeEvaluator.assign_type_to_type_var(
         return True;
     }
 
+    # Callable param: bind TypeVars structurally. Params contravariant
+    # (arg<-param), return covariant (param<-arg).
+    if isinstance(param_type, types.FunctionType)
+    and isinstance(arg_type, types.FunctionType) {
+        param_params = param_type.parameters or [];
+        arg_params = arg_type.parameters or [];
+        for (i, pp) in enumerate(param_params) {
+            if i < len(arg_params)
+            and pp.param_type is not None
+            and arg_params[i].param_type is not None {
+                self.assign_type_to_type_var(
+                    arg_params[i].param_type, pp.param_type, bindings
+                );
+            }
+        }
+        if param_type.return_type is not None and arg_type.return_type is not None {
+            self.assign_type_to_type_var(
+                param_type.return_type, arg_type.return_type, bindings
+            );
+        }
+        return True;
+    }
+
     if (
         isinstance(param_type, types.ClassType)
         and isinstance(arg_type, types.ClassType)

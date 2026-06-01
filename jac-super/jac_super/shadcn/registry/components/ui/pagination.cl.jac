@@ -8,49 +8,53 @@ cl import from "@hugeicons/core-free-icons" {
 }
 
 cl {
-    def:pub Pagination(props: Any) -> JsxElement {
+    def:pub Pagination(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <nav
-                {...props}
+                {**attrs}
                 role="navigation"
                 aria-label="pagination"
                 data-slot="pagination"
                 className={cn(
-                    "cn-pagination mx-auto flex w-full justify-center", props.className
+                    "cn-pagination mx-auto flex w-full justify-center",
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub PaginationContent(props: Any) -> JsxElement {
+    def:pub PaginationContent(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <ul
-                {...props}
+                {**attrs}
                 data-slot="pagination-content"
                 className={cn(
-                    "cn-pagination-content flex items-center", props.className
+                    "cn-pagination-content flex items-center", props["className"]
                 )}
             />;
     }
 
-    def:pub PaginationItem(props: Any) -> JsxElement {
-        return
-            <li data-slot="pagination-item" {...props}/>;
+    def:pub PaginationItem(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        return <li data-slot="pagination-item" {**attrs}/>;
     }
 
-    def:pub PaginationLink(props: Any) -> JsxElement {
-        isActive = props.isActive or False;
-        size = props.size or "icon";
-        variantsFn = buttonVariants();
+    def:pub PaginationLink(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        isActive = props["isActive"] or False;
+        size = props["size"] or "icon";
+        variantsFn: any = buttonVariants();
         computedClass = cn(
             variantsFn.call(
                 None, {"variant": isActive and "outline" or "ghost", "size": size}
             ),
             "cn-pagination-link",
-            props.className
+            props["className"]
         );
         return
             <a
-                {...props}
+                {**attrs}
                 aria-current={isActive and "page" or None}
                 data-slot="pagination-link"
                 data-active={isActive}
@@ -58,14 +62,14 @@ cl {
             />;
     }
 
-    def:pub PaginationPrevious(props: Any) -> JsxElement {
-        text = props.text or "Previous";
+    def:pub PaginationPrevious(props: any) -> JsxElement {
+        text = props["text"] or "Previous";
         return
             <PaginationLink
-                {...props}
+                {**props}
                 aria-label="Go to previous page"
                 size="default"
-                className={cn("cn-pagination-previous", props.className)}
+                className={cn("cn-pagination-previous", props["className"])}
             >
                 <HugeiconsIcon
                     icon={ArrowLeft01Icon}
@@ -79,14 +83,14 @@ cl {
             </PaginationLink>;
     }
 
-    def:pub PaginationNext(props: Any) -> JsxElement {
-        text = props.text or "Next";
+    def:pub PaginationNext(props: any) -> JsxElement {
+        text = props["text"] or "Next";
         return
             <PaginationLink
-                {...props}
+                {**props}
                 aria-label="Go to next page"
                 size="default"
-                className={cn("cn-pagination-next", props.className)}
+                className={cn("cn-pagination-next", props["className"])}
             >
                 <span className="cn-pagination-next-text hidden sm:block">{text}</span>
                 <HugeiconsIcon
@@ -98,15 +102,16 @@ cl {
             </PaginationLink>;
     }
 
-    def:pub PaginationEllipsis(props: Any) -> JsxElement {
+    def:pub PaginationEllipsis(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <span
-                {...props}
+                {**attrs}
                 aria-hidden={True}
                 data-slot="pagination-ellipsis"
                 className={cn(
                     "cn-pagination-ellipsis flex items-center justify-center",
-                    props.className
+                    props["className"]
                 )}
             >
                 <HugeiconsIcon icon={MoreHorizontalCircle01Icon} strokeWidth={2}/>

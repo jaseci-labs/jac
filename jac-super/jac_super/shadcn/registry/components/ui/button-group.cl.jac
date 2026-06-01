@@ -3,7 +3,7 @@ cl import from "radix-ui" { Slot }
 cl import from ...lib.utils { cn }
 cl import from .separator { Separator }
 
-glob _buttonGroupVariants: Any = cva(
+glob _buttonGroupVariants: any = cva(
          "cn-button-group flex w-fit items-stretch *:focus-visible:z-10 *:focus-visible:relative [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",
          {
              "variants": {
@@ -15,7 +15,7 @@ glob _buttonGroupVariants: Any = cva(
              "defaultVariants": {"orientation": "horizontal"}
          }
      ),
-     _buttonGroupExcludeKeys: list = [
+     _buttonGroupExcludeKeys: list[str] = [
          "className",
          "orientation",
          "asChild",
@@ -23,11 +23,12 @@ glob _buttonGroupVariants: Any = cva(
      ];
 
 cl {
-    def:pub ButtonGroup(props: Any) -> JsxElement {
-        orientation = props.orientation or "horizontal";
+    def:pub ButtonGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        orientation = props["orientation"] or "horizontal";
         computedClass = cn(
             _buttonGroupVariants.call(
-                None, {"orientation": orientation, "className": props.className}
+                None, {"orientation": orientation, "className": props["className"]}
             )
         );
         return
@@ -36,49 +37,50 @@ cl {
                 data-slot="button-group"
                 data-orientation={orientation}
                 className={computedClass}
-                {...props}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub ButtonGroupText(props: Any) -> JsxElement {
-        asChild = props.asChild or False;
+    def:pub ButtonGroupText(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        asChild = props["asChild"] or False;
         computedClass = cn(
             "cn-button-group-text flex items-center [&_svg]:pointer-events-none",
-            props.className
+            props["className"]
         );
         if asChild {
             return
                 <Slot.Root
                     data-slot="button-group-text"
                     className={computedClass}
-                    {...props}
+                    {**props}
                 >
-                    {props.children}
+                    {props["children"]}
                 </Slot.Root>;
         }
         return
-            <div data-slot="button-group-text" className={computedClass} {...props}>
-                {props.children}
+            <div data-slot="button-group-text" className={computedClass} {**attrs}>
+                {props["children"]}
             </div>;
     }
 
-    def:pub ButtonGroupSeparator(props: Any) -> JsxElement {
-        orientation = props.orientation or "vertical";
+    def:pub ButtonGroupSeparator(props: any) -> JsxElement {
+        orientation = props["orientation"] or "vertical";
         return
             <Separator
                 data-slot="button-group-separator"
                 orientation={orientation}
                 className={cn(
                     "cn-button-group-separator relative self-stretch data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**props}
             />;
     }
 
-    def:pub buttonGroupVariants -> Any {
+    def:pub buttonGroupVariants -> any {
         return _buttonGroupVariants;
     }
 }
