@@ -1907,3 +1907,57 @@ cl def probe() -> dict {
         os.unlink(temp_path);
     }
 }
+
+
+test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
+    import json;
+    # A subscript on an `any`-typed value must remain a faithful superset of a
+    # raw `obj[i]`: string keys stay plain member access, a missing key/index
+    # yields `undefined` (never throws), and only a possibly-negative numeric
+    # index is rewritten to count from the end. This guards the jac-client
+    # `data["data"]["user_id"]` pattern from regressing to a KeyError throw.
+    jac_code = """
+cl def probe(resp: any, xs: any) -> dict {
+    present: any = resp["user_id"];
+    guard: int = 1 if (resp["data"] and resp["data"]["k"]) else 0;
+    return {
+        "present": present,
+        "guard": guard,
+        "neg": xs[-1],
+        "neg2": xs[-2]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # String-literal keys must stay raw member access, not route through
+        # the runtime helper (which only matters for possibly-negative indices).
+        assert '_jac.poly.getitem(resp, "user_id")' not in js_code , (
+            f"string-key access must stay a raw subscript:\n{js_code}"
+        );
+        wrapper = (
+            js_code + "\nconst r = probe({user_id: 'u9', data: {}}, [10, 20, 30]);" + "\nconsole.log(JSON.stringify(r));\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "unknown-typed subscript run crashed in Node (should never throw):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {"present": "u9", "guard": 0, "neg": 30, "neg2": 20};
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"unknown-subscript '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}

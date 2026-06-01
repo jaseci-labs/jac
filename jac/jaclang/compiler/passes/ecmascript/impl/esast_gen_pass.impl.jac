@@ -2294,25 +2294,38 @@ impl EsastGenPass._coerce_truthy(
     return es_expr;
 }
 
+"""True if an index expression is a literal that can never be a negative
+numeric index (string keys, non-negative integers). Negative indices lower to
+a `UnaryExpression`, so any plain `Literal` is safe to leave as a raw `obj[i]`
+subscript with no negative-index rewriting."""
+impl EsastGenPass._is_literal_index(idx_es: es.Expression) -> bool {
+    if not isinstance(idx_es, es.Literal) {
+        return False;
+    }
+    return not (
+        isinstance(idx_es.value, (int, float))
+        and (not isinstance(idx_es.value, bool))
+        and (idx_es.value < 0)
+    );
+}
+
 """Lower a `obj[idx]` subscript with Python indexing semantics. Python counts
 negative indices from the end, which a raw JS subscript (`obj[-1]` -> undefined)
-does not. A non-negative integer literal is identical in both languages and
-stays a plain computed member. Known sequences use JS `.at()` (native
-negative-from-end). Known mappings stay a key lookup. For an unknown static
-type, `_jac.poly.getitem` dispatches at runtime."""
+does not. A literal index (string key or non-negative integer) stays a plain
+computed member. Known sequences use JS `.at()` (native negative-from-end);
+known mappings stay a key lookup; for an unknown static type, `_jac.poly.getitem`
+dispatches at runtime while preserving JS's undefined-on-miss behavior."""
 impl EsastGenPass._lower_subscript(
     target_node: uni.UniNode,
     obj_es: es.Expression,
     idx_es: es.Expression,
     jac_node: uni.UniNode
 ) -> es.Expression {
-    _is_nonneg_literal = (
-        isinstance(idx_es, es.Literal)
-        and isinstance(idx_es.value, int)
-        and (not isinstance(idx_es.value, bool))
-        and (idx_es.value >= 0)
-    );
-    if _is_nonneg_literal {
+    # A literal index is never a negative numeric index (negative literals
+    # lower to a `UnaryExpression`, not a `Literal`), so string keys and
+    # non-negative integers stay a plain, fast computed member. Only
+    # non-literal indices can be negative at runtime and need rewriting.
+    if self._is_literal_index(idx_es) {
         return self.sync_loc(
             es.MemberExpression(object=obj_es, property=idx_es, computed=True),
             jac_node=jac_node
@@ -2371,13 +2384,8 @@ impl EsastGenPass._try_subscript_setitem(
         es.Expression,
         _si.value or self.sync_loc(es.Literal(value=0), jac_node=jac_node)
     );
-    _is_nonneg_literal = (
-        isinstance(_idx, es.Literal)
-        and isinstance(_idx.value, int)
-        and (not isinstance(_idx.value, bool))
-        and (_idx.value >= 0)
-    );
-    if _is_nonneg_literal {
+    # A literal index is never negative, so a raw `obj[idx] = v` is correct.
+    if self._is_literal_index(_idx) {
         return None;
     }
     # Only `list` needs the runtime shim: dict writes are plain key sets, and

@@ -402,6 +402,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         expr_node: (uni.UniNode | None), es_expr: es.Expression, jac_node: uni.UniNode
     ) -> es.Expression;
 
+    def _is_literal_index(idx_es: es.Expression) -> bool;
     def _lower_subscript(
         target_node: uni.UniNode,
         obj_es: es.Expression,

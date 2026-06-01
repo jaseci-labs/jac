@@ -356,44 +356,24 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return false;
     },
     getitem(c, i) {
-      // Python-equivalent subscript for a value of unknown static type.
-      // Sequences (string/array) support negative indices counting from the
-      // end and raise IndexError out of range; mappings raise KeyError on a
-      // missing key. JS would instead return `undefined` silently.
-      if (typeof c === "string" || Array.isArray(c)) {
-        const n = c.length;
-        const k = i < 0 ? i + n : i;
-        if (k < 0 || k >= n) {
-          throw new _jac.exc.IndexError(
-            (typeof c === "string" ? "string index" : "list index") +
-            " out of range"
-          );
-        }
-        return c[k];
+      // Subscript read for a value of unknown static type. This is a faithful
+      // superset of a raw `c[i]`: it only adds Python's negative indexing for
+      // sequences (string/array) and otherwise preserves JS semantics exactly
+      // (mapping/object access, out-of-range -> `undefined`, no new throws).
+      if (typeof i === "number" && i < 0
+          && (typeof c === "string" || Array.isArray(c))) {
+        return c[c.length + i];
       }
-      if (c instanceof Map) {
-        if (!c.has(i)) throw new _jac.exc.KeyError("KeyError: " + i);
-        return c.get(i);
-      }
-      if (c !== null && typeof c === "object") {
-        if (!Object.prototype.hasOwnProperty.call(c, i)) {
-          throw new _jac.exc.KeyError("KeyError: " + i);
-        }
-        return c[i];
-      }
+      if (c instanceof Map) return c.get(i);
       return c[i];
     },
     setitem(c, i, v) {
-      // Python-equivalent subscript assignment. Lists honor negative indices
-      // counting from the end and raise IndexError out of range; a raw JS
-      // `c[-1] = v` would instead create a bogus "-1" property.
-      if (Array.isArray(c)) {
-        const n = c.length;
-        const k = i < 0 ? i + n : i;
-        if (k < 0 || k >= n) {
-          throw new _jac.exc.IndexError("list assignment index out of range");
-        }
-        c[k] = v;
+      // Subscript assignment for a value of unknown/list static type. A
+      // negative index writes the array element counted from the end (a raw
+      // JS `c[-1] = v` would instead create a bogus "-1" property); every
+      // other case behaves like a plain `c[i] = v`.
+      if (typeof i === "number" && i < 0 && Array.isArray(c)) {
+        c[c.length + i] = v;
         return v;
       }
       if (c instanceof Map) { c.set(i, v); return v; }
