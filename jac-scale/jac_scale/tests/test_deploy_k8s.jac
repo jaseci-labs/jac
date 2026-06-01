@@ -2608,3 +2608,51 @@ test "shared ingress deploy skips nodeport validation" {
 
     assert not mock_provider.validate_ports.called , "validate_ports must not be called when shared_ingress=True — no NodePort is created";
 }
+
+test "shared ingress merges caller-supplied annotations for non-nginx controllers" {
+    # A non-nginx shared controller (e.g. AWS ALB) is driven entirely by the
+    # annotations the caller supplies. They must land on the Ingress metadata,
+    # ingressClassName must be the shared class, and nginx-specific tuning must
+    # NOT be emitted (it is meaningless to a non-nginx controller).
+    custom = {
+        "alb.ingress.kubernetes.io/group.name": "shared-alb",
+        "alb.ingress.kubernetes.io/scheme": "internet-facing",
+        "alb.ingress.kubernetes.io/certificate-arn": "arn:aws:acm:us-east-2:1:certificate/x"
+    };
+    k8s_config = KubernetesConfig(
+        shared_ingress=True,
+        shared_ingress_class="alb",
+        shared_ingress_annotations=custom,
+        domain="linkedin.jaseci.app"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="alb",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    assert mock_networking_v1.create_namespaced_ingress.called , "ingress must be created";
+    created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
+    annos = created_body["metadata"]["annotations"];
+    assert annos["alb.ingress.kubernetes.io/group.name"] == "shared-alb" , "caller annotations must be merged onto the ingress";
+    assert annos["alb.ingress.kubernetes.io/certificate-arn"].startswith(
+        "arn:aws:acm"
+    ) , "ACM cert annotation must be present";
+    assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
+    for key in annos.keys() {
+        assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
+}

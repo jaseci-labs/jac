@@ -2237,6 +2237,12 @@ obj KubernetesTarget(DeploymentTarget) {
             # If a custom domain is configured, return the domain-based URL.
             # Check Ingress spec.tls to determine whether HTTPS is active.
             if self.k8s_config.domain {
+                # Out-of-band TLS (e.g. ALB terminating via an ACM certificate
+                # annotation) leaves no spec.tls on the Ingress, so the caller
+                # declares it via shared_ingress_tls.
+                if self.k8s_config.shared_ingress_tls {
+                    return f"https://{self.k8s_config.domain}";
+                }
                 try {
                     networking_v1 = client.NetworkingV1Api();
                     ingress = networking_v1.read_namespaced_ingress(

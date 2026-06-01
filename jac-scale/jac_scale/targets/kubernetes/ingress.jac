@@ -495,35 +495,56 @@ obj IngressDeployer {
             main_rule: dict = {'http': {'paths': paths}};
         }
 
-        ingress_annotations: dict = {
-            'nginx.ingress.kubernetes.io/proxy-body-size': '0',
-            'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
-            'nginx.ingress.kubernetes.io/limit-rps': str(
-                self.k8s_config.ingress_limit_rps
-            ),
-            'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
-                self.k8s_config.ingress_limit_burst_multiplier
-            ),
-            'nginx.ingress.kubernetes.io/limit-connections': str(
-                self.k8s_config.ingress_limit_connections
-            ),
-            'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
-        };
-        if self.k8s_config.ingress_session_affinity {
-            ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-name'] = 'route';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-max-age'] = '2147483647';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-expires'] = '2147483647';
-            ingress_annotations[
-                'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
-            ] = 'true';
+        # nginx-specific tuning (proxy timeouts, rate limiting, session
+        # affinity) is only meaningful for an nginx controller. In shared mode
+        # with a non-nginx controller (AWS ALB, Traefik, GKE, ...) we emit only
+        # the caller-supplied annotations so jac-scale stays controller-agnostic.
+        uses_nginx: bool = (not self.k8s_config.shared_ingress)
+        or (self.k8s_config.shared_ingress_class == 'nginx');
+        ingress_annotations: dict = {};
+        if uses_nginx {
+            ingress_annotations = {
+                'nginx.ingress.kubernetes.io/proxy-body-size': '0',
+                'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/limit-rps': str(
+                    self.k8s_config.ingress_limit_rps
+                ),
+                'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
+                    self.k8s_config.ingress_limit_burst_multiplier
+                ),
+                'nginx.ingress.kubernetes.io/limit-connections': str(
+                    self.k8s_config.ingress_limit_connections
+                ),
+                'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
+            };
+            if self.k8s_config.ingress_session_affinity {
+                ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-name'
+                ] = 'route';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-max-age'
+                ] = '2147483647';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-expires'
+                ] = '2147483647';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+                ] = 'true';
+            }
         }
         if self.k8s_config.domain {
             ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
         }
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
+        }
+        # Caller-supplied annotations (e.g. AWS ALB group.name / certificate-arn
+        # / scheme) take precedence; this is how non-nginx shared controllers
+        # are configured.
+        for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
+            ingress_annotations[str(k)] = str(v);
         }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',

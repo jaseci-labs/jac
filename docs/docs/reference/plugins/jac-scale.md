@@ -2574,6 +2574,8 @@ By default each app deploys its own NGINX controller (one Deployment, one NodePo
 |----------|---------|-------------|
 | `shared_ingress` | `false` | Use a pre-existing shared controller instead of deploying a dedicated one |
 | `shared_ingress_class` | `"nginx"` | IngressClass name of the shared controller |
+| `shared_ingress_annotations` | `{}` | Extra annotations merged onto the Ingress. Required to drive non-nginx controllers (AWS ALB, Traefik, GKE). Caller-supplied values take precedence |
+| `shared_ingress_tls` | `false` | Set when the controller terminates TLS out-of-band (e.g. ALB via an ACM cert) so the reported URL uses `https`. nginx+cert-manager (`spec.tls`) is detected automatically |
 
 ```toml
 [plugins.scale.kubernetes]
@@ -2582,6 +2584,24 @@ domain = "myapp.example.com"          # required: used as the Ingress host field
 
 # Override if your shared controller uses a non-default class
 # shared_ingress_class = "nginx"
+```
+
+**Non-nginx controllers (e.g. AWS ALB).** `shared_ingress_class` may name any controller; nginx-specific tuning is emitted only when the class is `nginx`. Supply controller-specific settings via `shared_ingress_annotations` so jac-scale stays cloud-agnostic:
+
+```toml
+[plugins.scale.kubernetes]
+shared_ingress = true
+shared_ingress_class = "alb"
+shared_ingress_tls = true
+domain = "linkedin.jaseci.app"
+
+[plugins.scale.kubernetes.shared_ingress_annotations]
+"alb.ingress.kubernetes.io/group.name" = "shared-alb"     # join one shared ALB
+"alb.ingress.kubernetes.io/scheme" = "internet-facing"
+"alb.ingress.kubernetes.io/target-type" = "ip"
+"alb.ingress.kubernetes.io/certificate-arn" = "arn:aws:acm:...:certificate/..."
+"alb.ingress.kubernetes.io/listen-ports" = '[{"HTTP": 80}, {"HTTPS": 443}]'
+"alb.ingress.kubernetes.io/ssl-redirect" = "443"
 ```
 
 **What changes in shared mode:**
