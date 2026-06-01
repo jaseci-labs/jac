@@ -79,10 +79,6 @@ obj MonitoringDeployer {
                 "  - job_name: 'kubernetes-cadvisor'\n"
                 "    scheme: https\n"
                 "    tls_config:\n"
-                # `insecure_skip_verify` is intentional: kubelet certs on EKS/GKE
-                # commonly omit the `kubernetes.default.svc` SAN, so verifying
-                # against the cluster CA fails. The traffic is namespace-local
-                # and authenticated via the SA token below.
                 "      insecure_skip_verify: true\n"
                 "    authorization:\n"
                 "      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n"
