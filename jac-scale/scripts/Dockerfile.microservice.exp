@@ -21,7 +21,7 @@ COPY jac-scale /build/jac-scale
 COPY jac-client /build/jac-client
 RUN pip install --no-cache-dir -e /build/jac \
     && jac install --no-cache-dir -e /build/jac-scale --extras deploy data \
-    && pip install --no-cache-dir -e /build/jac-client
+    && jac install --no-cache-dir -e /build/jac-client
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
