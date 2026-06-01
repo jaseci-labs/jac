@@ -297,6 +297,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module(imported_mod: uni.Module) -> None;

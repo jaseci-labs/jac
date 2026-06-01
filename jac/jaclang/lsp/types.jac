@@ -38,16 +38,11 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
-enum MessageType ( IntEnum ) { Error = 1, Warning = 2, Info = 3, Log = 4 }
+enum MessageType(IntEnum) { Error = 1, Warning = 2, Info = 3, Log = 4 }
 
-enum DiagnosticSeverity ( IntEnum ) {
-    Error = 1,
-    Warning = 2,
-    Information = 3,
-    Hint = 4
-}
+enum DiagnosticSeverity(IntEnum) { Error = 1, Warning = 2, Information = 3, Hint = 4 }
 
-enum SymbolKind ( IntEnum ) {
+enum SymbolKind(IntEnum) {
     File = 1,
     Module = 2,
     Namespace = 3,
@@ -76,7 +71,7 @@ enum SymbolKind ( IntEnum ) {
     TypeParameter = 26
 }
 
-enum CompletionItemKind ( IntEnum ) {
+enum CompletionItemKind(IntEnum) {
     Text = 1,
     Method = 2,
     Function = 3,
@@ -104,11 +99,11 @@ enum CompletionItemKind ( IntEnum ) {
     TypeParameter = 25
 }
 
-enum MarkupKind ( StrEnum ) { PlainText = "plaintext", Markdown = "markdown" }
+enum MarkupKind(StrEnum) { PlainText = "plaintext", Markdown = "markdown" }
 
-enum TextDocumentSyncKind ( IntEnum ) { None_ = 0, Full = 1, Incremental = 2 }
+enum TextDocumentSyncKind(IntEnum) { None_ = 0, Full = 1, Incremental = 2 }
 
-enum PositionEncodingKind ( StrEnum ) {
+enum PositionEncodingKind(StrEnum) {
     Utf8 = "utf-8",
     Utf16 = "utf-16",
     Utf32 = "utf-32"

@@ -1,12 +1,13 @@
 cl import from ...lib.utils { cn }
 
 cl {
-    def:pub Skeleton(props: Any) -> JsxElement {
+    def:pub Skeleton(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="skeleton"
-                className={cn("cn-skeleton animate-pulse", props.className)}
+                className={cn("cn-skeleton animate-pulse", props["className"])}
             />;
     }
 }

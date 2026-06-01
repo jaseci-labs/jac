@@ -4,7 +4,7 @@ cl import from .button { Button }
 cl import from .input { Input }
 cl import from .textarea { Textarea }
 
-glob _inputGroupAddonVariants: Any = cva(
+glob _inputGroupAddonVariants: any = cva(
          "cn-input-group-addon text-muted-foreground h-auto gap-2 py-1.5 text-sm font-medium group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4 flex cursor-text items-center justify-center select-none",
          {
              "variants": {
@@ -18,7 +18,7 @@ glob _inputGroupAddonVariants: Any = cva(
              "defaultVariants": {"align": "inline-start"}
          }
      ),
-     _inputGroupButtonVariants: Any = cva(
+     _inputGroupButtonVariants: any = cva(
          "cn-input-group-button gap-2 text-sm shadow-none flex items-center",
          {
              "variants": {
@@ -34,32 +34,34 @@ glob _inputGroupAddonVariants: Any = cva(
      );
 
 cl {
-    def:pub InputGroup(props: Any) -> JsxElement {
+    def:pub InputGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="input-group"
                 role="group"
                 className={cn(
                     "cn-input-group border-input dark:bg-input/30 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[[data-slot][aria-invalid=true]]:border-destructive dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-disabled:bg-input/50 dark:has-disabled:bg-input/80 h-8 rounded-lg border transition-colors in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-3 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5 group/input-group relative flex w-full min-w-0 items-center outline-none has-[>textarea]:h-auto",
-                    props.className
+                    props["className"]
                 )}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub InputGroupAddon(props: Any) -> JsxElement {
-        align = props.align or "inline-start";
+    def:pub InputGroupAddon(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        align = props["align"] or "inline-start";
         addonFn = _inputGroupAddonVariants;
         return
             <div
-                {...props}
+                {**attrs}
                 role="group"
                 data-slot="input-group-addon"
                 data-align={align}
-                className={cn(addonFn.call(None, {"align": align}), props.className)}
-                onClick={lambda (e: Any) { if not e.target.closest("button") {
+                className={cn(addonFn.call(None, {"align": align}), props["className"])}
+                onClick={lambda (e: any) { if not e.target.closest("button") {
                     inputEl = e.currentTarget.parentElement
                     and e.currentTarget.parentElement.querySelector("input");
                     if inputEl {
@@ -67,60 +69,61 @@ cl {
                     }
                 }}}
             >
-                {props.children}
+                {props["children"]}
             </div>;
     }
 
-    def:pub InputGroupButton(props: Any) -> JsxElement {
-        type = props.type or "button";
-        variant = props.variant or "ghost";
-        size = props.size or "xs";
+    def:pub InputGroupButton(props: any) -> JsxElement {
+        type = props["type"] or "button";
+        variant = props["variant"] or "ghost";
+        size = props["size"] or "xs";
         btnFn = _inputGroupButtonVariants;
         return
             <Button
-                {...props}
+                {**props}
                 type={type}
                 data-size={size}
                 variant={variant}
-                className={cn(btnFn.call(None, {"size": size}), props.className)}
+                className={cn(btnFn.call(None, {"size": size}), props["className"])}
             >
-                {props.children}
+                {props["children"]}
             </Button>;
     }
 
-    def:pub InputGroupText(props: Any) -> JsxElement {
+    def:pub InputGroupText(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <span
-                {...props}
+                {**attrs}
                 className={cn(
                     "cn-input-group-text text-muted-foreground gap-2 text-sm [&_svg:not([class*='size-'])]:size-4 flex items-center [&_svg]:pointer-events-none",
-                    props.className
+                    props["className"]
                 )}
             >
-                {props.children}
+                {props["children"]}
             </span>;
     }
 
-    def:pub InputGroupInput(props: Any) -> JsxElement {
+    def:pub InputGroupInput(props: any) -> JsxElement {
         return
             <Input
-                {...props}
+                {**props}
                 data-slot="input-group-control"
                 className={cn(
                     "cn-input-group-input rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent flex-1",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub InputGroupTextarea(props: Any) -> JsxElement {
+    def:pub InputGroupTextarea(props: any) -> JsxElement {
         return
             <Textarea
-                {...props}
+                {**props}
                 data-slot="input-group-control"
                 className={cn(
                     "cn-input-group-textarea rounded-none border-0 bg-transparent py-2 shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent flex-1 resize-none",
-                    props.className
+                    props["className"]
                 )}
             />;
     }

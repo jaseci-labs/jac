@@ -1411,7 +1411,10 @@ obj Token(UniNode) {
         c_start: int by postinit,
         c_end: int by postinit,
         pos_start: int by postinit,
-        pos_end: int by postinit;
+        pos_end: int by postinit,
+        # True for tokens synthesized during parsing (e.g. by `gen_token`),
+        # whose source positions are approximate; comment injection skips them.
+        _is_synthetic: bool = False;
 
     def init(
         orig_src: Source,

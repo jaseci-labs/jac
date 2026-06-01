@@ -1056,6 +1056,41 @@ test "function calls" {
     }
 }
 
+"""Regression: `report` inside a plain `def:pub` function (no walk scope) must
+reach the response. The OSP kernel migration routed `report` through the walk
+scope only, silently dropping function-level reports; this is the fast,
+in-process guard for the slow dev-mode `FunctionStream` path."""
+test "function report streams (in-process)" {
+    client = make_client();
+    try {
+        func_user = f"fnrep_{uuid.uuid4().hex[:8]}";
+        client.register_user(func_user, "pass");
+        token = client.login_user(func_user, "pass");
+
+        response = client.post(
+            "/function/FunctionStream",
+            json={"count": 2},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        ct = response.headers.get("content-type");
+        assert ct == "text/event-stream; charset=utf-8" , (
+            f"function report was dropped: expected SSE, got {ct!r} / {response.text!r}"
+        );
+        content = response.text;
+        for payload in ["Func 0", "Func 1"] {
+            assert f'data: "{payload}"' in content , (
+                f"Missing SSE-framed payload {payload!r} in: {content!r}"
+            );
+        }
+        assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
+    } finally {
+        client.close();
+    }
+}
+
 test "walker calls" {
     client = make_client();
     try {

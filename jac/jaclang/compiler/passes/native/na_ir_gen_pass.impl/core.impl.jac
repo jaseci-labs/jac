@@ -89,12 +89,9 @@ impl NaIRGenPass.postinit -> None {
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Auto-promote a compatible .jac module to native context when requested
-    if (
-        getattr(self.prog, '_auto_promote_native', False)
-        and self.ir_in.gen.native_compat
-    ) {
+    if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
-        main_target = getattr(self.prog, '_auto_promote_target', "");
+        main_target = self.prog._auto_promote_target;
         if (
             mod_path == main_target
             and not mod_path.endswith('.na.jac')

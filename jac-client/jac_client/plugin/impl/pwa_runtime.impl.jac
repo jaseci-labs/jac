@@ -733,8 +733,7 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
 
     # Don't render if not visible
     if not visible {
-        return
-            <></>;
+        return <></>;
     }
 
     # Build class names
@@ -808,8 +807,7 @@ impl PwaInstallButton(props: dict) -> JsxElement {
     }
 
     if not pwa.canInstall or pwa.isInstalled {
-        return
-            <></>;
+        return <></>;
     }
 
     return (
@@ -843,8 +841,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
     className = props.className or "";
 
     if not isOpen {
-        return
-            <></>;
+        return <></>;
     }
 
     return (
