@@ -1669,6 +1669,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b.store(byte_val, buf);
         null_ptr = b.gep(buf, [ir.Constant(i64, 1)], name="chr.null_ptr");
         b.store(ir.Constant(i8, 0), null_ptr);
+        p._emit_set_type_tag(b, buf, "str");
+        p._store_str_len(buf, ir.Constant(i64, 1));
         return buf;
     }
 

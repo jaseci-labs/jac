@@ -167,36 +167,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         }
                     }
                 }
-                # String len: null-safe strlen.
-                # getenv() and FFI functions may return a NULL i8* when a value
-                # is absent.  Calling strlen(NULL) → SIGSEGV, so we guard with
-                # a null check and return 0 for null strings.
+                # String len: fast O(1) cached length with strlen fallback.
+                # Handles null pointers, global string literals, heap Jac strings,
+                # and raw C strings (e.g. from getenv / FFI) transparently.
                 if _len_result is None and arg_val.type == ir.IntType(8).as_pointer() {
-                    i64 = ir.IntType(64);
-                    i8p = ir.IntType(8).as_pointer();
-                    null_cst = ir.Constant(i8p, None);
-                    _slen_entry_bb = self.builder.block;
-                    is_null = self.builder.icmp_unsigned(
-                        "==", arg_val, null_cst, name="str.len.isnull"
-                    );
-                    _slen_func = self.builder.function;
-                    _slen_nn_bb = _slen_func.append_basic_block(name="str.len.nn");
-                    _slen_mg_bb = _slen_func.append_basic_block(name="str.len.mg");
-                    self.builder.cbranch(is_null, _slen_mg_bb, _slen_nn_bb);
-                    # Non-null: call strlen
-                    self.builder.position_at_end(_slen_nn_bb);
-                    strlen_fn = self._get_or_declare_extern(
-                        "strlen", ir.IntType(64), [i8p]
-                    );
-                    _slen_val = self.builder.call(strlen_fn, [arg_val], name="str.len");
-                    self.builder.branch(_slen_mg_bb);
-                    _slen_nn_end = self.builder.block;
-                    # Merge: phi(0, strlen_result)
-                    self.builder.position_at_end(_slen_mg_bb);
-                    _slen_phi = self.builder.phi(i64, name="str.len.phi");
-                    _slen_phi.add_incoming(ir.Constant(i64, 0), _slen_entry_bb);
-                    _slen_phi.add_incoming(_slen_val, _slen_nn_end);
-                    _len_result = _slen_phi;
+                    _len_result = self._emit_jac_str_len(arg_val, name="str.len");
                 }
                 if _len_result is not None {
                     # len() borrows the arg; release if caller owns it (e.g. inline fstring)
@@ -477,7 +452,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         eof_str = self.builder.call(
             self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
         );
+        self._emit_set_type_tag(self.builder, eof_str, "str");
         self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
+        self._store_str_len(eof_str, ir.Constant(ir.IntType(64), 0));
         self.builder.branch(merge_bb);
         eof_bb_end = self.builder.block;
         # OK path: process input normally
@@ -492,6 +469,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         result_ptr = self.builder.call(
             self.rc_alloc_fn, [alloc_size], name="input.result"
         );
+        self._emit_set_type_tag(self.builder, result_ptr, "str");
         memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
         self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
         # Strip trailing newline if present (only if slen > 0)

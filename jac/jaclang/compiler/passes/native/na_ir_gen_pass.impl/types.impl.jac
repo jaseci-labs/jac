@@ -635,7 +635,6 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             );
             typed_ptr = self.builder.bitcast(raw_ptr, target_type, name="clib.box.ptr");
             self.builder.store(val, typed_ptr);
-            # RC: fresh alloc is owned (RC=1) — mark so callers skip extra retain.
             self._mark_owned(typed_ptr);
             # Tag as "tuple" so RC debug log shows the type instead of "raw".
             self._emit_set_type_tag(self.builder, raw_ptr, "tuple");
@@ -665,7 +664,6 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                     typed_ptr = self.builder.bitcast(
                         raw_ptr, target_type, name="clib.box.ptr"
                     );
-                    # RC: fresh alloc is owned (RC=1) — mark so callers skip extra retain.
                     self._mark_owned(typed_ptr);
                     # Tag as the struct name so RC debug log shows the type.
                     self._emit_set_type_tag(self.builder, raw_ptr, sname);
@@ -711,7 +709,6 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             if isinstance(boxed.type, ir.PointerType)
             and isinstance(target_type, ir.PointerType) {
                 _cast = self.builder.bitcast(boxed, target_type, name="tuple.box.cast");
-                # RC: bitcast of owned boxed tuple is still owned.
                 self._mark_owned(_cast);
                 return _cast;
             }
@@ -753,8 +750,8 @@ impl NaIRGenPass._emit_binary_op(
             ir.IntType(8).as_pointer(),
             [ir.IntType(8).as_pointer(), ir.IntType(8).as_pointer()]
         );
-        len1 = self.builder.call(strlen_fn, [left], name="len1");
-        len2 = self.builder.call(strlen_fn, [right], name="len2");
+        len1 = self._emit_jac_str_len(left, name="concat.len1");
+        len2 = self._emit_jac_str_len(right, name="concat.len2");
         total = self.builder.add(len1, len2, name="total_len");
         buf_size = self.builder.add(
             total, ir.Constant(ir.IntType(64), 1), name="buf_size"
@@ -769,8 +766,8 @@ impl NaIRGenPass._emit_binary_op(
         );
         self.builder.call(strcpy_fn, [buf, left]);
         self.builder.call(strcat_fn, [buf, right]);
-        # RC: caller owns this freshly-allocated concat result (rc=1 from malloc).
-        # Mark it so the assign handler skips the extra RETAIN (avoiding rc=2 leak).
+        self._emit_set_type_tag(self.builder, buf, "str");
+        self._store_str_len(buf, total);
         self._mark_owned(buf);
         return buf;
     }
@@ -821,6 +818,8 @@ impl NaIRGenPass._emit_binary_op(
             self.builder.position_at_start(done_bb);
             null_ptr = self.builder.gep(buf, [total], name="rep.null");
             self.builder.store(ir.Constant(i8, 0), null_ptr);
+            self._emit_set_type_tag(self.builder, buf, "str");
+            self._store_str_len(buf, total);
             return buf;
         }
     }

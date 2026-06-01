@@ -94,10 +94,6 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         fmt = self._get_fmt_string(fmt_str);
         fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
         self.builder.call(printf, [fmt_ptr] + args);
-        # RC: release owned temporaries (inline fstrings, concats) that were passed
-        # directly to print() without being stored in a named local variable.
-        # Named locals load from allocas, producing a new ir.Value without the
-        # is_owned attribute, so this only fires for fresh temporaries.
         for _parg in args {
             if isinstance(_parg.type, ir.PointerType) and self._is_owned(_parg) {
                 self._emit_rc_release_typed(_parg, op="print_tmp", loc="");
@@ -105,6 +101,122 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     return ir.Constant(ir.IntType(64), 0);
+}
+
+"""Store cached string byte length at ptr-8 (dtor slot) for an RC-allocated Jac string.
+
+Uses self.builder. ptr-8 is the HDR_DTOR_OFF slot repurposed as a length cache.
+__rc_release_simple guards against calling this as a function pointer via type-tag check.
+"""
+impl NaIRGenPass._store_str_len(str_ptr: ir.Value, byte_len: ir.Value) -> None {
+    i64 = ir.IntType(64);
+    i64p = i64.as_pointer();
+    len_gep = self.builder.gep(
+        str_ptr, [ir.Constant(i64, HDR_DTOR_OFF)], name="slen.slot"
+    );
+    len_ptr = self.builder.bitcast(len_gep, i64p, name="slen.ptr");
+    self.builder.store(self._coerce_type(byte_len, i64), len_ptr);
+}
+
+"""Emit fast O(1) length load for Jac strings; fallback to strlen for C strings.
+
+Logic:
+  1. null check → 0
+  2. Load i64 at (ptr-16): if == RC_SENTINEL → global string → load (ptr-8)
+  3. Load i64 at (ptr-32): if upper 32 bits == HDR_MAGIC → heap Jac string
+     → load (ptr-8); if 0 → strlen fallback (uncached, e.g. lstrip/rstrip)
+  4. Else → strlen (C string from FFI)
+
+The 0-sentinel allows allocation sites that don't call _store_str_len to
+fall back gracefully: rc_alloc writes dtor=0, so ptr-8=0 means 'not cached'.
+"""
+impl NaIRGenPass._emit_jac_str_len(
+    str_ptr: ir.Value, name: str = "jstrlen"
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    i64p = i64.as_pointer();
+    null_cst = ir.Constant(i8p, None);
+    fn = self.builder.function;
+    entry_bb = self.builder.block;
+
+    nn_bb = fn.append_basic_block(name + ".nn");
+    magic_bb = fn.append_basic_block(name + ".magic");
+    load_bb = fn.append_basic_block(name + ".load");
+    check_zero_bb = fn.append_basic_block(name + ".chkz");
+    strlen_bb = fn.append_basic_block(name + ".sl");
+    merge_bb = fn.append_basic_block(name + ".merge");
+
+    # 1. Null check → 0
+    is_null = self.builder.icmp_unsigned(
+        "==", str_ptr, null_cst, name=name + ".isnull"
+    );
+    self.builder.cbranch(is_null, merge_bb, nn_bb);
+
+    # 2. Check RC sentinel at ptr-16 (global string literals)
+    self.builder.position_at_end(nn_bb);
+    rc_slot = self.builder.gep(
+        str_ptr, [ir.Constant(i64, HDR_RC_OFF)], name=name + ".rc.slot"
+    );
+    rc_ptr = self.builder.bitcast(rc_slot, i64p, name=name + ".rc.ptr");
+    rc_val = self.builder.load(rc_ptr, name=name + ".rc");
+    is_sentinel = self.builder.icmp_unsigned(
+        "==", rc_val, ir.Constant(i64, RC_SENTINEL), name=name + ".is.static"
+    );
+    self.builder.cbranch(is_sentinel, load_bb, magic_bb);
+
+    # 3. Magic check at ptr-32 (heap Jac strings vs C strings)
+    self.builder.position_at_end(magic_bb);
+    aid_slot = self.builder.gep(
+        str_ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name=name + ".aid.slot"
+    );
+    aid_ptr = self.builder.bitcast(aid_slot, i64p, name=name + ".aid.ptr");
+    aid_val = self.builder.load(aid_ptr, name=name + ".aid");
+    magic_val = self.builder.lshr(aid_val, ir.Constant(i64, 32), name=name + ".magic");
+    is_magic = self.builder.icmp_unsigned(
+        "==", magic_val, ir.Constant(i64, HDR_MAGIC), name=name + ".is.magic"
+    );
+    self.builder.cbranch(is_magic, check_zero_bb, strlen_bb);
+
+    # 4. Heap Jac string: load cached length at ptr-8
+    self.builder.position_at_end(check_zero_bb);
+    dtor_slot = self.builder.gep(
+        str_ptr, [ir.Constant(i64, HDR_DTOR_OFF)], name=name + ".dtor.slot"
+    );
+    dtor_ptr = self.builder.bitcast(dtor_slot, i64p, name=name + ".len.ptr");
+    cached_len = self.builder.load(dtor_ptr, name=name + ".cached");
+    # If cached == 0 (not yet stored by _store_str_len), fall back to strlen.
+    is_zero_cache = self.builder.icmp_unsigned(
+        "==", cached_len, ir.Constant(i64, 0), name=name + ".cache.zero"
+    );
+    self.builder.cbranch(is_zero_cache, strlen_bb, merge_bb);
+    heap_cached_end_bb = self.builder.block;
+
+    # For global strings: load ptr-8 directly (always set by _make_global_string)
+    self.builder.position_at_end(load_bb);
+    dtor_slot_g = self.builder.gep(
+        str_ptr, [ir.Constant(i64, HDR_DTOR_OFF)], name=name + ".dtor.g"
+    );
+    dtor_ptr_g = self.builder.bitcast(dtor_slot_g, i64p, name=name + ".len.g");
+    global_len = self.builder.load(dtor_ptr_g, name=name + ".glen");
+    self.builder.branch(merge_bb);
+    global_end_bb = self.builder.block;
+
+    # 5. strlen fallback (C strings or uncached Jac strings)
+    self.builder.position_at_end(strlen_bb);
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
+    strlen_val = self.builder.call(strlen_fn, [str_ptr], name=name + ".strlen");
+    self.builder.branch(merge_bb);
+    strlen_end_bb = self.builder.block;
+
+    # Merge
+    self.builder.position_at_end(merge_bb);
+    phi = self.builder.phi(i64, name=name + ".len");
+    phi.add_incoming(ir.Constant(i64, 0), entry_bb);  # null → 0
+    phi.add_incoming(cached_len, heap_cached_end_bb);  # heap cached
+    phi.add_incoming(global_len, global_end_bb);  # global cached
+    phi.add_incoming(strlen_val, strlen_end_bb);  # strlen fallback
+    return phi;
 }
 
 """Get or create a global format string for printf."""
@@ -173,8 +285,6 @@ impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) 
             _ms_old = result;
             _ms_val = val;
             result = self._emit_binary_op(Tok.PLUS, _ms_old, _ms_val);
-            # Release the two input temps if we own them (rc=1 fresh allocs).
-            # The concat borrowed them but did not retain them.
             if self._is_owned(_ms_old) {
                 self._emit_rc_release_typed(_ms_old, op="mstr_old", loc="");
             }
@@ -194,13 +304,14 @@ impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir
     i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
     arr_type = ir.ArrayType(i8, len(str_bytes));
-    # Embed RC 16-byte header: { i64 RC_SENTINEL, i64 dtor(=0), [N x i8] data }
+    # Embed RC 16-byte header: { i64 RC_SENTINEL, i64 byte_len, [N x i8] data }
     # This makes ptr-16 point to the sentinel, so rc_release/retain skip it.
-    # dtor=0 means "no destructor" (plain free path in __rc_release_simple, never reached
-    # for sentinels but kept for layout consistency).
+    # The second field (ptr-8 from the data pointer) stores the cached byte length
+    # so len() can load it in O(1) instead of calling strlen().
     struct_type = ir.LiteralStructType([i64, i64, arr_type]);
     sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
-    dtor_val = ir.Constant(i64, 0);
+    byte_len = len(str_bytes) - 1;  # exclude null terminator
+    dtor_val = ir.Constant(i64, byte_len);
     c_str = ir.Constant(arr_type, str_bytes);
     struct_val = ir.Constant(struct_type, [sentinel_val, dtor_val, c_str]);
     global_str = ir.GlobalVariable(
@@ -305,38 +416,67 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     for a in args {
         call_args.append(a);
     }
-    self.builder.call(snprintf_fn, call_args, name="fstr.len");
-    # RC: caller owns this freshly-allocated fstring buffer (rc=1 from malloc).
-    # Mark it so the assign handler skips the extra RETAIN (avoiding rc=2 leak).
+    # Capture snprintf return (bytes written) and cache it as the string length.
+    snprintf_ret = self.builder.call(snprintf_fn, call_args, name="fstr.nwritten");
+    i64 = ir.IntType(64);
+    fstr_len = self.builder.sext(snprintf_ret, i64, name="fstr.len");
+    self._store_str_len(buf, fstr_len);
     self._mark_owned(buf);
     return buf;
 }
 
+
 # ─── Phase 3: Objects ─────────────────────────────────────────
-"""String character access: s[i] -> new single-char string."""
+impl NaIRGenPass._get_char_cache_gv -> ir.Value {
+    sym = "__jac_chars";
+    if sym in self.llvm_module.globals {
+        return self.llvm_module.globals[sym];
+    }
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    arr2_type = ir.ArrayType(i8, 2);
+    char_struct_type = ir.LiteralStructType([i64, i64, arr2_type]);
+    arr256_type = ir.ArrayType(char_struct_type, 256);
+    sentinel = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
+    byte_len_one = ir.Constant(i64, 1);
+    entries: list = [];
+    for _bi in range(256) {
+        c_arr = ir.Constant(arr2_type, bytearray([_bi, 0]));
+        entries.append(ir.Constant(char_struct_type, [sentinel, byte_len_one, c_arr]));
+    }
+    cache_gv = ir.GlobalVariable(self.llvm_module, arr256_type, name=sym);
+    cache_gv.linkage = "private";
+    cache_gv.global_constant = True;
+    cache_gv.initializer = ir.Constant(arr256_type, entries);
+    return cache_gv;
+}
+
+"""Return a pre-built RC-sentinel i8* for the single character at target_val[index_val].
+
+Uses a compile-time [256 x {i64, i64, [2 x i8]}] global (CPython latin1-style cache)
+so s[i] never calls __rc_alloc. The returned pointer has RC_SENTINEL at ptr-16, so
+__rc_retain and __rc_release_simple are no-ops on it — no ownership transfer needed.
+"""
 impl NaIRGenPass._codegen_string_index(
     target_val: ir.Value, index_val: ir.Value
 ) -> (ir.Value | None) {
     i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    # GEP to the character
+    # Load the raw byte at target_val[index_val]
     char_ptr = self.builder.gep(target_val, [index_val], name="char.ptr");
     char_val = self.builder.load(char_ptr, name="char.val");
-    # Allocate a 2-byte string: [char, null] via rc_alloc (RC-managed)
-    two = ir.Constant(i64, 2);
-    _sidx_loc = getattr(target_val, 'jac_loc', '');
-    new_str = self._rc_call_with_ctx(
-        self.rc_alloc_fn, [two], op="str_index", loc=_sidx_loc, name="char.str"
+    # Extend to i64 as the array index into the 256-entry cache (unsigned, 0-255)
+    byte_idx = self.builder.zext(char_val, i64, name="char.idx");
+    # GEP: &cache[byte_idx].field2[0]  →  i8* to the cached char's data byte
+    cache_gv = self._get_char_cache_gv();
+    cached_ptr = self.builder.gep(
+        cache_gv,
+        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
+        name="char.cached"
     );
-    self._emit_set_type_tag(self.builder, new_str, "str");
-    self.builder.store(char_val, new_str);
-    # Store null terminator at index 1
-    one_ptr = self.builder.gep(new_str, [ir.Constant(i64, 1)], name="null.ptr");
-    self.builder.store(ir.Constant(i8, 0), one_ptr);
-    # RC: caller owns this freshly-allocated single-char string (rc=1).
-    self._mark_owned(new_str);
-    return new_str;
+    # RC-sentinel string: retain/release are no-ops — do NOT mark as owned.
+    return cached_ptr;
 }
 
 """List slicing: lst[start:stop:step] → new list with copied elements."""
@@ -444,6 +584,8 @@ impl NaIRGenPass._codegen_string_slice(
     # Null terminate
     null_ptr = self.builder.gep(new_str, [slice_len], name="ss.null");
     self.builder.store(ir.Constant(i8, 0), null_ptr);
+    # Cache byte length for O(1) len() on the slice result.
+    self._store_str_len(new_str, slice_len);
     return new_str;
 }
 
@@ -536,6 +678,8 @@ impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
     # Null-terminate
     null_ptr = self.builder.gep(result_ptr, [result_len], name="null.ptr");
     self.builder.store(ir.Constant(i8, 0), null_ptr);
+    # Cache byte length for O(1) len() on the stripped result.
+    self._store_str_len(result_ptr, result_len);
     return result_ptr;
 }
 
@@ -606,6 +750,9 @@ impl NaIRGenPass._codegen_str_split(
     self.builder.call(memcpy, [token_ptr, src, token_len]);
     null_pos = self.builder.gep(token_ptr, [token_len], name="token.null");
     self.builder.store(ir.Constant(i8, 0), null_pos);
+    # Set type tag and cache length for O(1) len() on token strings.
+    self._emit_set_type_tag(self.builder, token_ptr, "str");
+    self._store_str_len(token_ptr, token_len);
     # Append token to list
     self._rc_call_with_ctx(helpers["append"], [new_list, token_ptr], op="str_split");
     # Advance i past separator, update token_start
@@ -630,6 +777,9 @@ impl NaIRGenPass._codegen_str_split(
     self.builder.call(memcpy, [last_ptr, last_src, last_len]);
     last_null = self.builder.gep(last_ptr, [last_len], name="last.null");
     self.builder.store(ir.Constant(i8, 0), last_null);
+    # Set type tag and cache length for O(1) len() on the last token.
+    self._emit_set_type_tag(self.builder, last_ptr, "str");
+    self._store_str_len(last_ptr, last_len);
     self._rc_call_with_ctx(helpers["append"], [new_list, last_ptr], op="str_split");
     return new_list;
 }
@@ -717,6 +867,8 @@ impl NaIRGenPass._emit_sys_argv -> (ir.Value | None) {
     self._clear_rc_ctx();
     self._emit_set_type_tag(self.builder, rc_str, "str");
     self.builder.call(memcpy_fn, [rc_str, arg_ptr, alloc_size]);
+    # Cache the argv string length (slen is already computed above).
+    self._store_str_len(rc_str, slen);
 
     # Append to list
     self._rc_call_with_ctx(helpers["append"], [new_list, rc_str], op="argv");

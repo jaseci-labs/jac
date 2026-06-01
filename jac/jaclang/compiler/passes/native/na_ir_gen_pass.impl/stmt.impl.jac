@@ -1829,8 +1829,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         i8p_s = ir.IntType(8).as_pointer();
         if str_coll_val is not None and str_coll_val.type == i8p_s {
             i64 = ir.IntType(64);
-            strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p_s]);
-            str_len = self.builder.call(strlen_fn, [str_coll_val], name="fors.len");
+            str_len = self._emit_jac_str_len(str_coll_val, name="fors.len");
             idx_alloca = self._entry_alloca(i64, "fors.idx");
             self.builder.store(ir.Constant(i64, 0), idx_alloca);
             loop_alloca = self._entry_alloca(i8p_s, loop_var_name);
