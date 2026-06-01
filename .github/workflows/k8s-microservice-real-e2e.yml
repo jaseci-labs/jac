@@ -1,10 +1,8 @@
 name: K8s Microservice Real E2E
 
-# Real-app e2e: builds an image from the fixture, deploys via the
-# microservice K8s pipeline against minikube, verifies pods up, exercises
-# the gateway via port-forward, hits Ingress, then triggers a rolling
-# restart while hammering /health and asserts zero non-2xx during the
-# rollout window.
+# Real-app e2e: builds the fixture image, deploys via the microservice
+# K8s pipeline against microk8s, verifies pods + gateway routing,
+# rolling-restart + hammer-for-non-2xx.
 
 on:
   workflow_dispatch:
@@ -12,7 +10,7 @@ on:
 
 jobs:
   real-e2e:
-    name: minikube real-app smoke
+    name: microk8s real-app smoke
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 25
 
@@ -31,39 +29,43 @@ jobs:
           pip install -e jac
           jac install -e jac-scale --extras deploy
 
-      - name: Set up minikube
-        uses: medyagh/setup-minikube@latest
-        with:
-          # Pinned for reproducibility - bump as new K8s versions land
-          # and we want to validate against them.
-          kubernetes-version: v1.30.0
+      - name: Set up microk8s
+        run: |
+          sudo snap install microk8s --classic --channel=1.30/stable
+          sudo microk8s status --wait-ready --timeout 180
+          sudo usermod -aG microk8s "$USER"
+          mkdir -p "$HOME/.kube"
+          sudo microk8s config | sudo tee "$HOME/.kube/config" >/dev/null
+          sudo chown "$USER" "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
 
-      - name: Enable required addons (best-effort)
-        # Both addons pull images from registry.k8s.io which has been
-        # flaky on GitHub runners ("unknown blob" on ErrImagePull).
-        # Don't fail the pipeline if an addon doesn't come up; the e2e
-        # script gracefully skips downstream tests that need them
-        # (HPA targets stay <unknown>, K10 Ingress test skips).
+      - name: Pre-pull + enable addons (best-effort)
+        # registry.k8s.io has been flaky on GHA. Pre-pulling via
+        # containerd directly lets us retry without restarting the
+        # kubelet's image-pull state machine.
         continue-on-error: true
         run: |
-          # metrics-server: HPA targets need it (K6). Without it HPA
-          # shows <unknown>/70% but Deployments still run.
-          minikube addons enable metrics-server \
-              || echo "WARN: metrics-server enable failed; HPA targets will be unknown"
+          for img in registry.k8s.io/metrics-server/metrics-server:v0.7.2 \
+                     registry.k8s.io/ingress-nginx/controller:v1.10.1; do
+            for _ in 1 2 3; do sudo microk8s ctr images pull "$img" && break; sleep 5; done
+          done
+          sudo microk8s enable metrics-server || echo "WARN: metrics-server enable failed"
+          sudo microk8s enable ingress || echo "WARN: ingress enable failed"
+          kubectl wait --namespace ingress --for=condition=ready pod \
+              --selector=name=nginx-ingress-microk8s --timeout=180s \
+              || echo "WARN: ingress controller not ready; K10 path will skip"
 
-          # ingress: K10 Ingress needs nginx-ingress controller running.
-          # Without it the K10 path is skipped by the e2e's existing
-          # "controller not Running" branch.
-          minikube addons enable ingress \
-              || echo "WARN: ingress addon enable failed; K10 Ingress test will skip"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-          # Wait briefly; if it doesn't come up in 3min, downstream
-          # gracefully handles "no controller."
-          kubectl wait --namespace ingress-nginx \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/component=controller \
-              --timeout=180s \
-              || echo "WARN: ingress-nginx controller not ready; K10 path will skip"
+      - name: Restore BuildKit cache (pip wheels + apt downloads)
+        # Exact-key only. Broad restore-keys (`buildkit-${os}-`) can pull
+        # stale layer cache from other PRs and BuildKit reuses the cached
+        # COPY layer even when the new source tree disagrees.
+        uses: actions/cache@v4
+        with:
+          path: /tmp/buildkit-cache
+          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/pyproject.toml', 'jac-scale/pyproject.toml', 'jac-client/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
 
       - name: Show cluster info
         run: |
@@ -73,6 +75,9 @@ jobs:
           kubectl get pods -A
 
       - name: Run K8s microservice real-app e2e
+        env:
+          CLUSTER_TYPE: microk8s
+          BUILDX_CACHE_DIR: /tmp/buildkit-cache
         run: |
           bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
               jac-scale/jac_scale/tests/fixtures/k8s_e2e
@@ -95,5 +100,5 @@ jobs:
           done
           echo "=== ingress status ==="
           kubectl describe ingress -n jac-e2e || true
-          echo "=== ingress-nginx controller logs ==="
-          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50 || true
+          echo "=== ingress controller logs ==="
+          kubectl logs -n ingress -l name=nginx-ingress-microk8s --tail=50 || true
