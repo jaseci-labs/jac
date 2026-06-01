@@ -38,14 +38,7 @@ impl TestResponse.data.getter -> (dict[str, any] | None) {
     return response_json;
 }
 
-"""Create test client from a .jac file path.
-
-`config` pins the JacConfig this client serves under. The process-global
-config is a singleton (`jaclang.project.config._config`); without an explicit
-config the client re-discovers a clean one from its own base_path at init, so
-a config another in-process client left behind (e.g. an SPA test that set
-`base_route_app`) cannot bleed into this client's request routing.
-"""
+"""Create test client from a .jac file path; `config` pins its config view."""
 impl JacTestClient.from_file(
     jac_file: str,
     base_path: (str | None) = None,
@@ -87,13 +80,10 @@ impl JacTestClient._ensure_initialized -> None {
         user_root=None, base_path_dir=self._base_path, full_target_path=self._jac_file
     );
     Jac.set_context(mach);
-    # Isolate this client's config view. The project config is a process-global
-    # singleton (config._config); a prior in-process client that set a custom
-    # config -- e.g. an SPA test setting `base_route_app` -- would otherwise
-    # leak into this client and reroute `GET /` (and other paths) to the wrong
-    # branch. Pin our own config if one was supplied, else re-discover a clean
-    # one rooted at this client's base_path. Same per-client isolation contract
-    # as the execution context above.
+    # Isolate config like the context above: the project config is a global
+    # singleton, so a prior client's custom config (e.g. an SPA test's
+    # `base_route_app`) would otherwise leak in and misroute this client's
+    # `GET /`. Pin ours if given, else re-discover clean from our base_path.
     import from jaclang.project.config { set_config, get_config }
     pinned = self._config;
     if pinned is not None {
