@@ -822,8 +822,10 @@ impl MongoBackend._put_node_atomic(
 
         try {
             import from pymongo { ReadPreference }
-            merged_doc = self.collection.find_one(
-                {'_id': _id}, {'data.edges': 1}, read_preference=ReadPreference.PRIMARY
+            merged_doc = self.collection.with_options(
+                read_preference=ReadPreference.PRIMARY
+            ).find_one(
+                {'_id': _id}, {'data.edges': 1}
             );
             if merged_doc {
                 merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
