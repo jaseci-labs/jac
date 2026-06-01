@@ -67,6 +67,22 @@ obj KubernetesConfig(BaseConfig) {
         redis_password: str = 'password',
         # Ingress configuration
         ingress_node_port: int = 30080,
+        # When True, skip deploying a dedicated NGINX controller and instead
+        # attach Ingress resources to an existing shared controller identified
+        # by shared_ingress_class (default 'nginx').
+        shared_ingress: bool = False,
+        shared_ingress_class: str = 'nginx',
+        # Extra annotations merged onto the Ingress metadata in shared mode.
+        # These drive non-nginx controllers (e.g. AWS ALB group / ACM cert /
+        # scheme, Traefik, GKE) without baking any cloud-specific values into
+        # jac-scale; the caller supplies them. nginx-specific tuning is only
+        # emitted when the controller class is 'nginx'.
+        shared_ingress_annotations: dict[str, str] = {},
+        # Whether the shared controller terminates TLS for `domain` (so the
+        # reported service URL uses https). nginx+cert-manager sets spec.tls and
+        # is detected automatically; controllers that terminate TLS out-of-band
+        # (e.g. ALB via an ACM certificate-arn annotation) set this explicitly.
+        shared_ingress_tls: bool = False,
         # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
@@ -148,6 +164,10 @@ obj KubernetesConfig(BaseConfig) {
                 'redis_password': self.redis_password,
                 # Ingress configuration
                 'ingress_node_port': self.ingress_node_port,
+                'shared_ingress': self.shared_ingress,
+                'shared_ingress_class': self.shared_ingress_class,
+                'shared_ingress_annotations': self.shared_ingress_annotations,
+                'shared_ingress_tls': self.shared_ingress_tls,
                 'ingress_limit_rps': self.ingress_limit_rps,
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
@@ -219,6 +239,10 @@ obj KubernetesConfig(BaseConfig) {
             redis_username=config.get('redis_username', 'admin'),
             redis_password=config.get('redis_password', 'password'),
             ingress_node_port=config.get('ingress_node_port', 30080),
+            shared_ingress=config.get('shared_ingress', False),
+            shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
+            shared_ingress_annotations=config.get('shared_ingress_annotations', {}),
+            shared_ingress_tls=config.get('shared_ingress_tls', False),
             ingress_limit_rps=config.get('ingress_limit_rps', 20),
             ingress_limit_burst_multiplier=config.get(
                 'ingress_limit_burst_multiplier', 5

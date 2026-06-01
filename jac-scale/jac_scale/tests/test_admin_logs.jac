@@ -55,6 +55,41 @@ test "logs endpoints are tagged 'Logs' so OpenAPI groups them" {
 }
 
 
+test "flatten newest-first vs oldest-first via ascending flag" {
+    # Listing wants newest-first (matches `kubectl logs --tail` UX);
+    # trace-detail wants oldest-first (causal order). Same flattener,
+    # different `ascending=` argument; nanosecond ts_ns is what we
+    # sort on, not the lossy ISO string.
+    import from jac_scale.admin.logs { _flatten_loki_response }
+
+    payload = {
+        "data": {
+            "result": [
+                {
+                    "stream": {"namespace": "ns", "pod": "p1"},
+                    "values": [
+                        ["1716412345000000000", "older"],
+                        ["1716412355000000000", "newer"]
+                    ]
+                }
+            ]
+        }
+    };
+
+    asc = _flatten_loki_response(payload, ascending=True);
+    assert asc[0].get("msg") == "older" , f"asc[0] = {asc[0]}";
+    assert asc[1].get("msg") == "newer" , f"asc[1] = {asc[1]}";
+
+    desc = _flatten_loki_response(payload, ascending=False);
+    assert desc[0].get("msg") == "newer" , f"desc[0] = {desc[0]}";
+    assert desc[1].get("msg") == "older" , f"desc[1] = {desc[1]}";
+
+    # ts_ns must survive flattening so the listing endpoint can use
+    # it as a `before` cursor for older-page pagination.
+    assert desc[0].get("ts_ns") == "1716412355000000000" , f"ts_ns missing: {desc[0]}";
+}
+
+
 test "trace filter renders bracket escapes Loki's parser accepts" {
     # Regression: pre-fix, the trace_id pipeline produced a LogQL
     # string containing a bare `\[` which Go's strconv.Unquote

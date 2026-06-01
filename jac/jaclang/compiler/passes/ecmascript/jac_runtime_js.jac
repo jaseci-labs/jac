@@ -354,6 +354,41 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         return Object.prototype.hasOwnProperty.call(c, x);
       }
       return false;
+    },
+    getitem(c, i) {
+      // Subscript read for a value of unknown static type. This is a faithful
+      // superset of a raw `c[i]`: it only adds Python's negative indexing for
+      // sequences (string/array) and otherwise preserves JS semantics exactly
+      // (mapping/object access, out-of-range -> `undefined`, no new throws).
+      if (typeof i === "number" && i < 0
+          && (typeof c === "string" || Array.isArray(c))) {
+        return c[c.length + i];
+      }
+      if (c instanceof Map) return c.get(i);
+      return c[i];
+    },
+    setitem(c, i, v) {
+      // Subscript assignment for a value of unknown/list static type. A
+      // negative index writes the array element counted from the end (a raw
+      // JS `c[-1] = v` would instead create a bogus "-1" property); every
+      // other case behaves like a plain `c[i] = v`.
+      if (typeof i === "number" && i < 0 && Array.isArray(c)) {
+        c[c.length + i] = v;
+        return v;
+      }
+      if (c instanceof Map) { c.set(i, v); return v; }
+      c[i] = v;
+      return v;
+    },
+    and_(a, bf) {
+      // Python `a and b`: returns `a` when it is falsy, else evaluates and
+      // returns `b`. `bf` is a thunk so the right operand keeps short-circuit
+      // (lazy) evaluation, and `a` is evaluated exactly once by the caller.
+      return _jac.builtin.bool(a) ? bf() : a;
+    },
+    or_(a, bf) {
+      // Python `a or b`: returns `a` when it is truthy, else `b`.
+      return _jac.builtin.bool(a) ? a : bf();
     }
   },
 

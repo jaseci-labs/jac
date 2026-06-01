@@ -391,6 +391,29 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         jac_node: uni.UniNode
     ) -> (es.Expression | None);
 
+    def _expr_type_name(expr_node: uni.UniNode) -> str;
+    def _is_collection_expr(expr_node: uni.UniNode) -> bool;
+    def _build_jac_ref(path: list[str], jac_node: uni.UniNode) -> es.Expression;
+    def _build_jac_call(
+        path: list[str], args: list[es.Expression], jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _coerce_truthy(
+        expr_node: (uni.UniNode | None), es_expr: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _is_literal_index(idx_es: es.Expression) -> bool;
+    def _lower_subscript(
+        target_node: uni.UniNode,
+        obj_es: es.Expression,
+        idx_es: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _try_subscript_setitem(
+        target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
+    ) -> (es.Statement | None);
+
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
