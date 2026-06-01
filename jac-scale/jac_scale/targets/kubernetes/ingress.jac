@@ -734,11 +734,33 @@ obj IngressDeployer {
             self._deploy_nginx_controller(
                 app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
             );
-        } elif self.logger {
-            self.logger.info(
-                f"shared_ingress=True: skipping dedicated controller for '{app_name}', "
-                f"using ingress class '{self.k8s_config.shared_ingress_class}'"
-            );
+        } else {
+            # Shared mode: verify the IngressClass exists up front so we fail
+            # with a clear, actionable error instead of a cryptic
+            # admission-webhook 403 later. The AWS LB Controller's vingress
+            # webhook rejects any Ingress whose ingressClassName has no matching
+            # IngressClass (e.g. the default 'nginx' on an ALB-only cluster).
+            cls = self.k8s_config.shared_ingress_class;
+            try {
+                networking_v1.read_ingress_class(name=cls);
+            } except ApiException as e {
+                if e.status == 404 {
+                    raise ValueError(
+                        f"shared_ingress_class '{cls}' has no matching IngressClass "
+                        "in the cluster. Install that ingress controller, or set "
+                        "shared_ingress_class to one that exists (e.g. 'alb' on AWS "
+                        "EKS, or 'nginx' where ingress-nginx is installed)."
+                    );
+                } else {
+                    raise;
+                }
+            }
+            if self.logger {
+                self.logger.info(
+                    f"shared_ingress=True: skipping dedicated controller for "
+                    f"'{app_name}', using ingress class '{cls}'"
+                );
+            }
         }
     }
 
