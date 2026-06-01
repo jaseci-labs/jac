@@ -75,10 +75,26 @@ impl EsastGenPass.exit_test(nd: uni.Test) -> None {
     body_stmts = self._prepend_hoisted(nd, body_stmts);
     block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
     func_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
+    # Client tests are emitted async so bodies can `await` the cl->sv fetch
+    # bridge (full-stack tests). The runner's harness awaits every test; a
+    # synchronous body is unaffected by being declared async.
     func_decl = self.sync_loc(
-        es.FunctionDeclaration(id=func_id, params=params, body=block), jac_node=nd
+        es.FunctionDeclaration(id=func_id, params=params, body=block, async_=True),
+        jac_node=nd
     );
     nd.gen.es_ast = func_decl;
+    # Record this test in the client manifest so the cl test runner can
+    # enumerate and invoke it. The emitted JS function stays a plain
+    # top-level declaration; the runner appends a harness that calls it.
+    self.client_manifest.has_client = True;
+    self.client_manifest.tests.append(
+        {
+            'name': nd.name.sym_name,
+            'description': nd.description.lit_value
+                if nd.description
+                else nd.name.sym_name
+        }
+    );
 }
 
 """Process client block (cl { ... })."""
