@@ -53,3 +53,35 @@ test "logs endpoints are tagged 'Logs' so OpenAPI groups them" {
         }
     }
 }
+
+
+test "trace filter renders bracket escapes Loki's parser accepts" {
+    # Regression: pre-fix, the trace_id pipeline produced a LogQL
+    # string containing a bare `\[` which Go's strconv.Unquote
+    # rejects with "invalid char escape", so Loki returned HTTP 400
+    # and the admin UI showed "Log backend unavailable" whenever the
+    # user clicked into a trace row. Brackets must be encoded as
+    # `\\[` / `\\]` in the LogQL string so unescaping yields `\[` /
+    # `\]` for the regex engine.
+    import from jac_scale.admin.logs { _build_logql }
+
+    q = _build_logql("ns", "", "", "", "abc12345-dead-beef-cafe-000000000001");
+    assert "\\\\[trace=" in q , f"expected `\\\\[` in {q}";
+    assert "\\\\]" in q , f"expected `\\\\]` in {q}";
+    # And no bare `\[` (which would re-introduce the parser error).
+    assert "\\[" not in q.replace("\\\\[", "") , f"bare `\\[` found in {q}";
+}
+
+
+test "search filter doubles backslashes before escaping quotes" {
+    # Regression: pre-fix, the replace order was quotes-first then
+    # backslashes, which re-doubled the backslashes the quote-escape
+    # had just inserted, delivering stray `\` chars to Loki's
+    # substring match. Doubling backslashes first keeps quote
+    # escapes intact.
+    import from jac_scale.admin.logs { _build_logql }
+
+    q = _build_logql("ns", "", "", 'say "hi"', "");
+    # The final LogQL fragment must read: |= "say \"hi\""
+    assert '|= "say \\"hi\\""' in q , f"unexpected escape shape: {q}";
+}
