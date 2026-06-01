@@ -296,8 +296,8 @@ impl JacProgram.build(
     self: JacProgram,
     file_path: str,
     use_str: (str | None) = None,
-    type_check: bool = False
-) -> uni.Module {
+    type_check: bool = True
+) -> (uni.Module | None) {
     return self._get_compiler().build(file_path, self, use_str, type_check=type_check);
 }
 
