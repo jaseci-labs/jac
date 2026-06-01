@@ -121,16 +121,15 @@ impl sync_code_to_pvc(
             },
             'affinity': {
                 'podAffinity': {
-                    # HARD constraint (jaseci-labs/jaseci#6202): the code PVC is
-                    # ReadWriteOnce, so code-sync MUST land on the same node as
-                    # code-server or it hangs in a Multi-Attach error. The soft
-                    # 'preferred' variant is ignored by the scheduler under load.
-                    'requiredDuringSchedulingIgnoredDuringExecution': [
+                    'preferredDuringSchedulingIgnoredDuringExecution': [
                         {
-                            'labelSelector': {
-                                'matchLabels': {'app': f"{app_name}-code-server"}
-                            },
-                            'topologyKey': 'kubernetes.io/hostname'
+                            'weight': 100,
+                            'podAffinityTerm': {
+                                'labelSelector': {
+                                    'matchLabels': {'app': f"{app_name}-code-server"}
+                                },
+                                'topologyKey': 'kubernetes.io/hostname'
+                            }
                         }
                     ]
                 }
