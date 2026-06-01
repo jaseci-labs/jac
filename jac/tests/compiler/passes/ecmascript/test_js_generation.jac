@@ -1133,6 +1133,91 @@ test "issue 5508 case1 in operator on str method call" {
     );
 }
 
+test "poly get dispatches through runtime helper for untyped receivers" {
+    js_code = compile_fixture_to_js("poly_get_dispatch.cl.jac", FIXTURES);
+
+    # Pluck out the user-compiled function body (skip the injected _jac
+    # runtime, which legitimately contains `.get(` inside its poly helper).
+    fn_idx = js_code.find("function test_poly_get");
+    assert fn_idx >= 0 , "compiled function test_poly_get must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 500];
+
+    # When the receiver's static type is unknown, .get() must route through
+    # the _jac.poly.get runtime helper instead of leaking the Python method
+    # name verbatim into JS.
+    assert "_jac.poly.get(" in user_chunk , (
+        "Untyped .get() must route through _jac.poly.get() helper;\n"
+        "got:\n" + user_chunk
+    );
+    # _jac.poly.get(mapping, "a") does NOT contain `.get("`, but a leak
+    # like `mapping.get("a")` would — so this cleanly catches a raw Python
+    # method name escaping into the JS output.
+    assert '.get("' not in user_chunk , (
+        "Python `.get()` should not appear verbatim in compiled user JS"
+    );
+
+    # Verify the emitted JS actually runs and produces correct results.
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 1 , (
+        "poly.get hit must return existing value 1, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get miss must return default -1, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_dispatch.cl.jac");
+}
+
+test "poly get dispatches to custom obj method not plain-object bracket" {
+    js_code = compile_fixture_to_js("poly_get_custom_obj.cl.jac", FIXTURES);
+
+    fn_idx = js_code.find("function test_poly_get_custom");
+    assert fn_idx >= 0 , "compiled function test_poly_get_custom must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 600];
+
+    # Must route through the poly helper because the receiver is any-typed.
+    assert "_jac.poly.get(" in user_chunk , (
+        "Untyped .get() on a custom obj must route through _jac.poly.get();\n"
+        "got:\n" + user_chunk
+    );
+
+    # Verify runtime behavior: if the poly helper fell through to bracket
+    # notation, Cache instances have no own-property "x" so it would return
+    # the default (-1). Calling the custom .get() method should return 42.
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get_custom()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get custom-obj dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 42 , (
+        "poly.get on custom obj must call the object's .get() method and "
+        "return 42, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get on custom obj must return default -1 for missing key, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_custom_obj.cl.jac");
+}
+
 test "issue 5508 case2 str methods on untyped receivers" {
     # Regression for jaseci-labs/jaseci#5508 case 2 (also covers #5453).
     # When the static type of the receiver is not provably `str` (props of

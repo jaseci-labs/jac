@@ -343,6 +343,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       }
       return i === undefined ? a.pop() : a.pop(i);
     },
+    get(o, key, default_) {
+      if (o instanceof Map) return o.get(key) ?? default_;
+      if (o && typeof o.get === "function") return o.get(key, default_);
+      if (o !== null && typeof o === "object") return o[key] ?? default_;
+      return default_;
+    },
     contains(c, x) {
       // Python-equivalent membership for a value of unknown static type.
       // string -> substring; array (list/tuple/range) -> element;

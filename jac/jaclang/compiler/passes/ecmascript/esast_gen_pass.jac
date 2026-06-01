@@ -150,7 +150,8 @@ glob _T = TypeVar('_T', bound=es.Node),
          "rstrip",
          "append",
          "extend",
-         "pop"
+         "pop",
+         "get"
      },
      LiteralValue = str | bool | int | float | None;
 
