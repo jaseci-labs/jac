@@ -67,8 +67,8 @@ class JacProgram {
         self: JacProgram,
         file_path: str,
         use_str: (str | None) = None,
-        type_check: bool = False
-    ) -> uni.Module;
+        type_check: bool = True
+    ) -> (uni.Module | None);
 
     def run_schedule(
         self: JacProgram,

@@ -787,17 +787,158 @@ impl JacCompiler.compile(
     return mod_targ;
 }
 
-"""Build a Jac file with import dependency resolution."""
+"""Build a Jac file — whole-program builder.
+
+Drives the server transitive closure (all reachable .jac/.sv.jac/.na.jac
+modules), optionally runs the full type-check schedule across every module,
+then gates on blocking errors. Returns the typed entry-point module, or None
+if any blocking error was found.
+
+Landmine #1: compile()'s graph walk recurses only into the .cl.jac subgraph;
+server .jac/.sv.jac/.na.jac transitive modules enter the hub lazily at
+runtime, not at compile time. build() explicitly walks uni.Import nodes
+(mirroring record_module_dependencies), front-end-compiles each reachable
+module into ONE user JacProgram, THEN runs type-check across the whole
+closed set. Only then does whole-program cross-module type-checking work.
+"""
 impl JacCompiler.build(
     file_path: str,
     target_program: JacProgram,
     use_str: (str | None) = None,
-    type_check: bool = False
-) -> uni.Module {
+    type_check: bool = True
+) -> (uni.Module | None) {
+    import from pathlib { Path }
+    # Step 1: resolve to the correct program hub.
     actual_program = self._resolve_program(file_path, target_program);
-    options = CompileOptions(type_check=type_check);
-    mod_targ = self.compile(file_path, actual_program, use_str, options=options);
-    SemanticAnalysisPass(ir_in=mod_targ, prog=actual_program);
+
+    # Step 2: enable dependency tracking so record_module_dependencies fires
+    # on every nested compile() call during the BFS walk below.
+    actual_program._track_dependencies = True;
+
+    # Step 3: compile the entry file (front-end only — no type-check yet).
+    mod_targ = self.compile(
+        file_path, actual_program, use_str, options=CompileOptions(type_check=False)
+    );
+
+    # Step 4: BFS over the server import graph to build the transitive closure.
+    # We only want user modules (not jaclang.* internals), so we use
+    # _resolve_program as the internal-module detector: if it would route to
+    # internal_program, we skip the path.
+    jaclang_root = self._get_jaclang_root();
+    visited: set[str] = set();
+    try {
+        entry_norm = str(Path(file_path).resolve());
+    } except Exception {
+        entry_norm = os.path.normpath(os.path.abspath(file_path));
+    }
+    visited.add(entry_norm);
+    frontier: list[str] = [entry_norm];
+
+    while frontier {
+        current_path = frontier.pop(0);
+        # Look up the already-compiled module in the hub.
+        hub_mod = actual_program.mod.hub.get(current_path);
+        if hub_mod is None {
+            continue;
+        }
+        # Walk uni.Import nodes to discover dependencies — same logic as
+        # JacProgram.record_module_dependencies.
+        for imp in hub_mod.get_all_sub_nodes(uni.Import) {
+            paths: list[uni.ModulePath] = [];
+            if imp.from_loc is not None {
+                paths.append(imp.from_loc);
+            } else {
+                for item in imp.items {
+                    if isinstance(item, uni.ModulePath) {
+                        paths.append(item);
+                    }
+                }
+            }
+            for mp in paths {
+                try {
+                    dep_path = str(Path(mp.resolve_relative_path()).resolve());
+                } except Exception {
+                    continue;
+                }
+                if dep_path in visited {
+                    continue;
+                }
+                # Skip jaclang.* internal modules — they live in
+                # internal_program, not the user's target_program.
+                dep_norm = os.path.normpath(dep_path);
+                if dep_norm.startswith((jaclang_root + os.sep)) {
+                    continue;
+                }
+                # Only process .jac files (including .sv.jac, .na.jac, etc.).
+                # .py / .pyi imports are never recompiled as part of a Jac build.
+                if not dep_path.endswith('.jac') {
+                    continue;
+                }
+                visited.add(dep_path);
+                # Compile the dependency if it is not already in the hub.
+                if dep_path not in actual_program.mod.hub {
+                    if os.path.isfile(dep_path) {
+                        self.compile(
+                            dep_path,
+                            actual_program,
+                            options=CompileOptions(type_check=False)
+                        );
+                    }
+                }
+                frontier.append(dep_path);
+            }
+        }
+    }
+
+    # Step 5: optionally run the full type-check schedule across every user
+    # module in the closed set, then gate on blocking errors.
+    if type_check {
+        passes = get_type_check_sched();
+        if passes {
+            for (hub_path, hub_mod) in actual_program.mod.hub.items() {
+                # Skip internal modules that leaked into the hub (safety net).
+                hub_norm = os.path.normpath(hub_path);
+                if hub_norm.startswith((jaclang_root + os.sep)) {
+                    continue;
+                }
+                self.run_schedule(hub_mod, actual_program, passes);
+            }
+        }
+        # Gate: a whole-program type-check build fails on ANY error attributed
+        # to a user module, not only codegen-blocking ones. Type errors (e.g.
+        # passing str to an int parameter) carry blocks_codegen=False because
+        # the program would still run, but `jac build` is the strict gate the
+        # issue calls for, so they must fail the build.
+        user_paths: set[str] = set();
+        for hub_path in actual_program.mod.hub {
+            hub_norm = os.path.normpath(hub_path);
+            if hub_norm.startswith((jaclang_root + os.sep)) {
+                continue;
+            }
+            user_paths.add(hub_norm);
+        }
+        total_errors = 0;
+        for e in actual_program.errors_had {
+            try {
+                e_path = os.path.normpath(e.loc.mod_path);
+            } except Exception {
+                continue;
+            }
+            if e_path in user_paths {
+                total_errors += 1;
+            }
+        }
+        if total_errors > 0 {
+            sys.stderr.write(
+                f"build: {total_errors} error(s) found; "
+                f"aborting (no output emitted)\n"
+            );
+            sys.stderr.flush();
+            return None;
+        }
+    }
+
+    # Step 6: return the typed entry-point module.
     return mod_targ;
 }
 

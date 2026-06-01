@@ -13,6 +13,7 @@ Cache locations (platform-aware):
   Windows: %LOCALAPPDATA%/jac/cache/jir/
 """
 import hashlib;
+import json;
 import os;
 import struct;
 import sys;
@@ -72,6 +73,29 @@ source and spliced annex files. See `jaclang.compiler.code_intel`.
 """
 glob SEC_SYMINDEX: int = 0x07;
 
+"""Section type: json.dumps(build_manifest).encode() bytes.
+
+Stores the whole-program build manifest: format/profile, entrypoints, and the
+Python platform triple. Present only in .jab bundles (FLAG_PROGRAM).
+"""
+glob SEC_MANIFEST: int = 0x10;
+
+"""Section type: json.dumps(dep_graph).encode() bytes.
+
+Stores the forward import edges and topological load order for all modules in a
+whole-program .jab bundle. Maps rel_path -> list[rel_path]. Present only in
+.jab bundles (FLAG_PROGRAM).
+"""
+glob SEC_DEPGRAPH: int = 0x11;
+
+"""Section type: inner-framed per-module bytecode table.
+
+Stores a length-prefixed table of per-module section blobs for a whole-program
+.jab bundle. Each entry contains the module's relative path, content hash, and
+a nested write_sections() blob. Present only in .jab bundles (FLAG_PROGRAM).
+"""
+glob SEC_MODULE_TABLE: int = 0x16;
+
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
 
@@ -80,6 +104,9 @@ glob FLAG_PRECOMPILED: int = 0x02;
 
 """Header flag: JIR is a bootstrap-only artifact (no AST payload, bytecode only)."""
 glob FLAG_BOOTSTRAP: int = 0x04;
+
+"""Header flag: JIR is a whole-program .jab artifact."""
+glob FLAG_PROGRAM: int = 0x08;
 
 # --- Varint (LEB128) ---
 """Encode an unsigned integer as LEB128 varint, appending to buf."""
@@ -255,9 +282,9 @@ def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
 
 """Get the cache directory for a module based on its origin.
 
-1. Source inside sys.prefix or jaclang package (installed/editable) → global cache
-2. Source inside active project root → project .jac/cache/
-3. Otherwise (standalone user file) → .jac/cache/ next to source
+1. Source inside sys.prefix or jaclang package (installed/editable) -> global cache
+2. Source inside active project root -> project .jac/cache/
+3. Otherwise (standalone user file) -> .jac/cache/ next to source
 """
 glob _jaclang_pkg_dir: str = str(Path(__file__).resolve().parent.parent);
 
@@ -281,11 +308,11 @@ def _get_module_cache_dir(source_path: str) -> Path {
                 resolved.relative_to(cfg.project_root);
                 return cfg.get_cache_dir();
             } except ValueError { }
-            # Source is outside project — use global cache
+            # Source is outside project -- use global cache
             return get_jir_cache_dir() / 'modules';
         }
     } except Exception { }
-    # No project context — use .jac/cache/ next to source
+    # No project context -- use .jac/cache/ next to source
     return resolved.parent / ".jac" / "cache";
 }
 
@@ -399,6 +426,20 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
     section_bytes = write_sections({SEC_BYTECODE: bytecode});
     return header + empty_payload + section_bytes;
 }
+
+"""Write a whole-program .jab bundle containing all modules in topo order.
+
+modules is a list of (rel_path, content_hash, sections_dict) where
+sections_dict contains SEC_BYTECODE, SEC_MTIR, SEC_INTEROP for that module.
+manifest is a dict with build metadata (format, profile, entrypoints, py_tag).
+dep_graph is a dict mapping rel_path -> list[rel_path] (import edges).
+"""
+def write_program_jir(
+    modules: list[tuple[str, int, dict[int, bytes]]],
+    manifest: dict[str, object],
+    dep_graph: dict[str, list[str]],
+    source_hash: int = 0
+) -> bytes;
 
 """Check whether a module's JIR cache is still valid.
 
