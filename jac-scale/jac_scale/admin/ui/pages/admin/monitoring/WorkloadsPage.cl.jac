@@ -147,7 +147,7 @@ cl {
                     </h2>
                     <p className="text-xs text-slate-400">
                         {unavailableReason
-                        or "Could not reach the Prometheus monitoring stack. Confirm monitoring is enabled in jac.toml and the cluster has finished deploying."}
+                        or "Could not reach the Prometheus monitoring stack."}
                     </p>
                 </div>;
         }

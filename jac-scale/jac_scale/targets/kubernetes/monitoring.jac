@@ -58,7 +58,9 @@ obj MonitoringDeployer {
             "    metrics_path: '/metrics'\n"
             "    basic_auth:\n"
             f"      username: '{self.k8s_config.admin_username}'\n"
-            f"      password: '{self.k8s_config.prometheus_admin_password}'\n"
+            # Read from a mounted Secret (see prometheus_scrape_secret below)
+            # so the password stays out of the ConfigMap.
+            "      password_file: /etc/prometheus/scrape-secret/password\n"
         );
         if self.k8s_config.k8s_metrics_enabled {
             scrape_config = scrape_config + (
@@ -123,6 +125,37 @@ obj MonitoringDeployer {
             if e.status == 404 {
                 core_v1.create_namespaced_config_map(
                     namespace=namespace, body=prometheus_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        # Secret holding the scrape password, mounted into the pod and referenced
+        # by basic_auth.password_file — keeps the credential out of the ConfigMap.
+        scrape_secret_name = f"{prometheus_name}-scrape-secret";
+        scrape_secret = {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {
+                'name': scrape_secret_name,
+                'namespace': namespace,
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+            },
+            'type': 'Opaque',
+            'stringData': {'password': self.k8s_config.prometheus_admin_password}
+        };
+        try {
+            core_v1.read_namespaced_secret(
+                name=scrape_secret_name, namespace=namespace
+            );
+            core_v1.replace_namespaced_secret(
+                name=scrape_secret_name, namespace=namespace, body=scrape_secret
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_secret(
+                    namespace=namespace, body=scrape_secret
                 );
             } else {
                 raise;
@@ -275,6 +308,11 @@ obj MonitoringDeployer {
                                         'mountPath': '/etc/prometheus'
                                     },
                                     {
+                                        'name': 'prometheus-scrape-secret',
+                                        'mountPath': '/etc/prometheus/scrape-secret',
+                                        'readOnly': True
+                                    },
+                                    {
                                         'name': 'prometheus-data',
                                         'mountPath': '/prometheus'
                                     },
@@ -286,6 +324,10 @@ obj MonitoringDeployer {
                             {
                                 'name': 'prometheus-config-vol',
                                 'configMap': {'name': f"{prometheus_name}-config"}
+                            },
+                            {
+                                'name': 'prometheus-scrape-secret',
+                                'secret': {'secretName': scrape_secret_name}
                             },
                             {'name': 'prometheus-data', 'emptyDir': {}},
                             {'name': 'tmp', 'emptyDir': {}}
@@ -1950,6 +1992,9 @@ obj MonitoringDeployer {
                 raise;
             }
         }
+        delete_k8s_secret(
+            core_v1, namespace, f"{prometheus_name}-scrape-secret"
+        );
         try {
             core_v1.delete_namespaced_service_account(
                 name=f"{prometheus_name}-sa", namespace=namespace
