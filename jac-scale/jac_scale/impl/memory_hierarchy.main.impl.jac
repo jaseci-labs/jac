@@ -18,14 +18,6 @@ impl ScaleTieredMemory.postinit -> None {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
     }
-    if isinstance(self.l2, RedisBackend) {
-        _process_cache.setdefault('l1_registry', {})[id(self.__mem__)] = self.__mem__;
-        try {
-            self.l2.start_invalidation_listener(None);
-        } except Exception as e {
-            logger.debug(f"ScaleTieredMemory: invalidation listener setup failed: {e}");
-        }
-    }
     # L3: Try MongoDB first (replaces SqliteMemory), fall back to SqliteMemory
     mongo_backend = MongoBackend();
     if mongo_backend.is_available() {
@@ -78,11 +70,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     and Jac.check_write_access(mem_anchor)
                 ];
             }
-            self.l3.sync();
+            atomic_ids = self.l3.sync() or set();
             if self.l2 {
-                atomic_ids = self.l3._atomic_written
-                    if isinstance(self.l3, MongoBackend)
-                    else set();
                 for mem_anchor in l2_pending {
                     if mem_anchor.id in atomic_ids {
                         continue;
@@ -182,7 +171,6 @@ impl ScaleTieredMemory.close -> None {
     if self.l2 {
         self.l2.close();
     }
-    _process_cache.get('l1_registry', {}).pop(id(self.__mem__), None);
     self.__mem__.clear();
     self.__gc__.clear();
 }

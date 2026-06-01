@@ -704,11 +704,16 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only changed anchors)."""
-impl MongoBackend.sync -> None {
+"""Sync - flush L1 memory to MongoDB (only changed anchors).
+
+Returns the set of anchor IDs written via the edge-delta atomic path this
+cycle; those entries have already been invalidated in L2, so the caller
+(ScaleTieredMemory.commit) skips re-caching them from the stale in-memory
+snapshot."""
+impl MongoBackend.sync -> set {
     import from jaclang { JacRuntimeInterface as Jac }
     if not self._mem_ref or not self.client {
-        return;
+        return set();
     }
     self._atomic_written = set();
     for (_, anchor) in list(self._mem_ref.items()) {
@@ -759,6 +764,7 @@ impl MongoBackend.sync -> None {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
     }
+    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
@@ -818,15 +824,16 @@ impl MongoBackend._put_node_atomic(
             ]
         };
 
-        self.collection.update_one({'_id': _id}, [{'$set': set_doc}], upsert=True);
+        import from pymongo { ReturnDocument }
+        merged_doc = self.collection.find_one_and_update(
+            {'_id': _id},
+            [{'$set': set_doc}],
+            projection={'data.edges': 1},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        );
 
         try {
-            import from pymongo { ReadPreference }
-            merged_doc = self.collection.with_options(
-                read_preference=ReadPreference.PRIMARY
-            ).find_one(
-                {'_id': _id}, {'data.edges': 1}
-            );
             if merged_doc {
                 merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
                 or [];
@@ -860,10 +867,7 @@ impl MongoBackend._put_node_atomic(
 
         if self._l2_ref {
             try {
-                self._l2_ref.delete(anchor.id);
-                if isinstance(self._l2_ref, RedisBackend) {
-                    self._l2_ref.publish_invalidation(anchor.id);
-                }
+                self._l2_ref.invalidate(anchor.id);
             } except Exception as inv_err {
                 logger.debug(
                     f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"

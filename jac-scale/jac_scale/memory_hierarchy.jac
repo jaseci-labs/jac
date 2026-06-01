@@ -50,7 +50,6 @@ obj RedisBackend(CacheMemory) {
     has redis_url: (str | None) = None,
         redis_client: (Any | None) = None,
         _async_redis: (Any | None) = None,
-        _pubsub_listener: (Any | None) = None,
         fetch_count: int = 0,
         put_count: int = 0;
 
@@ -83,9 +82,6 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
-    # Cross-pod invalidation via Redis pub/sub
-    def publish_invalidation(id: UUID) -> None;
-    def start_invalidation_listener(evict_cb: Any) -> None;
     # Async overrides — native redis.asyncio (no asyncio.to_thread)
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
@@ -106,8 +102,6 @@ obj MongoBackend(PersistentMemory) {
         _l2_ref: (any | None) = None,
         fetch_count: int = 0,
         put_count: int = 0,
-        # Tracks anchors committed via the edge-delta atomic path in each sync()
-        # cycle so commit() can skip re-writing the stale in-memory snapshot to L2.
         _atomic_written: set by postinit;
 
     def postinit -> None;
@@ -142,8 +136,7 @@ obj MongoBackend(PersistentMemory) {
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     # One-time index setup (idempotent). Called from postinit.
     def ensure_indexes -> None;
-    # PersistentMemory-specific
-    def sync -> None;
+    def sync -> set;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
     # Layer 1+2+3 operator surface
     def inspect_summary -> dict;
