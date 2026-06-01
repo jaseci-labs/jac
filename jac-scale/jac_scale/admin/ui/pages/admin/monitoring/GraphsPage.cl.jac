@@ -158,8 +158,7 @@ cl {
                             USAGE OFFLINE
                         </h2>
                         <p className="text-sm text-slate-400 font-mono">
-                            {unavailableReason
-                            or "Enable in jac.toml: [plugins.scale.monitoring] enabled = true"}
+                            Enable in jac.toml: [plugins.scale.monitoring] enabled = true
                         </p>
                     </div>
                 </div>;
