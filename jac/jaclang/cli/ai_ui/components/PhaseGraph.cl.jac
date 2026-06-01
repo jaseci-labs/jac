@@ -74,8 +74,15 @@ def:pub PhaseGraph(
                         "fit": True,
                         "padding": 36
                     },
-                    "userZoomingEnabled": False,
-                    "userPanningEnabled": False,
+                    # Let the user drag the background to pan and scroll to zoom;
+                    # keep nodes ungrabbable (autoungrabify) so a drag always pans
+                    # rather than picking up a node. Clamp the zoom and soften the
+                    # wheel so scrolling doesn't fly past the graph.
+                    "userZoomingEnabled": True,
+                    "userPanningEnabled": True,
+                    "minZoom": 0.3,
+                    "maxZoom": 3.0,
+                    "wheelSensitivity": 0.2,
                     "boxSelectionEnabled": False,
                     "autoungrabify": True,
                     "style": [
@@ -165,7 +172,8 @@ def:pub PhaseGraph(
                 "mouseout",
                 "node",
                 lambda { if containerRef.current {
-                    containerRef.current.style.cursor = "default";
+                    # Background shows a grab cursor (the canvas pans on drag).
+                    containerRef.current.style.cursor = "grab";
                 }}
             );
             # Re-fit after layout settles, in case the pane sized late.

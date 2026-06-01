@@ -11,49 +11,46 @@ cl import from .skeleton { Skeleton }
 cl import from .tooltip { Tooltip, TooltipContent, TooltipTrigger }
 cl import from ...lib.utils { cn }
 
-glob SIDEBAR_COOKIE_NAME: Any = "sidebar_state",
-     SIDEBAR_COOKIE_MAX_AGE: Any = 604800,
-     SIDEBAR_WIDTH: Any = "16rem",
-     SIDEBAR_WIDTH_MOBILE: Any = "18rem",
-     SIDEBAR_WIDTH_ICON: Any = "3rem",
-     SIDEBAR_KEYBOARD_SHORTCUT: Any = "b",
-     SidebarContext: Any = createContext(null),
-     _sidebarMenuButtonVariants: Any = cva.call(
-         None,
-         [
-             "cn-sidebar-menu-button peer/menu-button flex w-full items-center overflow-hidden outline-hidden group/menu-button disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&_svg]:size-4 [&_svg]:shrink-0",
-             {
-                 variants: {
-                     variant: {
-                         default: "cn-sidebar-menu-button-variant-default",
-                         outline: "cn-sidebar-menu-button-variant-outline"
-                     },
-                     size: {
-                         default: "cn-sidebar-menu-button-size-default",
-                         sm: "cn-sidebar-menu-button-size-sm",
-                         lg: "cn-sidebar-menu-button-size-lg"
-                     }
+glob SIDEBAR_COOKIE_NAME: str = "sidebar_state",
+     SIDEBAR_COOKIE_MAX_AGE: int = 604800,
+     SIDEBAR_WIDTH: str = "16rem",
+     SIDEBAR_WIDTH_MOBILE: str = "18rem",
+     SIDEBAR_WIDTH_ICON: str = "3rem",
+     SIDEBAR_KEYBOARD_SHORTCUT: str = "b",
+     SidebarContext: any = createContext(None),
+     _sidebarMenuButtonVariants: any = cva(
+         "cn-sidebar-menu-button peer/menu-button flex w-full items-center overflow-hidden outline-hidden group/menu-button disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&_svg]:size-4 [&_svg]:shrink-0",
+         {
+             "variants": {
+                 "variant": {
+                     "default": "cn-sidebar-menu-button-variant-default",
+                     "outline": "cn-sidebar-menu-button-variant-outline"
                  },
-                 defaultVariants: {variant: "default", size: "default"}
-             }
-         ]
+                 "size": {
+                     "default": "cn-sidebar-menu-button-size-default",
+                     "sm": "cn-sidebar-menu-button-size-sm",
+                     "lg": "cn-sidebar-menu-button-size-lg"
+                 }
+             },
+             "defaultVariants": {"variant": "default", "size": "default"}
+         }
      );
 
 cl {
-    def useIsMobile -> Any {
-        isMobileState = useState(false);
+    def useIsMobile -> any {
+        isMobileState = useState(False);
         isMobile = isMobileState[0];
         setIsMobile = isMobileState[1];
         useEffect(
-            lambda -> Any {
-                mql = window.matchMedia("(max-width: 767px)");
-                onChange = lambda -> Any {
+            lambda -> any {
+                mql: any = window.matchMedia("(max-width: 767px)");
+                onChange = lambda -> any {
                     setIsMobile(window.innerWidth < 768);
                     return None;
                 };
                 mql.addEventListener("change", onChange);
                 setIsMobile(window.innerWidth < 768);
-                return lambda -> Any {
+                return lambda -> any {
                     mql.removeEventListener("change", onChange);
                     return None;
                 };
@@ -63,17 +60,18 @@ cl {
         return isMobile;
     }
 
-    def:pub useSidebar -> Any {
-        ctx = useContext(SidebarContext);
+    def:pub useSidebar -> any {
+        ctx: any = useContext(SidebarContext);
         return ctx;
     }
 
-    def:pub SidebarProvider(props: Any) -> JsxElement {
-        defaultOpen = props.defaultOpen or true;
-        openProp = props.open;
-        setOpenProp = props.onOpenChange;
+    def:pub SidebarProvider(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        defaultOpen = props["defaultOpen"] or True;
+        openProp = props["open"];
+        setOpenProp = props["onOpenChange"];
         isMobile = useIsMobile();
-        openMobileState = useState(false);
+        openMobileState = useState(False);
         openMobile = openMobileState[0];
         setOpenMobile = openMobileState[1];
         openState = useState(defaultOpen);
@@ -81,34 +79,34 @@ cl {
         _setOpen = openState[1];
         open = openProp or _open;
         setOpen = useCallback(
-            lambda (value: Any) -> Any {
+            lambda (value: any) -> any {
                 nextState = value(open) if callable(value) else value;
                 if setOpenProp {
                     setOpenProp(nextState);
                 } else {
                     _setOpen(nextState);
                 }
-                document.cookie = SIDEBAR_COOKIE_NAME + "=" + nextState + "; path=/; max-age=" + SIDEBAR_COOKIE_MAX_AGE;
+                document.cookie = f"{SIDEBAR_COOKIE_NAME}={nextState}; path=/; max-age={SIDEBAR_COOKIE_MAX_AGE}";  # jac:ignore[W6001]
             },
             [setOpenProp, open]
         );
         toggleSidebar = useCallback(
-            lambda -> Any {
+            lambda -> any {
                 isMobile
-                and setOpenMobile(lambda (prev: Any) -> Any { return not prev; });
-                isMobile or setOpen(lambda (prev: Any) -> Any { return not prev; });
+                and setOpenMobile(lambda (prev: any) -> any { return not prev; });
+                isMobile or setOpen(lambda (prev: any) -> any { return not prev; });
             },
             [isMobile, setOpen, setOpenMobile]
         );
         useEffect(
-            lambda -> Any {
-                handleKeyDown = lambda (event: Any) -> Any { if event.key == SIDEBAR_KEYBOARD_SHORTCUT
+            lambda -> any {
+                handleKeyDown = lambda (event: any) -> any { if event.key == SIDEBAR_KEYBOARD_SHORTCUT
                 and (event.metaKey or event.ctrlKey) {
                     event.preventDefault();
                     toggleSidebar();
                 }};
                 window.addEventListener("keydown", handleKeyDown);
-                return lambda -> Any { window.removeEventListener(
+                return lambda -> any { window.removeEventListener(
                     "keydown", handleKeyDown
                 ); };
             },
@@ -135,23 +133,24 @@ cl {
                     style={mergedStyle}
                     className={cn(
                         "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
-                        props.className
+                        props["className"]
                     )}
-                    {...props}
+                    {**attrs}
                 >
-                    {props.children}
+                    {props["children"]}
                 </div>
             </SidebarContext.Provider>;
     }
 
-    def:pub Sidebar(props: Any) -> JsxElement {
-        side = props.side or "left";
-        variant = props.variant or "sidebar";
-        collapsible = props.collapsible or "offcanvas";
-        ctx = useContext(SidebarContext);
-        isMobile = ctx.isMobile if ctx else false;
+    def:pub Sidebar(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        side = props["side"] or "left";
+        variant = props["variant"] or "sidebar";
+        collapsible = props["collapsible"] or "offcanvas";
+        ctx: any = useContext(SidebarContext);
+        isMobile = ctx.isMobile if ctx else False;
         state = ctx.state if ctx else "expanded";
-        openMobile = ctx.openMobile if ctx else false;
+        openMobile = ctx.openMobile if ctx else False;
         setOpenMobile = ctx.setOpenMobile if ctx else None;
         isFloating = variant == "floating" or variant == "inset";
         containerClass = "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -163,18 +162,18 @@ cl {
                     data-slot="sidebar"
                     className={cn(
                         "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
-                        props.className
+                        props["className"]
                     )}
-                    {...props}
+                    {**attrs}
                 >
-                    {props.children}
+                    {props["children"]}
                 </div>;
         } elif isMobile {
             mobileStyle = {"--sidebar-width": SIDEBAR_WIDTH_MOBILE};
             return
-                <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+                <Sheet open={openMobile} onOpenChange={setOpenMobile} {**props}>
                     <SheetContent
-                        dir={props.dir}
+                        dir={props["dir"]}
                         data-sidebar="sidebar"
                         data-slot="sidebar"
                         data-mobile="true"
@@ -189,7 +188,7 @@ cl {
                             </SheetDescription>
                         </SheetHeader>
                         <div className="flex h-full w-full flex-col">
-                            {props.children}
+                            {props["children"]}
                         </div>
                     </SheetContent>
                 </Sheet>;
@@ -220,27 +219,27 @@ cl {
                         className={cn(
                             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
                             containerClass,
-                            props.className
+                            props["className"]
                         )}
-                        {...props}
+                        {**attrs}
                     >
                         <div
                             data-sidebar="sidebar"
                             data-slot="sidebar-inner"
                             className="cn-sidebar-inner flex size-full flex-col"
                         >
-                            {props.children}
+                            {props["children"]}
                         </div>
                     </div>
                 </div>;
         }
     }
 
-    def:pub SidebarTrigger(props: Any) -> JsxElement {
-        ctx = useContext(SidebarContext);
-        toggleSidebar = ctx.toggleSidebar if ctx else None;
-        handleClick = lambda (event: Any) -> Any {
-            props.onClick and props.onClick(event);
+    def:pub SidebarTrigger(props: any) -> JsxElement {
+        ctx: any = useContext(SidebarContext);
+        toggleSidebar: any = ctx.toggleSidebar if ctx else None;
+        handleClick = lambda (event: any) -> any {
+            props["onClick"] and props["onClick"](event);
             toggleSidebar and toggleSidebar();
         };
         return
@@ -249,9 +248,9 @@ cl {
                 data-slot="sidebar-trigger"
                 variant="ghost"
                 size="icon-sm"
-                className={cn("cn-sidebar-trigger", props.className)}
+                className={cn("cn-sidebar-trigger", props["className"])}
                 onClick={handleClick}
-                {...props}
+                {**props}
             >
                 <HugeiconsIcon
                     icon={SidebarLeftIcon}
@@ -262,9 +261,10 @@ cl {
             </Button>;
     }
 
-    def:pub SidebarRail(props: Any) -> JsxElement {
-        ctx = useContext(SidebarContext);
-        toggleSidebar = ctx.toggleSidebar if ctx else None;
+    def:pub SidebarRail(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        ctx: any = useContext(SidebarContext);
+        toggleSidebar: any = ctx.toggleSidebar if ctx else None;
         return
             <button
                 data-sidebar="rail"
@@ -275,92 +275,97 @@ cl {
                 title="Toggle Sidebar"
                 className={cn(
                     "cn-sidebar-rail absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarInset(props: Any) -> JsxElement {
+    def:pub SidebarInset(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <main
                 data-slot="sidebar-inset"
                 className={cn(
                     "cn-sidebar-inset relative flex w-full flex-1 flex-col",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarInput(props: Any) -> JsxElement {
+    def:pub SidebarInput(props: any) -> JsxElement {
         return
             <Input
                 data-slot="sidebar-input"
                 data-sidebar="input"
-                className={cn("cn-sidebar-input", props.className)}
-                {...props}
+                className={cn("cn-sidebar-input", props["className"])}
+                {**props}
             />;
     }
 
-    def:pub SidebarHeader(props: Any) -> JsxElement {
+    def:pub SidebarHeader(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-header"
                 data-sidebar="header"
-                className={cn("cn-sidebar-header flex flex-col", props.className)}
-                {...props}
+                className={cn("cn-sidebar-header flex flex-col", props["className"])}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarFooter(props: Any) -> JsxElement {
+    def:pub SidebarFooter(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-footer"
                 data-sidebar="footer"
-                className={cn("cn-sidebar-footer flex flex-col", props.className)}
-                {...props}
+                className={cn("cn-sidebar-footer flex flex-col", props["className"])}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarSeparator(props: Any) -> JsxElement {
+    def:pub SidebarSeparator(props: any) -> JsxElement {
         return
             <Separator
                 data-slot="sidebar-separator"
                 data-sidebar="separator"
-                className={cn("cn-sidebar-separator w-auto", props.className)}
-                {...props}
+                className={cn("cn-sidebar-separator w-auto", props["className"])}
+                {**props}
             />;
     }
 
-    def:pub SidebarContent(props: Any) -> JsxElement {
+    def:pub SidebarContent(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-content"
                 data-sidebar="content"
                 className={cn(
                     "cn-sidebar-content flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarGroup(props: Any) -> JsxElement {
+    def:pub SidebarGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-group"
                 data-sidebar="group"
                 className={cn(
                     "cn-sidebar-group relative flex w-full min-w-0 flex-col",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarGroupLabel(props: Any) -> JsxElement {
-        asChild = props.asChild or false;
+    def:pub SidebarGroupLabel(props: any) -> JsxElement {
+        asChild = props["asChild"] or False;
         Comp = Slot if asChild else "div";
         return
             <Comp
@@ -368,14 +373,14 @@ cl {
                 data-sidebar="group-label"
                 className={cn(
                     "cn-sidebar-group-label flex shrink-0 items-center outline-hidden [&>svg]:shrink-0",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**props}
             />;
     }
 
-    def:pub SidebarGroupAction(props: Any) -> JsxElement {
-        asChild = props.asChild or false;
+    def:pub SidebarGroupAction(props: any) -> JsxElement {
+        asChild = props["asChild"] or False;
         Comp = Slot if asChild else "button";
         return
             <Comp
@@ -383,52 +388,55 @@ cl {
                 data-sidebar="group-action"
                 className={cn(
                     "cn-sidebar-group-action flex aspect-square items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**props}
             />;
     }
 
-    def:pub SidebarGroupContent(props: Any) -> JsxElement {
+    def:pub SidebarGroupContent(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-group-content"
                 data-sidebar="group-content"
-                className={cn("cn-sidebar-group-content w-full", props.className)}
-                {...props}
+                className={cn("cn-sidebar-group-content w-full", props["className"])}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenu(props: Any) -> JsxElement {
+    def:pub SidebarMenu(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <ul
                 data-slot="sidebar-menu"
                 data-sidebar="menu"
                 className={cn(
-                    "cn-sidebar-menu flex w-full min-w-0 flex-col", props.className
+                    "cn-sidebar-menu flex w-full min-w-0 flex-col", props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenuItem(props: Any) -> JsxElement {
+    def:pub SidebarMenuItem(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <li
                 data-slot="sidebar-menu-item"
                 data-sidebar="menu-item"
-                className={cn("group/menu-item relative", props.className)}
-                {...props}
+                className={cn("group/menu-item relative", props["className"])}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenuButton(props: Any) -> JsxElement {
-        asChild = props.asChild or false;
-        isActive = props.isActive or false;
-        variant = props.variant or "default";
-        size = props.size or "default";
-        tooltip = props.tooltip;
-        ctx = useContext(SidebarContext);
-        isMobile = ctx.isMobile if ctx else false;
+    def:pub SidebarMenuButton(props: any) -> JsxElement {
+        asChild = props["asChild"] or False;
+        isActive = props["isActive"] or False;
+        variant = props["variant"] or "default";
+        size = props["size"] or "default";
+        tooltip = props["tooltip"];
+        ctx: any = useContext(SidebarContext);
+        isMobile = ctx.isMobile if ctx else False;
         state = ctx.state if ctx else "expanded";
         Comp = Slot if asChild else "button";
         btnClass = _sidebarMenuButtonVariants.call(
@@ -439,29 +447,29 @@ cl {
             data-sidebar="menu-button"
             data-size={size}
             data-active={isActive}
-            className={cn(btnClass, props.className)}
-            {...props}
+            className={cn(btnClass, props["className"])}
+            {**props}
         />;
         if not tooltip {
             return button;
         }
-        tooltipProps = {children: tooltip} if (tooltip + "") == tooltip else tooltip;
+        tooltipProps = {"children": tooltip} if isinstance(tooltip, str) else tooltip;
         isHidden = state != "collapsed" or isMobile;
         return
             <Tooltip>
-                <TooltipTrigger asChild={true}>{button}</TooltipTrigger>
+                <TooltipTrigger asChild={True}>{button}</TooltipTrigger>
                 <TooltipContent
                     side="right"
                     align="center"
                     hidden={isHidden}
-                    {...tooltipProps}
+                    {**tooltipProps}
                 />
             </Tooltip>;
     }
 
-    def:pub SidebarMenuAction(props: Any) -> JsxElement {
-        asChild = props.asChild or false;
-        showOnHover = props.showOnHover or false;
+    def:pub SidebarMenuAction(props: any) -> JsxElement {
+        asChild = props["asChild"] or False;
+        showOnHover = props["showOnHover"] or False;
         Comp = Slot if asChild else "button";
         hoverClass = "peer-data-active/menu-button:text-sidebar-accent-foreground group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 aria-expanded:opacity-100 md:opacity-0"
             if showOnHover
@@ -473,29 +481,33 @@ cl {
                 className={cn(
                     "cn-sidebar-menu-action flex items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
                     hoverClass,
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**props}
             />;
     }
 
-    def:pub SidebarMenuBadge(props: Any) -> JsxElement {
+    def:pub SidebarMenuBadge(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
                 data-slot="sidebar-menu-badge"
                 data-sidebar="menu-badge"
                 className={cn(
                     "cn-sidebar-menu-badge flex items-center justify-center tabular-nums select-none group-data-[collapsible=icon]:hidden",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenuSkeleton(props: Any) -> JsxElement {
-        showIcon = props.showIcon or false;
+    def:pub SidebarMenuSkeleton(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        showIcon = props["showIcon"] or False;
         widthState = useState(
-            lambda -> Any { return (Math.floor(Math.random() * 40 + 50)) + "%"; }
+            lambda -> any { return f"{int(
+                Math.random() * 40 + 50
+            )}%"; }  # jac:ignore[W6001]
         );
         width = widthState[0];
         skeletonStyle = {"--skeleton-width": width};
@@ -504,9 +516,9 @@ cl {
                 data-slot="sidebar-menu-skeleton"
                 data-sidebar="menu-skeleton"
                 className={cn(
-                    "cn-sidebar-menu-skeleton flex items-center", props.className
+                    "cn-sidebar-menu-skeleton flex items-center", props["className"]
                 )}
-                {...props}
+                {**attrs}
             >
                 {showIcon
                 and (
@@ -523,32 +535,34 @@ cl {
             </div>;
     }
 
-    def:pub SidebarMenuSub(props: Any) -> JsxElement {
+    def:pub SidebarMenuSub(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <ul
                 data-slot="sidebar-menu-sub"
                 data-sidebar="menu-sub"
                 className={cn(
-                    "cn-sidebar-menu-sub flex min-w-0 flex-col", props.className
+                    "cn-sidebar-menu-sub flex min-w-0 flex-col", props["className"]
                 )}
-                {...props}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenuSubItem(props: Any) -> JsxElement {
+    def:pub SidebarMenuSubItem(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <li
                 data-slot="sidebar-menu-sub-item"
                 data-sidebar="menu-sub-item"
-                className={cn("group/menu-sub-item relative", props.className)}
-                {...props}
+                className={cn("group/menu-sub-item relative", props["className"])}
+                {**attrs}
             />;
     }
 
-    def:pub SidebarMenuSubButton(props: Any) -> JsxElement {
-        asChild = props.asChild or false;
-        size = props.size or "md";
-        isActive = props.isActive or false;
+    def:pub SidebarMenuSubButton(props: any) -> JsxElement {
+        asChild = props["asChild"] or False;
+        size = props["size"] or "md";
+        isActive = props["isActive"] or False;
         Comp = Slot if asChild else "a";
         return
             <Comp
@@ -558,9 +572,9 @@ cl {
                 data-active={isActive}
                 className={cn(
                     "cn-sidebar-menu-sub-button flex min-w-0 -translate-x-px items-center overflow-hidden outline-hidden group-data-[collapsible=icon]:hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:shrink-0",
-                    props.className
+                    props["className"]
                 )}
-                {...props}
+                {**props}
             />;
     }
 }

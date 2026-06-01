@@ -21,8 +21,7 @@ cl {
     }
 
     def:pub CardBody(children: any, className: str = "p-4") -> JsxElement {
-        return
-            <div className={className}>{children}</div>;
+        return <div className={className}>{children}</div>;
     }
 
     def:pub StatsCard(label: str, value: any, color: str = "white") -> JsxElement {

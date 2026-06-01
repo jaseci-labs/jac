@@ -8,9 +8,21 @@ updates at token granularity rather than on a poll timer.
 """
 
 import from react { useEffect, useRef }
-sv import from .server { agent_send, agent_graph, agent_reset, agent_stop }
-sv import from .server { agent_settings, agent_apply_settings }
+sv import from .server {
+    agent_send,
+    agent_graph,
+    agent_reset,
+    agent_stop,
+    agent_stream
+}
+sv import from .server {
+    agent_settings,
+    agent_apply_settings,
+    agent_call_detail,
+    agent_phase_context
+}
 sv import from .server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
+sv import from .server { CallDetail, PhaseContext }
 import from .components.PhaseGraph { PhaseGraph }
 import from .components.Conversation { Conversation }
 import from .components.ActivityFeed { ActivityFeed }
@@ -20,6 +32,7 @@ import from .components.LedgerPane { LedgerPane }
 import from .components.PhaseInspector { PhaseInspector }
 import from .components.ResizeHandle { ResizeHandle }
 import from .components.SettingsModal { SettingsModal }
+import from .components.CallDetailModal { CallDetailModal }
 import "./global.css";
 
 def:pub app -> JsxElement {
@@ -32,17 +45,22 @@ def:pub app -> JsxElement {
         # Server-shaped TurnStatsView; the server constructs it, so the client
         # only ever holds a plain object (never instantiate the sv type here).
         stats: any = {"has_run": False},
-        # Raw firehose of every streamed token, concatenated (capped).
-        tokens: str = "",
         # The durable session ledger ({changes, notes}); refreshed whenever a
         # ledger message arrives so the bottom-pane panel mirrors it live.
         ledger: any = {"changes": [], "notes": []},
-        # The graph node the user clicked, shown in the phase inspector.
+        # The graph node the user clicked, shown in the phase inspector, plus its
+        # fetched context (the messages that phase last worked with).
         selected: str = "",
-        # Drag-resizable pane sizes (px): left column width, right-column graph
-        # height, and bottom-pane height. The handles mutate these.
+        phaseCtx: any = None,
+        # The token-usage row (model call id) the user clicked, and its fetched
+        # detail; -1 / None when the call-detail modal is closed.
+        selectedCall: int = -1,
+        callDetail: any = None,
+        # Drag-resizable pane sizes (px): left column (conversation) width, right
+        # column (activity) width, and bottom-pane height. The graph fills the
+        # center column between them. The handles mutate these.
         leftW: int = 460,
-        graphH: int = 300,
+        rightW: int = 380,
         bottomH: int = 200,
         draft: str = "",
         # Settings panel: open flag + the live key status the stream pushes in
@@ -65,16 +83,13 @@ def:pub app -> JsxElement {
 
     unmountedRef: any = useRef(False);
     ctrlRef: any = useRef(None);
-    # `window`/`document` typed loosely so viewport + element reads used to clamp
-    # pane sizes type-check (the client stub omits those members).
+    # `window` typed loosely so viewport reads used to clamp pane sizes type-check
+    # (the client stub omits that member).
     win: any = window;
-    doc: any = document;
     # The live event list is kept in a ref so the stream handler (captured once
     # by the effect) always upserts against the current list, not a stale render
-    # closure -- otherwise each delta would rebuild from an empty `events`. Same
-    # reason for the token firehose buffer.
+    # closure -- otherwise each delta would rebuild from an empty `events`.
     eventsRef: any = useRef([]);
-    tokensRef: any = useRef("");
     # Held in a ref for the same reason as events: ledger messages are sparse, so
     # the handler must read the latest value, not a stale render closure.
     ledgerRef: any = useRef({"changes": [], "notes": []});
@@ -111,16 +126,6 @@ def:pub app -> JsxElement {
             }
             eventsRef.current = out;
             events = out;
-        }
-        # Firehose: append the raw token (delta msgs carry it; empty otherwise),
-        # capped to the most recent stretch.
-        if msg.token {
-            nt = tokensRef.current + msg.token;
-            if len(nt) > 4000 {
-                nt = nt[len(nt) - 4000:];
-            }
-            tokensRef.current = nt;
-            tokens = nt;
         }
         # Ledger messages are sparse (only when a phase records or a note lands);
         # apply whenever present, otherwise keep the last value.
@@ -258,16 +263,41 @@ def:pub app -> JsxElement {
         active = "";
         path = [];
         stats = {"has_run": False};
-        tokensRef.current = "";
-        tokens = "";
         ledgerRef.current = {"changes": [], "notes": []};
         ledger = {"changes": [], "notes": []};
         selected = "";
+        phaseCtx = None;
+        selectedCall = -1;
+        callDetail = None;
     }
 
     # Stop the running turn at the next checkpoint.
     async def stop {
         await agent_stop();
+    }
+
+    # Fetch and show one model call's detail (input/diff/output). Used by a
+    # token-usage row click and the modal's Prev/Next; a negative id closes it.
+    async def openCall(id: int) -> None {
+        if id < 0 {
+            selectedCall = -1;
+            callDetail = None;
+            return;
+        }
+        selectedCall = id;
+        d = await agent_call_detail(id);
+        callDetail = d;
+    }
+
+    # Fetch the clicked phase's captured context (its accumulated messages) for
+    # the phase inspector; a blank id (deselect / reset) clears it.
+    async def loadPhaseCtx(id: str) -> None {
+        if not id {
+            phaseCtx = None;
+            return;
+        }
+        c = await agent_phase_context(id);
+        phaseCtx = c;
     }
 
     # First paint: the static phase graph (nodes/edges the stream doesn't carry)
@@ -344,11 +374,11 @@ def:pub app -> JsxElement {
                 <ResizeHandle
                     vertical={True}
                     onResize={lambda dx: float { leftW = max(
-                        300, min(int(leftW + dx), int(win.innerWidth) - 380)
+                        300, min(int(leftW + dx), int(win.innerWidth) - rightW - 320)
                     ); }}
                 />
-                <div className="col right">
-                    <div className="pane" style={{"height": str(graphH) + "px"}}>
+                <div className="col center">
+                    <div className="pane">
                         <div className="pane-head">Phase graph</div>
                         <PhaseGraph
                             {nodes}
@@ -357,22 +387,20 @@ def:pub app -> JsxElement {
                             {path}
                             {status}
                             {selected}
-                            onSelect={lambda id: str { selected = id; }}
+                            onSelect={lambda id: str {
+                                selected = id;
+                                loadPhaseCtx(id);
+                            }}
                         />
                     </div>
-                    <ResizeHandle
-                        vertical={False}
-                        onResize={lambda dy: float {
-                            # Clamp against the right column's own height so the
-                            # graph never grows past it (which would squeeze the
-                            # activity feed out); always leave it room.
-                            rc = doc.querySelector(".col.right");
-                            cap = (int(rc.clientHeight) - 120)
-                                if rc
-                                else (int(win.innerHeight) - 260);
-                            graphH = max(140, min(int(graphH + dy), cap));
-                        }}
-                    />
+                </div>
+                <ResizeHandle
+                    vertical={True}
+                    onResize={lambda dx: float { rightW = max(
+                        300, min(int(rightW - dx), int(win.innerWidth) - leftW - 320)
+                    ); }}
+                />
+                <div className="col right" style={{"width": str(rightW) + "px"}}>
                     <ActivityFeed {events} {status}/>
                 </div>
             </div>
@@ -383,9 +411,14 @@ def:pub app -> JsxElement {
                 ); }}
             />
             <div className="bottompane" style={{"height": str(bottomH) + "px"}}>
-                <TokenStream text={tokens} live={status == "running"}/>
+                <TokenStream
+                    events={events}
+                    live={status == "running"}
+                    selected={selectedCall}
+                    onSelect={lambda id: int { openCall(id); }}
+                />
                 <LedgerPane {ledger}/>
-                <PhaseInspector {nodes} {selected}/>
+                <PhaseInspector {nodes} {selected} context={phaseCtx}/>
             </div>
             <StatsBar {stats} {active}/>
             {<SettingsModal
@@ -410,6 +443,14 @@ def:pub app -> JsxElement {
                 onClose={lambda { showSettings = False; }}
             />
                 if showSettings
+                else <span/>}
+            {<CallDetailModal
+                detail={callDetail}
+                onPrev={lambda { openCall(int(callDetail.prev_id)); }}
+                onNext={lambda { openCall(int(callDetail.next_id)); }}
+                onClose={lambda { openCall(-1); }}
+            />
+                if (selectedCall >= 0 and callDetail)
                 else <span/>}
         </div>;
 }

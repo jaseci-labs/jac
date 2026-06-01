@@ -31,7 +31,7 @@ import from byllm.mcp { McpTool }
 glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
 
 """Enum for message roles in LLM interactions."""
-enum MessageRole ( StrEnum ) {
+enum MessageRole(StrEnum) {
     SYSTEM = "system",
     USER = "user",
     ASSISTANT = "assistant",
@@ -126,7 +126,7 @@ obj StreamEvent {
 }
 
 """Control action returned by on_iteration callback."""
-enum IterationAction ( StrEnum ) {
+enum IterationAction(StrEnum) {
     CONTINUE = "continue",
     ABORT = "abort",
     ABORT_WITH_SUMMARY = "abort_with_summary"

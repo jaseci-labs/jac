@@ -1,5 +1,6 @@
 """Direct implementations of project CLI commands."""
 
+import os;
 import sys;
 import shutil;
 import subprocess;
@@ -1105,6 +1106,9 @@ def _find_precompile_pythons -> list[tuple[str, str]] {
     for minor in _PRECOMPILE_MINOR_RANGE {
         exe: str | None = shutil.which(f"python3.{minor}");
         if not exe {
+            console.warning(
+                f"python3.{minor} not found on PATH — skipping this version"
+            );
             continue;
         }
         found.append((exe, f"cpython-3{minor}"));
@@ -1117,6 +1121,10 @@ def _run_precompile_in_venv(
     pyexe: str, script_path: str, project_root: str, dep_specs: list[str],
 ) -> str | None {
     jac_version = importlib.metadata.version("jaclang");
+    # Release-PR/CI escape hatch: install jaclang from a local path (sdist, wheel,
+    # or source tree) instead of PyPI when the named version isn't yet published.
+    local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
+    jac_spec = local_install or f"jaclang=={jac_version}";
 
     with tempfile.TemporaryDirectory() as tmp {
         venv_dir = Path(tmp) / "venv";
@@ -1136,11 +1144,11 @@ def _run_precompile_in_venv(
             venv_jac = str(venv_dir / "bin" / "jac");
         }
         jac_install = subprocess.run(
-            [venv_python, "-m", "pip", "install", f"jaclang=={jac_version}", "--quiet"],
+            [venv_python, "-m", "pip", "install", jac_spec, "--quiet"],
             capture_output=True
         );
         if jac_install.returncode != 0 {
-            return f"pip install jaclang=={jac_version} failed:\n{jac_install.stderr.decode(
+            return f"pip install {jac_spec} failed:\n{jac_install.stderr.decode(
                 errors='replace'
             )}";
         }
@@ -1186,10 +1194,10 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     pythons = _find_precompile_pythons();
 
     if not pythons {
-        console.warning(
-            "No matching Python executables found on PATH — skipping precompilation."
+        console.error(
+            "No matching Python executables found on PATH — cannot precompile."
         );
-        return 0;
+        return 1;
     }
 
     installer = DependencyInstaller(config=config);
@@ -1209,15 +1217,12 @@ def _precompile_all_pythons(config: JacConfig) -> int {
         }
     }
     if failed_versions {
-        console.warning(
+        console.error(
             "Precompilation incomplete — "
             f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
             f"{', '.join(failed_versions)}"
         );
-        if len(failed_versions) == len(pythons) {
-            console.error("All precompilation targets failed — aborting bundle.");
-            return 1;
-        }
+        return 1;
     }
     return 0;
 }

@@ -96,6 +96,23 @@ def install_trace_log_filter -> None {
     if _trace_filter_installed {
         return;
     }
-    logging.getLogger().addFilter(TraceIdLogFilter());
+    # Subtle: a Filter attached to a Logger only runs for records
+    # EMITTED from that logger (via logger.info(), etc.). It does NOT
+    # run on records propagated UP from child loggers. So attaching
+    # the filter to the root logger alone would skip every record
+    # from uvicorn.access, the gateway module's own logger, etc., and
+    # `trace_id` would always be null for those (which is most of
+    # what's in pod logs). Filters attached to a HANDLER, by contrast,
+    # run for every record that reaches the handler regardless of
+    # which logger originally emitted it. Walk the root logger's
+    # handlers and attach the filter to each so propagated records
+    # get `trace_id` set before formatting.
+    flt = TraceIdLogFilter();
+    _root = logging.getLogger();
+    for h in _root.handlers {
+        h.addFilter(flt);
+    }
+    # Belt-and-suspenders for direct emissions on the root logger.
+    _root.addFilter(flt);
     _trace_filter_installed = True;
 }

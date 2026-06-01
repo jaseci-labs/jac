@@ -726,7 +726,6 @@ impl Serializer._deserialize_archetype(
             );
         }
 
-        arch.__dict__['__jac_initialized__'] = True;
         setattr(arch, '__jac__', anchor);
         return arch;
     } except Exception as e {

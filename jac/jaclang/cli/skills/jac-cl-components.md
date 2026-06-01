@@ -147,6 +147,25 @@ has_filter: bool = bool(useParams()["category"]);
 ```
 
 - **Server RPC import uses `sv import from ..services.X { fn, Types }`** (prefix required). Dot count = how many folders up from THIS file to reach `services/` - for a `components/X.cl.jac` it's 2 dots, for `components/pages/X.cl.jac` it's 3 dots (see `jac-core-cheatsheet` for dot semantics). Plain `import from` to a `.sv.jac` breaks the Vite build. Include obj/node types too - they're needed to type your `has` state (next rule). See `jac-fullstack-patterns`.
+- **Always `await` `sv import` calls.** Stubs are `async` functions -- `todos = list_todos()` assigns a `Promise`, not the data → `TypeError: todos is not iterable` at runtime. Two valid async contexts:
+
+```
+# 1. fetch on mount
+async can with entry {
+    todos = await list_todos();
+}
+
+# 2. handler that calls sv import -- use `async def` (no event param; uses `has` field closures)
+async def handle_add -> None {
+    todo = await create_todo(input_text);   # input_text is a `has` field
+    todos = [todo] + todos;
+}
+# bind as: onClick={handle_add}
+# if you need to pass a param: onClick={lambda -> None { handle_toggle(item.id); }}
+```
+
+Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.
+
 - **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
 
 ```

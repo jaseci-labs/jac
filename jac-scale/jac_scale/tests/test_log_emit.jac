@@ -102,3 +102,50 @@ test "trace_id field is populated inside a request context" {
         logging.getLogger().removeHandler(capture);
     }
 }
+
+
+# Regression guard for the deploy-time bug where pod logs were all
+# uvicorn's plain-text access lines (`INFO:     GET /healthz HTTP/1.1
+# 200 OK`) because uvicorn's loggers have propagate=False and their
+# own handlers - so the JSON formatter on root never saw them.
+test "install_structured_logging routes uvicorn loggers through root" {
+    install_structured_logging();
+
+    for name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"] {
+        lg = logging.getLogger(name);
+        assert lg.propagate is True , f"{name} should propagate to root";
+        assert lg.handlers == [] , f"{name} should have no local handlers";
+    }
+}
+
+
+# Regression guard for the propagation bug: a Filter on the root
+# LOGGER doesn't run on records propagated up from child loggers
+# (uvicorn.access, our gateway module, etc.), so trace_id was null
+# for the bulk of pod logs. The filter must be on the root HANDLER
+# instead - handlers see every record, including propagated ones.
+test "trace_id populates on records emitted from child loggers" {
+    install_structured_logging();
+
+    buf: io.StringIO = io.StringIO();
+    capture: logging.StreamHandler = logging.StreamHandler(buf);
+    capture.setFormatter(_JacJsonFormatter());
+    import from jac_scale.microservices.runtime.trace_ctx { TraceIdLogFilter }
+    capture.addFilter(TraceIdLogFilter());
+    logging.getLogger().addHandler(capture);
+
+    try {
+        tok = set_current_trace("trace-from-child-test");
+        try {
+            child: logging.Logger = logging.getLogger("jac_scale.test.child");
+            child.info("propagated line");
+            line: str = buf.getvalue().strip().split("\n")[-1];
+            parsed: dict = json.loads(line);
+            assert parsed["trace_id"] == "trace-from-child-test";
+        } finally {
+            reset_current_trace(tok);
+        }
+    } finally {
+        logging.getLogger().removeHandler(capture);
+    }
+}

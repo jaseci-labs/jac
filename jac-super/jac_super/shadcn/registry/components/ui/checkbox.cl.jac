@@ -4,14 +4,14 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Tick02Icon }
 
 cl {
-    def:pub Checkbox(props: Any) -> JsxElement {
+    def:pub Checkbox(props: any) -> JsxElement {
         return
             <CheckboxPrimitive.Root
-                {...props}
+                {**props}
                 data-slot="checkbox"
                 className={cn(
                     "cn-checkbox peer relative shrink-0 outline-none after:absolute after:-inset-x-3 after:-inset-y-2 disabled:cursor-not-allowed disabled:opacity-50",
-                    props.className
+                    props["className"]
                 )}
             >
                 <CheckboxPrimitive.Indicator

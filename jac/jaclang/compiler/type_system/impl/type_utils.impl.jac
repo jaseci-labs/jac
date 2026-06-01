@@ -1,3 +1,20 @@
+impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if not isinstance(ty, types.ClassType) {
+        return None;
+    }
+    if JAC_TYPE_REGISTRY.is_primitive(ty.shared.class_name) {
+        return ty.shared.class_name;
+    }
+    # Walk the MRO so subtypes (e.g. LiteralString) resolve to their primitive base.
+    for base in ty.shared.mro {
+        if JAC_TYPE_REGISTRY.is_primitive(base.shared.class_name) {
+            return base.shared.class_name;
+        }
+    }
+    return None;
+}
+
 # Generator / Iterator return-type helpers.
 """Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 impl get_generator_type_args(
@@ -237,6 +254,7 @@ impl ParamAssignmentTracker.get_unmatched_required_params -> list[types.Paramete
     for param in self.params {
         if (
             (param not in self.matched_params)
+            and (param not in self.spread_filled)
             and (param.default_value is None)
             and (
                 param.param_kind not in (types.ParamKind.VARARG, types.ParamKind.KWARG)
@@ -294,7 +312,7 @@ impl ParamAssignmentTracker.match_named_argument(
     }
 }
 
-"""Mark all positional parameters as matched."""
+"""Mark positional params as *possibly* filled by a `*args` spread."""
 impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
     for param in self.params {
         if (
@@ -304,13 +322,13 @@ impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
                 types.ParamKind.VARARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
     self.curr_param_idx = -1;
 }
 
-"""Mark all named parameters as matched."""
+"""Mark named params as *possibly* filled by a `**kwargs` spread."""
 impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
     for param in self.params {
         if (
@@ -320,7 +338,7 @@ impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
                 types.ParamKind.KWARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
 }
@@ -342,6 +360,10 @@ impl ParamAssignmentTracker.lookup_named_parameter(
             continue;
         }
         if (param.name == param_name) {
+            # A param in `matched_params` was bound by a real positional or
+            # keyword arg, so naming it again is a true duplicate. A param only
+            # in `spread_filled` (a `**`/`*` spread of unknown keys) is not — we
+            # cannot prove the spread set it, so the explicit keyword wins.
             if (param in self.matched_params) {
                 raise Exception(f"Parameter '{param.name}' already matched");
             }
@@ -573,6 +595,12 @@ impl apply_solved_type_vars(
             # This handles typeshed TypeVars without bounds
             if not is_declared_class_param
             and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+            # Free-function path: no class context → per-call solution is authoritative.
+            if not is_declared_class_param
+            and class_type is None
             and ty.name in solution {
                 is_declared_class_param = True;
             }

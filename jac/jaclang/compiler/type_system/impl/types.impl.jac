@@ -37,7 +37,7 @@ impl NeverType.__str__ -> str {
 
 """Return a string representation of the any type."""
 impl AnyType.__str__ -> str {
-    return "<Any>";
+    return "<any>";
 }
 
 """Return a string representation of the module type."""
@@ -89,6 +89,7 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ) for param in self.parameters
         ],
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types
@@ -136,6 +137,7 @@ impl FunctionType.specialize_func_type_vars(
         ],
         function_flags=self.function_flags,
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types

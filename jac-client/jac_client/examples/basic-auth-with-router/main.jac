@@ -360,8 +360,7 @@ cl {
     def DashboardPage -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
-            return
-                <Navigate to="/login"/>;
+            return <Navigate to="/login"/>;
         }
 
         return
@@ -420,11 +419,9 @@ cl {
     # Home/Landing Page - auto-redirect based on auth status
     def HomePage -> JsxElement {
         if jacIsLoggedIn() {
-            return
-                <Navigate to="/dashboard"/>;
+            return <Navigate to="/dashboard"/>;
         }
-        return
-            <Navigate to="/login"/>;
+        return <Navigate to="/login"/>;
     }
 
     # Main App with React Router

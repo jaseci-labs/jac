@@ -4216,6 +4216,39 @@ test "callable_narrowing" {
     );
 }
 
+test "hasattr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_hasattr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 5 , "Expected exactly 5 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: attribute is missing from NoFoo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.bar;  # <-- Error: x is WithFoo here, no `bar`
+    """,
+        program.errors_had[1].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: x is NoFoo here, no `foo`
+    """,
+        program.errors_had[3].pretty_print()
+    );
+}
+
 """Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
 test "type_alias_narrowing" {
     program = JacProgram();
@@ -5104,6 +5137,18 @@ test "comprehension_in_ternary_narrowing" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+}
+
+test "spread_with_explicit_kwarg_no_false_positive" {
+    # Regression: a call that mixes a `*`/`**` spread with an explicit keyword
+    # argument must not emit E1057 "Parameter 'X' already matched". The spread
+    # contents are statically unknown, so the explicit keyword wins and the
+    # spread only satisfies the required-param check.
+    path = os.path.join(CHECKER_FIXTURES, "checker_spread_with_kwarg.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors for spread + explicit kwarg, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

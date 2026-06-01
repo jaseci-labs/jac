@@ -67,4 +67,64 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         }
         return result;
     }
+
+    """Names of archetypes referenced anywhere under `nd` (constructors, type
+    annotations, and `with X entry` triggers all surface as resolved `Name`s
+    whose symbol declares an Archetype). Backend-agnostic.
+    """
+    static def archetype_refs(nd: uni.UniNode) -> list[str] {
+        names: list[str] = [];
+        for nm in nd.get_all_sub_nodes(uni.Name, brute_force=True) {
+            sym = nm.sym;
+            if (sym is not None) and sym.defn {
+                cand = sym.defn[0].name_of;
+                if isinstance(cand, uni.Archetype) and (cand.name is not None) {
+                    names.append(cand.name.value);
+                }
+            }
+        }
+        return names;
+    }
+
+    """Module-level (shared) archetypes transitively referenced by code in the
+    given codespace context. `obj`/`node`/`edge`/`walker` declared at module
+    level (direct children of the Module) are shared across all backends; a
+    backend compiles the ones its own code references. Declarations nested in a
+    codespace block, an `import from "lib" { ... }` clib block, or another
+    archetype have a non-Module parent and are owned by a different registration
+    path, so they are never returned here.
+    """
+    static def shared_archetypes_for_context(
+        module: uni.Module, ctx: CodeContext
+    ) -> list[uni.Archetype] {
+        shared: dict[(str, uni.Archetype)] = {};
+        for arch in module.get_all_sub_nodes(uni.Archetype, brute_force=True) {
+            if (arch.name is not None) and isinstance(arch.parent, uni.Module) {
+                shared[arch.name.value] = arch;
+            }
+        }
+        if not shared {
+            return [];
+        }
+        worklist: list[str] = [];
+        for stmt in ModuleCodegenPass.iter_context_stmts(module, ctx) {
+            worklist.extend(ModuleCodegenPass.archetype_refs(stmt));
+        }
+        result: dict[(str, uni.Archetype)] = {};
+        visited: set[str] = set();
+        while worklist {
+            name = worklist.pop();
+            if name in visited {
+                continue;
+            }
+            visited.add(name);
+            arch = shared.get(name);
+            if arch is None {
+                continue;
+            }
+            result[name] = arch;
+            worklist.extend(ModuleCodegenPass.archetype_refs(arch));
+        }
+        return list(result.values());
+    }
 }

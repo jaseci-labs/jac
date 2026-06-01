@@ -287,7 +287,7 @@ impl JacCompiler._load_native_from_cache(
         target = llvm.Target.from_default_triple();
         target_machine = target.create_target_machine();
         engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-        import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+        import from jaclang.jac0core.codeinfo { CodeGenTarget }
         gen = CodeGenTarget();
         gen.native_engine = engine;
         py_func_table: dict = {};
@@ -295,21 +295,8 @@ impl JacCompiler._load_native_from_cache(
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
-            import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
             import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-            manifest = InteropManifest();
-            for (name, data) in cached_interop.get('bindings', {}).items() {
-                binding = InteropBinding(
-                    name=name,
-                    source_context=InteropContext(data['source_context']),
-                    callers={InteropContext(c) for c in data.get('callers', [])},
-                    ret_type=data.get('ret_type', 'int'),
-                    param_types=data.get('param_types', []),
-                    param_names=data.get('param_names', []),
-                    source_module=data.get('source_module')
-                );
-                manifest.bindings[name] = binding;
-            }
+            manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
                 register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -546,6 +533,36 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     return interop_data;
 }
 
+"""Rebuild an InteropManifest from a cached interop dict.
+
+Shared by the native cache loaders so the bindings deserialization lives
+in exactly one place. ast_node is intentionally left None: it is a live
+AST node that is never reserialized and no cache-hit consumer derefs it.
+"""
+impl JacCompiler._deserialize_interop_table(
+    cached_interop: dict[str, any]
+) -> InteropManifest {
+    import from jaclang.jac0core.codeinfo {
+        InteropManifest,
+        InteropBinding,
+        InteropContext
+    }
+    manifest = InteropManifest();
+    for (name, data) in cached_interop.get('bindings', {}).items() {
+        binding = InteropBinding(
+            name=name,
+            source_context=InteropContext(data['source_context']),
+            callers={InteropContext(c) for c in data.get('callers', [])},
+            ret_type=data.get('ret_type', 'int'),
+            param_types=data.get('param_types', []),
+            param_names=data.get('param_names', []),
+            source_module=data.get('source_module')
+        );
+        manifest.bindings[name] = binding;
+    }
+    return manifest;
+}
+
 """Parse source string into AST module."""
 impl JacCompiler.parse_str(
     source_str: str,
@@ -635,6 +652,14 @@ impl JacCompiler.compile(
         keep_str, file_path, actual_program, cancel_token=options.cancel_token
     );
     had_parse_errors = len(actual_program.errors_had) > had_parse_errors;
+    # Count codegen-blocking errors attributed to *this* module only. The IR
+    # schedule below recursively compiles imported modules into the same
+    # program; filtering by file path keeps a nested module's diagnostics from
+    # poisoning this module's codegen gate.
+    cur_mod_path = os.path.normpath(file_path);
+    blocking_errs_pre_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
     if options.symtab_ir_only {
         self.run_schedule(
             mod=mod_targ,
@@ -650,6 +675,15 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
+    # Diagnostics flagged blocks_codegen (e.g. E0063 glob inside a function)
+    # must prevent code generation just like parse errors, otherwise an
+    # invalid construct that happens to compile to valid Python would silently
+    # execute. Structural errors not flagged blocking (e.g. E0076 duplicate
+    # method) stay non-fatal, matching the codebase's lenient codegen policy.
+    blocking_errs_post_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
+    had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
     # Native-compiled modules consume the central type checker's results:
     # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
     # parallel AST type resolver. Run the type-check schedule for any .na.jac
@@ -687,7 +721,7 @@ impl JacCompiler.compile(
         }
         if (
             not is_native_mod
-            and getattr(actual_program, '_auto_promote_native', False)
+            and actual_program._auto_promote_native
             and mod_targ?.gen
             and mod_targ.gen.native_compat
         ) {
@@ -696,6 +730,17 @@ impl JacCompiler.compile(
         if is_native_mod {
             run_type_check = True;
         }
+        # NOTE: client (.cl.jac) modules are deliberately NOT force-type-checked
+        # here. Unlike the native path -- where NaIRGenPass hard-depends on
+        # `Expr.type` to lower annotations -- BoundaryAnalysisPass derives every
+        # cross-boundary fact (server_exports_to_client bindings, func_access,
+        # boundary types) from the AST + symbol table alone: it reads raw
+        # annotation ASTs (`type_tag.tag`) and access tokens, never resolved
+        # `.type`. Forcing type-check on .cl.jac bought no boundary fidelity and
+        # surfaced type-checker false positives on idiomatic client code
+        # (untyped-prop access, Any-typed event handlers, kwargs override);
+        # see #6262. Plain .jac/.cl.jac modules follow the explicit
+        # `options.type_check` contract.
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
@@ -719,7 +764,114 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
-    if (not had_parse_errors and not options.no_cgen) {
+    # Single front-end producer of cross-boundary (interop) facts. Runs after
+    # type-check and before any codegen, for EVERY module (server / client /
+    # native), independent of the codegen gate — so client (.cl.jac) modules
+    # and --no-client / --dev compiles still get their boundary facts. Skipped
+    # for symtab_ir_only provider resolutions (lightweight, no codegen need).
+    if (
+        not had_parse_errors and not had_blocking_errors and not options.symtab_ir_only
+    ) {
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=get_boundary_analysis_sched(),
+            cancel_token=options.cancel_token
+        );
+    }
+    # Boundary completion for cross-boundary apps. A plain top-level compile runs
+    # BoundaryAnalysisPass only on the entry; the client (.cl.jac) modules reached
+    # through its `to cl:` imports -- which carry the client->server `sv import`
+    # bindings the serve runtime needs -- are not pulled into the program by a
+    # normal compile/import (only the bundle/ecmascript build compiles them).
+    # Walk the entry's client import graph and front-end-compile each reachable
+    # `.cl.jac` into THIS program so BoundaryAnalysisPass records its
+    # `server_exports_to_client` bindings in the hub. The serve runtime then
+    # reads the endpoint set from that table rather than re-deriving it at
+    # request time. Gated to the real top-level compile (not the lightweight
+    # symtab_ir_only / no_cgen provider resolutions that nest under it).
+    if (
+        not had_parse_errors
+        and not had_blocking_errors
+        and not options.symtab_ir_only
+        and not options.no_cgen
+    ) {
+        import os as _cb_os;
+        cb_seen: set[str] = set();
+        cb_worklist: list = [mod_targ];
+        # type_check=False is load-bearing: CompileOptions.type_check defaults
+        # to True, and BoundaryAnalysisPass derives every cross-boundary fact
+        # from the AST + symbol table alone (never resolved `.type`), so the
+        # type-check schedule buys no boundary fidelity here. Leaving it on
+        # would force the full TypeCheckPass over every reachable .cl.jac --
+        # exactly the idiomatic-client false positives (untyped JSX-returning
+        # components, untyped-prop access, Any-typed handlers) that the
+        # top-of-compile NOTE deliberately avoids on the entry; see #6262.
+        cb_opts = CompileOptions(
+            type_check=False,
+            no_cgen=True,
+            force_target_program=True,
+            cancel_token=options.cancel_token
+        );
+        while cb_worklist {
+            cb_cur = cb_worklist.pop();
+            if cb_cur is None {
+                continue;
+            }
+            for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
+                if not cb_imp.from_loc {
+                    continue;
+                }
+                # Skip language built-in `@jac/*` virtual modules (e.g.
+                # `@jac/runtime`, the client framework runtime). These are never
+                # user cross-boundary providers -- they carry no `sv import`
+                # bindings -- yet the alias resolves to a real `.cl.jac` under
+                # runtimelib. Pulling the framework runtime into the program
+                # makes the entry's codegen type-evaluate its browser-global
+                # bodies (document/Array/...), surfacing spurious type errors.
+                cb_tgt = cb_imp.from_loc.dot_path_str
+                    if cb_imp.from_loc?.dot_path_str
+                    else '';
+                if cb_tgt.startswith('@jac/') {
+                    continue;
+                }
+                try {
+                    cb_src = cb_imp.from_loc.resolve_relative_path();
+                } except Exception {
+                    continue;
+                }
+                if not (isinstance(cb_src, str) and cb_src.endswith('.cl.jac')) {
+                    continue;
+                }
+                cb_src = _cb_os.path.abspath(cb_src);
+                if cb_src in cb_seen {
+                    continue;
+                }
+                cb_seen.add(cb_src);
+                cb_mod = actual_program.mod.hub.get(cb_src);
+                cb_has_facts = (
+                    cb_mod is not None
+                    and cb_mod.gen
+                    and cb_mod.gen.interop_manifest
+                    and bool(cb_mod.gen.interop_manifest.bindings)
+                );
+                if not cb_has_facts {
+                    try {
+                        cb_mod = self.compile(
+                            file_path=cb_src,
+                            target_program=actual_program,
+                            options=cb_opts
+                        );
+                    } except Exception {
+                        cb_mod = actual_program.mod.hub.get(cb_src);
+                    }
+                }
+                cb_worklist.append(cb_mod);
+            }
+        }
+        actual_program._compile_options = options;
+    }
+    if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.
         # Earlier schedules may have invoked nested compile()s (e.g.
         # TypeCheckPass loading an imported module to resolve a symbol),
@@ -765,6 +917,26 @@ impl JacCompiler.run_schedule(
         }
         current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token);
     }
+}
+
+impl JacCompiler._count_module_blocking_errors(
+    target_program: JacProgram, mod_path: str
+) -> int {
+    count = 0;
+    for e in target_program.errors_had {
+        if e.code is None or not e.code.blocks_codegen {
+            continue;
+        }
+        try {
+            e_path = os.path.normpath(e.loc.mod_path);
+        } except Exception {
+            continue;
+        }
+        if e_path == mod_path {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 """Parse a Jac file/string and optionally load annexes for tooling passes.

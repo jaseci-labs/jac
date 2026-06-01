@@ -18,6 +18,7 @@ import logging;
 import from datetime { datetime, UTC }
 import from sqlalchemy {
     create_engine,
+    Engine,
     MetaData,
     Table,
     Column,
@@ -122,10 +123,10 @@ obj MongoIdentityStorage(IdentityStorage) {
 """SQLite-backed identity storage."""
 obj SqliteIdentityStorage(IdentityStorage) {
     has db_path: str,
-        _engine: any by postinit,
-        _table: any by postinit,
-        _identity_lookups: any by postinit,
-        _sso_lookups: any by postinit;
+        _engine: Engine by postinit,
+        _table: Table by postinit,
+        _identity_lookups: Table by postinit,
+        _sso_lookups: Table by postinit;
 
     def postinit -> None;
     # Abstract primitives

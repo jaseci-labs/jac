@@ -60,9 +60,9 @@ def arm(proj: str, events: list, feedback: bool = True) -> CodeIntelligence {
         events.append(info);
     }
     ci.on_event = on_evt;
-    ai.agent.cwd = proj;
-    ai.agent.ci = ci;
-    ai.agent.ci_dirty = False;
+    ai.agent.ws.cwd = proj;
+    ai.agent.ws.ci = ci;
+    ai.agent.ws.ci_dirty = False;
     ai.agent.cfg.yolo_mode = True;
     ai.agent.cfg.show_stats = False;
     ai.agent.cfg.inline_feedback = feedback;
@@ -134,7 +134,7 @@ test "the inline_feedback opt-out suppresses feedback but still flags dirty" {
     out = ai.agent.files.write_file(bad, "def g() -> int { return \"nope\"; }\n");
     assert "compiler feedback" not in out , out;
     # With feedback off the project model is left dirty for the next query.
-    assert ai.agent.ci_dirty , "expected ci_dirty after a feedback-off write";
+    assert ai.agent.ws.ci_dirty , "expected ci_dirty after a feedback-off write";
 
     shutil.rmtree(proj, ignore_errors=True);
 }
@@ -281,18 +281,22 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
     feat = str(Path(proj) / "greeting.jac");
 
     # One flat outputs list, consumed across phases by the shared mock cursor:
-    #   Plan run_phase  -> a final answer (no tools);
-    #   Build run_phase -> write a compiling file, then a final answer;
-    #   QA run_phase    -> a final answer.
+    #   Plan run_phase                -> a final answer (no tools);
+    #   request_needs_code_changes    -> "true": route Plan -> Build, not the
+    #                                    read-only Plan -> Done fast path;
+    #   Build run_phase               -> write a compiling file, then a final answer;
+    #   QA run_phase                  -> a final answer.
     # `max_steps=2` halts the walk at the step cap once QA has run, so the test
     # stays deterministic without exercising QA's LLM-driven routing (which is
-    # byLLM machinery, covered elsewhere). Each phase advances along its single
-    # out-edge with no model routing call.
+    # byLLM machinery, covered elsewhere). Plan picks its successor via the typed
+    # request_needs_code_changes classifier; the other phases advance along their
+    # single out-edge with no model routing call.
     ai.agent_model = Model(
         model_name="mockllm",
         config={
             "outputs": [
                 "Plan: add greeting.jac with a hello function.",
+                "true",
                 MockToolCall(
                     tool=ai.agent.files.write_file,
                     args={
