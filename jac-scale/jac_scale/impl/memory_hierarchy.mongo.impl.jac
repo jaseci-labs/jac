@@ -833,6 +833,17 @@ impl MongoBackend._put_node_atomic(
             return_document=ReturnDocument.AFTER
         );
 
+        self._atomic_written.add(anchor.id);
+        if self._l2_ref {
+            try {
+                self._l2_ref.invalidate(anchor.id);
+            } except Exception as inv_err {
+                logger.debug(
+                    f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
+                );
+            }
+        }
+
         try {
             if merged_doc {
                 merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
@@ -864,17 +875,6 @@ impl MongoBackend._put_node_atomic(
                 f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
             );
         }
-
-        if self._l2_ref {
-            try {
-                self._l2_ref.invalidate(anchor.id);
-            } except Exception as inv_err {
-                logger.debug(
-                    f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
-                );
-            }
-        }
-        self._atomic_written.add(anchor.id);
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
