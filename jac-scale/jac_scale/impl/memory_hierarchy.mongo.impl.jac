@@ -10,6 +10,7 @@ collections on first write, so all we do here is load any existing
 aliases into the in-process Serializer map.
 """
 impl MongoBackend.postinit -> None {
+    self._atomic_written = set();
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
@@ -703,12 +704,18 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only changed anchors)."""
-impl MongoBackend.sync -> None {
+"""Sync - flush L1 memory to MongoDB (only changed anchors).
+
+Returns the set of anchor IDs written via the edge-delta atomic path this
+cycle; those entries have already been invalidated in L2, so the caller
+(ScaleTieredMemory.commit) skips re-caching them from the stale in-memory
+snapshot."""
+impl MongoBackend.sync -> set {
     import from jaclang { JacRuntimeInterface as Jac }
     if not self._mem_ref or not self.client {
-        return;
+        return set();
     }
+    self._atomic_written = set();
     for (_, anchor) in list(self._mem_ref.items()) {
         if not anchor.persistent {
             continue;
@@ -757,6 +764,7 @@ impl MongoBackend.sync -> None {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
     }
+    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
@@ -816,12 +824,57 @@ impl MongoBackend._put_node_atomic(
             ]
         };
 
-        self.collection.update_one({'_id': _id}, [{'$set': set_doc}], upsert=True);
+        import from pymongo { ReturnDocument }
+        merged_doc = self.collection.find_one_and_update(
+            {'_id': _id},
+            [{'$set': set_doc}],
+            projection={'data.edges': 1},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        );
+
+        self._atomic_written.add(anchor.id);
+        if self._l2_ref {
+            try {
+                self._l2_ref.invalidate(anchor.id);
+            } except Exception as inv_err {
+                logger.debug(
+                    f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
+                );
+            }
+        }
+
+        try {
+            if merged_doc {
+                merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
+                or [];
+                merged_ids: set = {
+                    UUID(s)
+                    for s in merged_ids_str
+                    if s
+                };
+                object.__setattr__(anchor, '_initial_edge_ids', frozenset(merged_ids));
+                anchor.edges = [
+                    e
+                    for e in anchor.edges
+                    if e.id in merged_ids
+                ];
+            }
+        } except Exception as rb_err {
+            logger.debug(f"MongoDB _put_node_atomic read-back failed: {rb_err}");
+        }
+
         anchor.hash = Serializer._compute_hash(anchor);
         if arch is not None {
             arch.__dict__.pop('__jac_dirty_fields__', None);
         }
-        _snapshot_field_hashes(anchor);
+        try {
+            _snapshot_field_hashes(anchor);
+        } except Exception as shf_err {
+            logger.debug(
+                f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
+            );
+        }
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
