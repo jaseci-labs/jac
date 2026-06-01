@@ -142,14 +142,26 @@ cl {
 
         if not metricsAvailable {
             return
-                <div className="bg-slate-900 border border-amber-500/30 rounded-lg p-6">
-                    <h2 className="text-sm font-medium text-white mb-2">
-                        Metrics unavailable
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                        {unavailableReason
-                        or "Could not reach the Prometheus monitoring stack."}
-                    </p>
+                <div
+                    className="relative bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-teal-500/30 rounded-2xl p-8 text-center shadow-2xl shadow-teal-500/10"
+                >
+                    <div
+                        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(20,184,166,0.1),transparent_70%)] rounded-2xl"
+                    ></div>
+                    <div className="relative">
+                        <div
+                            className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 border-2 border-orange-500/50 flex items-center justify-center"
+                        >
+                            <span className="text-2xl text-orange-400">!</span>
+                        </div>
+                        <h2 className="text-xl font-bold text-white mb-2 tracking-wide">
+                            USAGE OFFLINE
+                        </h2>
+                        <p className="text-sm text-slate-400 font-mono">
+                            {unavailableReason
+                            or "Enable in jac.toml: [plugins.scale.monitoring] enabled = true"}
+                        </p>
+                    </div>
                 </div>;
         }
 
