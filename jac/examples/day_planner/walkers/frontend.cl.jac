@@ -28,8 +28,7 @@ def:pub app -> JsxElement {
     }
 
     if checkingAuth {
-        return
-            <div class="auth-loading">Loading...</div>;
+        return <div class="auth-loading">Loading...</div>;
     }
 
     if isLoggedIn {
@@ -43,6 +42,5 @@ def:pub app -> JsxElement {
             </div>;
     }
 
-    return
-        <AuthForm onAuth={handleAuth}/>;
+    return <AuthForm onAuth={handleAuth}/>;
 }

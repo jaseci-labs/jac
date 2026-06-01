@@ -314,7 +314,43 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         type_params=func_type_params,
         is_async=node_.is_async,
     );
+    func_type = self._apply_function_decorators(node_, func_type);
     node_.name_spec.type = func_type;
+    return func_type;
+}
+
+"""Type an ability by applying its callable->callable decorators (e.g. contextmanager).
+
+Binds the decorator's TypeVars from `func_type` and adopts its result, with no
+per-decorator name special-casing. property/classmethod/etc. are ClassType, not
+matched here, and keep their own handling.
+"""
+impl TypeEvaluator._apply_function_decorators(
+    node_: uni.Ability, func_type: types.FunctionType
+) -> types.FunctionType {
+    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
+    if not node_.decorators {
+        return func_type;
+    }
+    for decorator in node_.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if not isinstance(decorator_type, types.FunctionType) {
+            continue;
+        }
+        params = decorator_type.parameters or [];
+        # Only callable->callable decorators: take one function, return one.
+        if len(params) != 1
+        or not isinstance(params[0].param_type, types.FunctionType)
+        or not isinstance(decorator_type.return_type, types.FunctionType) {
+            continue;
+        }
+        bindings: dict[str, TypeBase] = {};
+        self.assign_type_to_type_var(params[0].param_type, func_type, bindings);
+        decorated = apply_solved_type_vars(decorator_type.return_type, bindings);
+        if isinstance(decorated, types.FunctionType) {
+            func_type = decorated;
+        }
+    }
     return func_type;
 }
 

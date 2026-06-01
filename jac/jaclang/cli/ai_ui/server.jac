@@ -18,7 +18,8 @@ import from jaclang.cli.ai_agent {
     ui_stream,
     ui_settings,
     ui_apply_settings,
-    ui_call_detail
+    ui_call_detail,
+    ui_phase_context
 }
 
 # Point the agent at the user's project and build its model. Runs once when the
@@ -343,6 +344,27 @@ def:pub agent_call_detail(call_id: int) -> CallDetail {
         tool_chars=int(d.get("tool_chars", 0) or 0),
         prev_id=int(d.get("prev_id", -1)),
         next_id=int(d.get("next_id", -1))
+    );
+}
+
+"""A phase node's captured context: the messages (role/content/tool-call
+summaries) that phase last worked with. `found` is False for Done or before the
+phase has run this session."""
+obj PhaseContext {
+    has found: bool = False,
+        phase: str = "",
+        messages: list[CallMessage] = [];
+}
+
+"""The latest captured conversation for a phase node (Plan/Build/QA), shown in
+the phase inspector. Fetched lazily when the user clicks a graph node, so the
+(potentially large) message text never rides the per-frame poll/stream."""
+def:pub agent_phase_context(phase: str) -> PhaseContext {
+    d = ui_phase_context(phase);
+    return PhaseContext(
+        found=bool(d.get("found", False)),
+        phase=str(d.get("phase", phase)),
+        messages=_to_call_msgs(d.get("messages", []))
     );
 }
 

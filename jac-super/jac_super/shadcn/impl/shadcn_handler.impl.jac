@@ -278,9 +278,18 @@ impl remove_shadcn_components(config: any, component_names: list) -> bool {
         return False;
     }
 
+    # Resolve each name to its installed filename via the registry's `file`
+    # field -- some names differ from their file (e.g. `input-otp` installs as
+    # `otp-input.cl.jac`), so `name + ".cl.jac"` would miss them. Fall back to
+    # that form for names not in the registry (or already a bare file basename).
+    registry_data = load_registry();
+    components_meta = registry_data.get("components", {});
+
     removed: list = [];
     for name in component_names {
-        filepath = ui_dir / (name + ".cl.jac");
+        comp = components_meta.get(name);
+        filename = comp["file"] if comp and "file" in comp else (name + ".cl.jac");
+        filepath = ui_dir / filename;
         if filepath.exists() {
             filepath.unlink();
             removed.append(name);

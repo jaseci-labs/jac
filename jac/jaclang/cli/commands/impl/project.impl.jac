@@ -1106,6 +1106,9 @@ def _find_precompile_pythons -> list[tuple[str, str]] {
     for minor in _PRECOMPILE_MINOR_RANGE {
         exe: str | None = shutil.which(f"python3.{minor}");
         if not exe {
+            console.warning(
+                f"python3.{minor} not found on PATH — skipping this version"
+            );
             continue;
         }
         found.append((exe, f"cpython-3{minor}"));
@@ -1191,10 +1194,10 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     pythons = _find_precompile_pythons();
 
     if not pythons {
-        console.warning(
-            "No matching Python executables found on PATH — skipping precompilation."
+        console.error(
+            "No matching Python executables found on PATH — cannot precompile."
         );
-        return 0;
+        return 1;
     }
 
     installer = DependencyInstaller(config=config);
@@ -1214,15 +1217,12 @@ def _precompile_all_pythons(config: JacConfig) -> int {
         }
     }
     if failed_versions {
-        console.warning(
+        console.error(
             "Precompilation incomplete — "
             f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
             f"{', '.join(failed_versions)}"
         );
-        if len(failed_versions) == len(pythons) {
-            console.error("All precompilation targets failed — aborting bundle.");
-            return 1;
-        }
+        return 1;
     }
     return 0;
 }

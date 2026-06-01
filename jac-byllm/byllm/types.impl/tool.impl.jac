@@ -15,11 +15,11 @@ impl Tool.postinit -> None {
         self.params_desc = {name: str(type) for (name, type) in annotations.items()};
     }
     # Pick up serialize/timeout_sec from function attributes if set by the user.
-    if hasattr(self.func, '_serialize') {
-        self.serialize = self.func._serialize;
+    if self.func?._serialize is not None {
+        self.serialize = self.func._serialize;  # type: ignore
     }
-    if hasattr(self.func, '_timeout_sec') {
-        self.timeout_sec = self.func._timeout_sec;
+    if self.func?._timeout_sec is not None {
+        self.timeout_sec = self.func._timeout_sec;  # type: ignore
     }
 }
 
