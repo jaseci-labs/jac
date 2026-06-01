@@ -264,7 +264,7 @@ obj JacAPIServer {
         # fall back to the normal lazy _ensure_available path for
         # anything the parent missed.
         is_sv_sibling: bool = False,
-        _app_config: (JacConfig | None) = None,
+        _app_config: (JacConfig | None) by postinit,
         user_manager: UserManager by postinit,
         execution_manager: ExecutionManager by postinit,
         introspector: ModuleIntrospector by postinit,

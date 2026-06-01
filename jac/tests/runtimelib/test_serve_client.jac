@@ -129,12 +129,13 @@ def make_bundled_crossboundary_client -> tuple {
 
 """Create test client with base_route_app configured for SPA catch-all.
 
-Writes a jac.toml into the fixture dir so JacAPIServer discovers
-base_route_app from its own base_path rather than the process-level
+Writes the base_route_app config into the fixture dir so JacAPIServer
+discovers it from its own base_path rather than the process-level
 get_config() singleton.  This keeps the SPA config scoped to this
 client instance and prevents cross-test contamination under xdist.
+
 """
-def make_spa_client(tmp_path: str) -> JacTestClient {
+def make_spa_client(tmp_path: str, config_file: str = "jac.toml") -> JacTestClient {
     fixtures_src = Path(fixture_abs_path("")).resolve();
     unique_id = uuid.uuid4().hex[:8];
     module_name = f"spa_app_{unique_id}";
@@ -149,11 +150,17 @@ def make_spa_client(tmp_path: str) -> JacTestClient {
             shutil.copy(f, fixtures_dest / dest_name);
         }
     }
-    # Write a jac.toml so JacAPIServer.postinit discovers base_route_app
+    # Write the base_route_app config so JacAPIServer.postinit discovers it
     # from its base_path, not from the process-level get_config() singleton.
-    (fixtures_dest / "jac.toml").write_text(
-        '[serve]\nbase_route_app = "client_page"\n'
-    );
+    serve_block = '[serve]\nbase_route_app = "client_page"\n';
+    if config_file == "jac.toml" {
+        (fixtures_dest / "jac.toml").write_text(serve_block);
+    } else {
+        # Base jac.toml (no base_route_app) establishes the project root;
+        # the override lives in an overlay file merged by apply_profile_overlay.
+        (fixtures_dest / "jac.toml").write_text('[project]\nname = "spa_test"\n');
+        (fixtures_dest / config_file).write_text(serve_block);
+    }
     return JacTestClient.from_file(
         str(fixtures_dest / f"{module_name}.jac"),
         base_path=str(fixtures_dest),
@@ -1536,6 +1543,23 @@ test "serve spa catchall static files unaffected" {
         spa = make_spa_client(tmpdir);
         response = spa.get("/static/nonexistent.js");
         assert not response.ok;
+        spa.close();
+    }
+}
+
+# Regression: the request router must honor base_route_app set in an overlay
+# file (jac.local.toml / jac.<profile>.toml), not just the base jac.toml.
+# JacAPIServer.postinit applies apply_profile_overlay to _app_config so the
+# routing path resolves config the same way the CLI does for the singleton.
+# Without that overlay step, GET / falls through to 404 here.
+test "serve spa catchall honors base_route_app from jac.local.toml overlay" {
+    with TemporaryDirectory() as tmpdir {
+        spa = make_spa_client(tmpdir, config_file="jac.local.toml");
+        response = spa.get("/");
+        assert response.ok;
+        html = response.text;
+        assert "<!DOCTYPE html>" in html;
+        assert '<div id="__jac_root">' in html;
         spa.close();
     }
 }

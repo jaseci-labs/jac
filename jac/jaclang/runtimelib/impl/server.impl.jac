@@ -1516,15 +1516,28 @@ impl JacAPIServer.postinit -> None {
         user_manager=self.user_manager
     );
     self.scheduler = Scheduler.instance();
-    # Discover and snapshot config scoped to this server's base_path.
-    # Storing it here lets request handlers use server._app_config
-    # instead of the process-level get_config() singleton, which can
-    # be mutated by other in-process clients (e.g. set_config() calls
-    # in tests). This prevents cross-test config contamination under
-    # pytest-xdist parallel workers.
+    # Discover config scoped to this server's base_path and store it here so
+    # request handlers read server._app_config instead of the process-level
+    # get_config() singleton. The singleton can be mutated by other in-process
+    # clients (e.g. set_config() calls in parallel test workers), which would
+    # leak one server's routing config into another. A per-instance snapshot
+    # taken from base_path is immune to that.
+    #
+    # discover() loads only the base jac.toml, so we then apply the same
+    # profile / jac.local.toml overlay the CLI applies to the global config
+    # (see _discover_config_from_file). Without this, --profile and
+    # jac.local.toml overrides of [serve] / [plugins.client] would be honored
+    # by get_config() readers (startup banner, response headers) but silently
+    # ignored by the request router. We borrow only the active profile name
+    # from the global config; all config values still come from base_path.
     self._app_config = JacConfig.discover(
         start_path=Path(self.base_path) if self.base_path else None
     );
+    if self._app_config is not None {
+        _existing_cfg = get_config();
+        _active_profile = _existing_cfg.active_profile if _existing_cfg else None;
+        self._app_config.apply_profile_overlay(_active_profile or None);
+    }
     # Only create real server if port > 0 (port=0 is test mode - no socket binding)
     if self.port > 0 {
         self.server = Jac.create_server(self, '0.0.0.0', self.port);
@@ -2096,11 +2109,12 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         resolve_client_error_stacks,
                         format_client_error_log
                     }
-                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
-                        cfg = get_config();
+                        # Use the server-local config snapshot (see postinit),
+                        # not the process-level get_config() singleton.
+                        cfg = server._app_config;
                         verbose = cfg.client_errors.verbose if cfg else False;
                         (stack, component_stack) = resolve_client_error_stacks(
                             server.base_path,
