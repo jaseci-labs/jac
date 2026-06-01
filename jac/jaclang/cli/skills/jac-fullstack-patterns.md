@@ -32,7 +32,8 @@ cl {
 - **Import obj/node TYPES alongside functions** in both places. Missing types → server `NameError` at runtime or lost typed attribute access on the client.
 - **Call server endpoints with POSITIONAL args, not kwargs.** `save_profile(name, email)` works; `save_profile(name=name, email=email)` sends empty body → `422 Field required`.
 - **Client entry is `def:pub app()`** - lowercase `app`. Not `App()`, `ClientApp()`. Runtime mounts the literal name.
-- **Global vs scoped CSS:** import app-wide CSS once in `main.jac`'s `cl { }` block (`import ".styles.global.css";` for themes, resets, Tailwind). For component-specific classes, add a same-basename `Comp.style.css` beside the `.cl.jac` -- it auto-scopes and needs no import. See `jac-cl-styling`.
+- **Global vs scoped CSS:** import app-wide CSS once in `main.jac`'s `cl { }` block (`import ".styles.global.css";` for the Tailwind import and custom CSS variables). For component-specific classes, add a same-basename `Comp.style.css` beside the `.cl.jac` -- it auto-scopes and needs no import. See `jac-cl-styling`.
+- **No CSS reset in Tailwind projects.** `@import "tailwindcss"` includes Preflight which handles baseline normalization. Adding `* { margin: 0; padding: 0; box-sizing: border-box }` overrides Preflight and breaks all spacing utilities (`p-4`, `m-2`, `gap-6`). Plain-CSS-only projects (no Tailwind import) may still use resets.
 - **Start with `jac start --dev main.jac`** (background for hot reload). NOT `jac serve` (deprecated).
 - **HMR only reloads client (`.cl.jac`) files. Server (`.sv.jac`) changes need a full restart.** `def:pub`/`def:priv` endpoints + `glob` declarations evaluate once at server boot - editing a `.sv.jac` does not invalidate cached endpoints. `pkill -f "jac start"` then `jac start --dev main.jac` to pick up changes.
 - **Don't wrap the client entry in `with entry { ... }`.** Runtime mounts `def:pub app` directly.

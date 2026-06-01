@@ -38,6 +38,7 @@ Rules:
 - **Only declared classes are rewritten.** Undeclared tokens (Tailwind utilities, shadcn classes) pass through untouched, so you can mix scoped + utility classes in one `className`.
 - **`:global(...)`** keeps a selector unscoped -- use it for resets, element selectors, or targeting third-party classes.
 - **Scoped vs global:** use `.style.css` for component-specific classes; use a plain shared `import "./global.css";` (or Tailwind) for app-wide styles.
+- **Tailwind projects: no `*` reset in `global.css`.** After `@import "tailwindcss";`, add only `:root` variable blocks and `@theme inline` registrations. A `* { margin: 0; padding: 0; box-sizing: border-box }` reset conflicts with Preflight and collapses spacing utilities. Plain-CSS-only projects (no `@import "tailwindcss"`) may still use resets.
 
 ## Conditional Classes
 

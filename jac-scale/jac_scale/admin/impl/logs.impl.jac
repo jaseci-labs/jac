@@ -208,15 +208,24 @@ def _build_logql(
     if trace_id {
         # The K-12 trace id is exactly 8 hex chars for the short form
         # we put in the [trace=...] prefix; full UUID elsewhere. Match
-        # both shapes.
-        escaped_tid = trace_id.replace('"', '\\"');
+        # both shapes. The literal brackets need `\\[` / `\\]` in the
+        # LogQL string so the parser unescapes them to `\[` / `\]` for
+        # the regex engine - a bare `\[` is rejected as "invalid char
+        # escape" by Go's strconv.Unquote inside Loki's parser.
+        # Backslashes are doubled first so quotes inserted next don't
+        # get re-doubled (replace order matters here).
+        escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\[trace={escaped_tid[:8]}\\]"'
+            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
         );
     }
     if search {
         # Free-text contains-match. `|=` is case-sensitive substring.
-        escaped_search = search.replace('"', '\\"').replace("\\", "\\\\");
+        # Backslashes MUST be doubled before quotes are escaped,
+        # otherwise the `\"` we just inserted gets re-mangled into
+        # `\\"` which delivers a stray backslash to the substring
+        # match.
+        escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(f'|= "{escaped_search}"');
     }
 
