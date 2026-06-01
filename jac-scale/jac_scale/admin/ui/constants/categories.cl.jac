@@ -8,7 +8,6 @@ cl {
              {"id": "monitor", "label": "Monitoring", "default": "metrics"},
              {"id": "settings", "label": "Settings", "default": "config"},
              {"id": "integrations", "label": "Integrations", "default": "email"},
-             {"id": "deploy", "label": "Deployment", "default": "workloads"},
              {"id": "audit", "label": "Audit", "default": "activity"}
          ];
 
@@ -31,6 +30,8 @@ cl {
              ],
              "monitor": [
                  {"id": "metrics", "label": "Metrics"},
+                 {"id": "workloads", "label": "Workloads"},
+                 {"id": "usage", "label": "Usage"},
                  {"id": "llm_metrics", "label": "LLM Metrics"},
                  {"id": "llm_traces", "label": "LLM Traces"},
                  {"id": "logs", "label": "Logs"},
@@ -49,10 +50,6 @@ cl {
                  {"id": "notifications", "label": "Notifications"},
                  {"id": "storage_providers", "label": "Storage"},
                  {"id": "database", "label": "Database"}
-             ],
-             "deploy": [
-                 {"id": "workloads", "label": "Workloads"},
-                 {"id": "usage", "label": "Usage"}
              ],
              "audit": [
                  {"id": "activity", "label": "Activity Log"},

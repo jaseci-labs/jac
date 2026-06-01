@@ -58,6 +58,8 @@ cl {
              },
              "monitor": {
                  "metrics": MetricsPage,
+                 "workloads": WorkloadsPage,
+                 "usage": GraphsPage,
                  "llm_metrics": LLMMetricsPage,
                  "llm_traces": LLMTracesPage,
                  "logs": LogsPage,
@@ -77,7 +79,6 @@ cl {
                  "storage_providers": StorageProvidersPage,
                  "database": DatabasePage
              },
-             "deploy": {"workloads": WorkloadsPage, "usage": GraphsPage},
              "audit": {"activity": ActivityPage, "security": SecurityPage}
          };
 
