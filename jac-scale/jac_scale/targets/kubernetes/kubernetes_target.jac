@@ -1824,12 +1824,10 @@ obj KubernetesTarget(DeploymentTarget) {
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
-        autoscaling_v2 = client.AutoscalingV2Api();
-        delete_if_exists(
-            autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
-            f"{app_name}-hpa",
-            namespace,
-            'HorizontalPodAutoscaler'
+        AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, {}, self.logger
+        ).destroy(
+            app_name, namespace
         );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
