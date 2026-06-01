@@ -220,7 +220,7 @@ jobs:
 
     - name: Install jac-scale[aws] and moto
       run: |
-        pip install -e "jac-scale[aws]"
+        jac install -e jac-scale --extras aws
         pip install "moto[s3]>=5.0.0"
 
     - name: Run Storage tests

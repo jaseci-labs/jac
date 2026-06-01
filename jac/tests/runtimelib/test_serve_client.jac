@@ -129,7 +129,7 @@ def make_bundled_crossboundary_client -> tuple {
 
 """Create test client with base_route_app configured for SPA catch-all."""
 def make_spa_client(tmp_path: str) -> JacTestClient {
-    import from jaclang.project.config { JacConfig, ServeConfig, set_config }
+    import from jaclang.project.config { JacConfig, ServeConfig }
     fixtures_src = Path(fixture_abs_path("")).resolve();
     unique_id = uuid.uuid4().hex[:8];
     module_name = f"spa_app_{unique_id}";
@@ -144,11 +144,11 @@ def make_spa_client(tmp_path: str) -> JacTestClient {
             shutil.copy(f, fixtures_dest / dest_name);
         }
     }
-    set_config(JacConfig(serve=ServeConfig(base_route_app="client_page")));
     return JacTestClient.from_file(
         str(fixtures_dest / f"{module_name}.jac"),
         base_path=str(fixtures_dest),
-        module_name=module_name
+        module_name=module_name,
+        config=JacConfig(serve=ServeConfig(base_route_app="client_page"))
     );
 }
 
@@ -1469,8 +1469,6 @@ test "serve spa catchall serves html for clean urls" {
         assert '<div id="__jac_root">' in html;
         assert "/static/client.js?hash=" in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1483,8 +1481,6 @@ test "serve spa catchall root serves html" {
         assert "<!DOCTYPE html>" in html;
         assert '<div id="__jac_root">' in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1496,8 +1492,6 @@ test "serve spa catchall nested path" {
         html = response.text;
         assert "<!DOCTYPE html>" in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1513,8 +1507,6 @@ test "serve spa catchall api paths unaffected" {
         data = walkers_response.data;
         assert "walkers" in data;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1527,8 +1519,6 @@ test "serve spa catchall cl route still works" {
         assert "<!DOCTYPE html>" in html;
         assert '<div id="__jac_root">' in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1538,14 +1528,10 @@ test "serve spa catchall static files unaffected" {
         response = spa.get("/static/nonexistent.js");
         assert not response.ok;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
 test "serve unknown path returns 404 without base route app" {
-    import from jaclang.project.config { JacConfig, set_config }
-    set_config(JacConfig());
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.get("/some-unknown-path");
