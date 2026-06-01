@@ -1798,6 +1798,13 @@ cl def truthy_probe() -> dict {
     r["and_len"] = len(and_res);
     r["tern_el"] = 1 if el else 0;
     r["tern_fl"] = 1 if fl else 0;
+    # `and`/`or` used directly as a condition: the helper returns an *operand*
+    # (a collection), and the enclosing if/while must apply Python truthiness to
+    # it -- a bare `if (and_(...))` would see an empty array/object as truthy.
+    if el and fl { r["and_cond_ff"] = 1; } else { r["and_cond_ff"] = 0; }
+    if fl and fs_ { r["and_cond_tt"] = 1; } else { r["and_cond_tt"] = 0; }
+    if el or ed { r["or_cond_ff"] = 1; } else { r["or_cond_ff"] = 0; }
+    if el or fl { r["or_cond_ft"] = 1; } else { r["or_cond_ft"] = 0; }
     return r;
 }
 """;
@@ -1830,7 +1837,11 @@ cl def truthy_probe() -> dict {
             "or_len": 1,
             "and_len": 0,
             "tern_el": 0,
-            "tern_fl": 1
+            "tern_fl": 1,
+            "and_cond_ff": 0,
+            "and_cond_tt": 1,
+            "or_cond_ff": 0,
+            "or_cond_ft": 1
         };
         for (key, want) in expected.items() {
             assert got[key] == want , (

@@ -2238,6 +2238,20 @@ impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
 subscript semantics diverge from Python (list/dict/set/tuple/bytes). str is
 excluded: empty-string falsiness and `.at()` already agree with Python."""
 impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
+    # `and`/`or` evaluate to one of their operands (Python returns the operand,
+    # not a bool), so the result can be a collection -- and thus needs
+    # Python-truthiness coercion in a boolean context -- whenever any operand
+    # can, even though the expression's inferred type is a union that is not
+    # itself a collection. This also keeps `exit_bool_expr`'s own
+    # `left_maybe_collection` check consistent for nested `and`/`or` chains.
+    if isinstance(expr_node, uni.BoolExpr) {
+        for val in expr_node.values {
+            if self._is_collection_expr(val) {
+                return True;
+            }
+        }
+        return False;
+    }
     return self._expr_type_name(expr_node) in {
         "list",
         "dict",
