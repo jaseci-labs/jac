@@ -54,6 +54,12 @@ cl def test_poly_complete() -> dict {
     b = opaque(Box());
     box_count = b.count();
 
+    # --- JS-global method on a function-typed receiver ---
+    # `Object` is an untyped reference, so `Object.keys(...)` routes through
+    # the dispatcher. At runtime `Object` is a function; the dispatcher must
+    # forward to its own `.keys` method rather than treat it as a dict.
+    obj_keys = Object.keys({"p": 1, "q": 2});
+
     return {
         "keys": keys,
         "vals": vals,
@@ -64,7 +70,8 @@ cl def test_poly_complete() -> dict {
         "cnt": cnt,
         "has_three": has_three,
         "has_one": has_one,
-        "box_count": box_count
+        "box_count": box_count,
+        "obj_keys": obj_keys
     };
 }
 

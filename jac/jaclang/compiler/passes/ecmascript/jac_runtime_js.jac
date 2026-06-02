@@ -437,6 +437,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     // type is not provably primitive is compiled to
     // `_jac.poly.call(obj, "method", ...args)`.
     call(o, m, ...args) {
+      // 1. Genuine JS primitives get Python-semantic dispatch: a plain object
+      //    is a Python dict, an Array is a list, a Set/Map/string/number/bytes
+      //    maps to its Python counterpart. These are the types whose Python
+      //    method semantics differ from (or have no) native JS equivalent.
       if (typeof o === "string") {
         if (_jac.poly._str[m]) return _jac.poly._str[m](o, ...args);
         if (_jac.str[m]) return _jac.str[m](o, ...args);
@@ -449,19 +453,26 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         if (_jac.poly._set[m]) return _jac.poly._set[m](o, ...args);
       } else if (o instanceof Map) {
         if (_jac.poly._map[m]) return _jac.poly._map[m](o, ...args);
-        if (typeof o[m] === "function") return o[m](...args);
       } else if (o instanceof Uint8Array) {
         if (_jac.bytes[m]) return _jac.bytes[m](o, ...args);
-      } else if (o !== null && o !== undefined && typeof o === "object") {
-        const proto = Object.getPrototypeOf(o);
-        if (proto === Object.prototype || proto === null) {
-          // A plain object is a Python dict literal.
-          if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
-        } else if (typeof o[m] === "function") {
-          // A user-defined class instance dispatches to its own method.
-          return o[m](...args);
-        }
+      } else if (
+        o !== null && o !== undefined && typeof o === "object"
+        && (Object.getPrototypeOf(o) === Object.prototype
+            || Object.getPrototypeOf(o) === null)
+      ) {
+        // A plain object is a Python dict literal.
+        if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
       }
+      // 2. Otherwise forward to a same-named method the receiver carries
+      //    itself: a user-defined class instance, a host/framework object
+      //    (Headers, URLSearchParams, ...), a callable with attached methods,
+      //    or a Set/Map/Array method not mirrored above. This matches the
+      //    direct `obj.method(...)` that a typed call would have emitted.
+      if (o !== null && o !== undefined && typeof o[m] === "function") {
+        return o[m](...args);
+      }
+      // 3. Nothing applies: raise the Python-style error instead of leaking a
+      //    method name or silently returning a wrong value.
       throw new _jac.exc.AttributeError(
         "'" + _jac.poly._typename(o) + "' object has no attribute '" + m + "'");
     },

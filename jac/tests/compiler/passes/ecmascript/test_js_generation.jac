@@ -1278,6 +1278,11 @@ test "poly call dispatches dict/list/set/user methods on untyped receivers" {
             got
         )
     );
+    # JS-global method on a function-typed receiver (Object.keys): the
+    # dispatcher must forward to the function's own method, not throw.
+    assert got["obj_keys"] == ["p", "q"] , (
+        "Object.keys via the dispatcher must forward to the real method: " + str(got)
+    );
     # The dispatcher raises a catchable AttributeError for an unsupported op.
     assert raised == True , (
         "an eligible method on an incompatible runtime type must raise "
