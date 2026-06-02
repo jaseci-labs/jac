@@ -4,6 +4,45 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  # Manual re-publish: if the auto-trigger run failed partway (e.g. a build
+  # error after the release/* PR was already merged), re-fire publishing for
+  # selected packages. Versions are read from each package's manifest on the
+  # current ref — no need to re-merge a release/* PR. Tier ordering and the
+  # "already on PyPI" skip still apply, so re-running is safe.
+  workflow_dispatch:
+    inputs:
+      jaclang:
+        description: "Publish jaclang"
+        type: boolean
+        default: false
+      jac-byllm:
+        description: "Publish jac-byllm (byllm)"
+        type: boolean
+        default: false
+      jac-client:
+        description: "Publish jac-client"
+        type: boolean
+        default: false
+      jac-scale:
+        description: "Publish jac-scale"
+        type: boolean
+        default: false
+      jac-super:
+        description: "Publish jac-super"
+        type: boolean
+        default: false
+      jac-mcp:
+        description: "Publish jac-mcp"
+        type: boolean
+        default: false
+      jac-desktop:
+        description: "Publish jac-desktop"
+        type: boolean
+        default: false
+      jaseci:
+        description: "Publish jaseci meta-package"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -13,9 +52,12 @@ jobs:
   # ============================================================================
   parse-release:
     if: |
-      github.repository == 'Jaseci-Labs/jaseci' &&
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'release/')
+      github.repository == 'Jaseci-Labs/jaseci' && (
+        github.event_name == 'workflow_dispatch' || (
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'release/')
+        )
+      )
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
@@ -41,9 +83,25 @@ jobs:
       - name: Parse release info
         id: parse
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Collect the checked packages (empty string when unchecked).
+          IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
+          IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
+          IN_CLIENT: ${{ inputs['jac-client'] && 'jac-client' || '' }}
+          IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
+          IN_SUPER: ${{ inputs['jac-super'] && 'jac-super' || '' }}
+          IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
+          IN_DESKTOP: ${{ inputs['jac-desktop'] && 'jac-desktop' || '' }}
+          IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
-          jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_CLIENT $IN_SCALE $IN_SUPER $IN_MCP $IN_DESKTOP $IN_JASECI"
+            echo "Manual dispatch - selected packages: $PACKAGES"
+            jac run scripts/parse_release.jac --packages "$PACKAGES"
+          else
+            jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
+          fi
 
   # ============================================================================
   # Approval gate - ONE click to approve all publishing
@@ -174,6 +232,76 @@ jobs:
           path: ${{ matrix.dir }}/dist/*
 
   # ============================================================================
+  # Publish npm packages (npmjs.org) — independent of the PyPI tiers.
+  # A package opts in with an [npm] section in its jac.toml; the Jac client
+  # runtime (@jaseci/runtime) is published alongside jaclang so JSX/component
+  # packages have a runtime dependency to resolve against.
+  # ============================================================================
+  publish-npm:
+    needs: [parse-release, build]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # Decide what npm work (if any) this matrix entry implies:
+      #   runtime -> this is jaclang, also publish @jaseci/runtime
+      #   pkg     -> this package's jac.toml has an [npm] section (opt-in)
+      - name: Determine npm work
+        id: npm
+        run: |
+          RUNTIME=false; PKG=false
+          if [ "${{ matrix.name }}" = "jaclang" ]; then RUNTIME=true; fi
+          if [ -f "${{ matrix.dir }}/jac.toml" ] && grep -qE '^\[npm\]' "${{ matrix.dir }}/jac.toml"; then PKG=true; fi
+          ANY=false; if [ "$RUNTIME" = "true" ] || [ "$PKG" = "true" ]; then ANY=true; fi
+          echo "runtime=$RUNTIME" >> "$GITHUB_OUTPUT"
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "any=$ANY" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.npm.outputs.any == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        if: steps.npm.outputs.any == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install jaclang
+        if: steps.npm.outputs.any == 'true'
+        run: pip install -e ./jac
+
+      # Publish @jaseci/runtime (versioned to the jaclang release).
+      - name: Build and publish @jaseci/runtime
+        if: steps.npm.outputs.runtime == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          jac bundle --target npm-runtime -o dist-runtime
+          npm publish dist-runtime/jaseci-runtime-*.tgz --access public
+
+      # Publish an opt-in package's npm tarball.
+      - name: Build and publish npm package
+        if: steps.npm.outputs.pkg == 'true'
+        working-directory: ${{ matrix.dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          jac bundle --target npm
+          npm publish dist/*.tgz --access public
+
+  # ============================================================================
   # Publish Tier 1: jaclang (base package)
   # ============================================================================
   publish-tier1:
@@ -206,6 +334,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier1:
     needs: [parse-release, publish-tier1]
@@ -264,6 +395,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier2:
     needs: [parse-release, publish-tier2]
@@ -322,6 +456,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier3:
     needs: [parse-release, publish-tier3]
