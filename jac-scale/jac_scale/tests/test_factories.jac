@@ -263,7 +263,7 @@ test "hpa autoscaler build manifests produces correct dict" {
         "metadata": {
             "name": "my-service-hpa",
             "namespace": "default",
-            "labels": {"app": "my-service", "managed": "jac-scale"}
+            "labels": {"app": "my-service-deployment", "managed": "jac-scale"}
         },
         "spec": {
             "scaleTargetRef": {

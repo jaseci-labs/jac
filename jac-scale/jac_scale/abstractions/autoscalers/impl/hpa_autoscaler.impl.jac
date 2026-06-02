@@ -7,17 +7,14 @@ impl HPAAutoscaler._build_manifests{
         )
     )
         if spec.triggers
-        else 50;
+        else DEFAULT_CPU_UTILIZATION_TARGET;
     return {
         "apiVersion": "autoscaling/v2",
         "kind": "HorizontalPodAutoscaler",
         "metadata": {
             "name": hpa_name,
             "namespace": spec.namespace,
-            "labels": {
-                "app": hpa_name.removesuffix('-hpa'),
-                ** Autoscaler._managed_labels()
-            }
+            "labels": {"app": spec.scale_target_name, ** Autoscaler._managed_labels()}
         },
         "spec": {
             "scaleTargetRef": {
