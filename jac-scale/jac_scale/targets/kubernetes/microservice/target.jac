@@ -484,7 +484,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_name = k8s_safe_name(svc_name);
             cfg = {};
             try {
-                import from jac_scale.config_loader { get_scale_config }
                 cfg = dict(
                     get_scale_config().get_microservices_config().get(
                         "services", {}
