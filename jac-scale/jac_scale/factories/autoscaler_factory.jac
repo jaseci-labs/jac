@@ -70,7 +70,7 @@ class AutoscalerFactory {
             import from jac_scale.abstractions.autoscalers.hpa_autoscaler {
                 HPAAutoscaler
             }
-            return HPAAutoscaler();
+            return HPAAutoscaler(logger=logger);
         }
         raise ValueError(
             f"Unsupported autoscaler engine: '{engine}'. Supported engines: 'hpa'."
