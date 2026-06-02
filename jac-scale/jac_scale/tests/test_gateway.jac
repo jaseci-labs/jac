@@ -1455,17 +1455,77 @@ test "http_forward_timeout precedence: per-service > global > default" {
 
 
 # =============================================================================
-# A-05a/A-05c: gateway inherits the admin + logs mixins (regression guard).
-# The microservice gateway must expose both register_admin_endpoints
-# (JacAPIServerAdmin) and register_logs_endpoints (JacAPIServerLogs) so
-# _install_admin_api can wire /admin/* + /admin/logs/* onto its FastAPI
-# app. A previous PR-slicing dropped the Logs inheritance off the gateway,
-# leaving the in-admin Logs UI spinning on "Loading logs..." (the
-# /admin/logs request fell through to the SPA catchall and got HTML).
+# A-05a/A-05c: gateway inherits the admin + logs + llm-telemetry mixins
+# (regression guard). The microservice gateway must expose
+# register_admin_endpoints (JacAPIServerAdmin), register_logs_endpoints
+# (JacAPIServerLogs), and register_llm_telemetry_endpoints
+# (JacAPIServerLLMTelemetry) so _install_admin_api can wire /admin/*,
+# /admin/logs/*, and /admin/llm/telemetry/* onto its FastAPI app. PR-slicing
+# has twice dropped one of these off the gateway: first the Logs mixin (the
+# in-admin Logs UI spun on "Loading logs..."), then the LLM-telemetry mixin
+# (the in-admin LLM metrics page got the SPA index.html instead of JSON).
+# The monolith registers all three in serve.core's _register_endpoints; the
+# gateway must mirror that set.
 # =============================================================================
-test "gateway inherits admin + logs endpoint registrars" {
+test "gateway inherits admin + logs + llm-telemetry endpoint registrars" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     assert hasattr(gw, "register_admin_endpoints");
     assert hasattr(gw, "register_logs_endpoints");
+    assert hasattr(gw, "register_llm_telemetry_endpoints");
+}
+
+# =============================================================================
+# Scheduler: bare /jobs must be treated as a built-in passthrough route.
+# The monolith registers a BARE /jobs (POST create, GET list) alongside
+# /jobs/{job_id}. The gateway's _BUILTIN_PREFIXES only carried "/jobs/"
+# (with the trailing slash), and "/jobs".startswith("/jobs/") is False - so
+# bare /jobs fell through to static handling and 404'd while /jobs/{id}
+# worked. "/jobs" is now in _BUILTIN_EXACT (mirroring how "/graph" handles
+# its own bare form), so the gateway fans these out to healthy services.
+# =============================================================================
+test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
+    # One service, marked HEALTHY but with nothing actually listening on its
+    # port. A built-in route therefore reaches handle_builtin_passthrough,
+    # attempts a forward, gets a transport error, and surfaces as a 503
+    # SERVICE_UNAVAILABLE envelope. Before the fix bare /jobs was NOT a
+    # built-in route, so it fell to the static handler and 404'd instead.
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="scheduler_app",
+            file="app.jac",
+            prefix="/api/app",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+
+    # GET /jobs (list) - bare, no trailing slash. This is the path the fix
+    # restores: it must be forwarded, surfacing 503 (not 404) when the
+    # backend is unreachable.
+    resp_list = client.get("/jobs");
+    assert resp_list.status_code == 503 , (
+        f"bare GET /jobs must be treated as a built-in route and forwarded "
+        f"to backends (503 when unreachable), not 404'd; got "
+        f"{resp_list.status_code}"
+    );
+    assert resp_list.json()["error"]["code"] == "SERVICE_UNAVAILABLE";
+
+    # POST /jobs (create) - same bare path, different method.
+    resp_create = client.post("/jobs", json={"name": "nightly"});
+    assert resp_create.status_code == 503 , (
+        f"bare POST /jobs must be forwarded too; got {resp_create.status_code}"
+    );
+
+    # /jobs/{id} already matched the "/jobs/" prefix before the fix -
+    # assert parity so bare and sub-path forms behave identically.
+    resp_one = client.get("/jobs/abc123");
+    assert resp_one.status_code == 503;
 }

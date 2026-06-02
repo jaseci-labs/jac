@@ -19,6 +19,7 @@ nav:
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Import Anything: "quick-guide/import-anything.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+      - What You Can Build: "quick-guide/project-kinds.md"
       - FAQ: "quick-guide/faq.md"
 
   - Full Reference:
@@ -197,7 +198,6 @@ extra_javascript:
   - assets/mathjax-config.js
   - https://unpkg.com/viz.js@2.1.2/viz.js
   - https://unpkg.com/viz.js@2.1.2/full.render.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js
   - https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.js
