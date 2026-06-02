@@ -47,6 +47,16 @@ def setdefault_field(u: UserDoc) -> int {
     return u.setdefault('age', 0);
 }
 
+# Distinct keys must resolve to distinct field types: with literal
+# discrimination, 'role' picks the str overload and 'age' the int one.
+def get_str_key(u: UserDoc) -> str {
+    return u.get('role', 'guest');
+}
+
+def get_int_key(u: UserDoc) -> int {
+    return u.get('age', 0);
+}
+
 def keys_of(u: UserDoc) -> list[str] {
     return list(u.keys());
 }
