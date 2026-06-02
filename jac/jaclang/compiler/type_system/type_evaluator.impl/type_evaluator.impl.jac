@@ -923,6 +923,34 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # TypedDict instances expose dict methods. get/pop/setdefault
+                    # get per-field overloads so a literal key resolves precisely;
+                    # the rest (keys, items, values, ...) resolve against the
+                    # equivalent dict[str, V].
+                    if base_type.is_typeddict() {
+                        if expr.right.value in ("get", "pop", "setdefault") {
+                            synth = self._synthesize_typeddict_method(
+                                base_type, expr.right.value
+                            );
+                            if synth is not None {
+                                expr.right.type = synth;
+                                return synth;
+                            }
+                        }
+                        td_dict = self._typeddict_as_dict(base_type);
+                        if (
+                            td_dict is not None
+                            and (
+                                td_member := self._lookup_object_member(
+                                    td_dict, expr.right.value
+                                )
+                            )
+                        ) {
+                            td_member_ty = self.get_type_of_member(td_member, td_dict);
+                            expr.right.type = td_member_ty;
+                            return td_member_ty;
+                        }
+                    }
                     # Check for __getattr__ override before reporting error.
                     # When a class defines __getattr__, any attribute access that doesn't
                     # match an explicit member should return the __getattr__ return type.
@@ -1372,6 +1400,32 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # Bare ClassVar without type arg - return Unknown
                         return types.UnknownType();
                     }
+                    # --- Handle Literal special form ---
+                    # Literal["a"] / Literal[1, 2] build literal-typed instances
+                    # (a union when multiple values are given) so distinct
+                    # literals stay distinct for assignability and overloads.
+                    if target_name == "Literal" {
+                        lit_types: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            lit_vals = expr.right.slices[0].start;
+                            val_exprs = lit_vals.values
+                                if isinstance(lit_vals, uni.TupleVal)
+                                else [lit_vals];
+                            for val in val_exprs {
+                                if lt := self._literal_type_from_expr(val) {
+                                    lit_types.append(lt);
+                                }
+                            }
+                        }
+                        if len(lit_types) == 1 {
+                            return lit_types[0];
+                        }
+                        if len(lit_types) > 1 {
+                            return types.UnionType(types=lit_types);
+                        }
+                        return types.UnknownType();
+                    }
                 }
                 # Subscript on Any should return Any, not Unknown (check before generic
                 # specialization to avoid Any's subscript returning Any[Unknown]).
@@ -1467,6 +1521,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                     and expr.right.slices
                 ) {
                     subscript_arg = expr.right.slices[0].start;
+                }
+                # TypedDict subscript: td["field"] resolves to the field type.
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.is_class_instance()
+                    and base_type.is_typeddict()
+                ) {
+                    td_result = self._get_typeddict_indexed_type(
+                        base_type, subscript_arg, expr
+                    );
+                    if td_result is not None {
+                        return td_result;
+                    }
                 }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
@@ -3054,12 +3121,12 @@ impl TypeEvaluator.assign_type(
             }
         }
 
-        # Case 3: Literal["x"] -> Literal["y"] (same base type)
-        # Allow any literal to be assigned to another literal of the same base type.
-        # This effectively widens both to the base type (e.g., str).
+        # Case 3: Literal["x"] -> Literal["y"] (same base type) is assignable
+        # only when the values are equal. Distinct literals must not match, so
+        # literal-typed overloads (e.g. TypedDict get/pop) discriminate on key.
         if src_type.is_literal_type() and dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
-                return True;
+                return src_type.get_literal_value() == dest_type.get_literal_value();
             }
         }
 

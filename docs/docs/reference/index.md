@@ -20,7 +20,8 @@ The language spec covers all core Jac constructs:
 
 ## Full-Stack Development
 
-- **[jac-client Reference](plugins/jac-client.md)** - Codespaces, components, state, routing, authentication, npm packages
+- **[jac-client Reference](plugins/jac-client.md)**: Codespaces, components, state, routing, authentication, npm packages, web/PWA/mobile targets
+- **[jac-desktop Reference](plugins/jac-desktop.md)**: Native desktop (PyTauri), sidecar bundling, `jac desktop plugin`, `[plugins.desktop]` config
 
 ## Deployment & Scaling
 

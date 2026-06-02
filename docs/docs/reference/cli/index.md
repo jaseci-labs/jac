@@ -1865,7 +1865,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
 | `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
-| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
+| `-p, --platform` | **Mobile:** `android`, `ios`, `all`. **Desktop:** `windows` names the sidecar `jac-sidecar.exe` | Current platform |
 
 **Examples:**
 
@@ -1876,7 +1876,7 @@ jac build
 # Build desktop app
 jac build --client desktop
 
-# Build for Windows
+# Build on Windows for the windows binary
 jac build --client desktop --platform windows
 
 # Build mobile app for Android
@@ -1899,7 +1899,7 @@ For `target=mobile`, `--platform` supports `android`, `ios`, or `all`.
 **Examples:**
 
 ```bash
-# Setup Tauri for desktop builds
+# Setup PyTauri desktop scaffold
 jac setup desktop
 
 # Setup Capacitor for mobile builds
@@ -1921,6 +1921,28 @@ jac setup mobile --platform all
 | `jac start` | `--client <target>` | Client build target for dev server |
 | `jac add` | `--npm` | Add npm (client-side) dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
+
+#### jac desktop
+
+Manage native Tauri plugins for the current project. Requires `pip install jac-desktop` and `jac setup desktop`.
+
+```bash
+jac desktop plugin list
+jac desktop plugin add dialog fs
+jac desktop plugin remove dialog
+jac desktop plugin sync
+```
+
+| Command | Description |
+|---------|-------------|
+| `jac desktop plugin list` | Show catalog and which plugins are in `[plugins.desktop].tauri_plugins` |
+| `jac desktop plugin add <ids…>` | Add plugin ids, regenerate capabilities, sync npm deps |
+| `jac desktop plugin remove <ids…>` | Remove plugin ids and regenerate |
+| `jac desktop plugin sync` | Idempotent regen after manual `jac.toml` edits |
+
+Updates `capabilities/` and, when `[plugins.desktop].auto_tauri_plugin_npm` is true (default), matching `@tauri-apps/plugin-*` entries in `[dependencies.npm]`. Does not rewrite `src-pytauri/app.py` (stable stub).
+
+See [jac-desktop Reference](../plugins/jac-desktop.md#cli-commands) for command details and configuration.
 
 ---
 

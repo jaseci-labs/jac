@@ -1711,3 +1711,264 @@ test "in/not in on unknown-typed containers matches Python semantics" {
         );
     }
 }
+
+
+test "cl negative indexing counts from the end like Python (#6320)" {
+    import json;
+    # Python/Jac negative indices count from the end. A raw JS subscript
+    # `xs[-1]` is `undefined`, silently producing the wrong value.
+    jac_code = """
+cl def neg_index() -> dict {
+    xs: list[int] = [10, 20, 30];
+    s: str = "abc";
+    return {
+        "list_last": xs[-1],
+        "list_second_last": xs[-2],
+        "list_first": xs[0],
+        "str_last": s[-1]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The broken raw form `[(-1)]` must never be emitted.
+        assert "[(-1)]" not in js_code , (
+            f"negative index must not lower to a raw JS subscript:\n{js_code}"
+        );
+        wrapper = js_code + "\nconsole.log(JSON.stringify(neg_index()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "negative-index run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "list_last": 30,
+            "list_second_last": 20,
+            "list_first": 10,
+            "str_last": "c"
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"neg-index '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl collection truthiness matches Python emptiness (#6320)" {
+    import json;
+    # JS arrays/objects/Sets are always truthy, so empty-collection guards
+    # never short-circuit. Boolean contexts on a collection must test
+    # emptiness like Python (empty list/dict/set is falsy; str already agrees).
+    jac_code = """
+cl def truthy_probe() -> dict {
+    el: list[int] = [];
+    fl: list[int] = [1];
+    ed: dict[str, int] = {};
+    fd: dict[str, int] = {"a": 1};
+    es_: set[int] = set();
+    fs_: set[int] = {1};
+    em: str = "";
+    fm: str = "x";
+    r: dict[str, int] = {};
+    if el { r["if_el"] = 1; } else { r["if_el"] = 0; }
+    if fl { r["if_fl"] = 1; } else { r["if_fl"] = 0; }
+    if ed { r["if_ed"] = 1; } else { r["if_ed"] = 0; }
+    if fd { r["if_fd"] = 1; } else { r["if_fd"] = 0; }
+    if es_ { r["if_es"] = 1; } else { r["if_es"] = 0; }
+    if fs_ { r["if_fs"] = 1; } else { r["if_fs"] = 0; }
+    if em { r["if_em"] = 1; } else { r["if_em"] = 0; }
+    if fm { r["if_fm"] = 1; } else { r["if_fm"] = 0; }
+    if not el { r["not_el"] = 1; } else { r["not_el"] = 0; }
+    if not fl { r["not_fl"] = 1; } else { r["not_fl"] = 0; }
+    or_res: list[int] = el or fl;
+    and_res: list[int] = el and fl;
+    r["or_len"] = len(or_res);
+    r["and_len"] = len(and_res);
+    r["tern_el"] = 1 if el else 0;
+    r["tern_fl"] = 1 if fl else 0;
+    # `and`/`or` used directly as a condition: the helper returns an *operand*
+    # (a collection), and the enclosing if/while must apply Python truthiness to
+    # it -- a bare `if (and_(...))` would see an empty array/object as truthy.
+    if el and fl { r["and_cond_ff"] = 1; } else { r["and_cond_ff"] = 0; }
+    if fl and fs_ { r["and_cond_tt"] = 1; } else { r["and_cond_tt"] = 0; }
+    if el or ed { r["or_cond_ff"] = 1; } else { r["or_cond_ff"] = 0; }
+    if el or fl { r["or_cond_ft"] = 1; } else { r["or_cond_ft"] = 0; }
+    return r;
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        wrapper = js_code + "\nconsole.log(JSON.stringify(truthy_probe()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "collection-truthiness run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "if_el": 0,
+            "if_fl": 1,
+            "if_ed": 0,
+            "if_fd": 1,
+            "if_es": 0,
+            "if_fs": 1,
+            "if_em": 0,
+            "if_fm": 1,
+            "not_el": 1,
+            "not_fl": 0,
+            "or_len": 1,
+            "and_len": 0,
+            "tern_el": 0,
+            "tern_fl": 1,
+            "and_cond_ff": 0,
+            "and_cond_tt": 1,
+            "or_cond_ff": 0,
+            "or_cond_ft": 1
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"truthiness '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl negative-index assignment and while-truthiness match Python (#6320)" {
+    import json;
+    # Negative-index assignment must write the element counted from the end
+    # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
+    # guard on a collection must drain like Python rather than loop forever.
+    jac_code = """
+cl def probe() -> dict {
+    xs: list[int] = [1, 2, 3];
+    xs[-1] = 99;
+    xs[0] = 5;
+    d: dict[str, int] = {};
+    d["k"] = 7;
+    drained: int = 0;
+    stack: list[int] = [1, 1, 1];
+    while stack {
+        stack.pop();
+        drained = drained + 1;
+    }
+    return {
+        "xs_last": xs[-1],
+        "xs_first": xs[0],
+        "d_k": d["k"],
+        "drained": drained,
+        "stack_empty": len(stack)
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The broken raw negative-write form must not be emitted.
+        assert "xs[(-1)] = 99" not in js_code , (
+            f"negative-index assignment must not write a raw subscript:\n{js_code}"
+        );
+        wrapper = js_code + "\nconsole.log(JSON.stringify(probe()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "negative-write / while-truthiness run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "xs_last": 99,
+            "xs_first": 5,
+            "d_k": 7,
+            "drained": 3,
+            "stack_empty": 0
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"write/while '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
+    import json;
+    # A subscript on an `any`-typed value must remain a faithful superset of a
+    # raw `obj[i]`: string keys stay plain member access, a missing key/index
+    # yields `undefined` (never throws), and only a possibly-negative numeric
+    # index is rewritten to count from the end. This guards the jac-client
+    # `data["data"]["user_id"]` pattern from regressing to a KeyError throw.
+    jac_code = """
+cl def probe(resp: any, xs: any) -> dict {
+    present: any = resp["user_id"];
+    guard: int = 1 if (resp["data"] and resp["data"]["k"]) else 0;
+    return {
+        "present": present,
+        "guard": guard,
+        "neg": xs[-1],
+        "neg2": xs[-2]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # String-literal keys must stay raw member access, not route through
+        # the runtime helper (which only matters for possibly-negative indices).
+        assert '_jac.poly.getitem(resp, "user_id")' not in js_code , (
+            f"string-key access must stay a raw subscript:\n{js_code}"
+        );
+        wrapper = (
+            js_code + "\nconst r = probe({user_id: 'u9', data: {}}, [10, 20, 30]);" + "\nconsole.log(JSON.stringify(r));\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "unknown-typed subscript run crashed in Node (should never throw):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {"present": "u9", "guard": 0, "neg": 30, "neg2": 20};
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"unknown-subscript '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
