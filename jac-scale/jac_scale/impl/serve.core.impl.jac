@@ -303,14 +303,17 @@ impl JacAPIServerCore.start(
     self.setup_emailer();
     self._setup_scheduler();
     self._setup_events();
-    # Find an available port (may differ from requested if port is in use)
-    original_port = self.port;
-    self.port = _find_available_port(self.port);
-    if self.port != original_port {
-        console.print(
-            f"  Port {original_port} is in use, using port {self.port} instead",
-            style="warning"
-        );
+    # Find an available port (may differ from requested if port is in use).
+    # Skip when sidecar already bound the listen socket.
+    if self.server?._prebound_listen_socket is None {
+        original_port = self.port;
+        self.port = _find_available_port(self.port);
+        if self.port != original_port {
+            console.print(
+                f"  Port {original_port} is in use, using port {self.port} instead",
+                style="warning"
+            );
+        }
     }
     # Print startup banner with correct port
     self._print_startup_banner(dev, no_client);

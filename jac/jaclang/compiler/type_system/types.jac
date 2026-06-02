@@ -197,6 +197,9 @@ Holds the shared details of class type.
             is_from_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
             is_data_class: bool = False,
             is_namedtuple: bool = False,
+            is_typeddict: bool = False,
+            # Ordered field name -> declared value type; None for non-TypedDicts.
+            typeddict_fields: (dict[str, TypeBase] | None) = None,
             is_root_class: bool = False,
             is_enum_class: bool = False,
             enum_value_type: (TypeBase | None) = None,
@@ -251,6 +254,7 @@ Holds the private details of class type.
     def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;
+    def is_typeddict -> bool;
     def is_enum_class -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;

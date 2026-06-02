@@ -1,0 +1,54 @@
+[project]
+name = "jac-desktop"
+version = "0.1.0"
+description = "Native desktop target and plugin manager for Jac (PyTauri-based)."
+authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+license = "MIT"
+readme = "README.md"
+keywords = [
+    "jac",
+    "jaclang",
+    "jaseci",
+    "desktop",
+    "pytauri",
+    "tauri",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "jaclang>=0.15.3",
+    "jac-client>=0.3.17",
+    "pytauri-wheel>=0.8",
+    "anyio>=4",
+]
+
+[project.urls]
+Repository = "https://github.com/jaseci-labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-desktop"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+
+[project.entry-points."jac"]
+desktop = "jac_desktop.cli:JacCmd"
+desktop_plugin_config = "jac_desktop.plugin_config:JacDesktopPluginConfig"
+
+[project.entry-points."jac_client"]
+desktop = "jac_desktop.plugin:JacDesktopPlugin"
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pyinstaller>=6",
+]
+
+[tool.setuptools.packages.find]
+include = ["jac_desktop*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac", "**/impl/*.jac", "sidecar/**/*.py"]
+"jac_desktop" = ["templates/**/*", "examples/**/*"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

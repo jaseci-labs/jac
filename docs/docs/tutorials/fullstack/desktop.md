@@ -1,29 +1,50 @@
 # Building a Desktop App
 
-This tutorial walks you through shipping an existing Jac full-stack app as a native desktop installer for Windows, macOS, and Linux. Unlike the web target -- which assumes a hosted backend somewhere -- the desktop target packages the **entire** Jac runtime, your `.jac` sources, and any plugins you depend on into a single installer that end users can double-click.
+This tutorial walks you through building and running an existing Jac full-stack app as a native desktop app on Windows, macOS, and Linux. Unlike the web target, which assumes a hosted backend somewhere, the desktop target packages the **Jac backend** (via a PyInstaller sidecar), your `.jac` sources, and any plugins you depend on into a PyTauri shell you can launch locally during development and testing.
+
+!!! note "Distribution status"
+    `jac build --client desktop` produces a **developer staging build**, not a redistributable installer. The Jac **sidecar** is frozen into a standalone binary; the **PyTauri shell** still runs via `python app.py` and requires Python plus `pytauri-wheel` on the machine that launches the app. Standalone shell packaging is planned.
 
 > **Prerequisites**
 >
-> - Completed: [Project Setup](setup.md) -- you have a working `jac start` web app
-> - Installed: [Rust toolchain](https://rustup.rs) (`cargo --version` should work)
-> - Installed: Platform build tools
->   - **Windows**: Visual Studio Build Tools (with the C++ workload)
->   - **macOS**: `xcode-select --install`
->   - **Linux**: `webkit2gtk-4.1`, `libssl-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev`
-> - Time: ~30 minutes (longer on the first build while Rust crates compile)
+> - Completed: [Project Setup](setup.md): you have a working `jac start` web app
+> - Installed: `pip install jac-client jac-desktop` (PyTauri desktop target)
+> - Installed: Python packages `pytauri-wheel` and `PyInstaller` (pulled in by `jac-desktop`)
+> - **No Rust toolchain required**: the shell is Python + pytauri-wheel, not `cargo tauri`
+> - Time: ~15 minutes (first PyInstaller sidecar build can take longer)
 
 ---
 
 ## How a Desktop Build Works
 
-When you run `jac build --client desktop`, the build does five things:
+When you run `jac build --client desktop`, the build:
 
-1. **Compiles the client bundle** -- the same Vite build the web target produces.
-2. **Bundles a sidecar** -- PyInstaller freezes Python, jaclang, jac-client, and any plugins you enabled into a single executable. Your `.jac` sources, `jac.toml`, and `assets/` are copied alongside it as bundle resources.
-3. **Generates the Tauri shell** -- regenerates `src-tauri/tauri.conf.json` and `main.rs` from `[desktop]` in your `jac.toml`.
-4. **Builds the installer with Tauri** -- produces a platform-native installer (`.msi`, `.dmg`, `.AppImage`, `.deb`, `.rpm`) under `src-tauri/target/release/bundle/`.
+1. **Compiles the client bundle**: the same Vite build the web target produces.
+2. **Bundles a sidecar**: PyInstaller freezes Python, jaclang, jac-client, and any plugins you enabled into a single executable. Your `.jac` sources, `jac.toml`, and `assets/` are collected into the bundle.
+3. **Updates the PyTauri scaffold**: refreshes `src-pytauri/tauri.conf.json` and `capabilities/` from `[plugins.desktop]` in your `jac.toml`. The shell entry point `src-pytauri/app.py` is a **stable stub** that delegates to `jac_desktop.runtime`; it is not regenerated on every build.
+4. **Stages output under `src-pytauri/dist/`**: frontend bundle path, sidecar binary, and a small `run.sh` / `run.bat` launcher that invokes `python app.py`.
 
-At runtime, the Tauri shell launches the sidecar on a free local port, reads `JAC_SIDECAR_PORT=<port>` from its stdout, and injects the resulting URL into the webview as `window.__JAC_API_BASE_URL__` before any page JavaScript runs. From the user's perspective it's a single double-click; under the hood it's just `jac start` running inside a webview shell.
+At runtime, the PyTauri shell launches the sidecar on a free local port, reads `JAC_SIDECAR_PORT=<port>` from its stdout, and injects the resulting URL into the webview as `window.__JAC_API_BASE_URL__` before any page JavaScript runs.
+
+| Component | Bundled for launch? | Runtime requirement |
+|-----------|---------------------|---------------------|
+| Jac backend (sidecar) | Yes: PyInstaller binary under `src-pytauri/binaries/` | None |
+| Frontend (Vite dist) | Yes: served from `.jac/client/dist/` | None |
+| PyTauri shell (`app.py`) | Staged, not frozen | Python 3 + `pytauri-wheel` on the launch machine |
+
+---
+
+## Dev vs Build Runtime
+
+Packaging differs between dev and production-style builds; same as web (Vite dev server vs production bundle).
+
+| Mode | Backend | Shell | Frontend |
+|------|---------|-------|----------|
+| **Dev** (`jac start --client desktop --dev`) | Live `jaclang start` on a local port | Live `python app.py` | Vite dev server with HMR (`DEV_SERVER` env) |
+| **Build** (`jac build --client desktop`) | PyInstaller → `src-pytauri/binaries/jac-sidecar` | Staged `app.py` + launcher | Vite production bundle |
+| **Start** (`jac start --client desktop`, no `--dev`) | Frozen sidecar if present, else builds first | Live `python app.py` | Built static files |
+
+Use `--dev` while iterating on UI and backend logic. Use `jac build` + `run.sh` / `run.bat` (or `jac start --client desktop` without `--dev`) to smoke-test the frozen sidecar path.
 
 ---
 
@@ -35,21 +56,40 @@ From your project root:
 jac setup desktop
 ```
 
-This creates `src-tauri/` with the Rust project skeleton, default icons, and a `tauri.conf.json` derived from your `jac.toml`. You only need to run this once per project; subsequent builds regenerate the relevant pieces from `jac.toml`.
+This creates `src-pytauri/` with a stable `app.py` stub, `tauri.conf.json`, default icons, and a `pyproject.toml` for the PyTauri runtime. You only need to run this once per project; subsequent builds refresh `tauri.conf.json` and capabilities from `jac.toml`.
+
+### Project layout
+
+```
+myapp/
+├── jac.toml
+├── main.jac
+└── src-pytauri/              # generated by jac setup desktop
+    ├── app.py                # stable stub; do not edit; calls jac_desktop.runtime
+    ├── tauri.conf.json       # regenerated on build from [plugins.desktop]
+    ├── capabilities/         # Tauri permissions; synced with tauri_plugins
+    ├── icons/                # replace icon.png for your app icon
+    ├── pyproject.toml        # PyTauri runtime deps for this project
+    ├── binaries/             # PyInstaller sidecar output (after build)
+    └── dist/                 # run.sh / run.bat launcher (after build)
+```
+
+Safe to customize: `icons/icon.png` (1024×1024 PNG recommended; build generates `.ico` / `.icns` when Pillow is installed). Do not hand-edit `app.py`; configure behavior via `jac.toml` and `jac desktop plugin`.
 
 ---
 
 ## Configure Window and App Metadata
 
-Open `jac.toml` and add a `[desktop]` section. None of these fields are mandatory -- they default off your `[project]` name and version -- but you'll usually want to override at least the window title and identifier:
+Open `jac.toml` and add a `[plugins.desktop]` section:
 
 ```toml
-[desktop]
+[plugins.desktop]
 name = "Day Planner"
 identifier = "com.example.dayplanner"  # reverse-DNS, used by macOS/Linux
 version = "1.0.0"
+auto_tauri_plugin_npm = true           # sync @tauri-apps/plugin-* npm deps (default: true)
 
-[desktop.window]
+[plugins.desktop.window]
 title = "Day Planner"
 width = 1200
 height = 800
@@ -57,153 +97,159 @@ min_width = 800
 min_height = 600
 resizable = true
 fullscreen = false
-
-[desktop.platforms]
-windows = true
-macos = true
-linux = true
 ```
 
-The next `jac build --client desktop` will pick these up automatically -- you don't need to edit `tauri.conf.json` by hand.
+The next `jac build --client desktop` picks these up automatically.
 
 ---
 
 ## Run a Development Build
 
-The fastest dev loop is:
-
 ```bash
 jac start --client desktop --dev
 ```
 
-This launches the Tauri window pointing at the Vite dev server with HMR enabled. Edit a `.cl.jac` file, save, and the window updates without restarting.
+This launches the PyTauri window pointing at the Vite dev server with HMR enabled, starts a live Jac backend, and sets `DEV_SERVER` / `JAC_PYTAURI_API_BASE_URL` for the shell.
 
-For a full installer build:
+For a production-style build:
 
 ```bash
 jac build --client desktop
 ```
 
-When this finishes, look in `src-tauri/target/release/bundle/`. You'll find one subdirectory per format your platform produces:
+Output lands in `src-pytauri/dist/`. Run the launcher from a machine that has Python and `pytauri-wheel` installed (same environment you used to build):
 
-- `nsis/` and `msi/` on Windows
-- `dmg/` and `macos/` on macOS
-- `appimage/`, `deb/`, and `rpm/` on Linux
+```bash
+./src-pytauri/dist/run.sh        # Linux/macOS
+src-pytauri\dist\run.bat         # Windows
+```
+
+Alternatively, build (if needed) and launch in one step:
+
+```bash
+jac start --client desktop
+```
+
+The launcher `cd`s into `src-pytauri/` and runs `python app.py`. This is suitable for local testing and CI smoke checks, not for handing off to end users who do not have a Python toolchain.
+
+### Cross-platform sidecar naming
+
+`jac build --client desktop --platform windows` names the sidecar `jac-sidecar.exe`. Other `--platform` values (`macos`, `linux`, `all`) do not cross-compile today; PyInstaller runs on the **current** machine. Use `--platform windows` when building the sidecar artifact on Windows (or when you need the `.exe` filename explicitly).
 
 ---
 
-## Cross-Platform Builds
+## Tauri Plugins (Optional)
 
-By default, `jac build --client desktop` builds for the platform you're running on. To target a different platform, pass `--platform`:
+Install native Tauri plugins (dialog, fs, notification, etc.) with the jac-desktop CLI:
 
 ```bash
-jac build --client desktop --platform windows
-jac build --client desktop --platform macos
-jac build --client desktop --platform linux
-jac build --client desktop --platform all
+jac desktop plugin list
+jac desktop plugin add dialog fs
+jac desktop plugin remove dialog
+jac desktop plugin sync
 ```
 
-Cross-compilation has the same caveats as any Rust+Tauri project: targeting macOS from Linux requires extra toolchain setup, and code-signing is platform-specific. CI is the easiest way to produce all three -- run a separate matrix job per platform.
+This updates `[plugins.desktop].tauri_plugins`, regenerates `capabilities/`, and syncs matching `@tauri-apps/plugin-*` npm packages into `[dependencies.npm]` (when `auto_tauri_plugin_npm = true`).
+
+### Using native plugins from client code
+
+After `jac desktop plugin add`, import the npm plugin from your `.cl.jac` code like any other client dependency:
+
+```jac
+cl import from "@tauri-apps/plugin-dialog" { message }
+cl import from "@tauri-apps/plugin-fs" { readTextFile, writeTextFile }
+
+to cl:
+
+async def showInfo -> None {
+    await message("Hello from a native dialog", {"title": "My App"});
+}
+```
+
+See the [pytauri-plugin-showcase example](https://github.com/jaseci-labs/jaseci/tree/main/jac-desktop/jac_desktop/examples/pytauri-plugin-showcase) in the jac-desktop repo for a full dialog / fs / notification demo.
 
 ---
 
 ## Choosing Which Plugins to Bundle
 
-By default the sidecar bundles four Jac plugins: **jac-scale** (FastAPI server, auth, persistence), **byllm** (LLM provider integration), **jac-coder**, and **jac-mcp**. If your app doesn't use one of them, drop it from the bundle to shrink the installer:
+By default the sidecar bundles four Jac plugins: **jac-scale**, **byllm**, **jac-coder**, and **jac-mcp**. Disable unused ones to shrink the bundle:
 
 ```toml
-[desktop.plugins]
+[plugins.desktop.plugins]
 jac_scale = true
-byllm = false       # don't ship LLM providers
+byllm = false
 jac_coder = false
 jac_mcp = false
 ```
 
-A few rules to know:
-
-- The plugins you list must already be installed in the **build environment** (`pip show jac-scale`, etc.) -- the build collects them from your current Python environment, not from PyPI.
-- `jac_client` is **always** bundled regardless of this section, because the sidecar entry point imports it directly. Setting `jac_client = false` is silently ignored.
-- Python dependencies declared under `[dependencies]` in `jac.toml` are auto-installed before PyInstaller runs -- you don't need to pre-install them yourself.
+- Plugins must be installed in the **build environment** before building.
+- `jac_client` is always bundled (sidecar entry point).
+- Python deps under `[dependencies]` in `jac.toml` are auto-installed before PyInstaller runs.
 
 ---
 
 ## Where Your Data Lives
 
-This is the part that surprises most people the first time they install their own desktop build:
-
-> The Jac runtime and jac-scale write the SQLite database, session files, and `.jac/data/` to the working directory by default. **An installed desktop app's working directory is read-only.**
-
-`.AppImage` files mount under `/tmp/.mount_AppXXX/` (a read-only squashfs), `.deb` packages install to `/usr/lib/`, `.msi` installers land in `C:\Program Files\`. Writing to any of those will fail or crash, depending on the operation.
-
-The sidecar handles this for you. Before importing any Jac module, it picks a writable path, sets `JAC_DATA_PATH` to it, and `chdir`s in. The Jac runtime's database resolver and jac-scale's config loader both honor this variable, so the database lands in a place the user can actually write to.
-
-The default fallback chain:
+The sidecar sets `JAC_DATA_PATH` to a writable location before importing Jac modules.
 
 | Platform | First choice | Fallback | Last resort |
 |----------|--------------|----------|-------------|
 | Linux / macOS | `~/.local/share/jac-app` | `~/.jac-app` | `/tmp/jac-app-{uid}` |
 | Windows | `%LOCALAPPDATA%\jac-app` | `~/AppData/Local/jac-app` | `%TEMP%\jac-app` |
 
-The sidecar tries each candidate in order and probes it with a touch/unlink test. If none of them work, the app exits with a loud error rather than silently writing to nowhere.
-
-**Override the location** by exporting `JAC_DATA_PATH` before launching the app, or by passing `--data-path` directly to the sidecar binary if you're invoking it manually:
+Override with `--data-path` on the sidecar binary:
 
 ```bash
-./src-tauri/binaries/jac-sidecar --data-path /var/lib/myapp
+./src-pytauri/binaries/jac-sidecar --data-path /var/lib/myapp
 ```
 
-**Practical implications:**
-
-- During development you can find a user's data with `ls ~/.local/share/jac-app` (Linux/macOS) or `%LOCALAPPDATA%\jac-app` (Windows).
-- Uninstalling the app does **not** delete this directory -- it's user data, not application data.
-- If you want to wipe state during testing, delete that directory and relaunch.
+If your project ships a `.env` file at the repo root, the frozen sidecar loads it from the bundle before starting the API server.
 
 ---
 
 ## Client-Only Mode (Thin Native Shell)
 
-Sometimes you don't want a sidecar at all -- you have a hosted jac-scale backend somewhere, and the desktop app is just a native window pointing at it. For that, set `client_only = true`:
+For a hosted backend with no local sidecar:
 
 ```toml
-[desktop]
+[plugins.desktop]
 client_only = true
 
 [plugins.client.api]
 base_url = "https://api.example.com"
 ```
 
-In this mode the build:
-
-- **Skips the entire PyInstaller step.** No Python bundle, no plugin collection -- the installer is dramatically smaller and the build is much faster.
-- **Requires** `[plugins.client.api] base_url` to be set. The build raises an error if it isn't, since the webview has nothing local to talk to.
-- **Still produces a full Tauri installer** -- you just get a thin native shell around a remote API.
-
-This is also useful in CI for verifying the web bundle compiles inside a desktop build without paying for the PyInstaller round-trip.
+The build skips PyInstaller and requires `[plugins.client.api] base_url`.
 
 ---
 
-## Debugging Installed Builds
+## Environment Variables
 
-When something works in `jac start --dev` but breaks inside the installer, the usual culprits are: the data path is wrong, the sidecar can't find a plugin, or the API URL never reached the webview. The fastest way to triage:
+| Variable | When | Purpose |
+|----------|------|---------|
+| `DEV_SERVER` | Dev (`--dev`) | Vite dev server URL for the shell webview |
+| `JAC_PYTAURI_API_BASE_URL` | Dev / manual | Override API base URL instead of spawning a sidecar |
+| `JAC_PYTAURI_NO_SIDECAR=1` | Runtime | Skip sidecar autostart (shell only) |
+| `JAC_SIDECAR_STANDALONE=0` | Build | Skip PyInstaller; emit a Python wrapper sidecar script instead |
+| `JAC_BUILD=1` | Build | Set automatically so import-time server starts stay inert |
 
-1. **Run the sidecar binary directly.** Find it under `src-tauri/binaries/jac-sidecar` (or `.exe` on Windows) and run it from a terminal. It writes `JAC_SIDECAR_PORT=<port>` to stdout on startup and sends every other log line to stderr -- watch for `[sidecar] Cannot use data path …`, plugin registration messages, and any tracebacks.
-2. **Use the Debug page.** The `all-in-one` example app ships a debug page at `examples/all-in-one/pages/debug.jac` that displays the resolved API base URL, whether `window.__TAURI__` is present, the `get_api_url` Tauri command result, and live walker/HTTP probes. Drop it into your own app while you're tracking down a connectivity issue.
-3. **Check the data path.** The sidecar prints which fallback it settled on. If you see `/tmp/jac-app-{uid}`, that means both your home directory and the platform default failed -- probably a permissions issue.
+---
 
-A few platform-specific quirks worth knowing:
+## Debugging
 
-- **AppImage** injects `PYTHONHOME`, `PYTHONPATH`, and `PYTHONDONTWRITEBYTECODE` into the environment, which would break the bundled Python interpreter. The generated `main.rs` strips these before spawning the sidecar -- if you customized `main.rs`, make sure that logic survives.
-- **Windows** doesn't keep stdout open after Tauri reads the port line. The sidecar redirects stdout to stderr after the port handshake to avoid `OSError: [Errno 22] Invalid argument` on subsequent prints. If you customized the sidecar entry point, do the same.
+1. **Run the sidecar directly**: `src-pytauri/binaries/jac-sidecar` logs to stderr and prints `JAC_SIDECAR_PORT=<port>` on stdout.
+2. **Check the data path**: look for `[sidecar] Cannot use data path …` messages.
+3. **Regenerate plugins**: `jac desktop plugin sync` after manual edits to `[plugins.desktop].tauri_plugins`.
+4. **Dev backend vs frozen sidecar**: if dev works but the packaged app fails, suspect a missing PyInstaller hidden import or a plugin not installed in the build environment; run a full `jac build --client desktop` locally to reproduce.
 
 ---
 
 ## What You've Built
 
-By now you should have:
+- A `[plugins.desktop]` section in `jac.toml` controlling window, identifier, and bundled plugins.
+- A PyTauri project under `src-pytauri/` with a staged build in `src-pytauri/dist/` (dev launcher + standalone sidecar).
+- A clear picture of where user data is stored and how to redirect it.
 
-- A `[desktop]` section in `jac.toml` controlling window, identifier, and bundled plugins.
-- An installer for your platform under `src-tauri/target/release/bundle/`.
-- A clear picture of where the bundled app stores user data and how to redirect it.
-- A debugging path for the inevitable "works in dev, fails when installed" moment.
+End-user distribution (a shell that does not require Python) is not part of this build yet.
 
-For the full reference -- including every option in `[desktop]`, the sidecar CLI flags, and the runtime API URL injection mechanism -- see the [jac-client Reference → Desktop Target](../../reference/plugins/jac-client.md#desktop-target-tauri).
+For the full reference, see [jac-desktop Reference](../../reference/plugins/jac-desktop.md). Package overview: [jac-desktop README](https://github.com/jaseci-labs/jaseci/tree/main/jac-desktop).

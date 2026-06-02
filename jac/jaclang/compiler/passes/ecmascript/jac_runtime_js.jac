@@ -290,59 +290,204 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
-  // Runtime-polymorphic helpers used when the static type of the receiver is
-  // not provably str/list/etc., so the codegen cannot pick a typed emitter.
-  // Each helper checks the JS type and dispatches to the native operation;
-  // if the value is not a JS primitive of the expected shape, it falls back
-  // to calling the same-named method on the object so user-defined classes
-  // that implement Python-style methods still work.
+  // Runtime-polymorphic method dispatch, used when the codegen cannot prove
+  // the static type of a method-call receiver (e.g. a `dict`-typed prop, the
+  // result of `or` widening, or a comprehension over an untyped value) and so
+  // cannot pick a typed emitter. The compiler emits
+  // `_jac.poly.call(obj, "name", ...args)`; `call` resolves the *runtime* type
+  // of `obj` and applies the matching Python operation, forwards to a
+  // same-named method on a user-defined object, or raises AttributeError. The
+  // per-type tables below carry the trivial native-mapped methods inline and
+  // delegate the non-trivial ones to the shared `_jac.str/list/dict/set`
+  // helpers, so each operation has a single implementation and no Python
+  // method name can leak verbatim into the emitted JavaScript.
   poly: {
-    lower(s) { return typeof s === "string" ? s.toLowerCase() : s.lower(); },
-    upper(s) { return typeof s === "string" ? s.toUpperCase() : s.upper(); },
-    strip(s, chars) {
-      if (typeof s === "string") {
+    _typename(o) {
+      if (o === null || o === undefined) return "NoneType";
+      if (Array.isArray(o)) return "list";
+      if (o instanceof Set) return "set";
+      if (o instanceof Map) return "dict";
+      if (o instanceof Uint8Array) return "bytes";
+      const t = typeof o;
+      if (t === "string") return "str";
+      if (t === "boolean") return "bool";
+      if (t === "number") return Number.isInteger(o) ? "int" : "float";
+      if (t === "object") return (o.constructor && o.constructor.name) || "object";
+      return t;
+    },
+    // --- per-runtime-type Python method tables (keyed by Python name) ---
+    // Trivial native-mapped ops are inline; non-trivial ones delegate to the
+    // shared `_jac.<type>` helpers (which the typed emitters also use), so the
+    // typed and polymorphic paths share one implementation.
+    _str: {
+      lower: (s) => s.toLowerCase(),
+      upper: (s) => s.toUpperCase(),
+      casefold: (s) => s.toLowerCase(),
+      strip: (s, chars) => {
         if (chars === undefined) return s.trim();
         let i = 0, j = s.length;
         while (i < j && chars.indexOf(s[i]) !== -1) i++;
         while (j > i && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(i, j);
-      }
-      return chars === undefined ? s.strip() : s.strip(chars);
-    },
-    lstrip(s, chars) {
-      if (typeof s === "string") {
+      },
+      lstrip: (s, chars) => {
         if (chars === undefined) return s.replace(/^\s+/, "");
         let i = 0;
         while (i < s.length && chars.indexOf(s[i]) !== -1) i++;
         return s.slice(i);
-      }
-      return chars === undefined ? s.lstrip() : s.lstrip(chars);
-    },
-    rstrip(s, chars) {
-      if (typeof s === "string") {
+      },
+      rstrip: (s, chars) => {
         if (chars === undefined) return s.replace(/\s+$/, "");
         let j = s.length;
         while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(0, j);
       }
-      return chars === undefined ? s.rstrip() : s.rstrip(chars);
     },
-    append(a, x) {
-      if (Array.isArray(a)) { a.push(x); return null; }
-      return a.append(x);
-    },
-    extend(a, b) {
-      if (Array.isArray(a)) { for (const v of b) a.push(v); return null; }
-      return a.extend(b);
-    },
-    pop(a, i) {
-      if (Array.isArray(a)) {
+    _list: {
+      append: (a, x) => { a.push(x); return null; },
+      clear: (a) => { a.length = 0; return null; },
+      copy: (a) => a.slice(),
+      count: (a, x) => _jac.list.count(a, x),
+      extend: (a, b) => { for (const v of b) a.push(v); return null; },
+      index: (a, x, start, end) => _jac.list.index(a, x, start, end),
+      insert: (a, i, x) => { a.splice(i, 0, x); return null; },
+      pop: (a, i) => {
         if (i === undefined) return a.pop();
         const idx = i < 0 ? a.length + i : i;
         return a.splice(idx, 1)[0];
-      }
-      return i === undefined ? a.pop() : a.pop(i);
+      },
+      remove: (a, x) => _jac.list.remove(a, x),
+      reverse: (a) => { a.reverse(); return null; },
+      sort: (a, key) => _jac.list.sort(a, key)
     },
+    _dict: {
+      clear: (o) => _jac.dict.clear(o),
+      copy: (o) => ({ ...o }),
+      // Python `dict.get`: returns the stored value when the key is present
+      // (even if it is null), and the default only when the key is absent.
+      // A membership check is required — `o[key] ?? default_` would wrongly
+      // substitute the default for a present-but-null value.
+      get: (o, key, default_) =>
+        Object.prototype.hasOwnProperty.call(o, key) ? o[key] : default_,
+      items: (o) => Object.entries(o),
+      keys: (o) => Object.keys(o),
+      pop: (o, key, default_) => _jac.dict.pop(o, key, default_),
+      popitem: (o) => _jac.dict.popitem(o),
+      setdefault: (o, key, default_) => _jac.dict.setdefault(o, key, default_),
+      update: (o, other) => {
+        if (other instanceof Map) { for (const [k, v] of other) o[k] = v; }
+        else if (Array.isArray(other)) { for (const [k, v] of other) o[k] = v; }
+        else if (other) { for (const k of Object.keys(other)) o[k] = other[k]; }
+        return null;
+      },
+      values: (o) => Object.values(o)
+    },
+    _set: {
+      add: (s, x) => { s.add(x); return null; },
+      clear: (s) => { s.clear(); return null; },
+      copy: (s) => new Set(s),
+      difference: (a, b) => _jac.set.difference(a, b),
+      difference_update: (s, o) => _jac.set.difference_update(s, o),
+      discard: (s, x) => { s.delete(x); return null; },
+      intersection: (a, b) => _jac.set.intersection(a, b),
+      intersection_update: (s, o) => _jac.set.intersection_update(s, o),
+      isdisjoint: (a, b) => _jac.set.isDisjointFrom(a, b instanceof Set ? b : new Set(b)),
+      issubset: (a, b) => _jac.set.isSubsetOf(a, b instanceof Set ? b : new Set(b)),
+      issuperset: (a, b) => _jac.set.isSupersetOf(a, b instanceof Set ? b : new Set(b)),
+      pop: (s) => _jac.set.pop(s),
+      remove: (s, x) => _jac.set.remove(s, x),
+      symmetric_difference: (a, b) => _jac.set.symmetricDifference(a, b),
+      symmetric_difference_update: (s, o) => _jac.set.symmetric_difference_update(s, o),
+      union: (a, b) => _jac.set.union(a, b),
+      update: (s, o) => _jac.set.update(s, o)
+    },
+    // Jac dicts compile to plain objects, but interop code may hand us a real
+    // Map; mirror the dict methods over the Map API for that case.
+    _map: {
+      clear: (m) => { m.clear(); return null; },
+      copy: (m) => new Map(m),
+      get: (m, key, default_) => (m.has(key) ? m.get(key) : default_),
+      items: (m) => [...m.entries()],
+      keys: (m) => [...m.keys()],
+      pop: (m, key, default_) => {
+        if (m.has(key)) { const v = m.get(key); m.delete(key); return v; }
+        if (default_ !== undefined) return default_;
+        throw new _jac.exc.KeyError("KeyError: " + key);
+      },
+      popitem: (m) => {
+        if (m.size === 0) throw new _jac.exc.KeyError("dictionary is empty");
+        const key = [...m.keys()].pop();
+        const val = m.get(key);
+        m.delete(key);
+        return [key, val];
+      },
+      setdefault: (m, key, default_) => {
+        if (!m.has(key)) m.set(key, default_ === undefined ? null : default_);
+        return m.get(key);
+      },
+      update: (m, other) => {
+        if (other instanceof Map) { for (const [k, v] of other) m.set(k, v); }
+        else if (Array.isArray(other)) { for (const [k, v] of other) m.set(k, v); }
+        else if (other) { for (const k of Object.keys(other)) m.set(k, other[k]); }
+        return null;
+      },
+      values: (m) => [...m.values()]
+    },
+    // Single entry point. `obj.method(...args)` on a receiver whose static
+    // type is not provably primitive is compiled to
+    // `_jac.poly.call(obj, "method", ...args)`.
+    call(o, m, ...args) {
+      // 1. Genuine JS primitives get Python-semantic dispatch: a plain object
+      //    is a Python dict, an Array is a list, a Set/Map/string/number/bytes
+      //    maps to its Python counterpart. These are the types whose Python
+      //    method semantics differ from (or have no) native JS equivalent.
+      if (typeof o === "string") {
+        if (_jac.poly._str[m]) return _jac.poly._str[m](o, ...args);
+        if (_jac.str[m]) return _jac.str[m](o, ...args);
+      } else if (typeof o === "number") {
+        const ns = Number.isInteger(o) ? _jac.int : _jac.float;
+        if (ns && ns[m]) return ns[m](o, ...args);
+      } else if (Array.isArray(o)) {
+        if (_jac.poly._list[m]) return _jac.poly._list[m](o, ...args);
+      } else if (o instanceof Set) {
+        if (_jac.poly._set[m]) return _jac.poly._set[m](o, ...args);
+      } else if (o instanceof Map) {
+        if (_jac.poly._map[m]) return _jac.poly._map[m](o, ...args);
+      } else if (o instanceof Uint8Array) {
+        if (_jac.bytes[m]) return _jac.bytes[m](o, ...args);
+      } else if (
+        o !== null && o !== undefined && typeof o === "object"
+        && (Object.getPrototypeOf(o) === Object.prototype
+            || Object.getPrototypeOf(o) === null)
+      ) {
+        // A plain object is a Python dict literal.
+        if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
+      }
+      // 2. Otherwise forward to a same-named method the receiver carries
+      //    itself: a user-defined class instance, a host/framework object
+      //    (Headers, URLSearchParams, ...), a callable with attached methods,
+      //    or a Set/Map/Array method not mirrored above. This matches the
+      //    direct `obj.method(...)` that a typed call would have emitted.
+      if (o !== null && o !== undefined && typeof o[m] === "function") {
+        return o[m](...args);
+      }
+      // 3. Nothing applies: raise the Python-style error instead of leaking a
+      //    method name or silently returning a wrong value.
+      throw new _jac.exc.AttributeError(
+        "'" + _jac.poly._typename(o) + "' object has no attribute '" + m + "'");
+    },
+    // Backward-compatible named shims. The compiler now emits `call`, but a
+    // previously-built bundle may still reference a named helper; these route
+    // it through the same dispatcher (rest params preserve the arg count).
+    lower(s, ...r) { return _jac.poly.call(s, "lower", ...r); },
+    upper(s, ...r) { return _jac.poly.call(s, "upper", ...r); },
+    strip(s, ...r) { return _jac.poly.call(s, "strip", ...r); },
+    lstrip(s, ...r) { return _jac.poly.call(s, "lstrip", ...r); },
+    rstrip(s, ...r) { return _jac.poly.call(s, "rstrip", ...r); },
+    append(a, ...r) { return _jac.poly.call(a, "append", ...r); },
+    extend(a, ...r) { return _jac.poly.call(a, "extend", ...r); },
+    pop(a, ...r) { return _jac.poly.call(a, "pop", ...r); },
+    get(o, ...r) { return _jac.poly.call(o, "get", ...r); },
     contains(c, x) {
       // Python-equivalent membership for a value of unknown static type.
       // string -> substring; array (list/tuple/range) -> element;
@@ -1197,4 +1342,66 @@ def build_jac_runtime_js -> str {
     return JAC_RUNTIME_JS_OBJECT.replace(
         "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
     );
+}
+
+"""Memoized compiled-kernel JS (declarations only; no `_jac`, no exports)."""
+glob _OSP_KERNEL_JS_CACHE: list[str] = [];
+
+"""Compile the portable Object-Spatial kernel (`osp_kernel.jac`) to JS for cl
+injection and return its declarations only.
+
+`osp_kernel.jac` is the single source of truth for OSP traversal across every
+backend (#6146). A cl module that runs a walker locally (rather than via the
+`__jacSpawn` server RPC) needs the kernel's `osp_spawn` / `osp_visit` /
+`osp_disengage` / `osp_report` and its `OspRuntime` / `WalkerDesc` / `NodeDesc`
+/ `Slot` classes inlined in the emitted JS. The kernel's own injected
+`const _jac = ...` runtime and its `export {...}` statement are stripped: the
+host module already supplies `_jac` (via `needs_jac_runtime`) and manages its
+own exports, so re-emitting either would redeclare `_jac` or place an illegal
+nested `export`. Compiled once and memoized."""
+def build_osp_kernel_js -> str {
+    if _OSP_KERNEL_JS_CACHE {
+        return _OSP_KERNEL_JS_CACHE[0];
+    }
+    import os;
+    import shutil;
+    import tempfile;
+    import jaclang;
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+    import from jaclang.compiler.passes.ecmascript { estree as es }
+    src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
+    # The kernel is a plain `.jac` (server-default context); compile a copy
+    # named `.cl.jac` so its module-level decls are coerced to client context
+    # and the ES pass emits them.
+    tmp_dir = tempfile.mkdtemp();
+    cl_copy = os.path.join(tmp_dir, "osp_kernel.cl.jac");
+    shutil.copyfile(src, cl_copy);
+    js = "";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+        program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
+        kept: list = [];
+        if isinstance(program, es.Program) {
+            for stmt in program.body {
+                is_jac_rt = (
+                    isinstance(stmt, es.VariableDeclaration)
+                    and stmt.declarations
+                    and isinstance(stmt.declarations[0].id, es.Identifier)
+                    and (stmt.declarations[0].id.name == "_jac")
+                );
+                if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
+                    continue;
+                }
+                kept.append(stmt);
+            }
+        }
+        js = es_to_js(es.Program(body=kept, sourceType='module'));
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+    _OSP_KERNEL_JS_CACHE.append(js);
+    return js;
 }

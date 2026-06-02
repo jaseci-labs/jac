@@ -327,4 +327,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
+- [Building a Desktop App](desktop.md) - Package the same app as a native PyTauri desktop target (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

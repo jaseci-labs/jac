@@ -138,20 +138,6 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_AND_EQ: "emit_op_iand",
          Tok.BW_XOR_EQ: "emit_op_ixor"
      },
-     # Python-only method names that have no JS equivalent. When the static
-     # type of the receiver cannot be proven (issue #5508 / #5453), the
-     # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
-     # which dispatches to the native JS operation at runtime.
-     POLYMORPHIC_METHODS: set[str] = {
-         "lower",
-         "upper",
-         "strip",
-         "lstrip",
-         "rstrip",
-         "append",
-         "extend",
-         "pop"
-     },
      LiteralValue = str | bool | int | float | None;
 
 """Name of the synthesized children accumulator local for a JSX `{...}`
@@ -235,10 +221,31 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         sv_import_stubs: list[es.Statement] = [],
         # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
+        # OSP local-kernel lowering: set when a local walker is spawned via the
+        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
+        # injection in exit_module. `_osp_slots` collects one record per OSP
+        # ability: {owner, kind, name, trigger_names (list, empty = untyped),
+        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
+        # archetypes that need a compile-time type tag.
+        needs_osp_kernel: bool = False,
+        _osp_slots: list[dict] = [],
+        _osp_arch_names: list[str] = [],
+        # Memoized set of local archetype names that participate in OSP (a
+        # walker/node/edge declared with event abilities, plus the node/edge
+        # types those abilities trigger on). Computed up front so emission
+        # order (a trigger node declared before its walker) doesn't matter.
+        _osp_prescan: (set[str] | None) = None,
         # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
-        _primitives_es_mod: (object | None) = None;
+        _primitives_es_mod: (object | None) = None,
+        # Set of Python method names that any primitive emitter knows how to
+        # emit (derived from the emitter registry, never hand-maintained). A
+        # method call on a receiver whose static type is not provably a
+        # primitive is routed through `_jac.poly.call(obj, "name", ...)` iff its
+        # name is in this set; otherwise it is a user-defined method and emits a
+        # plain member call. Lazily computed alongside the emitter singletons.
+        _poly_methods: (set[str] | None) = None;
 
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
@@ -285,6 +292,22 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _build_spawn_runtime_call(
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
+
+    def _osp_ability_info(nd: uni.Ability) -> (dict | None);
+    def _osp_trigger_names(expr: (uni.Expr | None)) -> list[str];
+    def _osp_const_decl(
+        name: str, `init: es.Expression, nd: uni.UniNode
+    ) -> es.VariableDeclaration;
+
+    def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _build_osp_setup_js -> str;
+    def _osp_slots_js(slots: list, tags: dict) -> str;
+    def _local_walker_names -> set[str];
+    def _osp_arch_set -> set[str];
+    def _spawn_side_arch_type(expr: uni.Expr) -> (SymbolType | None);
+    def _build_local_osp_spawn(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> (es.Expression | None);
 
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
