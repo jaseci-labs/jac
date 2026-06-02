@@ -7,7 +7,7 @@ All release-related scripts import from here to ensure consistency.
 import from __future__ { annotations }
 import os;
 import re;
-import tomlkit;
+import tomllib;
 import urllib.error;
 import urllib.request;
 import from pathlib { Path }
@@ -126,7 +126,7 @@ def get_current_version(repo_root: Path, pkg_dir: str) -> str {
     manifest = jac_toml
         if jac_toml.exists()
         else repo_root / pkg_dir / "pyproject.toml";
-    data = tomlkit.loads(manifest.read_text());
+    data = tomllib.loads(manifest.read_text());
     return str(data["project"]["version"]);
 }
 
