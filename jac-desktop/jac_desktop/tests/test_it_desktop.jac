@@ -320,11 +320,6 @@ test "desktop dev mode starts vite server" {
     if not is_jac_setup_available() {
         pytest.skip("'jac setup' CLI command not available");
     }
-    # `jac start --dev` also launches the PyTauri GUI shell (python app.py),
-    # which needs WebKit (libwebkit2gtk) and a display. In headless CI the shell
-    # crashes on import and the dev orchestrator tears Vite down with it, so the
-    # port wait times out. Skip when no display is available, matching the
-    # jac-client `desktop dev mode starts` test.
     if not has_display() {
         pytest.skip("No display available for GUI tests");
     }
