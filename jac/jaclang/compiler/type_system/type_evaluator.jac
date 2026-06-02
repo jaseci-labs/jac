@@ -48,6 +48,7 @@ import from jaclang.jac0core.diagnostics {
     E1035,
     E1040,
     E1041,
+    E1043,
     E1050,
     E1051,
     E1052,
@@ -564,6 +565,22 @@ obj TypeEvaluator {
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];
+
+    def _literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None;
+    def _build_typeddict_fields(
+        class_type: types.ClassType
+    ) -> dict[str, types.TypeBase];
+
+    def _has_typeddict_special_form_base(node_: uni.Archetype) -> bool;
+    def _typeddict_value_union(base_type: types.ClassType) -> types.TypeBase;
+    def _get_typeddict_indexed_type(
+        base_type: types.ClassType, key_expr: uni.Expr, err_node: uni.UniNode
+    ) -> types.TypeBase | None;
+
+    def _typeddict_as_dict(base_type: types.ClassType) -> types.ClassType | None;
+    def _synthesize_typeddict_method(
+        base_type: types.ClassType, method: str
+    ) -> types.OverloadedType | None;
 
     def _create_dataclass_init_method(
         class_type: types.ClassType

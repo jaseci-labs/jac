@@ -21,14 +21,14 @@ glob registry = get_registry();
 
 # Register targets when module loads
 # Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
-import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
-import from jac_client.plugin.src.targets.register { register_targets }
-
-with entry {
-    register_targets();
+import from jac_client.plugin.src.targets.register {
+    register_targets,
+    sync_client_target_choices
 }
+import from jac_client.plugin.src.targets.registry { ClientTarget }
+import from pathlib { Path }
 
 """Register 'build' command at module level."""
 @registry.command(
@@ -45,8 +45,11 @@ with entry {
             "client",
             typ=str,
             default="web",
-            help="Build client (web, desktop, pwa, mobile)",
-            choices=["web", "desktop", "pwa", "mobile"],
+            help=(
+                "Build client target (web, pwa, mobile, desktop). "
+                "Choices reflect installed targets (desktop requires jac-desktop)."
+            ),
+            choices=["web", "pwa", "mobile"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
         ),
         Arg.create(
@@ -63,7 +66,7 @@ with entry {
         ("jac build", "Build web target (default)"),
         ("jac build main.jac", "Build specific file"),
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
-        ("jac build --client desktop", "Build desktop app"),
+        ("jac build --client desktop", "Build desktop app (PyTauri/Python, no Rust)"),
         ("jac build --client mobile --platform android", "Build Android mobile app"),
         ("jac build --client mobile --platform ios", "Build iOS mobile app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
@@ -96,7 +99,7 @@ priority replacement by the registry.
 
     ],
     examples=[
-        ("jac setup desktop", "Setup desktop target (Tauri)"),
+        ("jac setup desktop", "Setup desktop target (PyTauri/Python, no Rust)"),
         ("jac setup mobile", "Setup mobile target (default platform)"),
         ("jac setup mobile --platform ios", "Setup iOS scaffold only"),
         ("jac setup mobile --platform all", "Setup both Android and iOS (macOS)")
@@ -118,6 +121,7 @@ class JacCmd {
     """
     @hookimpl
     static def create_cmd {
+        register_targets();
         registry = get_registry();
 
         # Extend the core 'create' command with --skip flag for client template
@@ -205,8 +209,11 @@ class JacCmd {
                         "client",  # Use client to avoid conflict with jac-scale's --client
                         typ=str,
                         default="web",
-                        help="Client build target for dev server (web, desktop, pwa, mobile)",
-                        choices=["web", "desktop", "pwa", "mobile"],
+                        help=(
+                            "Client build target for dev server (web, pwa, mobile, desktop). "
+                            "Choices reflect installed targets (desktop requires jac-desktop)."
+                        ),
+                        choices=["web", "pwa", "mobile"],
                         short=""  # Disable auto-generated short flag
                     ),
                     Arg.create(
@@ -236,6 +243,8 @@ class JacCmd {
                 source="jac-client"
             );
         }
+
+        sync_client_target_choices();
     }
 }
 
@@ -344,6 +353,33 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 }
 
+"""Return True when a setup-required target has not been initialized yet."""
+def _target_setup_missing(
+    target_name: str, target: ClientTarget, project_dir: Path
+) -> bool {
+    if not target.requires_setup {
+        return False;
+    }
+
+    if target_name == "desktop" {
+        pytauri_dir = project_dir / "src-pytauri";
+        pytauri_conf = pytauri_dir / "tauri.conf.json";
+        app_py = pytauri_dir / "app.py";
+        return (
+            not pytauri_dir.exists() or not pytauri_conf.exists() or not app_py.exists()
+        );
+    }
+
+    if target_name == "mobile" {
+        android_dir = project_dir / "android";
+        ios_dir = project_dir / "ios";
+        return not android_dir.exists() and not ios_dir.exists();
+    }
+
+    # Fallback for future targets that may implement custom setup semantics.
+    return False;
+}
+
 """Pre-hook to handle --client flag for build command.
 
 Uses TargetFactory for lazy loading and polymorphic dispatch.
@@ -387,8 +423,8 @@ def _handle_build_target(ctx: HookContext) -> None {
     ctx.set_data("build_target", target);
     ctx.set_data("build_platform", platform);
 
-    # If target requires setup, warn user
-    if target.requires_setup {
+    # Warn only when setup is actually missing (avoid false positive warnings).
+    if _target_setup_missing(target_name, target, project_dir) {
         console.warning(
             f"Target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
         );
@@ -522,30 +558,14 @@ def _handle_start_target(ctx: HookContext) -> None {
 
     # Handle non-web targets (desktop, pwa) - they override dev/start behavior
     if target_name != "web" {
-        # Check if target requires setup
-        if target.requires_setup {
-            if target_name == "desktop" {
-                tauri_dir = project_dir / "src-tauri";
-                if not tauri_dir.exists() {
-                    console.error(
-                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
-                    );
-                    ctx.set_data("cancel_execution", True);
-                    ctx.set_data("cancel_return_code", 1);
-                    return;
-                }
-            } elif target_name == "mobile" {
-                android_dir = project_dir / "android";
-                ios_dir = project_dir / "ios";
-                if not android_dir.exists() and not ios_dir.exists() {
-                    console.error(
-                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
-                    );
-                    ctx.set_data("cancel_execution", True);
-                    ctx.set_data("cancel_return_code", 1);
-                    return;
-                }
-            }
+        # Check if target setup is actually missing
+        if _target_setup_missing(target_name, target, project_dir) {
+            console.error(
+                f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+            );
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
         }
         try {
             if target_name == "mobile" {
@@ -652,29 +672,13 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
         # Verify setup completed successfully
         if target_name == "desktop" {
-            tauri_dir = project_dir / "src-tauri";
-            if not tauri_dir.exists() {
+            pytauri_dir = project_dir / "src-pytauri";
+            if not pytauri_dir.exists() {
                 console.error(
-                    f"Setup completed but src-tauri directory not found at: {tauri_dir}"
+                    f"Setup completed but src-pytauri directory not found at: {pytauri_dir}"
                 );
                 console.print(
                     "This may indicate the setup function failed silently.",
-                    style="muted"
-                );
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 1);
-                return;
-            }
-        }
-        if target_name == "mobile" {
-            android_dir = project_dir / "android";
-            ios_dir = project_dir / "ios";
-            if not android_dir.exists() and not ios_dir.exists() {
-                console.error(
-                    "Setup completed but neither android/ nor ios/ directory was found."
-                );
-                console.print(
-                    "This may indicate mobile setup did not complete successfully.",
                     style="muted"
                 );
                 ctx.set_data("cancel_execution", True);

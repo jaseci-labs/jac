@@ -416,6 +416,14 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         and base.shared.is_builtin_class
         and base.shared.class_name == "NamedTuple" for base in base_classes
     );
+    # TypedDict-ness is inherited, and the direct `TypedDict` base resolves to
+    # a `_SpecialForm` (its alias_name is not attached in base position), so
+    # match either an already-TypedDict base or one written as `TypedDict`.
+    is_typeddict = any(
+        isinstance(base, types.ClassType) and base.shared.is_typeddict
+        for base in base_classes
+    )
+    or self._has_typeddict_special_form_base(node_);
     enum_members: dict[str, types.EnumMemberInfo] | None = None;
     enum_value_type: types.TypeBase | None = None;
     if is_enum_class {
@@ -434,6 +442,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             is_from_stdlib_stub=is_from_stdlib_stub,
             is_data_class=is_data_class,
             is_namedtuple=is_namedtuple,
+            is_typeddict=is_typeddict,
             is_enum_class=is_enum_class,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
@@ -442,6 +451,11 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     );
     # Compute the MRO for the class.
     type_utils.compute_mro_linearization(cls_type);
+    # Collect TypedDict field types now that the MRO is available; the field
+    # annotations are resolved against the completed class.
+    if is_typeddict {
+        cls_type.shared.typeddict_fields = self._build_typeddict_fields(cls_type);
+    }
     # Cache the type, pyright is doing invalidateTypeCacheIfCanceled()
     # we're not doing that any time sooner.
     node_.name_spec.type = cls_type;

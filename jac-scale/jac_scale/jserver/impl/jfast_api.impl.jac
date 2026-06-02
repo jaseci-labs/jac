@@ -143,6 +143,20 @@ impl JFastApiServer.run_server(
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
+    prebound = self?._prebound_listen_socket;
+    if prebound is not None {
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_config=log_config,
+            timeout_graceful_shutdown=int(drain_timeout)
+        );
+        server = uvicorn.Server(config);
+        install_signal_drain(server, timeout_s=drain_timeout);
+        server.run(sockets=[prebound]);
+        return;
+    }
     current_port = port;
     for _ in range(max_retries) {
         try {

@@ -1,0 +1,12 @@
+[project]
+name = "jac-desktop"
+version = "0.1.0"
+description = "Native desktop target and plugin manager for Jac (PyTauri-based)."
+entry-point = "jac_desktop/plugin.jac"
+
+[entrypoints.jac]
+desktop = "jac_desktop.cli:JacCmd"
+desktop_plugin_config = "jac_desktop.plugin_config:JacDesktopPluginConfig"
+
+[entrypoints.jac_client]
+desktop = "jac_desktop.plugin:JacDesktopPlugin"

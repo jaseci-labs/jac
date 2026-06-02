@@ -38,12 +38,10 @@ impl TypeEvaluator.validate_arg_types(
     return not has_errors;
 }
 
-"""
-Validate that the arguments can be assigned to the call's parameter list.
+"""Validate the call's arguments against its parameters and return the result type.
 
-Specializes the call based on arg types, and returns the specialized
-type of the return value. If it detects an error along the way, it emits
-a diagnostic and sets argumentErrors to true.
+Specializes the call based on argument types; on a mismatch, emits a
+diagnostic and marks argument_errors.
 """
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
