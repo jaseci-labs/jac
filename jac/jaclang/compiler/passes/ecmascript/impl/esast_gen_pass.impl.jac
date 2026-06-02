@@ -4148,6 +4148,13 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if not isinstance(nd.signature, uni.EventSignature) {
         return None;
     }
+    # A body-less event ability (`can x with Y entry;`) is a server-walker RPC
+    # stub whose implementation lives on the server -- not local OSP. Only an
+    # ability implemented in this unit (an inline body or an attached impl) runs
+    # through the local kernel.
+    if nd.body is None {
+        return None;
+    }
     owner = nd.method_owner;
     if not isinstance(owner, uni.Archetype) {
         return None;
@@ -4210,9 +4217,10 @@ single param and binds `here` / `visitor` from it: for a walker ability
 `self`/`visitor` is the walker and `here` is the visited node; for a node/edge
 ability `self`/`here` is the location and `visitor` is the walker."""
 impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
-    self.needs_osp_kernel = True;
-    # The kernel uses `_jac.builtin.bool` / `_jac.poly.and_`, so its host module
-    # must also carry the `_jac` runtime.
+    # NOTE: kernel/descriptor injection is driven by an actual local `spawn`
+    # (see `_build_local_osp_spawn`), not by ability emission -- a local-OSP
+    # archetype that is never spawned locally must not pull in the kernel. The
+    # slot body may use `_jac` primitives, so the runtime is still required.
     self.needs_jac_runtime = True;
     if osp["owner"] not in self._osp_arch_names {
         self._osp_arch_names.append(osp["owner"]);
@@ -4280,7 +4288,7 @@ impl EsastGenPass._osp_arch_kinds -> dict[str, str] {
         and (arch.arch_type.value in ("walker", "node", "edge")) {
             arches.append(arch);
             for ability in arch.get_all_sub_nodes(uni.Ability) {
-                if isinstance(ability.signature, uni.EventSignature) {
+                if self._osp_ability_info(ability) is not None {
                     has_osp = True;
                 }
             }
@@ -4394,24 +4402,50 @@ impl EsastGenPass._spawn_walker_arch(expr: uni.Expr) -> (str | None) {
     return None;
 }
 
-"""Lower `walker spawn target` to an in-process kernel call when the walker is a
-local archetype (constructor or variable), running it through the portable
-kernel rather than the `__jacSpawn` server RPC:
+"""True if `expr` is a local node/edge graph location -- a constructor
+`Node(...)` of a local node/edge archetype, or a variable bound to one. A server
+node ref (string / id), `root`, or a function param is not, so spawning there
+stays a `__jacSpawn` RPC."""
+impl EsastGenPass._spawn_target_is_local_node(expr: uni.Expr) -> bool {
+    kinds = self._osp_arch_kinds();
+    head = self._ref_head_name(expr);
+    if (head is not None) and (kinds.get(head) in ("node", "edge")) {
+        return True;
+    }
+    if isinstance(expr, uni.Name) {
+        bound = self._osp_var_arch().get(expr.sym_name);
+        if (bound is not None) and (kinds.get(bound) in ("node", "edge")) {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Lower `walker spawn target` to an in-process kernel call when BOTH the walker
+is a local archetype AND the target is a local node/edge (a fresh local graph
+location, by constructor or a variable bound to one):
 `osp_spawn(__ospRT, w, __ospDESC[w.__tag], [target])`. A server (sv-imported)
-walker isn't a local archetype, so it falls through to the RPC path. Returns
-None when neither side is a local walker."""
+walker, or a spawn at a server node ref / `root`, falls through to the
+`__jacSpawn` RPC path. Returns None when this isn't a local-graph spawn."""
 impl EsastGenPass._build_local_osp_spawn(
     nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
 ) -> (es.Expression | None) {
     walker_es: (es.Expression | None) = None;
     target_es: (es.Expression | None) = None;
+    target_expr: (uni.Expr | None) = None;
     if self._spawn_walker_arch(nd.left) is not None {
         walker_es = left;
         target_es = right;
+        target_expr = nd.right;
     } elif self._spawn_walker_arch(nd.right) is not None {
         walker_es = right;
         target_es = left;
+        target_expr = nd.left;
     } else {
+        return None;
+    }
+    # A server node ref (string / id) or `root` is not a local graph node -> RPC.
+    if not self._spawn_target_is_local_node(target_expr) {
         return None;
     }
     self.needs_osp_kernel = True;

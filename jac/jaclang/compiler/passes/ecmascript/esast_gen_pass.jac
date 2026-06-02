@@ -326,6 +326,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _osp_var_arch -> dict[str, str];
     def _osp_arch_bases -> dict[str, list[str]];
     def _spawn_walker_arch(expr: uni.Expr) -> (str | None);
+    def _spawn_target_is_local_node(expr: uni.Expr) -> bool;
     def _build_osp_graph_call(
         nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
