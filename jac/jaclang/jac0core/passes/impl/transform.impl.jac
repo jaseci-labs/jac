@@ -128,6 +128,9 @@ impl BaseTransform.is_canceled -> bool {
 """Initialize pass - set cur_node before parent postinit runs."""
 impl Transform.postinit -> None {
     self.cur_node = self.ir_in;
+    self._cached_check_suppress_tokens = [];
+    self._cached_check_suppress_codes = [];
+    self._cached_inline_suppressions = {};
     super.postinit();
 }
 
@@ -178,7 +181,8 @@ impl Transform.emit(
 impl Transform._is_suppressed(
     diag: DiagnosticInfo, loc: CodeLocInfo | None = None
 ) -> bool {
-    import from jaclang.jac0core.diagnostics { LINT_ALIASES, DIAGNOSTICS }
+    import from jaclang.jac0core.diagnostics { LINT_ALIASES }
+    import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     # Check inline suppression: # jac:ignore[CODE]
     if loc {
         try {
@@ -188,15 +192,17 @@ impl Transform._is_suppressed(
             ) {
                 line = loc.first_line;
                 if line in source.inline_suppressions {
-                    suppressed_codes = source.inline_suppressions[line];
-                    if diag.code in suppressed_codes {
-                        return True;
+                    cache_key = (loc.mod_path, line);
+                    if cache_key not in self._cached_inline_suppressions {
+                        suppressed_codes = source.inline_suppressions[line];
+                        (resolved_inline_codes, _) = resolve_diagnostic_tokens(
+                            list(suppressed_codes)
+                        );
+                        self._cached_inline_suppressions[cache_key] = resolved_inline_codes;
                     }
-                    # Also check aliases (kebab names)
-                    for alias in suppressed_codes {
-                        if alias in LINT_ALIASES and LINT_ALIASES[alias] == diag.code {
-                            return True;
-                        }
+                    resolved_inline_codes = self._cached_inline_suppressions[cache_key];
+                    if diag.code in resolved_inline_codes {
+                        return True;
                     }
                 }
             }
@@ -207,20 +213,31 @@ impl Transform._is_suppressed(
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
-        if config is None {
-            return False;
-        }
-        check = config.check;
-        # Check suppress list (supports codes, old kebab names, category names)
+        suppress_tokens: list[str] = [];
+        check = config.check if (config and config.check) else None;
         if check?.suppress and check.suppress {
-            for item in check.suppress {
-                if (item == diag.code) {
-                    return True;
-                }
-                # Check if it's an old lint alias
-                if (item in LINT_ALIASES and LINT_ALIASES[item] == diag.code) {
-                    return True;
-                }
+            suppress_tokens = list(check.suppress);
+        }
+        prog_suppress_tokens = self.prog._compile_options.suppress_codes
+            if (
+                self.prog?._compile_options
+                and self.prog._compile_options.suppress_codes
+            )
+            else [];
+        if prog_suppress_tokens {
+            suppress_tokens.extend(prog_suppress_tokens);
+        }
+        # Check suppress list (supports codes, old kebab names, category names)
+        if suppress_tokens {
+            if suppress_tokens != self._cached_check_suppress_tokens {
+                (resolved_suppress_codes, _) = resolve_diagnostic_tokens(
+                    suppress_tokens
+                );
+                self._cached_check_suppress_tokens = suppress_tokens;
+                self._cached_check_suppress_codes = resolved_suppress_codes;
+            }
+            if diag.code in self._cached_check_suppress_codes {
+                return True;
             }
         }
         # Check suppress_categories
