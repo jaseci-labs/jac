@@ -1827,7 +1827,7 @@ obj KubernetesTarget(DeploymentTarget) {
         AutoscalerFactory.create(
             self.k8s_config.autoscaler_engine, {}, self.logger
         ).destroy(
-            app_name, namespace
+            f"{app_name}-hpa", namespace
         );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'

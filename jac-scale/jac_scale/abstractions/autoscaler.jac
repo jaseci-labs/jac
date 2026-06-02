@@ -31,8 +31,8 @@ class Autoscaler {
     """Remove the autoscaler resource from the cluster.
 
     Args:
-        target_name: Name of the deployment the autoscaler targets
+        autoscaler_name: Name of the autoscaler resource to delete
         namespace: Kubernetes namespace
     """
-    def destroy(self: Autoscaler, target_name: str, namespace: str) -> None;
+    def destroy(self: Autoscaler, autoscaler_name: str, namespace: str) -> None;
 }
