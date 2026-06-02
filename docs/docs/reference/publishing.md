@@ -143,6 +143,52 @@ twine upload dist/*
 
 In CI, authenticate with an API token: `twine upload dist/* -u __token__ -p "$PYPI_TOKEN"`.
 
+## Publishing to npm (npmjs.org)
+
+Client-side Jac libraries can also be published to [npm](https://www.npmjs.com) so JavaScript and TypeScript projects can `npm install` them -- whether or not they use Jac. `jac bundle --target npm` reads the same `jac.toml` and produces an npm-compatible `.tgz`: it compiles your client modules to JavaScript (ES modules), generates `package.json`, and emits `.d.ts` TypeScript declarations.
+
+```bash
+jac bundle --target npm        # -> dist/<name>-<version>.tgz
+jac bundle --target all        # build both the wheel and the npm tarball
+```
+
+What goes in the package:
+
+- **Compiled JavaScript.** Every `.cl.jac` (and plain `.jac`) client module under `[project.include]` compiles to a sibling `.js`, preserving the import structure. `def:pub` / `glob:pub` symbols become ESM exports.
+- **`package.json`.** Built from `[project]` (`name`, `version`, `description`, `license`, `keywords`, `repository`) plus `[dependencies.npm]`. Override npm-specific fields under `[npm]`:
+
+    ```toml
+    [npm]
+    name = "@yourscope/mylib"   # scoped npm name (defaults to the normalized project name)
+    entry = "mylib/index.cl.jac" # entry module (defaults to an index.* module)
+    ```
+
+- **TypeScript declarations.** A `.d.ts` is generated for each module and `package.json` `types`/`exports` point at the entry's declarations, so TypeScript consumers get full type-checking. Function signatures, `obj`/`node` classes, and globals are all typed; JSDoc is also embedded in the `.js`.
+
+!!! note "Pure client code only"
+    npm packages must be standalone client code. A module that crosses a server boundary (a `sv` import/call) can't run as a plain npm install, so `jac bundle --target npm` rejects it with a clear error. Keep server-coupled code in your app, not in the published library.
+
+### The runtime dependency
+
+Libraries that use JSX or the reactive API (`createSignal`, `createEffect`, …) reference the Jac client runtime. The build wires an `import { … } from "@jaseci/runtime"` into those modules and adds `@jaseci/runtime` to `dependencies` automatically. The runtime is a normal, React-independent npm package; modules that explicitly `import from react` instead get `react`/`react-dom` added to `peerDependencies`.
+
+Maintainers publish the runtime itself with:
+
+```bash
+jac bundle --target npm-runtime   # builds @jaseci/runtime at the jaclang version
+```
+
+### Upload to npm
+
+`jac` does not upload -- use the `npm` CLI:
+
+```bash
+npm pack dist/<name>-<version>.tgz   # optional: inspect the contents
+npm publish dist/<name>-<version>.tgz --access public
+```
+
+In CI, authenticate with an automation token via `NODE_AUTH_TOKEN` (see the `publish-npm` job in `.github/workflows/publish-release.yml`, which publishes any package with an `[npm]` section).
+
 ## Editable installs
 
 While developing a library locally, install it in editable mode so changes are picked up without rebuilding:
@@ -159,7 +205,7 @@ jac install -e /path/to/cloned/lib
 
 ## See Also
 
-- [`jac bundle`](cli/index.md#jac-bundle) -- command reference
+- [`jac bundle`](cli/index.md#jac-bundle) -- command reference (`--target wheel|npm|all|npm-runtime`)
 - [`jac install`](cli/index.md#jac-install) -- installing dependencies and editable installs
 - [Configuration Reference](config/index.md#project) -- every `jac.toml` field
 - [Plugin Authoring](plugin-authoring.md) -- building distributable Jac plugins

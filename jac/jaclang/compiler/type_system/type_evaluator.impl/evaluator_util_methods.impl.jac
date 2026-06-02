@@ -88,6 +88,58 @@ impl TypeEvaluator._build_field_params(
     return param_map;
 }
 
+"""Build a literal-typed instance from a `Literal[...]` argument expression.
+
+Maps a str/int/bool/None literal node (including negated int literals) to its
+type. Returns None for unsupported argument forms.
+"""
+impl TypeEvaluator._literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None {
+    if not self.prefetch {
+        return None;
+    }
+    # `Literal[None]` resolves to NoneType, not a literal-valued class.
+    if isinstance(val, uni.Null) and self.prefetch.none_type_class {
+        return self._convert_to_instance(self.prefetch.none_type_class);
+    }
+    base: types.ClassType | None = None;
+    value: str | int | bool | None = None;
+    # Check Bool before Int: at the value level Python's bool is an int, so a
+    # bool literal must map to bool, not int.
+    if isinstance(val, uni.Bool) {
+        base = self.prefetch.bool_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.Int) {
+        base = self.prefetch.int_class;
+        value = val.lit_value;
+    } elif (
+        isinstance(val, uni.UnaryExpr)
+        and val.op.name == Tok.MINUS
+        and isinstance(val.operand, uni.Int)
+    ) {
+        # Negative int literals parse as unary minus over an Int.
+        base = self.prefetch.int_class;
+        value = -val.operand.lit_value;
+    } elif isinstance(val, uni.String) and isinstance(val.lit_value, str) {
+        base = self.prefetch.str_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.MultiString) {
+        # String literals in annotation position are wrapped in MultiString.
+        text = "";
+        for s in val.strings {
+            if not (isinstance(s, uni.String) and isinstance(s.lit_value, str)) {
+                return None;
+            }
+            text += s.lit_value;
+        }
+        base = self.prefetch.str_class;
+        value = text;
+    }
+    if base is None {
+        return None;
+    }
+    return self._convert_to_instance(base.clone_with_literal(value));
+}
+
 """Collect a TypedDict's field name -> value type map, base-first so subclasses override."""
 impl TypeEvaluator._build_typeddict_fields(
     class_type: types.ClassType
@@ -1398,9 +1450,6 @@ impl TypeEvaluator._get_special_form_type(
         case "NoReturn":
             # PEP 484: NoReturn is a synonym for Never.
             return types.NeverType();
-
-        # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
-        # Requires _create_literal_type() method to parse type args into literal ClassTypes.
 
         # Future special forms:
         # case "Union": return self.prefetch.union_class;
