@@ -56,15 +56,13 @@ def _ensure_dependencies(
     needs_reinstall = False;
     for (name, version) in required.items() {
         if name not in deps {
-            console.print(
-                f"\n  [yellow]⚠[/yellow] Missing required {'dev '
-                    if is_dev
-                    else ''}dependency: [bold]{name}[/bold]"
+            console.warning(
+                f"Missing required {'dev ' if is_dev else ''}dependency: {name}"
             );
-            console.print(f"  [dim]{description}[/dim]");
+            console.print(f"  {description}");
             jac_config.add_dependency(name, version, dev=is_dev, dep_type='npm');
             deps = {name: version, ** deps};
-            console.print(f"  [green]✔[/green] Added {name}@{version} to jac.toml");
+            console.success(f"Added {name}@{version} to jac.toml");
             needs_reinstall = True;
         }
     }
@@ -85,9 +83,8 @@ def _migrate_legacy_meta_packages(
     migrated = False;
 
     if 'jac-client-node' in npm_deps {
-        console.print(
-            "\n  [yellow]⚠[/yellow] Migrating from [bold]jac-client-node[/bold] "
-            "meta-package to individual dependencies..."
+        console.warning(
+            "Migrating from jac-client-node meta-package to individual dependencies..."
         );
         jac_config.remove_dependency('jac-client-node', dev=False, dep_type='npm');
         del npm_deps['jac-client-node'];
@@ -99,16 +96,13 @@ def _migrate_legacy_meta_packages(
                 npm_deps[name] = version;
             }
         }
-        console.print(
-            "  [green]✔[/green] Replaced jac-client-node with individual packages"
-        );
+        console.success("Replaced jac-client-node with individual packages");
         migrated = True;
     }
 
     if '@jac-client/dev-deps' in npm_dev_deps {
-        console.print(
-            "\n  [yellow]⚠[/yellow] Migrating from [bold]@jac-client/dev-deps[/bold] "
-            "meta-package to individual dependencies..."
+        console.warning(
+            "Migrating from @jac-client/dev-deps meta-package to individual dependencies..."
         );
         jac_config.remove_dependency('@jac-client/dev-deps', dev=True, dep_type='npm');
         del npm_dev_deps['@jac-client/dev-deps'];
@@ -118,9 +112,7 @@ def _migrate_legacy_meta_packages(
                 npm_dev_deps[name] = version;
             }
         }
-        console.print(
-            "  [green]✔[/green] Replaced @jac-client/dev-deps with individual packages"
-        );
+        console.success("Replaced @jac-client/dev-deps with individual packages");
         migrated = True;
     }
 
@@ -136,7 +128,7 @@ def _clear_node_modules(project_dir: Path | None) {
         node_modules: Path = project_dir / '.jac' / 'client' / 'node_modules';
         if node_modules.exists() {
             shutil.rmtree(node_modules);
-            console.print(f"  [dim]Reinstalling dependencies...[/dim]\n");
+            console.print("  Reinstalling dependencies...\n");
         }
     }
 }
@@ -403,7 +395,5 @@ impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {
     jac_config.save();
     # Invalidate cache to reload
     self.invalidate();
-    console.print(
-        "  [green]✔[/green] Synced all core dependencies to latest required versions"
-    );
+    console.success("Synced all core dependencies to latest required versions");
 }

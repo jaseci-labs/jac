@@ -448,8 +448,7 @@ impl install(
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
         console.print(
-            f"\n📦 Editable install: [cyan]{config.project.name}[/cyan] "
-            f"from [dim]{src_dir}[/dim]",
+            f"\n📦 Editable install: {config.project.name} " f"from {src_dir}",
             style="bold"
         );
 
@@ -494,8 +493,7 @@ impl install(
         return 0;
     }
     console.print(
-        f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
-        style="bold"
+        f"\n📦 Installing dependencies for {config.project.name}", style="bold"
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
@@ -532,7 +530,7 @@ impl install(
     all_packages = pip_packages + git_packages;
     if all_packages {
         with console.status(
-            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
+            f"Installing {len(all_packages)} package(s)...", spinner="dots"
         ) as status {
             install_success = installer.install_package(all_packages);
         }
@@ -610,11 +608,9 @@ impl add(
                 pkg_name = pkg_name[:-4];
             }
         }
-        console.print(f"\n📦 Adding [cyan]{pkg_name}[/cyan] from git", style="bold");
+        console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
-        with console.status(
-            f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots"
-        ) as status {
+        with console.status(f"Installing {pkg_name}...", spinner="dots") as status {
             specs = installer._make_git_spec(pkg_name, git);
             git_success = installer.install_package([specs]);
         }
@@ -637,9 +633,7 @@ impl add(
         } else {
             install_spec = name;
         }
-        with console.status(
-            f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-        ) as status {
+        with console.status(f"Installing {name}...", spinner="dots") as status {
             pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
@@ -803,11 +797,11 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         return 0;
     }
     console.print(
-        f"\n📦 Updating {len(specs_to_update)} package(s) for [cyan]{config.project.name}[/cyan]",
+        f"\n📦 Updating {len(specs_to_update)} package(s) for {config.project.name}",
         style="bold"
     );
     with console.status(
-        f"[cyan]Updating {len(specs_to_update)} package(s)...[/cyan]", spinner="dots"
+        f"Updating {len(specs_to_update)} package(s)...", spinner="dots"
     ) as status {
         update_success = installer.install_package(specs_to_update);
     }
@@ -1247,8 +1241,7 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
     }
 
     console.print(
-        f"\n📦 Bundling [cyan]{config.project.name}[/cyan] "
-        f"v{config.project.version}",
+        f"\n📦 Bundling {config.project.name} " f"v{config.project.version}",
         style="bold"
     );
 
@@ -1269,10 +1262,9 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
         return 1;
     }
     console.print(
-        f"  ✔ Built [bold]{whl_path.name}[/bold] "
-        f"({whl_path.stat().st_size:,} bytes)",
+        f"  ✔ Built {whl_path.name} " f"({whl_path.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    console.print(f"\n  Wheel written to: {whl_path}", style="bold");
     return 0;
 }

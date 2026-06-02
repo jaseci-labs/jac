@@ -308,7 +308,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     file_size = os.path.getsize(output);
-    console.print(f"  Binary written to [bold]{output}[/bold] ({file_size} bytes).");
+    console.print(f"  Binary written to {output} ({file_size} bytes).");
     console.print(f"  Run with: ./{output}");
     return 0;
 }
