@@ -45,7 +45,7 @@ test "osp multi-walker: independent walkers do not share state" {
         "multi_walker_py",
         "multi_walker_cl",
         "multi_walker_na",
-        require=["na"]
+        require=["na", "cl"]
     );
 }
 
@@ -56,7 +56,7 @@ test "osp nested spawn: an ability spawns a second walker and folds its result" 
         "nested_spawn_py",
         "nested_spawn_cl",
         "nested_spawn_na",
-        require=["na"]
+        require=["na", "cl"]
     );
 }
 

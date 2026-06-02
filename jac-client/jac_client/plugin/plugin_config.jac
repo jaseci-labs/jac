@@ -424,3 +424,11 @@ def _regenerate_and_install(project_dir: Path) {
         }
     }
 }
+
+"""Regenerate `.jac/client` package.json from jac.toml and run bun install.
+
+Public entry for tooling (e.g. PyTauri `[plugins.desktop].tauri_plugins` npm sync).
+"""
+def regenerate_client_npm_install(project_dir: Path) {
+    _regenerate_and_install(project_dir);
+}
