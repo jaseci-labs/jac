@@ -26,7 +26,11 @@ class Autoscaler {
     Args:
         spec: Autoscaler specification including target, replicas, and triggers
     """
-    def apply(self: Autoscaler, spec: AutoscalerSpec) -> None;
+    def apply(self: Autoscaler, spec: AutoscalerSpec) {
+        raise NotImplementedError(
+            "apply() must be implemented by a concrete Autoscaler subclass"
+        );
+    }
 
     """Remove the autoscaler resource from the cluster.
 
@@ -34,5 +38,9 @@ class Autoscaler {
         autoscaler_name: Name of the autoscaler resource to delete
         namespace: Kubernetes namespace
     """
-    def destroy(self: Autoscaler, autoscaler_name: str, namespace: str) -> None;
+    def destroy(self: Autoscaler, autoscaler_name: str, namespace: str) {
+        raise NotImplementedError(
+            "destroy() must be implemented by a concrete Autoscaler subclass"
+        );
+    }
 }
