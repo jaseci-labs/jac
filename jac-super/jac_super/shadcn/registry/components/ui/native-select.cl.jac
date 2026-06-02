@@ -2,25 +2,24 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { UnfoldMoreIcon }
 cl import from ...lib.utils { cn }
 
-glob _nativeSelectExcludeKeys: list = ["className", "size", "children"];
+glob _nativeSelectExcludeKeys: list[str] = ["className", "size", "children"];
 
 cl {
-    def:pub NativeSelect(props: Any) -> JsxElement {
-        size = props.size or "default";
+    def:pub NativeSelect(props: any) -> JsxElement {
+        size = props["size"] or "default";
 
         restProps = {};
-        excludeKeys = _nativeSelectExcludeKeys;
-        Object.keys(props).forEach(
-            lambda (key: Any) { if excludeKeys.indexOf(key) == -1 {
+        for key in Object.keys(props) {  # jac:ignore[W6001]
+            if key not in _nativeSelectExcludeKeys {
                 restProps[key] = props[key];
-            }}
-        );
+            }
+        }
 
         return
             <div
                 className={cn(
                     "cn-native-select-wrapper group/native-select relative w-fit has-[select:disabled]:opacity-50",
-                    props.className
+                    props["className"]
                 )}
                 data-slot="native-select-wrapper"
                 data-size={size}
@@ -29,9 +28,9 @@ cl {
                     data-slot="native-select"
                     data-size={size}
                     className="cn-native-select outline-none disabled:pointer-events-none disabled:cursor-not-allowed"
-                    {...restProps}
+                    {**restProps}
                 >
-                    {props.children}
+                    {props["children"]}
                 </select>
                 <HugeiconsIcon
                     icon={UnfoldMoreIcon}
@@ -43,21 +42,23 @@ cl {
             </div>;
     }
 
-    def:pub NativeSelectOption(props: Any) -> JsxElement {
+    def:pub NativeSelectOption(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
-            <option data-slot="native-select-option" {...props}>
-                {props.children}
+            <option data-slot="native-select-option" {**attrs}>
+                {props["children"]}
             </option>;
     }
 
-    def:pub NativeSelectOptGroup(props: Any) -> JsxElement {
+    def:pub NativeSelectOptGroup(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <optgroup
                 data-slot="native-select-optgroup"
-                className={props.className}
-                {...props}
+                className={props["className"]}
+                {**attrs}
             >
-                {props.children}
+                {props["children"]}
             </optgroup>;
     }
 }

@@ -139,51 +139,51 @@ include math_helpers;
 Client code compiles to JavaScript, so the import list maps directly onto ECMAScript `import` declarations -- giving you **the entire npm ecosystem**. Client imports must live in the client codespace (`to cl:`, a `cl` prefix, a `cl { }` block, or a `.cl.jac` file).
 
 ```jac
-to cl:
+cl {
+    # Named imports -- the most common form
+    import from react { useState, useEffect }
 
-# Named imports -- the most common form
-import from react { useState, useEffect }
+    # Named imports with aliases
+    import from lodash { map as mapArray, filter }
 
-# Named imports with aliases
-import from lodash { map as mapArray, filter }
+    # Default import -- "default as Name". Requires the client codespace,
+    # because Python has no concept of a default export.
+    import from react { default as React }
 
-# Default import -- "default as Name". Requires the client codespace,
-# because Python has no concept of a default export.
-import from react { default as React }
+    # Namespace import -- "* as Name"
+    import from react { * as React }
 
-# Namespace import -- "* as Name"
-import from react { * as React }
-
-# Mixed: default + named in one statement (default listed first)
-import from react { default as React, useRef }
+    # Mixed: default + named in one statement (default listed first)
+    import from react { default as React, useRef }
+}
 ```
 
 npm package names often contain hyphens or `@scope/` prefixes that are not valid Jac identifiers. Quote them as **string literals** -- this works for every import form:
 
 ```jac
-to cl:
+cl {
+    import from "react-dom" { render, hydrate }
+    import from "react-router-dom" { BrowserRouter, Route }
+    import from "styled-components" { default as styled }
+    import from "date-fns" { * as DateFns }
 
-import from "react-dom" { render, hydrate }
-import from "react-router-dom" { BrowserRouter, Route }
-import from "styled-components" { default as styled }
-import from "date-fns" { * as DateFns }
-
-# @jac/runtime -- built-in client runtime helpers
-import from "@jac/runtime" { Link, useNavigate, JacForm }
+    # @jac/runtime -- built-in client runtime helpers
+    import from "@jac/runtime" { Link, useNavigate, JacForm }
+}
 ```
 
 Relative client modules and configured path aliases:
 
 ```jac
-to cl:
+cl {
+    # Relative imports between .jac client modules
+    import from .components.Button { default as Button }
+    import from ..lib.helpers { formatDate }
 
-# Relative imports between .jac client modules
-import from .components.Button { default as Button }
-import from ..lib.helpers { formatDate }
-
-# Path aliases -- prefixes defined in jac.toml under [plugins.client.paths]
-import from "@components/Button" { default as Button }
-import from "@shared" { constants }
+    # Path aliases -- prefixes defined in jac.toml under [plugins.client.paths]
+    import from "@components/Button" { default as Button }
+    import from "@shared" { constants }
+}
 ```
 
 A path alias is declared once in `jac.toml`:
@@ -199,17 +199,17 @@ A path alias is declared once in `jac.toml`:
 Some imports bind no names -- they exist purely for their side effects. **Stylesheets are the most common case:** importing a `.css` or `.scss` file applies its styles to the bundle. Drop the `{ items }` list entirely and import the path as a bare string literal:
 
 ```jac
-to cl:
+cl {
+    # Stylesheets -- applied to the bundle, no names bound
+    import "./styles.css";
+    import "./theme.scss";
 
-# Stylesheets -- applied to the bundle, no names bound
-import "./styles.css";
-import "./theme.scss";
+    # A font package whose CSS you want applied globally
+    import "@fontsource/roboto/400.css";
 
-# A font package whose CSS you want applied globally
-import "@fontsource/roboto/400.css";
-
-# A polyfill or any import-for-its-effects-only package
-import "core-js/stable";
+    # A polyfill or any import-for-its-effects-only package
+    import "core-js/stable";
+}
 ```
 
 Each lowers to a side-effect-only ECMAScript import -- `import "./styles.css";` stays `import "./styles.css";` in the generated JavaScript. Asset files (`.css`, `.scss`, `.sass`, `.less`, `.svg`, images, fonts) are detected by the client bundler and emitted into the built `styles.css` / asset output automatically.
@@ -221,41 +221,41 @@ Each lowers to a side-effect-only ECMAScript import -- `import "./styles.css";` 
 Native code compiles to machine code through LLVM. It has no Python interpreter, so PyPI packages are unavailable -- instead, the native codespace can call into **any C-ABI shared library** and import other native Jac modules.
 
 ```jac
-to na:
+na {
+    # Import from another native Jac module
+    import from math_utils { square, cube }
 
-# Import from another native Jac module
-import from math_utils { square, cube }
-
-# A small slice of the standard library is available natively
-import sys;   # sys.argv, sys.exit()
+    # A small slice of the standard library is available natively
+    import sys;   # sys.argv, sys.exit()
+}
 ```
 
 The headline native feature is **C library interop**. Point `import from` at a shared library path and declare the foreign functions you need right inside the braces -- the compiler generates the C-ABI bridge:
 
 ```jac
-to na:
+na {
+    # Pull a math function out of libm
+    import from "/usr/lib/libm.so.6" {
+        def sqrt(x: f64) -> f64;
+    }
 
-# Pull a math function out of libm
-import from "/usr/lib/libm.so.6" {
-    def sqrt(x: f64) -> f64;
-}
-
-# C signatures use fixed-width types -- carry those types through code
-# that feeds values into the C call.
-def hypotenuse(a: f64, b: f64) -> f64 {
-    return sqrt(a * a + b * b);
+    # C signatures use fixed-width types -- carry those types through code
+    # that feeds values into the C call.
+    def hypotenuse(a: f64, b: f64) -> f64 {
+        return sqrt(a * a + b * b);
+    }
 }
 ```
 
 The same mechanism works for any third-party C library, and a C `import from` block can declare structs (as `obj`) alongside functions:
 
 ```jac
-to na:
-
-import from "libgeometry.so" {
-    obj Point { has x: f64; has y: f64; }
-    def make_point(x: f64, y: f64) -> Point;
-    def distance(a: Point, b: Point) -> f64;
+na {
+    import from "libgeometry.so" {
+        obj Point { has x: f64; has y: f64; }
+        def make_point(x: f64, y: f64) -> Point;
+        def distance(a: Point, b: Point) -> f64;
+    }
 }
 ```
 
@@ -269,22 +269,22 @@ import from "libgeometry.so" {
 A single file can mix all three codespaces, and imports can reach *across* the boundary. The most important cross-codespace import is **`sv import` inside client code**: it pulls a server walker or `def:pub` function into the client, and the compiler rewrites the call into an HTTP request automatically.
 
 ```jac
-to cl:
+cl {
+    # Import a server walker into client code -- calls become HTTP requests.
+    sv import from .main { create_task }
 
-# Import a server walker into client code -- calls become HTTP requests.
-sv import from .main { create_task }
+    import from react { useState }
 
-import from react { useState }
-
-def TaskForm() -> JsxElement {
-    has title: str = "";
-    return <button onClick={lambda e: ChangeEvent {
-        create_task(title=title);
-    }}>Add</button>;
+    def TaskForm() -> JsxElement {
+        has title: str = "";
+        return <button onClick={lambda e: ChangeEvent {
+            create_task(title=title);
+        }}>Add</button>;
+    }
 }
 ```
 
-Server and native code interoperate the same way -- a native `to na:` function can be called directly from server code in the same file, with the compiler generating the interop stubs:
+Server and native code interoperate the same way -- a native function (in a `na { }` block) can be called directly from server code in the same file, with the compiler generating the interop stubs:
 
 ```jac
 """One file, three codespaces."""
@@ -296,14 +296,12 @@ def now_iso() -> str {
     return datetime.now().isoformat();
 }
 
-to na:
-
-def fib(n: int) -> int {
-    if n <= 1 { return n; }
-    return fib(n - 1) + fib(n - 2);
+na {
+    def fib(n: int) -> int {
+        if n <= 1 { return n; }
+        return fib(n - 1) + fib(n - 2);
+    }
 }
-
-to sv:
 
 with entry {
     print(now_iso());

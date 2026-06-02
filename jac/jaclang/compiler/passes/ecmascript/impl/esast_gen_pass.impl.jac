@@ -199,10 +199,14 @@ impl EsastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
 
 """Process ternary expression."""
 impl EsastGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
-    `test = cast(
-        es.Expression,
-        nd.condition.gen.es_ast
-        or self.sync_loc(es.Identifier(name='condition'), jac_node=nd.condition)
+    `test = self._coerce_truthy(
+        nd.condition,
+        cast(
+            es.Expression,
+            nd.condition.gen.es_ast
+            or self.sync_loc(es.Identifier(name='condition'), jac_node=nd.condition)
+        ),
+        nd
     );
     consequent = cast(
         es.Expression,
@@ -894,11 +898,7 @@ impl EsastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
                         or self.sync_loc(es.Literal(value=0), jac_node=nd)
                     )
                 );
-                member_expr = self.sync_loc(
-                    es.MemberExpression(object=`obj, property=idx, computed=True),
-                    jac_node=nd
-                );
-                nd.gen.es_ast = member_expr;
+                nd.gen.es_ast = self._lower_subscript(nd.target, `obj, idx, nd);
             } else {
                 nd.gen.es_ast = `obj;
             }
@@ -1927,6 +1927,16 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
         nd.gen.es_ast = expr_stmt;
         return;
     }
+    # Negative-index list assignment (`xs[-1] = v`) needs a runtime shim; a raw
+    # JS subscript would create a bogus "-1" property instead of writing the
+    # element counted from the end.
+    if len(nd.target) == 1 {
+        _setitem = self._try_subscript_setitem(nd.target[0], value_expr, nd);
+        if _setitem is not None {
+            nd.gen.es_ast = _setitem;
+            return;
+        }
+    }
     targets_info: list[AssignmentTargetInfo] = [];
     for target_node in nd.target {
         (left, reference, decl_name) = self._convert_assignment_target(target_node);
@@ -2095,6 +2105,34 @@ impl EsastGenPass._convert_assignment_target(
     if isinstance(target, uni.SubTag) {
         return self._convert_assignment_target(target.tag);
     }
+    # A subscript in store position must stay a valid computed-member LHS.
+    # `_lower_subscript` rewrites reads to `obj.at(idx)` / `_jac.poly.getitem`,
+    # neither of which is assignable, so rebuild the raw `obj[idx]` member here.
+    # (Negative-index list writes are upgraded to `_jac.poly.setitem` in
+    # `exit_assignment`; this keeps every other subscript target assignable.)
+    if (
+        isinstance(target, uni.AtomTrailer)
+        and isinstance(target.right, uni.IndexSlice)
+        and (not target.right.is_range)
+    ) {
+        _si = target.right.gen.es_ast;
+        if isinstance(_si, es.IndexInfo) {
+            _obj = cast(
+                es.Expression,
+                target.target.gen.es_ast
+                or self.sync_loc(es.Identifier(name='obj'), jac_node=target)
+            );
+            _idx = cast(
+                es.Expression,
+                _si.value or self.sync_loc(es.Literal(value=0), jac_node=target)
+            );
+            _member = self.sync_loc(
+                es.MemberExpression(object=_obj, property=_idx, computed=True),
+                jac_node=target
+            );
+            return (_member, _member, None);
+        }
+    }
     left = cast(
         (es.Pattern | es.Expression),
         target.gen.es_ast or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
@@ -2182,6 +2220,209 @@ impl EsastGenPass._try_primitive_op(
     return self.sync_loc(es.Identifier(name=_result), jac_node=jac_node);
 }
 
+"""Resolve the primitive type name of an expression, or "" if unknown."""
+impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
+    _obj_type = None;
+    try {
+        _te = self.prog.get_type_evaluator();
+        if _te {
+            _obj_type = _te.get_type_of_expression(expr_node);
+        }
+    } except Exception {
+        _obj_type = None;
+    }
+    return self._resolve_primitive_type_name(_obj_type);
+}
+
+"""True if an expression is statically a collection whose JS truthiness and
+subscript semantics diverge from Python (list/dict/set/tuple/bytes). str is
+excluded: empty-string falsiness and `.at()` already agree with Python."""
+impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
+    # `and`/`or` evaluate to one of their operands (Python returns the operand,
+    # not a bool), so the result can be a collection -- and thus needs
+    # Python-truthiness coercion in a boolean context -- whenever any operand
+    # can, even though the expression's inferred type is a union that is not
+    # itself a collection. This also keeps `exit_bool_expr`'s own
+    # `left_maybe_collection` check consistent for nested `and`/`or` chains.
+    if isinstance(expr_node, uni.BoolExpr) {
+        for val in expr_node.values {
+            if self._is_collection_expr(val) {
+                return True;
+            }
+        }
+        return False;
+    }
+    return self._expr_type_name(expr_node) in {
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "frozenset",
+        "bytes"
+    };
+}
+
+"""Build a member-access chain like `_jac.poly.getitem` from a name path."""
+impl EsastGenPass._build_jac_ref(
+    path: list[str], jac_node: uni.UniNode
+) -> es.Expression {
+    ref: es.Expression = self.sync_loc(es.Identifier(name=path[0]), jac_node=jac_node);
+    for name in path[1:] {
+        ref = self.sync_loc(
+            es.MemberExpression(
+                object=ref,
+                property=self.sync_loc(es.Identifier(name=name), jac_node=jac_node),
+                computed=False
+            ),
+            jac_node=jac_node
+        );
+    }
+    return ref;
+}
+
+"""Build a runtime helper call (e.g. `_jac.poly.getitem(a, b)`) and flag the
+`_jac` runtime for injection."""
+impl EsastGenPass._build_jac_call(
+    path: list[str], args: list[es.Expression], jac_node: uni.UniNode
+) -> es.Expression {
+    self.needs_jac_runtime = True;
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self._build_jac_ref(path, jac_node),
+            arguments=cast(list[(es.Expression | es.SpreadElement)], args)
+        ),
+        jac_node=jac_node
+    );
+}
+
+"""Wrap a condition in Python-truthiness coercion when its static type is a
+collection (JS treats every array/object/Set as truthy). Scalars and unknown
+types are left untouched: numbers, strings and None already share Python's
+truthiness in JS, and wrapping unknown values would churn output needlessly."""
+impl EsastGenPass._coerce_truthy(
+    expr_node: (uni.UniNode | None), es_expr: es.Expression, jac_node: uni.UniNode
+) -> es.Expression {
+    if (expr_node is not None) and self._is_collection_expr(expr_node) {
+        return self._build_jac_call(["_jac", "builtin", "bool"], [es_expr], jac_node);
+    }
+    return es_expr;
+}
+
+"""True if an index expression is a literal that can never be a negative
+numeric index (string keys, non-negative integers). Negative indices lower to
+a `UnaryExpression`, so any plain `Literal` is safe to leave as a raw `obj[i]`
+subscript with no negative-index rewriting."""
+impl EsastGenPass._is_literal_index(idx_es: es.Expression) -> bool {
+    if not isinstance(idx_es, es.Literal) {
+        return False;
+    }
+    return not (
+        isinstance(idx_es.value, (int, float))
+        and (not isinstance(idx_es.value, bool))
+        and (idx_es.value < 0)
+    );
+}
+
+"""Lower a `obj[idx]` subscript with Python indexing semantics. Python counts
+negative indices from the end, which a raw JS subscript (`obj[-1]` -> undefined)
+does not. A literal index (string key or non-negative integer) stays a plain
+computed member. Known sequences use JS `.at()` (native negative-from-end);
+known mappings stay a key lookup; for an unknown static type, `_jac.poly.getitem`
+dispatches at runtime while preserving JS's undefined-on-miss behavior."""
+impl EsastGenPass._lower_subscript(
+    target_node: uni.UniNode,
+    obj_es: es.Expression,
+    idx_es: es.Expression,
+    jac_node: uni.UniNode
+) -> es.Expression {
+    # A literal index is never a negative numeric index (negative literals
+    # lower to a `UnaryExpression`, not a `Literal`), so string keys and
+    # non-negative integers stay a plain, fast computed member. Only
+    # non-literal indices can be negative at runtime and need rewriting.
+    if self._is_literal_index(idx_es) {
+        return self.sync_loc(
+            es.MemberExpression(object=obj_es, property=idx_es, computed=True),
+            jac_node=jac_node
+        );
+    }
+    _tname = self._expr_type_name(target_node);
+    if _tname in {"list", "tuple", "str", "bytes"} {
+        return self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(
+                    es.MemberExpression(
+                        object=obj_es,
+                        property=self.sync_loc(
+                            es.Identifier(name='at'), jac_node=jac_node
+                        ),
+                        computed=False
+                    ),
+                    jac_node=jac_node
+                ),
+                arguments=[cast((es.Expression | es.SpreadElement), idx_es)]
+            ),
+            jac_node=jac_node
+        );
+    }
+    if _tname == "dict" {
+        return self.sync_loc(
+            es.MemberExpression(object=obj_es, property=idx_es, computed=True),
+            jac_node=jac_node
+        );
+    }
+    return self._build_jac_call(
+        ["_jac", "poly", "getitem"], [obj_es, idx_es], jac_node
+    );
+}
+
+"""If `target` is a list subscript with a possibly-negative index, lower the
+assignment to `_jac.poly.setitem(obj, idx, value)` so a negative index writes
+the element counted from the end (a raw JS `obj[-1] = v` would create a bogus
+"-1" property). Returns None for any target that a plain computed-member LHS
+already handles correctly (non-negative literal index, dict/unknown targets)."""
+impl EsastGenPass._try_subscript_setitem(
+    target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
+) -> (es.Statement | None) {
+    if (
+        not isinstance(target, uni.AtomTrailer)
+        or not isinstance(target.right, uni.IndexSlice)
+        or target.right.is_range
+    ) {
+        return None;
+    }
+    _si = target.right.gen.es_ast;
+    if not isinstance(_si, es.IndexInfo) {
+        return None;
+    }
+    _idx = cast(
+        es.Expression,
+        _si.value or self.sync_loc(es.Literal(value=0), jac_node=jac_node)
+    );
+    # A literal index is never negative, so a raw `obj[idx] = v` is correct.
+    if self._is_literal_index(_idx) {
+        return None;
+    }
+    # Only `list` needs the runtime shim: dict writes are plain key sets, and
+    # str/tuple/bytes are immutable (no subscript assignment). Unknown targets
+    # keep the raw computed-member form to avoid churn on dict-like writes.
+    if self._expr_type_name(target.target) != "list" {
+        return None;
+    }
+    _obj = cast(
+        es.Expression,
+        target.target.gen.es_ast
+        or self.sync_loc(es.Identifier(name='obj'), jac_node=jac_node)
+    );
+    _val = cast(
+        es.Expression,
+        value_es or self.sync_loc(es.Identifier(name='undefined'), jac_node=jac_node)
+    );
+    _call = self._build_jac_call(
+        ["_jac", "poly", "setitem"], [_obj, _idx, _val], jac_node
+    );
+    return self.sync_loc(es.ExpressionStatement(expression=_call), jac_node=jac_node);
+}
+
 """Process unary expression."""
 impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     operand = cast(
@@ -2204,6 +2445,11 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     }
     operator = ES_UNARY_OPS.get(op_tok) if op_tok else None;
     operator = operator or '!';
+    # `not <collection>` must test Python emptiness, not JS truthiness
+    # (every array/object/Set is truthy in JS), so coerce the operand first.
+    if (op_tok == Tok.NOT) {
+        operand = self._coerce_truthy(nd.operand, operand, nd);
+    }
     unary_expr = self.sync_loc(
         es.UnaryExpression(operator=operator, prefix=True, argument=operand),
         jac_node=nd
@@ -2354,12 +2600,22 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     logical_op = ES_LOGICAL_OPS.get(op_tok) if op_tok else None;
     logical_op = logical_op or '&&';
+    # Python's `and`/`or` return an *operand* (not a boolean) and decide which
+    # by Python truthiness. JS `&&`/`||` do the same but on JS truthiness, so
+    # for a tested operand that is a collection (empty list/dict/set is falsy
+    # in Python but truthy in JS) we must route through `_jac.poly.and_/or_`.
+    # Those helpers take the right side as a thunk to preserve short-circuit
+    # evaluation while evaluating the left exactly once.
+    _helper = "and_" if (op_tok == Tok.KW_AND) else "or_";
     result: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
             nd.values[0], default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
+    # Once any tested-position operand is a collection the accumulated result
+    # may itself be one, so stay on the helper form for the rest of the chain.
+    left_maybe_collection = self._is_collection_expr(nd.values[0]);
     for val in nd.values[1:] {
         right = cast(
             es.Expression,
@@ -2367,10 +2623,23 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
                 val, default_factory=lambda _src: any : es.Literal(value=None)
             )
         );
-        result = self.sync_loc(
-            es.LogicalExpression(operator=logical_op, left=result, right=right),
-            jac_node=nd
-        );
+        if left_maybe_collection {
+            right_thunk = self.sync_loc(
+                es.ArrowFunctionExpression(params=[], body=right, expression=True),
+                jac_node=nd
+            );
+            result = self._build_jac_call(
+                ["_jac", "poly", _helper],
+                [result, cast(es.Expression, right_thunk)],
+                nd
+            );
+        } else {
+            result = self.sync_loc(
+                es.LogicalExpression(operator=logical_op, left=result, right=right),
+                jac_node=nd
+            );
+        }
+        left_maybe_collection = left_maybe_collection or self._is_collection_expr(val);
     }
     nd.gen.es_ast = result;
 }
@@ -2400,6 +2669,15 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
     op_name_str = nd.op?.name;
     op_name = Tok(op_name_str) if (op_name_str in Tok.__members__) else None;
     if (op_name == Tok.KW_SPAWN) {
+        # Local-archetype walker (declared with abilities in this unit): run it
+        # in-process through the portable kernel rather than the `__jacSpawn`
+        # server RPC. A server (sv-imported) walker has no local abilities and
+        # falls through to the RPC path below.
+        local_spawn = self._build_local_osp_spawn(nd, left, right);
+        if local_spawn is not None {
+            nd.gen.es_ast = local_spawn;
+            return;
+        }
         spawn_parts = self._prepare_spawn_call(nd, left, right);
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
@@ -3105,8 +3383,15 @@ impl EsastGenPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
 
 """Process while statement."""
 impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
-    `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+    `test = self._coerce_truthy(
+        nd.condition,
+        cast(
+            es.Expression,
+            self._get_ast_or_default(
+                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+            )
+        ),
+        nd
     );
     body = self._build_block_statement(nd, nd.body);
     while_stmt = self.sync_loc(es.WhileStatement(`test=`test, body=body), jac_node=nd);
@@ -3123,8 +3408,15 @@ impl EsastGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
 
 """Process else-if clause."""
 impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
-    `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+    `test = self._coerce_truthy(
+        nd.condition,
+        cast(
+            es.Expression,
+            self._get_ast_or_default(
+                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+            )
+        ),
+        nd
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -3140,8 +3432,15 @@ impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
 
 """Process if statement."""
 impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
-    `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+    `test = self._coerce_truthy(
+        nd.condition,
+        cast(
+            es.Expression,
+            self._get_ast_or_default(
+                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+            )
+        ),
+        nd
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -3378,51 +3677,35 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     }
 }
 
-"""Auto-inject a named import from @jac/runtime (e.g. useState, useEffect, __jacCallFunction)."""
+"""Auto-inject a named import for a runtime symbol (e.g. useState, useEffect,
+__jacCallFunction, useRef).
+
+The `client_surface` contract decides where each symbol resolves: `@jac/runtime`
+for everything both runtimes back, or `react` for primitives taken straight from
+React (e.g. `useRef`, which needs no `@jac/runtime` shim). Only `@jac/runtime`
+symbols register the runtime for inlining — `react` is an ordinary dependency."""
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+    import from jaclang.runtimelib.client_surface { runtime_import_source }
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
+    src = runtime_import_source(name);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
         ),
         jac_node=nd
     );
-    source = self.sync_loc(
-        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
-    );
+    source = self.sync_loc(es.Literal(value=src, raw='"' + src + '"'), jac_node=nd);
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    # Register in client manifest so bundler knows to inline the runtime
-    self._register_jac_runtime_import();
-}
-
-"""Auto-inject a named import from `react` (e.g. useRef).
-
-Unlike `_inject_runtime_import`, this targets `react` directly: `useRef`
-is a plain React primitive with no reactivity, so it needs no `@jac/runtime`
-shim (which exists only to bridge `useState`/`useEffect` into Jac's reactive
-core). No `_register_jac_runtime_import` — react is an ordinary dependency."""
-impl EsastGenPass._inject_react_import(name: str, nd: uni.UniNode) -> None {
-    if name in self.injected_imports or self._has_import(name) {
-        return;
+    if src == '@jac/runtime' {
+        # Register in client manifest so bundler knows to inline the runtime.
+        self._register_jac_runtime_import();
     }
-    specifier = self.sync_loc(
-        es.ImportSpecifier(
-            imported=es.Identifier(name=name), local=es.Identifier(name=name)
-        ),
-        jac_node=nd
-    );
-    source = self.sync_loc(es.Literal(value='react', raw='"react"'), jac_node=nd);
-    import_decl = self.sync_loc(
-        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
-    );
-    self.imports.append(import_decl);
-    self.injected_imports.add(name);
 }
 
 """Leftmost identifier of a call/subscript chain, or None.
@@ -3569,7 +3852,7 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             if ref_typed and not ref_ctor {
                 self.emit(E2025, node_override=has_var);
             }
-            self._inject_react_import('useRef', nd);
+            self._inject_runtime_import('useRef', nd);
             # The field is constructed as `= Ref()` / `= Ref(initial)` — a
             # Jac-only ambient with no JS counterpart. So we don't emit the
             # `Ref(...)` call itself; we lift its sole argument (the seed for
@@ -3696,6 +3979,16 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     # Restore reactive_vars to parent scope
     if self.reactive_vars_stack {
         self.reactive_vars = self.reactive_vars_stack.pop();
+    }
+    # CHECK: OSP ability (can with <ArchetypeType> entry/exit) on a
+    # walker/node/edge archetype. These are kernel dispatch slots, not React
+    # effects -- emit a slot method and record the descriptor metadata. (A
+    # reactive component ability, whose owner is a plain component, still takes
+    # the useEffect path below.)
+    osp_info = self._osp_ability_info(nd);
+    if osp_info is not None {
+        self._emit_osp_slot_method(nd, osp_info);
+        return;
     }
     # CHECK: Is this an event-based ability (can with entry/exit) in client context?
     if (isinstance(nd.signature, uni.EventSignature) and nd.in_client_context()) {
@@ -3840,6 +4133,308 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     }
 }
 
+"""Resolve an OSP ability's descriptor metadata, or None if `nd` is not an
+event ability on a walker/node/edge archetype. Returns the owner archetype
+name, its kind, whether the trigger is `entry`, the ability name, and the
+trigger archetype names (empty = untyped, fires on any location)."""
+impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
+    if not isinstance(nd.signature, uni.EventSignature) {
+        return None;
+    }
+    owner = nd.method_owner;
+    if not isinstance(owner, uni.Archetype) {
+        return None;
+    }
+    kind = owner.arch_type.value;
+    if kind not in ("walker", "node", "edge") {
+        return None;
+    }
+    if (nd.name_ref is None) or (owner.name is None) {
+        return None;
+    }
+    return {
+        "owner": owner.name.sym_name,
+        "kind": kind,
+        "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
+        "name": nd.name_ref.sym_name,
+        "triggers": self._osp_trigger_names(nd.signature.arch_tag_info)
+    };
+}
+
+"""Flatten an OSP ability trigger (`with <T> entry`) into archetype names.
+None -> [] (untyped); a tuple/union -> each member; a plain type -> [name]."""
+impl EsastGenPass._osp_trigger_names(expr: (uni.Expr | None)) -> list[str] {
+    if expr is None {
+        return [];
+    }
+    names: list[str] = [];
+    if isinstance(expr, uni.TupleVal) {
+        for member in expr.values {
+            names.extend(self._osp_trigger_names(member));
+        }
+        return names;
+    }
+    head = self._ref_head_name(expr);
+    if head is not None {
+        names.append(head);
+    }
+    return names;
+}
+
+"""Build a `const <name> = <init>;` declaration."""
+impl EsastGenPass._osp_const_decl(
+    name: str, `init: es.Expression, nd: uni.UniNode
+) -> es.VariableDeclaration {
+    return self.sync_loc(
+        es.VariableDeclaration(
+            kind='const',
+            declarations=[
+                es.VariableDeclarator(id=es.Identifier(name=name), `init=`init)
+            ]
+        ),
+        jac_node=nd
+    );
+}
+
+"""Emit an OSP ability as a kernel slot method on its archetype class and record
+its descriptor metadata. The slot is called by the kernel as `fn(owner, other)`
+via `(o, x) => o.<name>(x)`, so the method takes the *other* archetype as its
+single param and binds `here` / `visitor` from it: for a walker ability
+`self`/`visitor` is the walker and `here` is the visited node; for a node/edge
+ability `self`/`here` is the location and `visitor` is the walker."""
+impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+    self.needs_osp_kernel = True;
+    # The kernel uses `_jac.builtin.bool` / `_jac.poly.and_`, so its host module
+    # must also carry the `_jac` runtime.
+    self.needs_jac_runtime = True;
+    if osp["owner"] not in self._osp_arch_names {
+        self._osp_arch_names.append(osp["owner"]);
+    }
+    for trig in osp["triggers"] {
+        if trig not in self._osp_arch_names {
+            self._osp_arch_names.append(trig);
+        }
+    }
+    self._osp_slots.append(osp);
+    is_walker = osp["kind"] == "walker";
+    other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
+    this_ref = self.sync_loc(es.ThisExpression(), jac_node=nd);
+    here_init = other_ref if is_walker else this_ref;
+    visitor_init = this_ref if is_walker else other_ref;
+    binds: list[es.Statement] = [
+        self._osp_const_decl("here", here_init, nd),
+        self._osp_const_decl("visitor", visitor_init, nd)
+    ];
+    inner = self.unwrap_body(nd);
+    body_stmts = self._collect_stmt_body(inner);
+    body_stmts = self._prepend_hoisted(nd, body_stmts);
+    block = self.sync_loc(es.BlockStatement(body=binds + body_stmts), jac_node=nd);
+    func_expr = self.sync_loc(
+        es.FunctionExpression(
+            id=None,
+            params=[self.sync_loc(es.Identifier(name="__other"), jac_node=nd)],
+            body=block,
+            async_=nd.is_async
+        ),
+        jac_node=nd
+    );
+    nd.gen.es_ast = self.sync_loc(
+        es.MethodDefinition(
+            key=self.sync_loc(
+                es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
+            ),
+            value=func_expr,
+            kind='method',
+            `static=False
+        ),
+        jac_node=nd
+    );
+}
+
+"""Memoized set of local archetype names that participate in OSP: every
+walker/node/edge declared with an event ability, plus the node/edge types those
+abilities trigger on. Scanned up front from all abilities in the module so that
+emission order (a trigger node declared before its walker) doesn't matter."""
+impl EsastGenPass._osp_arch_set -> set[str] {
+    if self._osp_prescan is not None {
+        return self._osp_prescan;
+    }
+    names: set[str] = set();
+    scan_root = self.ir_in
+        if isinstance(self.ir_in, uni.Module)
+        else self.get_main_mod();
+    for ability in scan_root.get_all_sub_nodes(uni.Ability) {
+        info = self._osp_ability_info(ability);
+        if info is not None {
+            names.add(info["owner"]);
+            for trig in info["triggers"] {
+                names.add(trig);
+            }
+        }
+    }
+    self._osp_prescan = names;
+    return names;
+}
+
+"""Names of local walker archetypes (declared with abilities in this unit), the
+candidates for in-process kernel spawn rather than `__jacSpawn` RPC."""
+impl EsastGenPass._local_walker_names -> set[str] {
+    names: set[str] = set();
+    for slot in self._osp_slots {
+        if slot["kind"] == "walker" {
+            names.add(slot["owner"]);
+        }
+    }
+    return names;
+}
+
+"""Symbol type of a spawn side's head, e.g. `Item(...)` / `Item` -> NODE_ARCH,
+`Acc()` -> WALKER_ARCH, a local variable -> its (non-archetype) symbol type.
+None when unresolved. Used to find the target (node/edge) side of a spawn
+without relying on type inference (which cl skips for `.cl.jac`)."""
+impl EsastGenPass._spawn_side_arch_type(expr: uni.Expr) -> (SymbolType | None) {
+    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
+    target = expr.target if isinstance(expr, uni.FuncCall) else expr;
+    if not isinstance(target, (uni.Name, uni.SpecialVarRef)) {
+        return None;
+    }
+    main_mod = self.ir_in
+        if isinstance(self.ir_in, uni.Module)
+        else self.get_main_mod();
+    sym = resolve_expr_symbol(target, main_mod);
+    return sym.sym_type if sym else None;
+}
+
+"""Lower `walker spawn target` to an in-process kernel call when the target is a
+local node/edge archetype constructor (a fresh local graph node), running the
+walker through the portable kernel rather than the `__jacSpawn` server RPC:
+`osp_spawn(__ospRT, w, __ospDESC[w.__tag], [target])`. A server walker spawned
+at `root` (no local node constructor) falls through to the RPC path. Returns
+None when this isn't a local-archetype spawn."""
+impl EsastGenPass._build_local_osp_spawn(
+    nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+) -> (es.Expression | None) {
+    # Only meaningful once this unit has at least one local walker with abilities.
+    if not self._local_walker_names() {
+        return None;
+    }
+    node_kinds = (SymbolType.NODE_ARCH, SymbolType.EDGE_ARCH);
+    left_kind = self._spawn_side_arch_type(nd.left);
+    right_kind = self._spawn_side_arch_type(nd.right);
+    walker_es: (es.Expression | None) = None;
+    target_es: (es.Expression | None) = None;
+    if (right_kind in node_kinds) and (left_kind not in node_kinds) {
+        walker_es = left;
+        target_es = right;
+    } elif (left_kind in node_kinds) and (right_kind not in node_kinds) {
+        walker_es = right;
+        target_es = left;
+    } else {
+        return None;
+    }
+    self.needs_osp_kernel = True;
+    self.needs_jac_runtime = True;
+    tag_lookup = self.sync_loc(
+        es.MemberExpression(
+            object=self.sync_loc(es.Identifier(name="__ospDESC"), jac_node=nd),
+            property=self.sync_loc(
+                es.MemberExpression(
+                    object=walker_es,
+                    property=self.sync_loc(es.Identifier(name="__tag"), jac_node=nd),
+                    computed=False
+                ),
+                jac_node=nd
+            ),
+            computed=True
+        ),
+        jac_node=nd
+    );
+    starts = self.sync_loc(es.ArrayExpression(elements=[target_es]), jac_node=nd);
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(es.Identifier(name="osp_spawn"), jac_node=nd),
+            arguments=[
+                self.sync_loc(es.Identifier(name="__ospRT"), jac_node=nd),
+                walker_es,
+                tag_lookup,
+                starts
+            ]
+        ),
+        jac_node=nd
+    );
+}
+
+"""Assemble the per-module OSP setup as a raw JS string: compile-time type tags
+on each archetype prototype, the closed-world subtype table, the per-archetype
+`WalkerDesc` / `NodeDesc` descriptors (with `Slot`s referencing the slot
+methods), and the cl `NoopHost` `OspRuntime`. Emitted after the archetype
+classes so `<Cls>.prototype` is defined."""
+impl EsastGenPass._build_osp_setup_js -> str {
+    # Stable tag per archetype, in first-encounter order.
+    tags: dict[str, int] = {};
+    for name in self._osp_arch_names {
+        if name not in tags {
+            tags[name] = len(tags);
+        }
+    }
+    # Group slots by owner / phase; track which archetypes are walkers.
+    entry_by_owner: dict[str, list] = {};
+    exit_by_owner: dict[str, list] = {};
+    walkers: set[str] = set();
+    for slot in self._osp_slots {
+        owner = slot["owner"];
+        if slot["kind"] == "walker" {
+            walkers.add(owner);
+        }
+        bucket = entry_by_owner if slot["is_entry"] else exit_by_owner;
+        if owner not in bucket {
+            bucket[owner] = [];
+        }
+        bucket[owner].append(slot);
+    }
+    lines: list[str] = [];
+    isa_parts: list[str] = [];
+    for (name, tag) in tags.items() {
+        lines.append(f"{name}.prototype.__tag = {tag};");
+        # Closed-world subtype table; flat for now (each tag is-a itself).
+        isa_parts.append(f"{tag}: new Set([{tag}])");
+    }
+    lines.append("const __ospISA = {" + ", ".join(isa_parts) + "};");
+    desc_parts: list[str] = [];
+    for (name, tag) in tags.items() {
+        desc_cls = "WalkerDesc" if (name in walkers) else "NodeDesc";
+        entry_js = self._osp_slots_js(entry_by_owner.get(name, []), tags);
+        exit_js = self._osp_slots_js(exit_by_owner.get(name, []), tags);
+        desc_parts.append(
+            f"{tag}: new {desc_cls}({{type_tag: {tag}, entry: {entry_js}, exit: {exit_js}}})"
+        );
+    }
+    lines.append("const __ospDESC = {" + ", ".join(desc_parts) + "};");
+    lines.append(
+        "const __ospRT = new OspRuntime({" + "tag_of: (h) => h.__tag, " + "is_a: (t, b) => __ospISA[t] ? __ospISA[t].has(b) : (t === b), " + "node_desc: (t) => __ospDESC[t], " + "on_complete: (s, ok) => { if (s.wlk) s.wlk.reports = s.reports; }" + "});"
+    );
+    return "\n".join(lines);
+}
+
+"""Render a list of OSP slot records as a JS `[new Slot({...}), ...]` literal.
+An untyped trigger lowers to `trig_tag: -1`; each member of a typed trigger gets
+its own slot bound to the same `(o, x) => o.<name>(x)` dispatch."""
+impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
+    parts: list[str] = [];
+    for slot in slots {
+        fn = "(o, x) => o." + slot["name"] + "(x)";
+        if not slot["triggers"] {
+            parts.append("new Slot({trig_tag: -1, fn: " + fn + "})");
+        } else {
+            for trig in slot["triggers"] {
+                ttag = tags[trig] if (trig in tags) else -1;
+                parts.append(f"new Slot({{trig_tag: {ttag}, fn: {fn}}})");
+            }
+        }
+    }
+    return "[" + ", ".join(parts) + "]";
+}
+
 """Ensure ImplDef body is properly parented for traversal."""
 impl EsastGenPass.enter_ability(nd: uni.Ability) -> None {
     if isinstance(nd.body, uni.ImplDef) and (nd.body not in nd.kid) {
@@ -3948,7 +4543,16 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
             }
         }
     }
-    if ((nd.arch_type.name == Tok.KW_OBJECT) and has_members) {
+    # A local-OSP walker/node/edge runs in-process, so its client class needs a
+    # real field constructor (normally a non-`obj` archetype gets its
+    # constructor only from the wire/boundary stub, which is suppressed for
+    # local-OSP types to avoid a duplicate class declaration).
+    is_local_osp_arch = (
+        (nd.name is not None)
+        and (nd.name.sym_name in self._osp_arch_set())
+        and (nd.arch_type.value in ("walker", "node", "edge"))
+    );
+    if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
         constructor_stmts: list[es.Statement] = [];
         props_param = self.sync_loc(
             es.AssignmentPattern(
@@ -4359,7 +4963,13 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         return [];
     }
     stubs: list[es.Statement] = [];
+    osp_archs = self._osp_arch_set();
     for (type_name, info) in manifest.boundary_types.items() {
+        # A local-OSP archetype emits a complete client class (constructor +
+        # slot methods); its boundary stub would be a duplicate declaration.
+        if type_name in osp_archs {
+            continue;
+        }
         if info.kind == "enum" {
             # const Priority = Object.freeze({ LOW: "low", MEDIUM: "medium" });
             enum_props: list[es.Property] = [];
@@ -5033,7 +5643,13 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
         if stmt.gen.es_ast {
-            if getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT {
+            is_shared_arch = (
+                isinstance(stmt, uni.Archetype)
+                and (stmt.name is not None)
+                and (stmt.name.value in self.shared_arch_names)
+            );
+            if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
+            or is_shared_arch {
                 client_items.append(cast(es.Statement, stmt.gen.es_ast));
             } else {
                 ;
@@ -5042,6 +5658,32 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     }
     target_body = client_items or fallback_items;
     body.extend(self._flatten_ast_list(target_body));
+    # OSP local-kernel runtime: inject the compiled portable kernel and the
+    # per-module descriptor / type-tag / NoopHost setup AFTER the archetype
+    # classes (the setup writes `<Cls>.prototype.__tag` and references the
+    # archetype classes). `osp_spawn` calls in module functions are hoisted, so
+    # they see `__ospRT` by the time they run.
+    if self.needs_osp_kernel {
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            build_osp_kernel_js
+        }
+        body.append(
+            self.sync_loc(
+                es.ExpressionStatement(
+                    expression=es.Identifier(name=build_osp_kernel_js())
+                ),
+                jac_node=nd
+            )
+        );
+        body.append(
+            self.sync_loc(
+                es.ExpressionStatement(
+                    expression=es.Identifier(name=self._build_osp_setup_js())
+                ),
+                jac_node=nd
+            )
+        );
+    }
     body.extend(self.exports);
     self.populate_client_manifest(nd);
     self.client_manifest.exports.sort();
@@ -5554,7 +6196,18 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Allow a shared module-level archetype referenced by client code to
+        # reach exit_archetype so its JS class is emitted (mirrors enter_node).
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             return;
         }
     }
@@ -5590,7 +6243,18 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
             and nd._source_context_token() is not None
             and nd._source_context_token().name == Tok.KW_SERVER
         );
-        if not is_sv_import and not isinstance(nd, uni.ServerBlock) {
+        # Don't prune a shared module-level archetype referenced by client code:
+        # it must reach exit_archetype to emit its JS class.
+        is_shared_arch = (
+            isinstance(nd, uni.Archetype)
+            and (nd.name is not None)
+            and (nd.name.value in self.shared_arch_names)
+        );
+        if (
+            not is_sv_import
+            and not isinstance(nd, uni.ServerBlock)
+            and not is_shared_arch
+        ) {
             self.prune();
             return;
         }
@@ -5632,6 +6296,18 @@ impl EsastGenPass.before_pass -> None {
     self.client_manifest.endpoint_effects = dict(
         self.ir_in.gen.interop_manifest.endpoint_effects
     );
+    # Module-level (shared) archetypes referenced by client code. They live in
+    # SERVER context (their default) but client code uses them, so they must be
+    # emitted as JS classes rather than pruned/filtered out -- the same sharing
+    # rule the native backend applies via ModuleCodegenPass.
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    self.shared_arch_names: set[str] = {
+        a.name.value
+        for a in ModuleCodegenPass.shared_archetypes_for_context(
+            self.ir_in, CodeContext.CLIENT
+        )
+        if a.name is not None
+    };
     self.jsx_processor = EsJsxProcessor(self);
     # Load the `.style.css` scoped-style annex (if any) keyed off the head
     # module path, so every variant/impl module shares one class map and

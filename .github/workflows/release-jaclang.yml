@@ -22,7 +22,7 @@ jobs:
       - name: Install jaclang
         run: pip install -e ./jac
       - name: Precompile bytecode
-        run: jac run jac/scripts/precompile_bytecode.jac ./jac
+        run: jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
       - name: Upload precompiled artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -367,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1036",
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
-         " \"{type}[Any]\"; consider adding explicit type arguments"
+         " \"{type}[any]\"; consider adding explicit type arguments"
      ),
      # Explicit `any` annotation warning
      W1037 = _warn(
@@ -386,6 +386,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "that was not awaited",
          help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
          "functions are async RPC stubs on the client and always need 'await'."
+     ),
+     E1043 = _err(
+         "E1043",
+         Category.TYPE,
+         "TypedDict \"{type}\" has no key \"{key}\"",
+         help="Add the key to the TypedDict definition, or index with a key "
+         "declared on the type."
      ),
      # Function call errors
      E1050 = _err(
@@ -609,7 +616,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1102 = _warn(
          "W1102",
          Category.IMPORT,
-         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+         "Imported name '{name}' from foreign-source module '{module}' typed as any"
      ),
      W1103 = _warn(
          "W1103",

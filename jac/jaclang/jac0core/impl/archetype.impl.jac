@@ -328,23 +328,8 @@ impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
     }
 }
 
-"""Set attribute on archetype and track dirty fields after initialization."""
-impl Archetype.__setattr__(name: str, value: any) -> None {
-    object.__setattr__(self, name, value);
-    if self.__dict__.get('__jac_initialized__', False) and not name.startswith('_') {
-        dirty: set[str] = self.__dict__.get('__jac_dirty_fields__');
-        if not isinstance(dirty, set) {
-            dirty = set();
-            object.__setattr__(self, '__jac_dirty_fields__', dirty);
-        }
-        dirty.add(name);
-    }
-}
-
-"""Mark archetype as initialized so subsequent field changes are tracked as dirty."""
-impl Archetype.postinit -> None {
-    object.__setattr__(self, '__jac_initialized__', True);
-}
+"""No-op base post-init; exists so subclass `super.postinit()` calls resolve."""
+impl Archetype.postinit -> None { }
 
 """Override repr for archetype."""
 impl Archetype.__repr__ -> str {

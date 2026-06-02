@@ -589,6 +589,23 @@ The system prompt is automatically applied to all `by llm()` function calls, pro
 - Consistent personality without repeating prompts in code
 - Easy updates without touching source code
 
+#### Per-call override with `system_prompt=`
+
+Pass `system_prompt=` as a keyword on any `by llm()` call:
+
+```jac
+def respond(msg: str) -> str by llm(
+    system_prompt="You are a coding assistant. Answer in Jac.",
+    conversation=history
+);
+```
+
+- **Accepts** a `str`. Pass a function returning a `str` instead if the prompt needs to be computed at call time.
+- **Extends** the base SYSTEM: per-call text is appended *after* the `jac.toml` `system_prompt` (or the default), never replaces it.
+- **Precedence**: per-call > `jac.toml` > default.
+
+**Why use it.** Conversational functions (those that pass `conversation=<list>`) keep their persona in the function's `sem` by default -= and byLLM bakes that `sem` into the user message, so the persona duplicates into chat history every turn. Moving the persona to `system_prompt=` puts it in the SYSTEM slot (sent once, cacheable) and eliminates the duplication.
+
 ### HTTP Client for Custom Endpoints
 
 For custom or self-hosted models, configure HTTP client in the Model constructor:

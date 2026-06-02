@@ -14,22 +14,18 @@ cl {
         auth = useAuth();
 
         if auth["isLoading"] {
-            return
-                <LoadingScreen/>;
+            return <LoadingScreen/>;
         }
 
         if auth["view"] == "login" {
-            return
-                <LoginPage/>;
+            return <LoginPage/>;
         }
 
         if auth["view"] == "reset" {
-            return
-                <ResetPage/>;
+            return <ResetPage/>;
         }
 
-        return
-            <DashboardLayout/>;
+        return <DashboardLayout/>;
     }
 
     def:pub app -> JsxElement {

@@ -70,6 +70,16 @@ test "cfg for loop with break continue and else" {
     assert dot == expected_dot;
 }
 
+test "cfg loop body if tail back-edges to header" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_loop_if_backedge.jac")
+    );
+    expected_dot = (
+        "digraph G {\n" + '  0 [label="BB0\\ndef use( items : list ) -> str\\ntag = \\"\\" ;", shape=box];\n' + '  1 [label="BB1\\nfor item in items", shape=box];\n' + '  2 [label="BB2\\nif item == \\"x\\"", shape=box];\n' + '  3 [label="BB3\\ntag = item ;", shape=box];\n' + '  4 [label="BB4\\nreturn tag ;", shape=box];\n' + "  0 -> 1;\n" + "  1 -> 2;\n" + "  1 -> 4;\n" + '  2 -> 3 [label="T"];\n' + "  2 -> 1;\n" + "  3 -> 1;\n" + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
 test "cfg try except finally" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_try_except.jac"));
     expected_dot = (

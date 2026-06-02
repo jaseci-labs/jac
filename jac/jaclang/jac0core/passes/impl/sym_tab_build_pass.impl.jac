@@ -294,11 +294,22 @@ impl SymTabBuildPass.enter_archetype(self: SymTabBuildPass, nd: uni.Archetype) -
     # same scope is a hard error -- inline bodies don't merge, and the
     # silent collision used to produce empty class scopes that cascaded
     # into spurious E1030 "no attribute" errors downstream.
+    #
+    # Codespace blocks (na {} / cl {} / sv {}) lower to separate backends, so
+    # one archetype name may be declared once per target -- the cross-backend
+    # equivalence fixtures depend on this. The decl/decl collision only applies
+    # within the same target context, so the guard compares contexts first.
     if self.cur_sym_tab {
         existing_sym = self.cur_scope.names_in_scope.get(nd.sym_name, None);
         if existing_sym {
+            nd_native = nd.in_native_context();
+            nd_client = nd.in_client_context();
             for d in existing_sym.defn {
-                if isinstance(d.name_of, uni.Archetype) {
+                if (
+                    isinstance(d.name_of, uni.Archetype)
+                    and (d.name_of.in_native_context() == nd_native)
+                    and (d.name_of.in_client_context() == nd_client)
+                ) {
                     self.emit(
                         E0077,
                         node_override=nd,
@@ -469,8 +480,9 @@ impl SymTabBuildPass.enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> Non
     # Pyright: evaluateStaticBoolLikeExpression for sys.version_info conditionals
     eval_result = evaluate_version_condition(nd.condition);
 
-    if eval_result is None {
-        # Not a version conditional - normal processing with scope
+    # Flatten static-guard declarations into module/class scope only. Pragmatic:
+    # TODO generalize static guards uniformly across SymTab + CFG (follow-up).
+    if eval_result is None or nd.find_parent_of_type(uni.Ability) is not None {
         self.push_scope_and_link(nd);
         return;
     }

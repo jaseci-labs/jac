@@ -601,8 +601,7 @@ cl def build_nav_bar(route: str) -> JsxElement {
 cl def HomeView -> JsxElement {
     if not jacIsLoggedIn() {
         navigate("/login");
-        return
-            <div></div>;
+        return <div></div>;
     }
 
     return
@@ -623,8 +622,7 @@ cl def HomeView -> JsxElement {
 cl def ProfileView -> JsxElement {
     if not jacIsLoggedIn() {
         navigate("/login");
-        return
-            <div></div>;
+        return <div></div>;
     }
     return
         <div

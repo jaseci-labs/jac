@@ -501,11 +501,9 @@ impl __removeLocalStorage(key: str) -> None {
 authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
-        return
-            <ReactRouterOutlet/>;
+        return <ReactRouterOutlet/>;
     }
-    return
-        <ReactRouterNavigate to={redirect} replace={True}/>;
+    return <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
 # Thin wrapper over React.Suspense for the `awaiting` template clause.

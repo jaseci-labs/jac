@@ -48,6 +48,7 @@ import from jaclang.jac0core.diagnostics {
     E1035,
     E1040,
     E1041,
+    E1043,
     E1050,
     E1051,
     E1052,
@@ -227,6 +228,7 @@ obj TypeEvaluator {
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         # Names made ambient by typing_ambient.pyi's __all__, keyed by the
         # source module the stub re-exports them from (typing /
@@ -283,7 +285,12 @@ obj TypeEvaluator {
         # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
         # into builtins: its names (File, native open) resolve only in native
         # context via a gated lookup, so they never leak into regular .jac.
-        na_builtins_module: uni.Module by postinit;
+        na_builtins_module: uni.Module by postinit,
+        # ECMAScript / browser ambient stub for client code. Like na_builtins
+        # (and unlike dom_types), NOT merged into builtins: its names (Date,
+        # Math, console, window, ...) resolve only in client context via a
+        # gated lookup, so they never leak into server .jac code.
+        js_globals_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -340,6 +347,11 @@ obj TypeEvaluator {
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
+    # Apply function-shaped decorators (e.g. contextmanager) to an ability's type.
+    def _apply_function_decorators(
+        node_: uni.Ability, func_type: types.FunctionType
+    ) -> types.FunctionType;
+
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
@@ -477,6 +489,10 @@ obj TypeEvaluator {
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
 
+    def _get_iterable_element_type(
+        iterable_type: TypeBase, node_for_error: uni.Expr | None = None
+    ) -> TypeBase | None;
+
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
@@ -553,6 +569,22 @@ obj TypeEvaluator {
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];
+
+    def _literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None;
+    def _build_typeddict_fields(
+        class_type: types.ClassType
+    ) -> dict[str, types.TypeBase];
+
+    def _has_typeddict_special_form_base(node_: uni.Archetype) -> bool;
+    def _typeddict_value_union(base_type: types.ClassType) -> types.TypeBase;
+    def _get_typeddict_indexed_type(
+        base_type: types.ClassType, key_expr: uni.Expr, err_node: uni.UniNode
+    ) -> types.TypeBase | None;
+
+    def _typeddict_as_dict(base_type: types.ClassType) -> types.ClassType | None;
+    def _synthesize_typeddict_method(
+        base_type: types.ClassType, method: str
+    ) -> types.OverloadedType | None;
 
     def _create_dataclass_init_method(
         class_type: types.ClassType

@@ -109,12 +109,10 @@ cl {
             if categoryRoutes {
                 PageComponent = categoryRoutes[activeSubTab];
                 if PageComponent {
-                    return
-                        <PageComponent/>;
+                    return <PageComponent/>;
                 }
             }
-            return
-                <div className="text-slate-500">Page not found</div>;
+            return <div className="text-slate-500">Page not found</div>;
         }
 
         return

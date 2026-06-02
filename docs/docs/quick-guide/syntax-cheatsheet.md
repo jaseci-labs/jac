@@ -1298,81 +1298,81 @@ cl import from react { useState }
 # Client Components (JSX)
 # ============================================================
 
-to cl:
+cl {
+    def:pub Counter() -> JsxElement {
+        # `has` in client components becomes React useState
+        has count: int = 0;
 
-def:pub Counter() -> JsxElement {
-    # `has` in client components becomes React useState
-    has count: int = 0;
+        return <div>
+            <p>Count: {count}</p>
+            <button onClick={lambda -> None { count = count + 1; }}>
+                Increment
+            </button>
+        </div>;
+    }
 
-    return <div>
-        <p>Count: {count}</p>
-        <button onClick={lambda -> None { count = count + 1; }}>
-            Increment
-        </button>
-    </div>;
+    # JSX `{...}` slots accept statement-form control flow as children.
+    # Inside the slot, JSX statements push into the enclosing element's
+    # children list; `skip;` ends the slot with whatever was emitted.
+    def:pub Greeting(name: str) -> JsxElement {
+        return <div>
+            {if name == "" {
+                <p>(no name given)</p>
+                skip;                     # skip; = slot early-exit guard
+            }}
+            <h1>Hello, {name}!</h1>
+        </div>;
+    }
+
+    # Raw HTML opt-in (the name is the security review hint):
+    #   <div>{unsafe_html(trusted_html_blob)}</div>
+
+    # JSX syntax reference:
+    # <div>text</div>               HTML elements
+    # <Component prop="val" />      Component with props
+    # {expression}                  Expression slot (one value)
+    # {if .. for ..}                Statement slot (control flow as children)
+    # {#* comment *#}               JSX comment (renders nothing)
+    # {unsafe_html(x)}              Raw HTML opt-in (escapes off)
+    # <@expr />                     Dynamic tag (resolves expr at runtime)
+    # <div {**props}>               Spread props ({...props} also works but warns W0063)
+    # <Box {title} {count} />       Attribute shorthand ({title} -> title={title})
+    # <div className="cls">         Class name (not "class")
+    # <div style={{"color": "red"}} Inline styles
+    #   (classes declared in a same-base-name <Comp>.style.css are auto-scoped)
+    # <@expr>...</@expr>            Dynamic tag (tag chosen by expression)
 }
-
-# JSX `{...}` slots accept statement-form control flow as children.
-# Inside the slot, JSX statements push into the enclosing element's
-# children list; `skip;` ends the slot with whatever was emitted.
-def:pub Greeting(name: str) -> JsxElement {
-    return <div>
-        {if name == "" {
-            <p>(no name given)</p>
-            skip;                     # skip; = slot early-exit guard
-        }}
-        <h1>Hello, {name}!</h1>
-    </div>;
-}
-
-# Raw HTML opt-in (the name is the security review hint):
-#   <div>{unsafe_html(trusted_html_blob)}</div>
-
-# JSX syntax reference:
-# <div>text</div>               HTML elements
-# <Component prop="val" />      Component with props
-# {expression}                  Expression slot (one value)
-# {if .. for ..}                Statement slot (control flow as children)
-# {#* comment *#}               JSX comment (renders nothing)
-# {unsafe_html(x)}              Raw HTML opt-in (escapes off)
-# <@expr />                     Dynamic tag (resolves expr at runtime)
-# <div {**props}>               Spread props ({...props} also works but warns W0063)
-# <Box {title} {count} />       Attribute shorthand ({title} -> title={title})
-# <div className="cls">         Class name (not "class")
-# <div style={{"color": "red"}} Inline styles
-#   (classes declared in a same-base-name <Comp>.style.css are auto-scoped)
-# <@expr>...</@expr>            Dynamic tag (tag chosen by expression)
 
 
 # ============================================================
 # Client State & Lifecycle
 # ============================================================
 
-to cl:
+cl {
+    def:pub DataView() -> JsxElement {
+        has data: list = [];
+        has loading: bool = True;
 
-def:pub DataView() -> JsxElement {
-    has data: list = [];
-    has loading: bool = True;
+        # Mount effect (runs once on component mount)
+        async can with entry {
+            data = await fetch("/api/data").then(
+                lambda r: any -> any { return r.json(); }
+            );
+            loading = False;
+        }
 
-    # Mount effect (runs once on component mount)
-    async can with entry {
-        data = await fetch("/api/data").then(
-            lambda r: any -> any { return r.json(); }
-        );
-        loading = False;
+        # Dependency effect (runs when userId changes)
+        # async can with [userId] entry { ... }
+
+        # Multiple dependencies
+        # can with (a, b) entry { ... }
+
+        # Cleanup on unmount
+        # can with exit { unsubscribe(); }
+
+        if loading { return <p>Loading...</p>; }
+        return <div>{data}</div>;
     }
-
-    # Dependency effect (runs when userId changes)
-    # async can with [userId] entry { ... }
-
-    # Multiple dependencies
-    # can with (a, b) entry { ... }
-
-    # Cleanup on unmount
-    # can with exit { unsubscribe(); }
-
-    if loading { return <p>Loading...</p>; }
-    return <div>{data}</div>;
 }
 
 
@@ -1383,26 +1383,26 @@ def:pub DataView() -> JsxElement {
 # Import server walkers in client code
 sv import from ...main { AddTodo, GetTodos }
 
-to cl:
+cl {
+    def:pub TodoApp() -> JsxElement {
+        has todos: list = [];
 
-def:pub TodoApp() -> JsxElement {
-    has todos: list = [];
-
-    async can with entry {
-        result = root spawn GetTodos();
-        if result.reports {
-            todos = result.reports[0];
+        async can with entry {
+            result = root spawn GetTodos();
+            if result.reports {
+                todos = result.reports[0];
+            }
         }
-    }
 
-    async def add_todo(text: str) -> None {
-        result = root spawn AddTodo(title=text);
-        if result.reports {
-            todos = todos + [result.reports[0]];
+        async def add_todo(text: str) -> None {
+            result = root spawn AddTodo(title=text);
+            if result.reports {
+                todos = todos + [result.reports[0]];
+            }
         }
-    }
 
-    return <div>...</div>;
+        return <div>...</div>;
+    }
 }
 
 
@@ -1416,15 +1416,17 @@ def:pub TodoApp() -> JsxElement {
 # pages/(auth)/layout.jac  -> route group  (no URL segment)
 # pages/layout.jac         -> root layout
 
-# Page files export a `page` function under a `to cl:` section:
-# to cl:
-# def:pub page() -> JsxElement { ... }
+# Page files export a `page` function inside a `cl { }` block:
+# cl {
+#     def:pub page() -> JsxElement { ... }
+# }
 
 # Layout files use <Outlet /> for child routes:
 # cl import from "@jac/runtime" { Outlet }
-# to cl:
-# def:pub layout() -> JsxElement {
-#     return <><nav>...</nav><Outlet /></>;
+# cl {
+#     def:pub layout() -> JsxElement {
+#         return <><nav>...</nav><Outlet /></>;
+#     }
 # }
 
 

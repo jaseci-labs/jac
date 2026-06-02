@@ -37,7 +37,7 @@ impl NeverType.__str__ -> str {
 
 """Return a string representation of the any type."""
 impl AnyType.__str__ -> str {
-    return "<Any>";
+    return "<any>";
 }
 
 """Return a string representation of the module type."""
@@ -246,6 +246,11 @@ impl ClassType.is_data_class -> bool {
 """Return true if this class is a NamedTuple."""
 impl ClassType.is_namedtuple -> bool {
     return self.shared.is_namedtuple;
+}
+
+"""Return true if this class is a TypedDict."""
+impl ClassType.is_typeddict -> bool {
+    return self.shared.is_typeddict;
 }
 
 """Return true if this class is an enum class."""

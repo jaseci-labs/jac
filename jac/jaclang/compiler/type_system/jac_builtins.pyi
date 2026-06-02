@@ -15,7 +15,9 @@
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
+
+_NewT = TypeVar("_NewT")
 
 __all__ = [
     # Module dunders
@@ -136,7 +138,11 @@ class f64(float): ...  # noqa: N801
 
 def jid(obj: object) -> str: ...
 def jobj(id: str) -> object: ...
-def new(cls: type, *args: object) -> object: ...
+
+# Generic over the class so `new(Date, ...).getTime()` keeps the constructed
+# type instead of collapsing to `object`. Constructor args stay `object` --
+# `new` forwards them verbatim, so they are not validated here.
+def new(cls: type[_NewT], *args: object) -> _NewT: ...
 def grant(archetype: object, level: object = None) -> None: ...
 def revoke(archetype: object) -> None: ...
 def allroots() -> list[Root]: ...

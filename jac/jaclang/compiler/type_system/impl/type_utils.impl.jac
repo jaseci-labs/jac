@@ -254,6 +254,7 @@ impl ParamAssignmentTracker.get_unmatched_required_params -> list[types.Paramete
     for param in self.params {
         if (
             (param not in self.matched_params)
+            and (param not in self.spread_filled)
             and (param.default_value is None)
             and (
                 param.param_kind not in (types.ParamKind.VARARG, types.ParamKind.KWARG)
@@ -311,7 +312,7 @@ impl ParamAssignmentTracker.match_named_argument(
     }
 }
 
-"""Mark all positional parameters as matched."""
+"""Mark positional params as *possibly* filled by a `*args` spread."""
 impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
     for param in self.params {
         if (
@@ -321,13 +322,13 @@ impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
                 types.ParamKind.VARARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
     self.curr_param_idx = -1;
 }
 
-"""Mark all named parameters as matched."""
+"""Mark named params as *possibly* filled by a `**kwargs` spread."""
 impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
     for param in self.params {
         if (
@@ -337,7 +338,7 @@ impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
                 types.ParamKind.KWARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
 }
@@ -359,6 +360,10 @@ impl ParamAssignmentTracker.lookup_named_parameter(
             continue;
         }
         if (param.name == param_name) {
+            # A param in `matched_params` was bound by a real positional or
+            # keyword arg, so naming it again is a true duplicate. A param only
+            # in `spread_filled` (a `**`/`*` spread of unknown keys) is not — we
+            # cannot prove the spread set it, so the explicit keyword wins.
             if (param in self.matched_params) {
                 raise Exception(f"Parameter '{param.name}' already matched");
             }
