@@ -28,7 +28,8 @@ obj KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         min_replicas: int = 1,
         max_replicas: int = 3,
-        cpu_utilization_target: int = 50,
+        cpu_utilization_target:
+            int = 50,  # matches DEFAULT_CPU_UTILIZATION_TARGET in autoscaler.jac
         autoscaler_engine: str = "hpa",
         health_check_path: str = '/docs',
         # Runtime configuration

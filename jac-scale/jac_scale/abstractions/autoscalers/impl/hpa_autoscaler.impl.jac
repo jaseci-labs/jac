@@ -1,7 +1,11 @@
 """Build HPA manifest dict from spec fields; no string manipulation on names."""
 impl HPAAutoscaler._build_manifests{
     hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
-    cpu_target = int(spec.triggers[0].metadata.get("averageUtilization", "50"))
+    cpu_target = int(
+        spec.triggers[0].metadata.get(
+            "averageUtilization", str(DEFAULT_CPU_UTILIZATION_TARGET)
+        )
+    )
         if spec.triggers
         else 50;
     return {

@@ -1,5 +1,9 @@
 import from jac_scale._optdeps.kubernetes { AutoscalingV2Api, ApiException }
-import from jac_scale.abstractions.autoscaler { Autoscaler, AutoscalerSpec }
+import from jac_scale.abstractions.autoscaler {
+    Autoscaler,
+    AutoscalerSpec,
+    DEFAULT_CPU_UTILIZATION_TARGET
+}
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
 

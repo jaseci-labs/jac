@@ -29,7 +29,11 @@ import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.abstractions.autoscaler {
+    AutoscalerSpec,
+    Trigger,
+    DEFAULT_CPU_UTILIZATION_TARGET
+}
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.config_loader { get_scale_config }
 
@@ -499,7 +503,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         Trigger(
                             type="cpu",
                             metadata={
-                                "averageUtilization": str(cfg.get("cpu_target", 70))
+                                "averageUtilization": str(
+                                    cfg.get(
+                                        "cpu_target", DEFAULT_CPU_UTILIZATION_TARGET
+                                    )
+                                )
                             }
                         )
                     ]

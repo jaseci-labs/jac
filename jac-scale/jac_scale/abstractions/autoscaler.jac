@@ -1,5 +1,8 @@
 """Base autoscaler abstraction for jac-scale."""
 
+"""Single authoritative CPU utilization default for all autoscaler paths."""
+glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50;
+
 """A single scaling trigger with engine-specific metadata."""
 obj Trigger {
     has type: str,
