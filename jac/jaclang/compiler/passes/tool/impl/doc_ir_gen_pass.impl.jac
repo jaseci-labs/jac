@@ -1957,15 +1957,31 @@ impl DocIRGenPass.exit_func_call(nd: uni.FuncCall) -> None {
 """Generate DocIR for return statements."""
 impl DocIRGenPass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
     parts: list[doc.DocType] = [];
-    # Check if returning a JSX element directly (not wrapped in parens)
+    # Returning a JSX element directly (not wrapped in parens) gets its own
+    # layout: a soft line between `return` and the element so it stays on the
+    # same line when it fits the print width and drops onto its own indented
+    # line when it doesn't. Multi-line JSX carries hard lines internally, which
+    # force the enclosing group to break — so `return <Tag .../>;` and
+    # `return <p>Hello</p>;` collapse to one line while large trees still
+    # break after `return`.
     is_jsx_return = isinstance(nd.expr, uni.JsxElement);
+    if is_jsx_return {
+        for i in nd.kid {
+            if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
+                parts.append(i.gen.doc_ir);
+            } elif isinstance(i, uni.JsxElement) {
+                parts.append(self.indent(self.concat([self.line(), i.gen.doc_ir])));
+            } else {
+                parts.append(i.gen.doc_ir);
+            }
+        }
+        nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+        return;
+    }
     for i in nd.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
-        } elif (is_jsx_return and isinstance(i, uni.JsxElement)) {
-            # For JSX returns, add hard line and indent
-            parts.append(self.indent(self.concat([self.hard_line(), i.gen.doc_ir])));
         } else {
             parts.append(i.gen.doc_ir);
         }

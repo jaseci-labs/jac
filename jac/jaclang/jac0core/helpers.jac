@@ -666,6 +666,24 @@ def _is_version_info_access(expr: 'uni.Expr') -> bool {
     );
 }
 
+"""Check if expr references `TYPE_CHECKING` (bare or `typing.TYPE_CHECKING`)."""
+def _is_type_checking_ref(expr: 'uni.Expr') -> bool {
+    import jaclang.jac0core.unitree as uni;
+
+    if isinstance(expr, uni.AtomUnit) {
+        expr = expr.value;
+    }
+    if isinstance(expr, uni.Name) {
+        return expr.value == "TYPE_CHECKING";
+    }
+    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        return (
+            isinstance(expr.right, uni.Name) and expr.right.value == "TYPE_CHECKING"
+        );
+    }
+    return False;
+}
+
 """Extract (major, minor) tuple from a TupleVal node."""
 def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
     import jaclang.jac0core.unitree as uni;
@@ -683,19 +701,30 @@ def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
     return (major.lit_value, minor.lit_value);
 }
 
-"""Evaluate a sys.version_info conditional expression.
+"""Statically evaluate a stub conditional.
 
-Handles `sys.version_info >= (3, 10)` style expressions.
-Returns True/False if recognized, None otherwise.
+Handles `TYPE_CHECKING` / `not TYPE_CHECKING` (a type checker treats it as
+True, per PEP 484) and `sys.version_info >= (3, 10)` comparisons. Returns
+True/False if recognized, None otherwise.
 """
 def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
     import sys;
     import operator;
     import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { Tokens as Tok }
 
     cond = condition;
     if isinstance(cond, uni.AtomUnit) {
         cond = cond.value;
+    }
+    # TYPE_CHECKING is True for a static checker; `not TYPE_CHECKING` is False.
+    if _is_type_checking_ref(cond) {
+        return True;
+    }
+    if isinstance(cond, uni.UnaryExpr)
+    and cond.op.name == Tok.NOT
+    and _is_type_checking_ref(cond.operand) {
+        return False;
     }
     if not isinstance(cond, uni.CompareExpr) {
         return None;

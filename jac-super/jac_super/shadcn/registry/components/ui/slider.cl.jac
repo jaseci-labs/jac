@@ -2,14 +2,14 @@ cl import from "radix-ui" { Slider as SliderPrimitive }
 cl import from ...lib.utils { cn }
 
 cl {
-    def:pub Slider(props: Any) -> JsxElement {
+    def:pub Slider(props: any) -> JsxElement {
         return
             <SliderPrimitive.Root
-                {...props}
+                {**props}
                 data-slot="slider"
                 className={cn(
                     "cn-slider relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
-                    props.className
+                    props["className"]
                 )}
             >
                 <SliderPrimitive.Track

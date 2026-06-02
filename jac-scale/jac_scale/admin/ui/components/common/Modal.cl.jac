@@ -3,8 +3,7 @@
 cl {
     def:pub Modal(isOpen: bool, onClose: any, title: str, children: any) -> JsxElement {
         if not isOpen {
-            return
-                <></>;
+            return <></>;
         }
 
         return
@@ -23,7 +22,6 @@ cl {
     }
 
     def:pub ModalFooter(children: any) -> JsxElement {
-        return
-            <div className="flex gap-2 justify-end mt-4">{children}</div>;
+        return <div className="flex gap-2 justify-end mt-4">{children}</div>;
     }
 }

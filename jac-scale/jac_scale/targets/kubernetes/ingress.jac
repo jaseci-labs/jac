@@ -357,14 +357,31 @@ obj IngressDeployer {
         );
     }
 
+    """Return the IngressClass name to use for this deployment.
+
+    In dedicated mode each app owns its own controller, so the class name is
+    scoped to the namespace and app.  In shared mode the class name comes from
+    KubernetesConfig and refers to the pre-existing cluster-wide controller.
+    """
+    def _resolve_ingress_class(app_name: str, namespace: str) -> str {
+        if self.k8s_config.shared_ingress {
+            return self.k8s_config.shared_ingress_class;
+        }
+        return f"{namespace}-{app_name}-nginx";
+    }
+
     """Wait for the NGINX controller Deployment to have at least one ready replica.
 
     Polls every 5 seconds for up to max_wait seconds. This avoids burning the
     longer app health-check intervals (15 s each) while NGINX is still starting.
+    No-op when shared_ingress=True (controller is externally managed).
     """
     def _wait_for_nginx_ready(
         app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
+        if self.k8s_config.shared_ingress {
+            return;
+        }
         controller_name = f"{app_name}-ingress-nginx";
         elapsed = 0;
         poll = 5;
@@ -461,40 +478,73 @@ obj IngressDeployer {
             );
         }
 
-        # spec.tls and spec.rules[*].host are owned exclusively by enable_tls.
-        # Omitting them from the patch body means patch_namespaced_ingress never
-        # sends or overwrites them; no read-before-write needed.
-        main_rule: dict = {'http': {'paths': paths}};
+        # Dedicated ingress: wildcard rule (no host). Domain is stored in the
+        # jac-scale/domain annotation so --enable-tls can add host + TLS together.
+        # Setting host without TLS would make the app unreachable via IP/NLB.
+        #
+        # Shared ingress: host is set immediately. The shared controller sees
+        # Ingress resources from many namespaces; without a host field it cannot
+        # differentiate two apps that both claim path '/'. Domain is mandatory
+        # when shared_ingress=True (validated in start_controller).
+        if self.k8s_config.shared_ingress {
+            main_rule: dict = {
+                'host': self.k8s_config.domain,
+                'http': {'paths': paths}
+            };
+        } else {
+            main_rule: dict = {'http': {'paths': paths}};
+        }
 
-        ingress_annotations: dict = {
-            'nginx.ingress.kubernetes.io/proxy-body-size': '0',
-            'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
-            'nginx.ingress.kubernetes.io/limit-rps': str(
-                self.k8s_config.ingress_limit_rps
-            ),
-            'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
-                self.k8s_config.ingress_limit_burst_multiplier
-            ),
-            'nginx.ingress.kubernetes.io/limit-connections': str(
-                self.k8s_config.ingress_limit_connections
-            ),
-            'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
-        };
-        if self.k8s_config.ingress_session_affinity {
-            ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-name'] = 'route';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-max-age'] = '2147483647';
-            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-expires'] = '2147483647';
-            ingress_annotations[
-                'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
-            ] = 'true';
+        # nginx-specific tuning (proxy timeouts, rate limiting, session
+        # affinity) is only meaningful for an nginx controller. In shared mode
+        # with a non-nginx controller (AWS ALB, Traefik, GKE, ...) we emit only
+        # the caller-supplied annotations so jac-scale stays controller-agnostic.
+        uses_nginx: bool = (not self.k8s_config.shared_ingress)
+        or (self.k8s_config.shared_ingress_class == 'nginx');
+        ingress_annotations: dict = {};
+        if uses_nginx {
+            ingress_annotations = {
+                'nginx.ingress.kubernetes.io/proxy-body-size': '0',
+                'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/limit-rps': str(
+                    self.k8s_config.ingress_limit_rps
+                ),
+                'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
+                    self.k8s_config.ingress_limit_burst_multiplier
+                ),
+                'nginx.ingress.kubernetes.io/limit-connections': str(
+                    self.k8s_config.ingress_limit_connections
+                ),
+                'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
+            };
+            if self.k8s_config.ingress_session_affinity {
+                ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-name'
+                ] = 'route';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-max-age'
+                ] = '2147483647';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-expires'
+                ] = '2147483647';
+                ingress_annotations[
+                    'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+                ] = 'true';
+            }
         }
         if self.k8s_config.domain {
             ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
         }
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
+        }
+        # Caller-supplied annotations (e.g. AWS ALB group.name / certificate-arn
+        # / scheme) take precedence; this is how non-nginx shared controllers
+        # are configured.
+        for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
+            ingress_annotations[str(k)] = str(v);
         }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
@@ -612,8 +662,16 @@ obj IngressDeployer {
                     }
                 }
             ];
-            # spec.tls and spec.rules[*].host are owned by enable_tls; omitted here.
-            redis_rule: dict = {'http': {'paths': redis_paths}};
+            # Same host logic as main ingress: set immediately for shared, wildcard for dedicated.
+            if self.k8s_config.shared_ingress {
+                redis_rule: dict = {
+                    'host': self.k8s_config.domain,
+                    'http': {'paths': redis_paths}
+                };
+            } else {
+                redis_rule: dict = {'http': {'paths': redis_paths}};
+            }
+
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
                 'kind': 'Ingress',
@@ -659,7 +717,10 @@ obj IngressDeployer {
     }
 
     """Start the NGINX controller (non-blocking). Call finish_ingress() later once other
-    deployment steps are done to minimise wall-clock wait time."""
+    deployment steps are done to minimise wall-clock wait time.
+
+    When shared_ingress=True the dedicated controller is skipped; the app's
+    Ingress resources will reference the pre-existing shared controller instead."""
     def start_controller(
         app_name: str,
         namespace: str,
@@ -669,9 +730,38 @@ obj IngressDeployer {
         rbac_v1: Any,
         networking_v1: Any
     ) {
-        self._deploy_nginx_controller(
-            app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
-        );
+        if not self.k8s_config.shared_ingress {
+            self._deploy_nginx_controller(
+                app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
+            );
+        } else {
+            # Shared mode: verify the IngressClass exists up front so we fail
+            # with a clear, actionable error instead of a cryptic
+            # admission-webhook 403 later. The AWS LB Controller's vingress
+            # webhook rejects any Ingress whose ingressClassName has no matching
+            # IngressClass (e.g. the default 'nginx' on an ALB-only cluster).
+            cls = self.k8s_config.shared_ingress_class;
+            try {
+                networking_v1.read_ingress_class(name=cls);
+            } except ApiException as e {
+                if e.status == 404 {
+                    raise ValueError(
+                        f"shared_ingress_class '{cls}' has no matching IngressClass "
+                        "in the cluster. Install that ingress controller, or set "
+                        "shared_ingress_class to one that exists (e.g. 'alb' on AWS "
+                        "EKS, or 'nginx' where ingress-nginx is installed)."
+                    );
+                } else {
+                    raise;
+                }
+            }
+            if self.logger {
+                self.logger.info(
+                    f"shared_ingress=True: skipping dedicated controller for "
+                    f"'{app_name}', using ingress class '{cls}'"
+                );
+            }
+        }
     }
 
     """Wait for the NGINX controller to be ready and then deploy routing rules.
@@ -687,11 +777,12 @@ obj IngressDeployer {
         core_v1: any,
         networking_v1: any
     ) {
+        ingress_class = self._resolve_ingress_class(app_name, namespace);
         self._wait_for_nginx_ready(app_name, namespace, apps_v1);
         self._deploy_ingress_resource(
             app_name,
             namespace,
-            f"{namespace}-{app_name}-nginx",
+            ingress_class,
             service_port,
             grafana_enabled,
             redis_dashboard,
@@ -827,7 +918,7 @@ obj IngressDeployer {
         }
 
         # Create namespace-scoped Issuer
-        ingress_class_name = f"{namespace}-{app_name}-nginx";
+        ingress_class_name = self._resolve_ingress_class(app_name, namespace);
         issuer_body = {
             'apiVersion': 'cert-manager.io/v1',
             'kind': 'Issuer',
@@ -1095,46 +1186,51 @@ obj IngressDeployer {
             }
         }
 
-        # Delete controller namespaced resources
-        delete_if_exists(
-            apps_v1.delete_namespaced_deployment,
-            controller_name,
-            namespace,
-            'Deployment'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service, service_name, namespace, 'Service'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            controller_name,
-            namespace,
-            'ServiceAccount'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_config_map, configmap_name, namespace, 'ConfigMap'
-        );
-
-        # Delete cluster-scoped resources (no namespace parameter)
-        try {
-            rbac_v1.delete_cluster_role(name=cluster_resource_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+        # Delete controller namespaced resources and cluster-scoped RBAC/IngressClass.
+        # Skipped when shared_ingress=True — those resources belong to the shared
+        # controller and must not be torn down by an individual app.
+        if not self.k8s_config.shared_ingress {
+            delete_if_exists(
+                apps_v1.delete_namespaced_deployment,
+                controller_name,
+                namespace,
+                'Deployment'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service, service_name, namespace, 'Service'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service_account,
+                controller_name,
+                namespace,
+                'ServiceAccount'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_config_map,
+                configmap_name,
+                namespace,
+                'ConfigMap'
+            );
+            try {
+                rbac_v1.delete_cluster_role(name=cluster_resource_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
-        }
-        try {
-            rbac_v1.delete_cluster_role_binding(name=cluster_resource_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+            try {
+                rbac_v1.delete_cluster_role_binding(name=cluster_resource_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
-        }
-        try {
-            networking_v1.delete_ingress_class(name=ingress_class_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+            try {
+                networking_v1.delete_ingress_class(name=ingress_class_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
         }
 

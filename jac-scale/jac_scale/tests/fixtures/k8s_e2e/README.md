@@ -27,7 +27,7 @@ that isn't on PyPI yet. Editable install both:
 
 ```bash
 pip install -e /path/to/jaseci/jac
-pip install -e /path/to/jaseci/jac-scale
+jac install -e /path/to/jaseci/jac-scale
 ```
 
 ## Run
@@ -81,7 +81,8 @@ rm minikube-linux-amd64
 sudo apt update && sudo apt install -y python3-pip python3-venv git
 git clone -b feat/m14a-microservice-loki https://github.com/MusabMahmoodh/jaseci.git
 cd jaseci
-pip install -e ./jac -e ./jac-scale
+pip install -e ./jac
+jac install -e ./jac-scale
 
 # Start minikube with enough headroom for the full stack
 minikube start --driver=docker --cpus=4 --memory=12g
