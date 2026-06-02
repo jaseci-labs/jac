@@ -45,6 +45,7 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 | `def Obj.method(args) -> T;` | `impl Obj.method(args) -> T { body }` |
 | `can event with NodeType entry;` | `impl Walker.event { body }` |
 | `enum Color;` | `impl Color { RED = "r", GREEN = "g" }` |
+| `enum Color: int;` (typed-base) | `impl Color { RED = 1, GREEN = 2 }` |
 | `override def method;` (subclass) | `impl Subclass.method { body }` |
 | `def method -> T abs;` (abstract) | (none on base - every subclass *should* `impl`; not compiler-enforced - see Rules) |
 

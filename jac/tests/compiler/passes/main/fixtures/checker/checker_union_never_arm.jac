@@ -1,12 +1,12 @@
 """`Never` / `NoReturn` resolved to NeverType and accepted as `|` arms."""
 
-import from typing { Any, Never, NoReturn }
+import from typing { Never, NoReturn }
 
 
 # Chain-collapse case: without the fix, `int | type[Any] | Never` collapses
 # to `UnionType | type[Any]` (the inner `type[Any].__or__` return type wins
 # magic dispatch), so passing 42 is rejected with E1053.
-def take_chain(x: int | type[Any] | Never) -> int {
+def take_chain(x: int | type[any] | Never) -> int {
     return 0;
 }
 

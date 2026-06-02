@@ -8,7 +8,6 @@ Covers:
 """
 
 import httpx;
-import from typing { Any }
 import from jaclang.runtimelib { sv_client }
 import from jac_scale.microservices.runtime.auth_ctx {
     set_current_auth,
@@ -29,7 +28,7 @@ import from jac_scale.plugin { JacScalePlugin }
 # and .post() on the Client go through the transport, so a single helper
 # covers every existing test pattern (plain JSON, ConnectError on retry,
 # call counting, timeout capture).
-def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
+def _mock_client_class(handler: any, on_init: any = None) -> any {
     # Returns a *factory callable* (not a class) so the plugin's
     # `httpx.Client(timeout=...)` substitution still works. Subclassing
     # httpx.Client inside a Jac function and calling super().__init__
@@ -44,7 +43,7 @@ def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
     # inside the factory would recurse infinitely.
     transport = httpx.MockTransport(handler);
     real_client_cls = httpx.Client;
-    def factory(*args: Any, **kwargs: Any) -> Any {
+    def factory(*args: any, **kwargs: any) -> any {
         if on_init {
             on_init(kwargs);
         }
@@ -615,9 +614,9 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
 
     # Stub config so we don't need a jac.toml.
     obj _StubMsCfg {
-        has data: dict[str, Any];
+        has data: dict[str, any];
 
-        def get_microservices_config -> dict[str, Any] {
+        def get_microservices_config -> dict[str, any] {
             return self.data;
         }
     }

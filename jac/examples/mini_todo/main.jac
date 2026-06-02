@@ -5,7 +5,7 @@ node Todo {
         done: bool = False;
 }
 
-enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
+enum Category: int { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
 
 def categorize(title: str) -> Category by llm();
 
@@ -65,10 +65,9 @@ cl def:pub app -> JsxElement {
                 onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
-            <button onClick={lambda e: MouseEvent { add(); }}>Add</button>
-            {[
+            <button onClick={lambda { add(); }}>Add</button>
+            {for t in todos {
                 <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
-                for t in todos
-            ]}
+            }}
         </div>;
 }

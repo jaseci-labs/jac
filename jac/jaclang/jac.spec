@@ -227,8 +227,10 @@ lambda_param ::=
 
 jsx_element ::=
     "<>" jsx_children "</>"
-    | JSX_OPEN_START JSX_NAME ("." JSX_NAME)* jsx_attributes
-      ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
+    | JSX_OPEN_START ("@" | JSX_NAME ("." JSX_NAME)*) jsx_attributes (
+          "/>"
+          | JSX_TAG_END jsx_children "</" ("@" | JSX_NAME ("." JSX_NAME)*) JSX_TAG_END
+      )
 
 jsx_attributes ::=
     (
@@ -238,7 +240,24 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | JSX_COMMENT | "{" expression "}" | jsx_element
+jsx_child ::=
+    JSX_TEXT jsx_child?
+    | JSX_COMMENT
+    | "{" (
+          (
+              "for"
+              | "while"
+              | "if"
+              | "match"
+              | "switch"
+              | "with"
+              | "try"
+              | "return"
+              | "skip"
+          ) code_block_stmts "}"
+          | expression (";"? code_block_stmts "}" | "}")
+      )
+    | jsx_element
 
 element_stmt ::=
     ";"
@@ -285,6 +304,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 
 statement ::=
     ";"
+    | jsx_element ";"?
     | import_stmt
     | if_stmt
     | while_stmt
@@ -299,10 +319,12 @@ statement ::=
     | raise_stmt
     | assert_stmt
     | delete_stmt
+    | global_var
     | global_stmt
     | nonlocal_stmt
     | visit_stmt
     | report_stmt
+    | docstring_target
     | ability
     | archetype
     | impl_def
@@ -327,8 +349,8 @@ for_stmt ::=
     )
 
 try_stmt ::=
-    "try" "{" code_block_stmts "}" except_handler* else_stmt?
-    ("finally" "{" code_block_stmts "}")?
+    "try" "{" code_block_stmts "}" ("awaiting" "{" code_block_stmts "}")?
+    except_handler* else_stmt? ("finally" "{" code_block_stmts "}")?
 
 except_handler ::=
     "except" expression ("as" (NAME | KWESC_NAME))? "{" code_block_stmts "}"
@@ -499,7 +521,7 @@ impl_target_name ::=
 
 impl_enum_body ::= ((NAME | KWESC_NAME) (":" pipe)? ("=" expression)? ","?)*
 
-sem_def ::= "sem" impl_target_name ("." impl_target_name)* ("=" | "is") STRING ";"?
+sem_def ::= "sem" impl_target_name ("." impl_target_name)* ("=" | "is") STRING* ";"?
 
 type_alias ::= "type" access_tag (NAME | KWESC_NAME) ("[" type_params "]")? "=" pipe ";"
 

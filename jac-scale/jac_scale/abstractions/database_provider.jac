@@ -14,7 +14,7 @@ class DatabaseProvider {
     Returns:
         Dictionary with deployment information (e.g., service name, connection details)
     """
-    def deploy(self: DatabaseProvider, config: dict[str, Any]) -> dict[str, Any];
+    def deploy(self: DatabaseProvider, config: dict[str, any]) -> dict[str, any];
 
     """Get the connection string for the database.
 

@@ -25,8 +25,6 @@ Local: curl http://localhost:8000/metrics. Same exposition, same
 metric names, so dashboards written for local work in K8s unchanged.
 """
 
-import from typing { Any }
-
 # Factories return None when prometheus_client isn't installed. Callers
 # no-op in that case (gateway still works, metrics just aren't emitted).
 """Build the gateway's Counter + Histogram on a fresh CollectorRegistry.
@@ -36,7 +34,7 @@ if prometheus_client isn't available.
 """
 def build_gateway_metrics(
     namespace: str = "jac_scale", histogram_buckets: list[float] | None = None
-) -> tuple[Any, Any, Any] {
+) -> tuple[any, any, any] {
     try {
         import from prometheus_client { CollectorRegistry, Counter, Histogram }
     } except ImportError {
@@ -88,7 +86,7 @@ def classify_outcome(status_code: int) -> str {
 Returns (body: bytes, content_type: str). Returns (b"", "text/plain")
 if prometheus_client isn't installed - caller should 503 in that case.
 """
-def render_metrics(registry: Any) -> tuple[bytes, str] {
+def render_metrics(registry: any) -> tuple[bytes, str] {
     if registry is None {
         return (b"", "text/plain");
     }

@@ -1,9 +1,16 @@
-"""Lookup module in hub with cross-platform path normalization (Windows case/separators)."""
+"""Look up a module in one program's hub with cross-platform path normalization
+(Windows case/separators).
+
+NOTE: this is deliberately single-hub, unlike `JacProgram.find_module`. The
+bundler produces output JS and must compile each module in its own (target)
+program context; on a miss it recompiles fresh. It must NOT reuse a module the
+router parked in the internal program (e.g. `@jac/runtime` under the jaclang
+root), whose JS-generation state is not guaranteed to be the full client build.
+"""
 impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
     if path_key in hub {
         return hub[path_key];
     }
-    # Fallback: normalized lookup for Windows
     normalized_key = os.path.normcase(path_key);
     for hub_path in hub.keys() {
         if os.path.normcase(hub_path) == normalized_key {
@@ -14,7 +21,7 @@ impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
 }
 
 """Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
-impl _ensure_js_generated(mod: Module, program: Any) -> None {
+impl _ensure_js_generated(mod: Module, program: any) -> None {
     if mod and not mod.gen.js {
         import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
         EsastGenPass(ir_in=mod, prog=program);
@@ -189,7 +196,7 @@ Dictionary of global names to their values
 """
 impl ClientBundleBuilder._extract_client_globals(
     manifest: (ClientManifest | None), module: ModuleType
-) -> dict[str, Any] {
+) -> dict[str, any] {
     client_globals_map: dict[(str, Any)] = {};
     if manifest {
         for name in manifest.globals {

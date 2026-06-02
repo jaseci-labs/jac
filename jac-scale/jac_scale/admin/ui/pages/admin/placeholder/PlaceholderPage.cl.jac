@@ -79,8 +79,7 @@ cl {
     }
 
     def:pub LogsPage -> JsxElement {
-        return
-            <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;
+        return <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;
     }
 
     def:pub HealthPage -> JsxElement {
@@ -144,7 +143,7 @@ cl {
                 <CardBody>
                     <TextArea
                         value={tomlConfig}
-                        onChange={lambda e: Any { tomlConfig = e.target.value; }}
+                        onChange={lambda e: any { tomlConfig = e.target.value; }}
                         placeholder="# TOML configuration will load here..."
                         rows={20}
                     />
@@ -198,13 +197,13 @@ cl {
                         <Input
                             label="SMTP Host"
                             value={smtpHost}
-                            onChange={lambda e: Any { smtpHost = e.target.value; }}
+                            onChange={lambda e: any { smtpHost = e.target.value; }}
                             placeholder="smtp.example.com"
                         />
                         <Input
                             label="SMTP Port"
                             value={smtpPort}
-                            onChange={lambda e: Any { smtpPort = e.target.value; }}
+                            onChange={lambda e: any { smtpPort = e.target.value; }}
                             placeholder="587"
                         />
                     </div>
@@ -304,7 +303,7 @@ cl {
                     <Input
                         label="Database URL"
                         value={dbUrl}
-                        onChange={lambda e: Any { dbUrl = e.target.value; }}
+                        onChange={lambda e: any { dbUrl = e.target.value; }}
                         placeholder="postgresql://user:pass@host:5432/db"
                     />
                     <div className="grid grid-cols-2 gap-4">
@@ -312,14 +311,14 @@ cl {
                             label="Pool Size"
                             type="number"
                             value={poolSize}
-                            onChange={lambda e: Any { poolSize = e.target.value; }}
+                            onChange={lambda e: any { poolSize = e.target.value; }}
                             placeholder="10"
                         />
                         <Input
                             label="Max Overflow"
                             type="number"
                             value={maxOverflow}
-                            onChange={lambda e: Any { maxOverflow = e.target.value; }}
+                            onChange={lambda e: any { maxOverflow = e.target.value; }}
                             placeholder="20"
                         />
                     </div>
@@ -350,21 +349,21 @@ cl {
                             label="Min Replicas"
                             type="number"
                             value={minReplicas}
-                            onChange={lambda e: Any { minReplicas = e.target.value; }}
+                            onChange={lambda e: any { minReplicas = e.target.value; }}
                             placeholder="1"
                         />
                         <Input
                             label="Max Replicas"
                             type="number"
                             value={maxReplicas}
-                            onChange={lambda e: Any { maxReplicas = e.target.value; }}
+                            onChange={lambda e: any { maxReplicas = e.target.value; }}
                             placeholder="10"
                         />
                         <Input
                             label="Target CPU %"
                             type="number"
                             value={targetCpu}
-                            onChange={lambda e: Any { targetCpu = e.target.value; }}
+                            onChange={lambda e: any { targetCpu = e.target.value; }}
                             placeholder="70"
                         />
                     </div>

@@ -48,3 +48,11 @@ with entry {
 }
 
 def generate_joke -> dict[str, str] by llm();
+
+walker Greeter {
+    can greet with Root entry;
+}
+
+impl Greeter.greet with Root entry {
+    print("Say, Hello!");
+}

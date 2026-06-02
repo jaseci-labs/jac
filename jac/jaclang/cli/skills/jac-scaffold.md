@@ -16,7 +16,7 @@ jac create --use https://.../t.jacpack # from a URL
 jac create --list_jacpacks             # list available templates
 ```
 
-Always pass an explicit project name - without one, `jac create` falls back to `jactastic`, `jactastic1`, etc.
+Without a project name, `jac create` initializes the **current directory** and names the project after it (like `cargo init` / `uv init`). Pass a name to create a subdirectory instead (`jac create myapp`).
 
 **`client` and `fullstack` are provided by the `jac-client` plugin.** Only `default` ships with `jaclang`. Without `jac-client` installed, `jac create --use client` fails with `Unknown jacpack template`, and `--list_jacpacks` shows only `default`. Run `jac install` / `pip install jac-client` first, or check `--list_jacpacks` to see what is actually available.
 
@@ -42,26 +42,14 @@ Before running `jac create`:
 
 An existing workspace usually already has a project. Scaffolding into it creates a nested mess. Inspect it first.
 
-## Adapt the output - the `fullstack` template ships deprecated syntax
-
-The `fullstack` template's `main.jac` still uses the old `cl { ... }` / `sv { ... }` braced blocks, which trigger **W0064**. (The `client` template is already on the modern `to cl:` form - no adaptation needed.) After scaffolding `fullstack`:
-
-1. Open `main.jac`
-2. Replace the `sv { ... }` block with plain top-level imports (server is the default context)
-3. Replace the `cl { ... }` block with a `to cl:` section header
-4. Move client imports under `to cl:`
-
-See `jac-fullstack-patterns` for the canonical `main.jac` shape after this fix.
-
 ## Post-scaffold checklist
 
 After `jac create`:
 
 1. `cd <project>`
-2. For the `fullstack` template, adapt the `cl { }` / `sv { }` blocks (see above) before running anything
-3. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
-4. `jac install` - run after all jac.toml changes are final
-5. `jac start --dev main.jac` (background, for hot reload). NOT `jac serve` (deprecated).
+2. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
+3. `jac install` - run after all jac.toml changes are final
+4. `jac start --dev main.jac` (background, for hot reload). NOT `jac serve` (deprecated).
 
 ## Pitfalls
 
@@ -69,4 +57,4 @@ After `jac create`:
 - **Match the template to the user's actual need.** Picking `fullstack` for a UI-only spike adds unused server scaffolding; picking `client` for an app that needs persistence forces a later migration.
 - **Don't scaffold into a non-empty workspace.** Inspect the workspace first; if a project exists, extend it.
 - **`-s` / `--skip` on `jac create --use client`** skips npm install - convenient for offline scaffolding, but you'll need `jac install` before running.
-- **Project-name argument is optional but defaults to `jactastic`.** Always pass an explicit name.
+- **Project-name argument is optional.** Omit it to scaffold in cwd; pass a name to create `cwd/<name>/`.

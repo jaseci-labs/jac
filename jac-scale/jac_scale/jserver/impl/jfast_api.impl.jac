@@ -65,6 +65,27 @@ class ConsoleLogHandler(logging.Handler) {
     }
 }
 
+"""Filter that suppresses noisy health-check access log entries."""
+class HealthCheckFilter(logging.Filter) {
+    _SUPPRESSED = {
+        '"GET /docs HTTP',
+        '"GET / HTTP',
+        '"GET /openapi.json HTTP',
+        '"GET /health HTTP',
+        '"GET /healthz'
+    };
+
+    def filter(self: HealthCheckFilter, record: logging.LogRecord) -> bool {
+        msg = record.getMessage();
+        for pat in self._SUPPRESSED {
+            if pat in msg {
+                return False;
+            }
+        }
+        return True;
+    }
+}
+
 """Run the FastAPI server using Uvicorn.
 
 If the specified port is in use, tries subsequent ports up to max_retries times.
@@ -74,9 +95,14 @@ impl JFastApiServer.run_server(
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
+    import from jac_scale.config_loader { get_scale_config }
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
     console_handler.setFormatter(logging.Formatter("%(message)s"));
+    server_cfg = get_scale_config().get_server_config();
+    if server_cfg.get('suppress_health_check_logs', False) {
+        console_handler.addFilter(HealthCheckFilter());
+    }
     # Suppress startup logs but route access logs through jac-super console
     log_config = {
         "version": 1,
@@ -114,10 +140,23 @@ impl JFastApiServer.run_server(
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
     import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
-    import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
+    prebound = self?._prebound_listen_socket;
+    if prebound is not None {
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_config=log_config,
+            timeout_graceful_shutdown=int(drain_timeout)
+        );
+        server = uvicorn.Server(config);
+        install_signal_drain(server, timeout_s=drain_timeout);
+        server.run(sockets=[prebound]);
+        return;
+    }
     current_port = port;
     for _ in range(max_retries) {
         try {
@@ -203,11 +242,11 @@ impl JFastApiServer._create_response_model(
 """Convert string type to Python type."""
 impl JFastApiServer._get_python_type(
     self: JFastApiServer, type_string: str
-) -> type[Any] {
+) -> type[any] {
     if (type_string.startswith("<class '") and type_string.endswith("'>")) {
         type_string = type_string[8:-2];
     }
-    type_mapping: dict[(str, type[Any])] = {
+    type_mapping: dict[(str, type[any])] = {
         'str': str,
         'string': str,
         'int': int,
@@ -224,7 +263,7 @@ impl JFastApiServer._get_python_type(
 }
 
 """Check whether a type is a user-defined Jac archetype (obj/node/edge)."""
-def _is_jac_archetype(cls: Any) -> bool {
+def _is_jac_archetype(cls: any) -> bool {
     import from jaclang.jac0core.archetype { Archetype }
     try {
         return (
@@ -238,7 +277,7 @@ def _is_jac_archetype(cls: Any) -> bool {
 }
 
 """Recursively convert a validated Pydantic/dict payload into Jac obj instances."""
-def _pydantic_to_jac(data: Any, jac_cls: Any) -> Any {
+def _pydantic_to_jac(data: any, jac_cls: any) -> any {
     import from typing { get_type_hints, get_origin, get_args }
     import inspect;
     import from pydantic { BaseModel }
@@ -274,7 +313,7 @@ def _pydantic_to_jac(data: Any, jac_cls: Any) -> Any {
     if _is_jac_archetype(jac_cls) and isinstance(data, dict) {
         hints = get_type_hints(jac_cls.init);
         sig = inspect.signature(jac_cls.init);
-        kwargs: dict[str, Any] = {};
+        kwargs: dict[str, any] = {};
         for (key, value) in data.items() {
             if (key not in sig.parameters) {
                 continue;
@@ -294,8 +333,8 @@ obj types, generics (list[Obj], dict[str, Obj]), and Optional/Union. Falls
 back to the primitive string mapping when type_obj is None.
 """
 impl JFastApiServer._resolve_type(
-    self: JFastApiServer, type_string: str, type_obj: Any = None
-) -> Any {
+    self: JFastApiServer, type_string: str, type_obj: any = None
+) -> any {
     import from typing { get_origin, get_args, Union }
     import types;
     # Fast path: primitive string mapping
@@ -343,7 +382,7 @@ types (e.g. `TreeNode` with `children: list[TreeNode]`) terminate; the
 forward refs are resolved via `model_rebuild` once the real model exists.
 """
 impl JFastApiServer._build_pydantic_model(
-    self: JFastApiServer, jac_cls: Any
+    self: JFastApiServer, jac_cls: any
 ) -> type[BaseModel] {
     import from typing { get_type_hints, ForwardRef }
     model_name = jac_cls.__name__;
@@ -363,7 +402,7 @@ impl JFastApiServer._build_pydantic_model(
     }
     import dataclasses;
     dc_fields: dict[(str, Any)] = getattr(jac_cls, '__dataclass_fields__', {});
-    fields: dict[str, Any] = {};
+    fields: dict[str, any] = {};
     for (name, param) in sig.parameters.items() {
         if (name in ('self', 'args', 'kwargs')) {
             continue;
@@ -517,9 +556,9 @@ impl JFastApiServer._create_endpoint_function(
     self: JFastApiServer,
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
-    dependencies: list[Any],
+    dependencies: list[any],
     request_model: (type[BaseModel] | None) = None
-) -> Callable[..., Any] {
+) -> Callable[..., any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
@@ -740,7 +779,7 @@ impl JFastApiServer._create_endpoint_function(
     params = ', '.join(param_strs);
     # Map body-param names to their Jac type objects so the wrapper can
     # reconstruct archetype instances from validated Pydantic data.
-    body_type_map: dict[str, Any] = {};
+    body_type_map: dict[str, any] = {};
     for param in body_params {
         if param.name
         and (param.type_obj is not None)
@@ -847,7 +886,7 @@ def endpoint_wrapper({params}):
         'create_model': create_model,
         'Dict': `dict,
         'List': `list,
-        'Any': Any,
+        'Any': any,
         'int': int,
         'str': str,
         'float': float,
@@ -1056,7 +1095,7 @@ impl JFastApiServer._get(
     return self;
 }
 
-impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: Any) -> None {
+impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: any) -> None {
     if user_manager is None {
         raise RuntimeError(
             "set_user_manager() called with None — jwt_validation_middleware will be "
@@ -1104,7 +1143,7 @@ impl JFastApiServer.init(
 
     async def request_context_middleware(request: Request, call_next: Callable) {
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
-        JacRuntime.set_request_context(ctx);
+        req_token = JacRuntime.push_request_context(ctx);
 
         # Capture Authorization header for sv-to-sv auth propagation.
         # The sv_service_call hookimpl in plugin.jac reads this ContextVar
@@ -1118,16 +1157,19 @@ impl JFastApiServer.init(
         # Same pattern for distributed trace id. If the inbound request
         # lacks X-Trace-Id (e.g. client-to-service direct call, or a
         # test harness), mint one so every downstream hop has a shared
-        # correlator. Install the log filter so this service's logs
-        # get a [trace=xxxx] prefix matching the gateway's and every
-        # sibling service's.
+        # correlator. Install the JSON formatter (M-14.b) once at first
+        # request - emits structured JSON to stdout so Alloy + Loki get
+        # queryable `service`/`level`/`trace_id` fields. The function is
+        # idempotent and also installs the trace-id filter internally.
         import from jac_scale.microservices.runtime.trace_ctx {
             set_current_trace,
             reset_current_trace,
-            ensure_trace_id,
-            install_trace_log_filter
+            ensure_trace_id
         }
-        install_trace_log_filter();
+        import from jac_scale.microservices.runtime.log_emit {
+            install_structured_logging
+        }
+        install_structured_logging();
         trace_id = ensure_trace_id(request.headers.get('X-Trace-Id'));
         trace_token = set_current_trace(trace_id);
 
@@ -1162,7 +1204,8 @@ impl JFastApiServer.init(
             return response;
         } finally {
             try {
-                JacRuntime.clear_request_context();
+                JacRuntime.reset_request_context(req_token);
+                ctx.close();
             } except Exception as e {
                 logger.warning(f"Failed to clear request context: {e}", exc_info=True);
             }

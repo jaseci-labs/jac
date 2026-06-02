@@ -20,7 +20,24 @@ obj fields must resolve to one of these, another obj, an enum, a typed
 collection (list[T], dict[K,V], set[T]) where element types are also
 layout-compatible, or a callable with explicit signature (function pointer).
 """
-glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {"int","float","bool","str","bytes","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64",};
+glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
+         "int",
+         "float",
+         "bool",
+         "str",
+         "bytes",
+         "i8",
+         "u8",
+         "i16",
+         "u16",
+         "i32",
+         "u32",
+         "i64",
+         "u64",
+         "f32",
+         "f64",
+
+     };
 
 """Per-field layout descriptor."""
 obj FieldInfo {
@@ -60,7 +77,7 @@ obj ArchetypeLayout {
 Backends call this lazily instead of LayoutPass being in the schedule.
 Avoids re-entrancy issues with the self-hosting compiler bootstrap.
 """
-def get_layout_registry(module: uni.Module, prog: Any = None) -> LayoutRegistry {
+def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
         return reg;
@@ -94,8 +111,8 @@ directly instead of UniPass.
 """
 obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
-        prog: Any,
-        cancel_token: Any = None,
+        prog: any,
+        cancel_token: any = None,
         registry: LayoutRegistry by postinit;
 
     def postinit -> None;

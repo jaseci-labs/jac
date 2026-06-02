@@ -3,7 +3,6 @@ Redis (when enabled in k8s_config) via the parent KubernetesTarget's
 _deploy_databases, returns a DeployContext with the connection env vars
 and wait-for-DB init containers populated."""
 
-import from typing { Any }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes { client }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
@@ -14,8 +13,8 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
 """`enabled=False` (default) returns an empty DeployContext without
 touching the cluster - the test path."""
 obj MicroserviceDatabaseProvisioner {
-    has k8s_target: Any,
-        logger: Any = None,
+    has k8s_target: any,
+        logger: any = None,
         enabled: bool = False;
 
     """Returns empty context when disabled or both DBs disabled in config."""
@@ -58,8 +57,7 @@ obj MicroserviceDatabaseProvisioner {
                 {"namespace": namespace}
             );
         }
-        # cluster_env is a monolith-only knob; pass empty string.
-        self.k8s_target._deploy_databases(app_name, namespace, apps_v1, core_v1, "");
+        self.k8s_target._deploy_databases(app_name, namespace, apps_v1, core_v1);
 
         # Init containers block pod startup until DB Endpoints are reachable -
         # without this, pods crash-loop with connection-refused on every

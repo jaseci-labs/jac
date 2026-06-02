@@ -59,21 +59,23 @@ import from byllm.lib { Model }         # selective - NO `;`
 import ".styles/global.css";            # file - takes `;`
 ```
 
-**Client imports (inside `.cl.jac` files, or under `to cl:` in `main.jac`):**
+**Client imports (inside `.cl.jac` files, or inside a `cl { }` block in `main.jac`):**
 
 ```
 import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no header needed). Then `to cl:` opens the client section: CSS import, top-level component, `def:pub app()`:
+**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`:
 
 ```
 import from services.recipe { ApiResponse, save_profile }   # server: no leading dot
-cl import ".styles.global.css";                             # CSS: cl import prefix required
-to cl:
-import from .components.AppShell { AppShell }               # client: relative dots
-def:pub app() -> JsxElement { return <AppShell />; }
+
+cl {
+    import ".styles.global.css";                            # CSS import
+    import from .components.AppShell { AppShell }            # client: relative dots
+    def:pub app() -> JsxElement { return <AppShell />; }
+}
 ```
 
 **Relative imports - what each dot means (Python-style):**
@@ -111,4 +113,6 @@ If your file gets moved to a different depth, **the dot count must change** to m
 - Always use the typed brace lambda: `lambda(x: int) -> int { return x; }` (zero-arg form: `lambda -> int { return 5; }`). The Python form `lambda x: x` parses but is **untyped** - it triggers W1051 type warnings, so don't use it. The invented forms `:x: x` and `<lambda x: x>` are hard parse errors.
 - Ternary is **Python-style**: `A if cond else B`. NOT `cond ? A : B` (JS/C-style) - that's a parse error in Jac.
 - **Python stdlib needs explicit import - Jac auto-imports nothing.** `datetime.now()`, `os.environ`, `json.dumps`, `math.pi`, `random.randint`, etc. ALL need a top-of-file `import from <mod> { name }` or `import <mod>;` first. Common slip: using `datetime.now()` for `created_at` fields without `import from datetime { datetime }` → `NameError: name 'datetime' is not defined` at runtime.
+- **`sv import` calls are `async` -- always `await` them.** `items = fetch_items()` assigns a `Promise`, not the data. Write `items = await fetch_items()`.
 - **`import:py` does not exist in Jac.** Use `import from datetime { datetime }` or `import json;`. LLMs commonly hallucinate the `:py` suffix - it causes a parse error.
+- **Enums use Jac form, NOT Python `class X(Enum)`.** Write `enum Color { RED, GREEN }` - the Python form `class Color(Enum) { ... }` is wrong (and `class` is a Jac archetype with different semantics). When members need to BE `int`/`str` instances (flowing into `list[int]`, JSON, LSP wire formats), use the typed-base shorthand `enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }` (desugars to `IntEnum`) or `enum Tag: str { OPEN = "open" }` (desugars to `StrEnum`); any other `: T` is mixin `class X(T, Enum)`. With typed-base, `[HttpStatus.OK, HttpStatus.NOT_FOUND]` is already `list[int]` - **do NOT add `.value`**.

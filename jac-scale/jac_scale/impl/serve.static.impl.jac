@@ -2,7 +2,6 @@
 import mimetypes;
 import from collections.abc { Callable }
 import from pathlib { Path }
-import from typing { Any }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
 import from jac_scale.jserver.jserver {
     APIParameter,
@@ -23,7 +22,9 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         # Find project root (where jac.toml is) instead of using base_path_dir
         # base_path_dir might be src/ when serving src/app.jac, but we need project root
         import from jaclang.project.config { find_project_root }
-        base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+        base_path_dir = Path(bp_dir)
+            if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
+            else Path.cwd();
         project_root_result = find_project_root(base_path_dir);
         if project_root_result {
             (base_path, _) = project_root_result;
@@ -253,7 +254,30 @@ impl JacAPIServerStatic.render_base_route_callback(
 """Serve root-level assets like /img.png, /icons/logo.svg, etc.
 Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
-    allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
+    allowed_extensions = {
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.webp',
+        '.svg',
+        '.ico',
+        '.woff',
+        '.woff2',
+        '.ttf',
+        '.otf',
+        '.eot',
+        '.mp4',
+        '.webm',
+        '.mp3',
+        '.wav',
+        '.css',
+        '.js',
+        '.json',
+        '.pdf',
+        '.txt',
+        '.xml'
+    };
     file_ext = Path(file_path).suffix.lower();
     import from jaclang.project.config { get_config }
     config = get_config();
@@ -286,7 +310,9 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     # Find project root (where jac.toml is) instead of using base_path_dir
     # base_path_dir might be src/ when serving src/app.jac, but we need project root
     import from jaclang.project.config { find_project_root }
-    base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+    base_path_dir = Path(bp_dir)
+        if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
+        else Path.cwd();
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;

@@ -4,27 +4,26 @@ import from collections.abc { Callable, Iterable }
 import from typing { ClassVar }
 """Jac test result class."""
 obj JacTestResult(unittest.TextTestResult) {
-    has stream: Any,
-        descriptions: Any,
+    has stream: any,
+        descriptions: any,
         verbosity: int,
         max_failures: (int | None) = None,
         failures_count: int by postinit;
 
     def postinit -> None;
-    def addFailure(`test: Any, err: Any) -> None;
+    def addFailure(`test: any, err: any) -> None;
     def stop -> None;
 }
 
 """Jac test runner class."""
 obj JacTextTestRunner(unittest.TextTestRunner) {
-    def init(max_failures: (int | None) = None, **kwargs: Any) -> None;
+    def init(max_failures: (int | None) = None, **kwargs: any) -> None;
     def _makeResult -> JacTestResult;
 }
 
 """Jac Testing and Checking."""
 obj JacTestCheck {
     with entry {
-        test_case = unittest.TestCase();
         test_suite = unittest.TestSuite();
     }
 
@@ -55,8 +54,6 @@ obj JacTestCheck {
     static def add_test(
         filepath: str, func_name: str, test_func: Callable, display_name: str = ""
     ) -> None;
-
-    def __getattr__(name: str) -> object;
 }
 
 """Register one test per parameter (like pytest.mark.parametrize)."""

@@ -449,7 +449,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
 }
 
-impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
+impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
     deps = self.plugin_dependencies.get(dep_type, {});
     # Filter out the "dev" key which holds dev dependencies
     return {
@@ -459,7 +459,7 @@ impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
     };
 }
 
-impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, Any] {
+impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
 }
 
@@ -580,7 +580,7 @@ set/unset helpers) goes through here, so the ancestor-directory guard cannot be
 silently skipped by a future mutating command: warn once, here, whenever this
 config was discovered by climbing out of the current directory.
 """
-impl JacConfig.persist_doc(doc: dict[str, Any]) -> None {
+impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
@@ -617,7 +617,7 @@ def _quote_key(key: str) -> str {
 
 # Simple TOML serializer (does not preserve comments). This is the single
 # canonical writer -- callers that need dict-to-TOML use this, never a copy.
-impl serialize_toml(data: dict[str, Any], prefix: str = "") -> str {
+impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
@@ -644,7 +644,7 @@ impl serialize_toml(data: dict[str, Any], prefix: str = "") -> str {
         has_nested = any(isinstance(v, dict) for v in table_data.values());
         if has_nested {
             # Write nested tables with dotted keys
-            simple_values: list[tuple[str, Any]] = [];
+            simple_values: list[tuple[str, any]] = [];
             nested_tables: list[tuple[str, dict]] = [];
             for (k, v) in table_data.items() {
                 if isinstance(v, dict) {
@@ -679,7 +679,7 @@ impl serialize_toml(data: dict[str, Any], prefix: str = "") -> str {
 }
 
 # Convert a Python value to its TOML literal representation.
-impl toml_value(value: Any) -> str {
+impl toml_value(value: any) -> str {
     if value is None {
         # TOML has no null literal; mirror the legacy writer and use "".
         return '""';
@@ -744,28 +744,24 @@ impl JacConfig.remove_dependency(
                 del self.dev_dependencies[name];
                 return True;
             }
-        } else {
-            if name in self.dependencies {
-                del self.dependencies[name];
-                return True;
-            }
+        } elif name in self.dependencies {
+            del self.dependencies[name];
+            return True;
         }
     } elif dep_type == "git" {
         if name in self.git_dependencies {
             del self.git_dependencies[name];
             return True;
         }
-    } else {
-        if dep_type in self.plugin_dependencies {
-            if dev and "dev" in self.plugin_dependencies[dep_type] {
-                if name in self.plugin_dependencies[dep_type]["dev"] {
-                    del self.plugin_dependencies[dep_type]["dev"][name];
-                    return True;
-                }
-            } elif name in self.plugin_dependencies[dep_type] {
-                del self.plugin_dependencies[dep_type][name];
+    } elif dep_type in self.plugin_dependencies {
+        if dev and "dev" in self.plugin_dependencies[dep_type] {
+            if name in self.plugin_dependencies[dep_type]["dev"] {
+                del self.plugin_dependencies[dep_type]["dev"][name];
                 return True;
             }
+        } elif name in self.plugin_dependencies[dep_type] {
+            del self.plugin_dependencies[dep_type][name];
+            return True;
         }
     }
     return False;
@@ -774,7 +770,7 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
-impl _parse_persons(raw: list[Any]) -> list[PersonConfig] {
+impl _parse_persons(raw: list[any]) -> list[PersonConfig] {
     result: list[PersonConfig] = [];
     for item in raw {
         if isinstance(item, dict) {
@@ -788,14 +784,14 @@ impl _parse_persons(raw: list[Any]) -> list[PersonConfig] {
     return result;
 }
 
-impl _parse_include(raw: dict[str, Any]) -> PackageIncludeConfig {
+impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
     return PackageIncludeConfig(
         packages=raw.get("packages", []), data=raw.get("data", {})
     );
 }
 
 impl _parse_toml_data(
-    data: dict[str, Any], toml_path: Path | None = None
+    data: dict[str, any], toml_path: Path | None = None
 ) -> JacConfig {
     config = JacConfig();
     config._raw_data = data;
@@ -814,6 +810,7 @@ impl _parse_toml_data(
             license=proj.get("license", ""),
             readme=proj.get("readme", "README.md"),
             keywords=proj.get("keywords", []),
+            classifiers=proj.get("classifiers", []),
             requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),
@@ -933,11 +930,13 @@ impl _parse_toml_data(
     }
     if "storage" in data {
         storage_data = data["storage"];
-        config.storage = StorageConfig(
-            storage_type=storage_data.get("type", "local"),
-            base_path=storage_data.get("base_path", "./storage"),
-            create_dirs=storage_data.get("create_dirs", True)
-        );
+        for (key, value) in storage_data.items() {
+            if key == "type" {
+                config.storage.storage_type = value;
+            } elif hasattr(config.storage, key) {
+                setattr(config.storage, key, value);
+            }
+        }
     }
     if "client_errors" in data {
         ce_data = data["client_errors"];
@@ -987,7 +986,7 @@ impl _parse_toml_data(
     return config;
 }
 
-impl _interpolate_recursive(`obj: Any) -> Any {
+impl _interpolate_recursive(`obj: any) -> any {
     if isinstance(`obj, str) {
         try {
             return interpolate_env_vars(`obj);

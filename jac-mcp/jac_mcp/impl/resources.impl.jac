@@ -1,6 +1,5 @@
 """Implementation of resource providers."""
 
-import from typing { Any }
 import from pathlib { Path }
 import json;
 import from urllib.request { urlopen, Request }
@@ -558,7 +557,7 @@ def _read_example_dir(dir_path: str) -> str {
 }
 
 """Fetch JSON from a URL, returns parsed dict/list or None on failure."""
-def _github_api_get(url: str) -> Any {
+def _github_api_get(url: str) -> any {
     try {
         req = Request(
             url,
@@ -580,8 +579,7 @@ impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
     # Rich descriptions so AI can quickly identify the right example
     EXAMPLE_DESCRIPTIONS: dict[str, str] = {
         "chess": "Native chess engine, backend-only, no graph traversal. Demonstrates declaration/impl separation, enums, obj inheritance, and the Jac type system.",
-        "littleX": "Full-stack social app (Twitter-like), OSP graph with user profiles and NLP-based search (sklearn/TF-IDF). Real-world object-spatial design.",
-        "manual_code": "Circle class showcasing declaration/impl separation and unit tests. Clean OOP reference, no graph traversal."
+        "littleX": "Full-stack social app (Twitter-like), OSP graph with user profiles and NLP-based search (sklearn/TF-IDF). Real-world object-spatial design."
     };
     categories: list[str] = [];
     for entry in sorted(examples_dir.iterdir()) {

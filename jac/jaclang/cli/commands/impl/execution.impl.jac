@@ -7,12 +7,8 @@ import marshal;
 import os;
 import sys;
 import types;
-import from typing { Any }
 import from jaclang.cli.console { console }
-import from jaclang.cli.commands.cli_helpers {
-    ensure_jac_runtime as _ensure_jac_runtime,
-    proc_file as _proc_file
-}
+import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 """Discover jac.toml from the file's directory when an absolute/relative path is given.
 
@@ -28,8 +24,8 @@ def _discover_config_from_file(filename: str) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
-    # Store entry file path for runtime utilities (called before _proc_file)
-    Jac.full_target_path = str(file_path);
+    # Seed the bootstrap target so new contexts get the right L3 identity.
+    Jac.set_full_target_path(str(file_path));
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that
@@ -93,7 +89,6 @@ impl run(
     diagnostics: str = "",
     args: list = []
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -247,7 +242,6 @@ impl enter(
     `root: str = '',
     nd: str = ''
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.constructs { WalkerArchetype }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -297,7 +291,6 @@ impl start(
     api_port: int = 0,
     no_client: bool = False
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
     if not Path(filename).exists() {
@@ -461,15 +454,26 @@ impl start(
     }
 }
 
+"""Return True if watchdog is importable in the current process."""
+def _watchdog_importable -> bool {
+    import importlib;
+    try {
+        importlib.invalidate_caches();
+        import watchdog;
+        return True;
+    } except ImportError {
+        return False;
+    }
+}
+
 """Ensure watchdog is installed, auto-install if missing."""
 def _ensure_watchdog_installed -> bool {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dependencies { DependencyInstaller, add_venv_to_path }
 
-    try {
-        import watchdog;
+    if _watchdog_importable() {
         return True;
-    } except ImportError { }
+    }
 
     config = get_config();
     if config is None {
@@ -483,8 +487,18 @@ def _ensure_watchdog_installed -> bool {
     );
     installer = DependencyInstaller(config=config, verbose=False);
     if installer.install_package(["watchdog>=3.0.0"]) {
-        console.success("watchdog installed");
-        return True;
+        add_venv_to_path(config);
+        if _watchdog_importable() {
+            console.success("watchdog installed");
+            return True;
+        }
+        console.error(
+            "\n  Error: watchdog was installed in the project venv but cannot be imported.\n"
+        );
+        console.error(
+            "  Run 'jac install --dev' using a Jac install that matches the project venv Python version.\n"
+        );
+        return False;
     }
     console.error("\n  Error: Failed to install watchdog\n");
     return False;
@@ -587,7 +601,7 @@ def _print_startup_message(
 }
 
 """Start Vite dev server for HMR mode."""
-def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any {
+def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {
     import from pathlib { Path }
 
     try {

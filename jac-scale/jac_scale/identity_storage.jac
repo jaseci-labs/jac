@@ -18,6 +18,7 @@ import logging;
 import from datetime { datetime, UTC }
 import from sqlalchemy {
     create_engine,
+    Engine,
     MetaData,
     Table,
     Column,
@@ -30,9 +31,15 @@ import from sqlalchemy {
     delete,
     update
 }
+import from sqlalchemy.exc { IntegrityError }
+import from jac_scale._optdeps.pymongo { DuplicateKeyError }
+import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
+
+"""Raised by storage backends when an identity uniqueness constraint fires."""
+obj IdentityTakenError(Exception) {}
 
 """Abstract base for identity storage backends.
 
@@ -52,6 +59,7 @@ obj IdentityStorage {
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
+    def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
     # Public methods implemented by subclasses directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
@@ -75,6 +83,7 @@ obj IdentityStorage {
         user_id: str, current_password: str, new_password: str
     ) -> dict[str, str];
 
+    def reset_password(user_id: str, new_password: str) -> dict[str, str];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;
     def update_user_fields(user_id: str, fields: dict[str, any]) -> bool;
@@ -88,7 +97,7 @@ obj IdentityStorage {
 
 """MongoDB-backed identity storage."""
 obj MongoIdentityStorage(IdentityStorage) {
-    has users_col: any;
+    has users_col: Collection[dict[str, any]];
 
     # Abstract primitives
     def _store_user(user_doc: dict[str, any]) -> None;
@@ -99,6 +108,7 @@ obj MongoIdentityStorage(IdentityStorage) {
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
+    def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
     # Public methods implemented directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
@@ -114,10 +124,10 @@ obj MongoIdentityStorage(IdentityStorage) {
 """SQLite-backed identity storage."""
 obj SqliteIdentityStorage(IdentityStorage) {
     has db_path: str,
-        _engine: any by postinit,
-        _table: any by postinit,
-        _identity_lookups: any by postinit,
-        _sso_lookups: any by postinit;
+        _engine: Engine by postinit,
+        _table: Table by postinit,
+        _identity_lookups: Table by postinit,
+        _sso_lookups: Table by postinit;
 
     def postinit -> None;
     # Abstract primitives
@@ -129,6 +139,7 @@ obj SqliteIdentityStorage(IdentityStorage) {
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
+    def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
     # Public methods implemented directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;

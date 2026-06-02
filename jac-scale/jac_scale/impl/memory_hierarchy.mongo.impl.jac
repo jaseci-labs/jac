@@ -10,6 +10,7 @@ collections on first write, so all we do here is load any existing
 aliases into the in-process Serializer map.
 """
 impl MongoBackend.postinit -> None {
+    self._atomic_written = set();
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
@@ -33,16 +34,48 @@ impl MongoBackend.postinit -> None {
         } except Exception as e {
             logger.debug(f"MongoBackend: alias preload skipped: {e}");
         }
+        try {
+            self.ensure_indexes();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: index creation skipped: {e}");
+        }
     }
 }
 
+
+"""Create indexes that make type-based pushdown queries efficient.
+
+Idempotent — `create_index` is a no-op when an index of the same shape and
+name already exists, so this can be called on every connect without cost.
+
+The compound `(arch_type, type)` index is what makes `execute_plan`
+worthwhile: queries that filter by archetype type (the common case, e.g.
+"all `User` nodes connected to root R") become IXSCAN instead of COLLSCAN.
+A descending `updated_at` index supports recency-based ops without forcing
+a full sort.
+"""
+impl MongoBackend.ensure_indexes -> None {
+    if self.collection is None {
+        return;
+    }
+    import from pymongo { ASCENDING, DESCENDING }
+    self.collection.create_index(
+        [('arch_type', ASCENDING), ('type', ASCENDING)],
+        name='arch_type_1_type_1',
+        background=True
+    );
+    self.collection.create_index(
+        [('updated_at', DESCENDING)], name='updated_at_-1', background=True
+    );
+}
+
 """Get the `_quarantine` companion collection."""
-def _mongo_q_collection(backend: MongoBackend) -> Any {
+def _mongo_q_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_quarantine'];
 }
 
 """Get the `_aliases` companion collection."""
-def _mongo_a_collection(backend: MongoBackend) -> Any {
+def _mongo_a_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_aliases'];
 }
 
@@ -50,6 +83,32 @@ def _mongo_a_collection(backend: MongoBackend) -> Any {
 def _anchor_has_structural_change(anchor: Anchor) -> bool {
     return anchor.hash == 0;
 }
+
+"""Recursively remove empty-dict leaves from a serialized value.
+
+MongoDB's aggregation-pipeline $set (used in _put_node_atomic) rejects any
+embedded empty document with error 40180 (EmptyObjectInUpdate).  The default
+Permission / Access values always produce `access.roots.anchors = {}`, so
+every NodeAnchor update fails unless we strip those leaves before building
+the set_doc.  The Serializer restores default empty dicts on deserialize via
+field(default_factory=dict), so stripping them from the stored document is
+safe and lossless.
+"""
+def _strip_empty_dicts(v: object) -> object {
+    if isinstance(v, dict) {
+        cleaned = {k: _strip_empty_dicts(vv) for (k, vv) in v.items()};
+        return {
+            k: vv
+            for (k, vv) in cleaned.items()
+            if not (isinstance(vv, dict) and not vv)
+        };
+    }
+    if isinstance(v, list) {
+        return [_strip_empty_dicts(item) for item in v];
+    }
+    return v;
+}
+
 
 """Stable hash of any serialized field value (dict, list, or scalar)."""
 def _field_hash(val: object) -> int {
@@ -142,9 +201,10 @@ def _mongo_quarantine(
     arch_module: (str | None),
     arch_type: (str | None),
     fingerprint: (str | None),
-    data: Any,
+    data: any,
     error: str,
-    from_format_version: (int | None) = None
+    from_format_version: (int | None) = None,
+    l2: (any | None) = None
 ) {
     try {
         q_col = _mongo_q_collection(backend);
@@ -166,6 +226,9 @@ def _mongo_quarantine(
             upsert=True
         );
         backend.collection.delete_one({'_id': id_str});
+        if l2 {
+            l2.delete(to_uuid(id_str));
+        }
         # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
         if anchor_type == 'NodeAnchor' {
             orphaned_edges = list(
@@ -178,6 +241,16 @@ def _mongo_quarantine(
             );
             if orphaned_edges {
                 orphan_edge_ids = [e['_id'] for e in orphaned_edges];
+                # Capture nodes whose edge lists will be mutated BEFORE the update_many
+                # so we can invalidate their Redis entries after the Mongo write.
+                affected_node_ids = [];
+                if l2 {
+                    affected_nodes = backend.collection.find(
+                        {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
+                        {'_id': 1}
+                    );
+                    affected_node_ids = [doc['_id'] for doc in affected_nodes];
+                }
                 cascade_error = f"cascade quarantine: connected node {id_str} was quarantined";
                 cascade_ops = [
                     UpdateOne(
@@ -199,10 +272,20 @@ def _mongo_quarantine(
                 ];
                 q_col.bulk_write(cascade_ops, ordered=False);
                 backend.collection.delete_many({'_id': {'$in': orphan_edge_ids}});
+                if l2 {
+                    for eid in orphan_edge_ids {
+                        l2.delete(to_uuid(eid));
+                    }
+                }
                 backend.collection.update_many(
                     {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
                     {'$pullAll': {'data.edges': orphan_edge_ids}}
                 );
+                if l2 {
+                    for nid in affected_node_ids {
+                        l2.delete(to_uuid(nid));
+                    }
+                }
                 logger.info(
                     f"MongoBackend: cascade-quarantined {len(orphan_edge_ids)} edge(s) "
                     f"connected to quarantined node {id_str}."
@@ -217,6 +300,11 @@ def _mongo_quarantine(
 """Set reference to parent TieredMemory's __mem__ for sync()."""
 impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
     self._mem_ref = mem;
+}
+
+"""Store a reference to the L2 cache so quarantine operations can invalidate it."""
+impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
+    self._l2_ref = cache;
 }
 
 """Check if MongoDB is available and connected."""
@@ -304,15 +392,30 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             fingerprint,
             data,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
     if anchor is None {
-        logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {id}. Moving to quarantine."
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
         );
+        if cls_resolved is None {
+            reason = f"class {arch_module}.{arch_type} unresolvable";
+            logger.warning(
+                f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
+                f"for anchor {id}. Moving to quarantine."
+            );
+        } else {
+            reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            logger.warning(
+                f"MongoBackend: archetype field deserialization failed for "
+                f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
+            );
+        }
         _mongo_quarantine(
             self,
             str(_id),
@@ -321,8 +424,9 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
-            from_format_version=fmt_version
+            reason,
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
@@ -405,6 +509,7 @@ impl MongoBackend.close -> None {
     # Don't close the shared process-level client; just drop local reference.
     self.client = None;
     self._mem_ref = None;
+    self._l2_ref = None;
 }
 
 """Check if an anchor exists in MongoDB."""
@@ -440,12 +545,127 @@ impl MongoBackend.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors using an indexed type filter (no full collection scan).
+
+Uses the `(arch_type, type)` compound index — IXSCAN, not COLLSCAN. The
+Python-side `isinstance` check is kept as a defense-in-depth filter in case
+schema drift left a non-Root archetype with `arch_type='Root'`.
+"""
 impl MongoBackend.get_roots -> Generator[Root, None, None] {
-    for anchor in self.query() {
-        if isinstance(anchor.archetype, Root) {
-            yield cast(Root, anchor.archetype);
+    if self.client is None {
+        return;
+    }
+    try {
+        for doc in self.collection.find({'arch_type': 'Root', 'type': 'NodeAnchor'}) {
+            if (anchor := self._load_anchor(doc)) {
+                if isinstance(anchor.archetype, Root) {
+                    yield cast(Root, anchor.archetype);
+                }
+            }
         }
+    } except Exception as e {
+        logger.debug(f"MongoDB get_roots failed: {e}");
+    }
+}
+
+
+"""Declare MongoDB's native pushdown capabilities.
+
+MongoDB can apply: archetype-type filter (compound index), arbitrary
+declarative field predicates (`data.archetype.<f>` paths), `_id IN (...)`
+narrowing (primary index), and contiguous slicing (`skip`+`limit`).
+
+The planner combines these with the topology_index narrowing automatically
+— see `jaclang.runtimelib.planner` for the strategy chooser.
+"""
+impl MongoBackend.capabilities -> set[str] {
+    return {'type_pushdown', 'field_pushdown', 'id_in', 'slice'};
+}
+
+
+"""Translate a QueryPlan into the MongoDB filter dict + cursor options.
+
+Filter shape (only includes keys the plan actually populates):
+  - `arch_type`: archetype class name (final hop's `node_type` or `node_type_final`)
+  - `type`: 'NodeAnchor' (we only push down node queries — edges are handled
+            via the source/target subdoc separately, not by execute_plan)
+  - `_id`:  `{'$in': [...]}` when the planner narrowed via topology_index
+  - `data.archetype.<f>`: each archetype-field predicate, value passed through
+                          verbatim (MongoDB operator dicts like `{'$lt': 28}`
+                          work as-is)
+
+Returns (filter_dict, skip, limit). When slc has a step != 1 we leave skip/
+limit at None and let the planner slice the result list (Mongo can't apply
+strided slicing natively).
+"""
+def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
+    filt: dict = {};
+    # Prefer the explicit `node_type_final`; otherwise pick the final hop's
+    # node_type so single-hop plans like `[root -->User]` push down cleanly.
+    type_name = plan.node_type_final;
+    if type_name is None and plan.chain {
+        type_name = plan.chain[-1].node_type;
+    }
+    if type_name {
+        filt['arch_type'] = type_name;
+        filt['type'] = 'NodeAnchor';
+    }
+    if plan.id_in is not None {
+        filt['_id'] = {'$in': [str(u) for u in plan.id_in]};
+    }
+    for (k, v) in plan.field_predicates.items() {
+        filt[f'data.archetype.{k}'] = v;
+    }
+    skip_n: int = 0;
+    limit_n: (int | None) = None;
+    if plan.slc is not None {
+        step = plan.slc.step;
+        if step is None or step == 1 {
+            start = plan.slc.start or 0;
+            stop = plan.slc.stop;
+            skip_n = start;
+            if stop is not None {
+                limit_n = max(0, stop - start);
+            }
+        }
+    }
+    return (filt, skip_n, limit_n);
+}
+
+
+"""Native MongoDB execution of a QueryPlan.
+
+This is the backend's pushdown entry point. The planner only calls us when
+`plan.needs() <= self.capabilities()`, so we can assume:
+  - any chain in the plan has been already narrowed (`plan.id_in` carries
+    the candidate UUIDs) OR there is no chain (a pure type/field query)
+  - `field_predicates` use cross-backend operators (`$eq`, `$lt`, `$in`...)
+  - `slc` is either absent or contiguous-step (we early-rejected stepped
+    slices by leaving skip/limit as None — caller applies them)
+
+We never raise to the caller: any error logs at debug and returns an empty
+generator so the planner can fall back if it wants to.
+"""
+impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.client is None {
+        return;
+    }
+    (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
+    try {
+        cursor = self.collection.find(filt);
+        if skip_n {
+            cursor = cursor.skip(skip_n);
+        }
+        if limit_n is not None {
+            cursor = cursor.limit(limit_n);
+        }
+        for doc in cursor {
+            if (anchor := self._load_anchor(doc)) {
+                yield anchor;
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB execute_plan failed ({filt}): {e}");
     }
 }
 
@@ -484,12 +704,18 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only changed anchors)."""
-impl MongoBackend.sync -> None {
+"""Sync - flush L1 memory to MongoDB (only changed anchors).
+
+Returns the set of anchor IDs written via the edge-delta atomic path this
+cycle; those entries have already been invalidated in L2, so the caller
+(ScaleTieredMemory.commit) skips re-caching them from the stale in-memory
+snapshot."""
+impl MongoBackend.sync -> set {
     import from jaclang { JacRuntimeInterface as Jac }
     if not self._mem_ref or not self.client {
-        return;
+        return set();
     }
+    self._atomic_written = set();
     for (_, anchor) in list(self._mem_ref.items()) {
         if not anchor.persistent {
             continue;
@@ -538,6 +764,7 @@ impl MongoBackend.sync -> None {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
     }
+    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
@@ -566,9 +793,12 @@ impl MongoBackend._put_node_atomic(
         partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
 
         # Non-archetype, non-edge top-level data fields (e.g. access control).
+        # Strip empty nested dicts before including in the aggregation-pipeline
+        # $set: MongoDB rejects empty embedded documents (error 40180) in that
+        # context.  access.roots.anchors defaults to {} and is the common trigger.
         full = dict(Serializer.serialize(anchor, include_type=True));
         non_arch_top = {
-            k: v
+            k: _strip_empty_dicts(v)
             for (k, v) in full.items()
             if k not in ('edges', 'archetype')
         };
@@ -594,12 +824,57 @@ impl MongoBackend._put_node_atomic(
             ]
         };
 
-        self.collection.update_one({'_id': _id}, [{'$set': set_doc}], upsert=True);
+        import from pymongo { ReturnDocument }
+        merged_doc = self.collection.find_one_and_update(
+            {'_id': _id},
+            [{'$set': set_doc}],
+            projection={'data.edges': 1},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        );
+
+        self._atomic_written.add(anchor.id);
+        if self._l2_ref {
+            try {
+                self._l2_ref.invalidate(anchor.id);
+            } except Exception as inv_err {
+                logger.debug(
+                    f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
+                );
+            }
+        }
+
+        try {
+            if merged_doc {
+                merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
+                or [];
+                merged_ids: set = {
+                    UUID(s)
+                    for s in merged_ids_str
+                    if s
+                };
+                object.__setattr__(anchor, '_initial_edge_ids', frozenset(merged_ids));
+                anchor.edges = [
+                    e
+                    for e in anchor.edges
+                    if e.id in merged_ids
+                ];
+            }
+        } except Exception as rb_err {
+            logger.debug(f"MongoDB _put_node_atomic read-back failed: {rb_err}");
+        }
+
         anchor.hash = Serializer._compute_hash(anchor);
         if arch is not None {
             arch.__dict__.pop('__jac_dirty_fields__', None);
         }
-        _snapshot_field_hashes(anchor);
+        try {
+            _snapshot_field_hashes(anchor);
+        } except Exception as shf_err {
+            logger.debug(
+                f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
+            );
+        }
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
@@ -688,7 +963,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             fingerprint,
             data,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
@@ -706,7 +982,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             fingerprint,
             data,
             f"class {arch_module}.{arch_type} unresolvable",
-            from_format_version=fmt_version
+            from_format_version=fmt_version,
+            l2=self._l2_ref
         );
         return None;
     }
@@ -761,10 +1038,16 @@ def _mongo_attempt_recover(backend: MongoBackend, doc: dict) -> tuple {
         }
         for node_id in relink_ids {
             try {
-                backend.collection.update_one(
+                result = backend.collection.update_one(
                     {'_id': node_id, 'type': 'NodeAnchor'},
                     {'$addToSet': {'data.edges': doc_id}}
                 );
+                if result.matched_count == 0 {
+                    logger.warning(
+                        f"MongoBackend: recover re-link of edge {doc_id} "
+                        f"to node {node_id} skipped: node not live in collection"
+                    );
+                }
             } except Exception as relink_err {
                 logger.warning(
                     f"MongoBackend: recover re-link of edge {doc_id} "
@@ -938,6 +1221,8 @@ impl MongoBackend.recover_all -> tuple {
     } except Exception {
         return (0, []);
     }
+    # Process NodeAnchors before EdgeAnchors so re-link finds live nodes.
+    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
     recovered = 0;
     still_stuck: list = [];
     for d in docs {

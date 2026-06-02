@@ -4,7 +4,6 @@ real-app e2e)."""
 import os;
 import tempfile;
 import unittest.mock as mock;
-import from typing { Any }
 import from pathlib { Path }
 import from jac_scale.microservices.images.build_helpers {
     resolve_dockerfile,

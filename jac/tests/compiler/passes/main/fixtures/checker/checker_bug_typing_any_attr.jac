@@ -8,9 +8,8 @@ Additionally, attribute access on Any must return Any (not Unknown), so that
 chained access like val.foo.bar.baz works without E1032 errors.
 """
 
-import from typing { Any }
 
-def test_any_attr_access(val: Any) -> None {
+def test_any_attr_access(val: any) -> None {
     _ = val.origin;  # <-- Ok (was E1030 before fix)
     _ = val.id;  # <-- Ok
     _ = val.anything;  # <-- Ok
@@ -19,14 +18,14 @@ def test_any_attr_access(val: Any) -> None {
     val.method();  # <-- Ok
 }
 
-def test_any_subscript(val: Any) -> None {
+def test_any_subscript(val: any) -> None {
     _ = val.get('key');  # <-- Ok
     _ = val[0];  # <-- Ok (subscript returns Any)
     _ = val[0].attr;  # <-- Ok (subscript then attr)
     _ = val['key'].nested[0].deep;  # <-- Ok (mixed access)
 }
 
-def test_any_calls(val: Any) -> None {
+def test_any_calls(val: any) -> None {
     _ = val();  # <-- Ok (call returns Any)
     _ = val().attr;  # <-- Ok (call then attr)
     _ = val.method().result;  # <-- Ok (method call then attr)

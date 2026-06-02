@@ -1,6 +1,6 @@
 # Full-Stack Project Setup
 
-Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: code inside `cl { }` blocks compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
+Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything inside a `cl { }` block -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
 
 This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
 
@@ -29,6 +29,7 @@ myapp/
 ├── jac.toml              # Configuration
 ├── main.jac              # Entry point (frontend + backend)
 ├── README.md             # Project readme
+├── AGENTS.md             # Agent guide for the project
 ├── components/           # Reusable UI components
 │   └── Button.cl.jac     # Example button component
 ├── assets/               # Static assets (images, fonts)
@@ -57,15 +58,15 @@ walker:pub get_todos {
     }
 }
 
-# Frontend code (inside cl block)
-to cl:
+# Frontend code (client section)
+cl {
+    def:pub app() -> JsxElement {
+        has message: str = "Hello from Jac!";
 
-def:pub app() -> JsxElement {
-    has message: str = "Hello from Jac!";
-
-    return <div>
-        <h1>{message}</h1>
-    </div>;
+        return <div>
+            <h1>{message}</h1>
+        </div>;
+    }
 }
 ```
 
@@ -75,16 +76,24 @@ def:pub app() -> JsxElement {
 [project]
 name = "myapp"
 version = "1.0.0"
-description = "Jac client application"
+description = "Jac client application: myapp"
 entry-point = "main.jac"
 
-[dependencies]
-
 [dependencies.npm]
-jac-client-node = "1.0.4"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
@@ -125,7 +134,7 @@ Open http://localhost:8000/cl/app
 
 ## Understanding `cl { }`
 
-The `cl { }` block marks frontend (client) code:
+A `cl { }` block marks frontend (client) code -- everything inside the braces compiles to JavaScript/React, while everything outside stays on the server:
 
 ```jac
 # This is backend code (runs on server)
@@ -134,16 +143,16 @@ walker api_endpoint {
 }
 
 # This is frontend code (runs in browser)
-to cl:
-
-def:pub MyComponent() -> JsxElement {
-    return <div>I run in the browser</div>;
+cl {
+    def:pub MyComponent() -> JsxElement {
+        return <div>I run in the browser</div>;
+    }
 }
 ```
 
 **Key rules:**
 
-- `cl { }` code compiles to JavaScript/React
+- Code inside a `cl { }` block (or in a `.cl.jac` file) compiles to JavaScript/React
 - `def:pub` exports functions (like React components)
 - `app()` is the required entry point
 
@@ -163,10 +172,10 @@ walker get_user {
 }
 
 # Frontend
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>App</div>;
+cl {
+    def:pub app() -> JsxElement {
+        return <div>App</div>;
+    }
 }
 ```
 
@@ -185,7 +194,7 @@ myapp/
     └── About.cl.jac   # Frontend page
 ```
 
-**Note:** `.cl.jac` files are automatically client-side (no `cl { }` needed).
+**Note:** `.cl.jac` files are automatically client-side (no `cl { }` block needed).
 
 ---
 
@@ -206,15 +215,15 @@ walker get_user {
 
 ```jac
 # main.jac
-to cl:
+cl {
+    import from "./components/Header.cl.jac" { Header }
 
-import from "./components/Header.cl.jac" { Header }
-
-def:pub app() -> JsxElement {
-    return <div>
-        <Header />
-        <main>Content</main>
-    </div>;
+    def:pub app() -> JsxElement {
+        return <div>
+            <Header />
+            <main>Content</main>
+        </div>;
+    }
 }
 ```
 
@@ -247,13 +256,13 @@ Then use in frontend:
     npm packages bundle correctly at build time, but the static checker has no `.d.ts`-like stubs for them yet, so `jac check` reports their attributes as Unknown. The code below runs as written under `jac start`.
 
 ```jac
-to cl:
+cl {
+    import lodash;
 
-import lodash;
-
-def:pub app() -> JsxElement {
-    items = lodash.sortBy(["c", "a", "b"]);
-    return <ul>{[<li>{i}</li> for i in items]}</ul>;
+    def:pub app() -> JsxElement {
+        items = lodash.sortBy(["c", "a", "b"]);
+        return <ul>{[<li>{i}</li> for i in items]}</ul>;
+    }
 }
 ```
 
@@ -292,18 +301,18 @@ watchdog = ">=3.0.0"
 Create this minimal `main.jac`:
 
 ```jac
-to cl:
+cl {
+    def:pub app() -> JsxElement {
+        has count: int = 0;
 
-def:pub app() -> JsxElement {
-    has count: int = 0;
-
-    return <div style={{"textAlign": "center", "marginTop": "50px"}}>
-        <h1>Jac Full-Stack</h1>
-        <p>Count: {count}</p>
-        <button onClick={lambda -> None { count = count + 1; }}>
-            Increment
-        </button>
-    </div>;
+        return <div style={{"textAlign": "center", "marginTop": "50px"}}>
+            <h1>Jac Full-Stack</h1>
+            <p>Count: {count}</p>
+            <button onClick={lambda -> None { count = count + 1; }}>
+                Increment
+            </button>
+        </div>;
+    }
 }
 ```
 
@@ -318,4 +327,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
+- [Building a Desktop App](desktop.md) - Package the same app as a native PyTauri desktop target (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

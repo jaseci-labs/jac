@@ -1,10 +1,9 @@
 """Modal dialog component."""
 
 cl {
-    def:pub Modal(isOpen: bool, onClose: Any, title: str, children: Any) -> JsxElement {
+    def:pub Modal(isOpen: bool, onClose: any, title: str, children: any) -> JsxElement {
         if not isOpen {
-            return
-                <></>;
+            return <></>;
         }
 
         return
@@ -22,8 +21,7 @@ cl {
             </div>;
     }
 
-    def:pub ModalFooter(children: Any) -> JsxElement {
-        return
-            <div className="flex gap-2 justify-end mt-4">{children}</div>;
+    def:pub ModalFooter(children: any) -> JsxElement {
+        return <div className="flex gap-2 justify-end mt-4">{children}</div>;
     }
 }

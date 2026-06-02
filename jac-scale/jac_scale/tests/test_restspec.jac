@@ -400,7 +400,7 @@ test "custom obj body - walker flows" {
         user_schema = schemas["UserBody"];
         assert user_schema["properties"]["name"]["type"] == "string"
         and user_schema["properties"]["age"]["type"] == "integer"
-        and set(user_schema["required"]) == {"name","age"};
+        and set(user_schema["required"]) == {"name", "age"};
         body_ref = spec["paths"]["/walker/CreateUser"]["post"]["requestBody"]["content"][
             "application/json"
         ]["schema"]["$ref"];

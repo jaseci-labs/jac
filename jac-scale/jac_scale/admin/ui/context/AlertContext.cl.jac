@@ -6,7 +6,7 @@ cl {
     glob ALERT_DISMISS_MS = 3000;
     glob:pub AlertContext = createContext(None);
 
-    def:pub AlertProvider(children: Any) -> JsxElement {
+    def:pub AlertProvider(children: any) -> JsxElement {
         has message: str = "",
             alertType: str = "success";
 
@@ -18,8 +18,7 @@ cl {
 
         value = {"message": message, "alertType": alertType, "showAlert": showAlert};
 
-        return
-            <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
+        return <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
     }
 
     def:pub useAlert -> dict {

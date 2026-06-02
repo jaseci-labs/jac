@@ -3,7 +3,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from typing { Any }
 import from jac_scale.microservices.service_registry {
     ServiceRegistry,
     ServiceEntry,
@@ -1389,9 +1388,9 @@ test "http_forward_timeout precedence: per-service > global > default" {
     import jac_scale.config_loader as cfg_mod;
 
     obj _StubCfg {
-        has data: dict[str, Any];
+        has data: dict[str, any];
 
-        def get_microservices_config -> dict[str, Any] {
+        def get_microservices_config -> dict[str, any] {
             return self.data;
         }
     }
@@ -1452,4 +1451,21 @@ test "http_forward_timeout precedence: per-service > global > default" {
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
     }
+}
+
+
+# =============================================================================
+# A-05a/A-05c: gateway inherits the admin + logs mixins (regression guard).
+# The microservice gateway must expose both register_admin_endpoints
+# (JacAPIServerAdmin) and register_logs_endpoints (JacAPIServerLogs) so
+# _install_admin_api can wire /admin/* + /admin/logs/* onto its FastAPI
+# app. A previous PR-slicing dropped the Logs inheritance off the gateway,
+# leaving the in-admin Logs UI spinning on "Loading logs..." (the
+# /admin/logs request fell through to the SPA catchall and got HTML).
+# =============================================================================
+test "gateway inherits admin + logs endpoint registrars" {
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    assert hasattr(gw, "register_admin_endpoints");
+    assert hasattr(gw, "register_logs_endpoints");
 }

@@ -237,7 +237,7 @@ install_via_uv() {
         if [[ -n "$VERSION" ]]; then
             uv tool install "$spec" "${with_args[@]}" --python ">=3.12" --force
         else
-            uv tool upgrade jaclang "${with_args[@]}" --python ">=3.12"
+            uv tool upgrade jaclang --python ">=3.12"
         fi
     else
         info "Installing jaclang..."

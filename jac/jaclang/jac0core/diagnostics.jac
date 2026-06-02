@@ -26,7 +26,14 @@ obj DiagnosticInfo {
         category: Category,
         message_template: str,
         help_text: str | None = None,
-        url_slug: str | None = None;
+        url_slug: str | None = None,
+        # When True, this error blocks Python code generation for the module
+        # it is reported in, so the invalid construct cannot be executed.
+        # Most structural errors are reported but non-fatal (the codebase
+        # generates code through them, e.g. E0076 duplicate method); set this
+        # only for constructs that would otherwise compile to valid-but-wrong
+        # Python and silently run (e.g. E0063 glob inside a function).
+        blocks_codegen: bool = False;
 
     def format_message(**kwargs: object) -> str {
         try {
@@ -44,7 +51,8 @@ def _reg(
     severity: Severity,
     category: Category,
     template: str,
-    help_text: str | None = None
+    help_text: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
     info = DiagnosticInfo(
         code=code,
@@ -52,7 +60,8 @@ def _reg(
         category=category,
         message_template=template,
         help_text=help_text,
-        url_slug=code.lower()
+        url_slug=code.lower(),
+        blocks_codegen=blocks_codegen
     );
     DIAGNOSTICS[code] = info;
     return info;
@@ -60,9 +69,13 @@ def _reg(
 
 # Shorthand aliases
 def _err(
-    code: str, cat: Category, tmpl: str, help: str | None = None
+    code: str,
+    cat: Category,
+    tmpl: str,
+    help: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
-    return _reg(code, Severity.ERROR, cat, tmpl, help);
+    return _reg(code, Severity.ERROR, cat, tmpl, help, blocks_codegen);
 }
 
 def _warn(
@@ -213,6 +226,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0062 = _err("E0062", Category.SYNTAX, "'nonlocal' is not valid at module level"),
+     E0063 = _err(
+         "E0063",
+         Category.SYNTAX,
+         "'glob' is only valid at module level, perhaps you mean global",
+         help="Move the glob declaration to the top of the file, outside any function or code block.",
+         blocks_codegen=True
+     ),
      E0065 = _err("E0065", Category.SYNTAX, "Duplicate keyword argument '{name}'"),
      E0066 = _err(
          "E0066", Category.SYNTAX, "Positional argument follows keyword argument"
@@ -220,6 +240,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0077 = _err(
+         "E0077",
+         Category.SYNTAX,
+         "Duplicate declaration of '{name}' (already declared as {kind})",
+         help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,
@@ -254,12 +280,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "JSX spread '{{...expr}}' is JS-idiomatic. Prefer '{{**expr}}' in Jac.",
          "Jac uses ** for dict unpacking — use {**expr} instead of {...expr} in JSX attributes."
-     ),
-     W0064 = _warn(
-         "W0064",
-         Category.SYNTAX,
-         "'{keyword} {{ ... }}' block syntax is deprecated. Use the 'to {keyword}:' section header instead.",
-         "Replace 'cl {{ ... }}' / 'sv {{ ... }}' / 'na {{ ... }}' with 'to cl:' / 'to sv:' / 'to na:' at module level. The section applies until the next 'to X:' header or end of file."
      ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
@@ -347,11 +367,33 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1036",
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
-         " \"{type}[Any]\"; consider adding explicit type arguments"
+         " \"{type}[any]\"; consider adding explicit type arguments"
+     ),
+     # Explicit `any` annotation warning
+     W1037 = _warn(
+         "W1037",
+         Category.TYPE,
+         "Explicit 'any' type annotation disables type checking here;"
+         " consider a more specific type"
      ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
+     E1042 = _err(
+         "E1042",
+         Category.TYPE,
+         "Expected {expected}, but got {actual} -- this call returns a coroutine "
+         "that was not awaited",
+         help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
+         "functions are async RPC stubs on the client and always need 'await'."
+     ),
+     E1043 = _err(
+         "E1043",
+         Category.TYPE,
+         "TypedDict \"{type}\" has no key \"{key}\"",
+         help="Add the key to the TypedDict definition, or index with a key "
+         "declared on the type."
+     ),
      # Function call errors
      E1050 = _err(
          "E1050",
@@ -574,7 +616,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1102 = _warn(
          "W1102",
          Category.IMPORT,
-         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+         "Imported name '{name}' from foreign-source module '{module}' typed as any"
      ),
      W1103 = _warn(
          "W1103",
@@ -700,6 +742,82 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2018",
          Category.SEMANTIC,
          "Undefined name '{name}' in {position} — this position requires a defined type"
+     ),
+     E2019 = _err(
+         "E2019",
+         Category.SEMANTIC,
+         "A JSX slot renders template content and cannot 'return' a value. "
+         "Use 'skip;' for slot early-exit, or move the value-producing "
+         "expression outside the JSX slot."
+     ),
+     E2020 = _err(
+         "E2020",
+         Category.SEMANTIC,
+         "Bare 'return;' is not allowed inside a JSX slot — it reads like "
+         "it exits the enclosing function, but a slot body is an inlined "
+         "IIFE. Use 'skip;' for slot early-exit."
+     ),
+     E2021 = _err(
+         "E2021",
+         Category.SEMANTIC,
+         "'{kw}' is not allowed inside a '{loop}' loop in a JSX slot. "
+         "Use 'continue' to skip an iteration, or 'skip;' to exit the "
+         "whole slot."
+     ),
+     W2019 = _warn(
+         "W2019",
+         Category.SEMANTIC,
+         "'while' loop in a JSX slot renders JSX without a 'key' attribute — "
+         "add 'key=' so siblings keep their identity across re-renders."
+     ),
+     E2022 = _err(
+         "E2022",
+         Category.SEMANTIC,
+         "'finally' is not allowed on a 'try' that has an 'awaiting' clause. "
+         "The dispatched-but-not-joined window and finalization semantics "
+         "are ambiguous together; move cleanup into an explicit "
+         "mount/unmount hook or drop one of the clauses."
+     ),
+     W2020 = _warn(
+         "W2020",
+         Category.SEMANTIC,
+         "'awaiting' is not yet implemented on the '{target}' target — "
+         "the 'awaiting' clause body will be ignored at runtime. Only the "
+         "'cl' (react/preact) target currently lowers 'awaiting' to a "
+         "Suspense fallback."
+     ),
+     E2023 = _err(
+         "E2023",
+         Category.SEMANTIC,
+         "Redundant '{{...}}' slot wrapping inside a JSX slot body — slot "
+         "bodies are already in slot mode. Drop the outer braces: write "
+         "'{stmt_kw} ... {{ ... }}' directly instead of "
+         "'{{{stmt_kw} ... {{ ... }}}}'."
+     ),
+     E2024 = _err(
+         "E2024",
+         Category.SEMANTIC,
+         "'has' is not allowed inside a JSX slot body. A slot body is a "
+         "statement template that re-runs on every render; declaring "
+         "reactive state there would compile to a conditional 'useState' "
+         "and violate React's rules of hooks. Declare 'has'-fields at the "
+         "component scope (the enclosing 'def -> JsxElement' body)."
+     ),
+     W2021 = _warn(
+         "W2021",
+         Category.SEMANTIC,
+         "'for' loop in a JSX slot renders JSX without a 'key' attribute — "
+         "annotate one child element with 'key=' so iteration siblings "
+         "keep their identity across re-renders."
+     ),
+     E2025 = _err(
+         "E2025",
+         Category.SEMANTIC,
+         "A 'has'-field of type 'Ref[...]' must be constructed with an "
+         "initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' "
+         "for a value ref. It lowers to React's 'useRef', so a bare "
+         "declaration has no ref object to hold — '.current' would never be "
+         "defined. This mirrors how every other 'has'-field carries a value."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
@@ -844,6 +962,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
          "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
      ),
+     W3043 = _warn(
+         "W3043",
+         Category.LINT,
+         "@property '{name}' can be replaced with native property syntax "
+         "'has {name}: {type_name} {{ getter; ... }}' [property-to-native]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -872,7 +996,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
          "stale-has-read": "W3041",
-         "map-lambda-to-comprehension": "W3042"
+         "map-lambda-to-comprehension": "W3042",
+         "property-to-native": "W3043"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

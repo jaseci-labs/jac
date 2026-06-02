@@ -174,7 +174,7 @@ def _mobile_invalidate_runtime_module_cache(paths: list[str]) -> None {
 """Recompile the Vite client graph after a .jac file change (runs on watchdog thread).
 """
 def _mobile_hmr_on_jac_changed(
-    event: FileChangeEvent, compiler: Any, entry_file: Path, project_dir: Path
+    event: FileChangeEvent, compiler: any, entry_file: Path, project_dir: Path
 ) -> None {
     try {
         pth = event.path or "";
@@ -209,7 +209,7 @@ def _mobile_hmr_on_jac_changed(
 """Start Jac API only for mobile dev."""
 def _mobile_start_backend_server(
     entry_file: Path, project_dir: Path, port: int
-) -> Any {
+) -> any {
     import sys;
     return subprocess.Popen(
         [

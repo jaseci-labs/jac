@@ -9,11 +9,16 @@ This parser outputs unitree.py AST nodes directly.
 
 import from .tokens { Token, TokenKind, SourceLoc }
 import from .lexer { Lexer }
+# Module alias (not a name binding) so that, after deferred native
+# acceleration hot-swaps `tokenize_full` in the lexer module dict, parse()
+# resolves the native-backed wrapper rather than a stale Python reference.
+import jaclang.jac0core.parser.lexer as na_lexer;
 
 # Import unitree classes from Python
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
+import type from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E0001,
@@ -49,10 +54,11 @@ import from jaclang.jac0core.diagnostics {
     E0047,
     E0050,
     E0051,
+    E2023,
     W0060,
     W0061,
     W0063,
-    W0064
+    DIAGNOSTICS
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -103,6 +109,7 @@ import from jaclang.jac0core.unitree {
     TryStmt,
     Except,
     FinallyStmt,
+    AwaitingClause,
     WithStmt,
     ExprAsItem
 }
@@ -183,7 +190,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
@@ -407,7 +414,11 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None;
+        prog: (JacProgram | None) = None,
+        _view_body_depth: int = 0,  # > 0 while parsing inside a JSX `{...}` slot body
+        # Comma UniTokens captured while parsing an impl enum body, consumed
+        # when assembling the ImplDef kid list. Reset per enum body.
+        _impl_enum_comma_unis: list = [];
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;
@@ -492,7 +503,7 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
-    def _make_attr_from_keyword(name_tok: Any);
+    def _make_attr_from_keyword(name_tok: any);
     def parse_index_slice -> IndexSlice;
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
@@ -523,6 +534,8 @@ obj Parser {
     def parse_lambda_param -> ParamVar;
     # JSX parsing
     def parse_jsx_element -> Expr;
+    def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
+    def _consume_jsx_dynamic_close(close_kid: list);
     def parse_jsx_opening_element -> tuple;
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
@@ -587,7 +600,7 @@ obj Parser {
     def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
-        is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+        is_override: bool, override_tok: any, is_static: bool, static_tok: any
     ) -> tuple;
 
     def parse_func_signature -> FuncSignature;
@@ -609,27 +622,74 @@ obj Parser {
 }
 
 def parse(
-    source: str, file_path: str = "<input>", prog: object | None = None
+    source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
 ) -> tuple[Module, bool] {
-    lexer = Lexer(source=source, file_path=file_path);
-    lexer.prog = prog;
-    tokens = lexer.tokenize();
+    # Lex via the structured surface (tokens + comments + diagnostics).
+    #
+    # Always resolve tokenize_full off the lexer module object so that whenever
+    # deferred native acceleration has hot-swapped it, parses transparently use
+    # the native-compiled lexer. Until (or unless) that swap happens,
+    # tokenize_full is the Python-compiled `.na.jac` lexer, which is the same
+    # Lexer used here directly — so routing through it is perf-neutral and the
+    # native and Python paths are verified to produce identical tokens,
+    # byte-offset positions, comments and diagnostics (incl. non-ASCII source).
+    #
+    # Set JAC_NATIVE_LEXER=0 to force the in-module Python Lexer (escape hatch
+    # for debugging a suspected native-lexer divergence).
+    import os;
+    if os.environ.get("JAC_NATIVE_LEXER") == "0" {
+        _lx = Lexer(source=source, file_path=file_path);
+        tokens = _lx.tokenize();
+        comments = _lx.comments;
+        diags = _lx.diags;
+        lex_error_count = _lx.error_count;
+    } else {
+        (tokens, comments, diags, lex_error_count) = na_lexer.tokenize_full(
+            source, file_path
+        );
+    }
+    # Replay structured lexer diagnostics into the program's alert lists. The
+    # lexer no longer constructs unitree Alerts inline (it cannot when running
+    # as native code), so reconstruction happens here on the Python side.
+    if prog is not None and diags {
+        diag_src = Source(source, mod_path=file_path);
+        for d in diags {
+            loc = d.loc;
+            dtok = UniToken(
+                orig_src=diag_src,
+                name="ERROR" if d.is_error else "WARNING",
+                value="",
+                line=loc.line,
+                end_line=loc.end_line,
+                col_start=loc.col_start,
+                col_end=loc.col_end,
+                pos_start=loc.pos_start,
+                pos_end=loc.pos_end
+            );
+            code = DIAGNOSTICS.get(d.code_str) if d.code_str else None;
+            alrt = Alert(d.message, CodeLocInfo(dtok, dtok), Lexer, code=code);
+            if d.is_error {
+                prog.errors_had.append(alrt);
+            } else {
+                prog.warnings_had.append(alrt);
+            }
+        }
+    }
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Transfer captured comments from lexer to module source
-    if module.source and lexer.comments {
-        for cdata in lexer.comments {
-            # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+    # Transfer captured comments to module source
+    if module.source and comments {
+        for cdata in comments {
             ct = CommentToken(
                 orig_src=module.source,
                 name="COMMENT",
-                value=cdata[0],
-                line=cdata[1],
-                end_line=cdata[2],
-                col_start=cdata[3],
-                col_end=cdata[4],
-                pos_start=cdata[5],
-                pos_end=cdata[6],
+                value=cdata.value,
+                line=cdata.line,
+                end_line=cdata.end_line,
+                col_start=cdata.col_start,
+                col_end=cdata.col_end,
+                pos_start=cdata.pos_start,
+                pos_end=cdata.pos_end,
                 kid=[],
                 is_inline=False
             );
@@ -653,6 +713,6 @@ def parse(
             }
         }
     }
-    had_error = parser.error_count > 0 or lexer.error_count > 0;
+    had_error = parser.error_count > 0 or lex_error_count > 0;
     return (module, had_error);
 }

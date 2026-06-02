@@ -9,7 +9,6 @@ correct values.
 Requires running MongoDB and Redis via testcontainers (installed via [test]).
 """
 import asyncio;
-import from typing { Any }
 import from uuid { UUID }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend }
@@ -78,7 +77,7 @@ test "MongoBackend.acommit persists modified anchor via AsyncMongoClient" {
     anchor.persistent = True;
     backend = MongoBackend(mongo_url=_mongo_uri, db_name="jac_async_test2");
     backend.postinit();
-    mem: dict[UUID, Any] = {anchor.id: anchor};
+    mem: dict[UUID, any] = {anchor.id: anchor};
     backend.set_memory_ref(mem);
 
     async def _commit {

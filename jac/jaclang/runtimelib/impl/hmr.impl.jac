@@ -9,7 +9,6 @@ import sys;
 import time;
 import shutil;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.cli.console { console }
@@ -41,7 +40,7 @@ impl HotReloader.stop -> None {
 }
 
 """Callback for file change events from the watcher."""
-impl HotReloader.on_file_change(event: Any) -> None {
+impl HotReloader.on_file_change(event: any) -> None {
     if not self._running {
         return;
     }
@@ -212,7 +211,8 @@ impl HotReloader._recompile_client_code(
         }
 
         # Ensure __jacJsx import is present (required for client-side rendering)
-        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
+        import from jaclang.runtimelib.client_surface { prepended_runtime_import }
+        jac_runtime_import = prepended_runtime_import();
         if '__jacJsx' in js_code and jac_runtime_import not in js_code {
             js_code = jac_runtime_import + '\n' + js_code;
         }

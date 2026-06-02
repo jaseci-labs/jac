@@ -11,3 +11,5 @@ import from jaclang.cli.commands { config }
 import from jaclang.cli.commands { db }
 import from jaclang.cli.commands { nacompile }
 import from jaclang.cli.commands { ai }
+import from jaclang.cli.commands { code }
+import from jaclang.cli.commands { browse }

@@ -8,7 +8,7 @@ cl {
 
     glob:pub AuthContext = createContext(None);
 
-    def:pub AuthProvider(children: Any) -> JsxElement {
+    def:pub AuthProvider(children: any) -> JsxElement {
         has authToken: str = "",
             currentUsername: str = "",
             tempToken: str = "",
@@ -138,8 +138,7 @@ cl {
             "logout": logout
         };
 
-        return
-            <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+        return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
     }
 
     def:pub useAuth -> dict {

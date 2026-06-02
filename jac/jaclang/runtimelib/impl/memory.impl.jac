@@ -15,6 +15,7 @@ import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
@@ -45,6 +46,52 @@ impl Memory.ahas(id: UUID) -> bool {
 
 impl Memory.acommit(anchor: (Anchor | None) = None) -> None {
     await asyncio.to_thread(self.commit, anchor);
+}
+
+# =============================================================================
+# Memory — default pushdown protocol
+# =============================================================================
+# Default: backend declares no native pushdown. The planner sees an empty
+# capability set, skips `execute_plan` entirely, and uses the universal floor
+# (topology_index narrowing → batch_get). Backends with real native filters
+# (Mongo compound index, Postgres jsonb GIN) override both methods.
+impl Memory.capabilities -> set[str] {
+    return set();
+}
+
+impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    # Default-implementation backends never get called here: the planner
+    # gates on `capabilities()` first. If we get called anyway, log it —
+    # most likely cause is a backend that declared capabilities but forgot
+    # to override execute_plan, which would silently return zero results.
+    if self.capabilities() {
+        logger.debug(
+            f"{type(self).__name__} declares capabilities "
+            f"{self.capabilities()} but did not override execute_plan; "
+            "falling back to empty result"
+        );
+    }
+    return;
+    yield ;
+}
+
+"""Convenience wrapper: build a QueryPlan from a type name + optional field
+predicates and delegate to `execute_plan`. Returns empty when the backend
+doesn't declare the needed capabilities. Backends without native pushdown
+should keep using `query()` with a Python-side filter for type-based scans
+— this method exists specifically to make the pushdown path ergonomic."""
+impl Memory.query_by_type(
+    arch_type_name: str, field_filter: (dict | None) = None
+) -> Generator[Anchor, None, None] {
+    plan = QueryPlan(
+        node_type_final=arch_type_name, field_predicates=field_filter or {}
+    );
+    if not (plan.needs() <= self.capabilities()) {
+        return;
+    }
+    for anchor in self.execute_plan(plan) {
+        yield anchor;
+    }
 }
 
 """Serialize an anchor to the tuple of columns stored in the anchors table."""
@@ -89,7 +136,7 @@ def _is_legacy_schema(conn: sqlite3.Connection) -> bool {
         return False;
     }
     cols = {row[1] for row in rows};
-    return cols == {'id','data'};
+    return cols == {'id', 'data'};
 }
 
 """Create the anchors + quarantine + schema_meta tables (new schema)."""
@@ -668,16 +715,25 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         if anchor is None {
-            # Either the row couldn't deserialize at all, or the archetype
-            # class was unresolvable (even after alias lookup). Quarantine
-            # rather than drop — class rename/move is recoverable via the
-            # @archetype_alias decorator. The source of truth for "can't
-            # reconstruct" lives inside Serializer._deserialize_anchor so
-            # every persistence backend gets the same guarantee.
-            logger.warning(
-                f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "
-                f"for anchor {id}. Moving to anchors_quarantine."
+            cls_resolved = (
+                Serializer._get_class(arch_module, arch_type)
+                    if (arch_module and arch_type)
+                    else None
             );
+            if cls_resolved is None {
+                reason = f"class {arch_module}.{arch_type} unresolvable";
+                logger.warning(
+                    f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "
+                    f"for anchor {id}. Moving to anchors_quarantine."
+                );
+            } else {
+                reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+                logger.warning(
+                    f"SqliteMemory: archetype field deserialization failed for "
+                    f"{arch_module}.{arch_type} (anchor {id}). "
+                    f"Moving to anchors_quarantine."
+                );
+            }
             _quarantine(
                 self.__conn__,
                 str(id),
@@ -686,7 +742,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
                 arch_type,
                 fingerprint,
                 data_json,
-                f"class {arch_module}.{arch_type} unresolvable",
+                reason,
                 from_format_version=fmt_version
             );
             return None;
@@ -1186,15 +1242,10 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
     re_data = Serializer.serialize(anchor, include_type=True);
     re_data_json = json.dumps(re_data);
     live_arch = anchor?.archetype;
-    live_module = getattr(type(live_arch), '__module__', arch_module)
-        if live_arch
-        else arch_module;
-    live_type = getattr(type(live_arch), '__name__', arch_type)
-        if live_arch
-        else arch_type;
-    live_fp = getattr(type(live_arch), '__jac_fingerprint__', fingerprint)
-        if live_arch
-        else fingerprint;
+    live_module = type(live_arch).__module__ if live_arch else arch_module;
+    live_type = type(live_arch).__name__ if live_arch else arch_type;
+    _live_fp = type(live_arch)?.__jac_fingerprint__ if live_arch else None;
+    live_fp = _live_fp if _live_fp is not None else fingerprint;
     now = datetime.now(timezone.utc).isoformat();
     conn.execute(
         """
@@ -1253,6 +1304,11 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
                         f"to node {node_id} failed: {relink_err}"
                     );
                 }
+            } else {
+                logger.warning(
+                    f"SqliteMemory: recover re-link of edge {row_id} "
+                    f"to node {node_id} skipped: node not found in live anchors"
+                );
             }
         }
     }
@@ -1440,6 +1496,8 @@ impl SqliteMemory.recover_all -> tuple {
             )
         )
     );
+    # Process NodeAnchors before EdgeAnchors so re-link finds live nodes.
+    rows.sort(key=lambda r : 0 if r[1] == 'NodeAnchor' else 1);
     recovered = 0;
     still_stuck: list = [];
     for r in rows {
@@ -1528,8 +1586,12 @@ impl TieredMemory.postinit -> None {
     }
     # Initialize L3 persistence if base_path provided
     if self.base_path {
-        # Use project.db for projects, filename.db for standalone apps
-        db_path = get_db_path(self.base_path);
+        # Use project.db for projects, filename.db for standalone apps.
+        # `target_path` is the per-context app identity — without it,
+        # `get_db_path` would fall back to `Jac.get_full_target_path()`
+        # (the bootstrap seed), which can leak across in-process clients
+        # (see context.impl.jac for the rationale).
+        db_path = get_db_path(self.base_path, target_path=self.target_path);
         self.l3 = SqliteMemory(path=db_path);
     } else {
         self.l3 = None;
@@ -1679,6 +1741,36 @@ impl TieredMemory.reset_l3_fetch_count -> None {
 impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 {
         self.l3.sync();
+    }
+}
+
+"""TieredMemory capabilities mirror L3 — that's where pushdown lives. L1/L2
+exist for cache hits, not for query planning."""
+impl TieredMemory.capabilities -> set[str] {
+    if self.l3 is not None {
+        return self.l3.capabilities();
+    }
+    return set();
+}
+
+"""Delegate pushdown to L3 and promote loaded anchors into L1 so subsequent
+gets are cache hits (same pattern as `batch_get`)."""
+impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.l3 is None {
+        return;
+    }
+    for anchor in self.l3.execute_plan(plan) {
+        # Promote to L1 unless already there
+        existing = self.__mem__.get(anchor.id);
+        if existing is None {
+            self.__mem__[anchor.id] = anchor;
+            if self.l2 {
+                self.l2.put(anchor);
+            }
+            yield anchor;
+        } else {
+            yield existing;
+        }
     }
 }
 

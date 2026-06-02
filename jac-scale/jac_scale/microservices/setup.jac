@@ -19,7 +19,15 @@ import from jaclang.cli.console { console }
 """Scan the project for .jac files, excluding build artifacts."""
 def scan_jac_files(project_root: str = ".") -> list[str] {
     base_dir = Path(project_root);
-    exclude_dirs: set[str] = {".jac","__pycache__","node_modules",".git","dist","build","__jac_gen__"};
+    exclude_dirs: set[str] = {
+        ".jac",
+        "__pycache__",
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "__jac_gen__"
+    };
     jac_files: list[str] = [];
 
     for f in base_dir.rglob("*.jac") {
@@ -228,6 +236,10 @@ def run_setup(project_root: str = ".") -> None {
         console.print(f"  - {'client':18s} -> {client_entry}");
     }
     console.print(f"\nRun `jac start main.jac` to launch locally.");
+    console.print(
+        "Preview a K8s deploy without applying anything: "
+        "`jac start main.jac --scale --dry-run`"
+    );
 }
 
 """Add a single service to existing config."""

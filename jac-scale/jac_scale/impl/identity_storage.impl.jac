@@ -18,10 +18,10 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
 
 """Create a new user with identities and a credential."""
 impl IdentityStorage.create_user(
-    identities: list[dict[str, Any]],
-    credential: dict[str, Any],
-    profile: dict[str, Any] | None = None
-) -> dict[str, Any] {
+    identities: list[dict[str, any]],
+    credential: dict[str, any],
+    profile: dict[str, any] | None = None
+) -> dict[str, any] {
     import from jaclang.jac0core.constructs { Root }
     import from jaclang { JacRuntime as Jac }
 
@@ -29,7 +29,7 @@ impl IdentityStorage.create_user(
     type_counts: dict[str, int] = {};
     for identity in identities {
         id_type = identity.get('type', '');
-        if id_type not in {'username','email'} {
+        if id_type not in {'username', 'email'} {
             return {
                 'error': f"Invalid identity type: {id_type}. Only 'username' and 'email' are allowed",
                 'code': 'VALIDATION_ERROR'
@@ -48,7 +48,7 @@ impl IdentityStorage.create_user(
     now = datetime.now(UTC).isoformat();
 
     # Normalize identities and check uniqueness
-    normalized_identities: list[dict[str, Any]] = [];
+    normalized_identities: list[dict[str, any]] = [];
     for identity in identities {
         id_type = identity.get('type', '');
         raw_value = identity.get('value', '');
@@ -74,7 +74,7 @@ impl IdentityStorage.create_user(
     }
 
     # Hash credential
-    credentials: list[dict[str, Any]] = [];
+    credentials: list[dict[str, any]] = [];
     if credential.get('type') == 'password' {
         password_hash = IdentityStorage.hash_password(credential['password']);
         credentials.append({'type': 'password', 'password_hash': password_hash});
@@ -110,7 +110,7 @@ impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
 """Authenticate by looking up any identity matching identifier, then checking password."""
 impl IdentityStorage.authenticate(
     identifier: str, password: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     user = self.find_user_by_identity(identifier);
     if user is None {
         return None;
@@ -199,6 +199,33 @@ impl IdentityStorage.update_password(
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
+"""Set a new password without verifying the current one.
+
+For password-reset flows where the caller has already authenticated the user
+via a single-use reset token. Replaces the existing password credential or
+creates one if none exists.
+"""
+impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, str] {
+    if not self.user_exists_by_id(user_id) {
+        return {'error': 'User not found'};
+    }
+    credentials = self._get_credentials(user_id);
+    new_hash = IdentityStorage.hash_password(new_password);
+    password_set = False;
+    for cred in credentials {
+        if cred.get('type') == 'password' {
+            cred['password_hash'] = new_hash;
+            cred.pop('algorithm', None);
+            password_set = True;
+        }
+    }
+    if not password_set {
+        credentials.append({'type': 'password', 'password_hash': new_hash});
+    }
+    self._update_credentials(user_id, credentials);
+    return {'user_id': user_id, 'message': 'Password updated successfully'};
+}
+
 """Get root_id for a user."""
 impl IdentityStorage.get_root_id(user_id: str) -> str | None {
     user = self.get_user_by_id(user_id);
@@ -220,7 +247,7 @@ impl IdentityStorage.get_username(user_id: str) -> str | None {
 }
 
 """Generic field updater."""
-impl IdentityStorage.update_user_fields(user_id: str, fields: dict[str, Any]) -> bool {
+impl IdentityStorage.update_user_fields(user_id: str, fields: dict[str, any]) -> bool {
     fields['updated_at'] = datetime.now(UTC).isoformat();
     return self._update_fields(user_id, fields);
 }
@@ -246,7 +273,13 @@ impl IdentityStorage.link_sso_account(
         'linked_at': now
     };
 
-    if not self._add_identity(user_id, identity_doc) {
+    try {
+        added = self._add_identity(user_id, identity_doc);
+    } except IdentityTakenError {
+        # Lost a race with another linker for the same SSO account.
+        return {'error': 'This SSO account is already linked to another user'};
+    }
+    if not added {
         return {'error': 'User not found'};
     }
     return {

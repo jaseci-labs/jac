@@ -27,6 +27,11 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 keywords = ["jac", "jaseci", "ai"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Framework :: Jac",
+]
 authors = [{ name = "Your Name", email = "you@example.com" }]
 maintainers = [{ name = "Your Name", email = "you@example.com" }]
 
@@ -39,6 +44,13 @@ issues = "https://github.com/you/mylib/issues"
 jaclang = ">=0.15.1"
 requests = ">=2.28.0"
 ```
+
+Classifiers appear as `Classifier:` headers in the wheel's `METADATA` and control how your package is displayed and filtered on PyPI (license badge, Python version tags, topic categories). Browse the full list at [pypi.org/classifiers](https://pypi.org/classifiers/).
+
+!!! warning "`classifiers` must be a TOML array"
+    Writing `classifiers` as a plain string instead of an array is a TOML type
+    error and will produce malformed wheel metadata. Always use `[...]` syntax
+    as shown above.
 
 Runtime dependencies declared under `[dependencies]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies]` are **not** shipped. `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
 
@@ -93,7 +105,13 @@ This writes `dist/<name>-<version>-py3-none-any.whl`. Build to a different direc
 jac bundle -o /tmp/wheels
 ```
 
-`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Pre-compile `.jac` → `.jir` first if you want installs to skip compilation. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
+`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Use `--precompile` (`-p`) to compile `.jac` → `.jir` automatically for every `python3.X` interpreter found on `PATH` before packaging:
+
+```bash
+jac bundle --precompile
+```
+
+The flag creates an isolated venv per Python version, compiles all `.jac` sources inside it, and folds the resulting `.jir` files into the wheel. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 

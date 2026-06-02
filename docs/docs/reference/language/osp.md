@@ -442,6 +442,29 @@ walker Searcher {
 }
 ```
 
+#### `skip` vs `disengage`
+
+`skip` and `disengage` are easy to confuse, but they operate at different scopes. `skip` is a return-family statement (alongside `return`/`yield`/`report`) -- it is **not** a loop control like `continue`, despite the "skip an iteration" connotation of the word.
+
+| Statement | Effect |
+|-----------|--------|
+| `skip;` | Returns from the **current ability only** -- equivalent to a bare `return;`. The walker continues: any sibling abilities bound to the same node still run, and traversal proceeds through nodes already queued by `visit`. |
+| `disengage;` | Terminates the **whole walker** -- no further abilities run and no further nodes are visited. |
+
+Because `skip` is just an early `return`, a `skip` reached *before* this ability's `visit` statement means this ability queued no next nodes; the walker will only continue to nodes queued elsewhere (and stops if none remain).
+
+```jac
+walker Auditor {
+    can check with Account entry {
+        if not here.active {
+            skip;          # this account isn't ours to process; move on
+        }
+        report here.balance;
+        visit [-->];       # not reached for inactive accounts
+    }
+}
+```
+
 ### 6 Spawning Walkers
 
 ```jac
