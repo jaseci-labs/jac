@@ -43,4 +43,14 @@ class Autoscaler {
             "destroy() must be implemented by a concrete Autoscaler subclass"
         );
     }
+
+    """Check for missing cluster dependencies before any cluster write.
+
+    Returns:
+        List of warning strings; empty list means all prerequisites are met.
+        Override in engines that require cluster-side components (e.g. KEDA CRDs).
+    """
+    def preflight(self: Autoscaler) -> list[str] {
+        return [];
+    }
 }
