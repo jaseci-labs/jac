@@ -45,21 +45,17 @@ def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
 glob _ir_sched_loading = False,
      _codegen_sched_loading = False,
-     _typecheck_sched_loading = False,
-     _boundary_sched_loading = False;
+     _typecheck_sched_loading = False;
 
-"""Shared front-end boundary analysis schedule.
+"""Boundary analysis schedule: the single producer of cross-boundary interop
+    facts for every module (server / client / native).
 
-    Runs once per module after type-check and before the target-specific
-    codegen schedule splits, so cross-boundary (interop) facts are derived
-    uniformly for EVERY module — server, client (.cl.jac), and native —
-    by a single producer. Guarded like the other loaders so it is skipped
-    while the IR/codegen pass modules are themselves mid-compile.
+    Runs unconditionally. `BoundaryAnalysisPass` is statically imported, so it
+    has no lazy-compile re-entrancy hazard and must NOT be gated on the
+    `_*_sched_loading` flags — doing so dropped interop facts whenever an
+    unrelated loader was mid-bootstrap during a concurrent compile.
     """
 def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    if _boundary_sched_loading or _ir_sched_loading or _codegen_sched_loading {
-        return [];
-    }
     return [BoundaryAnalysisPass];
 }
 

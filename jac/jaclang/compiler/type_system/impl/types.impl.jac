@@ -248,6 +248,11 @@ impl ClassType.is_namedtuple -> bool {
     return self.shared.is_namedtuple;
 }
 
+"""Return true if this class is a TypedDict."""
+impl ClassType.is_typeddict -> bool {
+    return self.shared.is_typeddict;
+}
+
 """Return true if this class is an enum class."""
 impl ClassType.is_enum_class -> bool {
     return self.shared.is_enum_class;

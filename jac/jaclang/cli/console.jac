@@ -18,7 +18,7 @@ markup/ANSI is never interpreted in user content.
 """
 import os;
 import sys;
-import from contextlib { contextmanager }
+import from contextlib { contextmanager, AbstractContextManager }
 import from typing { cast }
 
 """Caller-supplied text that must be emitted verbatim.
@@ -96,7 +96,7 @@ obj JacConsole {
     static def _should_use_color -> bool;
     def _resolve_stream(file: any = None) -> any;
     def print(*args: any, **kwargs: any) -> None;
-    def status(*args: any, **kwargs: any) -> object;
+    def status(*args: any, **kwargs: any) -> AbstractContextManager;
     def success(message: str, emoji: bool = True) -> None;
     def error(message: str, hint: str | None = None, emoji: bool = True) -> None;
     def warning(message: str, emoji: bool = True) -> None;
