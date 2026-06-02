@@ -138,20 +138,6 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_AND_EQ: "emit_op_iand",
          Tok.BW_XOR_EQ: "emit_op_ixor"
      },
-     # Python-only method names that have no JS equivalent. When the static
-     # type of the receiver cannot be proven (issue #5508 / #5453), the
-     # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
-     # which dispatches to the native JS operation at runtime.
-     POLYMORPHIC_METHODS: set[str] = {
-         "lower",
-         "upper",
-         "strip",
-         "lstrip",
-         "rstrip",
-         "append",
-         "extend",
-         "pop"
-     },
      LiteralValue = str | bool | int | float | None;
 
 """Name of the synthesized children accumulator local for a JSX `{...}`
@@ -252,7 +238,14 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
-        _primitives_es_mod: (object | None) = None;
+        _primitives_es_mod: (object | None) = None,
+        # Set of Python method names that any primitive emitter knows how to
+        # emit (derived from the emitter registry, never hand-maintained). A
+        # method call on a receiver whose static type is not provably a
+        # primitive is routed through `_jac.poly.call(obj, "name", ...)` iff its
+        # name is in this set; otherwise it is a user-defined method and emits a
+        # plain member call. Lazily computed alongside the emitter singletons.
+        _poly_methods: (set[str] | None) = None;
 
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;

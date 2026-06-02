@@ -2,7 +2,28 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.18 (Latest Release)
+## jac-client 0.3.20 (Latest Release)
+
+### New Features
+
+- **Feature: PyTauri desktop target**: The desktop build target now uses PyTauri instead of the Rust/Tauri CLI, so desktop apps no longer require a Cargo install; the PyTauri wheel bundles the Tauri runtime.
+- **Feature: Plugin-provided client targets**: jac-client owns a dedicated runtime plugin surface (`JacClientPluginSpec.get_client_targets` on the `jac_client` entry-point group). Plugins such as `jac-desktop` contribute build targets without extending jaclang core; the desktop target and native sidecar register through that hook.
+- **Feature: Desktop config under `[plugins.desktop]`**: Window, identifier, sidecar plugin bundling, Tauri plugins, and PyInstaller `extra_data` globs are configured under `[plugins.desktop]` (and nested `[plugins.desktop.window]`, `[plugins.desktop.plugins]`, `[plugins.desktop.bundle]`).
+
+### Bug Fixes
+
+- **Fix: Client error stacks resolve to the correct `.jac` line**: Per-file source maps for client modules were silently skipped during a fullstack/interop build because map generation re-fetched the module from the global hub, which such builds leave empty (client modules compile into a separate codespace). Without the map, a client-side JS error resolved to the compiled-JS line with the `.jac` filename swapped in, pointing at a line that does not exist in the source. Map generation now uses the module the compiler already produced, and also covers the client and PWA runtime files (which previously emitted no maps).
+- **Fix: client function-name resolution spans both compiler programs**: The web target resolved a loaded module's compiled IR by reading `Jac.program.mod.hub` directly, which misses a jaclang-bundled app's modules (they compile into the internal program) and silently fell back to the default function name. It now resolves through the program-spanning `JacProgram.find_module`.
+
+### Refactors
+
+- **Refactor: One-line JSX returns across client examples and runtime**: Applied the updated formatter, collapsing short `return <Element/>;` statements onto a single line across the `jac-client` examples, fullstack template, and plugin runtime impls.
+
+### Documentation
+
+- **Docs: Desktop tutorial and reference**: Document PyTauri desktop setup, `[plugins.desktop]` configuration, and `jac desktop plugin` commands in the fullstack tutorial and [jac-desktop reference](../../reference/plugins/jac-desktop.md).
+
+## jac-client 0.3.18
 
 ### New Features
 
