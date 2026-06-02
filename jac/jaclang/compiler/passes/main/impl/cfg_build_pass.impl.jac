@@ -43,7 +43,13 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     }
     for (key, labels) in cfg_labels.items() {
         if labels {
-            stmts_str = '\\n'.join([stmt.replace('"', '\\"') for stmt in labels if stmt]);
+            stmts_str = '\\n'.join(
+                [
+                    stmt.replace('"', '\\"')
+                    for stmt in labels
+                    if stmt
+                ]
+            );
             dot += f'  {key} [label="BB{key}\\n{stmts_str}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
@@ -187,9 +193,11 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     # makes the control-flow intent visible.
     if isinstance(nd, uni.CfgExpr) {
         par = nd.parent;
-        if (isinstance(par, uni.IfElseExpr)
+        if (
+            isinstance(par, uni.IfElseExpr)
             and (nd is par.value or nd is par.else_value)
-            and isinstance(par.parent, uni.ReturnStmt)) {
+            and isinstance(par.parent, uni.ReturnStmt)
+        ) {
             return "return " + nd.unparse();
         }
     }
