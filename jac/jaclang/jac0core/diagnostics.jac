@@ -387,6 +387,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
          "functions are async RPC stubs on the client and always need 'await'."
      ),
+     E1043 = _err(
+         "E1043",
+         Category.TYPE,
+         "TypedDict \"{type}\" has no key \"{key}\"",
+         help="Add the key to the TypedDict definition, or index with a key "
+         "declared on the type."
+     ),
      # Function call errors
      E1050 = _err(
          "E1050",

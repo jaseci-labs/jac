@@ -33,6 +33,7 @@ import from sqlalchemy {
 }
 import from sqlalchemy.exc { IntegrityError }
 import from jac_scale._optdeps.pymongo { DuplicateKeyError }
+import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
@@ -96,7 +97,7 @@ obj IdentityStorage {
 
 """MongoDB-backed identity storage."""
 obj MongoIdentityStorage(IdentityStorage) {
-    has users_col: any;
+    has users_col: Collection[dict[str, any]];
 
     # Abstract primitives
     def _store_user(user_doc: dict[str, any]) -> None;

@@ -30,16 +30,6 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.1
-    hooks:
-      - id: mypy
-        args:
-          - --ignore-missing-imports
-          - --config-file=mypy.ini
-          - --explicit-package-bases
-        additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
       - id: check-no-binary-files

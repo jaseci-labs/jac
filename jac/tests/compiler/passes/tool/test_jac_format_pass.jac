@@ -464,6 +464,96 @@ test "dynamic JSX tags round-trip through the formatter" {
     );
 }
 
+"""Regression: a `return` whose expression is a JSX element keeps the
+element on the same line as `return` when the whole statement fits the
+print width, and only drops it onto its own indented line when it doesn't.
+Previously the JSX-return path used `hard_line()` unconditionally, forcing
+even tiny elements like `<p>Hello</p>` onto a second line."""
+test "return jsx stays on one line when it fits" {
+    source = (
+        'cl {\n'
+        '    def:pub AlertDialog(props: any) -> JsxElement {\n'
+        '        return\n'
+        '            <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;\n'
+        '    }\n'
+        '\n'
+        '    def:pub Greeting -> JsxElement {\n'
+        '        return\n'
+        '            <p>Hello</p>;\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    # A self-closing element that fits must collapse onto the `return` line.
+    self_closing = 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;';
+    assert self_closing in formatted , (
+        "self-closing JSX return was not collapsed onto the `return` line:\n" + str(
+            formatted
+        )
+    );
+    # A small element with inline children must collapse too.
+    assert "return <p>Hello</p>;" in formatted , (
+        "inline-child JSX return was not collapsed onto the `return` line:\n" + str(
+            formatted
+        )
+    );
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "return-JSX one-line formatting is not idempotent"
+    );
+}
+
+"""Regression: a JSX `return` that does NOT fit the print width — either
+because its opening tag is too wide or because it has element children that
+carry hard lines — must still drop the element onto its own indented line
+below `return`."""
+test "return jsx breaks when it does not fit" {
+    source = (
+        'cl {\n'
+        '    def:pub Big(props: any) -> JsxElement {\n'
+        '        return <AlertDialogPrimitive.Overlay {**props} '
+        'data-slot="alert-dialog-overlay" '
+        'className={cn("a-very-long-class-name-string-that-blows-past-print-width", '
+        'props["className"])}/>;\n'
+        '    }\n'
+        '\n'
+        '    def:pub Tree -> JsxElement {\n'
+        '        return <div><span>a</span><span>b</span></div>;\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    # `return` must not carry the element when the statement overflows: every
+    # `return` line in a breaking case must end right after the keyword.
+    for ln in formatted.splitlines() {
+        if (ln.strip() == "return") {
+            continue;
+        }
+        assert not ln.strip().startswith("return <") , (
+            "overflowing JSX return must break onto its own line:\n" + str(formatted)
+        );
+    }
+    # Element children must still expand vertically.
+    assert "<span>a</span>" in formatted;
+    assert "<span>b</span>" in formatted;
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "return-JSX break formatting is not idempotent"
+    );
+}
+
 """Regression: top-level and multi-statement `if` blocks must still break —
 the flat-capable rule is strictly scoped to single-statement, no-else `if`
 statements whose direct parent is a `LambdaExpr`. Anywhere else, the

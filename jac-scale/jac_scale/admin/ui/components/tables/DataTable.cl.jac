@@ -35,7 +35,6 @@ cl {
 
     def:pub TableCell(children: any, align: str = "left") -> JsxElement {
         alignClass = align == "right" and "text-right" or "text-left";
-        return
-            <td className={"px-4 py-3 " + alignClass}>{children}</td>;
+        return <td className={"px-4 py-3 " + alignClass}>{children}</td>;
     }
 }

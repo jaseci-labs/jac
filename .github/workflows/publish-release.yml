@@ -22,9 +22,7 @@ jobs:
       contents: read
     outputs:
       has_releases: ${{ steps.parse.outputs.has_releases }}
-      has_precompile: ${{ steps.parse.outputs.has_precompile }}
       matrix: ${{ steps.parse.outputs.matrix }}
-      precompile_matrix: ${{ steps.parse.outputs.precompile_matrix }}
       release_summary: ${{ steps.parse.outputs.release_summary }}
     steps:
       - name: Checkout
@@ -65,59 +63,15 @@ jobs:
           echo "Proceeding with publish..."
 
   # ============================================================================
-  # Precompile bytecode for packages that need it (parallel matrix)
-  # Each package × Python version combination runs in parallel
-  # ============================================================================
-  precompile:
-    needs: [parse-release, approve-release]
-    if: needs.parse-release.outputs.has_precompile == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.parse-release.outputs.precompile_matrix) }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          submodules: ${{ matrix.submodules }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python_version }}
-
-      - name: Install jaclang
-        run: pip install -e ./jac
-
-      - name: Install package (if not jaclang)
-        if: matrix.name != 'jaclang'
-        run: pip install -e ./${{ matrix.dir }}
-
-      - name: Precompile bytecode
-        run: jac run jac/jaclang/utils/precompile_bytecode.jac ./${{ matrix.dir }}
-
-      - name: Upload precompiled artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.precompile_artifact }}-${{ matrix.python_version }}
-          path: ${{ matrix.precompile_path }}/
-          retention-days: 1
-
-  # ============================================================================
-  # Build packages (with precompiled artifacts if needed)
+  # Build packages
   # ============================================================================
   build:
-    needs: [parse-release, approve-release, precompile]
-    # Run even if precompile was skipped (for packages that don't need it)
+    needs: [parse-release, approve-release]
     if: |
-      always() &&
       needs.parse-release.outputs.has_releases == 'true' &&
-      needs.approve-release.result == 'success' &&
-      (needs.precompile.result == 'success' || needs.precompile.result == 'skipped')
+      needs.approve-release.result == 'success'
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -133,14 +87,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Download precompiled artifacts for packages that need them
-      - name: Download precompiled artifacts
+      # Set up additional Python versions needed for precompile (both plugins and jaclang itself).
+      - name: Set up Python 3.13 and 3.14 (for precompile)
         if: matrix.precompile == true
-        uses: actions/download-artifact@v4
+        uses: actions/setup-python@v5
         with:
-          path: ${{ matrix.precompile_path }}/
-          pattern: ${{ matrix.precompile_artifact }}-*
-          merge-multiple: true
+          python-version: |
+            3.13
+            3.14
 
       # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
       # jaclang itself uses python -m build, so it doesn't need this step.
@@ -148,15 +102,16 @@ jobs:
         if: matrix.name != 'jaclang'
         run: pip install -e ./jac
 
-      # Install the package itself for extra build commands
+      # Install the package itself for extra build commands.
+      # Plugins have no pyproject.toml (jac.toml is the source of truth), so use `jac install`.
       - name: Install package (for build commands)
         if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
-        run: pip install -e ./${{ matrix.dir }}
+        run: jac install -e ./${{ matrix.dir }}
 
       # Install extra pip dependencies for build commands (e.g., jac-client for admin UI)
       - name: Install extra build dependencies
         if: matrix.extra_build_deps != ''
-        run: pip install -e ./${{ matrix.extra_build_deps }}
+        run: jac install -e ./${{ matrix.extra_build_deps }}
 
       # Set up Node.js for packages that need it (e.g., admin UI build)
       - name: Set up Node.js (for client builds)
@@ -182,15 +137,35 @@ jobs:
         if: matrix.name == 'jaclang'
         run: pip install build
 
+      # Precompile jaclang bytecode before python -m build packages it.
+      # Uses per-version venvs (same pattern as jac bundle --precompile) since jaclang
+      # bootstraps the toolchain and cannot use jac bundle itself.
+      - name: Precompile jaclang bytecode
+        if: matrix.name == 'jaclang' && matrix.precompile == true
+        run: |
+          for pyexe in python3.12 python3.13 python3.14; do
+            if command -v "$pyexe" > /dev/null 2>&1; then
+              "$pyexe" -m venv /tmp/jac-precompile-$pyexe
+              /tmp/jac-precompile-$pyexe/bin/pip install -e ./jac --quiet
+              /tmp/jac-precompile-$pyexe/bin/jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
+            else
+              echo "Warning: $pyexe not found on PATH, skipping"
+            fi
+          done
+
       - name: Build jaclang wheel
         if: matrix.name == 'jaclang'
         working-directory: ${{ matrix.dir }}
         run: python -m build
 
+      # Plugins precompile against jaclang from the local source tree, not PyPI:
+      # this build runs before the freshly-bumped jaclang version is published.
       - name: Build plugin wheel
         if: matrix.name != 'jaclang'
         working-directory: ${{ matrix.dir }}
-        run: jac bundle
+        env:
+          JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
+        run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -512,7 +487,7 @@ jobs:
   # Summary
   # ============================================================================
   summary:
-    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
+    needs: [parse-release, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -520,7 +495,6 @@ jobs:
       - name: Release Summary
         env:
           SUMMARY: ${{ needs.parse-release.outputs.release_summary }}
-          PRECOMPILE: ${{ needs.precompile.result }}
           BUILD: ${{ needs.build.result }}
           TIER1: ${{ needs.publish-tier1.result }}
           TIER2: ${{ needs.publish-tier2.result }}
@@ -535,7 +509,6 @@ jobs:
             echo ""
             echo "| Step | Status |"
             echo "|------|--------|"
-            echo "| Precompile | $PRECOMPILE |"
             echo "| Build | $BUILD |"
             echo "| Publish Tier 1 (jaclang) | $TIER1 |"
             echo "| Publish Tier 2 (plugins) | $TIER2 |"

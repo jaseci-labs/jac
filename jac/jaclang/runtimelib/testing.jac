@@ -27,6 +27,7 @@ import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any }
 import from urllib.parse { urlencode }
+import type from jaclang.project.config { JacConfig }
 import type from jaclang.runtimelib.server { JacAPIServer }
 
 """HTTP response wrapper for test assertions."""
@@ -54,10 +55,14 @@ obj JacTestClient {
         _handler_class: (type | None) = None,
         _auth_token: (str | None) = None,
         _current_user: (str | None) = None,
-        _hot_reloader: (Any | None) = None;
+        _hot_reloader: (Any | None) = None,
+        _config: (JacConfig | None) = None;
 
     static def from_file(
-        jac_file: str, base_path: (str | None) = None, module_name: (str | None) = None
+        jac_file: str,
+        base_path: (str | None) = None,
+        module_name: (str | None) = None,
+        config: (JacConfig | None) = None
     ) -> JacTestClient;
 
     def _ensure_initialized -> None;

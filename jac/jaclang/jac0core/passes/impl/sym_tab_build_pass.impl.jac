@@ -480,8 +480,9 @@ impl SymTabBuildPass.enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> Non
     # Pyright: evaluateStaticBoolLikeExpression for sys.version_info conditionals
     eval_result = evaluate_version_condition(nd.condition);
 
-    if eval_result is None {
-        # Not a version conditional - normal processing with scope
+    # Flatten static-guard declarations into module/class scope only. Pragmatic:
+    # TODO generalize static guards uniformly across SymTab + CFG (follow-up).
+    if eval_result is None or nd.find_parent_of_type(uni.Ability) is not None {
         self.push_scope_and_link(nd);
         return;
     }

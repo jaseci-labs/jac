@@ -6,8 +6,9 @@
 #
 # Usage: bash k8s_microservice_real_e2e.sh <PROJECT_DIR>
 #
-# Env: IMAGE_TAG (default jac-microservice-e2e:dev), NAMESPACE (jac-e2e),
-# USE_MINIKUBE (1), REGISTRY (unset, set for remote-cluster push).
+# Env: CLUSTER_TYPE (minikube | microk8s | remote; default minikube),
+# REGISTRY (required for remote), BUILDX_CACHE_DIR (optional, persists
+# BuildKit cache), ROLLOUT_TIMEOUT (default 600s).
 
 set -euo pipefail
 
@@ -24,8 +25,13 @@ fi
 
 IMAGE_TAG="${IMAGE_TAG:-jac-microservice-e2e:dev}"
 NAMESPACE="${NAMESPACE:-jac-e2e}"
-USE_MINIKUBE="${USE_MINIKUBE:-1}"
 REGISTRY="${REGISTRY:-}"
+BUILDX_CACHE_DIR="${BUILDX_CACHE_DIR:-}"
+# Back-compat: USE_MINIKUBE=0 + REGISTRY -> remote; else minikube.
+CLUSTER_TYPE="${CLUSTER_TYPE:-$([ "${USE_MINIKUBE:-1}" = "0" ] && [ -n "${REGISTRY}" ] && echo remote || echo minikube)}"
+# 600s rollout = 10x typical; a fail is a real bug, not infra slowness.
+ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
+DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKERFILE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice"
@@ -48,7 +54,7 @@ cleanup() {
     if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
     fi
-    kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout=120s || true
+    kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}" || true
     # M-14.a: Alloy's ClusterRole + ClusterRoleBinding are cluster-scoped
     # so the namespace delete doesn't sweep them. Re-runs leak otherwise.
     kubectl delete clusterrole,clusterrolebinding \
@@ -78,22 +84,44 @@ else
     BUILD_ARGS=""
 fi
 
-if [ "${USE_MINIKUBE}" = "1" ]; then
-    echo "=== build inside minikube's docker daemon ==="
-    eval "$(minikube docker-env)"
-    # shellcheck disable=SC2086
-    docker build -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
-elif [ -n "${REGISTRY}" ]; then
-    echo "=== build + push to ${REGISTRY} ==="
-    FULL_IMAGE="${REGISTRY}/${IMAGE_TAG}"
-    # shellcheck disable=SC2086
-    docker build -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${FULL_IMAGE}" "${BUILD_CWD}"
-    docker push "${FULL_IMAGE}"
-    IMAGE_TAG="${FULL_IMAGE}"
-else
-    echo "FAIL: USE_MINIKUBE=0 but REGISTRY unset" >&2
-    exit 1
+# --cache-from / --cache-to need buildx; fall back to plain build otherwise.
+BUILD_CMD=(docker build)
+if [ -n "${BUILDX_CACHE_DIR}" ] && docker buildx version >/dev/null 2>&1; then
+    mkdir -p "${BUILDX_CACHE_DIR}"
+    BUILD_CMD=(docker buildx build --load
+        --cache-from "type=local,src=${BUILDX_CACHE_DIR}"
+        --cache-to "type=local,dest=${BUILDX_CACHE_DIR},mode=max")
 fi
+
+case "${CLUSTER_TYPE}" in
+    minikube)
+        echo "=== build inside minikube's docker daemon ==="
+        eval "$(minikube docker-env)"
+        # shellcheck disable=SC2086
+        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
+        ;;
+    microk8s)
+        echo "=== build with host docker, import into microk8s containerd ==="
+        # shellcheck disable=SC2086
+        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
+        # ctr images import is synchronous (image lands in containerd
+        # before this returns), so no race with kubelet's pull state.
+        for _ in 1 2 3; do
+            docker save "${IMAGE_TAG}" | sudo microk8s ctr images import - && break
+            sleep 5
+        done
+        ;;
+    remote)
+        [ -n "${REGISTRY}" ] || { echo "FAIL: CLUSTER_TYPE=remote needs REGISTRY" >&2; exit 1; }
+        FULL_IMAGE="${REGISTRY}/${IMAGE_TAG}"
+        echo "=== build + push to ${FULL_IMAGE} ==="
+        # shellcheck disable=SC2086
+        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${FULL_IMAGE}" "${BUILD_CWD}"
+        docker push "${FULL_IMAGE}"
+        IMAGE_TAG="${FULL_IMAGE}"
+        ;;
+    *) echo "FAIL: unknown CLUSTER_TYPE=${CLUSTER_TYPE}" >&2; exit 1 ;;
+esac
 
 echo "=== deploy via KubernetesMicroserviceTarget ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -163,7 +191,7 @@ dump_pod_state() {
 
 for dep in $(kubectl get deployments -n "${NAMESPACE}" -l managed=jac-scale -o name); do
     echo "  waiting on ${dep}..."
-    if ! kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout=180s; then
+    if ! kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
         echo "FAIL: rollout for ${dep} did not complete in 180s"
         dump_pod_state
         exit 1
@@ -228,7 +256,7 @@ else
 
     echo "  waiting on observability Deployments..."
     for dep in "${LOKI_DEPLOY}" "${APP_NAME}-prometheus" "${APP_NAME}-grafana"; do
-        if ! kubectl rollout status "deployment/${dep}" -n "${NAMESPACE}" --timeout=300s; then
+        if ! kubectl rollout status "deployment/${dep}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
             echo "FAIL: ${dep} did not become Ready in 5 min"
             dump_pod_state
             exit 1
@@ -236,7 +264,7 @@ else
     done
 
     echo "  waiting on Alloy DaemonSet..."
-    if ! kubectl rollout status "daemonset/${ALLOY_DS}" -n "${NAMESPACE}" --timeout=180s; then
+    if ! kubectl rollout status "daemonset/${ALLOY_DS}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
         echo "FAIL: ${ALLOY_DS} DaemonSet did not become Ready in 3 min"
         kubectl describe daemonset "${ALLOY_DS}" -n "${NAMESPACE}" || true
         kubectl logs -n "${NAMESPACE}" -l "app=${ALLOY_DS}" --tail=200 || true
@@ -318,25 +346,40 @@ PYEOF
 INGRESS_ENABLED="${INGRESS_INFO%%|*}"
 INGRESS_HOST="${INGRESS_INFO#*|}"
 
-if [ "${INGRESS_ENABLED}" != "1" ] || [ "${USE_MINIKUBE}" != "1" ]; then
-    echo "  skipping (ingress disabled or non-minikube)"
+if [ "${INGRESS_ENABLED}" != "1" ] || [ "${CLUSTER_TYPE}" = "remote" ]; then
+    echo "  skipping (ingress disabled or remote cluster)"
 else
     if ! kubectl get ingress gateway-ingress -n "${NAMESPACE}" >/dev/null 2>&1; then
         echo "FAIL: ingress.enabled is true but gateway-ingress wasn't created"
         exit 1
     fi
-    if ! kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller \
+    # Controller pod selector differs between minikube (nginx-ingress
+    # addon) and microk8s (ingress addon). Try both, take whichever has
+    # a Running pod.
+    if kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller \
             --no-headers 2>/dev/null | grep -q "Running"; then
-        echo "  WARN: nginx-ingress controller not running (minikube addons enable ingress); skipping"
+        CONTROLLER_OK=1
+    elif kubectl get pods -n ingress -l name=nginx-ingress-microk8s \
+            --no-headers 2>/dev/null | grep -q "Running"; then
+        CONTROLLER_OK=1
     else
-        MINIKUBE_IP=$(minikube ip 2>/dev/null || echo "")
+        CONTROLLER_OK=0
+    fi
+    if [ "${CONTROLLER_OK}" != "1" ]; then
+        echo "  WARN: ingress controller not running; skipping"
+    else
+        case "${CLUSTER_TYPE}" in
+            minikube)  INGRESS_IP=$(minikube ip 2>/dev/null || echo "") ;;
+            microk8s)  INGRESS_IP="127.0.0.1" ;;
+            *)         INGRESS_IP="" ;;
+        esac
         HOST_HEADER="${INGRESS_HOST:-localhost}"
         # NGINX Ingress reloads upstream config a few seconds after a
         # Service's endpoints change - retry through that propagation lag.
         INGRESS_CODE="000"
         for attempt in $(seq 1 15); do
             INGRESS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-                -H "Host: ${HOST_HEADER}" "http://${MINIKUBE_IP}/health" || echo "000")
+                -H "Host: ${HOST_HEADER}" "http://${INGRESS_IP}/health" || echo "000")
             [ "${INGRESS_CODE}" = "200" ] && break
             echo "  Ingress attempt ${attempt}/15 returned ${INGRESS_CODE}, retrying in 2s..."
             sleep 2
@@ -381,8 +424,12 @@ run_zero_downtime_assertion() {
     local hammer_pid=$!
     trap 'kill '"${hammer_pid}"' 2>/dev/null || true; cleanup' EXIT
 
+    # Second-attempt success logs [FLAKE_RECOVERED] for greppable CI signal.
     kubectl rollout restart "deployment/${deployment}" -n "${NAMESPACE}"
-    kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout=180s
+    if ! kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+        echo "[FLAKE_RECOVERED] rollout-status retry on ${deployment}"
+        kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"
+    fi
 
     kill "${hammer_pid}" 2>/dev/null || true
     wait "${hammer_pid}" 2>/dev/null || true
@@ -430,9 +477,9 @@ for name, prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices',
 ")
 if [ -z "${FIRST_PREFIX}" ] || [ -z "${FIRST_SVC}" ]; then
     echo "  (no services declared; skipping service-rollout phase)"
-elif [ "${INGRESS_ENABLED}" = "1" ] && [ "${USE_MINIKUBE}" = "1" ] && [ -n "${MINIKUBE_IP:-}" ]; then
+elif [ "${INGRESS_ENABLED}" = "1" ] && [ "${CLUSTER_TYPE}" != "remote" ] && [ -n "${INGRESS_IP:-}" ]; then
     run_zero_downtime_assertion "service:${FIRST_SVC} (ingress)" \
-        "http://${MINIKUBE_IP}${FIRST_PREFIX}/walker/__missing__" \
+        "http://${INGRESS_IP}${FIRST_PREFIX}/walker/__missing__" \
         "200|404|405" "${FIRST_SVC}-deployment" "${INGRESS_HOST:-localhost}" "5"
 else
     run_zero_downtime_assertion "service:${FIRST_SVC} (port-forward)" \
