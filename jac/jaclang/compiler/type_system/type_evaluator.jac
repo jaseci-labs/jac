@@ -566,6 +566,7 @@ obj TypeEvaluator {
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];
 
+    def _literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None;
     def _build_typeddict_fields(
         class_type: types.ClassType
     ) -> dict[str, types.TypeBase];

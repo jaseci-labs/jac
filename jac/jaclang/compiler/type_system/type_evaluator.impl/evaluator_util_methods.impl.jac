@@ -88,6 +88,45 @@ impl TypeEvaluator._build_field_params(
     return param_map;
 }
 
+"""Build a literal-typed instance from a `Literal[...]` argument expression.
+
+Maps a str/int/bool literal node to its base class cloned with the literal
+value. Returns None for unsupported argument forms.
+"""
+impl TypeEvaluator._literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None {
+    if not self.prefetch {
+        return None;
+    }
+    base: types.ClassType | None = None;
+    value: str | int | bool | None = None;
+    # Bool must precede Int: bool is an Int subclass in the AST hierarchy.
+    if isinstance(val, uni.Bool) {
+        base = self.prefetch.bool_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.Int) {
+        base = self.prefetch.int_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.String) and isinstance(val.lit_value, str) {
+        base = self.prefetch.str_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.MultiString) {
+        # String literals in annotation position are wrapped in MultiString.
+        text = "";
+        for s in val.strings {
+            if not (isinstance(s, uni.String) and isinstance(s.lit_value, str)) {
+                return None;
+            }
+            text += s.lit_value;
+        }
+        base = self.prefetch.str_class;
+        value = text;
+    }
+    if base is None {
+        return None;
+    }
+    return self._convert_to_instance(base.clone_with_literal(value));
+}
+
 """Collect a TypedDict's field name -> value type map, base-first so subclasses override."""
 impl TypeEvaluator._build_typeddict_fields(
     class_type: types.ClassType

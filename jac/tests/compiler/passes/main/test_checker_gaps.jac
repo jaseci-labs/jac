@@ -607,3 +607,19 @@ test "gap 54 typeddict keyed access and dict methods" {
         f"Gap #54: expected an unknown-key (E1043) error. Got: {msgs}"
     );
 }
+
+# =========================================================================
+# Gap #55: Literal[...] type annotations were widened to Any/object, so a
+# mismatched literal was never caught and Literal-keyed overloads could not
+# discriminate. They now resolve to literal types (a union for multiple
+# values).
+# =========================================================================
+test "gap 55 literal annotations resolve and discriminate" {
+    program = compile_and_check("checker_literal_annotation.jac");
+
+    # Exactly the three intended mismatches: bad arg, wrong overload return,
+    # and bad assignment. Every valid literal arg/assignment/overload is clean.
+    assert len(program.errors_had) == 3 , "Gap #55: Literal annotations. "
+    f"Expected exactly 3 type errors but got {len(program.errors_had)}. "
+    f"Errors: {[e.pretty_print() for e in program.errors_had[:8]]}";
+}

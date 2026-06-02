@@ -1400,6 +1400,32 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # Bare ClassVar without type arg - return Unknown
                         return types.UnknownType();
                     }
+                    # --- Handle Literal special form ---
+                    # Literal["a"] / Literal[1, 2] build literal-typed instances
+                    # (a union when multiple values are given) so distinct
+                    # literals stay distinct for assignability and overloads.
+                    if target_name == "Literal" {
+                        lit_types: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            lit_vals = expr.right.slices[0].start;
+                            val_exprs = lit_vals.values
+                                if isinstance(lit_vals, uni.TupleVal)
+                                else [lit_vals];
+                            for val in val_exprs {
+                                if lt := self._literal_type_from_expr(val) {
+                                    lit_types.append(lt);
+                                }
+                            }
+                        }
+                        if len(lit_types) == 1 {
+                            return lit_types[0];
+                        }
+                        if len(lit_types) > 1 {
+                            return types.UnionType(types=lit_types);
+                        }
+                        return types.UnknownType();
+                    }
                 }
                 # Subscript on Any should return Any, not Unknown (check before generic
                 # specialization to avoid Any's subscript returning Any[Unknown]).
