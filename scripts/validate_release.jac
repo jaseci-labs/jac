@@ -9,21 +9,7 @@ import from __future__ { annotations }
 import argparse;
 import sys;
 import from pathlib { Path }
-import tomlkit;
-import from release_utils { PACKAGES, bump_version, check_pypi }
-"""Read the current version from a package's manifest.
-
-Prefers jac.toml; falls back to pyproject.toml for packages (e.g. jac/)
-that cannot migrate because they bootstrap the jac toolchain itself.
-"""
-def get_current_version(repo_root: Path, pkg_dir: str) -> str {
-    jac_toml = repo_root / pkg_dir / "jac.toml";
-    manifest = jac_toml
-        if jac_toml.exists()
-        else repo_root / pkg_dir / "pyproject.toml";
-    data = tomlkit.loads(manifest.read_text());
-    return str(data["project"]["version"]);
-}
+import from release_utils { PACKAGES, bump_version, check_pypi, get_current_version }
 
 def main -> int {
     parser = argparse.ArgumentParser();
