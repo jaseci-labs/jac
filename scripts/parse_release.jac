@@ -15,37 +15,71 @@ import argparse;
 import json;
 import re;
 import sys;
-import from release_utils { PACKAGES, set_output }
+import from pathlib { Path }
+import from release_utils { PACKAGES, get_current_version, set_output }
+"""Build a release dict for one known package at a given version."""
+def release_entry(pkg_name_lower: str, version: str) -> dict {
+    pkg_info = PACKAGES[pkg_name_lower];
+    return {
+        "name": pkg_name_lower,
+        "dir": pkg_info.dir,
+        "pypi": pkg_info.pypi,
+        "tier": pkg_info.tier,
+        "version": version,
+        "submodules": pkg_info.submodules,
+        "precompile": pkg_info.precompile,
+        "extra_build_cmd": pkg_info.extra_build_cmd,
+        "needs_nodejs": pkg_info.needs_nodejs,
+        "extra_build_deps": pkg_info.extra_build_deps
+    };
+}
 """Match patterns like 'jaclang 1.2.3' or 'jac-client 2.0.0'."""
 def parse_from_title(pr_title: str) -> list[dict] {
     releases = [];
     for (pkg_name, version) in re.findall(r"([\w-]+)\s+(\d+\.\d+\.\d+)", pr_title) {
         pkg_name_lower = pkg_name.lower();
         if (pkg_name_lower in PACKAGES) {
-            pkg_info = PACKAGES[pkg_name_lower];
-            releases.append(
-                {
-                    "name": pkg_name_lower,
-                    "dir": pkg_info.dir,
-                    "pypi": pkg_info.pypi,
-                    "tier": pkg_info.tier,
-                    "version": version,
-                    "submodules": pkg_info.submodules,
-                    "precompile": pkg_info.precompile,
-                    "extra_build_cmd": pkg_info.extra_build_cmd,
-                    "needs_nodejs": pkg_info.needs_nodejs,
-                    "extra_build_deps": pkg_info.extra_build_deps
-                }
-            );
+            releases.append(release_entry(pkg_name_lower, version));
         }
+    }
+    return releases;
+}
+"""Build releases for an explicit package list, reading versions from manifests.
+
+    Used by the manual (workflow_dispatch) re-publish path: the caller selects
+    which packages to publish and the version is read straight from each
+    package's jac.toml (or pyproject.toml for jaclang). Lets a release be
+    re-fired after a partial CI failure without re-merging a release/* PR.
+    """
+def parse_from_packages(pkg_names: list[str]) -> list[dict] {
+    repo_root = Path(__file__).resolve().parent.parent;
+    releases = [];
+    for raw in pkg_names {
+        pkg_name_lower = raw.strip().lower();
+        if pkg_name_lower not in PACKAGES {
+            print(f"Warning: unknown package '{raw}' - skipping");
+            continue;
+        }
+        version = get_current_version(repo_root, PACKAGES[pkg_name_lower].dir);
+        releases.append(release_entry(pkg_name_lower, version));
     }
     return releases;
 }
 def main() -> int {
     parser = argparse.ArgumentParser();
-    parser.add_argument("--pr-title", required=True);
+    parser.add_argument("--pr-title", `default="");
+    parser.add_argument(
+        "--packages",
+        `default="",
+        help="Comma/space separated package names; versions read from manifests"
+    );
     args = parser.parse_args();
-    releases = parse_from_title(args.pr_title);
+    if args.packages {
+        pkg_list = [p for p in re.split(r"[,\s]+", args.packages) if p];
+        releases = parse_from_packages(pkg_list);
+    } else {
+        releases = parse_from_title(args.pr_title);
+    }
     if not releases {
         print("No packages found to release");
         set_output("has_releases", "false");

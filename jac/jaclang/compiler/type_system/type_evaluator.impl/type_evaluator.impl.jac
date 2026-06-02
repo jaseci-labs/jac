@@ -2197,46 +2197,25 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         if elem := self._extract_tuple_element_type(rhs_type, idx) {
                             return elem;
                         }
+                        # Non-tuple iterables (bytes, str, range, ...) bind
+                        # every target to the same iteration element type.
+                        if elem := self._get_iterable_element_type(
+                            rhs_type, unpack_assignment.value
+                        ) {
+                            return elem;
+                        }
                     }
                 }
-                # ---- Handle tuple unpacking in for loops: for (a, b, c) in <expr> ----
-                # Similar to Pyright's evaluateTypesForForStatement + assignTypeToTupleOrListNode
+                # Tuple unpacking in for loops / comprehensions:
+                # `for (a, b, c) in <expr>`. The loop element (e.g.
+                # tuple[int, Item] from enumerate) is unpacked positionally.
                 elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
                     collection_type = self.get_type_of_expression(
                         unpack_assignment.collection
                     );
-                    # Get the iterator type from __iter__
-                    iter_type = self.get_type_of_magic_method_call(
-                        collection_type, "__iter__", [], unpack_assignment
+                    elem_type = self._get_iterable_element_type(
+                        collection_type, unpack_assignment
                     );
-                    elem_type: types.TypeBase | None = None;
-                    if isinstance(iter_type, types.ClassType) {
-                        # Get element type from __next__ - this gives the actual iteration element
-                        # For enumerate[Item], __next__ returns tuple[int, Item]
-                        next_type = self.get_type_of_magic_method_call(
-                            iter_type, "__next__", [], unpack_assignment
-                        );
-                        if next_type and not isinstance(next_type, types.UnknownType) {
-                            elem_type = self._convert_to_instance(next_type);
-                        } elif iter_type.private
-                        and iter_type.private.type_args
-                        and len(iter_type.private.type_args) == 1 {
-                            # Fallback: try to extract from type_args
-                            elem_type = iter_type.private.type_args[0];
-                            # If element type is a TypeVar, specialize it using collection's type_args
-                            if isinstance(elem_type, types.TypeVarType)
-                            and isinstance(collection_type, types.ClassType)
-                            and collection_type.private.type_args {
-                                specialized = iter_type.specialize_generics(
-                                    collection_type.private.type_args
-                                );
-                                if len(specialized.private.type_args) == 1 {
-                                    elem_type = specialized.private.type_args[0];
-                                }
-                            }
-                        }
-                    }
-                    # Now extract the tuple element at the correct index
                     if elem_type is not None {
                         idx = -1;
                         for (vi, v) in enumerate(unpack_container.values) {

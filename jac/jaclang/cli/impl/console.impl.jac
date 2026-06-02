@@ -1,16 +1,3 @@
-"""Implementation of console utilities for terminal output.
-
-Production-grade console with raw ANSI codes. User data is never processed
-or modified - only internal CLI chrome (prefixes, symbols) gets styled.
-
-`JacConsole` is the capability/routing facade; `ConsoleRenderer` is the ANSI
-drawing backend it delegates to. Caller data flows as styleless `Span`s so it
-is always emitted verbatim.
-"""
-import os;
-import sys;
-import from contextlib { contextmanager }
-
 # ===============================================================================
 # ANSI Color Codes - Raw and Simple
 # ===============================================================================
@@ -338,7 +325,7 @@ impl JacConsole.print(*args: any, **kwargs: any) -> None {
 }
 
 """Context manager for status during long operations."""
-impl JacConsole.status(*args: any, **kwargs: any) -> object {
+impl JacConsole.status(*args: any, **kwargs: any) -> AbstractContextManager {
     return self._renderer.status_ctx(list(args), kwargs);
 }
 
