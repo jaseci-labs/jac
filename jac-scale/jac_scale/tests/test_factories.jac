@@ -223,9 +223,12 @@ test "autoscaler factory register and create custom engine" {
     }
 
     AutoscalerFactory.register("custom-scaler", custom_factory);
-    result = AutoscalerFactory.create("custom-scaler", {});
-    assert result is mock_autoscaler;
-    del AutoscalerFactory._registry["custom-scaler"];
+    try {
+        result = AutoscalerFactory.create("custom-scaler", {});
+        assert result is mock_autoscaler;
+    } finally {
+        del AutoscalerFactory._registry["custom-scaler"];
+    }
 }
 
 test "autoscaler factory custom engine overrides builtin" {
@@ -236,9 +239,12 @@ test "autoscaler factory custom engine overrides builtin" {
     }
 
     AutoscalerFactory.register("hpa", override_factory);
-    result = AutoscalerFactory.create("hpa", {});
-    assert result is mock_autoscaler;
-    del AutoscalerFactory._registry["hpa"];
+    try {
+        result = AutoscalerFactory.create("hpa", {});
+        assert result is mock_autoscaler;
+    } finally {
+        del AutoscalerFactory._registry["hpa"];
+    }
 }
 
 test "hpa autoscaler build manifests produces correct dict" {
