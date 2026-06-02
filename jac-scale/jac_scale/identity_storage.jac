@@ -33,7 +33,7 @@ import from sqlalchemy {
 }
 import from sqlalchemy.exc { IntegrityError }
 import from jac_scale._optdeps.pymongo { DuplicateKeyError }
-import from pymongo.collection { Collection }
+import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
