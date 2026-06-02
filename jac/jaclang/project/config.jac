@@ -38,6 +38,7 @@ obj ProjectConfig {
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
+        kind: str = "",
         urls: dict[str, str] = {},
         include: PackageIncludeConfig = PackageIncludeConfig();
 }

@@ -12,13 +12,20 @@ import from jaclang.cli.commands.build { build }
 import from jaclang.jac0core.jir {
     parse_header,
     read_sections,
+    read_program_jir,
+    write_program_jir,
     FLAG_PROGRAM,
     SEC_MANIFEST,
     SEC_DEPGRAPH,
     SEC_MODULE_TABLE,
     SEC_BYTECODE,
     SECTIONS_MAGIC,
-    HEADER_SIZE
+    HEADER_SIZE,
+    JabKind,
+    CAP_HAS_SERVER,
+    CAP_HAS_ENTRY,
+    CAP_ATTACHABLE,
+    capabilities_for_kind
 }
 
 
@@ -242,4 +249,89 @@ test "build --no-typecheck bypasses the gate on a type error" {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
     }
+}
+
+
+test "build emits kind and capabilities in manifest" {
+    tmp_path = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    try {
+        _make_project(tmp_path);
+
+        rc = build(filename="app.jac", no_typecheck=True);
+        assert rc == 0;
+
+        jab = (Path(tmp_path) / ".jac" / "build" / "release" / "app.jab").read_bytes();
+        (header, sections, modules) = _parse_jab(jab);
+
+        manifest = json.loads(sections[SEC_MANIFEST].decode('utf-8'));
+        # app.jac has a `with entry {}` block -> auto-detected as "script".
+        assert manifest["kind"] == "script";
+        # Script capabilities: CAP_HAS_SERVER | CAP_HAS_ENTRY = 0x01 | 0x08 = 9
+        assert manifest["capabilities"] == (CAP_HAS_SERVER | CAP_HAS_ENTRY);
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
+
+test "read_program_jir round-trips a whole-program bundle" {
+    # Build a minimal bundle via write_program_jir and read it back.
+    import sys;
+    dummy_bc = marshal.dumps(compile("x = 42", "<test>", "exec"));
+    inner_secs: dict[int, bytes] = {SEC_BYTECODE: dummy_bc};
+    modules = [("main.jac", 12345, inner_secs)];
+    manifest: dict[str, object] = {
+        "format": 1,
+        "kind": "script",
+        "capabilities": CAP_HAS_SERVER | CAP_HAS_ENTRY,
+        "profile": "release",
+        "entry": "main.jac",
+        "py_tag": list(sys.version_info[:2])
+    };
+    dep_graph: dict[str, list[str]] = {"main.jac": []};
+
+    blob = write_program_jir(modules, manifest, dep_graph);
+
+    # Round-trip read.
+    result = read_program_jir(blob);
+    assert result is not None;
+    (out_manifest, out_depgraph, out_modules) = result;
+
+    # Manifest is preserved.
+    assert out_manifest["kind"] == "script";
+    assert out_manifest["capabilities"] == (CAP_HAS_SERVER | CAP_HAS_ENTRY);
+    assert out_manifest["entry"] == "main.jac";
+
+    # Dep graph is preserved.
+    assert "main.jac" in out_depgraph;
+    assert out_depgraph["main.jac"] == [];
+
+    # Module table round-trips with bytecode.
+    assert len(out_modules) == 1;
+    (rel_path, content_hash, inner) = out_modules[0];
+    assert rel_path == "main.jac";
+    assert content_hash == 12345;
+    assert SEC_BYTECODE in inner;
+    code = marshal.loads(inner[SEC_BYTECODE]);
+    assert type(code).__name__ == "code";
+}
+
+
+test "read_program_jir rejects non-program JIR" {
+    # A minimal non-FLAG_PROGRAM blob should return None.
+    result = read_program_jir(b'\x00' * 64);
+    assert result is None;
+}
+
+
+test "capabilities_for_kind returns correct flags" {
+    # Script: server + entry
+    assert capabilities_for_kind(JabKind.SCRIPT) == (CAP_HAS_SERVER | CAP_HAS_ENTRY);
+    # Package: server + attachable, no entry
+    assert capabilities_for_kind(JabKind.PY_PACKAGE) == (CAP_HAS_SERVER | CAP_ATTACHABLE);
+    # Verify the package does NOT have CAP_HAS_ENTRY.
+    assert (capabilities_for_kind(JabKind.PY_PACKAGE) & CAP_HAS_ENTRY) == 0;
 }

@@ -164,8 +164,49 @@ impl build(
 
     # Build the manifest.
     entry_rel = _rel_path(str(entry_path), str(entry_path.parent));
+
+    # Determine jab kind: explicit [project] kind > auto-detect from source.
+    import from jaclang.jac0core.jir {
+        JabKind, capabilities_for_kind, write_program_jir
+    }
+    config = get_config();
+    explicit_kind = "";
+    if config is not None {
+        explicit_kind = config.project.kind;
+    }
+    if explicit_kind {
+        # Validate against known JabKind values.
+        try {
+            jab_kind = JabKind(explicit_kind);
+        } except ValueError {
+            console.error(
+                f"[jac build] Unknown project kind '{explicit_kind}'. "
+                f"Valid kinds: {[k.value for k in JabKind]}"
+            );
+            return 1;
+        }
+    } else {
+        # Auto-detect: check if entry module has a `with entry {}` block.
+        import jaclang.jac0core.unitree as uni;
+        has_entry = False;
+        entry_mod = user_modules.get(str(entry_path));
+        if entry_mod is not None and entry_mod.body {
+            for stmt in entry_mod.body {
+                if isinstance(stmt, uni.ModuleCode) and stmt.body {
+                    has_entry = True;
+                    break;
+                }
+            }
+        }
+        jab_kind = JabKind.SCRIPT if has_entry else JabKind.PY_PACKAGE;
+    }
+
+    caps = capabilities_for_kind(jab_kind);
+
     manifest: dict[str, object] = {
         "format": 1,
+        "kind": jab_kind.value,
+        "capabilities": caps,
         "profile": profile,
         "entry": entry_rel,
         "py_tag": list(sys.version_info[:2]),
@@ -173,7 +214,6 @@ impl build(
     };
 
     # Serialize as a FLAG_PROGRAM JIR and write to disk.
-    import from jaclang.jac0core.jir { write_program_jir }
     jab_data = write_program_jir(modules, manifest, dep_graph);
     with open(str(out_path), "wb") as f {
         f.write(jab_data);

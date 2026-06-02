@@ -108,6 +108,65 @@ glob FLAG_BOOTSTRAP: int = 0x04;
 """Header flag: JIR is a whole-program .jab artifact."""
 glob FLAG_PROGRAM: int = 0x08;
 
+# --- Jab Kind (self-describing project type) ---
+"""Explicit project kind stored in SEC_MANIFEST.
+
+Every .jab carries a kind so the toolchain knows what it is holding and
+how to consume it (run / serve / attach / shell) with no project config
+present.  The kind is set at build time from [project] kind in jac.toml
+or auto-detected from the source (entry-point presence, variant files).
+"""
+enum JabKind {
+    SCRIPT = "script",
+    SERVICE = "service",
+    PY_PACKAGE = "py-package",
+    NPM_PACKAGE = "npm-package",
+    FULLSTACK_APP = "fullstack-app",
+    FULLSTACK_PACKAGE = "fullstack-package",
+    MICROSERVICES = "microservices",
+    DESKTOP = "desktop",
+    MOBILE_WEBVIEW = "mobile-webview",
+    MOBILE_RN = "mobile-rn",
+    NATIVE = "native"
+}
+
+# --- Capability flags (bitfield in manifest) ---
+"""Capability: jab contains server-side bytecode."""
+glob CAP_HAS_SERVER: int = 0x01;
+
+"""Capability: jab contains client-side bundle."""
+glob CAP_HAS_CLIENT: int = 0x02;
+
+"""Capability: jab contains native (LLVM) code."""
+glob CAP_HAS_NATIVE: int = 0x04;
+
+"""Capability: jab has a runnable entrypoint (with entry {})."""
+glob CAP_HAS_ENTRY: int = 0x08;
+
+"""Capability: jab is a package that can be attached into another project."""
+glob CAP_ATTACHABLE: int = 0x10;
+
+"""Capability: jab is locked to a specific platform triple."""
+glob CAP_PLATFORM_LOCKED: int = 0x20;
+
+"""Compute default capability flags for a given JabKind."""
+def capabilities_for_kind(kind: JabKind) -> int {
+    caps: dict[JabKind, int] = {
+        JabKind.SCRIPT:             CAP_HAS_SERVER | CAP_HAS_ENTRY,
+        JabKind.SERVICE:            CAP_HAS_SERVER | CAP_HAS_ENTRY,
+        JabKind.PY_PACKAGE:         CAP_HAS_SERVER | CAP_ATTACHABLE,
+        JabKind.NPM_PACKAGE:        CAP_HAS_CLIENT | CAP_ATTACHABLE,
+        JabKind.FULLSTACK_APP:      CAP_HAS_SERVER | CAP_HAS_CLIENT | CAP_HAS_ENTRY,
+        JabKind.FULLSTACK_PACKAGE:  CAP_HAS_SERVER | CAP_HAS_CLIENT | CAP_ATTACHABLE,
+        JabKind.MICROSERVICES:      CAP_HAS_SERVER | CAP_HAS_ENTRY,
+        JabKind.DESKTOP:            CAP_HAS_SERVER | CAP_HAS_CLIENT | CAP_HAS_ENTRY,
+        JabKind.MOBILE_WEBVIEW:     CAP_HAS_CLIENT | CAP_HAS_ENTRY,
+        JabKind.MOBILE_RN:          CAP_HAS_CLIENT | CAP_HAS_ENTRY,
+        JabKind.NATIVE:             CAP_HAS_NATIVE | CAP_HAS_ENTRY | CAP_PLATFORM_LOCKED
+    };
+    return caps.get(kind, CAP_HAS_SERVER | CAP_HAS_ENTRY);
+}
+
 # --- Varint (LEB128) ---
 """Encode an unsigned integer as LEB128 varint, appending to buf."""
 def write_varint(buf: bytearray, value: int) {
@@ -440,6 +499,17 @@ def write_program_jir(
     dep_graph: dict[str, list[str]],
     source_hash: int = 0
 ) -> bytes;
+
+"""Read a whole-program .jab bundle produced by write_program_jir.
+
+Returns (manifest, dep_graph, modules) where modules is a list of
+(rel_path, content_hash, inner_sections_dict).  Returns None if the
+data is not a valid FLAG_PROGRAM JIR or header is incompatible.
+"""
+def read_program_jir(
+    data: bytes
+) -> (tuple[dict[str, object], dict[str, list[str]],
+          list[tuple[str, int, dict[int, bytes]]]] | None);
 
 """Check whether a module's JIR cache is still valid.
 

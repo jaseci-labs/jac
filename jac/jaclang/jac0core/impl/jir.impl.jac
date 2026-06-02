@@ -122,3 +122,78 @@ impl write_program_jir(
     payload_len = struct.pack('<I', len(empty_ast));
     return header_bytes + payload_len + empty_ast + section_bytes;
 }
+
+# --- read_program_jir ---
+impl read_program_jir(
+    data: bytes
+) -> (tuple[dict[str, object], dict[str, list[str]],
+          list[tuple[str, int, dict[int, bytes]]]] | None) {
+    # Validate header: must be a FLAG_PROGRAM JIR.
+    header = parse_header(data);
+    if header is None {
+        return None;
+    }
+    if (header.flags & FLAG_PROGRAM) == 0 {
+        return None;
+    }
+
+    # Skip the AST payload: 4-byte compressed length + compressed data.
+    pos = HEADER_SIZE;
+    if pos + 4 > len(data) {
+        return None;
+    }
+    (payload_len, ) = struct.unpack_from('<I', data, pos);
+    pos += 4 + payload_len;
+
+    # Find SECTIONS_MAGIC and read top-level sections.
+    magic_bytes: any = SECTIONS_MAGIC;
+    sec_pos = data.find(magic_bytes, pos);
+    if sec_pos < 0 {
+        return None;
+    }
+    sections = read_sections(data, sec_pos + len(magic_bytes));
+
+    # Parse manifest.
+    manifest_bytes = sections.get(SEC_MANIFEST);
+    if manifest_bytes is None {
+        return None;
+    }
+    manifest = json.loads(manifest_bytes.decode('utf-8'));
+
+    # Parse dep graph.
+    dep_bytes = sections.get(SEC_DEPGRAPH);
+    dep_graph: dict[str, list[str]] = {};
+    if dep_bytes is not None {
+        dep_graph = json.loads(dep_bytes.decode('utf-8'));
+    }
+
+    # Parse module table.
+    table_bytes = sections.get(SEC_MODULE_TABLE);
+    modules: list[tuple[str, int, dict[int, bytes]]] = [];
+    if table_bytes is not None {
+        p = 0;
+        (count, ) = struct.unpack_from('<I', table_bytes, p);
+        p += 4;
+        for _ in range(count) {
+            (plen, ) = struct.unpack_from('<I', table_bytes, p);
+            p += 4;
+            rel_path = table_bytes[p:p + plen].decode('utf-8');
+            p += plen;
+            (content_hash, ) = struct.unpack_from('<Q', table_bytes, p);
+            p += 8;
+            (blen, ) = struct.unpack_from('<I', table_bytes, p);
+            p += 4;
+            inner = table_bytes[p:p + blen];
+            p += blen;
+            # Parse inner sections (nested write_sections blob).
+            ipos = inner.find(magic_bytes);
+            inner_secs: dict[int, bytes] = {};
+            if ipos >= 0 {
+                inner_secs = read_sections(inner, ipos + len(magic_bytes));
+            }
+            modules.append((rel_path, content_hash, inner_secs));
+        }
+    }
+
+    return (manifest, dep_graph, modules);
+}

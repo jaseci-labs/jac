@@ -444,6 +444,20 @@ obj JacCompiler {
         type_check: bool = True
     ) -> (uni.Module | None);
 
+    """Load a pre-built .jab bundle into a JacProgram.
+
+    Parses the FLAG_PROGRAM JIR, validates Python version compatibility,
+    extracts per-module bytecodes and the manifest.  Returns a dict with:
+      manifest  — the decoded SEC_MANIFEST dict
+      dep_graph — rel_path -> [rel_path] import edges
+      modules   — list of (rel_path, content_hash, {sec_id: bytes})
+    Returns None on validation failure (bad header, wrong Python version).
+    """
+    def load_program_bundle(
+        jab_path: str,
+        target_program: JacProgram
+    ) -> (dict[str, object] | None);
+
     def run_schedule(
         mod: uni.Module,
         target_program: JacProgram,

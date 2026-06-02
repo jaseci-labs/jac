@@ -1045,6 +1045,67 @@ impl JacCompiler.build(
     return mod_targ;
 }
 
+"""Load a pre-built .jab bundle into a JacProgram."""
+impl JacCompiler.load_program_bundle(
+    jab_path: str,
+    target_program: JacProgram
+) -> (dict[str, object] | None) {
+    import from jaclang.jac0core.jir { read_program_jir, SEC_BYTECODE }
+    import marshal;
+
+    # Read the .jab file.
+    with open(jab_path, "rb") as f {
+        data = f.read();
+    }
+
+    result = read_program_jir(data);
+    if result is None {
+        sys.stderr.write(f"load_program_bundle: invalid .jab file: {jab_path}\n");
+        sys.stderr.flush();
+        return None;
+    }
+
+    (manifest, dep_graph, modules) = result;
+
+    # Validate Python version compatibility.
+    py_tag = manifest.get("py_tag");
+    if py_tag is not None {
+        (major, minor) = (int(py_tag[0]), int(py_tag[1]));
+        if (major, minor) != tuple(sys.version_info[:2]) {
+            sys.stderr.write(
+                f"load_program_bundle: .jab was built for Python {major}.{minor}, "
+                f"but running Python {sys.version_info[0]}.{sys.version_info[1]}\n"
+            );
+            sys.stderr.flush();
+            return None;
+        }
+    }
+
+    # Install per-module bytecodes into the program's bytecode cache.
+    # This makes them available to get_bytecode() without recompilation.
+    jab_dir = os.path.dirname(os.path.abspath(jab_path));
+    entry_rel = manifest.get("entry", "");
+    entry_abs = os.path.normpath(os.path.join(jab_dir, entry_rel));
+
+    module_map: dict[str, bytes] = {};
+    for (rel_path, content_hash, inner_secs) in modules {
+        bc_bytes = inner_secs.get(SEC_BYTECODE);
+        if bc_bytes is not None {
+            abs_path = os.path.normpath(os.path.join(jab_dir, rel_path));
+            module_map[abs_path] = bc_bytes;
+        }
+    }
+
+    return {
+        "manifest": manifest,
+        "dep_graph": dep_graph,
+        "modules": modules,
+        "module_map": module_map,
+        "entry_abs": entry_abs,
+        "jab_dir": jab_dir
+    };
+}
+
 """Run a list of passes on a module."""
 impl JacCompiler.run_schedule(
     mod: uni.Module,

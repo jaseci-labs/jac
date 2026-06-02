@@ -113,6 +113,12 @@ impl run(
     # Set sys.argv so the script can access arguments via sys.argv[1:]
     original_argv = sys.argv;
     sys.argv = [filename] + list(args);
+
+    # Handle .jab bundles: load pre-built artifact instead of compiling.
+    if filename.endswith('.jab') {
+        return _run_jab_bundle(filename, main, diagnostics, original_argv);
+    }
+
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
@@ -234,6 +240,79 @@ impl run(
 }
 
 """Run the specified entrypoint function in the given .jac file."""
+
+"""Run a pre-built .jab bundle."""
+def _run_jab_bundle(
+    jab_path: str, main: bool, diagnostics: str, original_argv: list
+) -> int {
+    import from pathlib { Path }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.jir { JabKind, CAP_HAS_ENTRY }
+
+    if not Path(jab_path).exists() {
+        console.error(f"Error: .jab file not found: {jab_path}");
+        sys.argv = original_argv;
+        return 1;
+    }
+
+    # Load the bundle.
+    compiler = Jac.get_compiler();
+    program = Jac.get_program();
+    bundle = compiler.load_program_bundle(jab_path, program);
+    if bundle is None {
+        console.error(f"Error: Failed to load .jab bundle: {jab_path}");
+        sys.argv = original_argv;
+        return 1;
+    }
+
+    manifest = bundle["manifest"];
+    module_map = bundle["module_map"];
+    entry_abs = bundle["entry_abs"];
+
+    # Validate kind: must have CAP_HAS_ENTRY.
+    caps = manifest.get("capabilities", 0);
+    kind_str = manifest.get("kind", "script");
+    if not (caps & CAP_HAS_ENTRY) {
+        console.error(
+            f"Error: Cannot run a '{kind_str}' .jab — it has no entrypoint. "
+            f"Package bundles are meant to be attached, not run directly."
+        );
+        sys.argv = original_argv;
+        return 1;
+    }
+
+    # Execute the entry module's bytecode.
+    entry_bc = module_map.get(entry_abs);
+    if entry_bc is None {
+        console.error(
+            f"Error: Entry module '{manifest.get('entry', '?')}' not found in .jab"
+        );
+        sys.argv = original_argv;
+        return 1;
+    }
+
+    try {
+        code = marshal.loads(entry_bc);
+        module_obj = types.ModuleType("__main__" if main else "__jab__");
+        module_obj.__file__ = entry_abs;
+        module_obj.__loader__ = None;
+        if main {
+            sys.modules["__main__"] = module_obj;
+        }
+        exec(code, module_obj.__dict__);
+    } except Exception as e {
+        if diagnostics != "none" {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(dump_traceback(e));
+        }
+        sys.argv = original_argv;
+        return 1 if diagnostics != "none" else 0;
+    }
+
+    sys.argv = original_argv;
+    return 0;
+}
+
 impl enter(
     filename: str,
     entrypoint: str,
