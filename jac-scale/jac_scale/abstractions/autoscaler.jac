@@ -3,7 +3,7 @@
 """A single scaling trigger with engine-specific metadata."""
 obj Trigger {
     has type: str,
-        metadata: dict[str, str] = {},
+        metadata: dict[str, any] = {},
         name: (str | None) = None;
 }
 
