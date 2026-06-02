@@ -489,6 +489,10 @@ obj TypeEvaluator {
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
 
+    def _get_iterable_element_type(
+        iterable_type: TypeBase, node_for_error: uni.Expr | None = None
+    ) -> TypeBase | None;
+
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
