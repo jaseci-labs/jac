@@ -265,10 +265,15 @@ Returns the fork and the reset token. Callers MUST call
 `Jac.reset_request_context(token)` in a `finally` block.
 """
 async def _begin_request_context(user_root_id: str) -> tuple[(ExecutionContext, Any)] {
+    import from jaclang.jac0core.osp_kernel_sv { isolate_request_walk_stack }
     parent = Jac.get_context();
     req_ctx = ExecutionContext(_parent=parent);
     await req_ctx.aset_user_root(user_root_id);
     token = Jac.push_request_context(req_ctx);
+    # Each request handles an independent walk: reset the OSP walk-scope stack
+    # so an in-process request (e.g. an sv-to-sv RPC served by the test client)
+    # does not inherit the caller's walk scope and bubble reports into it.
+    isolate_request_walk_stack();
     return (req_ctx, token);
 }
 

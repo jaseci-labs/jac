@@ -2,7 +2,18 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.16 (Latest Release)
+## jac-super 0.1.18 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: `jac remove --shadcn` resolves the installed filename**: Removal now looks up each component's file via the registry instead of assuming `<name>.cl.jac`, so components whose registry name differs from their file (e.g. `input-otp` installs as `otp-input.cl.jac`) are correctly removed instead of silently no-op'ing.
+
+### Refactors
+
+- **Refactor: shadcn components use idiomatic Jac client style**: All 53 shadcn UI components under `registry/components/ui` were rewritten from JS/React-flavored code to idiomatic Jac client conventions (typed prop bundles spread with `{**x}`, list comprehensions and `{for ... {}}` statement slots over `.map`/`.filter`, `len()`/`isinstance`/f-strings/`is None` over their JS equivalents, and `any` annotations on npm/context-derived values) so the whole set passes `jac check` with zero errors. No runtime behavior change.
+- **Refactor: One-line JSX returns across shadcn components**: Applied the updated formatter, collapsing short `return <Element/>;` statements onto a single line across the shadcn registry UI components.
+
+## jac-super 0.1.16
 
 ### New Features
 

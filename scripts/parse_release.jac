@@ -15,68 +15,75 @@ import argparse;
 import json;
 import re;
 import sys;
-import from release_utils { PACKAGES, set_output }
+import from pathlib { Path }
+import from release_utils { PACKAGES, get_current_version, set_output }
+"""Build a release dict for one known package at a given version."""
+def release_entry(pkg_name_lower: str, version: str) -> dict {
+    pkg_info = PACKAGES[pkg_name_lower];
+    return {
+        "name": pkg_name_lower,
+        "dir": pkg_info.dir,
+        "pypi": pkg_info.pypi,
+        "tier": pkg_info.tier,
+        "version": version,
+        "submodules": pkg_info.submodules,
+        "precompile": pkg_info.precompile,
+        "extra_build_cmd": pkg_info.extra_build_cmd,
+        "needs_nodejs": pkg_info.needs_nodejs,
+        "extra_build_deps": pkg_info.extra_build_deps
+    };
+}
 """Match patterns like 'jaclang 1.2.3' or 'jac-client 2.0.0'."""
 def parse_from_title(pr_title: str) -> list[dict] {
     releases = [];
     for (pkg_name, version) in re.findall(r"([\w-]+)\s+(\d+\.\d+\.\d+)", pr_title) {
         pkg_name_lower = pkg_name.lower();
         if (pkg_name_lower in PACKAGES) {
-            pkg_info = PACKAGES[pkg_name_lower];
-            releases.append(
-                {
-                    "name": pkg_name_lower,
-                    "dir": pkg_info.dir,
-                    "pypi": pkg_info.pypi,
-                    "tier": pkg_info.tier,
-                    "version": version,
-                    "submodules": pkg_info.submodules,
-                    "precompile": pkg_info.precompile,
-                    "precompile_path": pkg_info.precompile_path,
-                    "precompile_artifact": pkg_info.precompile_artifact,
-                    "extra_build_cmd": pkg_info.extra_build_cmd,
-                    "needs_nodejs": pkg_info.needs_nodejs,
-                    "extra_build_deps": pkg_info.extra_build_deps
-                }
-            );
+            releases.append(release_entry(pkg_name_lower, version));
         }
     }
     return releases;
 }
-glob PYTHON_VERSIONS: list[str] = ["3.12", "3.13", "3.14"];
-"""Build matrix for precompilation jobs (packages × python versions)."""
-def build_precompile_matrix(releases: list[dict]) -> dict {
-    `include = [];
-    for r in releases {
-        if r["precompile"] {
-            for py_version in PYTHON_VERSIONS {
-                `include.append(
-                    {
-                        "name": r["name"],
-                        "dir": r["dir"],
-                        "pypi": r["pypi"],
-                        "precompile_path": r["precompile_path"],
-                        "precompile_artifact": r["precompile_artifact"],
-                        "python_version": py_version,
-                        "submodules": r["submodules"]
-                    }
-                );
-            }
+"""Build releases for an explicit package list, reading versions from manifests.
+
+    Used by the manual (workflow_dispatch) re-publish path: the caller selects
+    which packages to publish and the version is read straight from each
+    package's jac.toml (or pyproject.toml for jaclang). Lets a release be
+    re-fired after a partial CI failure without re-merging a release/* PR.
+    """
+def parse_from_packages(pkg_names: list[str]) -> list[dict] {
+    repo_root = Path(__file__).resolve().parent.parent;
+    releases = [];
+    for raw in pkg_names {
+        pkg_name_lower = raw.strip().lower();
+        if pkg_name_lower not in PACKAGES {
+            print(f"Warning: unknown package '{raw}' - skipping");
+            continue;
         }
+        version = get_current_version(repo_root, PACKAGES[pkg_name_lower].dir);
+        releases.append(release_entry(pkg_name_lower, version));
     }
-    return {"include": `include};
+    return releases;
 }
 def main() -> int {
     parser = argparse.ArgumentParser();
-    parser.add_argument("--pr-title", required=True);
+    parser.add_argument("--pr-title", `default="");
+    parser.add_argument(
+        "--packages",
+        `default="",
+        help="Comma/space separated package names; versions read from manifests"
+    );
     args = parser.parse_args();
-    releases = parse_from_title(args.pr_title);
+    if args.packages {
+        pkg_list = [p for p in re.split(r"[,\s]+", args.packages) if p];
+        releases = parse_from_packages(pkg_list);
+    } else {
+        releases = parse_from_title(args.pr_title);
+    }
     if not releases {
         print("No packages found to release");
         set_output("has_releases", "false");
         set_output("matrix", json.dumps({"include": []}));
-        set_output("precompile_matrix", json.dumps({"include": []}));
-        set_output("has_precompile", "false");
         set_output("release_summary", "none");
         return 1;
     }
@@ -88,13 +95,9 @@ def main() -> int {
             print("    (requires precompilation)");
         }
     }
-    precompile_matrix = build_precompile_matrix(releases);
-    has_precompile = len(precompile_matrix["include"]) > 0;
     summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases);
     set_output("has_releases", "true");
     set_output("matrix", json.dumps({"include": releases}));
-    set_output("precompile_matrix", json.dumps(precompile_matrix));
-    set_output("has_precompile", str(has_precompile).lower());
     set_output("release_summary", summary);
     return 0;
 }

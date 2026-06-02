@@ -6,6 +6,5 @@ def:pub Spinner(size: str = "md") -> JsxElement {
 
     cls = "animate-spin rounded-full border-slate-600 border-t-orange-500 inline-block " + sz;
 
-    return
-        <span className={cls}/>;
+    return <span className={cls}/>;
 }

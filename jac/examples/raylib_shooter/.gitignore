@@ -1,0 +1,14 @@
+# Downloaded raylib release + extraction cache
+.build/
+
+# Shared library staged by demo.sh
+libraylib.so
+libraylib*.dylib
+
+# Compiled native binaries
+/shooter
+/smoke
+
+# Jac native IR cache
+.jac_ir/
+__pycache__/

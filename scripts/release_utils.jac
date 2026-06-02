@@ -7,6 +7,7 @@ All release-related scripts import from here to ensure consistency.
 import from __future__ { annotations }
 import os;
 import re;
+import tomllib;
 import urllib.error;
 import urllib.request;
 import from pathlib { Path }
@@ -20,8 +21,6 @@ class PackageInfo(NamedTuple) {
     has notes_display: str = "";
     has submodules: bool = False;
     has precompile: bool = False;
-    has precompile_path: str = "";
-    has precompile_artifact: str = "";
     has extra_build_cmd: str = "";
     has needs_nodejs: bool = False;
     has extra_build_deps: str = "";
@@ -34,9 +33,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         release_notes="docs/docs/community/release_notes/jaclang.md",
         notes_display="jaclang",
         submodules=True,
-        precompile=True,
-        precompile_path="jac/jaclang/_precompiled",
-        precompile_artifact="precompiled-jaclang"
+        precompile=True
     ),
     "jac-byllm": PackageInfo(
         dir="jac-byllm",
@@ -45,9 +42,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         release_notes="docs/docs/community/release_notes/byllm.md",
         notes_display="byllm",
         submodules=True,
-        precompile=True,
-        precompile_path="jac-byllm/byllm/_precompiled",
-        precompile_artifact="precompiled-byllm"
+        precompile=True
     ),
     "jac-client": PackageInfo(
         dir="jac-client",
@@ -56,9 +51,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         release_notes="docs/docs/community/release_notes/jac-client.md",
         notes_display="jac-client",
         submodules=True,
-        precompile=True,
-        precompile_path="jac-client/jac_client/_precompiled",
-        precompile_artifact="precompiled-client"
+        precompile=True
     ),
     "jac-scale": PackageInfo(
         dir="jac-scale",
@@ -68,8 +61,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         notes_display="jac-scale",
         submodules=True,
         precompile=True,
-        precompile_path="jac-scale/jac_scale/_precompiled",
-        precompile_artifact="precompiled-scale",
         extra_build_cmd="jac run scripts/build_admin_ui.jac",
         needs_nodejs=True,
         extra_build_deps="jac-client"
@@ -81,9 +72,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         release_notes="docs/docs/community/release_notes/jac-super.md",
         notes_display="jac-super",
         submodules=True,
-        precompile=True,
-        precompile_path="jac-super/jac_super/_precompiled",
-        precompile_artifact="precompiled-super"
+        precompile=True
     ),
     "jac-mcp": PackageInfo(
         dir="jac-mcp",
@@ -93,9 +82,17 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         notes_display="jac-mcp",
         submodules=True,
         precompile=True,
-        precompile_path="jac-mcp/jac_mcp/_precompiled",
-        precompile_artifact="precompiled-mcp",
         extra_build_cmd="jac run scripts/bundle_docs.jac"
+    ),
+    "jac-desktop": PackageInfo(
+        dir="jac-desktop",
+        pypi="jac-desktop",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-desktop.md",
+        notes_display="jac-desktop",
+        submodules=True,
+        precompile=True,
+        extra_build_deps="jac-client"
     ),
     "jaseci": PackageInfo(
         dir="jaseci-package",
@@ -112,13 +109,15 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
+    "jac-desktop": ["jaclang", "jac-client"],
     "jaseci": [
         "jaclang",
         "byllm",
         "jac-client",
         "jac-scale",
         "jac-super",
-        "jac-mcp"
+        "jac-mcp",
+        "jac-desktop"
     ]
 },
      DEPENDENTS: dict[(str, list[str])] = {};
@@ -129,6 +128,20 @@ with entry {
         }
     }
 }
+"""Read the current version from a package's manifest.
+
+    Prefers jac.toml; falls back to pyproject.toml for packages (e.g. jac/)
+    that cannot migrate because they bootstrap the jac toolchain itself.
+    """
+def get_current_version(repo_root: Path, pkg_dir: str) -> str {
+    jac_toml = repo_root / pkg_dir / "jac.toml";
+    manifest = jac_toml
+        if jac_toml.exists()
+        else repo_root / pkg_dir / "pyproject.toml";
+    data = tomllib.loads(manifest.read_text());
+    return str(data["project"]["version"]);
+}
+
 """Compute the next semantic version based on bump type.
 
     Given a version like "1.2.3" and bump type:

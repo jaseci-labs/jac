@@ -168,7 +168,6 @@ cl {
     import from ".frontend.Dashboard" { DashboardPage }
 
     def:pub app -> JsxElement {
-        return
-            <DashboardPage/>;
+        return <DashboardPage/>;
     }
 }
