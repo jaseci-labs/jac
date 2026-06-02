@@ -99,7 +99,8 @@ impl TypeEvaluator._literal_type_from_expr(val: uni.Expr) -> types.TypeBase | No
     }
     base: types.ClassType | None = None;
     value: str | int | bool | None = None;
-    # Bool must precede Int: bool is an Int subclass in the AST hierarchy.
+    # Check Bool before Int: at the value level Python's bool is an int, so a
+    # bool literal must map to bool, not int.
     if isinstance(val, uni.Bool) {
         base = self.prefetch.bool_class;
         value = val.lit_value;
@@ -1437,9 +1438,6 @@ impl TypeEvaluator._get_special_form_type(
         case "NoReturn":
             # PEP 484: NoReturn is a synonym for Never.
             return types.NeverType();
-
-        # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
-        # Requires _create_literal_type() method to parse type args into literal ClassTypes.
 
         # Future special forms:
         # case "Union": return self.prefetch.union_class;
