@@ -5137,6 +5137,8 @@ test "comprehension_in_ternary_narrowing" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "spread_with_explicit_kwarg_no_false_positive" {
