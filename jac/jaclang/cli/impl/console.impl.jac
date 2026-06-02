@@ -1,11 +1,12 @@
 """Implementation of console utilities for terminal output.
 
-Production-grade console with raw ANSI codes. User data is never processed
-or modified - only internal CLI chrome (prefixes, symbols) gets styled.
+Production-grade console with raw ANSI codes. Caller data in `Span`s (style
+`None`) and unstyled `print` args are never markup-parsed. CLI chrome uses
+semantic style roles on spans, or an explicit `style=` on `print` (ANSI prefix
+on string args only).
 
 `JacConsole` is the capability/routing facade; `ConsoleRenderer` is the ANSI
-drawing backend it delegates to. Caller data flows as styleless `Span`s so it
-is always emitted verbatim.
+drawing backend it delegates to.
 """
 import os;
 import sys;
@@ -116,11 +117,12 @@ impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
     }
 }
 
-"""Emit raw print() args verbatim. User data is never modified.
+"""Emit raw print() args without markup parsing.
 
 Handles Windows console encoding (replacing unencodable chars) and broken
-pipes. When provided, `style` is resolved into ANSI codes and applied only to
-string args.
+pipes. When `style` is set and color is enabled, it is resolved to ANSI and
+wrapped around each string arg (prefix + RESET); non-strings pass through
+unchanged.
 """
 impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
@@ -375,11 +377,11 @@ impl JacConsole._resolve_stream(file: any = None) -> any {
     return file if file is not None else sys.stdout;
 }
 
-"""Print to stdout. User data passes through unchanged - no processing.
+"""Print to stdout. Args are not markup-parsed; Rich `markup`/`highlight` are ignored.
 
-`Content`-wrapped args are unwrapped to their raw text; `style`/`markup`/
-`highlight` kwargs are stripped for renderer compatibility; `file=` routes via
-the shared stream resolver.
+`Content`-wrapped args are unwrapped to their raw text. Optional `style` is
+resolved to ANSI and applied to string args only (see `emit_raw`). `file=`
+routes via the shared stream resolver.
 """
 impl JacConsole.print(*args: any, **kwargs: any) -> None {
     style = kwargs.pop('style', None);
