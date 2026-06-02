@@ -25,8 +25,8 @@ packages = ["jac_desktop*"]
 jac_desktop = ["examples/**/*", "examples/**/.*"]
 
 [dependencies]
-jaclang = ">=0.15.5"
-jac-client = ">=0.3.19"
+jaclang = ">=0.15.6"
+jac-client = ">=0.3.20"
 pytauri-wheel = ">=0.8"
 anyio = ">=4"
 
