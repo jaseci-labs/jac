@@ -693,6 +693,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Foreign (clib) calls: marshal per the recorded System V ABI plan. This is
+    # the single authority for foreign argument/return lowering — it slices
+    # struct args into register pieces / byval pointers and reconstructs the
+    # return, instead of guessing from LLVM value shapes at the call site.
+    if func_name in self.clib_fn_abi {
+        return self._codegen_clib_call(func, func_name, args);
+    }
     # Type coerce arguments
     coerced: list[ir.Value] = [];
     for (i, arg) in enumerate(args) {
