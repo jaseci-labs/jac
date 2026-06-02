@@ -47,23 +47,13 @@ glob _ir_sched_loading = False,
      _codegen_sched_loading = False,
      _typecheck_sched_loading = False;
 
-"""Shared front-end boundary analysis schedule.
+"""Boundary analysis schedule: the single producer of cross-boundary interop
+    facts for every module (server / client / native).
 
-    Runs once per module after type-check and before the target-specific
-    codegen schedule splits, so cross-boundary (interop) facts are derived
-    uniformly for EVERY module — server, client (.cl.jac), and native —
-    by a single producer.
-
-    `BoundaryAnalysisPass` is a statically-imported jac0core pass (see the
-    top-level import), so unlike the IR/codegen loaders it triggers no lazy
-    recursive compilation and needs no re-entrancy guard of its own. It must
-    NOT be gated on `_ir_sched_loading`/`_codegen_sched_loading`: those track
-    an *unrelated* loader's bootstrap, and when one happens to be set while a
-    user module compiles (interleaved compiles sharing one process, e.g. an
-    xdist worker), gating here silently drops that module's interop facts.
-    The cached module then has empty `func_access`/`walker_access`, so the
-    serve runtime falls back to secure-by-default and a `:pub` walker is
-    wrongly rejected as Unauthorized.
+    Runs unconditionally. `BoundaryAnalysisPass` is statically imported, so it
+    has no lazy-compile re-entrancy hazard and must NOT be gated on the
+    `_*_sched_loading` flags — doing so dropped interop facts whenever an
+    unrelated loader was mid-bootstrap during a concurrent compile.
     """
 def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [BoundaryAnalysisPass];
