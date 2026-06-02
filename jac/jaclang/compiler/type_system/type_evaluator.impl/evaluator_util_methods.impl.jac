@@ -88,6 +88,233 @@ impl TypeEvaluator._build_field_params(
     return param_map;
 }
 
+"""Build a literal-typed instance from a `Literal[...]` argument expression.
+
+Maps a str/int/bool/None literal node (including negated int literals) to its
+type. Returns None for unsupported argument forms.
+"""
+impl TypeEvaluator._literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None {
+    if not self.prefetch {
+        return None;
+    }
+    # `Literal[None]` resolves to NoneType, not a literal-valued class.
+    if isinstance(val, uni.Null) and self.prefetch.none_type_class {
+        return self._convert_to_instance(self.prefetch.none_type_class);
+    }
+    base: types.ClassType | None = None;
+    value: str | int | bool | None = None;
+    # Check Bool before Int: at the value level Python's bool is an int, so a
+    # bool literal must map to bool, not int.
+    if isinstance(val, uni.Bool) {
+        base = self.prefetch.bool_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.Int) {
+        base = self.prefetch.int_class;
+        value = val.lit_value;
+    } elif (
+        isinstance(val, uni.UnaryExpr)
+        and val.op.name == Tok.MINUS
+        and isinstance(val.operand, uni.Int)
+    ) {
+        # Negative int literals parse as unary minus over an Int.
+        base = self.prefetch.int_class;
+        value = -val.operand.lit_value;
+    } elif isinstance(val, uni.String) and isinstance(val.lit_value, str) {
+        base = self.prefetch.str_class;
+        value = val.lit_value;
+    } elif isinstance(val, uni.MultiString) {
+        # String literals in annotation position are wrapped in MultiString.
+        text = "";
+        for s in val.strings {
+            if not (isinstance(s, uni.String) and isinstance(s.lit_value, str)) {
+                return None;
+            }
+            text += s.lit_value;
+        }
+        base = self.prefetch.str_class;
+        value = text;
+    }
+    if base is None {
+        return None;
+    }
+    return self._convert_to_instance(base.clone_with_literal(value));
+}
+
+"""Collect a TypedDict's field name -> value type map, base-first so subclasses override."""
+impl TypeEvaluator._build_typeddict_fields(
+    class_type: types.ClassType
+) -> dict[str, types.TypeBase] {
+    fields: dict[str, types.TypeBase] = {};
+    for cls in class_type.shared.mro[::-1] {
+        if cls.shared.class_name == "TypedDict" {
+            continue;
+        }
+        for has_var in cls.shared.symbol_table.get_has_vars() {
+            if has_var.accessors {
+                continue;
+            }
+            field_type: types.TypeBase = types.UnknownType();
+            if has_var.type_tag {
+                field_type = self._convert_to_instance(
+                    self.get_type_of_expression(has_var.type_tag.tag)
+                );
+            }
+            fields[has_var.name.value] = field_type;
+        }
+    }
+    return fields;
+}
+
+"""True if a class is written with a direct `TypedDict` (`_SpecialForm`) base."""
+impl TypeEvaluator._has_typeddict_special_form_base(node_: uni.Archetype) -> bool {
+    for base_expr in node_.base_classes or [] {
+        base_name: str | None = None;
+        if isinstance(base_expr, uni.Name) {
+            base_name = base_expr.value;
+        } elif (
+            isinstance(base_expr, uni.AtomTrailer)
+            and isinstance(base_expr.right, uni.Name)
+        ) {
+            base_name = base_expr.right.value;
+        }
+        if base_name == "TypedDict" {
+            base_t = self.get_type_of_expression(base_expr);
+            if (
+                isinstance(base_t, types.ClassType)
+                and base_t.shared.class_name == "_SpecialForm"
+            ) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+"""Combine a TypedDict's field types into one value type (Unknown when it has none)."""
+impl TypeEvaluator._typeddict_value_union(
+    base_type: types.ClassType
+) -> types.TypeBase {
+    field_types = list((base_type.shared.typeddict_fields or {}).values());
+    if not field_types {
+        return types.UnknownType();
+    }
+    if len(field_types) == 1 {
+        return field_types[0];
+    }
+    return types.UnionType(types=field_types);
+}
+
+"""Resolve a TypedDict subscript `td[key]` to its value type.
+
+A known literal key gives its field type; an unknown one emits E1043. A
+non-literal str key widens to the value union. Returns None for a non-str
+index so normal __getitem__ handling reports it.
+"""
+impl TypeEvaluator._get_typeddict_indexed_type(
+    base_type: types.ClassType, key_expr: uni.Expr, err_node: uni.UniNode
+) -> types.TypeBase | None {
+    key_type = self.get_type_of_expression(key_expr);
+    if not (isinstance(key_type, types.ClassType) and key_type.is_builtin("str")) {
+        return None;
+    }
+    fields = base_type.shared.typeddict_fields or {};
+    lit = key_type.get_literal_value();
+    if not isinstance(lit, str) {
+        return self._typeddict_value_union(base_type);
+    }
+    if lit in fields {
+        return fields[lit];
+    }
+    self.emit_diag(E1043, err_node, type=base_type.shared.class_name, key=lit);
+    return types.UnknownType();
+}
+
+"""Synthesize an overloaded `get`/`pop`/`setdefault` for a TypedDict.
+
+Each field gets a `Literal["field"]`-keyed overload so a literal key resolves
+to its exact type; a trailing `str`-key overload covers non-literal keys.
+`get`/`pop` without a default widen to `field | None`; with a default (and
+`setdefault` always) they return `field`.
+"""
+impl TypeEvaluator._synthesize_typeddict_method(
+    base_type: types.ClassType, method: str
+) -> types.OverloadedType | None {
+    if not (self.prefetch and self.prefetch.str_class) {
+        return None;
+    }
+    none_inst: types.TypeBase = types.UnknownType();
+    if self.prefetch.none_type_class {
+        none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+    }
+    object_inst: types.TypeBase = types.UnknownType();
+    if self.prefetch.object_class {
+        object_inst = self._convert_to_instance(self.prefetch.object_class);
+    }
+
+    def param(name: str, ty: types.TypeBase, is_self: bool = False) -> types.Parameter {
+        return types.Parameter(
+            name=name,
+            category=types.ParameterCategory.Positional,
+            param_type=ty,
+            is_self=is_self,
+            param_kind=types.ParamKind.NORMAL if is_self else types.ParamKind.POSONLY,
+        );
+    }
+
+    def func(params: list[types.Parameter], ret: types.TypeBase) -> types.FunctionType {
+        return types.FunctionType(
+            func_name=method,
+            return_type=ret,
+            parameters=params,
+            function_flags=types.FunctionTypeFlags.SynthesizedMethod,
+        );
+    }
+
+    self_p = param("self", base_type, is_self=True);
+    default_p = param("default", object_inst);
+
+    # setdefault: (key, default) -> value. get/pop: (key) -> value|None and
+    # (key, default) -> value.
+    def overloads_for(
+        key_ty: types.TypeBase, value: types.TypeBase
+    ) -> list[types.FunctionType] {
+        key_p = param("key", key_ty);
+        with_default = func([self_p, key_p, default_p], value);
+        if method == "setdefault" {
+            return [with_default];
+        }
+        return [
+            func([self_p, key_p], types.UnionType(types=[value, none_inst])),
+            with_default
+        ];
+    }
+
+    overloads: list[types.FunctionType] = [];
+    for (field_name, field_type) in (base_type.shared.typeddict_fields or {}).items() {
+        key_lit = self._convert_to_instance(
+            self.prefetch.str_class.clone_with_literal(field_name)
+        );
+        overloads.extend(overloads_for(key_lit, field_type));
+    }
+    str_inst = self._convert_to_instance(self.prefetch.str_class);
+    overloads.extend(overloads_for(str_inst, self._typeddict_value_union(base_type)));
+    return types.OverloadedType(overloads=overloads);
+}
+
+"""View a TypedDict as `dict[str, <value-union>]` so its dict methods resolve."""
+impl TypeEvaluator._typeddict_as_dict(
+    base_type: types.ClassType
+) -> types.ClassType | None {
+    if not (self.prefetch and self.prefetch.dict_class and self.prefetch.str_class) {
+        return None;
+    }
+    str_inst = self._convert_to_instance(self.prefetch.str_class);
+    dict_type = self.prefetch.dict_class.specialize_generics(
+        [str_inst, self._typeddict_value_union(base_type)]
+    );
+    return self._convert_to_instance(dict_type);
+}
+
 impl TypeEvaluator._create_dataclass_init_method(
     class_type: types.ClassType
 ) -> types.FunctionType {
@@ -1223,9 +1450,6 @@ impl TypeEvaluator._get_special_form_type(
         case "NoReturn":
             # PEP 484: NoReturn is a synonym for Never.
             return types.NeverType();
-
-        # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
-        # Requires _create_literal_type() method to parse type args into literal ClassTypes.
 
         # Future special forms:
         # case "Union": return self.prefetch.union_class;

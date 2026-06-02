@@ -1,10 +1,9 @@
-"""Integration tests for desktop target (Tauri) functionality.
+"""Integration tests for desktop target (PyTauri) functionality.
 
-These tests validate the desktop target setup, build, and sidecar functionality
-as documented in FRESH_PROJECT_TESTING_GUIDE.md.
+These tests validate the desktop target setup, build, and sidecar functionality.
 
 Tests are designed to:
-1. Skip gracefully if Rust/Tauri toolchain is not installed
+1. Skip gracefully if dependencies are not installed
 2. Test setup command (scaffolding) without requiring full build
 3. Optionally test build if all dependencies are available
 4. Test sidecar functionality in isolation
@@ -47,7 +46,7 @@ def run_jac_setup_desktop(project_dir: Path) -> tuple[int, str, str] {
     env = get_env_with_npm();
 
     # Try the CLI command
-    # Pass input="n\n" to avoid hanging on interactive prompts (e.g. install Tauri CLI)
+    # Pass input="n\n" to avoid hanging on interactive prompts
     result = run(
         [*jac_cmd, "setup", "desktop"],
         cwd=project_dir,
@@ -66,25 +65,6 @@ def run_jac_setup_desktop(project_dir: Path) -> tuple[int, str, str] {
     return (result.returncode, result.stdout, result.stderr);
 }
 
-"""Check if Rust toolchain is installed."""
-def is_rust_installed -> bool {
-    try {
-        result = run(["cargo", "--version"], capture_output=True, timeout=10);
-        return result.returncode == 0;
-    } except (FileNotFoundError, subprocess.TimeoutExpired) {
-        return False;
-    }
-}
-
-"""Check if Tauri CLI is installed."""
-def is_tauri_cli_installed -> bool {
-    try {
-        result = run(["cargo", "tauri", "--version"], capture_output=True, timeout=10);
-        return result.returncode == 0;
-    } except (FileNotFoundError, subprocess.TimeoutExpired) {
-        return False;
-    }
-}
 
 """Check if PyInstaller is installed."""
 def is_pyinstaller_installed -> bool {
@@ -117,86 +97,12 @@ def get_minimal_desktop_jac -> str {
 
 """Get minimal jac.toml content for desktop testing."""
 def get_minimal_jac_toml(name: str = "test-desktop-app") -> str {
-    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[serve]\nbase_route_app = "app"\n\n[plugins.client]\n';
+    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\nreact-hook-form = "^7.71.0"\nzod = "^4.3.6"\n"@hookform/resolvers" = "^5.2.2"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[serve]\nbase_route_app = "app"\n\n[plugins.client]\n';
 }
 
-# =============================================================================
-# Test: Desktop Target Files Exist (no CLI required)
-# =============================================================================
-test "desktop target files exist" {
-    print("[DEBUG] Starting test_desktop_target_files_exist");
-
-    # Get path to jac_client plugin
-    plugin_dir = Path(__file__).parent.parent / "plugin";
-
-    # Verify desktop target files
-    desktop_target_jac = plugin_dir / "src" / "targets" / "desktop_target.jac";
-    assert desktop_target_jac.exists() , (
-        f"desktop_target.jac not found at {desktop_target_jac}"
-    );
-
-    # Verify implementation file
-    desktop_impl_jac = (
-        plugin_dir / "src" / "targets" / "impl" / "desktop_target.impl.jac"
-    );
-    assert desktop_impl_jac.exists() , (
-        f"desktop_target.impl.jac not found at {desktop_impl_jac}"
-    );
-
-    # Verify sidecar files
-    sidecar_main_py = plugin_dir / "src" / "targets" / "desktop" / "sidecar" / "main.py";
-    assert sidecar_main_py.exists() , f"sidecar main.py not found at {sidecar_main_py}";
-
-    # Read desktop_target.jac and verify it has the expected methods
-    desktop_target_content = desktop_target_jac.read_text();
-    assert "obj DesktopTarget" in desktop_target_content;
-    assert "def setup" in desktop_target_content;
-    assert "def build" in desktop_target_content;
-    assert "def dev" in desktop_target_content;
-    assert "def start" in desktop_target_content;
-
-    print("[DEBUG] All desktop target files verified!");
-}
-
-# =============================================================================
-# Test: PyInstaller spec excludes litellm bundle bloat
-# Regression guard for the Windows MAX_PATH bundling failure caused by
-# litellm shipping benchmark JSONs at deeply-nested paths that exceed 260
-# characters once nested under the runner checkout root + Tauri's binaries
-# staging dir. Without these excludes, NSIS and WiX both fail to bundle.
-# =============================================================================
-test "pyinstaller spec excludes litellm bloat for windows max_path" {
-    impl_path = (
-        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac"
-    );
-    assert impl_path.exists() , f"impl file not found at {impl_path}";
-
-    content = impl_path.read_text();
-
-    # The exclude list itself must be declared
-    assert "EXCLUDE_DATA_PATTERNS = [" in content , (
-        "EXCLUDE_DATA_PATTERNS list must be declared in the generated "
-        "PyInstaller spec template"
-    );
-
-    # The critical pattern -- this is the file path that pushed the bundle
-    # past Windows MAX_PATH and broke shipping byllm desktop apps
-    assert "'guardrail_benchmarks'" in content , (
-        "'guardrail_benchmarks' must be in EXCLUDE_DATA_PATTERNS -- without "
-        "it, Windows MSI/NSIS bundling fails on litellm benchmark JSON paths "
-        "exceeding MAX_PATH (260 chars)"
-    );
-
-    # The filter must actually be applied to both datas and binaries before
-    # Analysis runs. Just declaring the list isn't enough.
-    assert "_should_exclude" in content , "_should_exclude helper must exist";
-    assert "if not _should_exclude(d)" in content , (
-        "exclude filter must be applied via list comprehension to drop "
-        "matched (src, dest) tuples before Analysis()"
-    );
-
-    print("[DEBUG] litellm exclude regression guard verified");
-}
+# Desktop target files and PyInstaller exclude patterns are now tested in
+# jac-desktop/jac_desktop/tests/ — those tests are redundant here since the
+# desktop target was moved to the jac-desktop package.
 
 # =============================================================================
 # Test: Desktop Setup Command (requires CLI)
@@ -231,12 +137,12 @@ test "desktop setup creates directory structure" {
         assert returncode == 0 , (
             f"jac setup desktop failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
         );
-        # Verify src-tauri directory exists
-        tauri_dir = project_dir / "src-tauri";
-        assert tauri_dir.exists() , "src-tauri/ directory should be created";
-        assert tauri_dir.is_dir() , "src-tauri should be a directory";
+        # Verify src-pytauri directory exists
+        pytauri_dir = project_dir / "src-pytauri";
+        assert pytauri_dir.exists() , "src-pytauri/ directory should be created";
+        assert pytauri_dir.is_dir() , "src-pytauri should be a directory";
         # Verify tauri.conf.json
-        tauri_config_path = tauri_dir / "tauri.conf.json";
+        tauri_config_path = pytauri_dir / "tauri.conf.json";
         assert tauri_config_path.exists() , "tauri.conf.json should be created";
         # Verify it's valid JSON
         with open(tauri_config_path) as f {
@@ -251,29 +157,23 @@ test "desktop setup creates directory structure" {
         assert "identifier" in tauri_config , "tauri.conf.json should have identifier";
         assert "build" in tauri_config , "tauri.conf.json should have build section";
         assert "app" in tauri_config , "tauri.conf.json should have app section";
-        # Verify Cargo.toml
-        cargo_path = tauri_dir / "Cargo.toml";
-        assert cargo_path.exists() , "Cargo.toml should be created";
-        cargo_content = cargo_path.read_text();
-        assert "[package]" in cargo_content , "Cargo.toml should have [package] section";
-        assert "tauri" in cargo_content.lower() , "Cargo.toml should reference tauri";
-        # Verify build.rs
-        build_rs_path = tauri_dir / "build.rs";
-        assert build_rs_path.exists() , "build.rs should be created";
-        build_rs_content = build_rs_path.read_text();
-        assert "tauri_build" in build_rs_content , "build.rs should call tauri_build";
-        # Verify src/main.rs
-        main_rs_path = tauri_dir / "src" / "main.rs";
-        assert main_rs_path.exists() , "src/main.rs should be created";
+        # Verify app.py (PyTauri Python entry point)
+        app_py_path = pytauri_dir / "app.py";
+        assert app_py_path.exists() , "app.py should be created";
+        app_py_content = app_py_path.read_text();
+        assert "run_shell" in app_py_content , "app.py should define run_shell";
+        # Verify pyproject.toml
+        pyproject_path = pytauri_dir / "pyproject.toml";
+        assert pyproject_path.exists() , "pyproject.toml should be created";
+        # Verify capabilities/default.json
+        capabilities_path = pytauri_dir / "capabilities" / "default.json";
+        assert capabilities_path.exists() , "capabilities/default.json should be created";
         # Verify icons directory
-        icons_dir = tauri_dir / "icons";
+        icons_dir = pytauri_dir / "icons";
         assert icons_dir.exists() , "icons/ directory should be created";
         # Verify binaries directory
-        binaries_dir = tauri_dir / "binaries";
+        binaries_dir = pytauri_dir / "binaries";
         assert binaries_dir.exists() , "binaries/ directory should be created";
-        # Verify jac.toml was updated with [desktop] section
-        jac_toml_content = (project_dir / "jac.toml").read_text();
-        assert "[desktop]" in jac_toml_content , "jac.toml should have [desktop] section";
         print("[DEBUG] All desktop setup verifications passed!");
     }
 }
@@ -298,7 +198,7 @@ test "desktop setup is idempotent" {
         (returncode1, stdout1, stderr1) = run_jac_setup_desktop(project_dir);
         assert returncode1 == 0 , f"First setup failed: {stderr1}";
         # Get state after first setup
-        tauri_config_path = project_dir / "src-tauri" / "tauri.conf.json";
+        tauri_config_path = project_dir / "src-pytauri" / "tauri.conf.json";
         with open(tauri_config_path) as f {
             config_after_first = json.load(f);
         }
@@ -396,12 +296,6 @@ test "desktop build creates bundle" {
     if not is_jac_setup_available() {
         pytest.skip("'jac setup' CLI command not available");
     }
-    if not is_rust_installed() {
-        pytest.skip("Rust toolchain not installed");
-    }
-    if not is_tauri_cli_installed() {
-        pytest.skip("Tauri CLI not installed (run: cargo install tauri-cli)");
-    }
     if not is_pyinstaller_installed() {
         pytest.skip("PyInstaller not installed (run: pip install pyinstaller)");
     }
@@ -443,7 +337,7 @@ test "desktop build creates bundle" {
             capture_output=True,
             text=True,
             env=env,
-            timeout=900,  # 15 minutes for Rust compilation
+            timeout=900,
         );
         print(
             f"[DEBUG] Desktop build returncode={build_result.returncode}\n"
@@ -456,19 +350,12 @@ test "desktop build creates bundle" {
             f"STDERR:\n{build_result.stderr}"
         );
         # Verify sidecar was created
-        binaries_dir = project_dir / "src-tauri" / "binaries";
+        binaries_dir = project_dir / "src-pytauri" / "binaries";
         sidecar_files = list(binaries_dir.glob("jac-sidecar*"));
         print(f"[DEBUG] Sidecar files: {sidecar_files}");
         assert len(sidecar_files) > 0 , (
-            "Sidecar should be bundled in src-tauri/binaries/"
+            "Sidecar should be bundled in src-pytauri/binaries/"
         );
-        # Verify Tauri bundle output exists
-        bundle_dir = project_dir / "src-tauri" / "target" / "release" / "bundle";
-        if bundle_dir.exists() {
-            bundle_contents = list(bundle_dir.rglob("*"));
-            print(f"[DEBUG] Bundle contents: {bundle_contents[:20]}");
-            assert len(bundle_contents) > 0 , "Bundle directory should contain files";
-        }
         print("[DEBUG] Desktop build test passed!");
     }
 }
@@ -681,12 +568,6 @@ test "desktop dev mode starts" {
     if not is_jac_setup_available() {
         pytest.skip("'jac setup' CLI command not available");
     }
-    if not is_rust_installed() {
-        pytest.skip("Rust toolchain not installed");
-    }
-    if not is_tauri_cli_installed() {
-        pytest.skip("Tauri CLI not installed (run: cargo install tauri-cli)");
-    }
     if not has_display() {
         pytest.skip("No display available for GUI tests");
     }
@@ -742,7 +623,7 @@ test "desktop dev mode starts" {
                 raise;
             }
 
-            # Give Tauri a moment to initialize
+            # Give the desktop shell a moment to initialize
             time.sleep(3);
 
             # Verify dev server is serving content
@@ -754,7 +635,7 @@ test "desktop dev mode starts" {
                 }
             } except (URLError, HTTPError) as exc {
                 print(f"[DEBUG] Warning: Could not fetch from dev server: {exc}");
-                # Not a hard failure - Tauri might intercept
+                # Not a hard failure - the shell might intercept
             }
 
             print("[DEBUG] Desktop dev mode test passed!");
@@ -787,12 +668,6 @@ test "desktop dev mode starts" {
 test "desktop build copies assets to dist" {
     if not is_jac_setup_available() {
         pytest.skip("'jac setup' CLI command not available");
-    }
-    if not is_rust_installed() {
-        pytest.skip("Rust toolchain not installed");
-    }
-    if not is_tauri_cli_installed() {
-        pytest.skip("Tauri CLI not installed (run: cargo install tauri-cli)");
     }
     if not is_pyinstaller_installed() {
         pytest.skip("PyInstaller not installed (run: pip install pyinstaller)");
@@ -1006,7 +881,7 @@ test "desktop build generates index.html with correct paths" {
         if npm_result.returncode != 0 {
             pytest.skip(f"npm install failed: {npm_result.stderr}");
         }
-        # We try to build. It might fail at the Tauri step if Rust is missing,
+        # We try to build. It might fail at a later step if dependencies are missing,
         # but it should have generated index.html by then.
         build_result = run(
             [*jac_cmd, "build", "main.jac", "--client", "desktop"],
@@ -1076,7 +951,7 @@ test "desktop build generates index.html with custom base_path" {
         if npm_result.returncode != 0 {
             pytest.skip(f"npm install failed: {npm_result.stderr}");
         }
-        # We try to build. It might fail at the Tauri step if Rust is missing,
+        # We try to build. It might fail at a later step if dependencies are missing,
         # but it should have generated index.html by then.
         build_result = run(
             [*jac_cmd, "build", "main.jac", "--client", "desktop"],
