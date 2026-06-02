@@ -26,7 +26,14 @@ obj DiagnosticInfo {
         category: Category,
         message_template: str,
         help_text: str | None = None,
-        url_slug: str | None = None;
+        url_slug: str | None = None,
+        # When True, this error blocks Python code generation for the module
+        # it is reported in, so the invalid construct cannot be executed.
+        # Most structural errors are reported but non-fatal (the codebase
+        # generates code through them, e.g. E0076 duplicate method); set this
+        # only for constructs that would otherwise compile to valid-but-wrong
+        # Python and silently run (e.g. E0063 glob inside a function).
+        blocks_codegen: bool = False;
 
     def format_message(**kwargs: object) -> str {
         try {
@@ -44,7 +51,8 @@ def _reg(
     severity: Severity,
     category: Category,
     template: str,
-    help_text: str | None = None
+    help_text: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
     info = DiagnosticInfo(
         code=code,
@@ -52,7 +60,8 @@ def _reg(
         category=category,
         message_template=template,
         help_text=help_text,
-        url_slug=code.lower()
+        url_slug=code.lower(),
+        blocks_codegen=blocks_codegen
     );
     DIAGNOSTICS[code] = info;
     return info;
@@ -60,9 +69,13 @@ def _reg(
 
 # Shorthand aliases
 def _err(
-    code: str, cat: Category, tmpl: str, help: str | None = None
+    code: str,
+    cat: Category,
+    tmpl: str,
+    help: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
-    return _reg(code, Severity.ERROR, cat, tmpl, help);
+    return _reg(code, Severity.ERROR, cat, tmpl, help, blocks_codegen);
 }
 
 def _warn(
@@ -213,6 +226,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0062 = _err("E0062", Category.SYNTAX, "'nonlocal' is not valid at module level"),
+     E0063 = _err(
+         "E0063",
+         Category.SYNTAX,
+         "'glob' is only valid at module level, perhaps you mean global",
+         help="Move the glob declaration to the top of the file, outside any function or code block.",
+         blocks_codegen=True
+     ),
      E0065 = _err("E0065", Category.SYNTAX, "Duplicate keyword argument '{name}'"),
      E0066 = _err(
          "E0066", Category.SYNTAX, "Positional argument follows keyword argument"
@@ -347,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1036",
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
-         " \"{type}[Any]\"; consider adding explicit type arguments"
+         " \"{type}[any]\"; consider adding explicit type arguments"
      ),
      # Explicit `any` annotation warning
      W1037 = _warn(
@@ -359,6 +379,21 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
+     E1042 = _err(
+         "E1042",
+         Category.TYPE,
+         "Expected {expected}, but got {actual} -- this call returns a coroutine "
+         "that was not awaited",
+         help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
+         "functions are async RPC stubs on the client and always need 'await'."
+     ),
+     E1043 = _err(
+         "E1043",
+         Category.TYPE,
+         "TypedDict \"{type}\" has no key \"{key}\"",
+         help="Add the key to the TypedDict definition, or index with a key "
+         "declared on the type."
+     ),
      # Function call errors
      E1050 = _err(
          "E1050",
@@ -581,7 +616,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1102 = _warn(
          "W1102",
          Category.IMPORT,
-         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+         "Imported name '{name}' from foreign-source module '{module}' typed as any"
      ),
      W1103 = _warn(
          "W1103",

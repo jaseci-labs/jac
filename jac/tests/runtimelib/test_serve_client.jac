@@ -73,9 +73,63 @@ def make_fullstack_app_client(base_path: str) -> JacTestClient {
     );
 }
 
+"""Create a client for the multi-file cross-boundary (Path B) app.
+
+The entry module (`crossbound_app.jac`) opens the client but imports no server
+endpoint; the endpoints live in `crossbound_server.jac` and are reached only
+through the client's `sv import`. Copied into an isolated dir so relative
+imports resolve.
+"""
+def make_crossboundary_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    # Unique entry module name so repeated runs in one process do not collide in
+    # the program/module cache (mirrors make_client_app_client).
+    module_name = f"crossbound_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "crossbound_app.jac", dest / f"{module_name}.jac");
+    shutil.copy(fixtures_src / "crossbound_server.jac", dest / "crossbound_server.jac");
+    shutil.copy(
+        fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
+    );
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
+"""Create a cross-boundary client whose app lives UNDER the jaclang package root.
+
+Same fixtures as `make_crossboundary_client`, but the entry/server/client files
+are copied into a unique dir inside the jaclang package (where `jac ai --ui` and
+other bundled apps live). `JacCompiler._resolve_program` routes any file under
+the package root to the compiler's `internal_program`, so the cross-boundary
+interop facts land in that hub rather than `Jac.program.mod.hub` -- the exact
+condition under which the serve endpoint collector missed them. Returns
+`(client, cleanup_dir)`; the caller must rmtree `cleanup_dir`.
+"""
+def make_bundled_crossboundary_client -> tuple {
+    import jaclang;
+    jaclang_root = Path(jaclang.__file__).resolve().parent;
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"crossbound_bundled_{unique_id}";
+    dest = jaclang_root / f"_bundled_serve_test_{unique_id}";
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "crossbound_app.jac", dest / f"{module_name}.jac");
+    shutil.copy(fixtures_src / "crossbound_server.jac", dest / "crossbound_server.jac");
+    shutil.copy(
+        fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
+    );
+    client = JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+    return (client, str(dest));
+}
+
 """Create test client with base_route_app configured for SPA catch-all."""
 def make_spa_client(tmp_path: str) -> JacTestClient {
-    import from jaclang.project.config { JacConfig, ServeConfig, set_config }
+    import from jaclang.project.config { JacConfig, ServeConfig }
     fixtures_src = Path(fixture_abs_path("")).resolve();
     unique_id = uuid.uuid4().hex[:8];
     module_name = f"spa_app_{unique_id}";
@@ -90,11 +144,11 @@ def make_spa_client(tmp_path: str) -> JacTestClient {
             shutil.copy(f, fixtures_dest / dest_name);
         }
     }
-    set_config(JacConfig(serve=ServeConfig(base_route_app="client_page")));
     return JacTestClient.from_file(
         str(fixtures_dest / f"{module_name}.jac"),
         base_path=str(fixtures_dest),
-        module_name=module_name
+        module_name=module_name,
+        config=JacConfig(serve=ServeConfig(base_route_app="client_page"))
     );
 }
 
@@ -1116,6 +1170,71 @@ test "serve client page html and bundle" {
 }
 
 # =============================================================================
+# TestCrossBoundaryEndpoints (Path B / issue 6221) (3 tests)
+# =============================================================================
+test "issue 6221: client-called def:pub endpoint registers without entry re-import" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # cross_pub is def:pub and the client calls it via `sv import`, but it is
+        # NOT imported into the entry module. Whole-program detection (Path B)
+        # must register it anyway, instead of the old silent 404/405.
+        response = client.post("/function/cross_pub", json={});
+        assert response.ok , f"cross_pub should be callable: {response.data}";
+        assert response.data["result"]["msg"] == "pub-ok";
+        client.close();
+    }
+}
+
+test "issue 6221: cross-boundary def:priv endpoint registers but requires auth" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # Reached via the same `sv import`, so it registers -- but its own `priv`
+        # access level must still be honored: rejected without auth, callable
+        # with auth (proving it is registered, just gated -- never auto-public).
+        unauth = client.post("/function/cross_priv", json={});
+        assert not unauth.ok , "cross_priv must require auth";
+        client.register_user("cb_user", "pw_12345678");
+        authed = client.post("/function/cross_priv", json={});
+        assert authed.ok , f"cross_priv should be callable with auth: {authed.data}";
+        assert authed.data["result"]["msg"] == "priv-ok";
+        client.close();
+    }
+}
+
+test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_crossboundary_client(tmpdir);
+        # cross_orphan is def:pub but nothing calls it across the boundary and the
+        # entry never imports it. Path B is call-scoped (not "expose every pub"),
+        # so it must stay unregistered even for an authenticated caller.
+        client.register_user("cb_user2", "pw_12345678");
+        response = client.post("/function/cross_orphan", json={});
+        assert not response.ok , "uncalled cross_orphan should not be registered";
+        client.close();
+    }
+}
+
+test "bundled app: cross-boundary def:pub endpoint registers for jaclang-bundled app" {
+    # Regression for `jac ai --ui`: when the app lives under the jaclang package
+    # root, its modules route to the compiler's internal_program, so the
+    # cross-boundary bindings land there -- not in `Jac.program.mod.hub`. The
+    # serve collector must span both hubs (`_search_hubs`); before the fix it
+    # scanned only `Jac.program.mod.hub` (empty for a bundled app), so cross_pub
+    # went unregistered and the client got a 404/405 instead of "pub-ok".
+    bundled = make_bundled_crossboundary_client();
+    client = bundled[0];
+    cleanup_dir = bundled[1];
+    try {
+        response = client.post("/function/cross_pub", json={});
+        assert response.ok , f"bundled cross_pub should be callable: {response.data}";
+        assert response.data["result"]["msg"] == "pub-ok";
+    } finally {
+        client.close();
+        shutil.rmtree(cleanup_dir, ignore_errors=True);
+    }
+}
+
+# =============================================================================
 # TestImportedWalkerAccessLevels (7 tests)
 # =============================================================================
 test "serve imported public walker without auth" {
@@ -1350,8 +1469,6 @@ test "serve spa catchall serves html for clean urls" {
         assert '<div id="__jac_root">' in html;
         assert "/static/client.js?hash=" in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1364,8 +1481,6 @@ test "serve spa catchall root serves html" {
         assert "<!DOCTYPE html>" in html;
         assert '<div id="__jac_root">' in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1377,8 +1492,6 @@ test "serve spa catchall nested path" {
         html = response.text;
         assert "<!DOCTYPE html>" in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1394,8 +1507,6 @@ test "serve spa catchall api paths unaffected" {
         data = walkers_response.data;
         assert "walkers" in data;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1408,8 +1519,6 @@ test "serve spa catchall cl route still works" {
         assert "<!DOCTYPE html>" in html;
         assert '<div id="__jac_root">' in html;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
@@ -1419,14 +1528,10 @@ test "serve spa catchall static files unaffected" {
         response = spa.get("/static/nonexistent.js");
         assert not response.ok;
         spa.close();
-        import from jaclang.project.config { JacConfig, set_config }
-        set_config(JacConfig());
     }
 }
 
 test "serve unknown path returns 404 without base route app" {
-    import from jaclang.project.config { JacConfig, set_config }
-    set_config(JacConfig());
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.get("/some-unknown-path");

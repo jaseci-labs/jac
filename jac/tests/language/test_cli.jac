@@ -14,6 +14,7 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.cli.commands { analysis, execution, project, tools, transform }
 import from jaclang.cli.commands { config as config_cmd }
+import from jaclang.cli.registry { get_registry }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
@@ -1117,24 +1118,23 @@ test "jac create and run no root files" {
     }
 }
 
-test "jac create default name jactastic" {
+test "jac create without name initializes current directory" {
     _ensure_template_registry();
     _tmpdir = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     os.chdir(_tmpdir);
     try {
         cli_dir = Path(_tmpdir);
-        # First create should use jactastic
+        dir_name = cli_dir.name;
         assert project.create() == 0;
-        assert (cli_dir / "jactastic").is_dir();
+        assert (cli_dir / "jac.toml").is_file();
+        assert (cli_dir / "main.jac").is_file();
+        assert not (cli_dir / "jactastic").exists();
+        toml = (cli_dir / "jac.toml").read_text(encoding="utf-8");
+        assert f'name = "{dir_name}"' in toml;
 
-        # Second create should use jactastic1
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic1").is_dir();
-
-        # Third create should use jactastic2
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic2").is_dir();
+        # Second create in same directory should fail without --force
+        assert project.create() != 0;
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(_tmpdir, ignore_errors=True);
@@ -1877,6 +1877,77 @@ test "jac check nowarn flag suppresses warnings" {
 
     # Should NOT show detailed warning messages
     assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
+}
+
+"""Run analysis.check with captured stdout/stderr; reset global config after."""
+def _check_captured(paths: list, disable_error_code: list = []) -> tuple[int, str] {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+    _reset_config();
+    try {
+        result = analysis.check(paths, disable_error_code=disable_error_code);
+        combined = captured_stdout.getvalue() + captured_stderr.getvalue();
+        return (result, combined);
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+        set_config(None);
+        _reset_config();
+    }
+}
+
+test "jac check disable_error_code maps to check arg" {
+    parser = get_registry().finalize();
+    (args, _) = parser.parse_known_args(
+        ["check", fixture_path("warnings_only.jac"), "--disable-error-code", "E1030"]
+    );
+    assert args.disable_error_code == ["E1030"] , (
+        "kebab-case CLI flag should map to disable_error_code arg"
+    );
+}
+
+test "jac check disable_error_code resolves kebab alias and comma tokens" {
+    (resolved, unknown) = analysis._resolve_disable_error_codes(
+        ["no-print", "E1030,W2001", "e9999", "E9999"]
+    );
+    assert resolved == ["E3012", "E1030", "W2001"] , (
+        "kebab aliases and comma-separated codes should resolve"
+    );
+    assert unknown == ["E9999"] , ("unknown tokens should dedupe by canonical code");
+}
+
+test "jac check disable_error_code suppresses matching diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (base_result, _) = _check_captured([fixture]);
+    assert base_result == 1 , "fixture should fail check without suppression";
+    (suppressed_result, suppressed_output) = _check_captured(
+        [fixture], disable_error_code=["E1030"]
+    );
+    assert suppressed_result == 0 , "suppressed E1030 should not fail check";
+    assert "FAILED" not in suppressed_output , "suppressed run should not fail";
+}
+
+test "jac check disable_error_code comma form suppresses diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (result, output) = _check_captured([fixture], disable_error_code=["E1030,E9999"]);
+    assert result == 0 , "comma-separated E1030 should suppress the fixture error";
+    assert "FAILED" not in output , "suppressed comma-form run should not fail";
+    assert "Ignoring unknown diagnostic codes in --disable-error-code" in output , (
+        "unknown comma chunk member should still warn"
+    );
+}
+
+test "jac check disable_error_code warns on unknown diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (_, combined) = _check_captured([fixture], disable_error_code=["E9999", "E1030"]);
+    assert "Ignoring unknown diagnostic codes in --disable-error-code" in combined , (
+        "unknown codes should produce an explicit warning"
+    );
+    assert "E9999" in combined , "unknown warning should use canonical code casing";
 }
 
 test "lexer does not hang on unterminated jsx" {

@@ -20,6 +20,13 @@ impl JacProgram.init(
     # rdep map is complete (survives cache hits). Off for one-shot runs that
     # never query dependents; on for long-lived clients (LSP, CodeIntelligence).
     self._track_dependencies: bool = False;
+    # Auto-promote-to-native request: set by the nacompile / `jac run
+    # --autonative` paths on an isolated program before compile. Read by
+    # `compile` (to force TypeCheckPass) and NaIRGenPass (to coerce the main
+    # module into native context). `_auto_promote_target` is the absolute path
+    # of the module to promote.
+    self._auto_promote_native: bool = False;
+    self._auto_promote_target: str = "";
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -197,6 +204,38 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
             }
         }
     }
+}
+
+"""The hubs `find_module` spans: this program's, plus the compiler's internal
+program (jaclang-bundled files route there). Skipped when they are the same
+object so self is never scanned twice."""
+impl JacProgram._search_hubs(self: JacProgram) -> list[dict] {
+    hubs: list[dict] = [self.mod.hub];
+    internal = self._get_compiler().internal_program;
+    if internal is not self {
+        hubs.append(internal.mod.hub);
+    }
+    return hubs;
+}
+
+impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) {
+    import os;
+    hubs = self._search_hubs();
+    for hub in hubs {
+        if path in hub {
+            return hub[path];
+        }
+    }
+    # Normalized fallback for path case/separator differences (Windows).
+    normalized = os.path.normcase(path);
+    for hub in hubs {
+        for (hub_path, mod) in hub.items() {
+            if os.path.normcase(hub_path) == normalized {
+                return mod;
+            }
+        }
+    }
+    return None;
 }
 
 impl JacProgram.get_bytecode(

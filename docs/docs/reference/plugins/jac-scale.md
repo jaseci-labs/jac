@@ -2423,6 +2423,7 @@ mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
 |----------------|-------------|---------|
 | `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
 | `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
+| `loki_enabled` | Deploy Loki + Alloy log pipeline and add Pod Logs dashboard to Grafana | `false` |
 
 #### Dashboard Credentials
 
@@ -2523,7 +2524,9 @@ namespace = "production"
 
 Controls how the application is exposed inside the cluster and externally.
 
-All traffic flows through a single **NGINX Ingress controller** deployed per app. The Ingress controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
+By default, jac-scale deploys a **dedicated NGINX Ingress controller per app**. The controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
+
+To use a pre-existing shared controller instead, see [Shared Ingress](#shared-ingress) below.
 
 **Defaults:**
 
@@ -2548,6 +2551,71 @@ All traffic flows through a single **NGINX Ingress controller** deployed per app
 container_port = 8000
 ingress_node_port = 30080
 ```
+
+---
+
+### Shared Ingress
+
+By default each app deploys its own NGINX controller (one Deployment, one NodePort/NLB, one IngressClass). Set `shared_ingress = true` to skip that and attach the app's routing rules to a pre-existing shared NGINX controller in your cluster instead.
+
+**When to use shared ingress:**
+
+- You already run a cluster-wide `ingress-nginx` controller (e.g. installed via Helm) and don't want a separate controller per app
+- You are deploying multiple apps to the same cluster and want to reduce resource overhead
+
+**Requirements:**
+
+- A running NGINX ingress controller must already exist in the cluster
+- `domain` **must** be set. The shared controller sees Ingress resources from all namespaces, so host-based routing is the only way to differentiate two apps. jac-scale raises an error at deploy time if `domain` is empty when `shared_ingress = true`
+
+**Configuration:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `shared_ingress` | `false` | Use a pre-existing shared controller instead of deploying a dedicated one |
+| `shared_ingress_class` | `"nginx"` | IngressClass name of the shared controller |
+| `shared_ingress_annotations` | `{}` | Extra annotations merged onto the Ingress. Required to drive non-nginx controllers (AWS ALB, Traefik, GKE). Caller-supplied values take precedence |
+| `shared_ingress_tls` | `false` | Set when the controller terminates TLS out-of-band (e.g. ALB via an ACM cert) so the reported URL uses `https`. nginx+cert-manager (`spec.tls`) is detected automatically |
+
+```toml
+[plugins.scale.kubernetes]
+shared_ingress = true
+domain = "myapp.example.com"          # required: used as the Ingress host field
+
+# Override if your shared controller uses a non-default class
+# shared_ingress_class = "nginx"
+```
+
+**Non-nginx controllers (e.g. AWS ALB).** `shared_ingress_class` may name any controller; nginx-specific tuning is emitted only when the class is `nginx`. Supply controller-specific settings via `shared_ingress_annotations` so jac-scale stays cloud-agnostic:
+
+```toml
+[plugins.scale.kubernetes]
+shared_ingress = true
+shared_ingress_class = "alb"
+shared_ingress_tls = true
+domain = "linkedin.jaseci.app"
+
+[plugins.scale.kubernetes.shared_ingress_annotations]
+"alb.ingress.kubernetes.io/group.name" = "shared-alb"     # join one shared ALB
+"alb.ingress.kubernetes.io/scheme" = "internet-facing"
+"alb.ingress.kubernetes.io/target-type" = "ip"
+"alb.ingress.kubernetes.io/certificate-arn" = "arn:aws:acm:...:certificate/..."
+"alb.ingress.kubernetes.io/listen-ports" = '[{"HTTP": 80}, {"HTTPS": 443}]'
+"alb.ingress.kubernetes.io/ssl-redirect" = "443"
+```
+
+**What changes in shared mode:**
+
+| Behaviour | Dedicated (default) | Shared |
+|-----------|---------------------|--------|
+| Controller deployed | Yes (one per app) | No (uses existing controller) |
+| IngressClass | `{namespace}-{app_name}-nginx` | Value of `shared_ingress_class` |
+| Routing rules | Wildcard (host set by `--enable-tls`) | Host set immediately to `domain` |
+| On destroy | Removes controller, RBAC, IngressClass, and Ingress rules | Removes Ingress rules only; controller is untouched |
+| TLS (`--enable-tls`) | Works (cert-manager Issuer uses app-specific class) | Works (cert-manager Issuer uses shared class) |
+
+!!! note
+    Because the shared controller routes by the `Host:` header, each app in the cluster must have a unique domain. Two apps named `jaseci` in `dev` and `prod` namespaces are fully isolated as long as they have different domains (`dev.example.com` vs `prod.example.com`).
 
 ---
 
@@ -2883,7 +2951,7 @@ jac_mcp = "latest"     # Optional MCP server plugin
 
 ### Monitoring Stack
 
-jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter) into the same namespace as your application.
+jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
 
 | Component | Purpose |
 |-----------|---------|
@@ -2891,6 +2959,8 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
+| **Loki** _(optional)_ | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Grafana Alloy** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
 
 **Defaults:**
 
@@ -2898,6 +2968,7 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 |----------|---------|-------------|
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
+| `loki_enabled` | `false` | Deploy Loki + Grafana Alloy and add a Pod Logs dashboard to Grafana |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
 
 **To enable in `jac.toml`:**
@@ -2907,6 +2978,13 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 enabled = true
 k8s_metrics_enabled = true
 prometheus_admin_password = "StrongPassword123!"
+```
+
+**To also enable log aggregation:**
+
+```toml
+[plugins.scale.kubernetes]
+loki_enabled = true
 ```
 
 After deployment, access:
@@ -2920,6 +2998,15 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 - Jaseci application `/metrics` endpoint
 - kube-state-metrics (pod, deployment, replica, restart state)
 - node-exporter (CPU, memory, disk, network per node)
+
+**Loki log pipeline (`loki_enabled = true`):**
+
+When enabled, two additional components are deployed:
+
+- **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
+
+A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
 > To collect application metrics, also enable `[plugins.scale.monitoring] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
 
@@ -3340,6 +3427,39 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 replicas = 2
 hpa = { enabled = false }
 ```
+
+### Centralised Logs
+
+Microservice mode can deploy a Loki + Grafana Alloy log aggregation pipeline alongside the existing Prometheus + Grafana monitoring stack. Off by default.
+
+```toml
+[plugins.scale.microservices.logs]
+enabled = true
+```
+
+When enabled, `jac start --scale` deploys:
+
+- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[plugins.scale.kubernetes].monitoring_enabled = true` and `loki_enabled = true` on the monolith target.
+
+A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
+
+| Component | Resource | Reach |
+|-----------|----------|-------|
+| Loki | Deployment + ClusterIP Service `<app>-loki-service:3100` | Cluster-internal only |
+| Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
+| Grafana | Deployment + Service, NodePort/NLB via Ingress | `/grafana` on the app's external endpoint |
+
+> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) land in M-14.c.
+
+<!-- -->
+
+> **Trace correlation.** Microservice mode already propagates `X-Trace-Id` (K-12). Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field ships in M-14.b.
+
+<!-- -->
+
+> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy lands in M-14.c.
 
 ---
 

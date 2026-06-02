@@ -923,6 +923,34 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # TypedDict instances expose dict methods. get/pop/setdefault
+                    # get per-field overloads so a literal key resolves precisely;
+                    # the rest (keys, items, values, ...) resolve against the
+                    # equivalent dict[str, V].
+                    if base_type.is_typeddict() {
+                        if expr.right.value in ("get", "pop", "setdefault") {
+                            synth = self._synthesize_typeddict_method(
+                                base_type, expr.right.value
+                            );
+                            if synth is not None {
+                                expr.right.type = synth;
+                                return synth;
+                            }
+                        }
+                        td_dict = self._typeddict_as_dict(base_type);
+                        if (
+                            td_dict is not None
+                            and (
+                                td_member := self._lookup_object_member(
+                                    td_dict, expr.right.value
+                                )
+                            )
+                        ) {
+                            td_member_ty = self.get_type_of_member(td_member, td_dict);
+                            expr.right.type = td_member_ty;
+                            return td_member_ty;
+                        }
+                    }
                     # Check for __getattr__ override before reporting error.
                     # When a class defines __getattr__, any attribute access that doesn't
                     # match an explicit member should return the __getattr__ return type.
@@ -1372,6 +1400,32 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # Bare ClassVar without type arg - return Unknown
                         return types.UnknownType();
                     }
+                    # --- Handle Literal special form ---
+                    # Literal["a"] / Literal[1, 2] build literal-typed instances
+                    # (a union when multiple values are given) so distinct
+                    # literals stay distinct for assignability and overloads.
+                    if target_name == "Literal" {
+                        lit_types: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            lit_vals = expr.right.slices[0].start;
+                            val_exprs = lit_vals.values
+                                if isinstance(lit_vals, uni.TupleVal)
+                                else [lit_vals];
+                            for val in val_exprs {
+                                if lt := self._literal_type_from_expr(val) {
+                                    lit_types.append(lt);
+                                }
+                            }
+                        }
+                        if len(lit_types) == 1 {
+                            return lit_types[0];
+                        }
+                        if len(lit_types) > 1 {
+                            return types.UnionType(types=lit_types);
+                        }
+                        return types.UnknownType();
+                    }
                 }
                 # Subscript on Any should return Any, not Unknown (check before generic
                 # specialization to avoid Any's subscript returning Any[Unknown]).
@@ -1468,6 +1522,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     subscript_arg = expr.right.slices[0].start;
                 }
+                # TypedDict subscript: td["field"] resolves to the field type.
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.is_class_instance()
+                    and base_type.is_typeddict()
+                ) {
+                    td_result = self._get_typeddict_indexed_type(
+                        base_type, subscript_arg, expr
+                    );
+                    if td_result is not None {
+                        return td_result;
+                    }
+                }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
                 );
@@ -1534,8 +1601,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 self.emit_diag(E1041, expr, type=target_type.name);
                 return types.UnknownType();
             }
-            # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
-            return target_type;
+            # Unwrap the awaitable: Coroutine[Y, S, R] -> R, Awaitable[T] -> T,
+            # else via the `__await__` protocol. Non-awaitables pass through.
+            return self._unwrap_awaitable_type(target_type, expr);
 
         case uni.CastExpr():
             # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
@@ -1889,6 +1957,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
                     if na_sym is not None {
                         symbol = na_sym;
+                    }
+                }
+                # Client (.cl.jac / cl {}) ambient names: ECMAScript and browser
+                # globals (Date, Math, console, window, ...). Like the native
+                # block above they override a Python builtin of the same name
+                # but never shadow a user-defined symbol, and are gated on
+                # client context so they stay invisible to server .jac code.
+                if symbol is None or symbol.parent_tab is self.builtins_module {
+                    js_sym = self.js_globals_module.names_in_scope.get(expr.value);
+                    if js_sym is not None and expr.in_client_context() {
+                        symbol = js_sym;
                     }
                 }
                 if symbol {
@@ -3042,12 +3121,12 @@ impl TypeEvaluator.assign_type(
             }
         }
 
-        # Case 3: Literal["x"] -> Literal["y"] (same base type)
-        # Allow any literal to be assigned to another literal of the same base type.
-        # This effectively widens both to the base type (e.g., str).
+        # Case 3: Literal["x"] -> Literal["y"] (same base type) is assignable
+        # only when the values are equal. Distinct literals must not match, so
+        # literal-typed overloads (e.g. TypedDict get/pop) discriminate on key.
         if src_type.is_literal_type() and dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
-                return True;
+                return src_type.get_literal_value() == dest_type.get_literal_value();
             }
         }
 
@@ -3436,6 +3515,116 @@ impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | N
     return None;
 }
 
+"""Wrap a return type as the coroutine an `async def` call evaluates to.
+
+Returns `Coroutine[Any, Any, inner]`. If the Coroutine class is unavailable
+(e.g. a minimal typeshed) or `inner` is already a generator-family type
+(async generators are async-iterated, not awaited), `inner` is returned
+unchanged.
+"""
+impl TypeEvaluator._make_coroutine_type(inner: TypeBase) -> TypeBase {
+    if self.prefetch.coroutine_class is None {
+        return inner;
+    }
+    if type_utils.is_generator_family_type(inner) {
+        return inner;
+    }
+    coro = self.prefetch.coroutine_class.clone_as_instance();
+    coro.private.type_args = [types.AnyType(), types.AnyType(), inner];
+    return coro;
+}
+
+"""True if `t` is an awaitable value (a Coroutine/Awaitable instance, or a
+class implementing the `__await__` protocol)."""
+impl TypeEvaluator._is_awaitable_type(t: TypeBase) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if t.is_builtin(["Coroutine", "Awaitable"]) {
+        return True;
+    }
+    return self.get_type_of_magic_method_call(t, "__await__", [], None) is not None;
+}
+
+"""Unwrap a single `await`.
+
+`Coroutine[Y, S, R]` -> R, `Awaitable[T]` -> T, otherwise the return of the
+`__await__` protocol. Non-awaitable and gradual (Unknown/Any) types pass
+through unchanged so incomplete async modeling never raises a false
+"not awaitable" error on otherwise-correct code.
+"""
+impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase {
+    if not isinstance(t, types.ClassType) {
+        return t;
+    }
+    if t.is_builtin("Coroutine") {
+        if t.private.type_args and len(t.private.type_args) >= 3 {
+            return t.private.type_args[2];
+        }
+        return t;
+    }
+    if t.is_builtin("Awaitable") {
+        if t.private.type_args and len(t.private.type_args) >= 1 {
+            return t.private.type_args[0];
+        }
+        return t;
+    }
+    # Generic `__await__` protocol: it returns a Generator[Any, Any, R] whose
+    # R is the awaited value.
+    await_ret = self.get_type_of_magic_method_call(t, "__await__", [], node_);
+    if await_ret is not None {
+        gen_ret = type_utils.get_declared_generator_return_type(
+            self._convert_to_instance(await_ret)
+        );
+        if gen_ret is not None {
+            return gen_ret;
+        }
+    }
+    return t;
+}
+
+"""True if `expr` calls a function bound by `sv import` in the enclosing
+module. Such functions lower to async RPC stubs on the client, so their
+calls return coroutines even though the server declaration is synchronous.
+Mirrors the codegen signal (`KW_SERVER` source-context token).
+
+Scoped per module (keyed by `id(module)`) so a server function called from
+server code — the same shared symbol — is not affected.
+"""
+impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
+    tgt = expr.target;
+    if not isinstance(tgt, uni.Name) or tgt.sym is None {
+        return False;
+    }
+    mod = expr.find_parent_of_type(uni.Module);
+    if mod is None {
+        return False;
+    }
+    mod_key = id(mod);
+    syms = self._sv_async_syms_cache.get(mod_key);
+    if syms is None {
+        syms = set();
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            tok = imp._source_context_token();
+            if tok is None or tok.name != Tok.KW_SERVER {
+                continue;
+            }
+            for item in imp.items {
+                if (
+                    isinstance(item, uni.ModuleItem)
+                    and isinstance(item.name, uni.Name)
+                    and item.name.sym is not None
+                    and item.name.sym.sym_type == SymbolType.ABILITY
+                ) {
+                    syms.add(id(item.name.sym));
+                }
+            }
+        }
+        self._sv_async_syms_cache[mod_key] = syms;
+    }
+    return id(tgt.sym) in syms;
+}
+
 """Return the prefetched types for the type evaluator."""
 impl TypeEvaluator._prefetch_types{
     # Helper to fetch a type and assert it's a ClassType
@@ -3472,7 +3661,10 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
     self.prefetch.union_type_class = get_types_class("UnionType");
-    # self.prefetch.awaitable_class =
+    # Awaitable[T] / Coroutine[Y, S, R] live in typing.pyi. Used to model
+    # `async def` call results (Coroutine) and to unwrap `await` expressions.
+    self.prefetch.awaitable_class = get_typing_class("Awaitable");
+    self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
     # self.prefetch.method_class =
     self.prefetch.tuple_class = get_builtin_class("tuple");
@@ -3588,6 +3780,9 @@ impl TypeEvaluator.postinit -> None {
     self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "na_builtins.pyi"
     );
+    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "js_globals.pyi"
+    );
     self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "typing_ambient.pyi"
     );
@@ -3621,6 +3816,11 @@ impl TypeEvaluator.postinit -> None {
     # (File, native open) are resolved by a native-context-gated lookup in
     # get_type_of_expression so they stay invisible to regular .jac modules.
     self.na_builtins_module = self._load_stub_module(self._NA_BUILTINS_STUB_FILE_PATH);
+    # Client (JS) ambient stub. Like na_builtins, deliberately NOT merged into
+    # builtins: its names (Date, Math, console, window, ...) are resolved by a
+    # client-context-gated lookup in get_type_of_expression so they stay
+    # invisible to server .jac modules where they would be a real error.
+    self.js_globals_module = self._load_stub_module(self._JS_GLOBALS_STUB_FILE_PATH);
     # Read jac_builtins.pyi's __all__ as the declarative public surface.
     # Names not listed there (e.g. typing imports used only for this stub's
     # own annotations) stay private; user code must import them explicitly.
@@ -3768,7 +3968,8 @@ impl TypeEvaluator.get_narrowed_type(
     }
     symbol_type = self.get_type_of_symbol(symbol);
     if not isinstance(
-        symbol_type, (types.UnionType, types.ClassType, types.UnknownType)
+        symbol_type,
+        (types.UnionType, types.ClassType, types.UnknownType, types.AnyType)
     ) {
         return None;
     }
@@ -4235,6 +4436,11 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
     if callable_key := self._extract_callable_info(condition) {
         return ConditionInfo(kind=NarrowingKind.CALLABLE, key=callable_key,);
     }
+    # 2b. hasattr(x, "name")
+    if hasattr_info := self._extract_hasattr_info(condition) {
+        (h_key, h_attr) = hasattr_info;
+        return ConditionInfo(kind=NarrowingKind.HASATTR, key=h_key, attr_name=h_attr);
+    }
     # 3-4. x is None / x is not None / x == None / x != None
     # `==`/`!=` against `None` narrow identically to `is`/`is not None` —
     # this matches Pyright/mypy/TypeScript and the W2058 lint already nudges
@@ -4345,7 +4551,8 @@ impl TypeEvaluator._find_predicate_for(
             return NarrowingPredicate(
                 key=inner_pred.key,
                 narrow_type=inner_pred.narrow_type,
-                is_inverted=not inner_pred.is_inverted
+                is_inverted=not inner_pred.is_inverted,
+                attr_name=inner_pred.attr_name
             );
         }
         return None;
@@ -4459,6 +4666,15 @@ impl TypeEvaluator._find_predicate_for(
                     );
                 }
 
+            case NarrowingKind.HASATTR:
+                # attr_name drives filtering; narrow_type is a placeholder.
+                return NarrowingPredicate(
+                    key=key,
+                    narrow_type=target.declared_type,
+                    is_inverted=False,
+                    attr_name=info.attr_name
+                );
+
             case NarrowingKind.NONE_IS:
                 if self.prefetch and self.prefetch.none_type_class {
                     none_inst = self._convert_to_instance(
@@ -4538,6 +4754,16 @@ impl TypeEvaluator._apply_narrowing(
     is_positive: bool = (
         is_true_branch if not predicate.is_inverted else not is_true_branch
     );
+    # HASATTR uses attribute-presence filtering, not class identity. Same
+    # filter on both branches, parameterized by `keep_with_attr`.
+    if predicate.attr_name is not None {
+        base_type: TypeBase = (
+            incoming if incoming is not None else target.declared_type
+        );
+        return self._filter_union_for_hasattr(
+            base_type, predicate.attr_name, is_positive
+        );
+    }
     if is_positive {
         # Get the base type to filter
         base_type: TypeBase;
@@ -4667,6 +4893,45 @@ impl TypeEvaluator._type_matches_isinstance(
         return True;
     }
     return False;
+}
+
+"""True if `t` declares `attr_name` (MRO walk; `__getattr__` makes it always true)."""
+impl TypeEvaluator._type_has_attribute(t: TypeBase, attr_name: str) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if self._lookup_class_member(t, attr_name) is not None {
+        return True;
+    }
+    if self._get_getattr_return_type(t) is not None {
+        return True;
+    }
+    return False;
+}
+
+"""Keep union members whose attribute presence matches `keep_with_attr`."""
+impl TypeEvaluator._filter_union_for_hasattr(
+    base_type: TypeBase, attr_name: str, keep_with_attr: bool
+) -> TypeBase | None {
+    matching: list[TypeBase] = [];
+    if isinstance(base_type, types.UnionType) and base_type.types {
+        for t in base_type.types {
+            if self._type_has_attribute(t, attr_name) == keep_with_attr {
+                matching.append(t);
+            }
+        }
+    } else {
+        if self._type_has_attribute(base_type, attr_name) == keep_with_attr {
+            matching.append(base_type);
+        }
+    }
+    if len(matching) == 0 {
+        return None;
+    } elif len(matching) == 1 {
+        return matching[0];
+    } else {
+        return types.UnionType(types=matching);
+    }
 }
 
 """Union multiple narrowed types at a join point."""
@@ -4899,6 +5164,44 @@ impl TypeEvaluator._extract_callable_info(condition: uni.Expr) -> str | None {
         return None;
     }
     return self.create_key_for_reference(condition.params[0]);
+}
+
+"""Parse hasattr(x, "name") → (key, attr); None for dynamic attr names."""
+impl TypeEvaluator._extract_hasattr_info(
+    condition: uni.Expr
+) -> tuple[str, str] | None {
+    if not isinstance(condition, uni.FuncCall) {
+        return None;
+    }
+    if not isinstance(condition.target, uni.Name)
+    or condition.target.value != "hasattr" {
+        return None;
+    }
+    if not condition.params or len(condition.params) != 2 {
+        return None;
+    }
+    narrowing_key = self.create_key_for_reference(condition.params[0]);
+    if narrowing_key is None {
+        return None;
+    }
+    # Only single-part, non-formatted string literals.
+    attr_arg = condition.params[1];
+    if (
+        isinstance(attr_arg, uni.MultiString)
+        and len(attr_arg.strings) == 1
+        and isinstance(attr_arg.strings[0], uni.String)
+    ) {
+        str_node = attr_arg.strings[0];
+    } elif isinstance(attr_arg, uni.String) {
+        str_node = attr_arg;
+    } else {
+        return None;
+    }
+    attr_name = str_node.lit_value;
+    if not isinstance(attr_name, str) {
+        return None;
+    }
+    return (narrowing_key, attr_name);
 }
 
 """Check whether a type is callable (FunctionType or Callable annotation)."""

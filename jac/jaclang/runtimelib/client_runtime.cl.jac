@@ -17,6 +17,18 @@ def __buildDom(nd: any) -> any;
 # Internal: Apply property to DOM element
 def __applyProp(element: any, key: str, value: any) -> None;
 # ============================================================================
+# View wrappers — compiler-emitted for `try`/`awaiting`/`except` JSX
+# ============================================================================
+# Synthesized by the view-lowering pass: `try { ... } awaiting { ... }` lowers
+# to `<JacAwaiting fallback={...}>{...}</JacAwaiting>`, and `except` arms add a
+# `<JacClientErrorBoundary fallback={...}>`. jac-client backs these with
+# `React.Suspense` and `react-error-boundary`; bare-serve has neither, so these
+# render their resolved children directly (no suspense, no error capture). They
+# exist so the same view code compiles and the emitted imports resolve in both
+# runtimes.
+def JacAwaiting(props: dict[str, any]) -> any;
+def JacClientErrorBoundary(props: dict[str, any]) -> any;
+# ============================================================================
 # Reactive State Management System
 # ============================================================================
 
@@ -145,6 +157,38 @@ async def __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) ->
 def jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any;
 # Function call function - calls server-side functions from client
 async def __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any;
+# ============================================================================
+# Auto-cache — compiler-driven caching for walker/function calls
+# ============================================================================
+# Reader endpoints are cached (LRU + TTL) and concurrent identical requests are
+# deduped; writer endpoints invalidate the readers they touch. Endpoint effects
+# are supplied by the compiler (serialized into `globalThis.__jacEndpointEffects__`
+# at module load, with a `__jac_init__` fallback), so an endpoint with no
+# metadata simply fetches directly. Runtime-agnostic — same logic backs
+# jac-client; bare-serve owns it natively with no npm dependency.
+
+# Read compiler-provided endpoint effects.
+def __getEndpointEffects -> dict[str, any];
+# Get or initialize cache state on globalThis.
+def __getCacheState -> dict[str, any];
+# Whether a cache entry is still within its TTL.
+def __isFresh(`entry: dict[str, any]) -> bool;
+# Get a cache entry and promote it in LRU order.
+def __cacheGet(key: str) -> any;
+# Store an entry with LRU eviction.
+def __cacheSet(key: str, data: any, ttl: int) -> None;
+# Evict the oldest cache entry.
+def __evictOldest -> None;
+# Whether two lists share any element.
+def __overlaps(list1: list[any], list2: list[any]) -> bool;
+# Invalidate all cache entries under an endpoint-key prefix.
+def __invalidateEndpoint(endpoint_key: str) -> None;
+# Raw walker fetch (POST /walker/<name>[/<nodeId>]) — no caching.
+async def __doWalkerFetch(`walker: str, nodeId: str, fields: dict[str, any]) -> any;
+# Raw function fetch (POST /function/<name>) — no caching.
+async def __doFuncFetch(function_name: str, args: dict[str, any]) -> any;
+# Cache-aware dispatch shared by __jacSpawn and __jacCallFunction.
+async def __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any;
 # Authentication helpers
 def __normalizeIdentity(x: any) -> dict[str, any];
 def __normalizeCredential(x: any) -> dict[str, any];

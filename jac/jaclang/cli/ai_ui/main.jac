@@ -1,18 +1,14 @@
 """Jac AI web UI -- entry point combining the agent backend and the frontend.
 
-Server is the default context, so the endpoint + type imports sit plainly at the
-top (this is what registers them, and how the access-extraction pass sees their
-`def:pub` visibility); the client app is opened under the `to cl:` section.
+This entry declares only the client app (`cl def:pub app` returns the React
+tree, `cl import` pulls in the frontend). The server endpoints it calls are
+registered automatically: the frontend's `sv import from .server` records the
+client->server bindings the compiler resolves into live endpoints, so they no
+longer need to be re-imported here under the server context.
 """
 
-import from server { agent_poll, agent_send, agent_graph, agent_reset }
-import from server { UiEvent, PollResult, GraphNode, GraphEdge, GraphData }
+cl import from .frontend { app as ClientApp }
 
-to cl:
-
-import from .frontend { app as ClientApp }
-
-def:pub app -> JsxElement {
-    return
-        <ClientApp/>;
+cl def:pub app -> JsxElement {
+    return <ClientApp/>;
 }

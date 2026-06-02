@@ -31,7 +31,12 @@ obj JacTypeEntry {
 """Typed registry of all Jac primitive types."""
 obj JacTypeRegistry {
     has _entries: dict[str, JacTypeEntry],
-        _builtin_names: frozenset[str];
+        _builtin_names: frozenset[str],
+        # Builtin exception hierarchy (child -> direct parent), ordered
+        # topologically so parents precede children. The root maps to None.
+        # See the "Exception Types" section of primitives.jac for the human
+        # readable tree; this is the machine-readable source of truth.
+        _exception_parents: dict[str, str | None];
 
     """Get a type entry by name, or None if not found."""
     def get(name: str) -> JacTypeEntry | None {
@@ -41,6 +46,11 @@ obj JacTypeRegistry {
     """Set of all primitive type names."""
     def primitive_names -> set[str] {
         return set(self._entries.keys());
+    }
+
+    """True if name is a primitive type."""
+    def is_primitive(name: str) -> bool {
+        return name in self._entries;
     }
 
     """List of (name, emitter_suffix) pairs for building emitter dicts."""
@@ -62,6 +72,11 @@ obj JacTypeRegistry {
         return set(self._builtin_names);
     }
 
+    """True if name is a builtin function."""
+    def is_builtin(name: str) -> bool {
+        return name in self._builtin_names;
+    }
+
     """Numeric kind for a primitive type name; NotNumeric if unknown / non-numeric."""
     def numeric_kind_of(name: str) -> NumericKind {
         entry = self._entries.get(name, None);
@@ -69,6 +84,43 @@ obj JacTypeRegistry {
             return NumericKind.NotNumeric;
         }
         return entry.numeric_kind;
+    }
+
+    """True if name is a builtin exception type."""
+    def is_exception(name: str) -> bool {
+        return name in self._exception_parents;
+    }
+
+    """Direct parent of an exception type; None for the root or unknown names."""
+    def exception_parent(name: str) -> str | None {
+        return self._exception_parents.get(name, None);
+    }
+
+    """All builtin exceptions as (name, parent) pairs in topological order
+    (parents before children). The root's parent is None.
+    """
+    def exception_entries -> list[tuple[str, str | None]] {
+        return [(name, parent) for (name, parent) in self._exception_parents.items()];
+    }
+
+    """All transitive descendants of an exception type (excluding itself).
+
+    Enables hierarchy-aware matching: `except ArithmeticError` must also catch
+    ZeroDivisionError, OverflowError and FloatingPointError.
+    """
+    def exception_descendants(type_name: str) -> list[str] {
+        descendants: list[str] = [];
+        for child in self._exception_parents.keys() {
+            cur = self._exception_parents[child];
+            while cur is not None {
+                if cur == type_name {
+                    descendants.append(child);
+                    break;
+                }
+                cur = self._exception_parents.get(cur, None);
+            }
+        }
+        return descendants;
     }
 }
 
@@ -248,5 +300,42 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "bytearray",
 
              }
-         )
+         ),
+         _exception_parents={
+             "BaseException": None,
+             "Exception": "BaseException",
+             "ArithmeticError": "Exception",
+             "ZeroDivisionError": "ArithmeticError",
+             "OverflowError": "ArithmeticError",
+             "FloatingPointError": "ArithmeticError",
+             "LookupError": "Exception",
+             "IndexError": "LookupError",
+             "KeyError": "LookupError",
+             "ValueError": "Exception",
+             "TypeError": "Exception",
+             "AttributeError": "Exception",
+             "RuntimeError": "Exception",
+             "NotImplementedError": "RuntimeError",
+             "RecursionError": "RuntimeError",
+             "OSError": "Exception",
+             "FileNotFoundError": "OSError",
+             "FileExistsError": "OSError",
+             "PermissionError": "OSError",
+             "TimeoutError": "OSError",
+             "IsADirectoryError": "OSError",
+             "NotADirectoryError": "OSError",
+             "AssertionError": "Exception",
+             "ImportError": "Exception",
+             "ModuleNotFoundError": "ImportError",
+             "NameError": "Exception",
+             "UnboundLocalError": "NameError",
+             "StopIteration": "Exception",
+             "StopAsyncIteration": "Exception",
+             "EOFError": "Exception",
+             "MemoryError": "Exception",
+             "ReferenceError": "Exception",
+             "KeyboardInterrupt": "BaseException",
+             "SystemExit": "BaseException",
+             "GeneratorExit": "BaseException"
+         }
      );

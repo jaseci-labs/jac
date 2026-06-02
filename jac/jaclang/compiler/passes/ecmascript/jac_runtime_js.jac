@@ -1143,55 +1143,107 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
-  exc: (() => {
-    class BaseException extends Error { constructor(m) { super(m); this.name = 'BaseException'; } }
-    class Exception extends BaseException { constructor(m) { super(m); this.name = 'Exception'; } }
-    class ArithmeticError extends Exception { constructor(m) { super(m); this.name = 'ArithmeticError'; } }
-    class ZeroDivisionError extends ArithmeticError { constructor(m) { super(m); this.name = 'ZeroDivisionError'; } }
-    class OverflowError extends ArithmeticError { constructor(m) { super(m); this.name = 'OverflowError'; } }
-    class FloatingPointError extends ArithmeticError { constructor(m) { super(m); this.name = 'FloatingPointError'; } }
-    class LookupError extends Exception { constructor(m) { super(m); this.name = 'LookupError'; } }
-    class IndexError extends LookupError { constructor(m) { super(m); this.name = 'IndexError'; } }
-    class KeyError extends LookupError { constructor(m) { super(m); this.name = 'KeyError'; } }
-    class ValueError extends Exception { constructor(m) { super(m); this.name = 'ValueError'; } }
-    class TypeError_ extends Exception { constructor(m) { super(m); this.name = 'TypeError'; } }
-    class AttributeError extends Exception { constructor(m) { super(m); this.name = 'AttributeError'; } }
-    class RuntimeError extends Exception { constructor(m) { super(m); this.name = 'RuntimeError'; } }
-    class NotImplementedError extends RuntimeError { constructor(m) { super(m); this.name = 'NotImplementedError'; } }
-    class RecursionError extends RuntimeError { constructor(m) { super(m); this.name = 'RecursionError'; } }
-    class OSError extends Exception { constructor(m) { super(m); this.name = 'OSError'; } }
-    class FileNotFoundError extends OSError { constructor(m) { super(m); this.name = 'FileNotFoundError'; } }
-    class FileExistsError extends OSError { constructor(m) { super(m); this.name = 'FileExistsError'; } }
-    class PermissionError extends OSError { constructor(m) { super(m); this.name = 'PermissionError'; } }
-    class TimeoutError extends OSError { constructor(m) { super(m); this.name = 'TimeoutError'; } }
-    class IsADirectoryError extends OSError { constructor(m) { super(m); this.name = 'IsADirectoryError'; } }
-    class NotADirectoryError extends OSError { constructor(m) { super(m); this.name = 'NotADirectoryError'; } }
-    class AssertionError extends Exception { constructor(m) { super(m); this.name = 'AssertionError'; } }
-    class ImportError extends Exception { constructor(m) { super(m); this.name = 'ImportError'; } }
-    class ModuleNotFoundError extends ImportError { constructor(m) { super(m); this.name = 'ModuleNotFoundError'; } }
-    class NameError extends Exception { constructor(m) { super(m); this.name = 'NameError'; } }
-    class UnboundLocalError extends NameError { constructor(m) { super(m); this.name = 'UnboundLocalError'; } }
-    class StopIteration extends Exception { constructor(m) { super(m); this.name = 'StopIteration'; } }
-    class StopAsyncIteration extends Exception { constructor(m) { super(m); this.name = 'StopAsyncIteration'; } }
-    class EOFError extends Exception { constructor(m) { super(m); this.name = 'EOFError'; } }
-    class MemoryError extends Exception { constructor(m) { super(m); this.name = 'MemoryError'; } }
-    class ReferenceError_ extends Exception { constructor(m) { super(m); this.name = 'ReferenceError'; } }
-    class KeyboardInterrupt extends BaseException { constructor(m) { super(m); this.name = 'KeyboardInterrupt'; } }
-    class SystemExit extends BaseException { constructor(m) { super(m); this.name = 'SystemExit'; } }
-    class GeneratorExit extends BaseException { constructor(m) { super(m); this.name = 'GeneratorExit'; } }
-    return {
-      BaseException, Exception,
-      ArithmeticError, ZeroDivisionError, OverflowError, FloatingPointError,
-      LookupError, IndexError, KeyError,
-      ValueError, TypeError: TypeError_, AttributeError,
-      RuntimeError, NotImplementedError, RecursionError,
-      OSError, FileNotFoundError, FileExistsError, PermissionError,
-      TimeoutError, IsADirectoryError, NotADirectoryError,
-      AssertionError, ImportError, ModuleNotFoundError,
-      NameError, UnboundLocalError,
-      StopIteration, StopAsyncIteration, EOFError, MemoryError,
-      ReferenceError: ReferenceError_,
-      KeyboardInterrupt, SystemExit, GeneratorExit
-    };
-  })()
-}""";
+  exc: __JAC_EXC_RUNTIME__
+}""",
+     # JS globals shadowed by builtin exception names; defined under an aliased
+     # local name and re-exported under their real name so generated code can
+     # reference _jac.exc.<RealName> without colliding with the host global.
+     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
+
+"""Build the `_jac.exc` IIFE from the canonical exception hierarchy.
+
+Emits one JS class per exception (in topological order so each `extends`
+references an already-declared parent) and returns the export map, all derived
+from JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
+"""
+def _build_exc_runtime_js -> str {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    lines: list[str] = ["(() => {"];
+    exports: list[str] = [];
+    for (name, parent) in JAC_TYPE_REGISTRY.exception_entries() {
+        local = (name + "_") if name in _JS_RESERVED_EXC_NAMES else name;
+        parent_local = (
+            "Error"
+                if parent is None
+                else ((parent + "_") if parent in _JS_RESERVED_EXC_NAMES else parent)
+        );
+        lines.append(
+            "    class " + local + " extends " + parent_local + " { constructor(m) { super(m); this.name = '" + name + "'; } }"
+        );
+        exports.append(
+            (name + ": " + local) if name in _JS_RESERVED_EXC_NAMES else name
+        );
+    }
+    lines.append("    return { " + ", ".join(exports) + " };");
+    lines.append("  })()");
+    return "\n".join(lines);
+}
+
+"""Return the fully-assembled `_jac` runtime object literal (raw JS string)."""
+def build_jac_runtime_js -> str {
+    return JAC_RUNTIME_JS_OBJECT.replace(
+        "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+    );
+}
+
+"""Memoized compiled-kernel JS (declarations only; no `_jac`, no exports)."""
+glob _OSP_KERNEL_JS_CACHE: list[str] = [];
+
+"""Compile the portable Object-Spatial kernel (`osp_kernel.jac`) to JS for cl
+injection and return its declarations only.
+
+`osp_kernel.jac` is the single source of truth for OSP traversal across every
+backend (#6146). A cl module that runs a walker locally (rather than via the
+`__jacSpawn` server RPC) needs the kernel's `osp_spawn` / `osp_visit` /
+`osp_disengage` / `osp_report` and its `OspRuntime` / `WalkerDesc` / `NodeDesc`
+/ `Slot` classes inlined in the emitted JS. The kernel's own injected
+`const _jac = ...` runtime and its `export {...}` statement are stripped: the
+host module already supplies `_jac` (via `needs_jac_runtime`) and manages its
+own exports, so re-emitting either would redeclare `_jac` or place an illegal
+nested `export`. Compiled once and memoized."""
+def build_osp_kernel_js -> str {
+    if _OSP_KERNEL_JS_CACHE {
+        return _OSP_KERNEL_JS_CACHE[0];
+    }
+    import os;
+    import shutil;
+    import tempfile;
+    import jaclang;
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+    import from jaclang.compiler.passes.ecmascript { estree as es }
+    src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
+    # The kernel is a plain `.jac` (server-default context); compile a copy
+    # named `.cl.jac` so its module-level decls are coerced to client context
+    # and the ES pass emits them.
+    tmp_dir = tempfile.mkdtemp();
+    cl_copy = os.path.join(tmp_dir, "osp_kernel.cl.jac");
+    shutil.copyfile(src, cl_copy);
+    js = "";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+        program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
+        kept: list = [];
+        if isinstance(program, es.Program) {
+            for stmt in program.body {
+                is_jac_rt = (
+                    isinstance(stmt, es.VariableDeclaration)
+                    and stmt.declarations
+                    and isinstance(stmt.declarations[0].id, es.Identifier)
+                    and (stmt.declarations[0].id.name == "_jac")
+                );
+                if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
+                    continue;
+                }
+                kept.append(stmt);
+            }
+        }
+        js = es_to_js(es.Program(body=kept, sourceType='module'));
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+    _OSP_KERNEL_JS_CACHE.append(js);
+    return js;
+}

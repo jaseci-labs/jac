@@ -224,6 +224,7 @@ test "deploy all in one" {
     target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
+    target_config["loki_enabled"] = True;
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -251,7 +252,7 @@ test "deploy all in one" {
     print(f"Deployment result details: {details}");
     print(f"Deployment status: {result.message}");
     assert result.success is True;
-    assert len(details) == 13;
+    assert len(details) == 14;
 
     full_status = deployment_target.get_full_status(app_name);
     assert full_status is not None;
@@ -573,8 +574,12 @@ test "deploy all in one" {
         name=f"{grafana_name}-datasources", namespace=namespace
     );
     assert "datasource.yaml" in grafana_ds.data;
-    assert "prometheus" in grafana_ds.data["datasource.yaml"];
-    print("Grafana datasource ConfigMap exists with Prometheus datasource");
+    ds_yaml = grafana_ds.data["datasource.yaml"];
+    assert "prometheus" in ds_yaml.lower();
+    assert "loki" in ds_yaml.lower();
+    assert "uid: loki" in ds_yaml;
+    assert "type: loki" in ds_yaml;
+    print("Grafana datasource ConfigMap exists with Prometheus and Loki datasources");
 
     grafana_dashboard = core_v1.read_namespaced_config_map(
         name=f"{grafana_name}-dashboard", namespace=namespace
@@ -583,8 +588,10 @@ test "deploy all in one" {
     assert "Jac Scale - App Metrics" in grafana_dashboard.data["jac-scale.json"];
     assert "k8s-metrics.json" in grafana_dashboard.data;
     assert "Kubernetes Cluster Metrics" in grafana_dashboard.data["k8s-metrics.json"];
+    assert "pod-logs.json" in grafana_dashboard.data;
+    assert "Pod Logs" in grafana_dashboard.data["pod-logs.json"];
     print(
-        "Grafana dashboard ConfigMap exists with Jac Scale + Kubernetes Cluster Metrics dashboards"
+        "Grafana dashboard ConfigMap exists with Jac Scale + K8s Metrics + Pod Logs dashboards"
     );
 
     grafana_provider = core_v1.read_namespaced_config_map(
@@ -592,6 +599,87 @@ test "deploy all in one" {
     );
     assert "provider.yaml" in grafana_provider.data;
     print("Grafana dashboard provider ConfigMap exists");
+
+    # Validate Loki Deployment, Service, ConfigMap, and ServiceAccount
+    loki_name = f"{app_name}-loki";
+    loki_deploy = apps_v1.read_namespaced_deployment(
+        name=loki_name, namespace=namespace
+    );
+    assert loki_deploy.metadata.name == loki_name;
+    assert loki_deploy.spec.replicas == 1;
+    loki_container = loki_deploy.spec.template.spec.containers[0];
+    assert loki_container.image == "grafana/loki:3.4.2";
+    loki_sc = loki_container.security_context;
+    assert loki_sc.run_as_non_root is True;
+    assert loki_sc.read_only_root_filesystem is True;
+    assert loki_sc.allow_privilege_escalation is False;
+    assert loki_sc.capabilities.drop == ["ALL"];
+    print(f"Loki Deployment '{loki_name}' exists with hardened security context");
+
+    loki_service = core_v1.read_namespaced_service(
+        name=f"{loki_name}-service", namespace=namespace
+    );
+    assert loki_service.spec.type == "ClusterIP";
+    assert loki_service.spec.ports[0].port == 3100;
+    print(f"Loki Service '{loki_name}-service' (ClusterIP:3100) exists");
+
+    loki_config = core_v1.read_namespaced_config_map(
+        name=f"{loki_name}-config", namespace=namespace
+    );
+    assert "loki.yaml" in loki_config.data;
+    assert "http_listen_port: 3100" in loki_config.data["loki.yaml"];
+    assert "store: tsdb" in loki_config.data["loki.yaml"];
+    print(f"Loki ConfigMap '{loki_name}-config' exists with correct config");
+
+    loki_sa = core_v1.read_namespaced_service_account(
+        name=f"{loki_name}-sa", namespace=namespace
+    );
+    assert loki_sa.metadata.name == f"{loki_name}-sa";
+    assert loki_sa.automount_service_account_token is False;
+    print(f"Loki ServiceAccount '{loki_name}-sa' exists with token automount disabled");
+
+    # Validate Alloy DaemonSet, ConfigMap, ServiceAccount, ClusterRole, ClusterRoleBinding
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
+
+    alloy_ds = apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+    assert alloy_ds.metadata.name == alloy_name;
+    alloy_container = alloy_ds.spec.template.spec.containers[0];
+    assert alloy_container.image.startswith("grafana/alloy:") , (
+        f"expected grafana/alloy image, got {alloy_container.image}"
+    );
+    tolerations = alloy_ds.spec.template.spec.tolerations;
+    assert any(
+        t.operator == "Exists" and t.effect == "NoSchedule" for t in tolerations
+    ) , "Alloy must tolerate NoSchedule to run on all nodes";
+    print(f"Alloy DaemonSet '{alloy_name}' exists with NoSchedule toleration");
+
+    alloy_config = core_v1.read_namespaced_config_map(
+        name=f"{alloy_name}-config", namespace=namespace
+    );
+    assert "config.alloy" in alloy_config.data;
+    alloy_river = alloy_config.data["config.alloy"];
+    assert "/loki/api/v1/push" in alloy_river;
+    assert f"{loki_name}-service" in alloy_river;
+    # Alloy uses River blocks; assert the two components that drive
+    # K8s SD + Loki push, equivalent to Promtail's kubernetes_sd_configs.
+    assert "discovery.kubernetes" in alloy_river;
+    assert "loki.write" in alloy_river;
+    print(f"Alloy ConfigMap '{alloy_name}-config' exists pointing to Loki with K8s SD");
+
+    alloy_sa = core_v1.read_namespaced_service_account(
+        name=f"{alloy_name}-sa", namespace=namespace
+    );
+    assert alloy_sa.metadata.name == f"{alloy_name}-sa";
+    print(f"Alloy ServiceAccount '{alloy_name}-sa' exists");
+
+    alloy_cr = rbac_v1.read_cluster_role(name=alloy_cr_name);
+    assert alloy_cr.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRole '{alloy_cr_name}' exists");
+
+    alloy_crb = rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+    assert alloy_crb.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRoleBinding '{alloy_cr_name}' exists");
 
     # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole,ClusterRoleBinding
     ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
@@ -1412,6 +1500,81 @@ test "deploy all in one" {
         }
     }
 
+    # Verify Loki resources are gone
+    loki_name = f"{app_name}-loki";
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
+
+    try {
+        apps_v1.read_namespaced_deployment(loki_name, namespace=namespace);
+        raise AssertionError("Loki Deployment should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{loki_name}-service", namespace=namespace);
+        raise AssertionError("Loki Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(f"{loki_name}-config", namespace=namespace);
+        raise AssertionError("Loki ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{loki_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Loki ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Alloy resources are gone
+    try {
+        apps_v1.read_namespaced_daemon_set(alloy_name, namespace=namespace);
+        raise AssertionError("Alloy DaemonSet should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(f"{alloy_name}-config", namespace=namespace);
+        raise AssertionError("Alloy ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{alloy_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Alloy ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRole should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRoleBinding should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Loki and Alloy cleanup verified");
+
     # Verify MongoDB ServiceAccount is gone
     try {
         core_v1.read_namespaced_service_account(
@@ -1673,7 +1836,7 @@ test "early exit" {
     failure_message = result.message;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
-    assert len(details) == 12;
+    assert len(details) == 13;
     assert result.success is False;
     assert failure_message is not None and "Containers restarted" in failure_message;
 }
@@ -2020,9 +2183,7 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing (first deploy) so create path is taken
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
-        status=404
-    );
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2066,9 +2227,7 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing for both main and Redis ingresses
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
-        status=404
-    );
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2252,4 +2411,248 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert provider._build_connection_string('default', 'pw', 'h') == 'redis://default:pw@h:6379/0';
     assert provider._build_connection_string('admin', 'pw', 'h') == 'redis://admin:pw@h:6379/0';
     assert secret_sd['connection-string'] == provider.get_connection_string();
+}
+
+# ---------------------------------------------------------------------------
+# Shared ingress mode unit tests (no live cluster)
+# Covers: controller skip, immediate host rule, destroy guard, domain
+# validation, and NodePort validation skip.
+# ---------------------------------------------------------------------------
+test "shared ingress skips deploying dedicated nginx controller" {
+    # start_controller must be a no-op for _deploy_nginx_controller when
+    # shared_ingress=True — a pre-existing cluster-wide controller is used.
+    k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_ctrl = unittest.mock.MagicMock();
+    with unittest.mock.patch.object(
+        ingress_deployer, '_deploy_nginx_controller', mock_ctrl
+    ) {
+        ingress_deployer.start_controller(
+            app_name="myapp",
+            namespace="default",
+            provider=unittest.mock.MagicMock(),
+            apps_v1=unittest.mock.MagicMock(),
+            core_v1=unittest.mock.MagicMock(),
+            rbac_v1=unittest.mock.MagicMock(),
+            networking_v1=unittest.mock.MagicMock()
+        );
+    }
+    assert not mock_ctrl.called , "_deploy_nginx_controller must not be called when shared_ingress=True";
+}
+
+test "shared ingress rule sets host immediately without waiting for tls" {
+    # Dedicated mode keeps the rule wildcard (no host) until --enable-tls.
+    # Shared mode must set the host immediately because the shared controller
+    # routes across many namespaces by hostname; without a host two apps would
+    # both claim '/' and collide.  Mirror of the L2009 dedicated-mode test.
+    k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    assert mock_networking_v1.create_namespaced_ingress.called , "ingress must be created";
+    created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
+    rule = created_body["spec"]["rules"][0];
+    assert rule.get("host") == "myapp.example.com" , "shared ingress rule must set host immediately so the shared controller can route by hostname";
+    assert created_body["spec"]["ingressClassName"] == "nginx" , "ingressClassName must use shared_ingress_class";
+}
+
+test "shared ingress destroy skips controller resource teardown" {
+    # App-level Ingress objects are always cleaned up.  The NGINX controller
+    # Deployment, Service, ServiceAccount, ConfigMap, ClusterRole,
+    # ClusterRoleBinding, and IngressClass must NOT be deleted — those belong
+    # to the shared controller and are managed externally.
+    k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_apps_v1 = unittest.mock.MagicMock();
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_rbac_v1 = unittest.mock.MagicMock();
+    mock_networking_v1 = unittest.mock.MagicMock();
+    # delete_if_exists swallows 404; let all deletes appear as 404 so the
+    # function stays a no-op while still recording the call.
+    not_found = ApiException();
+    not_found.status = 404;
+    mock_networking_v1.delete_namespaced_ingress.side_effect = not_found;
+    mock_core_v1.delete_namespaced_secret.side_effect = not_found;
+
+    mock_custom_api = unittest.mock.MagicMock();
+    mock_custom_api.delete_namespaced_custom_object.side_effect = not_found;
+
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.ingress.client"
+    ) as mock_client {
+        mock_client.CustomObjectsApi.return_value = mock_custom_api;
+        ingress_deployer.destroy(
+            app_name="myapp",
+            namespace="default",
+            apps_v1=mock_apps_v1,
+            core_v1=mock_core_v1,
+            rbac_v1=mock_rbac_v1,
+            networking_v1=mock_networking_v1
+        );
+    }
+
+    # App ingress objects must always be cleaned up
+    assert mock_networking_v1.delete_namespaced_ingress.called , "app Ingress resource must be deleted regardless of shared_ingress mode";
+
+    # Controller resources must be left untouched
+    assert not mock_apps_v1.delete_namespaced_deployment.called , "controller Deployment must not be deleted in shared ingress mode";
+    assert not mock_core_v1.delete_namespaced_service_account.called , "controller ServiceAccount must not be deleted in shared ingress mode";
+    assert not mock_rbac_v1.delete_cluster_role.called , "ClusterRole must not be deleted in shared ingress mode";
+    assert not mock_rbac_v1.delete_cluster_role_binding.called , "ClusterRoleBinding must not be deleted in shared ingress mode";
+    assert not mock_networking_v1.delete_ingress_class.called , "IngressClass must not be deleted in shared ingress mode";
+}
+
+test "shared ingress deploy fails fast when domain is not set" {
+    # The domain is mandatory in shared mode because the shared controller
+    # routes by Host header; without it two apps cannot be told apart.
+    # The check must fire before any Kubernetes API call is made.
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'test-app';
+    target_config['namespace'] = 'test-ns';
+    target_config['shared_ingress'] = True;
+    target_config['domain'] = '';  # explicitly empty — the invalid state
+
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    app_config = AppConfig(
+        code_folder='/tmp', file_name='main.jac', build=False, experimental=False
+    );
+
+    result = deployment_target.deploy(app_config);
+
+    assert result.success is False , "deploy must fail when shared_ingress=True but domain is empty";
+    assert "domain" in result.message.lower() , "error message must mention domain requirement";
+    # validate_shared_ingress must NOT be present — the exception fires before
+    # details['validate_shared_ingress'] is written
+    assert "validate_shared_ingress" not in result.details , "deploy must abort before recording validate_shared_ingress";
+}
+
+test "shared ingress deploy skips nodeport validation" {
+    # validate_ports is the mechanism that rejects a conflicting NodePort on
+    # local clusters.  In shared ingress mode no NodePort is created, so
+    # calling validate_ports would be incorrect (it may also reject valid ports
+    # that the shared controller already owns).
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'test-app';
+    target_config['namespace'] = 'test-ns';
+    target_config['shared_ingress'] = True;
+    target_config['domain'] = 'myapp.example.com';
+
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    app_config = AppConfig(
+        code_folder='/tmp', file_name='main.jac', build=False, experimental=False
+    );
+
+    mock_provider = unittest.mock.MagicMock();
+    mock_provider.needs_nlb_wait.return_value = False;
+    mock_provider.log_ingress_deployed.return_value = None;
+
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jac_scale.targets.kubernetes.kubernetes_target.check_K8s_status"
+        ) {
+            with unittest.mock.patch(
+                "jac_scale.targets.kubernetes.kubernetes_target.ensure_namespace_exists"
+            ) {
+                with unittest.mock.patch(
+                    "jac_scale.targets.kubernetes.kubernetes_target.load_env_variables",
+                    return_value=[]
+                ) {
+                    with unittest.mock.patch(
+                        "jac_scale.targets.kubernetes.kubernetes_target.get_cluster_provider",
+                        return_value=mock_provider
+                    ) {
+                        with unittest.mock.patch(
+                            "jac_scale.targets.kubernetes.kubernetes_target.client"
+                        ) {
+                            # deploy() may fail at a later step once mocked K8s
+                            # APIs return generic MagicMocks — that is expected.
+                            # We only care that the provider was obtained and
+                            # validate_ports was never invoked on it.
+                            deployment_target.deploy(app_config);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert not mock_provider.validate_ports.called , "validate_ports must not be called when shared_ingress=True — no NodePort is created";
+}
+
+test "shared ingress merges caller-supplied annotations for non-nginx controllers" {
+    # A non-nginx shared controller (e.g. AWS ALB) is driven entirely by the
+    # annotations the caller supplies. They must land on the Ingress metadata,
+    # ingressClassName must be the shared class, and nginx-specific tuning must
+    # NOT be emitted (it is meaningless to a non-nginx controller).
+    custom = {
+        "alb.ingress.kubernetes.io/group.name": "shared-alb",
+        "alb.ingress.kubernetes.io/scheme": "internet-facing",
+        "alb.ingress.kubernetes.io/certificate-arn": "arn:aws:acm:us-east-2:1:certificate/x"
+    };
+    k8s_config = KubernetesConfig(
+        shared_ingress=True,
+        shared_ingress_class="alb",
+        shared_ingress_annotations=custom,
+        domain="linkedin.jaseci.app"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="alb",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    assert mock_networking_v1.create_namespaced_ingress.called , "ingress must be created";
+    created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
+    annos = created_body["metadata"]["annotations"];
+    assert annos["alb.ingress.kubernetes.io/group.name"] == "shared-alb" , "caller annotations must be merged onto the ingress";
+    assert annos["alb.ingress.kubernetes.io/certificate-arn"].startswith(
+        "arn:aws:acm"
+    ) , "ACM cert annotation must be present";
+    assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
+    for key in annos.keys() {
+        assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
 }

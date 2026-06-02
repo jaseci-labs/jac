@@ -23,7 +23,7 @@ test "all type str methods" {
 
     # AnyType
     any_type = types.AnyType();
-    assert str(any_type) == "<Any>";
+    assert str(any_type) == "<any>";
 
     # TypeVarType
     type_var = types.TypeVarType();
@@ -59,11 +59,11 @@ test "all type str methods" {
     func2 = types.FunctionType(
         func_name="add", parameters=[param1, param2], return_type=types.AnyType()
     );
-    assert str(func2) == "<function add(x: <Any>, y: <Any>) -> <Any>>";
+    assert str(func2) == "<function add(x: <any>, y: <any>) -> <any>>";
 
     # FunctionType - return type only
     func3 = types.FunctionType(func_name="get_value", return_type=types.AnyType());
-    assert str(func3) == "<function get_value() -> <Any>>";
+    assert str(func3) == "<function get_value() -> <any>>";
 
     # FunctionType - anonymous
     func4 = types.FunctionType();
@@ -87,13 +87,13 @@ test "all type str methods" {
     int_type = types.AnyType();
     str_type = types.AnyType();
     union2 = types.UnionType(types=[int_type, str_type]);
-    assert str(union2) == "<Any> | <Any>";
+    assert str(union2) == "<any> | <any>";
 
     # UnionType - different types
     union3 = types.UnionType(
         types=[types.UnknownType(), types.NeverType(), types.AnyType()]
     );
-    assert str(union3) == "<Unknown> | <Never> | <Any>";
+    assert str(union3) == "<Unknown> | <Never> | <any>";
 
     # ClassType
     mock_module = MagicMock(spec=Module);

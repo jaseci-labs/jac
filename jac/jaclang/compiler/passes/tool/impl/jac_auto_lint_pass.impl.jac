@@ -2447,7 +2447,7 @@ TODO: this is ad-hoc, need to do proper type inference.
 """
 impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -> str {
     if value is None {
-        return "Any";
+        return "any";
     }
     if isinstance(value, (uni.String, uni.MultiString)) {
         return "str";
@@ -2470,7 +2470,7 @@ impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -
     if isinstance(value, uni.DictVal) {
         return "dict";
     }
-    return "Any";
+    return "any";
 }
 
 """Create an ArchHas (has declaration) node from useState info.

@@ -30,6 +30,7 @@ import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.jac0core.codeinfo { ClientManifest }
 import from jaclang.compiler.passes.ecmascript.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -231,6 +232,57 @@ obj CallArgSlot {
 
 """Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
+    has child_passes: list[EsastGenPass] = [],
+        imports: list[es.ImportDeclaration] = [],
+        exports: list[es.ExportNamedDeclaration] = [],
+        scope_stack: list[ScopeInfo] = [],
+        scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
+        client_manifest: (ClientManifest | None) = None,
+        jsx_processor: (EsJsxProcessor | None) = None,
+        scoped_styles: (ScopedStyleSheet | None) = None,
+        # Reactive state variables: var_name -> setter_name (e.g., "count" -> "setCount")
+        reactive_vars: dict[str, str] = {},
+        # Stack to save/restore reactive_vars per function boundary
+        reactive_vars_stack: list[dict[str, str]] = [],
+        # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
+        injected_imports: set[str] = set(),
+        # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
+        # enclosing slot scope (a `str`), or `None` for a nested-`def` barrier that
+        # suspends lowering. The topmost `str` is the accumulator a JSX statement
+        # pushes into; a `None` on top means we are inside a nested function and
+        # JSX should NOT be accumulated. The counter gives nested slot scopes
+        # (try/awaiting/except arms) unique local names.
+        _view_stack: list[(str | None)] = [],
+        # The first slot keeps the bare `__jac_view_kids` name; every later slot
+        # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
+        _view_used_base: bool = False,
+        _view_acc_counter: int = 0,
+        # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
+        # the clause handlers know to scope their own accumulators.
+        _view_awaiting_tries: set[int] = set(),
+        # JS function stubs for def:pub functions imported via sv import
+        sv_import_stubs: list[es.Statement] = [],
+        # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
+        needs_jac_runtime: bool = False,
+        # OSP local-kernel lowering: set when a local walker is spawned via the
+        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
+        # injection in exit_module. `_osp_slots` collects one record per OSP
+        # ability: {owner, kind, name, trigger_names (list, empty = untyped),
+        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
+        # archetypes that need a compile-time type tag.
+        needs_osp_kernel: bool = False,
+        _osp_slots: list[dict] = [],
+        _osp_arch_names: list[str] = [],
+        # Memoized set of local archetype names that participate in OSP (a
+        # walker/node/edge declared with event abilities, plus the node/edge
+        # types those abilities trigger on). Computed up front so emission
+        # order (a trigger node declared before its walker) doesn't matter.
+        _osp_prescan: (set[str] | None) = None,
+        # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
+        _primitive_emitters: (dict[str, object] | None) = None,
+        _builtin_emitter: (object | None) = None,
+        _primitives_es_mod: (object | None) = None;
+
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
@@ -277,6 +329,22 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
+    def _osp_ability_info(nd: uni.Ability) -> (dict | None);
+    def _osp_trigger_names(expr: (uni.Expr | None)) -> list[str];
+    def _osp_const_decl(
+        name: str, `init: es.Expression, nd: uni.UniNode
+    ) -> es.VariableDeclaration;
+
+    def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _build_osp_setup_js -> str;
+    def _osp_slots_js(slots: list, tags: dict) -> str;
+    def _local_walker_names -> set[str];
+    def _osp_arch_set -> set[str];
+    def _spawn_side_arch_type(expr: uni.Expr) -> (SymbolType | None);
+    def _build_local_osp_spawn(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> (es.Expression | None);
+
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
         nd: (uni.UniNode | None),
@@ -307,7 +375,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _get_setter_name(var_name: str) -> str;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
-    def _inject_react_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _register_jac_runtime_import -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
@@ -362,6 +429,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
+    def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;
     def exit_try_stmt(nd: uni.TryStmt) -> None;
     def exit_except(nd: uni.Except) -> None;
     def exit_finally_stmt(nd: uni.FinallyStmt) -> None;
@@ -381,6 +449,29 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         right_es: (es.Expression | None),
         jac_node: uni.UniNode
     ) -> (es.Expression | None);
+
+    def _expr_type_name(expr_node: uni.UniNode) -> str;
+    def _is_collection_expr(expr_node: uni.UniNode) -> bool;
+    def _build_jac_ref(path: list[str], jac_node: uni.UniNode) -> es.Expression;
+    def _build_jac_call(
+        path: list[str], args: list[es.Expression], jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _coerce_truthy(
+        expr_node: (uni.UniNode | None), es_expr: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _is_literal_index(idx_es: es.Expression) -> bool;
+    def _lower_subscript(
+        target_node: uni.UniNode,
+        obj_es: es.Expression,
+        idx_es: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _try_subscript_setitem(
+        target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
+    ) -> (es.Statement | None);
 
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
@@ -404,7 +495,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
-    def _resolve_sv_import_ability(name: str) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];

@@ -233,39 +233,7 @@ class JacWalker {
         insert_loc: int = -1
     ) -> bool;
 
-    """Execute all entry abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _execute_entries(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Execute all exit abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _execute_exits(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Recursively visit a node with DFS semantics.
-
-        1. Execute entries for this node
-        2. Recursively visit all children added during entry
-        3. Execute exits for this node (post-order)
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static def _visit_node_recursive(
-        warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
-    ) -> bool;
-
-    """Jac's spawn operator feature with recursive DFS semantics.
+    """Jac's spawn operator feature.
 
         Entry abilities execute when entering a node, exit abilities execute
         after all descendants are visited (post-order/LIFO).
@@ -273,38 +241,6 @@ class JacWalker {
     static def spawn_call(
         `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype;
-
-    """Async version: Execute all entry abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static async def _async_execute_entries(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Async version: Execute all exit abilities for current location.
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static async def _async_execute_exits(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        current_loc: (NodeArchetype | EdgeArchetype)
-    ) -> bool;
-
-    """Async version: Recursively visit a node with DFS semantics.
-
-        1. Execute entries for this node
-        2. Recursively visit all children added during entry
-        3. Execute exits for this node (post-order)
-
-        Returns True if walker should continue, False if disengaged.
-        """
-    static async def _async_visit_node_recursive(
-        warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
-    ) -> bool;
 
     """Jac's async spawn operator feature with recursive DFS semantics.
 
@@ -557,6 +493,18 @@ system,
 
     """Mark a method as jac exit with this decorator."""
     static def on_exit(func: Callable) -> Callable;
+
+    """Stamp an ability with its compiler-known trigger type.
+
+    Emitted by codegen for every `with <T> entry/exit` ability so the trigger
+    is carried as data rather than recovered at runtime via `inspect`. The
+    argument is a no-arg thunk (`lambda: <T>`) that resolves the trigger lazily
+    at first dispatch — deferring evaluation so forward-referenced types (e.g.
+    a node ability triggered by a walker defined later) resolve correctly. Read
+    by `make_archetype` into `ObjectSpatialFunction.trigger_override`."""
+    static def set_trigger(
+        trigger_thunk: Callable
+    ) -> Callable[([Callable], Callable)];
 }
 
 """Jac Client Bundle Operations - Generic interface for client bundling."""

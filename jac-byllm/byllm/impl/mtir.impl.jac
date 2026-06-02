@@ -144,6 +144,19 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     } except Exception { }
 
+    # `by llm(system_prompt=...)` extends base. Accepts str or zero-arg callable.
+    call_system_prompt = call_params.get("system_prompt");
+    if callable(call_system_prompt) {
+        try {
+            call_system_prompt = call_system_prompt();
+        } except Exception {
+            call_system_prompt = None;
+        }
+    }
+    if call_system_prompt {
+        system_content += "\n\n" + str(call_system_prompt);
+    }
+
     # Conversational mode: `by llm(conversation=<list>)` splices the
     # caller's prior conversation between SYSTEM and USER. Entries on input
     # may be Messages or dicts; write-back always emits dicts.
@@ -183,9 +196,14 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
-    if is_streaming and return_type is not str {
+    if is_streaming
+    and return_type is not str
+    and call_params.get("stream_handler") is None {
         raise ConfigurationError(
-            "Streaming responses are only supported for str return types."
+            "Streaming responses are only supported for str return types. "
+            "Pass a stream_handler to receive stream events for a structured "
+            "return type (e.g. `visit [-->] by model(stream=True, "
+            "stream_handler=fn)`)."
         );
     }
     if len(tools) > 0 {

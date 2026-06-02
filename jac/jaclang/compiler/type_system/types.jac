@@ -7,7 +7,7 @@ import type from jaclang.jac0core.unitree { Expr, Symbol }
 import type from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
 
 """Enumeration of type categories."""
-enum TypeCategory ( IntEnum ) {
+enum TypeCategory(IntEnum) {
     Unbound,
     Unknown,
     Never,
@@ -197,6 +197,9 @@ Holds the shared details of class type.
             is_from_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
             is_data_class: bool = False,
             is_namedtuple: bool = False,
+            is_typeddict: bool = False,
+            # Ordered field name -> declared value type; None for non-TypedDicts.
+            typeddict_fields: (dict[str, TypeBase] | None) = None,
             is_root_class: bool = False,
             is_enum_class: bool = False,
             enum_value_type: (TypeBase | None) = None,
@@ -251,6 +254,7 @@ Holds the private details of class type.
     def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;
+    def is_typeddict -> bool;
     def is_enum_class -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;
@@ -282,7 +286,7 @@ class ParamKind(IntEnum) {
 Based on Pyright's FunctionTypeFlags. These flags control how the
 function type behaves during type checking.
 """
-enum FunctionTypeFlags ( IntEnum ) {
+enum FunctionTypeFlags(IntEnum) {
     Null = 0,
     # The *args and **kwargs parameters do not need to be present for this
     # function to be compatible. This is used for Callable[..., x] (gradual typing).
@@ -322,7 +326,12 @@ obj FunctionType(TypeBase) {
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
         function_flags: int = 0,
-        type_params: (list[TypeVarType] | None) = None;
+        type_params: (list[TypeVarType] | None) = None,
+        # True for `async def` / async abilities. A call to one evaluates to a
+        # coroutine (`Coroutine[Any, Any, return_type]`) at the call site, so
+        # callers must `await` it. The declared `return_type` itself stays the
+        # unwrapped type (it is what `return` statements are checked against).
+        is_async: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;

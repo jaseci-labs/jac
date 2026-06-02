@@ -342,6 +342,14 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
             # Scope boundary -- don't recurse into nested scopes
             continue;
         }
+        if isinstance(k, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)) {
+            # Loop boundary -- body tails back-edge to the loop header (wired by
+            # the loop's exit handler), so don't sweep them to the successor.
+            if not k.bb_out and not self._is_terminal(k) {
+                self.link_bbs(k, target);
+            }
+            continue;
+        }
         if isinstance(k, uni.UniCFGNode) {
             if not k.bb_out and not self._is_terminal(k) {
                 # Unconnected tail -- link to target
@@ -745,23 +753,32 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         }
     }
 
-    if nd.body {
-        self._link_sequential(nd.body);
-        # Back-edge: last body stmt -> loop header
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
+    self._link_body_tails_to_header(nd);
+}
+
+"""Back-edge every unconnected body tail to the loop header, including branch
+tails inside the body (e.g. the true arm of an if-without-else)."""
+impl CFGBuildPass._link_body_tails_to_header(
+    nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+) -> None {
+    if not nd.body {
+        return;
+    }
+    self._link_sequential(nd.body);
+    if not self._is_terminal(nd.body[-1]) {
+        self.link_bbs(nd.body[-1], nd);
+    }
+    # Scope to body stmts so else_body / successor never joins the cycle.
+    for stmt in nd.body {
+        self._connect_tails(stmt, nd);
     }
 }
 
 """InForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
+    self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
-        self._link_sequential(nd.body);
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
     }
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         self.link_bbs(nd, nd.else_body.body[0]);
@@ -770,12 +787,9 @@ impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
 
 """IterForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
+    self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
-        self._link_sequential(nd.body);
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
     }
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         self.link_bbs(nd, nd.else_body.body[0]);

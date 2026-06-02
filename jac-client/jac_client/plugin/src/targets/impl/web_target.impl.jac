@@ -163,7 +163,7 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
         return DEFAULT_FUNCTION_NAME;
     }
 
-    mod = Jac.program.mod.hub.get(mod_path);
+    mod = Jac.program.find_module(mod_path);
     if not mod {
         return DEFAULT_FUNCTION_NAME;
     }

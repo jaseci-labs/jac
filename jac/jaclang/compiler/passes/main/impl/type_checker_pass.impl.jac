@@ -127,6 +127,18 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
     if not self.evaluator.assign_type(
         returning_type, return_type, strict=self.evaluator._is_strict_site(nd)
     ) {
+        # Returning an un-awaited coroutine where its resolved value is
+        # expected: surface the missing `await` explicitly.
+        if self.evaluator._is_awaitable_type(returning_type)
+        and not self.evaluator._is_awaitable_type(return_type) {
+            self.emit(
+                E1042,
+                node_override=nd,
+                actual=str(returning_type),
+                expected=str(return_type)
+            );
+            return;
+        }
         self.emit(
             E1002,
             node_override=nd,
@@ -410,7 +422,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     right_type, left_type, strict=self.evaluator._is_strict_site(nd)
                 )
             ) {
-                self.emit(E1001, actual=str(right_type), expected=str(left_type));
+                # A coroutine assigned where its awaited value is expected is
+                # a missing-`await` bug — point at the fix rather than the
+                # generic "cannot assign Coroutine[...]" message.
+                if self.evaluator._is_awaitable_type(right_type) {
+                    self.emit(E1042, actual=str(right_type), expected=str(left_type));
+                } else {
+                    self.emit(E1001, actual=str(right_type), expected=str(left_type));
+                }
             }
         }
         # Validate augmented assignment operator (+=, -=, etc.)
@@ -1142,44 +1161,59 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
 """Bind alias types from context manager BEFORE visiting body."""
 impl TypeCheckPass.enter_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
     import from jaclang.compiler.type_system { types }
+    enter_method = "__aenter__" if nd.is_async else "__enter__";
     for item in nd.exprs {
         ctx_item: uni.ExprAsItem = item;
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
-        # Bind alias type - context managers typically return self from __enter__
-        if ctx_item.alias is not None
-        and not isinstance(expr_type, types.UnknownType) {
-            if isinstance(ctx_item.alias, uni.Name) {
-                ctx_item.alias.type = expr_type;
+        if ctx_item.alias is None
+        or not isinstance(ctx_item.alias, uni.Name)
+        or isinstance(expr_type, types.UnknownType) {
+            continue;
+        }
+        # `as x` binds the enter method's return, not the manager itself
+        # (`async with` awaits __aenter__). Fall back to the manager when the
+        # protocol can't be resolved.
+        enter_ret = self.evaluator.get_type_of_magic_method_call(
+            expr_type, enter_method, [], ctx_item.expr
+        );
+        if enter_ret is not None {
+            if nd.is_async {
+                enter_ret = self.evaluator._unwrap_awaitable_type(
+                    enter_ret, ctx_item.expr
+                );
             }
+            ctx_item.alias.type = enter_ret;
+        } else {
+            ctx_item.alias.type = expr_type;
         }
     }
 }
 
-"""Type-check with statements — verify context manager protocol."""
+"""Type-check with statements: verify the (async) context manager protocol."""
 impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
     import from jaclang.compiler.type_system { types }
+    enter_method = "__aenter__" if nd.is_async else "__enter__";
+    exit_method = "__aexit__" if nd.is_async else "__exit__";
     for item in nd.exprs {
         ctx_item: uni.ExprAsItem = item;
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, types.UnknownType) {
             enter_result = self.evaluator.get_type_of_magic_method_call(
-                expr_type, "__enter__", [], ctx_item.expr
+                expr_type, enter_method, [], ctx_item.expr
             );
             if enter_result is None {
                 self.emit(E1091, node_override=nd, type=str(expr_type));
             }
-            # Check __exit__ method exists (required for context manager protocol).
-            # Use direct member lookup instead of magic method call because
-            # __exit__ takes 3 params (exc_type, exc_val, exc_tb) that we
-            # don't have at this point — magic method call would fail on
-            # argument matching even when __exit__ exists.
+            # Direct member lookup, not a magic method call: __exit__/__aexit__
+            # take 3 args (exc_type, exc_val, exc_tb) we don't have here, so a
+            # call would fail arg-matching even when the method exists.
             if isinstance(expr_type, types.ClassType) {
                 has_exit = (
                     self.evaluator._lookup_class_member(
-                        expr_type, "__exit__"
+                        expr_type, exit_method
                     ) is not None
                     or self.evaluator._lookup_object_member(
-                        expr_type, "__exit__"
+                        expr_type, exit_method
                     ) is not None
                 );
                 if not has_exit and not expr_type.is_any_type() {

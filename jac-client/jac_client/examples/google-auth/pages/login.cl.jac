@@ -9,8 +9,7 @@ cl def:pub Login -> JsxElement {
 
     # If already logged in, redirect to dashboard
     if auth.user {
-        return
-            <Navigate to="/dashboard" replace/>;
+        return <Navigate to="/dashboard" replace/>;
     }
 
     # Handle Google login - redirects to backend

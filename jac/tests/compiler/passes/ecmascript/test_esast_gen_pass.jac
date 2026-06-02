@@ -821,3 +821,45 @@ test "unsafe_html marker has the correct shape" {
         "values (e.g. numbers from a walker) don't blow up:\n" + js_code
     );
 }
+
+test "skip in a plain function body lowers to an early return" {
+    # `skip` is a Return-family keyword (like `return`/`yield`/`report`),
+    # not a Loop keyword. Used as a guard clause inside a plain function it
+    # must lower to a bare `return;`, mirroring the Python target. It must
+    # NOT become `continue;`, which is illegal JavaScript outside a loop and
+    # crashes the client build at runtime (issue #6206).
+    es_ast = compile_to_esast(fixture_path("skip_early_return.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    nodes = walk_es_nodes(es_ast);
+    continues = [
+        nd
+        for nd in nodes
+        if isinstance(nd, es.ContinueStatement)
+    ];
+    assert len(continues) == 0 , (
+        "skip in a function body must not emit `continue;` (illegal JS "
+        "outside a loop):\n" + js_code
+    );
+    assert "continue;" not in js_code , js_code;
+    assert "return;" in js_code , (
+        "skip should lower to a bare early return:\n" + js_code
+    );
+}
+
+test "user function shadowing a builtin name is called, not the builtin" {
+    es_ast = compile_to_esast(fixture_path("shadow_builtin.cl.jac"));
+    user_len_calls = [
+        nd
+        for nd in walk_es_nodes(es_ast)
+        if isinstance(nd, es.CallExpression)
+        and isinstance(nd.callee, es.Identifier)
+        and nd.callee.name == "len"
+    ];
+    # The builtin path would emit a raw primitive-emitter expression instead of
+    # a CallExpression to the user-defined `len`.
+    assert len(user_len_calls) >= 1 , (
+        "expected a call to the user-defined len(), but the builtin emitter "
+        "was used instead:\n" + es_to_js(es_ast)
+    );
+}
