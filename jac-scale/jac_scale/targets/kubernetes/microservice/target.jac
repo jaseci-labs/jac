@@ -480,27 +480,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        for svc_name in bundle.get("hpas", {}).keys() {
+        for svc_name in bundle.get("autoscalers", {}).keys() {
             k8s_name = k8s_safe_name(svc_name);
-            cfg = {};
-            try {
-                cfg = dict(
-                    get_scale_config().get_microservices_config().get(
-                        "services", {}
-                    ).get(
-                        svc_name, {}
-                    ).get(
-                        "hpa", {}
-                    )
-                );
-            } except (KeyError, AttributeError) as e {
-                if self.logger {
-                    self.logger.warn(
-                        f"Could not read hpa config for service '{svc_name}', using defaults: {e}",
-                        {"svc_name": svc_name}
-                    );
-                }
-            }
+            cfg = dict(bundle.get("autoscalers", {}).get(svc_name, {}));
             autoscaler = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),

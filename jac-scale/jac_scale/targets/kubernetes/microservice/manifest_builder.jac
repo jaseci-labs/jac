@@ -1,12 +1,10 @@
 """Manifest builder for K8s microservice mode. Produces the bundle
-{deployments, services, hpas, pdbs, pod_specs, [pvcs, user_secret,
+{deployments, services, autoscalers, pdbs, pod_specs, [pvcs, user_secret,
 ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
-import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
 
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision
@@ -34,22 +32,22 @@ obj MicroserviceManifestBuilder {
         logger: any = None;
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
-    bundle. Returns `{deployments, services, hpas, pdbs, pod_specs}`,
+    bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
     plus optional `pvcs`, `user_secret`, `ingress`."""
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
         pod_specs = self.generate_service_pod_specs(app_config, image);
         deployments: dict[str, dict[str, any]] = {};
         services: dict[str, dict[str, any]] = {};
-        hpas: dict[str, dict[str, any]] = {};
+        autoscalers: dict[str, dict[str, any]] = {};
         pdbs: dict[str, dict[str, any]] = {};
-        # HPA / PDB / PVC / Secret / Ingress builders return None when
+        # Autoscaler / PDB / PVC / Secret / Ingress builders return None when
         # disabled or unconfigured; bundle only carries non-None entries.
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
-            hpa = self._build_hpa_manifest(svc_name);
-            if hpa is not None {
-                hpas[svc_name] = hpa;
+            autoscaler_cfg = self._get_autoscaler_config(svc_name);
+            if autoscaler_cfg is not None {
+                autoscalers[svc_name] = autoscaler_cfg;
             }
             pdb = self._build_pdb_manifest(svc_name);
             if pdb is not None {
@@ -60,7 +58,7 @@ obj MicroserviceManifestBuilder {
         bundle: dict[str, any] = {
             "deployments": deployments,
             "services": services,
-            "hpas": hpas,
+            "autoscalers": autoscalers,
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
@@ -559,27 +557,17 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """HPA; overrides at [...services.NAME.hpa]. None on hpa.enabled=false."""
-    def _build_hpa_manifest(svc_name: str) -> dict[str, any] | None {
+    """Autoscaler config for a service; None if autoscaling is disabled."""
+    def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
         cfg: dict[str, any] = self._service_config(svc_name).get("hpa", {});
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
-        spec = AutoscalerSpec(
-            scale_target_name=f"{k8s_name}-deployment",
-            autoscaler_name=f"{k8s_name}-hpa",
-            namespace=self.k8s_config.namespace,
-            min_replicas=int(cfg.get("min", 1)),
-            max_replicas=int(cfg.get("max", 3)),
-            triggers=[
-                Trigger(
-                    type="cpu",
-                    metadata={"averageUtilization": str(cfg.get("cpu_target", 70))}
-                )
-            ]
-        );
-        return HPAAutoscaler()._build_manifests(spec);
+        return {
+            "min": int(cfg.get("min", 1)),
+            "max": int(cfg.get("max", 3)),
+            "cpu_target": int(cfg.get("cpu_target", 70))
+        };
     }
 
     """Single Ingress -> gateway Service; HTTP only; controller-agnostic.

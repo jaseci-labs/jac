@@ -187,22 +187,7 @@ test "render smoke: realistic bundle prints every section" {
             "__gateway__": _dep(image="gateway:v1")
         },
         "services": {"api": {}, "__gateway__": {}},
-        "hpas": {
-            "api": {
-                "spec": {
-                    "minReplicas": 2,
-                    "maxReplicas": 10,
-                    "metrics": [
-                        {
-                            "resource": {
-                                "name": "cpu",
-                                "target": {"averageUtilization": 70}
-                            }
-                        }
-                    ]
-                }
-            }
-        },
+        "autoscalers": {"api": {"min": 2, "max": 10, "cpu_target": 70}},
         "pdbs": {"api": {"spec": {"maxUnavailable": 1}}},
         "ingress": {
             "spec": {"rules": [{"host": "shop.example.com", "http": {"paths": []}}]}
