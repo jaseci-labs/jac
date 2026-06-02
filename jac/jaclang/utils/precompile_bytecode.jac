@@ -85,7 +85,22 @@ def find_jac_files(package_dir: str) -> list[str] {
     result: list[str] = [];
     pkg = Path(package_dir);
     for jac_file in sorted(pkg.rglob("*.jac")) {
-        rel = str(jac_file.relative_to(pkg));
+        # rglob("*.jac") also matches directories named ".jac" (jaclang's
+        # per-project build cache, e.g. created by a nested `jac build`).
+        # Only real files can be hashed.
+        if not jac_file.is_file() {
+            continue;
+        }
+        rel_path = jac_file.relative_to(pkg);
+        rel = str(rel_path);
+        # Skip anything under a hidden/cache directory (".jac", "__pycache__",
+        # ".git", ...). Checking only rel.startswith(".") misses these when the
+        # dot-component is nested, e.g. "admin/ui/.jac/...".
+        if any(
+            part.startswith(".") or part == "__pycache__" for part in rel_path.parts
+        ) {
+            continue;
+        }
         # Skip test files, impl files, and hidden files
         if (
             ".test." in rel

@@ -1227,30 +1227,9 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     return 0;
 }
 
-impl bundle(output: str = "dist", precompile: bool = False) -> int {
-    import from jaclang.project.config { get_config }
+"""Build a wheel for `jac bundle`; returns 0 on success."""
+def _bundle_wheel(config: any, output: str, precompile: bool) -> int {
     import from jaclang.publish.builder { WheelBuilder }
-
-    config = get_config();
-    if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
-        return 1;
-    }
-    if config.project.name is None {
-        console.error(
-            "No project name in jac.toml",
-            hint="Add 'name' under [project] to use jac bundle."
-        );
-        return 1;
-    }
-
-    console.print(
-        f"\n📦 Bundling [cyan]{config.project.name}[/cyan] "
-        f"v{config.project.version}",
-        style="bold"
-    );
 
     if precompile {
         if _precompile_all_pythons(config) != 0 {
@@ -1273,6 +1252,112 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
         f"({whl_path.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    console.print(f"  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    console.print("  Upload with: [cyan]twine upload dist/*[/cyan]", style="muted");
+    return 0;
+}
+
+"""Build an npm tarball for `jac bundle --target npm`; returns 0 on success."""
+def _bundle_npm(config: any, output: str) -> int {
+    import from jaclang.publish.npm_builder { NpmBuilder }
+    import from jaclang.publish.npm_sources { NpmBoundaryError }
+
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    console.print("\n  Building npm tarball...", style="muted");
+    try {
+        builder = NpmBuilder(config=config, project_root=config.project_root);
+        tgz_path = builder.build_to(out_dir);
+    } except NpmBoundaryError as e {
+        console.error(f"npm build failed: {e}");
+        return 1;
+    } except Exception as e {
+        console.error(f"npm build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ Built [bold]{tgz_path.name}[/bold] "
+        f"({tgz_path.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"  Tarball written to: [cyan]{tgz_path}[/cyan]", style="bold");
+    console.print("  Publish with: [cyan]npm publish[/cyan]", style="muted");
+    return 0;
+}
+
+"""Build the @jaseci/runtime npm package (maintainer task); returns 0 on success."""
+def _bundle_npm_runtime(output: str) -> int {
+    import from jaclang.publish.runtime_npm { build_runtime_to, RUNTIME_PKG_NAME }
+    import importlib.metadata;
+
+    version = importlib.metadata.version("jaclang");
+    out_dir = Path(output);
+    console.print(
+        f"\n📦 Building [cyan]{RUNTIME_PKG_NAME}[/cyan] v{version}", style="bold"
+    );
+    console.print("\n  Compiling runtime → npm tarball...", style="muted");
+    try {
+        path = build_runtime_to(out_dir, version);
+    } except Exception as e {
+        console.error(f"runtime build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ Built [bold]{path.name}[/bold] ({path.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"  Tarball written to: [cyan]{path}[/cyan]", style="bold");
+    console.print("  Publish with: [cyan]npm publish[/cyan]", style="muted");
+    return 0;
+}
+
+impl bundle(
+    output: str = "dist", target: str = "wheel", precompile: bool = False
+) -> int {
+    import from jaclang.project.config { get_config }
+
+    # The runtime package is a standalone artifact and needs no project config.
+    if target == "npm-runtime" {
+        return _bundle_npm_runtime(output);
+    }
+
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
+        return 1;
+    }
+    if config.project.name is None {
+        console.error(
+            "No project name in jac.toml",
+            hint="Add 'name' under [project] to use jac bundle."
+        );
+        return 1;
+    }
+    if target not in ("wheel", "npm", "all") {
+        console.error(
+            f"Unknown bundle target: '{target}'",
+            hint="Use --target wheel, npm, or all."
+        );
+        return 1;
+    }
+
+    console.print(
+        f"\n📦 Bundling [cyan]{config.project.name}[/cyan] "
+        f"v{config.project.version} [muted]({target})[/muted]",
+        style="bold"
+    );
+
+    if target in ("wheel", "all") {
+        if _bundle_wheel(config, output, precompile) != 0 {
+            return 1;
+        }
+    }
+    if target in ("npm", "all") {
+        if _bundle_npm(config, output) != 0 {
+            return 1;
+        }
+    }
     return 0;
 }

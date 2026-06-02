@@ -155,12 +155,6 @@ Always = "always_available"
     future_sym = mod.lookup("Future", deep=True, incl_inner_scope=True);
     always_sym = mod.lookup("Always", deep=True, incl_inner_scope=True);
 
-    print(f"\nPython version: {sys.version_info.major}.{sys.version_info.minor}");
-    print(f"Self symbol: {self_sym}");
-    print(f"Never symbol: {never_sym}");
-    print(f"Future symbol: {future_sym}");
-    print(f"Always symbol: {always_sym}");
-
     # Always should always be found
     assert always_sym is not None , "Always should always be found";
 

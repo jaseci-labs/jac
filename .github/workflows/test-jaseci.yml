@@ -271,6 +271,8 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
+    # Runs by default. Add the 'skip-k8s' label to a PR to skip it.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Check out code
