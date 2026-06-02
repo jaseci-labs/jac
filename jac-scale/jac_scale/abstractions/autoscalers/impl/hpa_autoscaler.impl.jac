@@ -14,7 +14,10 @@ impl HPAAutoscaler._build_manifests{
         "metadata": {
             "name": hpa_name,
             "namespace": spec.namespace,
-            "labels": {"app": hpa_name.removesuffix('-hpa'), "managed": "jac-scale"}
+            "labels": {
+                "app": hpa_name.removesuffix('-hpa'),
+                ** Autoscaler._managed_labels()
+            }
         },
         "spec": {
             "scaleTargetRef": {
@@ -79,5 +82,12 @@ impl HPAAutoscaler.destroy{
         autoscaler_name,
         namespace,
         'HorizontalPodAutoscaler'
+    );
+}
+
+"""Delete all HPAs in namespace matching label_selector."""
+impl HPAAutoscaler.destroy_collection{
+    AutoscalingV2Api().delete_collection_namespaced_horizontal_pod_autoscaler(
+        namespace=namespace, label_selector=label_selector
     );
 }

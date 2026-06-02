@@ -24,6 +24,15 @@ obj AutoscalerSpec {
 
 """Base class for all autoscaler engine implementations."""
 class Autoscaler {
+    """Labels applied to every resource created by any engine.
+
+    Implementations MUST use these in apply() so that destroy_collection()
+    can reliably select all managed resources by label.
+    """
+    static def _managed_labels -> dict[str, str] {
+        return {"managed": "jac-scale"};
+    }
+
     """Create or update the autoscaler resource on the cluster.
 
     Args:
@@ -44,6 +53,21 @@ class Autoscaler {
     def destroy(self: Autoscaler, autoscaler_name: str, namespace: str) {
         raise NotImplementedError(
             "destroy() must be implemented by a concrete Autoscaler subclass"
+        );
+    }
+
+    """Delete all autoscaler resources in namespace matching label_selector.
+
+    Use Autoscaler._managed_labels() to build the selector string so the
+    label set stays in sync with what apply() stamps on each resource.
+
+    Args:
+        namespace: Kubernetes namespace
+        label_selector: Label selector string, e.g. 'managed=jac-scale'
+    """
+    def destroy_collection(self: Autoscaler, namespace: str, label_selector: str) {
+        raise NotImplementedError(
+            "destroy_collection() must be implemented by a concrete Autoscaler subclass"
         );
     }
 

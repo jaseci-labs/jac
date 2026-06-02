@@ -663,7 +663,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
@@ -682,8 +681,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         try {
-            autoscaling_v2.delete_collection_namespaced_horizontal_pod_autoscaler(
-                namespace=namespace, label_selector=ms_selector
+            AutoscalerFactory.create(
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
+            ).destroy_collection(
+                namespace, ms_selector
             );
         } except ApiException as e {
             if e.status != 404 {

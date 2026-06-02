@@ -19,4 +19,7 @@ obj HPAAutoscaler(Autoscaler) {
 
     """Delete the HPA resource from the cluster."""
     def destroy(autoscaler_name: str, namespace: str) -> None;
+
+    """Delete all HPA resources in namespace matching label_selector."""
+    def destroy_collection(namespace: str, label_selector: str) -> None;
 }
