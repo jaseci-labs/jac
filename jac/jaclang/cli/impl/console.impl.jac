@@ -399,7 +399,7 @@ impl JacConsole.status(*args: any, **kwargs: any) -> AbstractContextManager {
 """Print a success message with green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
-    self._renderer.emit([Span(prefix, 'success'), Span(f" {message}", None)]);
+    self._renderer.emit([Span(f"{prefix} {message}", 'success')]);
 }
 
 """Print an error message with optional hint."""
@@ -419,15 +419,13 @@ impl JacConsole.error(
 """Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
-    self._renderer.emit(
-        [Span(prefix, 'warning'), Span(f" {message}", None)], sys.stderr
-    );
+    self._renderer.emit([Span(f"{prefix} {message}", 'warning')], sys.stderr);
 }
 
 """Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
-    self._renderer.emit([Span(prefix, 'info'), Span(f" {message}", None)]);
+    self._renderer.emit([Span(f"{prefix} {message}", 'info')]);
 }
 
 """Print a header with optional version."""
