@@ -141,6 +141,44 @@ impl TypeEvaluator._extract_tuple_element_type(
     return None;
 }
 
+"""Element type yielded by iterating `iterable_type` (`__iter__` then
+`__next__`, falling back to the iterator's sole type arg). None when not
+iterable."""
+impl TypeEvaluator._get_iterable_element_type(
+    iterable_type: TypeBase, node_for_error: uni.Expr | None = None
+) -> TypeBase | None {
+    iter_type = self.get_type_of_magic_method_call(
+        iterable_type, "__iter__", [], node_for_error
+    );
+    if not isinstance(iter_type, types.ClassType) {
+        return None;
+    }
+    next_type = self.get_type_of_magic_method_call(
+        iter_type, "__next__", [], node_for_error
+    );
+    if next_type and not isinstance(next_type, types.UnknownType) {
+        return self._convert_to_instance(next_type);
+    }
+    if iter_type.private
+    and iter_type.private.type_args
+    and len(iter_type.private.type_args) == 1 {
+        elem_type = iter_type.private.type_args[0];
+        # Specialize an unbound element TypeVar from the source's type args.
+        if isinstance(elem_type, types.TypeVarType)
+        and isinstance(iterable_type, types.ClassType)
+        and iterable_type.private.type_args {
+            specialized = iter_type.specialize_generics(
+                iterable_type.private.type_args
+            );
+            if len(specialized.private.type_args) == 1 {
+                elem_type = specialized.private.type_args[0];
+            }
+        }
+        return self._convert_to_instance(elem_type);
+    }
+    return None;
+}
+
 """Walk `tuple_type` through a positional index path and return the
 element type at the leaf, or None if any step fails."""
 impl TypeEvaluator._extract_tuple_element_type_path(

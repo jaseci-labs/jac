@@ -31,6 +31,7 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #ANY-IN-1 - `x in any_value` rejected with false E1111 (wrong is_any_type method called)
+  #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
 """
 
 import os;
@@ -306,6 +307,15 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
     assert len(program.errors_had) == 5 , "Bug #22: Tuple unpacking in for loops returns UnknownType. "
     f"Expected 5 type errors but got {len(program.errors_had)}. "
     "for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
+}
+
+# =========================================================================
+# Bug #UNPACK-1: Assignment unpacking of a non-tuple iterable typed as Unknown
+# =========================================================================
+test "bug_unpack1_assign_non_tuple_iterable" {
+    program = compile_and_check("checker_bug_unpack_iterable_assign.jac");
+    assert len(program.errors_had) == 3 , "Bug #UNPACK-1: unpacking a non-tuple iterable. "
+    f"Expected 3 type errors but got {len(program.errors_had)}.";
 }
 
 # =========================================================================
