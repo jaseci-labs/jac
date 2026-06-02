@@ -590,3 +590,20 @@ test "gap 53 discover_base_file finds .na.jac for impl file" {
         f"Gap #53: discover_base_file should find counter.na.jac, got {base}"
     );
 }
+
+# =========================================================================
+# Gap #54: TypedDict keyed subscript and dict methods (get/pop/setdefault)
+# now resolve to declared field types; unknown literal keys raise E1043.
+# =========================================================================
+test "gap 54 typeddict keyed access and dict methods" {
+    program = compile_and_check("checker_typeddict.jac");
+
+    # Only the two bad_key errors remain: E1043 plus its cascading E1002.
+    assert len(program.errors_had) == 2 , "Gap #54: TypedDict support. "
+    f"Expected exactly 2 type errors but got {len(program.errors_had)}. "
+    f"Errors: {[e.pretty_print() for e in program.errors_had[:8]]}";
+    msgs = ''.join(str(e) for e in program.errors_had);
+    assert "has no key" in msgs , (
+        f"Gap #54: expected an unknown-key (E1043) error. Got: {msgs}"
+    );
+}
