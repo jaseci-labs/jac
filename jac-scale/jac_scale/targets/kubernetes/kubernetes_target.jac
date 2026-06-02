@@ -1518,7 +1518,9 @@ obj KubernetesTarget(DeploymentTarget) {
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
             AutoscalerFactory.create(
-                self.k8s_config.autoscaler_engine, {}, self.logger
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
             ).apply(
                 AutoscalerSpec(
                     scale_target_name=app_name,
@@ -1825,7 +1827,7 @@ obj KubernetesTarget(DeploymentTarget) {
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         AutoscalerFactory.create(
-            self.k8s_config.autoscaler_engine, {}, self.logger
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         ).destroy(
             f"{app_name}-hpa", namespace
         );

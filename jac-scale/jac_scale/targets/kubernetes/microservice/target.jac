@@ -496,7 +496,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 );
             } except Exception { }
             autoscaler = AutoscalerFactory.create(
-                self.k8s_config.autoscaler_engine, {}, self.logger
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
             );
             autoscaler.apply(
                 AutoscalerSpec(
