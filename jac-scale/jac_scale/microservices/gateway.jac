@@ -25,6 +25,7 @@ import from jac_scale.microservices.runtime.util {
 # React fails on `Unexpected token '<'` (or spins on "Loading logs...").
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.logs { JacAPIServerLogs }
+import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 
 glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {
@@ -40,14 +41,16 @@ Request handling is split into named handlers so each responsibility is
 independently testable. `setup()` wires them into a single middleware
 dispatcher.
 
-Inherits `JacAPIServerAdmin` (A-05c) + `JacAPIServerLogs` (A-05a) so
-the same register-on-JFastApiServer machinery used by the monolith
-server also wires admin JSON + log-query routes onto this gateway.
+Inherits `JacAPIServerAdmin` (A-05c) + `JacAPIServerLogs` (A-05a) +
+`JacAPIServerLLMTelemetry` so the same register-on-JFastApiServer
+machinery used by the monolith server also wires admin JSON +
+log-query + LLM-telemetry routes onto this gateway.
 `_install_admin_api()` sets up a `JFastApiServer` that wraps the
 gateway's existing FastAPI app, then calls the inherited
-`register_admin_endpoints` + `register_logs_endpoints`.
+`register_admin_endpoints` + `register_logs_endpoints` +
+`register_llm_telemetry_endpoints`.
 """
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,
@@ -153,7 +156,8 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs) {
 
     """A-05c/A-05a: wire `JFastApiServer` + `UserManager` +
     `ApiKeyManager` so the inherited `register_admin_endpoints` +
-    `register_logs_endpoints` methods register routes on THIS gateway's
+    `register_logs_endpoints` + `register_llm_telemetry_endpoints`
+    methods register routes on THIS gateway's
     FastAPI app. Raises if dependencies (Mongo for UserManager, etc.)
     aren't available - callers wrap in try/except so admin failure
     doesn't take the gateway down."""

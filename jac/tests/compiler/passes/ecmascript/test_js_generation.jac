@@ -686,9 +686,9 @@ test "separated files" {
     assert "let response = await __jacSpawn(" in js_code;
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
-    # runtime helper instead of leaking the Python method name.
+    # runtime dispatcher instead of leaking the Python method name.
     assert (
-        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.strip(input)});" in js_code
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")});" in js_code
     );
 }
 
@@ -1097,14 +1097,14 @@ test "compr list multiple filters" {
 test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
-    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.strip(x))
+    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.call(x, "strip"))
     # `items` is typed as bare `list` (no element type), so x is Unknown.
     # Pre-#5508 the codegen leaked the Python `.strip()` verbatim into JS,
-    # which crashes at runtime. The polymorphic runtime helper dispatches
+    # which crashes at runtime. The polymorphic runtime dispatcher routes
     # to `String.prototype.trim` for actual strings.
-    assert "_jac.poly.strip(x)" in js_code , (
+    assert "_jac.poly.call(x, \"strip\")" in js_code , (
         "Untyped element method calls in comprehensions should route "
-        "through _jac.poly.* runtime helpers"
+        "through the _jac.poly.call runtime dispatcher"
     );
 }
 
@@ -1133,6 +1133,165 @@ test "issue 5508 case1 in operator on str method call" {
     );
 }
 
+test "poly get dispatches through runtime helper for untyped receivers" {
+    js_code = compile_fixture_to_js("poly_get_dispatch.cl.jac", FIXTURES);
+
+    # Pluck out the user-compiled function body (skip the injected _jac
+    # runtime, which legitimately contains `.get(` inside its dispatcher).
+    fn_idx = js_code.find("function test_poly_get");
+    assert fn_idx >= 0 , "compiled function test_poly_get must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 500];
+
+    # When the receiver's static type is unknown, .get() must route through
+    # the _jac.poly.call runtime dispatcher (with the method name as a string
+    # argument) instead of leaking the Python method name verbatim into JS.
+    assert "_jac.poly.call(" in user_chunk and '"get"' in user_chunk , (
+        "Untyped .get() must route through the _jac.poly.call() dispatcher;\n"
+        "got:\n" + user_chunk
+    );
+    # `_jac.poly.call(mapping, "get", "a")` does NOT contain `.get("`, but a
+    # leak like `mapping.get("a")` would — so this cleanly catches a raw
+    # Python method name escaping into the JS output.
+    assert '.get("' not in user_chunk , (
+        "Python `.get()` should not appear verbatim in compiled user JS"
+    );
+
+    # Verify the emitted JS actually runs and produces correct results.
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 1 , (
+        "poly.get hit must return existing value 1, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get miss must return default -1, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_dispatch.cl.jac");
+}
+
+test "poly get dispatches to custom obj method not plain-object bracket" {
+    js_code = compile_fixture_to_js("poly_get_custom_obj.cl.jac", FIXTURES);
+
+    fn_idx = js_code.find("function test_poly_get_custom");
+    assert fn_idx >= 0 , "compiled function test_poly_get_custom must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 600];
+
+    # Must route through the dispatcher because the receiver is any-typed.
+    assert "_jac.poly.call(" in user_chunk and '"get"' in user_chunk , (
+        "Untyped .get() on a custom obj must route through _jac.poly.call();\n"
+        "got:\n" + user_chunk
+    );
+
+    # Verify runtime behavior: the dispatcher must detect the user-defined
+    # `Cache.get` method and call it (returning 42 for "x"), rather than
+    # treating the instance as a plain-object dict — which would miss keys
+    # stored in the internal `data` dict and return the default (-1).
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get_custom()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get custom-obj dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 42 , (
+        "poly.get on custom obj must call the object's .get() method and "
+        "return 42, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get on custom obj must return default -1 for missing key, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_custom_obj.cl.jac");
+}
+
+test "poly call dispatches dict/list/set/user methods on untyped receivers" {
+    js_code = compile_fixture_to_js("poly_dispatch_complete.cl.jac", FIXTURES);
+
+    # Every untyped method call routes through the single dispatcher; no
+    # Python method name leaks verbatim into the compiled user code.
+    fn_idx = js_code.find("function test_poly_complete");
+    assert fn_idx >= 0 , "compiled function test_poly_complete must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 1200];
+    assert "_jac.poly.call(" in user_chunk , (
+        "Untyped container methods must route through _jac.poly.call();\n"
+        "got:\n" + user_chunk
+    );
+    for leaked in [".keys(", ".values(", ".update(", ".append(", ".discard("] {
+        assert leaked not in user_chunk , (
+            "Python method " + leaked + ") leaked verbatim into compiled JS:\n" + user_chunk
+        );
+    }
+
+    wrapper = (
+        js_code + "\nconsole.log(JSON.stringify(test_poly_complete()));" + "\nconsole.log(JSON.stringify(test_poly_attribute_error()));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.call dispatch crashed in Node:\nstdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    lines = result.stdout.strip().split("\n");
+    got: dict[str, any] = json.loads(lines[0]);
+    raised = json.loads(lines[1]);
+
+    # dict: keys/values captured before update; get after update.
+    assert got["keys"] == ["a", "b"] , ("dict.keys mismatch: " + str(got));
+    assert got["vals"] == [1, 2] , ("dict.values mismatch: " + str(got));
+    assert got["has_c"] == 3 , ("dict.update+get mismatch: " + str(got));
+    # The fixed Python dict.get semantics: present-but-null returns null,
+    # absent returns the default.
+    assert got["null_hit"] is None , (
+        "dict.get on a present null key must return null, not the default: " + str(got)
+    );
+    assert got["missing"] == -1 , (
+        "dict.get on an absent key must return the default: " + str(got)
+    );
+    # list: append + sort + count.
+    assert got["lst"] == [1, 2, 3, 4] , ("list.append/sort mismatch: " + str(got));
+    assert got["cnt"] == 1 , ("list.count mismatch: " + str(got));
+    # set: add + discard reflected by membership.
+    assert got["has_three"] == True , ("set.add mismatch: " + str(got));
+    assert got["has_one"] == False , ("set.discard mismatch: " + str(got));
+    # user-defined method name colliding with a primitive: forwarded.
+    assert got["box_count"] == 3 , (
+        "primitive-named user method must be forwarded, not run as a list op: " + str(
+            got
+        )
+    );
+    # JS-global method on a function-typed receiver (Object.keys): the
+    # dispatcher must forward to the function's own method, not throw.
+    assert got["obj_keys"] == ["p", "q"] , (
+        "Object.keys via the dispatcher must forward to the real method: " + str(got)
+    );
+    # The dispatcher raises a catchable AttributeError for an unsupported op.
+    assert raised == True , (
+        "an eligible method on an incompatible runtime type must raise "
+        "AttributeError, not silently return a wrong value"
+    );
+
+    assert_balanced_syntax(js_code, "poly_dispatch_complete.cl.jac");
+}
+
 test "issue 5508 case2 str methods on untyped receivers" {
     # Regression for jaseci-labs/jaseci#5508 case 2 (also covers #5453).
     # When the static type of the receiver is not provably `str` (props of
@@ -1141,9 +1300,8 @@ test "issue 5508 case2 str methods on untyped receivers" {
     # (`.upper`, `.strip`, `.lower`) which crash at runtime in JS. Fall
     # back to runtime-polymorphic helpers (`_jac.poly.*`) instead.
     js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
-    # Pluck out the user-compiled function bodies (skip the injected
-    # _jac runtime, which legitimately contains `s.upper()` etc. as the
-    # user-class fallback inside its polyfills).
+    # Pluck out the user-compiled function bodies (slice from each function
+    # so the injected _jac runtime is not scanned).
     user_chunks = [];
     for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
         idx = js_code.find("function " + fn_name);
@@ -1162,19 +1320,23 @@ test "issue 5508 case2 str methods on untyped receivers" {
         "Python `.lower()` (without a static str type) should not appear "
         "verbatim in compiled user JS"
     );
-    # Should route through the polymorphic runtime helpers.
-    assert "_jac.poly.upper(" in user_code , (
-        "Untyped .upper() should route through _jac.poly.upper()"
+    # Should route through the polymorphic runtime dispatcher, with the
+    # method name carried as a string argument.
+    assert "_jac.poly.call(" in user_code , (
+        "Untyped str methods should route through the _jac.poly.call() dispatcher"
     );
-    assert "_jac.poly.strip(" in user_code , (
-        "Untyped .strip() should route through _jac.poly.strip()"
+    assert '"upper"' in user_code , (
+        "Untyped .upper() should route through _jac.poly.call(.., \"upper\")"
     );
-    assert "_jac.poly.lower(" in user_code , (
-        "Untyped .lower() should route through _jac.poly.lower()"
+    assert '"strip"' in user_code , (
+        "Untyped .strip() should route through _jac.poly.call(.., \"strip\")"
     );
-    # The _jac runtime must be injected when poly helpers are used.
+    assert '"lower"' in user_code , (
+        "Untyped .lower() should route through _jac.poly.call(.., \"lower\")"
+    );
+    # The _jac runtime must be injected when the dispatcher is used.
     assert "const _jac = {" in js_code , (
-        "_jac runtime must be injected when _jac.poly.* helpers are emitted"
+        "_jac runtime must be injected when _jac.poly.call is emitted"
     );
 }
 

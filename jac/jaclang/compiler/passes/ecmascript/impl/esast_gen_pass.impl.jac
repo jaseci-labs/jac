@@ -1728,20 +1728,36 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
-        # --- Polymorphic fallback (issue #5508 / #5453) ---
+        # --- Polymorphic fallback (issue #5508 / #5453 / #6306) ---
         # When the static type of the receiver is not provably a JS-native
-        # primitive (e.g. props of type `dict`, results of `or` widening,
-        # comprehension over an untyped list), the typed dispatch above
-        # cannot pick an emitter, so without a fallback we would otherwise
-        # leak the Python method name verbatim into the JavaScript output
-        # and crash at runtime. Route through `_jac.poly.<method>(target,
-        # ...args)`, which dispatches at runtime based on the JS type.
-        if _method_name in POLYMORPHIC_METHODS {
+        # primitive (e.g. a prop of type `dict`, the result of `or` widening,
+        # or a comprehension over an untyped value), the typed dispatch above
+        # cannot pick an emitter. Without a fallback the Python method name
+        # would leak verbatim into the JavaScript and crash at runtime.
+        #
+        # If the name is one that some primitive emitter implements
+        # (`self._poly_methods`, derived from the emitter registry), route it
+        # through the single runtime dispatcher `_jac.poly.call(obj, "name",
+        # ...args)`. That helper resolves the receiver's *runtime* type and
+        # applies the matching primitive operation, or forwards to a same-named
+        # method on a user-defined object, and raises a Python-style
+        # AttributeError when neither applies. Names no emitter implements are
+        # left to the default member-call path below: they are user methods and
+        # a direct `obj.name(...)` is correct.
+        if self._poly_methods is not None and (_method_name in self._poly_methods) {
             _poly_args: list[(es.Expression | es.SpreadElement)] = [
-                cast(es.Expression, callee.object)
+                cast(es.Expression, callee.object),
+                self.sync_loc(es.Literal(value=_method_name), jac_node=nd)
             ];
             for _a in args {
                 _poly_args.append(_a);
+            }
+            # Keyword-argument values are forwarded positionally, matching the
+            # convention used by the typed emitter dispatch above.
+            for _p in props {
+                if isinstance(_p, es.Property) and _p.value {
+                    _poly_args.append(cast(es.Expression, _p.value));
+                }
             }
             _poly_callee = es.MemberExpression(
                 object=es.MemberExpression(
@@ -1749,7 +1765,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     property=es.Identifier(name='poly'),
                     computed=False
                 ),
-                property=es.Identifier(name=_method_name),
+                property=es.Identifier(name='call'),
                 computed=False
             );
             self.needs_jac_runtime = True;
@@ -2157,6 +2173,22 @@ impl EsastGenPass._ensure_emitters -> None {
         }
     }
     self._builtin_emitter = _pes.ESBuiltinEmitter();
+    # Derive the polymorphic-eligible method names from the emitter registry
+    # itself: a method is eligible iff some primitive emitter implements
+    # `emit_<name>` (operators, spelled `emit_op_*`, are excluded — they are
+    # dispatched through their own operator paths). Deriving this set means it
+    # can never drift out of sync with the emitters, and a newly supported
+    # primitive method is automatically routed through the runtime dispatcher
+    # on untyped receivers without touching this pass.
+    _poly: set[str] = set();
+    for _emitter in self._primitive_emitters.values() {
+        for _attr in dir(_emitter) {
+            if _attr.startswith("emit_") and not _attr.startswith("emit_op_") {
+                _poly.add(_attr[len("emit_"):]);
+            }
+        }
+    }
+    self._poly_methods = _poly;
 }
 
 """Resolve a Jac type to a primitive type name (e.g. ``str``, ``list``).
