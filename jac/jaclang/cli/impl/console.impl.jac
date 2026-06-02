@@ -1,6 +1,6 @@
 """Implementation of console utilities for terminal output.
 
-Caller data in `Span`s (style`None`) and unstyled `print` args are never 
+Caller data in `Span`s (style`None`) and unstyled `print` args are never
 markup-parsed. CLI chrome uses semantic style roles on spans, or an
 explicit `style=` on `print` (ANSI prefix on string args only).
 
