@@ -43,13 +43,16 @@ test "target type parser supports mobile" {
     assert "return TargetType.MOBILE" in content;
 }
 
-test "target factory supports mobile target" {
+test "target factory resolves mobile via registry" {
     impl_path = _plugin_dir / "src" / "targets" / "impl" / "registry.impl.jac";
-    content = impl_path.read_text();
+    register_path = _plugin_dir / "src" / "targets" / "register.jac";
+    impl_content = impl_path.read_text();
+    register_content = register_path.read_text();
 
-    assert "elif target_type == TargetType.MOBILE" in content;
-    assert "MobileTarget" in content;
-    assert "TargetType.MOBILE" in content;
+    assert "return self.create(target_type.value, project_dir)" in impl_content;
+    assert "registry.get(target_name)" in impl_content;
+    assert "registry.register(MobileTarget())" in register_content;
+    assert "MobileTarget" in register_content;
 }
 
 test "mobile_dev_host helper module exists" {

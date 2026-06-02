@@ -22,16 +22,226 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import os
 import signal
 import socket
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import FrameType
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
+
+_SIDECAR_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
     from pluggy import PluginManager
-from types import FrameType
+
+
+class FrozenPluginSpec(NamedTuple):
+    """How to register one Jac plugin in a PyInstaller-frozen sidecar."""
+
+    module_path: str
+    class_name: str
+    entry_name: str
+    config_key: str | None = None
+
+
+_PRIMARY_ENTRY_BY_CONFIG_KEY: dict[str, str] = {
+    "jac_scale": "scale",
+    "byllm": "byllm",
+    "jac_mcp": "mcp",
+    "jac_coder": "coder",
+}
+_FALLBACK_REGISTRY: dict[str, FrozenPluginSpec] = {
+    "jac_scale": FrozenPluginSpec("jac_scale.plugin", "JacCmd", "scale", "jac_scale"),
+    "byllm": FrozenPluginSpec("byllm.plugin", "JacRuntime", "byllm", "byllm"),
+    "jac_mcp": FrozenPluginSpec("jac_mcp.plugin", "JacCmd", "mcp", "jac_mcp"),
+    "jac_coder": FrozenPluginSpec("jac_coder.plugin", "JacCmd", "coder", "jac_coder"),
+}
+_CORE_PLUGINS: tuple[FrozenPluginSpec, ...] = (
+    FrozenPluginSpec("jac_client.plugin.client", "JacClient", "serve"),
+)
+
+
+def _normalize_config_key(name: str) -> str:
+    return name.replace("-", "_").lower()
+
+
+def _default_plugins_config() -> dict[str, bool]:
+    return {
+        "jac_scale": True,
+        "byllm": True,
+        "jac_coder": True,
+        "jac_mcp": True,
+    }
+
+
+def _is_enabled(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
+def _jac_toml_candidates(base_path: Path | None) -> list[Path]:
+    candidates: list[Path] = []
+    if base_path is not None:
+        candidates.append(base_path / "jac.toml")
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "jac.toml")
+    return candidates
+
+
+def load_sidecar_plugins_config(base_path: Path | None = None) -> dict[str, bool]:
+    merged: dict[str, object] = dict(_default_plugins_config())
+    for path in _jac_toml_candidates(base_path):
+        if not path.is_file():
+            continue
+        try:
+            import tomllib
+
+            with open(path, "rb") as handle:
+                data = tomllib.load(handle)
+        except Exception as exc:
+            sys.stderr.write(
+                f"[sidecar] failed to load plugin config from {path}: {exc}\n"
+            )
+            continue
+        desktop = data.get("plugins", {}).get("desktop", {})
+        if not isinstance(desktop, dict):
+            continue
+        raw = desktop.get("plugins", {})
+        if isinstance(raw, dict):
+            merged.update(raw)
+        break
+    return {str(key): _is_enabled(value) for key, value in merged.items()}
+
+
+def _parse_entry_point_value(value: str) -> tuple[str, str] | None:
+    module_path, sep, class_name = value.partition(":")
+    if not sep or not module_path or not class_name:
+        return None
+    return module_path, class_name
+
+
+def _build_registry_from_entry_points() -> dict[str, FrozenPluginSpec]:
+    registry: dict[str, FrozenPluginSpec] = {}
+    try:
+        from importlib.metadata import entry_points
+
+        eps = entry_points(group="jac")
+    except Exception as exc:
+        sys.stderr.write(f"[sidecar] failed to discover jac entry points: {exc}\n")
+        return registry
+
+    for ep in eps:
+        dist = getattr(ep, "dist", None)
+        dist_name = getattr(dist, "name", "") if dist else ""
+        if not dist_name:
+            continue
+        config_key = _normalize_config_key(dist_name)
+        primary = _PRIMARY_ENTRY_BY_CONFIG_KEY.get(config_key)
+        if primary is not None and ep.name != primary:
+            continue
+        if primary is None and (
+            ep.name.endswith("_plugin_config") or ep.name.endswith("_plugin")
+        ):
+            continue
+        parsed = _parse_entry_point_value(ep.value)
+        if parsed is None:
+            continue
+        module_path, class_name = parsed
+        registry[config_key] = FrozenPluginSpec(
+            module_path=module_path,
+            class_name=class_name,
+            entry_name=ep.name,
+            config_key=config_key,
+        )
+    return registry
+
+
+def _resolve_registry() -> dict[str, FrozenPluginSpec]:
+    dynamic = _build_registry_from_entry_points()
+    resolved = dict(_FALLBACK_REGISTRY)
+    resolved.update(dynamic)
+    return resolved
+
+
+def resolve_frozen_plugin_specs(
+    plugins_config: dict[str, bool] | None = None,
+    base_path: Path | None = None,
+) -> list[FrozenPluginSpec]:
+    if plugins_config is None:
+        plugins_config = load_sidecar_plugins_config(base_path)
+
+    registry = _resolve_registry()
+    specs: list[FrozenPluginSpec] = list(_CORE_PLUGINS)
+    for config_key, enabled in plugins_config.items():
+        if not enabled:
+            continue
+        spec = registry.get(config_key)
+        if spec is None:
+            continue
+        specs.append(spec)
+
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[FrozenPluginSpec] = []
+    for spec in specs:
+        key = (spec.module_path, spec.class_name, spec.entry_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(spec)
+    return unique
+
+
+def _register_spec(plugin_manager: PluginManager, spec: FrozenPluginSpec) -> None:
+    label = spec.config_key or spec.entry_name
+    try:
+        mod = importlib.import_module(spec.module_path)
+        cls = getattr(mod, spec.class_name)
+        if plugin_manager.is_registered(cls):
+            return
+        plugin_manager.register(cls, name=spec.entry_name)
+        sys.stderr.write(f"[sidecar] Registered {label} plugin\n")
+    except ImportError as exc:
+        import traceback
+
+        sys.stderr.write(f"[sidecar] {label} not bundled: {exc}\n")
+        traceback.print_exc(file=sys.stderr)
+    except Exception as exc:
+        import traceback
+
+        sys.stderr.write(f"[sidecar] {label} registration error: {exc}\n")
+        traceback.print_exc(file=sys.stderr)
+
+
+def register_frozen_plugins(
+    plugin_manager: PluginManager,
+    *,
+    plugins_config: dict[str, bool] | None = None,
+    base_path: Path | None = None,
+) -> None:
+    for spec in resolve_frozen_plugin_specs(plugins_config, base_path):
+        _register_spec(plugin_manager, spec)
+
+
+def _emit_sidecar_failure(reason: str) -> None:
+    """Write failure marker to stdout for Tauri runtime (pipe may still be open)."""
+    safe = reason.replace("\n", " ").replace("\r", " ")[:500]
+    try:
+        sys.stdout.write(f"JAC_SIDECAR_FAILED={safe}\n")
+        sys.stdout.flush()
+    except OSError:
+        pass
+
+
+def _exit_after_port(reason: str, code: int = 1) -> None:
+    """Exit after port discovery, notifying the parent via JAC_SIDECAR_FAILED."""
+    _emit_sidecar_failure(reason)
+    raise SystemExit(code)
 
 
 def _signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -41,18 +251,19 @@ def _signal_handler(signum: int, frame: FrameType | None) -> None:
     )
     sys.stderr.write(f"[sidecar] Received signal: {sig_name} ({signum})\n")
     sys.stderr.flush()
-    sys.exit(128 + signum)
+    _emit_sidecar_failure(f"terminated by {sig_name}")
+    raise SystemExit(128 + signum)
 
 
-# Register signal handlers early
-# Note: SIGHUP doesn't exist on Windows, so we check for availability
-_signals_to_handle = [signal.SIGTERM, signal.SIGINT]
-if hasattr(signal, "SIGHUP"):
-    _signals_to_handle.append(signal.SIGHUP)
+def _register_signal_handlers() -> None:
+    """Register signal handlers after port discovery line is written."""
+    signals_to_handle = [signal.SIGTERM, signal.SIGINT]
+    if hasattr(signal, "SIGHUP"):
+        signals_to_handle.append(signal.SIGHUP)
 
-for sig in _signals_to_handle:
-    with contextlib.suppress(OSError, ValueError):
-        signal.signal(sig, _signal_handler)
+    for sig in signals_to_handle:
+        with contextlib.suppress(OSError, ValueError):
+            signal.signal(sig, _signal_handler)
 
 
 # Set JAC_USE_STDERR before any jaclang imports.
@@ -60,46 +271,49 @@ for sig in _signals_to_handle:
 os.environ["JAC_USE_STDERR"] = "1"
 
 
-def _find_free_port(host: str = "127.0.0.1") -> int:
-    """Find and return a free port on the given host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((host, 0))
-        return s.getsockname()[1]
+def _bind_listen_socket(host: str, port: int) -> tuple[socket.socket, int]:
+    """Bind and listen on host/port (port=0 picks a free port). Returns (socket, port)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, 0) if port == 0 else (host, port))
+    sock.listen()
+    return sock, sock.getsockname()[1]
 
 
-def _register_frozen_plugins(plugin_manager: PluginManager) -> None:
-    """Register all Jac plugins manually for PyInstaller frozen apps.
+class _PreboundSocketServer(Protocol):
+    server: Any
 
-    Entry point discovery fails in frozen apps, so we register each plugin
-    explicitly. jac_client, jac_scale, and byllm all have __init__.py at
-    every directory level (like standard Python packages), so
-    importlib.import_module works normally with JacMetaImporter handling
-    individual .jac files.
-    """
-    plugins = [
-        ("jac_scale.plugin", "JacCmd", "scale"),
-        ("jac_client.plugin.client", "JacClient", "client"),
-        ("byllm.plugin", "JacRuntime", "byllm"),
-    ]
-    for module_path, class_name, name in plugins:
-        try:
-            import importlib
+    def create_handler(self) -> type: ...
 
-            mod = importlib.import_module(module_path)
-            cls = getattr(mod, class_name)
-            if not plugin_manager.is_registered(cls):
-                plugin_manager.register(cls, name=name)
-                sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
-        except ImportError as e:
-            import traceback
 
-            sys.stderr.write(f"[sidecar] {name} not bundled: {e}\n")
-            traceback.print_exc(file=sys.stderr)
-        except Exception as e:
-            import traceback
+def _attach_prebound_socket(
+    server: _PreboundSocketServer, listen_sock: socket.socket
+) -> None:
+    """Wire a pre-bound listen socket into the Jac API server backend."""
+    from http.server import HTTPServer
 
-            sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
-            traceback.print_exc(file=sys.stderr)
+    backend = server.server
+    if backend is None:
+        handler_class = server.create_handler()
+        httpd = HTTPServer(
+            server_address=("", 0),
+            RequestHandlerClass=handler_class,
+            bind_and_activate=False,
+        )
+        httpd.socket = listen_sock
+        httpd.server_address = listen_sock.getsockname()
+        server.server = httpd
+        return
+
+    if hasattr(backend, "run_server"):
+        backend._prebound_listen_socket = listen_sock
+        return
+
+    if isinstance(backend, HTTPServer):
+        if backend.socket is not None:
+            backend.server_close()
+        backend.socket = listen_sock
+        backend.server_address = listen_sock.getsockname()
 
 
 def _run_jac_cli():
@@ -124,9 +338,9 @@ def _run_jac_cli():
         try:
             from jaclang.jac0core.runtime import plugin_manager
 
-            _register_frozen_plugins(plugin_manager)
-        except Exception:
-            pass
+            register_frozen_plugins(plugin_manager)
+        except Exception as exc:
+            sys.stderr.write(f"[sidecar] frozen plugin registration failed: {exc}\n")
 
     from jaclang.jac0core.cli_boot import start_cli
 
@@ -178,20 +392,26 @@ def main():
 
     args = parser.parse_args()
 
-    port = args.port
-    if port == 0:
-        port = _find_free_port(args.host)
-
-    # Determine base path
+    # Determine base path early so frozen plugin registration can read jac.toml.
     if args.base_path:
         base_path = Path(args.base_path).resolve()
     else:
-        # Try to find project root (look for jac.toml)
         base_path = Path.cwd()
         for parent in [base_path] + list(base_path.parents):
             if (parent / "jac.toml").exists():
                 base_path = parent
                 break
+
+    # Bind the listen socket before heavy boot so the port marker guarantees
+    # the server is accepting connections when Tauri reads it.
+    listen_sock, port = _bind_listen_socket(args.host, args.port)
+
+    # MUST be raw stdout — Tauri host reads this line to discover the port.
+    # Emit after bind+listen so the runtime invariant holds: when you see
+    # JAC_SIDECAR_PORT=X, something is listening on that port.
+    sys.stdout.write(f"JAC_SIDECAR_PORT={port}\n")
+    sys.stdout.flush()
+    _register_signal_handlers()
 
     # Resolve module path
     module_path = Path(args.module_path)
@@ -202,7 +422,7 @@ def main():
         # Console not yet available (jaclang not imported)
         sys.stderr.write(f"Error: Module file not found: {module_path}\n")
         sys.stderr.write(f"  Base path: {base_path}\n")
-        sys.exit(1)
+        _exit_after_port(f"module file not found: {module_path}")
 
     # Extract module name (without .jac extension)
     module_name = module_path.stem
@@ -217,12 +437,12 @@ def main():
         # Console not available (jaclang import failed)
         sys.stderr.write(f"Error: Failed to import Jac runtime: {e}\n")
         sys.stderr.write("  Make sure jaclang is installed: pip install jaclang\n")
-        sys.exit(1)
+        _exit_after_port(f"failed to import Jac runtime: {e}")
 
     # Register plugins manually for PyInstaller bundles.
     # Entry point discovery fails in frozen apps, so we register explicitly.
     if getattr(sys, "frozen", False):
-        _register_frozen_plugins(plugin_manager)
+        register_frozen_plugins(plugin_manager, base_path=base_path)
 
     # Get the console now that jaclang is available
     from jaclang.cli.console import console
@@ -275,7 +495,7 @@ def main():
     if not data_path_created:
         sys.stderr.write("Error: Could not create any writable data directory\n")
         sys.stderr.write(f"  Tried: {[str(p) for p in fallback_paths]}\n")
-        sys.exit(1)
+        _exit_after_port("could not create writable data directory")
 
     os.environ["JAC_DATA_PATH"] = str(data_path)
 
@@ -313,26 +533,22 @@ def main():
             console.error("Failed to compile module:")
             for error in Jac.program.errors_had:
                 console.print(f"  {error}", style="error")
-            sys.exit(1)
+            _exit_after_port(f"failed to compile module '{module_name}'")
     except Exception as e:
         console.error(f"Failed to load module '{module_name}': {e}")
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        _exit_after_port(f"failed to load module '{module_name}': {e}")
 
     # Create and start the API server
     try:
         # Get server class (allows plugins like jac-scale to provide enhanced server)
         server_class = Jac.get_api_server_class()
-        server = server_class(
-            module_name=module_name, port=port, base_path=str(base_path)
-        )
-
-        # MUST be raw stdout — Tauri host reads this line to discover the port.
-        # Cannot use console here; Tauri parses this exact format.
-        sys.stdout.write(f"JAC_SIDECAR_PORT={port}\n")
-        sys.stdout.flush()
+        # port=0 skips postinit socket binding; we attach the pre-bound socket below.
+        server = server_class(module_name=module_name, port=0, base_path=str(base_path))
+        server.port = port
+        _attach_prebound_socket(server, listen_sock)
 
         # Redirect stdout to stderr after port discovery.
         # Tauri drops the stdout pipe after reading JAC_SIDECAR_PORT, so any
@@ -344,7 +560,7 @@ def main():
         # Check if server was created properly
         if server.server is None:
             console.error("Server socket not created")
-            sys.exit(1)
+            _exit_after_port("server socket not created")
 
         # Start the server (blocks until interrupted)
         # no_client=True: client bundle is already embedded in the Tauri webview
@@ -352,13 +568,15 @@ def main():
 
     except KeyboardInterrupt:
         console.print("\nShutting down sidecar...", style="muted")
-        sys.exit(0)
+        raise SystemExit(0) from None
+    except SystemExit:
+        raise
     except Exception as e:
         console.error(f"Server failed to start: {e}")
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        _exit_after_port(f"server failed to start: {e}")
 
 
 if __name__ == "__main__":

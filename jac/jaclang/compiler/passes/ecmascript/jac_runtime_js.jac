@@ -1198,3 +1198,65 @@ def build_jac_runtime_js -> str {
         "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
     );
 }
+
+"""Memoized compiled-kernel JS (declarations only; no `_jac`, no exports)."""
+glob _OSP_KERNEL_JS_CACHE: list[str] = [];
+
+"""Compile the portable Object-Spatial kernel (`osp_kernel.jac`) to JS for cl
+injection and return its declarations only.
+
+`osp_kernel.jac` is the single source of truth for OSP traversal across every
+backend (#6146). A cl module that runs a walker locally (rather than via the
+`__jacSpawn` server RPC) needs the kernel's `osp_spawn` / `osp_visit` /
+`osp_disengage` / `osp_report` and its `OspRuntime` / `WalkerDesc` / `NodeDesc`
+/ `Slot` classes inlined in the emitted JS. The kernel's own injected
+`const _jac = ...` runtime and its `export {...}` statement are stripped: the
+host module already supplies `_jac` (via `needs_jac_runtime`) and manages its
+own exports, so re-emitting either would redeclare `_jac` or place an illegal
+nested `export`. Compiled once and memoized."""
+def build_osp_kernel_js -> str {
+    if _OSP_KERNEL_JS_CACHE {
+        return _OSP_KERNEL_JS_CACHE[0];
+    }
+    import os;
+    import shutil;
+    import tempfile;
+    import jaclang;
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+    import from jaclang.compiler.passes.ecmascript { estree as es }
+    src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
+    # The kernel is a plain `.jac` (server-default context); compile a copy
+    # named `.cl.jac` so its module-level decls are coerced to client context
+    # and the ES pass emits them.
+    tmp_dir = tempfile.mkdtemp();
+    cl_copy = os.path.join(tmp_dir, "osp_kernel.cl.jac");
+    shutil.copyfile(src, cl_copy);
+    js = "";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+        program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
+        kept: list = [];
+        if isinstance(program, es.Program) {
+            for stmt in program.body {
+                is_jac_rt = (
+                    isinstance(stmt, es.VariableDeclaration)
+                    and stmt.declarations
+                    and isinstance(stmt.declarations[0].id, es.Identifier)
+                    and (stmt.declarations[0].id.name == "_jac")
+                );
+                if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
+                    continue;
+                }
+                kept.append(stmt);
+            }
+        }
+        js = es_to_js(es.Program(body=kept, sourceType='module'));
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+    _OSP_KERNEL_JS_CACHE.append(js);
+    return js;
+}

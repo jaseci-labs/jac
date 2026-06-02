@@ -5,10 +5,11 @@ then folds the inner walker's result back into its own state
 (`Outer.sum = Inner.got = here.val * 2`). This pins that a nested spawn runs to
 completion with its own isolated scope and the outer walk resumes correctly.
 
-Entry-only (no visit/edges/report), so na participates today via the inline
-spawn path. cl OSP is still unwired, so it is skipped automatically until
-Phase 3. The report-aggregation half of nested spawning is covered py-side by
-`osp_report` until `report` lowering lands on na/cl.
+Entry-only (no visit/edges/report), so na participates via the inline spawn
+path and cl runs it in-process through the portable kernel (the nested
+`inner spawn` lowers to a nested `osp_spawn` with its own kernel scope). The
+report-aggregation half of nested spawning is covered py-side by `osp_report`
+until `report` lowering lands on na/cl.
 """
 
 node Item { has val: int; }
@@ -37,6 +38,14 @@ def nested_spawn_py() -> dict[str, any] {
 
 na {
     def nested_spawn_na() -> dict[str, any] {
+        o = Outer();
+        o spawn Item(val=4);
+        return {"sum": o.sum};
+    }
+}
+
+cl {
+    def nested_spawn_cl() -> dict[str, any] {
         o = Outer();
         o spawn Item(val=4);
         return {"sum": o.sum};

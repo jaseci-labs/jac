@@ -103,7 +103,7 @@ class ViteBundler {
     ) -> any;
 }
 # Env var used to pass API base URL through deep call chains
-# (e.g., DesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
+# (e.g., PyTauriDesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
 
 # Vite dev server configuration
 

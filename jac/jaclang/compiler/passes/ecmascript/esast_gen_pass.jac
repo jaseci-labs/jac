@@ -235,6 +235,20 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         sv_import_stubs: list[es.Statement] = [],
         # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
+        # OSP local-kernel lowering: set when a local walker is spawned via the
+        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
+        # injection in exit_module. `_osp_slots` collects one record per OSP
+        # ability: {owner, kind, name, trigger_names (list, empty = untyped),
+        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
+        # archetypes that need a compile-time type tag.
+        needs_osp_kernel: bool = False,
+        _osp_slots: list[dict] = [],
+        _osp_arch_names: list[str] = [],
+        # Memoized set of local archetype names that participate in OSP (a
+        # walker/node/edge declared with event abilities, plus the node/edge
+        # types those abilities trigger on). Computed up front so emission
+        # order (a trigger node declared before its walker) doesn't matter.
+        _osp_prescan: (set[str] | None) = None,
         # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
@@ -285,6 +299,22 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _build_spawn_runtime_call(
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
+
+    def _osp_ability_info(nd: uni.Ability) -> (dict | None);
+    def _osp_trigger_names(expr: (uni.Expr | None)) -> list[str];
+    def _osp_const_decl(
+        name: str, `init: es.Expression, nd: uni.UniNode
+    ) -> es.VariableDeclaration;
+
+    def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _build_osp_setup_js -> str;
+    def _osp_slots_js(slots: list, tags: dict) -> str;
+    def _local_walker_names -> set[str];
+    def _osp_arch_set -> set[str];
+    def _spawn_side_arch_type(expr: uni.Expr) -> (SymbolType | None);
+    def _build_local_osp_spawn(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> (es.Expression | None);
 
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
