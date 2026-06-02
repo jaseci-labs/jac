@@ -1816,9 +1816,41 @@ test "clib struct value-type coercion" {
     assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
-    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
-    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+    # System V ABI coercion at the call site: the Color value is reinterpreted
+    # as its register coerce type ({i32}) and the eightbyte is loaded out.
+    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+}
+
+test "clib System V AMD64 ABI lowering" {
+    # x86_64-only: asserts the emitted foreign-call ABI matches what clang/gcc
+    # produce for each eightbyte classification case (Phase 1 of #6353).
+    import platform;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        return;
+    }
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # SSE eightbytes: float fields pack into <2 x float> / trailing float.
+    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
+    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")' in s , "V3 expand + 2-eightbyte SSE return";
+    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    # INTEGER eightbyte: all-int small struct coerces to a single integer.
+    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
+    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    # Two SSE double eightbytes.
+    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return.
+    assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
+    assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
+    assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    # The non-injective return-boxing (gap #7) is gone: a scalar return is never
+    # rerouted through struct boxing.
+    assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
 }
 
 # --- TestRefCounting ---
