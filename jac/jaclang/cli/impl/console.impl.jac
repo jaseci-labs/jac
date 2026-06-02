@@ -1,9 +1,8 @@
 """Implementation of console utilities for terminal output.
 
-Production-grade console with raw ANSI codes. Caller data in `Span`s (style
-`None`) and unstyled `print` args are never markup-parsed. CLI chrome uses
-semantic style roles on spans, or an explicit `style=` on `print` (ANSI prefix
-on string args only).
+Caller data in `Span`s (style`None`) and unstyled `print` args are never 
+markup-parsed. CLI chrome uses semantic style roles on spans, or an
+explicit `style=` on `print` (ANSI prefix on string args only).
 
 `JacConsole` is the capability/routing facade; `ConsoleRenderer` is the ANSI
 drawing backend it delegates to.
@@ -393,7 +392,7 @@ impl JacConsole.print(*args: any, **kwargs: any) -> None {
 }
 
 """Context manager for status during long operations."""
-impl JacConsole.status(*args: any, **kwargs: any) -> object {
+impl JacConsole.status(*args: any, **kwargs: any) -> AbstractContextManager {
     return self._renderer.status_ctx(list(args), kwargs);
 }
 
