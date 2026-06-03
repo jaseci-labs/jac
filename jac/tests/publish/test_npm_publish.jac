@@ -296,7 +296,7 @@ test "build_runtime_tarball packages the runtime with exports" {
         # The export list is drawn from the runtime's public API.
         exports = runtime_export_names(js);
         assert "__jacJsx" in exports;
-        assert "createSignal" in exports;
+        assert "__jacSpawn" in exports;
     }
 }
 

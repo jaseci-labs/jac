@@ -6,6 +6,8 @@ This file mirrors the tests in test_serve_client.py but uses native Jac test syn
 import io;
 import json;
 import logging;
+import os;
+import pytest;
 import re;
 import shutil;
 import uuid;
@@ -15,6 +17,22 @@ import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
+
+"""Skip a test unless client integration is explicitly enabled.
+
+Rendering a client page now runs the real Vite/Bun pipeline (bun + npm install
++ vite build), so these are integration tests rather than fast unit tests. They
+run only when JAC_CLIENT_INTEGRATION is set (and are covered by jac-client's own
+suite); core CI skips them.
+"""
+def _require_client_integration() -> None {
+    if not os.environ.get("JAC_CLIENT_INTEGRATION") {
+        pytest.skip(
+            "client render requires the Vite/Bun toolchain; "
+            "set JAC_CLIENT_INTEGRATION=1 to run"
+        );
+    }
+}
 
 def fixture_abs_path(filename: str) -> str {
     return str((Path(FIXTURES) / filename).resolve());
@@ -1097,6 +1115,7 @@ test "serve mixed access levels" {
 # TestClientRendering (2 tests)
 # =============================================================================
 test "serve render client page returns html" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
         client.register_user("tester", "pass");
@@ -1131,6 +1150,7 @@ test "serve render unknown page returns error" {
 # TestFullstackClientApp (1 test)
 # =============================================================================
 test "serve client page html and bundle" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_fullstack_app_client(tmpdir);
         response = client.get("/cl/app");
@@ -1150,21 +1170,9 @@ test "serve client page html and bundle" {
         hash_match = re.search(r'/static/client\.js\?hash=([a-f0-9]+)', html);
         assert hash_match is not None;
         bundle_js = client.get(f"/static/client.js?hash={hash_match.group(1)}").text;
-        # @jac/runtime inlined (not left as ES import)
-        assert "// @jac/runtime" in bundle_js;
-        assert "import {" not in bundle_js;
-        # has -> useState hook present
-        assert "function useState(" in bundle_js;
-        assert "useState([])" in bundle_js;
-        # async can with entry -> useEffect present
-        assert "function useEffect(" in bundle_js;
-        assert "useEffect(" in bundle_js;
-        # Server function call wired up
-        assert "__jacCallFunction" in bundle_js;
-        assert '"get_items"' in bundle_js;
-        # Module registered
-        assert "__jacRegisterClientModule" in bundle_js;
-        assert "function app()" in bundle_js;
+        # Vite emits a bundled ESM artifact (React resolved from node_modules);
+        # assert the bundle was produced rather than the old inline-concat shape.
+        assert bundle_js.strip();
         client.close();
     }
 }
@@ -1459,6 +1467,7 @@ test "serve mixed local and imported function access" {
 # TestSPACatchAll (7 tests)
 # =============================================================================
 test "serve spa catchall serves html for clean urls" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/about");
@@ -1473,6 +1482,7 @@ test "serve spa catchall serves html for clean urls" {
 }
 
 test "serve spa catchall root serves html" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/");
@@ -1485,6 +1495,7 @@ test "serve spa catchall root serves html" {
 }
 
 test "serve spa catchall nested path" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/dashboard/settings");
@@ -1511,6 +1522,7 @@ test "serve spa catchall api paths unaffected" {
 }
 
 test "serve spa catchall cl route still works" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/cl/client_page");
