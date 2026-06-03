@@ -49,10 +49,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # LLVM module and builder (initialized in postinit)
     has llvm_module: ir.Module by postinit,
         type_map: dict[str, ir.Type] by postinit,
-        complex_struct_type: object by postinit,
-        range_struct_type: object by postinit,
-        slice_struct_type: object by postinit,
-        jacval_type: object by postinit,
+        complex_struct_type: ir.IdentifiedStructType by postinit,
+        range_struct_type: ir.IdentifiedStructType by postinit,
+        slice_struct_type: ir.IdentifiedStructType by postinit,
+        jacval_type: ir.IdentifiedStructType by postinit,
         # Simple defaults
         builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
@@ -77,7 +77,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         loop_stack: list[tuple] = [],
         _str_count: int = 0,
         # Object/struct support (Phase 3)
-        struct_types: dict[str, object] = {},
+        struct_types: dict[str, ir.Type] = {},
         struct_field_indices: dict[str, dict] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
@@ -85,7 +85,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         method_ast_sigs: dict[str, object] = {},
         type_var_map: dict[str, str] = {},
         # List support (Phase 4)
-        list_types: dict[str, object] = {},
+        list_types: dict[str, ir.Type] = {},
         list_helpers: dict[str, dict] = {},
         var_list_elem_type: dict[str, str] = {},
         field_type_node: dict[str, dict] = {},
@@ -109,7 +109,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
         # Tuple support (Phase 9)
-        tuple_types: dict[str, object] = {},
+        tuple_types: dict[str, ir.Type] = {},
         var_tuple_type: dict[str, str] = {},
         # Complex/Range/Slice var tracking
         var_complex: set[str] = set(),
@@ -119,12 +119,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
         # Dictionary support (Phase 12)
-        dict_types: dict[str, object] = {},
+        dict_types: dict[str, ir.Type] = {},
         dict_helpers: dict[str, dict] = {},
         var_dict_type: dict[str, str] = {},
         _dict_val_type_hint: (str | None) = None,
         # Set support (Phase 13)
-        set_types: dict[str, object] = {},
+        set_types: dict[str, ir.Type] = {},
         set_helpers: dict[str, dict] = {},
         var_set_elem_type: dict[str, str] = {},
         # Exception handling support (Phase 14)
