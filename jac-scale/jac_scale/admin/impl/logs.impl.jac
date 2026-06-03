@@ -102,9 +102,7 @@ def _app_name -> str {
 (no routes table or it's empty). Drives the per-mode forks below."""
 def _is_microservice_mode -> bool {
     try {
-        routes: dict = get_scale_config().get_microservices_config().get(
-            "routes", {}
-        );
+        routes: dict = get_scale_config().get_microservices_config().get("routes", {});
         return bool(routes);
     } except Exception {
         return False;
@@ -133,9 +131,7 @@ def _microservice_services -> list[str] {
     try {
         ms = get_scale_config().get_microservices_config();
         routes: dict = ms.get("routes", {});
-        return _services_for_mode(
-            bool(routes), routes, _app_name()
-        );
+        return _services_for_mode(bool(routes), routes, _app_name());
     } except Exception {
         return [];
     }

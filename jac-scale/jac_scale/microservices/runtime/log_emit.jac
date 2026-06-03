@@ -39,10 +39,10 @@ import from typing { Any }
 # line on a monolith deploy land with `"service":"unknown"` and
 # was indistinguishable from a misconfigured microservice.
 glob _SVC_NAME: str = (
-    os.getenv("JAC_SV_NAME", "").strip()
-    or os.getenv("K8S_APP_NAME", "").strip()
-    or "unknown"
-),
+         os.getenv("JAC_SV_NAME", "").strip()
+         or os.getenv("K8S_APP_NAME", "").strip()
+         or "unknown"
+     ),
      _structured_installed: bool = False,
      _root_logger: logging.Logger = logging.getLogger();
 
