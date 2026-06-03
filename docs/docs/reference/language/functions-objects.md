@@ -976,7 +976,7 @@ Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.n
 
 **C Library Imports:**
 
-Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or inside a `na { }` block in a regular `.jac` file:
+Native code can import C shared libraries using the `import from` syntax with extern function declarations, either at the top level of a `.na.jac` file or inside a `na { }` block in a regular `.jac` file. The library is named either by an explicit path string (used verbatim, for a pinned or versioned file) or by a logical name (dotted and extensionless, resolved to the platform's filename):
 
 <!-- jac-skip -->
 ```jac
@@ -997,10 +997,12 @@ Declarations inside the braces are body-less function signatures that become LLV
 
 **Example -- calling raylib from Jac:**
 
+Here the library is named by its logical name `raylib`, which the backend resolves to `libraylib.so` on Linux, `libraylib.dylib` on macOS, and `raylib.dll` on Windows -- so this one source compiles for every platform:
+
 <!-- jac-skip -->
 ```jac
 # game.na.jac
-import from "libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> None;
     def CloseWindow() -> None;
     def WindowShouldClose() -> i8;
