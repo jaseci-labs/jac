@@ -1628,13 +1628,13 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
-| `jac start --client desktop` | Start desktop app in dev mode |
+| `jac start --client desktop` | Start desktop app (requires [jac-desktop](jac-desktop.md)) |
 | `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac build` | Build for production (web) |
-| `jac build --client desktop` | Build desktop app |
+| `jac build --client desktop` | Build desktop app (requires [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
-| `jac setup desktop` | One-time desktop target setup (Tauri) |
+| `jac setup desktop` | One-time desktop setup; see [jac-desktop Reference](jac-desktop.md) |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
 | `jac add --npm --dev <pkg>` | Add npm dev dependency |
@@ -1665,9 +1665,9 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
 | `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
-| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
+| `-p, --platform` | Platform for **mobile** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
 
-For desktop builds, the **client-only** variant (web bundle inside a Tauri shell, no bundled sidecar) is enabled by setting `client_only = true` under `[desktop]` in `jac.toml` rather than via a CLI flag -- see [Desktop Target → Client-Only Mode](#client-only-mode). In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
+For desktop builds, the **client-only** variant (web bundle inside a Tauri shell, no bundled sidecar) is enabled by setting `client_only = true` under `[plugins.desktop]` in `jac.toml` rather than via a CLI flag; see [jac-desktop Reference → Client-only mode](jac-desktop.md#client-only-mode). In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
 
 **Examples:**
 
@@ -1681,14 +1681,11 @@ jac build main.jac
 # Build PWA with offline support
 jac build --client pwa
 
-# Build desktop app for current platform
+# Build desktop app (sidecar for current OS; use --platform windows for .exe name)
 jac build --client desktop
 
-# Build for a specific platform
+# Name sidecar jac-sidecar.exe (build on Windows for a Windows binary)
 jac build --client desktop --platform windows
-
-# Build for all platforms
-jac build --client desktop --platform all
 
 # Build mobile app for Android
 jac build --client mobile --platform android
@@ -1713,7 +1710,7 @@ jac setup <target> [-p PLATFORM]
 **Examples:**
 
 ```bash
-# Setup desktop target (creates src-tauri/ directory)
+# Setup desktop target (requires jac-desktop; see jac-desktop Reference)
 jac setup desktop
 
 # Setup PWA target (creates pwa_icons/ directory)
@@ -1748,7 +1745,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 | Target | Command | Output | Setup Required |
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
-| **Desktop** (Tauri) | `jac build --client desktop` | Native installers | Yes |
+| **Desktop** (PyTauri) | `jac build --client desktop` | Staged app under `src-pytauri/dist/` | Yes (`jac-desktop`) |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
@@ -1763,163 +1760,20 @@ jac start --dev              # Dev server with HMR
 
 **Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
 
-### Desktop Target (Tauri)
+### Desktop Target (PyTauri)
 
-Native desktop applications using Tauri. The full-stack Jac app -- frontend bundle, Jac runtime, and your backend walkers/functions -- ships as a single installer for Windows, macOS, and Linux. End users do not need Python or Node installed.
-
-**Architecture:**
-
-A desktop build produces a Tauri shell that hosts a webview pointed at a bundled **sidecar** -- a PyInstaller-frozen executable containing Python, jaclang, jac-client, your `.jac` sources, and any configured plugins. On launch, Tauri spawns the sidecar on a free local port, reads `JAC_SIDECAR_PORT=<port>` from its stdout, and injects the resulting URL into the webview before any page JavaScript runs. The webview is the same client bundle the web target produces; the sidecar is the same backend `jac start` would run, just frozen.
-
-**Prerequisites:**
-
-- Rust/Cargo: [rustup.rs](https://rustup.rs)
-- Platform build tools (Visual Studio Build Tools on Windows, Xcode Command Line Tools on macOS, `webkit2gtk` + `libssl` + `librsvg` on Linux)
-
-**Setup & Build:**
+The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and adds a PyTauri native shell plus a PyInstaller-frozen Jac backend sidecar. No Rust toolchain is required.
 
 ```bash
-# 1. One-time setup (creates src-tauri/ directory)
+pip install jac-client jac-desktop
 jac setup desktop
-
-# 2. Development with hot reload
 jac start --client desktop --dev
-
-# 3. Build installer for current platform
 jac build --client desktop
-
-# 4. Build for specific platform
-jac build --client desktop --platform windows
-jac build --client desktop --platform macos
-jac build --client desktop --platform linux
 ```
 
-**Output:** Installers in `src-tauri/target/release/bundle/`:
+See the **[jac-desktop Reference](jac-desktop.md)** for architecture, `[plugins.desktop]` configuration, sidecar bundling, native Tauri plugins, environment variables, and distribution status.
 
-- Windows: `.exe` installer (NSIS) or `.msi`
-- macOS: `.dmg` or `.app` bundle
-- Linux: `.AppImage`, `.deb`, or `.rpm`
-
-**Configuration:** Window size, title, identifier, and other Tauri metadata are configured under `[desktop]` in `jac.toml` (the build regenerates `src-tauri/tauri.conf.json` from it on every build):
-
-```toml
-[desktop]
-name = "MyApp"
-identifier = "com.example.myapp"
-version = "1.0.0"
-
-[desktop.window]
-title = "MyApp"
-width = 1200
-height = 800
-min_width = 800
-min_height = 600
-
-[desktop.platforms]
-windows = true
-macos = true
-linux = true
-```
-
-**Python Dependencies:**
-
-Desktop builds automatically install and bundle Python dependencies from `jac.toml`:
-
-```toml
-[dependencies]
-websockets = ">=12.0"
-httpx = ">=0.27.0"
-```
-
-These are auto-installed into the bundling environment before PyInstaller runs -- no manual `pip install` needed. During the build, `JAC_BUILD=1` is set in the environment so any Jac code that auto-starts a server at import time stays inert (preventing port conflicts and unnecessary work).
-
-**Plugin Bundling:**
-
-Desktop builds bundle Jac plugins into the sidecar executable using PyInstaller's `collect_all()` plus `importlib.metadata.requires()` for transitive dependency discovery. Configure which plugins to include via `[desktop.plugins]` in `jac.toml`:
-
-```toml
-[desktop.plugins]
-jac_scale = true   # jac-scale: FastAPI server, auth, persistence (default: true)
-byllm = true       # byllm/litellm for LLM support (default: true)
-jac_coder = true   # jac-coder: AI coding features (default: true)
-jac_mcp = true     # jac-mcp: MCP server integration (default: true)
-```
-
-**Notes:**
-
-- Plugins must be installed (`pip install jac-scale byllm jac-coder jac-mcp`) before building -- the build collects them from your current Python environment.
-- `jac_client` itself is **always** bundled as a core package regardless of this config, because the sidecar entry point imports it directly. Setting `jac_client = false` is ignored.
-- The build excludes build-artifact directories (`src-tauri/`, `node_modules/`, `dist/`, `.jac/client/`) when collecting `.jac` files, so rebuilds do not recursively nest previous sidecar bundles.
-
-**Bundled Jac Sources:**
-
-All `.jac` files, `jac.toml`, and the `assets/` directory are copied into `src-tauri/jac/` and shipped as Tauri bundle resources. At runtime, the sidecar looks up `main.jac` in this bundled location first, falling back to parent directories. This is what makes desktop installs fully self-contained.
-
-**Extra Data Files:**
-
-Ship additional files into the sidecar bundle via `[desktop.bundle] extra_data` in `jac.toml`. Values are [glob patterns](https://docs.python.org/3/library/pathlib.html#pathlib.Path.glob) rooted at the project directory. Matches keep their relative paths inside the bundle, so `Path(__file__).parent / "config/prompts.yaml"` still resolves at runtime.
-
-```toml
-[desktop.bundle]
-extra_data = [
-    "config/*.yaml",
-    "data/seed.json",
-    "prompts/**/*.txt",
-]
-```
-
-#### Data Persistence on Installed Builds
-
-Installed desktop apps live in **read-only** locations -- `/usr/lib/`, `/opt/`, `C:\Program Files\`, or an AppImage's `/tmp/.mount_AppXXX/` squashfs. The Jac runtime and jac-scale write to disk relative to the working directory by default (the SQLite database `database.db`, the `.jac/data/` directory, session files), and those writes will fail or crash on a read-only mount.
-
-The sidecar resolves this at startup, **before** importing any Jac module, by setting the `JAC_DATA_PATH` environment variable to a writable location and `chdir`-ing into it. The Jac runtime's `get_db_path()` and jac-scale's config loader both honor this variable.
-
-**Default fallback chain** (the sidecar picks the first one that exists or can be created and passes a touch/unlink probe):
-
-| Platform | Default | First fallback | Second fallback |
-|----------|---------|----------------|-----------------|
-| Linux / macOS | `~/.local/share/jac-app` | `~/.jac-app` | `/tmp/jac-app-{uid}` |
-| Windows | `%LOCALAPPDATA%\jac-app` | `~/AppData/Local/jac-app` | `%TEMP%\jac-app` |
-
-**Override the default** by passing `--data-path` to the sidecar (useful when running the bundled sidecar binary by hand for debugging, or when wiring it into a launcher you control):
-
-```bash
-./src-tauri/binaries/jac-sidecar --data-path /var/lib/myapp
-```
-
-You can also export `JAC_DATA_PATH` before launching the app to point at a custom location for that run. The path you choose must be writable by the user running the app -- the sidecar will probe it and fail loudly if it cannot.
-
-**AppImage-specific environment cleanup:** AppImage runtimes inject `PYTHONHOME`, `PYTHONPATH`, and `PYTHONDONTWRITEBYTECODE` into the environment, which break the bundled Python interpreter inside the sidecar. The generated Tauri `main.rs` strips these variables before spawning the sidecar process.
-
-#### Client-Only Mode
-
-For setups where the desktop app is just a thin native shell around a remote backend (e.g., a hosted jac-scale deployment), set `client_only = true` under `[desktop]` in `jac.toml`:
-
-```toml
-[desktop]
-client_only = true
-
-[plugins.client.api]
-base_url = "https://api.example.com"
-```
-
-In this mode the build:
-
-- **Skips sidecar bundling entirely** -- no PyInstaller step, no Python bundle, smaller installer.
-- **Requires** `[plugins.client.api] base_url` to be set; the build raises a `RuntimeError` if it is missing, since the webview has no local backend to talk to.
-- **Still produces a full Tauri installer** -- only the backend half is omitted.
-
-It is also useful in CI, where you may want to verify the web bundle compiles inside a desktop build without paying for the PyInstaller round-trip.
-
-#### Runtime API URL Injection (Debugging)
-
-Desktop builds do **not** embed the API base URL at compile time. Tauri allocates the sidecar port dynamically, then injects `window.__JAC_API_BASE_URL__` into the webview via an `initialization_script` before any page JavaScript executes. A `get_api_url` Tauri command is also exposed as a fallback for code that needs to query the URL after page load.
-
-If you are debugging an "API not reachable" issue inside an installed desktop app:
-
-1. Run the sidecar binary directly from `src-tauri/binaries/` -- it logs to stderr and prints `JAC_SIDECAR_PORT=<port>` to stdout on startup.
-2. Use the **Debug** page in the `all-in-one` example app (under `examples/all-in-one/pages/debug.jac`), which shows the resolved API base URL, Tauri runtime detection, `get_api_url` invoke results, and interactive walker/HTTP probes.
-3. Check the data path the sidecar settled on -- it logs `[sidecar] Cannot use data path …` lines for any candidate it had to skip.
+Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 
 ### Mobile Target (Capacitor)
 
@@ -2535,3 +2389,5 @@ Provides:
 - [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
 - [Authentication Tutorial](../../tutorials/fullstack/auth.md)
 - [Routing Tutorial](../../tutorials/fullstack/routing.md)
+- [Building a Desktop App](../../tutorials/fullstack/desktop.md)
+- [jac-desktop Reference](jac-desktop.md)

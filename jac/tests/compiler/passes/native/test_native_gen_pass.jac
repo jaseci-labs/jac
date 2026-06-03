@@ -1816,9 +1816,82 @@ test "clib struct value-type coercion" {
     assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
-    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
-    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+    # System V ABI coercion at the call site: the Color value is reinterpreted
+    # as its register coerce type ({i32}) and the eightbyte is loaded out.
+    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+}
+
+test "clib System V AMD64 ABI lowering" {
+    # x86_64-only: asserts the emitted foreign-call ABI matches what clang/gcc
+    # produce for each eightbyte classification case (Phase 1 of #6353).
+    import platform;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        return;
+    }
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # SSE eightbytes: float fields pack into <2 x float> / trailing float.
+    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
+    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")' in s , "V3 expand + 2-eightbyte SSE return";
+    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    # INTEGER eightbyte: all-int small struct coerces to a single integer.
+    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
+    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    # Two SSE double eightbytes.
+    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return.
+    assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
+    assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
+    assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    # The non-injective return-boxing (gap #7) is gone: a scalar return is never
+    # rerouted through struct boxing.
+    assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
+}
+
+test "clib AArch64 AAPCS ABI lowering" {
+    # Cross-targets aarch64 (works from any host) and asserts the emitted
+    # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _os.environ["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(
+            str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")),
+            options=CompileOptions(type_check=False)
+        );
+        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+        s = str(ir.gen.llvm_ir);
+        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
+        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
+        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
+        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        # HFA of doubles.
+        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
+        # a 4-byte struct).
+        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
+        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
+        # sret for the return.
+        assert 'declare float @"cam_fovy"(%"Cam.cabi"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert "byval" not in s , "AAPCS must not emit byval";
+        assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
 }
 
 # --- TestRefCounting ---

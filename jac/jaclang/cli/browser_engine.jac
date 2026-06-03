@@ -1,4 +1,4 @@
-"""Browser-automation engine backing the `jac browser` subcommand.
+"""Browser-automation engine backing the `jac browse` subcommand.
 
 Zero third-party dependencies: drives Chrome/Chromium over the Chrome
 DevTools Protocol (CDP), which is JSON-RPC over a WebSocket. The Python

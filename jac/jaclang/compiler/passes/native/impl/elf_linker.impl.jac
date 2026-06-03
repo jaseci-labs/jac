@@ -676,13 +676,18 @@ impl ElfLinker.build_executable -> bytes {
     num_phdrs = 5;
     phdr_size = num_phdrs * 56;
 
-    # Build interp
+    # Build interp. Prefer a loader that exists on the build host (native
+    # build), but when cross-compiling the target loader is absent here, so
+    # fall back to the canonical (first) interpreter path for the target arch.
     interp_data = b"\x00";
     for path in arch.interp_paths {
         if os.path.exists(path) {
             interp_data = path.encode() + b"\x00";
             break;
         }
+    }
+    if interp_data == b"\x00" and arch.interp_paths {
+        interp_data = arch.interp_paths[0].encode() + b"\x00";
     }
 
     # Build dynamic string table

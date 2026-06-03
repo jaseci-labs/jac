@@ -126,6 +126,10 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
 
     out: dict = {
         "ts": ts_iso,
+        # Raw Loki nanosecond timestamp - kept as a string to avoid
+        # JSON-side precision loss (>53 bits) and used by the
+        # listing endpoint's `before` cursor for older-page paging.
+        "ts_ns": ts_nanos,
         "level": pod_labels.get("level") or "INFO",
         "service": (
             pod_labels.get("service")
@@ -208,15 +212,24 @@ def _build_logql(
     if trace_id {
         # The K-12 trace id is exactly 8 hex chars for the short form
         # we put in the [trace=...] prefix; full UUID elsewhere. Match
-        # both shapes.
-        escaped_tid = trace_id.replace('"', '\\"');
+        # both shapes. The literal brackets need `\\[` / `\\]` in the
+        # LogQL string so the parser unescapes them to `\[` / `\]` for
+        # the regex engine - a bare `\[` is rejected as "invalid char
+        # escape" by Go's strconv.Unquote inside Loki's parser.
+        # Backslashes are doubled first so quotes inserted next don't
+        # get re-doubled (replace order matters here).
+        escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\[trace={escaped_tid[:8]}\\]"'
+            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
         );
     }
     if search {
         # Free-text contains-match. `|=` is case-sensitive substring.
-        escaped_search = search.replace('"', '\\"').replace("\\", "\\\\");
+        # Backslashes MUST be doubled before quotes are escaped,
+        # otherwise the `\"` we just inserted gets re-mangled into
+        # `\\"` which delivers a stray backslash to the substring
+        # match.
+        escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(f'|= "{escaped_search}"');
     }
 
@@ -256,9 +269,14 @@ async def _loki_request(path: str, params: dict) -> dict {
 
 
 """Flatten a Loki query_range response into the UI-shaped log line list.
-Sorted ascending by ts (oldest first) so trace timelines render in
-causal order in the React component."""
-def _flatten_loki_response(payload: dict) -> list[dict] {
+
+`ascending=True` (default) sorts oldest-first so trace timelines render
+in causal order in the React component. `ascending=False` sorts
+newest-first, which is what the main /admin/logs listing wants (matches
+`kubectl logs --tail`'s feel; users expect the most recent line at the
+top of the panel).
+"""
+def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] {
     out: list[dict] = [];
     data = payload.get("data") or {};
     for stream in (data.get("result") or []) {
@@ -272,7 +290,9 @@ def _flatten_loki_response(payload: dict) -> list[dict] {
             out.append(_parse_log_body(body, labels, ts_nanos));
         }
     }
-    out.sort(key=lambda line : line.get("ts", ""));
+    # Sort by the raw nanosecond ts (string-compare is safe: both
+    # sides are zero-padded same-length nanosecond integers from Loki).
+    out.sort(key=lambda line : line.get("ts_ns", ""), reverse=not ascending);
     return out;
 }
 
@@ -356,6 +376,20 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         multiplier_s = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(unit, 60);
         start_ns = now_ns - (magnitude * multiplier_s * 1_000_000_000);
 
+        # `before` is the cursor for "load older": a nanosecond ts
+        # (the oldest entry's ts_ns from the previous page). We
+        # subtract 1 so Loki excludes the boundary entry, otherwise
+        # the same line would re-appear at the top of the next page.
+        before = (qp.get("before") or "").strip();
+        end_ns = now_ns;
+        if before {
+            try {
+                end_ns = int(before) - 1;
+            } except (ValueError, TypeError) {
+                end_ns = now_ns;
+            }
+        }
+
         namespace = _app_namespace();
         logql = _build_logql(namespace, service, level, search, trace);
 
@@ -366,7 +400,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "query": logql,
                     "limit": str(limit),
                     "start": str(start_ns),
-                    "end": str(now_ns),
+                    "end": str(end_ns),
                     "direction": "backward"
                 }
             );
@@ -381,7 +415,16 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             );
         }
 
-        lines = _flatten_loki_response(payload);
+        # Listing wants newest-first - matches `kubectl logs --tail` UX
+        # so the latest line sits at the top of the panel.
+        lines = _flatten_loki_response(payload, ascending=False);
+        # Cursor for the next page: the oldest (last) entry's ts_ns.
+        # `null` when the page is short of `limit` so the UI hides
+        # the "Load older" button.
+        next_before = None;
+        if len(lines) >= limit and lines {
+            next_before = lines[-1].get("ts_ns");
+        }
         return JSONResponse(
             content={
                 "ok": True,
@@ -389,7 +432,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "lines": lines,
                     "count": len(lines),
                     "query": logql,
-                    "namespace": namespace
+                    "namespace": namespace,
+                    "next_before": next_before
                 }
             }
         );
@@ -405,7 +449,10 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             summary="Paginated log query",
             description=(
                 "Query params: service, level, search, trace, since (15m/1h/2d), "
-                "limit (default 200, max 1000). Returns lines sorted ascending."
+                "limit (default 200, max 1000), before (nanosecond ts cursor "
+                "from the previous page's `next_before`). Returns lines sorted "
+                "newest-first; cursor-paginate by passing the response's "
+                "`next_before` back as `before` on the next call."
             )
         )
     );

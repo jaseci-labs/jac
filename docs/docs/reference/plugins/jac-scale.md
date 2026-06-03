@@ -2524,7 +2524,9 @@ namespace = "production"
 
 Controls how the application is exposed inside the cluster and externally.
 
-All traffic flows through a single **NGINX Ingress controller** deployed per app. The Ingress controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
+By default, jac-scale deploys a **dedicated NGINX Ingress controller per app**. The controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
+
+To use a pre-existing shared controller instead, see [Shared Ingress](#shared-ingress) below.
 
 **Defaults:**
 
@@ -2549,6 +2551,71 @@ All traffic flows through a single **NGINX Ingress controller** deployed per app
 container_port = 8000
 ingress_node_port = 30080
 ```
+
+---
+
+### Shared Ingress
+
+By default each app deploys its own NGINX controller (one Deployment, one NodePort/NLB, one IngressClass). Set `shared_ingress = true` to skip that and attach the app's routing rules to a pre-existing shared NGINX controller in your cluster instead.
+
+**When to use shared ingress:**
+
+- You already run a cluster-wide `ingress-nginx` controller (e.g. installed via Helm) and don't want a separate controller per app
+- You are deploying multiple apps to the same cluster and want to reduce resource overhead
+
+**Requirements:**
+
+- A running NGINX ingress controller must already exist in the cluster
+- `domain` **must** be set. The shared controller sees Ingress resources from all namespaces, so host-based routing is the only way to differentiate two apps. jac-scale raises an error at deploy time if `domain` is empty when `shared_ingress = true`
+
+**Configuration:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `shared_ingress` | `false` | Use a pre-existing shared controller instead of deploying a dedicated one |
+| `shared_ingress_class` | `"nginx"` | IngressClass name of the shared controller |
+| `shared_ingress_annotations` | `{}` | Extra annotations merged onto the Ingress. Required to drive non-nginx controllers (AWS ALB, Traefik, GKE). Caller-supplied values take precedence |
+| `shared_ingress_tls` | `false` | Set when the controller terminates TLS out-of-band (e.g. ALB via an ACM cert) so the reported URL uses `https`. nginx+cert-manager (`spec.tls`) is detected automatically |
+
+```toml
+[plugins.scale.kubernetes]
+shared_ingress = true
+domain = "myapp.example.com"          # required: used as the Ingress host field
+
+# Override if your shared controller uses a non-default class
+# shared_ingress_class = "nginx"
+```
+
+**Non-nginx controllers (e.g. AWS ALB).** `shared_ingress_class` may name any controller; nginx-specific tuning is emitted only when the class is `nginx`. Supply controller-specific settings via `shared_ingress_annotations` so jac-scale stays cloud-agnostic:
+
+```toml
+[plugins.scale.kubernetes]
+shared_ingress = true
+shared_ingress_class = "alb"
+shared_ingress_tls = true
+domain = "linkedin.jaseci.app"
+
+[plugins.scale.kubernetes.shared_ingress_annotations]
+"alb.ingress.kubernetes.io/group.name" = "shared-alb"     # join one shared ALB
+"alb.ingress.kubernetes.io/scheme" = "internet-facing"
+"alb.ingress.kubernetes.io/target-type" = "ip"
+"alb.ingress.kubernetes.io/certificate-arn" = "arn:aws:acm:...:certificate/..."
+"alb.ingress.kubernetes.io/listen-ports" = '[{"HTTP": 80}, {"HTTPS": 443}]'
+"alb.ingress.kubernetes.io/ssl-redirect" = "443"
+```
+
+**What changes in shared mode:**
+
+| Behaviour | Dedicated (default) | Shared |
+|-----------|---------------------|--------|
+| Controller deployed | Yes (one per app) | No (uses existing controller) |
+| IngressClass | `{namespace}-{app_name}-nginx` | Value of `shared_ingress_class` |
+| Routing rules | Wildcard (host set by `--enable-tls`) | Host set immediately to `domain` |
+| On destroy | Removes controller, RBAC, IngressClass, and Ingress rules | Removes Ingress rules only; controller is untouched |
+| TLS (`--enable-tls`) | Works (cert-manager Issuer uses app-specific class) | Works (cert-manager Issuer uses shared class) |
+
+!!! note
+    Because the shared controller routes by the `Host:` header, each app in the cluster must have a unique domain. Two apps named `jaseci` in `dev` and `prod` namespaces are fully isolated as long as they have different domains (`dev.example.com` vs `prod.example.com`).
 
 ---
 

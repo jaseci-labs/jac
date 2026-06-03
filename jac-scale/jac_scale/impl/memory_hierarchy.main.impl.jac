@@ -70,9 +70,12 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     and Jac.check_write_access(mem_anchor)
                 ];
             }
-            self.l3.sync();
+            atomic_ids = self.l3.sync() or set();
             if self.l2 {
                 for mem_anchor in l2_pending {
+                    if mem_anchor.id in atomic_ids {
+                        continue;
+                    }
                     try {
                         self.l2.put(mem_anchor);
                     } except Exception as l2_err {
@@ -165,11 +168,9 @@ impl ScaleTieredMemory.close -> None {
     if self.l3 {
         self.l3.close();
     }
-    # Close L2 cache
     if self.l2 {
         self.l2.close();
     }
-    # Clear L1 (inherited from VolatileMemory)
     self.__mem__.clear();
     self.__gc__.clear();
 }

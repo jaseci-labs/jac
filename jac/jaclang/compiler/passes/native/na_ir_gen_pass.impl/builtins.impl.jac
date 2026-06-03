@@ -73,15 +73,23 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         # Determine format specifier based on type
-        if isinstance(val.type, ir.IntType) and val.type.width == 64 {
+        if isinstance(val.type, ir.IntType) {
+            # Promote any narrow integer (i1 bool, i8/i16/i32 — e.g. a foreign
+            # `i32` return consumed inline) to i64 for the %lld varargs slot.
+            if val.type.width == 1 {
+                val = self.builder.zext(val, ir.IntType(64));
+            } elif val.type.width < 64 {
+                val = self.builder.sext(val, ir.IntType(64));
+            }
             fmt_parts.append("%lld");
             args.append(val);
         } elif isinstance(val.type, ir.DoubleType) {
             fmt_parts.append("%f");
             args.append(val);
-        } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
-            val = self.builder.zext(val, ir.IntType(64));
-            fmt_parts.append("%lld");
+        } elif isinstance(val.type, ir.FloatType) {
+            # C `float` (f32) — widen to double for printf's %f varargs slot.
+            val = self.builder.fpext(val, ir.DoubleType());
+            fmt_parts.append("%f");
             args.append(val);
         } elif isinstance(val.type, ir.PointerType) {
             fmt_parts.append("%s");

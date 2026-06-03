@@ -196,7 +196,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
-    triple = llvm.get_default_triple();
+    triple = os.environ.get("JAC_NATIVE_TARGET", "") or llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
     # Step 4: Inject entry point (platform-specific)
@@ -236,7 +236,16 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
         return 1;
     }
 
-    target = llvm.Target.from_default_triple();
+    # JAC_NATIVE_TARGET cross-compiles for another triple; the parsed module
+    # already carries that triple/data layout from NaIRGenPass.postinit, so the
+    # emitted object matches. The pure-Python linker selects ELF arch from the
+    # object's e_machine, so the resulting binary targets the requested ISA.
+    _target_ovr = os.environ.get("JAC_NATIVE_TARGET", "");
+    if _target_ovr {
+        target = llvm.Target.from_triple(_target_ovr);
+    } else {
+        target = llvm.Target.from_default_triple();
+    }
     target_machine = target.create_target_machine(opt=2);
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)
