@@ -845,7 +845,7 @@ impl MongoBackend._put_node_atomic(
         if self._l2_ref {
             try {
                 self._l2_ref.invalidate(anchor.id);
-                # Evict siblings' stale pre-write edge list cross-pod (issue #6313).
+                # Evict siblings' stale pre-write edge list cross-pod.
                 self._l2_ref.publish_invalidation(str(anchor.id), self._l1_id);
             } except Exception as inv_err {
                 logger.debug(

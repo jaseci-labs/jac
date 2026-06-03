@@ -1,15 +1,7 @@
-"""Cross-pod L1 cache invalidation via Redis pub/sub (issue #6313).
+"""Cross-pod L1 cache invalidation over Redis pub/sub.
 
-After an authoritative anchor write, the writer broadcasts an eviction; a single
-process-wide listener drops that anchor from every *other* active L1, so sibling
-pods/contexts reload the merged value from L3 instead of serving a stale copy.
-
-- Self-suppression is keyed by L1 instance, not pod: the writer keeps its own
-  fresh entry while same-process sibling contexts are still evicted.
-- The listener owns its connection, re-subscribes with capped backoff after a
-  Redis drop, and never busy-spins.
-- The registry holds L1s weakly, keyed by a stable uuid, so a context that skips
-  close() can't leak its __mem__.
+A writer broadcasts an eviction; one process-wide listener drops that anchor
+from every other active L1 so siblings reload from L3 instead of serving stale.
 """
 
 import json;
@@ -22,19 +14,18 @@ import from jac_scale._optdeps.redis { redis_module as redis }
 
 glob logger = logging.getLogger(__name__),
      DEFAULT_INVALIDATION_CHANNEL = "jac:anchor:invalidate",
-     # l1_id -> owning ScaleTieredMemory, held weakly. RLock guards the registry
-     # and the snapshot taken before eviction.
+     # l1_id -> owning ScaleTieredMemory, held weakly; RLock guards it.
      _l1_registry = weakref.WeakValueDictionary(),
      _l1_lock = threading.RLock();
 
 
-"""Mint a fresh, process-unique L1 instance id."""
+"""Mint a process-unique L1 id."""
 def new_l1_id -> str {
     return uuid4().hex;
 }
 
 
-"""Register an active L1 under its stable id."""
+"""Register an active L1 under its id."""
 def register_l1(l1_id: str, mem: Any) {
     with _l1_lock {
         _l1_registry[l1_id] = mem;
@@ -42,7 +33,7 @@ def register_l1(l1_id: str, mem: Any) {
 }
 
 
-"""Deregister an L1 on close (GC also reclaims it via the weak reference)."""
+"""Deregister an L1 (GC also reclaims it via the weak ref)."""
 def deregister_l1(l1_id: str) {
     with _l1_lock {
         _l1_registry.pop(l1_id, None);
@@ -50,15 +41,14 @@ def deregister_l1(l1_id: str) {
 }
 
 
-"""Evict `anchor_id` from every active L1 except `origin_l1_id`; return the count
-evicted. dict.pop is atomic under the GIL, so we hold the lock only to snapshot
-the registry, not while mutating each __mem__."""
+"""Evict `anchor_id` from every active L1 except the origin; return count evicted."""
 def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
     try {
         key = UUID(anchor_id);
     } except Exception {
         return 0;
     }
+    # Snapshot under the lock; pop outside it (dict.pop is atomic under the GIL).
     with _l1_lock {
         targets = [
             mem
@@ -78,7 +68,7 @@ def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
 }
 
 
-"""Parse one pub/sub payload and evict the named anchor from sibling L1s."""
+"""Decode a pub/sub payload and evict the named anchor."""
 def _handle_message(data: Any) {
     try {
         text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data;
@@ -94,14 +84,13 @@ def _handle_message(data: Any) {
 }
 
 
-"""Serialize an invalidation message: anchor id + originating L1 id."""
+"""Serialize an invalidation message (anchor id + origin L1 id)."""
 def build_message(anchor_id: str, origin_l1_id: (str | None)) -> str {
     return json.dumps({"a": anchor_id, "o": origin_l1_id});
 }
 
 
-"""Process-wide listener: subscribes on a daemon thread and evicts named anchors
-from sibling L1s, self-healing across Redis drops with capped backoff."""
+"""Daemon listener that evicts named anchors, self-healing across Redis drops."""
 obj L1InvalidationListener {
     has redis_url: str,
         channel: str,
@@ -142,7 +131,7 @@ obj L1InvalidationListener {
                 client = r.from_url(self.redis_url);
                 pubsub = client.pubsub(ignore_subscribe_messages=True);
                 pubsub.subscribe(self.channel);
-                backoff = 0.5;  # reset after a clean (re)subscribe
+                backoff = 0.5;
                 while not self._stop.is_set() {
                     msg = pubsub.get_message(timeout=1.0);
                     if msg is not None and msg.get("type") == "message" {
@@ -150,8 +139,7 @@ obj L1InvalidationListener {
                     }
                 }
             } except Exception as e {
-                # Connection dropped: back off on the stop Event (prompt
-                # shutdown, no busy-spin), then re-subscribe.
+                # Back off on the stop Event (prompt shutdown, no busy-spin).
                 logger.debug(f"L1 invalidation listener reconnecting: {e}");
                 self._stop.wait(backoff);
                 backoff = min(backoff * 2, max_backoff);
@@ -172,8 +160,7 @@ obj L1InvalidationListener {
 }
 
 
-"""Start the process-wide listener once (idempotent, thread-safe). A dead handle
-is replaced so the process self-recovers. No-op when redis is unavailable."""
+"""Start the one process-wide listener (idempotent); replace a dead handle."""
 def ensure_listener(
     process_cache: dict, redis_url: (str | None), channel: str
 ) -> None {
@@ -192,7 +179,7 @@ def ensure_listener(
 }
 
 
-"""Stop the process-wide listener (teardown / test isolation)."""
+"""Stop the process-wide listener."""
 def stop_listener(process_cache: dict) {
     with _l1_lock {
         listener = process_cache.pop("l1_listener", None);

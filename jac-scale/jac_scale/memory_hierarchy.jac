@@ -91,8 +91,7 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
-    # Broadcast a cross-pod L1 eviction; `origin_l1_id` is excluded so the
-    # writer keeps its own fresh entry (issue #6313).
+    # Broadcast a cross-pod L1 eviction; the origin L1 is excluded.
     def publish_invalidation(
         anchor_id: str, origin_l1_id: (str | None) = None
     ) -> None;
@@ -114,7 +113,7 @@ obj MongoBackend(PersistentMemory) {
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
         _l2_ref: (any | None) = None,
-        # Owning context's L1 id, stamped on broadcasts so the writer self-excludes.
+        # L1 id stamped on broadcasts so the writer self-excludes.
         _l1_id: (str | None) = None,
         fetch_count: int = 0,
         put_count: int = 0,
@@ -201,16 +200,14 @@ obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
         _committed: bool = False,
         _persistence_type: PersistenceType = PersistenceType.NONE,
-        # Stable id for this context's L1 in the invalidation registry (issue #6313).
+        # Stable id for this context's L1 in the invalidation registry.
         _l1_id: str = "",
-        # Max seconds a clean L1 entry is trusted before a read reloads it; bounds
-        # staleness if a cross-pod invalidation was missed. 0 disables (issue #6313).
+        # Max seconds a clean L1 entry is trusted before a read reloads it (0 disables).
         _l1_max_age: float = 0.0,
         use_cache:
             bool = True;  # Override parent default to enable Redis cache by default
 
     def postinit -> None;
-    # Lazy read-time freshness layered on the inherited tiered read (issue #6313).
     def get(id: UUID) -> (Anchor | None);
     def commit(anchor: (Anchor | None) = None) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;

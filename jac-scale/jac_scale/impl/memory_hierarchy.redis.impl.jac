@@ -231,11 +231,7 @@ impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
 
-"""Broadcast a cross-pod L1 eviction for `anchor_id` (issue #6313).
-
-Best-effort PUBLISH; sibling pods evict the anchor from L1 while `origin_l1_id`
-is excluded by the receiver. Never raises into the commit path; gated by
-`redis_l1_invalidation_enabled`."""
+"""Best-effort PUBLISH of a cross-pod L1 eviction; gated by config."""
 impl RedisBackend.publish_invalidation(
     anchor_id: str, origin_l1_id: (str | None) = None
 ) -> None {

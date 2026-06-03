@@ -1661,9 +1661,9 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
 }
 
 # ----------------------------------------------------------------------
-# Cross-pod L1 cache invalidation via Redis pub/sub (issue #6313)
+# Cross-pod L1 cache invalidation via Redis pub/sub
 # ----------------------------------------------------------------------
-test "L1 invalidation: evict skips origin, evicts every sibling (issue 6313)" {
+test "L1 invalidation: evict skips origin, evicts every sibling" {
     import from uuid { uuid4 }
     import from jac_scale.l1_invalidation {
         register_l1,
@@ -1688,7 +1688,6 @@ test "L1 invalidation: evict skips origin, evicts every sibling (issue 6313)" {
         assert anchor_id in mem_a.__mem__ , "origin L1 must NOT be evicted";
         assert anchor_id not in mem_b.__mem__ , "sibling B must be evicted";
         assert anchor_id not in mem_c.__mem__ , "sibling C must be evicted";
-        # A malformed / unknown anchor id is a safe no-op.
         assert evict_local_l1("not-a-uuid", id_a) == 0 , "bad id must no-op";
     } finally {
         deregister_l1(id_a);
@@ -1697,7 +1696,7 @@ test "L1 invalidation: evict skips origin, evicts every sibling (issue 6313)" {
     }
 }
 
-test "L1 invalidation: registry holds L1 weakly, GC reclaims it (issue 6313)" {
+test "L1 invalidation: registry holds L1 weakly, GC reclaims it" {
     import gc;
     import from uuid { uuid4 }
     import from jac_scale.l1_invalidation { register_l1, new_l1_id, _l1_registry }
@@ -1713,7 +1712,7 @@ test "L1 invalidation: registry holds L1 weakly, GC reclaims it (issue 6313)" {
     );
 }
 
-test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved (issue 6313)" {
+test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved" {
     import time;
     import from uuid { uuid4 }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
@@ -1754,7 +1753,7 @@ test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved (issue 6
     }
 }
 
-test "L1 invalidation: listener recovers after a Redis connection drop (issue 6313)" {
+test "L1 invalidation: listener recovers after a Redis connection drop" {
     import time;
     import from uuid { uuid4 }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
@@ -1807,7 +1806,7 @@ test "L1 invalidation: listener recovers after a Redis connection drop (issue 63
     }
 }
 
-test "L1 invalidation: ensure_listener is idempotent and self-heals (issue 6313)" {
+test "L1 invalidation: ensure_listener is idempotent and self-heals" {
     import time;
     import from jac_scale.l1_invalidation { ensure_listener, stop_listener }
 
@@ -1837,7 +1836,6 @@ test "L1 invalidation: ensure_listener is idempotent and self-heals (issue 6313)
         );
         assert second.is_alive() , "replacement listener must be running";
 
-        # A no-op when no redis URL is configured.
         empty: dict = {};
         ensure_listener(empty, None, "jac:test:invalidate");
         assert "l1_listener" not in empty , "no listener without a redis url";
@@ -1848,7 +1846,7 @@ test "L1 invalidation: ensure_listener is idempotent and self-heals (issue 6313)
     }
 }
 
-test "L1 invalidation: lazy read-time freshness drops stale-clean, keeps dirty (issue 6313)" {
+test "L1 invalidation: lazy read-time freshness drops stale-clean, keeps dirty" {
     import time;
     import from jaclang.jac0core.archetype { Root }
     import from jaclang.runtimelib.serializer { Serializer }

@@ -8,8 +8,7 @@ impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
-    # Register this context's L1 so sibling broadcasts can evict our copies
-    # (issue #6313). Held weakly, so close() is best-effort.
+    # Register this context's L1 so sibling broadcasts can evict our copies.
     self._l1_id = new_l1_id();
     register_l1(self._l1_id, self);
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
@@ -18,8 +17,7 @@ impl ScaleTieredMemory.postinit -> None {
     if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
-        # Start the cross-pod L1 invalidation listener once (issue #6313), and arm
-        # the lazy read-time freshness bound for the lossy-reconnect window.
+        # Start the invalidation listener once and arm the read-time freshness bound.
         try {
             db_config = get_scale_config().get_database_config();
             self._l1_max_age = cast(
@@ -106,7 +104,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     }
                     try {
                         self.l2.put(mem_anchor);
-                        # Evict siblings' stale L1 copy after refreshing L2 (issue #6313).
+                        # Evict siblings' stale L1 copy after refreshing L2.
                         cast(RedisBackend, self.l2).publish_invalidation(
                             str(mem_anchor.id), self._l1_id
                         );
@@ -203,7 +201,7 @@ impl ScaleTieredMemory.close -> None {
     if self.l2 {
         self.l2.close();
     }
-    # Drop this context's L1 from the invalidation registry (GC reclaims it anyway).
+    # Drop this context's L1 from the invalidation registry.
     if self._l1_id {
         deregister_l1(self._l1_id);
     }
@@ -211,15 +209,8 @@ impl ScaleTieredMemory.close -> None {
     self.__gc__.clear();
 }
 
-"""Tiered read with lazy freshness (issue #6313).
-
-Pub/sub eviction is fire-and-forget, so a message missed during a Redis
-reconnect could leave a long-lived L1 entry stale. To bound that, an L1 entry
-older than `_l1_max_age` is dropped on read so the inherited tiered read reloads
-it from L2/L3. This only ever refreshes *clean* entries at the moment of a read
-— it never yanks an anchor out from under an in-flight writer, so uncommitted
-work is never lost. The age stamp rides on the anchor, so it is reset whenever
-the entry is reloaded. A miss (or `_l1_max_age == 0`) is a plain `super.get`."""
+"""Tiered read; a clean L1 entry past `_l1_max_age` is dropped so it reloads
+(bounds staleness from a missed eviction). Dirty entries are never discarded."""
 impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
     if self._l1_max_age > 0 {
         existing = self.__mem__.get(id);
@@ -229,15 +220,13 @@ impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
             );
             now = time.monotonic();
             if stamped is None {
-                # First sighting (e.g. promoted by batch_get): start the clock.
-                existing.__dict__['__jac_l1_loaded_at__'] = now;
+                existing.__dict__['__jac_l1_loaded_at__'] = now;  # start the clock
             } elif now - stamped >= self._l1_max_age {
                 try {
                     if Serializer._compute_hash(existing) == existing.hash {
                         self.__mem__.pop(id, None);  # clean + stale → reload below
                     } else {
-                        # Dirty: never discard uncommitted work; defer the check.
-                        existing.__dict__['__jac_l1_loaded_at__'] = now;
+                        existing.__dict__['__jac_l1_loaded_at__'] = now;  # dirty: defer
                     }
                 } except Exception { }
             }
