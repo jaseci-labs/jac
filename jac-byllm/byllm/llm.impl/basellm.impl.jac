@@ -727,6 +727,8 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     }
 
     messages = mt_run.get_msg_list();
+    # Tool-image → user-message reroute for providers that reject images in `role: "tool"`.
+    messages = reroute_tool_images_to_user_message(messages);
     tools = mt_run.get_tool_list() or None;
 
     # Intelligent parallel scheduling: when parallel is active for this call,

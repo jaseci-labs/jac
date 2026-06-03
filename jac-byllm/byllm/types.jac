@@ -274,3 +274,105 @@ def content_preview(content: any, max_len: int) -> str {
     }
     return " ".join(parts)[:max_len];
 }
+
+
+"""Move tool-result images into a trailing user message.
+
+Some providers (e.g. OpenAI) reject images inside `role: "tool"` content.
+Consecutive tool messages are grouped: images batch into ONE user message
+AFTER the run so Anthropic's tool_use/tool_result alternation stays valid.
+Each image is prefixed with `[Tool result for <name> (id <id>)]:`.
+Apply at wire-format time only — never persist the rerouted shape.
+"""
+def reroute_tool_images_to_user_message(messages: list) -> list {
+    # Common case: no tool images → return the input untouched (no allocations).
+    if not any(_tool_msg_has_image(m) for m in messages) {
+        return messages;
+    }
+
+    out: list = [];
+    pending: list = [];  # image blocks buffered until the tool-result run ends
+
+    for msg in messages {
+        if _tool_msg_has_image(msg) {
+            (stripped, images) = _split_tool_msg_images(msg);
+            out.append(stripped);
+            name = msg.get("name", "tool");
+            call_id = msg.get("tool_call_id", "");
+            pending.append(
+                {"type": "text", "text": f"[Tool result for {name} (id {call_id})]:"}
+            );
+            pending.extend(images);
+        } elif _is_tool_msg(msg) {
+            # Text-only tool — still inside the run; can't flush yet (Anthropic alternation).
+            out.append(msg);
+        } else {
+            if pending {
+                out.append({"role": "user", "content": pending});
+                pending = [];
+            }
+            out.append(msg);
+        }
+    }
+    if pending {
+        out.append({"role": "user", "content": pending});
+    }
+    return out;
+}
+
+
+def _is_tool_msg(msg: object) -> bool {
+    return isinstance(msg, dict) and msg.get("role") == "tool";
+}
+
+
+def _tool_msg_has_image(msg: object) -> bool {
+    if not _is_tool_msg(msg) {
+        return False;
+    }
+    content = msg.get("content");
+    if not isinstance(content, list) {
+        return False;
+    }
+    for block in content {
+        if isinstance(block, dict) and block.get("type") in ("image_url", "image") {
+            return True;
+        }
+    }
+    return False;
+}
+
+
+"""Split a tool message into (stripped_msg, image_blocks).
+Text-only remainders collapse to a bare string; empty remainders become a
+placeholder so the message stays valid.  No images → original message + []."""
+def _split_tool_msg_images(msg: dict) -> tuple {
+    content = msg.get("content");
+    if not isinstance(content, list) {
+        return (msg, []);
+    }
+    text_blocks: list = [];
+    image_blocks: list = [];
+    for block in content {
+        if isinstance(block, dict) and block.get("type") in ("image_url", "image") {
+            image_blocks.append(block);
+        } else {
+            text_blocks.append(block);
+        }
+    }
+    if not image_blocks {
+        return (msg, []);
+    }
+    text_only = all(
+        isinstance(b, dict) and b.get("type") == "text" for b in text_blocks
+    );
+    if text_only {
+        stripped_content = " ".join(b.get("text", "") for b in text_blocks).strip();
+        if not stripped_content {
+            stripped_content = "(image attached in following user message)";
+        }
+    } else {
+        stripped_content = text_blocks;
+    }
+    return ({** msg, "content": stripped_content}, image_blocks);
+}
