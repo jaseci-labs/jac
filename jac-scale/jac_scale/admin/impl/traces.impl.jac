@@ -213,6 +213,7 @@ def _flatten_tempo_trace(payload: dict) -> dict {
                     "status": str(status.get("code", "")),
                     "attributes": _otlp_attrs(span.get("attributes", []))
                 });
+            }
         }
     }
     # Sort by start time so the UI can lay the waterfall top-down.
