@@ -2248,6 +2248,102 @@ test "sys argv via nacompile" {
     }
 }
 
+# --- TestNativeAArch64Linker ---
+test "aarch64 standalone binary runs (issue #6366)" {
+    # Cross-compile a trivial program to aarch64 via the in-house ELF linker
+    # and run it under qemu-user. Guards the linker's absolute-address
+    # relocations (R_AARCH64_MOVW_UABS_G0..G3): without them every global /
+    # .rodata reference materializes to NULL and the binary segfaults at entry.
+    import shutil;
+    import tempfile;
+    qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
+    ld_prefix = "/usr/aarch64-linux-gnu";
+    loader = os.path.join(ld_prefix, "lib", "ld-linux-aarch64.so.1");
+    if not qemu or not os.path.exists(loader) {
+        import pytest;
+        pytest.skip("aarch64 qemu-user + cross libc not installed");
+    }
+    fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "a64_roundtrip");
+        # Step 1: cross-compile for aarch64.
+        comp_env = dict(os.environ);
+        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=comp_env
+        );
+        assert comp.returncode == 0 , (
+            f"aarch64 nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        # Step 2: run under qemu-user. total = add(40, 2) = 42, surfaced via
+        # sys.exit. A dropped MOVW_UABS reloc stores to NULL -> SIGSEGV
+        # (returncode -11 / 139) instead of the expected 42.
+        run_env = dict(os.environ);
+        run_env["QEMU_LD_PREFIX"] = ld_prefix;
+        result = subprocess.run(
+            [qemu, out_bin], capture_output=True, text=True, timeout=30, env=run_env
+        );
+        assert result.returncode == 42 , (
+            f"Expected exit 42, got {result.returncode} "
+            f"(SIGSEGV/-11/139 == dropped R_AARCH64_MOVW_UABS relocations).\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+    }
+}
+
+test "elf linker rejects unhandled relocation (issue #6366 guard)" {
+    # Defense-in-depth: the linker must refuse to emit a binary when a
+    # relocation targeting an emitted section has no handler, rather than
+    # silently leaving the reference pointing at NULL (the #6366 failure mode).
+    # Pure link-time check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    # A function that loads a module global forces an address-materialization
+    # relocation into .text against the global.
+    ir = "target triple = \"aarch64-unknown-linux-gnu\"\n" + "@g = global i64 0\n" + "define i64 @f() {\n  %v = load i64, i64* @g\n  ret i64 %v\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("aarch64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6"]
+    );
+    assert linker.parse_object() , "parse_object failed on aarch64 object";
+    assert len(linker.relocations) > 0 , "expected at least one relocation";
+    # Corrupt a relocation that patches the emitted code section to an unknown
+    # type; the linker must raise instead of emitting an unrelocated binary.
+    target = None;
+    for r in linker.relocations {
+        if r.target_sec and "text" in r.target_sec {
+            target = r;
+            break;
+        }
+    }
+    assert target is not None , "no .text relocation found to corrupt";
+    target.rtype = 9999;
+    raised = False;
+    try {
+        linker.build_executable();
+    } except ValueError as e {
+        raised = True;
+        assert "relocation type" in str(e) , f"unexpected message: {e}";
+    }
+    assert raised , "linker silently accepted an unhandled relocation";
+}
+
 # --- TestNativeListBugs ---
 test "list_bugs pop local removes element" {
     (eng, _) = compile_native("list_bugs.na.jac");
