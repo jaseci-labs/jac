@@ -107,7 +107,18 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_COPY = 1024,
      R_AARCH64_GLOB_DAT = 1025,
      R_AARCH64_JUMP_SLOT = 1026,
-     R_AARCH64_ABS64 = 257;
+     R_AARCH64_ABS64 = 257,
+     # MOVZ/MOVK absolute-address materialization. A 64-bit address is built
+     # across four instructions; each reloc patches one 16-bit slice into the
+     # imm16 field. G0/G1/G2/G3 carry address bits [15:0]/[31:16]/[47:32]/[63:48].
+     # The _NC ("no check") variants suppress the per-group overflow check.
+     R_AARCH64_MOVW_UABS_G0 = 263,
+     R_AARCH64_MOVW_UABS_G0_NC = 264,
+     R_AARCH64_MOVW_UABS_G1 = 265,
+     R_AARCH64_MOVW_UABS_G1_NC = 266,
+     R_AARCH64_MOVW_UABS_G2 = 267,
+     R_AARCH64_MOVW_UABS_G2_NC = 268,
+     R_AARCH64_MOVW_UABS_G3 = 269;
 
 
 # ── Helper: build ELF hash table ────────────────────────────────
@@ -416,6 +427,25 @@ def _aarch64_apply_reloc(
         val = sym_addr + addend;
         struct.pack_into("<Q", patch_buf, patch_off, val & 0xFFFFFFFFFFFFFFFF);
         return True;
+    } elif rtype == R_AARCH64_MOVW_UABS_G0
+    or rtype == R_AARCH64_MOVW_UABS_G0_NC
+    or rtype == R_AARCH64_MOVW_UABS_G1
+    or rtype == R_AARCH64_MOVW_UABS_G1_NC
+    or rtype == R_AARCH64_MOVW_UABS_G2
+    or rtype == R_AARCH64_MOVW_UABS_G2_NC
+    or rtype == R_AARCH64_MOVW_UABS_G3 {
+        # Patch one 16-bit slice of the absolute address (S + A) into the
+        # MOVZ/MOVK imm16 field at bits [20:5]. The reloc type selects the
+        # group: G0/G1/G2/G3 -> address bits [15:0]/[31:16]/[47:32]/[63:48].
+        # Each {G,G_NC} pair is two consecutive codes, so dividing the offset
+        # from G0 by two yields the group index.
+        val = sym_addr + addend;
+        group = (rtype - R_AARCH64_MOVW_UABS_G0) // 2;
+        imm16 = (val >> (group * 16)) & 0xFFFF;
+        insn = struct.unpack_from("<I", patch_buf, patch_off)[0];
+        insn = (insn & 0xFFE0001F) | (imm16 << 5);
+        struct.pack_into("<I", patch_buf, patch_off, insn);
+        return True;
     }
     return False;
 }
@@ -676,13 +706,18 @@ impl ElfLinker.build_executable -> bytes {
     num_phdrs = 5;
     phdr_size = num_phdrs * 56;
 
-    # Build interp
+    # Build interp. Prefer a loader that exists on the build host (native
+    # build), but when cross-compiling the target loader is absent here, so
+    # fall back to the canonical (first) interpreter path for the target arch.
     interp_data = b"\x00";
     for path in arch.interp_paths {
         if os.path.exists(path) {
             interp_data = path.encode() + b"\x00";
             break;
         }
+    }
+    if interp_data == b"\x00" and arch.interp_paths {
+        interp_data = arch.interp_paths[0].encode() + b"\x00";
     }
 
     # Build dynamic string table
@@ -940,20 +975,33 @@ impl ElfLinker.build_executable -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is not None {
-            (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        } else {
-            patch_buf = code_bytes;
-            sec_blob_off = 0;
-            patch_base_vaddr = text_vaddr;
+        if _pt is None {
+            # The relocation targets a section we do not place in the loadable
+            # image (e.g. metadata like .eh_frame, whose relocations are also
+            # filtered while parsing). There is nothing in the output to patch,
+            # so skip it. The previous fallback wrote into .text at this offset,
+            # which would corrupt code if such a relocation were ever applied.
+            continue;
         }
+        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
         patch_off = sec_blob_off + rela.offset;
         patch_vaddr = patch_base_vaddr + patch_off;
 
-        # Apply via architecture-specific handler
-        arch.apply_reloc(
+        # Apply via architecture-specific handler. Every relocation that reaches
+        # here targets an emitted (loadable) section, so an unhandled type would
+        # leave the reference pointing at NULL. Fail loudly instead of emitting a
+        # binary that segfaults at process entry (the failure mode of #6366).
+        applied = arch.apply_reloc(
             rela.rtype, patch_buf, patch_off, sym_addr, rela.addend, patch_vaddr
         );
+        if not applied {
+            raise ValueError(
+                f"ELF linker: no handler for relocation type {rela.rtype} "
+                f"(symbol '{rela.sym_name}', section '{rela.target_sec}', "
+                f"e_machine {arch.e_machine}). Refusing to emit a binary with "
+                f"an unrelocated reference."
+            );
+        }
     }
 
     # ── Find entry point ──────────────────────────────────────────
