@@ -1,6 +1,6 @@
 [project]
 name = "byllm"
-version = "0.6.12"
+version = "0.6.13"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -21,7 +21,7 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 packages = ["byllm*"]
 
 [dependencies]
-jaclang = ">=0.15.6"
+jaclang = ">=0.16.0"
 litellm = ">=1.70.0,<=1.82.6"  # SECURITY: v1.82.7+ was compromised and yanked from PyPI
 loguru = ">=0.7.2,<0.8.0"
 httpx = ">=0.27.0"
