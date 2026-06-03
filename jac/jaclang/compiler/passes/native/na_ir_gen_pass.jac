@@ -301,6 +301,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
+    def _get_char_cache_gv -> ir.Value;
+    def _store_str_len(str_ptr: ir.Value, byte_len: ir.Value) -> None;
+    def _emit_jac_str_len(str_ptr: ir.Value, name: str = "jstrlen") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
@@ -654,6 +657,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
+    def _get_shared_str_type_tag_gv -> ir.GlobalVariable;
     def _emit_set_type_tag(b: ir.IRBuilder, ptr_i8: ir.Value, type_name: str) -> None;
     def _emit_magic_check(
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"

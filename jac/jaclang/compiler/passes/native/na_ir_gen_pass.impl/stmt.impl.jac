@@ -246,7 +246,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             # borrow-retain path below (retain before returning a borrowed ref).
             skip_var: (str | None) = None;
             if isinstance(nd.expr, uni.Name)
-            and nd.expr.sym_name not in self.param_vars {
+            and nd.expr.sym_name not in self.param_vars
+            and nd.expr.sym_name in self.local_vars {
+                # Only "donate" ownership for true local variables: scope_exit
+                # nulls the alloca so RC is unchanged (ownership transferred).
+                # Globals have no alloca to null — returning a global is a borrow
+                # and must fall through to the retain-before-return path below.
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
                 # Null allocas for any pointer-typed local variables that were
@@ -2081,8 +2086,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         i8p_s = ir.IntType(8).as_pointer();
         if str_coll_val is not None and str_coll_val.type == i8p_s {
             i64 = ir.IntType(64);
-            strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p_s]);
-            str_len = self.builder.call(strlen_fn, [str_coll_val], name="fors.len");
+            str_len = self._emit_jac_str_len(str_coll_val, name="fors.len");
             idx_alloca = self._entry_alloca(i64, "fors.idx");
             self.builder.store(ir.Constant(i64, 0), idx_alloca);
             loop_alloca = self._entry_alloca(i8p_s, loop_var_name);

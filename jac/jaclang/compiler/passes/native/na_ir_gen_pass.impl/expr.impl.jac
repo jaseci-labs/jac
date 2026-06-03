@@ -882,6 +882,12 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         } elif isinstance(operand.type, ir.IntType) {
             zero = ir.Constant(operand.type, 0);
             return self.builder.icmp_signed("==", operand, zero, name="not");
+        } elif isinstance(operand.type, ir.PointerType) {
+            # `not ptr` (covers str, any pointer): true when pointer is null.
+            # Without this branch the unary returns None, silently dropping any
+            # surrounding `if not str {` body and causing hard-to-diagnose crashes.
+            null_ptr = ir.Constant(operand.type, None);
+            return self.builder.icmp_unsigned("==", operand, null_ptr, name="not.ptr");
         }
     } elif op == Tok.BW_NOT {
         # Bitwise NOT: ~x = x XOR -1 (all 1s)

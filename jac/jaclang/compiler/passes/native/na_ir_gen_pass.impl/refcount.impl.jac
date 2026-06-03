@@ -131,6 +131,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _raw_tag_str = self._get_snprintf_fmt("raw");
     _raw_tag_gep = ir.GlobalVariable.__new__(ir.GlobalVariable);
     self._rc_raw_tag_gv = _raw_tag_str;  # reuse fmt-string global as tag
+    self._rc_str_tag_gv = self._get_shared_str_type_tag_gv();
 
     # --- __rc_alloc(i64 size) -> i8* ---
     # 32-byte header: [alloc_id | type_tag_ptr | refcount | dtor_fn_ptr]
@@ -422,8 +423,28 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     );
     dtor_slot = b.bitcast(dtor_raw, i64_ptr, name="dtor.slot");
     dtor_val = b.load(dtor_slot, name="dtor.val");
+    # Guard: if this allocation is a Jac string, ptr-8 holds the cached byte
+    # length (stored by _store_str_len), NOT a destructor function pointer.
+    # Compare type_tag (ptr-24) against the pre-created 'str' tag to detect.
+    _dtag_raw = b.gep(
+        release_fn.args[0], [ir.Constant(i64, HDR_TAG_OFF)], name="dtag.raw"
+    );
+    _dtag_pp = b.bitcast(_dtag_raw, i8_ptr.as_pointer(), name="dtag.pp");
+    _dtag_val = b.load(_dtag_pp, name="dtag.val");
+    _str_tag_gep_r = b.gep(
+        self._rc_str_tag_gv,
+        [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+        name="str.tag.gep"
+    );
+    _dtag_int = b.ptrtoint(_dtag_val, i64, name="dtag.int");
+    _str_tag_int = b.ptrtoint(_str_tag_gep_r, i64, name="str.tag.int");
+    _is_str_dtor = b.icmp_unsigned("==", _dtag_int, _str_tag_int, name="is.str.dtor");
+    # For strings: treat dtor slot as cached length → safe_dtor = 0 (skip call).
+    _safe_dtor = b.select(
+        _is_str_dtor, ir.Constant(i64, 0), dtor_val, name="safe.dtor"
+    );
     is_dtor_zero = b.icmp_unsigned(
-        "==", dtor_val, ir.Constant(i64, 0), name="dtor.zero"
+        "==", _safe_dtor, ir.Constant(i64, 0), name="dtor.zero"
     );
     b.cbranch(is_dtor_zero, log_free_bb, call_dtor_bb);
     # call_dtor: typed dtor handles element release + its own free.
@@ -498,6 +519,34 @@ impl NaIRGenPass._emit_magic_check(
     );
 }
 
+"""Return (creating if necessary) a linkonce_odr global for the 'str' type tag.
+
+All modules that are link_in'd together share ONE copy of this symbol,
+so cross-module type_tag comparisons in __rc_release_simple always see
+the same address regardless of which module created the string.
+
+Using 'private' linkage (as _get_snprintf_fmt does) causes each compiled
+module to have its own copy at a different address.  When a string is
+created in module A (tag = A's address) and released via module B's
+__rc_release_simple (compares against B's address), the check fails and
+the cached byte_len is mistakenly called as a destructor function pointer,
+causing a SIGSEGV (the 0x43 crash seen in jac-bun/issues/).
+"""
+impl NaIRGenPass._get_shared_str_type_tag_gv -> ir.GlobalVariable {
+    _sym = "jac.str.type.tag";
+    if _sym in self.llvm_module.globals {
+        return self.llvm_module.globals[_sym];
+    }
+    _i8 = ir.IntType(8);
+    _tag_type = ir.ArrayType(_i8, 4);
+    _cst = ir.Constant(_tag_type, bytearray(b"str\x00"));
+    _gv = ir.GlobalVariable(self.llvm_module, _tag_type, name=_sym);
+    _gv.linkage = "linkonce_odr";
+    _gv.global_constant = True;
+    _gv.initializer = _cst;
+    return _gv;
+}
+
 """Stamp a type-tag string onto an RC-managed allocation header.
 
 Writes `type_name` into the type_tag slot at ptr_i8-24 (and updates the
@@ -513,7 +562,11 @@ impl NaIRGenPass._emit_set_type_tag(
         return;
     }
     _i32 = ir.IntType(32);
-    _tag_gv = self._get_snprintf_fmt(type_name);
+    if type_name == "str" {
+        _tag_gv = self._get_shared_str_type_tag_gv();
+    } else {
+        _tag_gv = self._get_snprintf_fmt(type_name);
+    }
     _tag_gep = b.gep(
         _tag_gv, [ir.Constant(_i32, 0), ir.Constant(_i32, 0)], name="tag.gep"
     );

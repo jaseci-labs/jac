@@ -190,6 +190,13 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
 
+        # Short-circuit before JIT creation if any link-time errors were emitted
+        # (e.g. E5024/E5025/E5026). Running create_mcjit_compiler on broken IR
+        # can crash or produce misleading follow-on errors.
+        if self.errors_had {
+            return ir_in;
+        }
+
         # Collect all function names from the module BEFORE create_mcjit_compiler
         # consumes it.  We need these to build the symbol map for GDB.
         _all_fn_names: list = [];
@@ -329,6 +336,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
     _PRIVATE_LINKAGE = 9;  # private  — per-module
     _WEAK_LINKAGE = 5;  # weak     — linker merges; safe to define in multiple modules
     _WEAK_ODR_LINKAGE = 6;  # weak_odr — same, body guaranteed identical across modules
+    _LINKONCE_LINKAGE = 2;  # linkonce — linker merges, one definition kept
+    _LINKONCE_ODR_LINKAGE = 3;  # linkonce_odr — same; body identical across modules
     for _mfn in main_mod.functions {
         if _mfn.is_declaration or _mfn.name.startswith("llvm.") {
             continue;
@@ -649,7 +658,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 if func.linkage == _INTERNAL_LINKAGE
                 or func.linkage == _PRIVATE_LINKAGE
                 or func.linkage == _WEAK_LINKAGE
-                or func.linkage == _WEAK_ODR_LINKAGE {
+                or func.linkage == _WEAK_ODR_LINKAGE
+                or func.linkage == _LINKONCE_LINKAGE
+                or func.linkage == _LINKONCE_ODR_LINKAGE {
                     continue;
                 }
                 exported_funcs.append(func.name);
@@ -677,7 +688,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 or gv.linkage == _INTERNAL_LINKAGE
                 or gv.linkage == _PRIVATE_LINKAGE
                 or gv.linkage == _WEAK_LINKAGE
-                or gv.linkage == _WEAK_ODR_LINKAGE {
+                or gv.linkage == _WEAK_ODR_LINKAGE
+                or gv.linkage == _LINKONCE_LINKAGE
+                or gv.linkage == _LINKONCE_ODR_LINKAGE {
                     continue;
                 }
                 exported_globals.append(gv.name);

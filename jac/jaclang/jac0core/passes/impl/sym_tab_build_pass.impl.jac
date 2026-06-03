@@ -820,6 +820,21 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
+            } elif (
+                (nd.type_tag is None)
+                and isinstance(i.sym_tab, uni.Ability)
+                and (module := i.find_parent_of_type(uni.Module)) is not None
+                and i.sym_name in module.names_in_scope
+            ) {
+                # Function-scope unannotated assignment to a name that already
+                # exists at module scope: rebind the global rather than
+                # creating a shadow local. Mirrors the behaviour the user
+                # gets by writing `global x;` first, but lets long-standing
+                # native code skip the redundant declaration.
+                module.names_in_scope[i.sym_name].add_use(i.name_spec);
+                i.sym_tab.names_in_scope[i.sym_name] = module.names_in_scope[
+                    i.sym_name
+                ];
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {
