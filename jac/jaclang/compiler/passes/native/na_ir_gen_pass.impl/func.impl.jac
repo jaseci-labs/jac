@@ -70,10 +70,14 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     if _crtn is not None and _crtn in self.clib_struct_names {
         _clib_has_struct = True;
     }
-    # System V AMD64: classify struct arguments/returns per the platform psABI
-    # and record a marshalling plan on self.clib_fn_abi. Off-x86_64 targets fall
-    # through to the legacy raw-aggregate path below (AArch64 AAPCS is Phase 2).
-    if _clib_has_struct and "x86_64" in str(self.llvm_module.triple or "") {
+    # Classify struct arguments/returns per the platform psABI (System V AMD64
+    # or AArch64 AAPCS) and record a marshalling plan on self.clib_fn_abi.
+    # Targets without an ABI classifier fall through to the legacy path below.
+    _abi_triple = str(self.llvm_module.triple or "");
+    _abi_supported = (
+        "x86_64" in _abi_triple or "aarch64" in _abi_triple or "arm64" in _abi_triple
+    );
+    if _clib_has_struct and _abi_supported {
         sysv_param_types: list[ir.Type] = [];
         param_plan: list = [];
         for p in sig.get_parameters() {
@@ -90,6 +94,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                             "sname": ptn,
                             "pname": pname,
                             "align": pcls["align"],
+                            "byval": pcls["byval"],
                             "argpos": len(sysv_param_types)
                         }
                     );
@@ -105,6 +110,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                             "sname": ptn,
                             "pname": pname,
                             "coerce": pcls["coerce"],
+                            "safe": pcls["safe"],
                             "argpos": start
                         }
                     );
@@ -149,7 +155,8 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 sysv_ret_plan = {
                     "kind": "struct_reg",
                     "sname": rtn,
-                    "coerce": rcls["coerce"]
+                    "coerce": rcls["coerce"],
+                    "safe": rcls["safe"]
                 };
             }
         } else {
@@ -174,9 +181,13 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             _pos = pp["argpos"];
             if pp["kind"] == "struct_mem" and _pos < len(sysv_func.args) {
                 _ba = sysv_func.args[_pos];
-                _ba.add_attribute("byval");
-                _bal = pp["align"];
-                _ba.align = _bal if _bal > 8 else 8;
+                # System V passes the indirect aggregate as `byval` (the backend
+                # copies it); AAPCS passes a plain pointer to a caller-made copy.
+                if pp["byval"] {
+                    _ba.add_attribute("byval");
+                    _bal = pp["align"];
+                    _ba.align = _bal if _bal > 8 else 8;
+                }
                 _ba.name = pp["pname"];
             } elif pp["kind"] == "scalar" and _pos < len(sysv_func.args) {
                 sysv_func.args[_pos].name = pp["pname"];

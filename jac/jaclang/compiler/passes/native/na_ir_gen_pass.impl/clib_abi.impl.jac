@@ -85,20 +85,51 @@ impl NaIRGenPass._scalar_layout(llt: ir.Type) -> tuple {
     return (8, 8, [(0, False, 64)]);
 }
 
-"""Classify a clib struct per the System V eightbyte algorithm.
+"""Classify a clib struct for the active target's C ABI.
 
-Returns {"size", "align", "memory": bool, "coerce": list[ir.Type]}. When
-`memory` is True the struct is passed via a byval pointer / returned via sret;
-otherwise `coerce` holds one register type per eightbyte.
+Dispatches to the System V AMD64 or AArch64 AAPCS classifier based on the
+module triple. Returns a dict with:
+  - "memory": passed indirectly (byval pointer / caller copy / sret)
+  - "coerce": list[ir.Type] register pieces when not memory
+  - "byval": for memory args, whether the indirect pointer carries `byval`
+    (System V: backend copies) vs a caller-made copy passed as a plain pointer
+    (AAPCS)
+  - "safe": for register structs, whether the coerce pieces must be loaded via
+    an over-read-safe buffer (AAPCS coerces a partial struct up to a full
+    register) vs loaded in place (System V sizes each eightbyte exactly)
+  - "size", "align"
 """
 impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
+    triple = str(self.llvm_module.triple or "");
+    if "aarch64" in triple or "arm64" in triple {
+        return self._classify_clib_struct_aapcs(name);
+    }
+    return self._classify_clib_struct_sysv(name);
+}
+
+"""System V AMD64 eightbyte classification (see _classify_clib_struct)."""
+impl NaIRGenPass._classify_clib_struct_sysv(name: str) -> dict {
     (size, align, scalars) = self._clib_struct_layout(name);
     if size == 0 {
-        return {"size": 0, "align": 1, "memory": False, "coerce": []};
+        return {
+            "size": 0,
+            "align": 1,
+            "memory": False,
+            "coerce": [],
+            "byval": True,
+            "safe": False
+        };
     }
-    # Aggregates larger than two eightbytes are MEMORY class.
+    # Aggregates larger than two eightbytes are MEMORY class (byval / sret).
     if size > 16 {
-        return {"size": size, "align": align, "memory": True, "coerce": []};
+        return {
+            "size": size,
+            "align": align,
+            "memory": True,
+            "coerce": [],
+            "byval": True,
+            "safe": False
+        };
     }
     num_eb = (size + 7) // 8;
     eb_cls: list = [];
@@ -158,7 +189,80 @@ impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
             }
         }
     }
-    return {"size": size, "align": align, "memory": False, "coerce": coerce};
+    return {
+        "size": size,
+        "align": align,
+        "memory": False,
+        "coerce": coerce,
+        "byval": True,
+        "safe": False
+    };
+}
+
+"""AArch64 AAPCS classification.
+
+Homogeneous floating-point aggregates (<=4 members, all the same float/double
+type, possibly through nested structs) go in SIMD/FP registers as `[N x float]`
+/ `[N x double]`. Other aggregates <=16 bytes go in general registers as `i64`
+or `[2 x i64]`. Anything larger is passed indirectly (a caller-made copy via a
+plain pointer) and returned via sret.
+"""
+impl NaIRGenPass._classify_clib_struct_aapcs(name: str) -> dict {
+    (size, align, scalars) = self._clib_struct_layout(name);
+    if size == 0 {
+        return {
+            "size": 0,
+            "align": 1,
+            "memory": False,
+            "coerce": [],
+            "byval": False,
+            "safe": True
+        };
+    }
+    # HFA: every leaf scalar is the same floating-point type, at most 4 of them.
+    is_hfa = len(scalars) >= 1 and len(scalars) <= 4;
+    hfa_bits = scalars[0][2] if scalars else 0;
+    for (_off, _is_sse, _bits) in scalars {
+        if not _is_sse or _bits != hfa_bits {
+            is_hfa = False;
+        }
+    }
+    if is_hfa {
+        elem = ir.DoubleType() if hfa_bits == 64 else ir.FloatType();
+        return {
+            "size": size,
+            "align": align,
+            "memory": False,
+            "coerce": [ir.ArrayType(elem, len(scalars))],
+            "byval": False,
+            "safe": True
+        };
+    }
+    # Non-HFA aggregates larger than 16 bytes are passed indirectly.
+    if size > 16 {
+        return {
+            "size": size,
+            "align": align,
+            "memory": True,
+            "coerce": [],
+            "byval": False,
+            "safe": True
+        };
+    }
+    # Otherwise: general-purpose registers, one i64 per (partial) eightbyte.
+    if size <= 8 {
+        coerce: list = [ir.IntType(64)];
+    } else {
+        coerce: list = [ir.ArrayType(ir.IntType(64), 2)];
+    }
+    return {
+        "size": size,
+        "align": align,
+        "memory": False,
+        "coerce": coerce,
+        "byval": False,
+        "safe": True
+    };
 }
 
 """Name of the (struct) type an annotation refers to, or None."""
@@ -398,19 +502,45 @@ impl NaIRGenPass._codegen_clib_call(
             }
         } elif kind == "struct_mem" {
             c_ptr = self._clib_materialize_c_ptr(jac_val, pp["sname"]);
-            byval_aa = ir.ArgumentAttributes();
-            byval_aa.add("byval");
-            byval_aa.type = self._clib_c_type(pp["sname"]);
-            _bv_al = pp["align"];
-            byval_aa.align = _bv_al if _bv_al > 8 else 8;
-            arg_attrs[len(call_args)] = byval_aa;
-            call_args.append(c_ptr);
+            if pp["byval"] {
+                # System V: pass the pointer with `byval`; the backend copies.
+                byval_aa = ir.ArgumentAttributes();
+                byval_aa.add("byval");
+                byval_aa.type = self._clib_c_type(pp["sname"]);
+                _bv_al = pp["align"];
+                byval_aa.align = _bv_al if _bv_al > 8 else 8;
+                arg_attrs[len(call_args)] = byval_aa;
+                call_args.append(c_ptr);
+            } else {
+                # AAPCS: pass a plain pointer to a caller-made copy.
+                _ct = self._clib_c_type(pp["sname"]);
+                _copy = self._entry_alloca(_ct, "clib.indir.copy");
+                self.builder.store(
+                    self.builder.load(c_ptr, name="clib.indir.load"), _copy
+                );
+                call_args.append(_copy);
+            }
         } else {
             # struct_reg: slice the C-laid-out struct into its register pieces.
             c_ptr = self._clib_materialize_c_ptr(jac_val, pp["sname"]);
             coerce = pp["coerce"];
             ct = ir.LiteralStructType(coerce);
-            ct_ptr = self.builder.bitcast(c_ptr, ct.as_pointer(), name="clib.arg.cast");
+            if pp["safe"] {
+                # AAPCS: a register coerce (i64 / [2 x i64] / [N x float]) can be
+                # wider than the struct, so copy into a coerce-sized buffer first
+                # to avoid reading past the struct's end.
+                _buf = self._entry_alloca(ct, "clib.arg.buf");
+                _sct = self._clib_c_type(pp["sname"]);
+                self.builder.store(
+                    self.builder.load(c_ptr, name="clib.arg.sload"),
+                    self.builder.bitcast(_buf, _sct.as_pointer(), name="clib.arg.bcopy")
+                );
+                ct_ptr = _buf;
+            } else {
+                ct_ptr = self.builder.bitcast(
+                    c_ptr, ct.as_pointer(), name="clib.arg.cast"
+                );
+            }
             for j in range(len(coerce)) {
                 piece_ptr = self.builder.gep(
                     ct_ptr,
@@ -431,15 +561,23 @@ impl NaIRGenPass._codegen_clib_call(
     if rkind == "struct_reg" {
         sname = ret_plan["sname"];
         coerce = ret_plan["coerce"];
-        cbuf = self._entry_alloca(self._clib_c_type(sname), "clib.ret.cbuf");
+        # AAPCS coerces (i64 / [2 x i64] / [N x float]) can be wider than the
+        # struct, so the receiving buffer is sized to the coerce, not the struct;
+        # the box step then reads back only the struct's bytes. System V sizes
+        # each eightbyte exactly, so its struct-sized buffer is in bounds.
+        if ret_plan["safe"] {
+            rbuf = self._entry_alloca(ir.LiteralStructType(coerce), "clib.ret.rbuf");
+        } else {
+            rbuf = self._entry_alloca(self._clib_c_type(sname), "clib.ret.cbuf");
+        }
         if len(coerce) == 1 {
             slot = self.builder.bitcast(
-                cbuf, coerce[0].as_pointer(), name="clib.ret.cast"
+                rbuf, coerce[0].as_pointer(), name="clib.ret.cast"
             );
             self.builder.store(result, slot);
         } else {
             ct = ir.LiteralStructType(coerce);
-            ct_ptr = self.builder.bitcast(cbuf, ct.as_pointer(), name="clib.ret.cast");
+            ct_ptr = self.builder.bitcast(rbuf, ct.as_pointer(), name="clib.ret.cast");
             for j in range(len(coerce)) {
                 piece = self.builder.extract_value(result, j, name="clib.ret.piece");
                 piece_ptr = self.builder.gep(
@@ -450,7 +588,10 @@ impl NaIRGenPass._codegen_clib_call(
                 self.builder.store(piece, piece_ptr);
             }
         }
-        return self._clib_box_c_ptr(cbuf, sname);
+        c_view = self.builder.bitcast(
+            rbuf, self._clib_c_type(sname).as_pointer(), name="clib.ret.cview"
+        );
+        return self._clib_box_c_ptr(c_view, sname);
     }
     # Scalar return: hand back exactly what C produced. No struct boxing — this
     # is what closes gap #7 (an int return is never mistaken for a struct).

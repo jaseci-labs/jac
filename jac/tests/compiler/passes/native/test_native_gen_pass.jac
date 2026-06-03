@@ -1853,6 +1853,47 @@ test "clib System V AMD64 ABI lowering" {
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
 }
 
+test "clib AArch64 AAPCS ABI lowering" {
+    # Cross-targets aarch64 (works from any host) and asserts the emitted
+    # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _os.environ["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(
+            str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")),
+            options=CompileOptions(type_check=False)
+        );
+        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+        s = str(ir.gen.llvm_ir);
+        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
+        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
+        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
+        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        # HFA of doubles.
+        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
+        # a 4-byte struct).
+        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
+        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
+        # sret for the return.
+        assert 'declare float @"cam_fovy"(%"Cam.cabi"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert "byval" not in s , "AAPCS must not emit byval";
+        assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
+}
+
 # --- TestRefCounting ---
 test "rc basic alloc" {
     (eng, _) = compile_native("refcount.na.jac");

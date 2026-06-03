@@ -600,9 +600,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # structs are flattened (inlined) recursively to match the C ABI.
     def _clib_struct_layout(name: str) -> tuple;
     def _scalar_layout(llt: ir.Type) -> tuple;
-    # Classify a clib struct per the System V eightbyte algorithm into either
-    # MEMORY (byval/sret) or a list of register coerce types.
+    # Classify a clib struct for the active target's C ABI (dispatches to the
+    # System V or AAPCS variant) into either MEMORY (indirect) or register
+    # coerce types.
     def _classify_clib_struct(name: str) -> dict;
+    def _classify_clib_struct_sysv(name: str) -> dict;
+    def _classify_clib_struct_aapcs(name: str) -> dict;
     # Name of the (struct) type an annotation refers to, or None.
     def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
     # True if the clib struct has a field that is itself a clib struct.
