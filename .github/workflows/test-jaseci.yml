@@ -103,7 +103,6 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      # xvfb-run provides a virtual display so the PyTauri desktop GUI can launch.
       run: xvfb-run -a pytest -x jac-client jac-desktop -n auto
 
     - name: Re-run auth roundtrip e2e against jac-scale backend
