@@ -24,8 +24,10 @@ Backend support today (see each fixture's docstring for specifics):
     disengage; exit abilities compile but do not fire; no subtype dispatch.
     So only the entry-only fixtures (`osp_acc`, `osp_multi_walker`,
     `osp_nested_spawn`) carry `require=["na"]`.
-  - cl: OSP entirely unwired (spawn lowers to an unbound `__jacSpawn`), so cl is
-    skipped on every fixture for now.
+  - cl: runs local-archetype walkers in-process through the kernel -- entry
+    dispatch, `visit`, edge connect/refs, `disengage`, `report`, exit abilities,
+    and subtype / tuple-trigger dispatch -- so every fixture carries
+    `require=["cl"]`.
 """
 
 import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixture }
@@ -35,7 +37,7 @@ import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixtur
 # ---------------------------------------------------------------------------
 test "osp acc: typed entry ability accumulates walker state across spawns" {
     assert run_py_fixture("osp_acc", "acc_py") == {"total": 42};
-    run_with_both("osp_acc.jac", "acc_py", "acc_cl", "acc_na", require=["na"]);
+    run_with_both("osp_acc.jac", "acc_py", "acc_cl", "acc_na", require=["na", "cl"]);
 }
 
 test "osp multi-walker: independent walkers do not share state" {
@@ -61,10 +63,11 @@ test "osp nested spawn: an ability spawns a second walker and folds its result" 
 }
 
 # ---------------------------------------------------------------------------
-# Traversal subset -- py-only today (na: visit/edges/report/disengage E5090,
-# exit abilities don't fire, no subtype dispatch; cl unwired). These pin the
-# canonical sv semantics now and flip to cross-backend the moment na/cl gain
-# the matching lowering (add the codespace variant + require=).
+# Traversal subset -- cl runs these in-process through the kernel (visit, edge
+# connect/refs, disengage, report, exit abilities), so they are enforced
+# cross-backend on cl (require=["cl"]). na still rejects visit/edges/report/
+# disengage with E5090, so it is skipped automatically. `subtype_dispatch` also
+# runs on cl via the emitted subtype `is_a` table.
 # ---------------------------------------------------------------------------
 test "osp visit order: chain / diamond / fan-out / cycle DFS traversal" {
     assert run_py_fixture("osp_visit_order", "visit_order_py") == {
@@ -74,7 +77,11 @@ test "osp visit order: chain / diamond / fan-out / cycle DFS traversal" {
         "cycle": [1, 2, 3]
     };
     run_with_both(
-        "osp_visit_order.jac", "visit_order_py", "visit_order_cl", "visit_order_na"
+        "osp_visit_order.jac",
+        "visit_order_py",
+        "visit_order_cl",
+        "visit_order_na",
+        require=["cl"]
     );
 }
 
@@ -86,7 +93,8 @@ test "osp exit ordering: entry-before-children, exit-after (shared-queue nesting
         "osp_exit_ordering.jac",
         "exit_ordering_py",
         "exit_ordering_cl",
-        "exit_ordering_na"
+        "exit_ordering_na",
+        require=["cl"]
     );
 }
 
@@ -99,23 +107,36 @@ test "osp subtype dispatch: `with Base entry` fires on Sub; tuple trigger" {
         "osp_subtype_dispatch.jac",
         "subtype_dispatch_py",
         "subtype_dispatch_cl",
-        "subtype_dispatch_na"
+        "subtype_dispatch_na",
+        require=["cl"]
     );
 }
 
 test "osp disengage: early-exit captures the partial visit set" {
     assert run_py_fixture("osp_disengage", "disengage_py") == {"seen": [1, 2, 3]};
-    run_with_both("osp_disengage.jac", "disengage_py", "disengage_cl", "disengage_na");
+    run_with_both(
+        "osp_disengage.jac",
+        "disengage_py",
+        "disengage_cl",
+        "disengage_na",
+        require=["cl"]
+    );
 }
 
 test "osp report: per-walker reports survive the spawn boundary" {
     assert run_py_fixture("osp_report", "report_py") == {"reports": [10, 20, 30]};
-    run_with_both("osp_report.jac", "report_py", "report_cl", "report_na");
+    run_with_both(
+        "osp_report.jac", "report_py", "report_cl", "report_na", require=["cl"]
+    );
 }
 
 test "osp edge typed: `[->:Road:->]` follows only the typed edge" {
     assert run_py_fixture("osp_edge_typed", "edge_typed_py") == {"seen": [1, 2, 4]};
     run_with_both(
-        "osp_edge_typed.jac", "edge_typed_py", "edge_typed_cl", "edge_typed_na"
+        "osp_edge_typed.jac",
+        "edge_typed_py",
+        "edge_typed_cl",
+        "edge_typed_na",
+        require=["cl"]
     );
 }

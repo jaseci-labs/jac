@@ -71,8 +71,8 @@ glob registry = get_registry();
 def check(
     paths: list,
     print_errs: bool = True,
-    ignore: list = [],
-    disable_error_code: list = [],
+    ignore: (list | None) = None,
+    disable_error_code: (list | None) = None,
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int;
@@ -105,7 +105,7 @@ def check(
     ],
     group="analysis"
 )
-def lint(paths: list, fix: bool = False, ignore: list = []) -> int;
+def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
 
 """Format .jac files with improved code style."""
 @registry.command(

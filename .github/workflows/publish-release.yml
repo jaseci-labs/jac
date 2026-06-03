@@ -4,6 +4,45 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  # Manual re-publish: if the auto-trigger run failed partway (e.g. a build
+  # error after the release/* PR was already merged), re-fire publishing for
+  # selected packages. Versions are read from each package's manifest on the
+  # current ref — no need to re-merge a release/* PR. Tier ordering and the
+  # "already on PyPI" skip still apply, so re-running is safe.
+  workflow_dispatch:
+    inputs:
+      jaclang:
+        description: "Publish jaclang"
+        type: boolean
+        default: false
+      jac-byllm:
+        description: "Publish jac-byllm (byllm)"
+        type: boolean
+        default: false
+      jac-client:
+        description: "Publish jac-client"
+        type: boolean
+        default: false
+      jac-scale:
+        description: "Publish jac-scale"
+        type: boolean
+        default: false
+      jac-super:
+        description: "Publish jac-super"
+        type: boolean
+        default: false
+      jac-mcp:
+        description: "Publish jac-mcp"
+        type: boolean
+        default: false
+      jac-desktop:
+        description: "Publish jac-desktop"
+        type: boolean
+        default: false
+      jaseci:
+        description: "Publish jaseci meta-package"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -13,9 +52,12 @@ jobs:
   # ============================================================================
   parse-release:
     if: |
-      github.repository == 'Jaseci-Labs/jaseci' &&
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'release/')
+      github.repository == 'Jaseci-Labs/jaseci' && (
+        github.event_name == 'workflow_dispatch' || (
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'release/')
+        )
+      )
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
@@ -41,9 +83,25 @@ jobs:
       - name: Parse release info
         id: parse
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Collect the checked packages (empty string when unchecked).
+          IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
+          IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
+          IN_CLIENT: ${{ inputs['jac-client'] && 'jac-client' || '' }}
+          IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
+          IN_SUPER: ${{ inputs['jac-super'] && 'jac-super' || '' }}
+          IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
+          IN_DESKTOP: ${{ inputs['jac-desktop'] && 'jac-desktop' || '' }}
+          IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
-          jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_CLIENT $IN_SCALE $IN_SUPER $IN_MCP $IN_DESKTOP $IN_JASECI"
+            echo "Manual dispatch - selected packages: $PACKAGES"
+            jac run scripts/parse_release.jac --packages "$PACKAGES"
+          else
+            jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
+          fi
 
   # ============================================================================
   # Approval gate - ONE click to approve all publishing
@@ -88,13 +146,20 @@ jobs:
           python-version: "3.12"
 
       # Set up additional Python versions needed for precompile (both plugins and jaclang itself).
-      - name: Set up Python 3.13 and 3.14 (for precompile)
+      - name: Set up Python 3.13 (for precompile)
         if: matrix.precompile == true
         uses: actions/setup-python@v5
         with:
-          python-version: |
-            3.13
-            3.14
+          python-version: "3.13"
+
+      # Python 3.14 is set up for precompile EXCEPT for jac-desktop, whose
+      # pytauri-wheel dependency has no cp314 wheel yet; precompiling for 3.14
+      # there forces a from-source Rust build of the Tauri runtime that fails.
+      - name: Set up Python 3.14 (for precompile)
+        if: matrix.precompile == true && matrix.name != 'jac-desktop'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
       # jaclang itself uses python -m build, so it doesn't need this step.
@@ -276,6 +341,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier1:
     needs: [parse-release, publish-tier1]
@@ -334,6 +402,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier2:
     needs: [parse-release, publish-tier2]
@@ -392,6 +463,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
 
   wait-tier3:
     needs: [parse-release, publish-tier3]

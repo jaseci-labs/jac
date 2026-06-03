@@ -2,7 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.15.6 (Latest Release)
+## jaclang 0.16.0 (Latest Release)
+
+### New Features
+
+- **Feature: Full Object-Spatial traversal runs in client (cl) code**: cl now compiles and runs complete Object-Spatial programs in-process through the portable kernel, not just entry-only spawn: `visit`, edge connect (`++>`, `+>:E:+>`) and edge references (`[-->]`, `[->:E:->]`), `disengage`, `report`, exit abilities, and subtype / tuple-trigger dispatch. A local-archetype walker runs locally; a server (sv-imported) walker spawned at `root` keeps the `__jacSpawn` RPC path unchanged. The emitted module carries a small in-memory graph runtime (nodes hold their incident edges) plus per-archetype dispatch descriptors, type tags, a subtype `is_a` table, and a client `NoopHost`.
+- **Native C-FFI: System V AMD64 ABI lowering for by-value structs**: Foreign (`import from "lib"`) functions that take or return structs by value now follow the platform System V AMD64 calling convention instead of being handed to LLVM as raw aggregates. Structs are classified per the eightbyte algorithm (INTEGER to `iN`, SSE to `float`/`double`/`<2 x float>`, aggregates over 16 bytes via `byval`/`sret`), with nested structs flattened to their C layout. This fixes float-field math structs like `Vector3`/`Camera3D` (previously dropped fields or returned garbage) and removes a compile crash when a scalar integer return shared an LLVM type with a small struct's coerced type. x86_64 only for now; other targets are unaffected.
+- **Native C-FFI: AArch64 AAPCS ABI lowering for by-value structs**: Foreign (`import from "lib"`) functions that pass or return structs by value now follow the AArch64 AAPCS calling convention on arm64 targets, alongside the System V support added for x86_64. Homogeneous float aggregates go in SIMD registers (`[N x float]` / `[N x double]`), other aggregates up to 16 bytes use general registers (`i64` / `[2 x i64]`), and larger aggregates are passed indirectly and returned via `sret`, matching what clang/gcc emit. Also adds a `JAC_NATIVE_TARGET` environment override so `jac nacompile` can cross-compile for another target triple, and fixes the ELF linker emitting an empty interpreter path when cross-compiling.
+
+### Bug Fixes
+
+- `jac check --disable-error-code` now suppresses diagnostics during compilation without mutating project config, and it consistently resolves direct codes, lint aliases, comma-separated values, and inline ignore tokens.
+- `jac nacompile` now produces working standalone aarch64 binaries instead of ones that crash at startup.
+
+## jaclang 0.15.6
 
 ### Breaking Changes
 
