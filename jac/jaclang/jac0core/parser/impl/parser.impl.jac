@@ -5598,19 +5598,25 @@ impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {
     clib_decls: list = [];
     self.expect(TokenKind.LBRACE);
     kid.append(self.make_uni_token(self.previous()));
-    # C library import: import from "libname" { def ...; obj ...; }
-    if is_clib_import
-    and self.check_any(
+    # C library import:
+    #   import from "libname" { def ...; obj ...; }   (explicit path)
+    #   import from raylib    { def ...; obj ...; }    (logical name, issue #6387)
+    # A block that opens with a declaration keyword is unambiguously a clib block
+    # regardless of whether the from-path was a string or a dotted name, because a
+    # `def`/`obj`/`has`/... can never begin a normal import *item* (which is a Name,
+    # `*`, or `Name as Name`). A leading STRING (a docstring before the first decl)
+    # only marks a clib block in the explicit-string form.
+    _clib_decl_lead = self.check_any(
         TokenKind.KW_DEF,
         TokenKind.KW_CAN,
         TokenKind.KW_OBJECT,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM,
         TokenKind.KW_ASYNC,
-        TokenKind.STRING,
         TokenKind.KW_GLOBAL,
         TokenKind.KW_HAS
-    ) {
+    );
+    if _clib_decl_lead or (is_clib_import and self.check(TokenKind.STRING)) {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
             if stmt is not None {

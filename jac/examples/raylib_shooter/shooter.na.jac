@@ -1,10 +1,15 @@
 """Jac Cube Shooter - a tiny first-person 3D shooter compiled to a native binary
 that links directly against a precompiled raylib shared library.
 
-It binds raylib with Jac's native C-import syntax (import from "./libraylib.so").
-Every declaration in that block becomes an extern symbol the native linker
-resolves out of the shared library at load time (a DT_NEEDED entry on ELF, an
-LC_LOAD_DYLIB on Mach-O). The linker is pure Python, so no cc/ld is needed.
+It binds raylib with Jac's native C-import syntax. The library is named by its
+*logical* name - `import from raylib` - with no path and no extension; the native
+backend resolves the platform-correct filename (`libraylib.so` on Linux,
+`libraylib.dylib` on macOS, `raylib.dll` on Windows) from the target triple, so a
+single unchanged source targets all three. Every declaration in that block becomes
+an extern symbol the native linker resolves out of the shared library at load time
+(a DT_NEEDED entry on ELF, an LC_LOAD_DYLIB on Mach-O); combined with the
+`$ORIGIN`/`@loader_path` runpath the binary finds a sibling library regardless of
+the launch directory. The linker is pure Python, so no cc/ld is needed.
 
 Only scalar / small-struct entry points are bound. The 3D pipeline uses raylib's
 scalar rlgl immediate-mode API (rlVertex3f / rlColor4ub / rlTranslatef / ...)
@@ -16,7 +21,7 @@ Controls: mouse / arrows aim (click or Tab to capture the cursor for mouse-look)
 WASD move, Space fire, Tab release / re-capture cursor, Esc quit.
 """
 
-import from "./libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> None;  def WindowShouldClose -> bool;  def CloseWindow -> None;  def SetTargetFPS(
         fps: i32
     ) -> None;  def BeginDrawing -> None;  def EndDrawing -> None;  def rlClearColor(

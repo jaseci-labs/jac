@@ -592,6 +592,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
     # C library imports: import from "libname" { def ...; }
     def _process_clib_imports(module: uni.Module) -> None;
+    def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
