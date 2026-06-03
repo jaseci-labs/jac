@@ -224,6 +224,8 @@ test "deploy all in one" {
     target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
+    target_config["cpu_request"] = "500m";
+    target_config["memory_request"] = "2Gi";
     target_config["loki_enabled"] = True;
 
     (repo_url, branch, commit) = _get_git_config();
@@ -814,9 +816,24 @@ test "deploy all in one" {
     assert hpa.metadata.name == f"{app_name}-hpa";
     assert hpa.spec.min_replicas == 1;
     assert hpa.spec.max_replicas == 3;
-    assert hpa.spec.metrics[0].resource.target.average_utilization == 50;
+    assert hpa.spec.metrics[0].resource.target.average_utilization == 70 , (
+        f"Expected cpu_target=70, got {hpa.spec.metrics[
+            0
+        ].resource.target.average_utilization}"
+    );
+    assert hpa.spec.metrics[1].resource.target.average_utilization == 70 , (
+        f"Expected memory_target=70, got {hpa.spec.metrics[
+            1
+        ].resource.target.average_utilization}"
+    );
+    assert hpa.spec.behavior.scale_up.stabilization_window_seconds == 60 , (
+        f"Expected scale_up_stabilization_window=60, got {hpa.spec.behavior.scale_up.stabilization_window_seconds}"
+    );
+    assert hpa.spec.behavior.scale_down.stabilization_window_seconds == 300 , (
+        f"Expected scale_down_stabilization_window=300, got {hpa.spec.behavior.scale_down.stabilization_window_seconds}"
+    );
     print(
-        f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
+        f"HPA verified: min={hpa.spec.min_replicas}, max={hpa.spec.max_replicas}, cpu=70%, memory=70%, scale_up_window=60s, scale_down_window=300s"
     );
 
     # Validate HPA is updated on redeploy (not silently ignored)
@@ -825,29 +842,35 @@ test "deploy all in one" {
         deployment_name=app_name,
         min_replicas=2,
         max_replicas=5,
-        cpu_target=70
+        cpu_target=80,
+        memory_target=85,
+        scale_up_stabilization_window=120,
+        scale_down_stabilization_window=600
     );
+    time.sleep(10);
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
     );
     assert hpa_updated.spec.min_replicas == 2 , f"Expected min_replicas=2, got {hpa_updated.spec.min_replicas}";
     assert hpa_updated.spec.max_replicas == 5 , f"Expected max_replicas=5, got {hpa_updated.spec.max_replicas}";
-    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 70 , (
-        f"Expected cpu_target=70, got {hpa_updated.spec.metrics[
+    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 80 , (
+        f"Expected cpu_target=80, got {hpa_updated.spec.metrics[
             0
         ].resource.target.average_utilization}"
     );
-    print(
-        f"HPA update verified: min_replicas={hpa_updated.spec.min_replicas}, max_replicas={hpa_updated.spec.max_replicas}, cpu_target=70%"
+    assert hpa_updated.spec.metrics[1].resource.target.average_utilization == 85 , (
+        f"Expected memory_target=85, got {hpa_updated.spec.metrics[
+            1
+        ].resource.target.average_utilization}"
     );
-
-    # Restore original HPA values for remaining tests
-    create_hpa(
-        namespace=namespace,
-        deployment_name=app_name,
-        min_replicas=1,
-        max_replicas=3,
-        cpu_target=50
+    assert hpa_updated.spec.behavior.scale_up.stabilization_window_seconds == 120 , (
+        f"Expected scale_up_stabilization_window=120, got {hpa_updated.spec.behavior.scale_up.stabilization_window_seconds}"
+    );
+    assert hpa_updated.spec.behavior.scale_down.stabilization_window_seconds == 600 , (
+        f"Expected scale_down_stabilization_window=600, got {hpa_updated.spec.behavior.scale_down.stabilization_window_seconds}"
+    );
+    print(
+        f"HPA update verified: min={hpa_updated.spec.min_replicas}, max={hpa_updated.spec.max_replicas}, cpu=80%, memory=85%, scale_up_window=120s, scale_down_window=600s"
     );
 
     # Validate NGINX Ingress controller resources
@@ -2254,6 +2277,267 @@ test "redis ingress rule must not set host before TLS is enabled" {
     # Redis rule must NOT have a host — same requirement as the main ingress
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
+}
+
+# ---------------------------------------------------------------------------
+# Unit tests for _compute_hpa_inputs — the cascade that reads k8s_config and
+# produces the (cpu_target, memory_target, critical_missing, non_critical_missing)
+# tuple passed to _emit_hpa_warnings and create_hpa.  These tests catch bugs
+# like a missing `cpu_target = None` nullification that the formatter tests below
+# cannot detect.
+# ---------------------------------------------------------------------------
+test "compute hpa inputs happy path both requests and limits set" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target == 70;
+    assert critical == [];
+    assert non_critical == [];
+}
+
+test "compute hpa inputs cpu request missing nullifies cpu target" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': '500m',
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None , "cpu_target must be nullified when cpu_request is missing";
+    assert memory_target == 70;
+    assert "cpu_request (cpu_utilization_target will be ignored)" in critical;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs memory request missing nullifies memory target" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target is None , "memory_target must be nullified when memory_request is missing";
+    assert "memory_request (memory_utilization_target will be ignored)" in critical;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs both requests missing nullifies both targets" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None;
+    assert memory_target is None;
+    assert len(critical) == 2;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs missing limits go to non critical not critical" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': None,
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target == 70;
+    assert critical == [];
+    assert "cpu_limit" in non_critical;
+    assert "memory_limit" in non_critical;
+}
+
+test "compute hpa inputs cpu target disabled skips cpu request check" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': None,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None;
+    assert memory_target == 70;
+    assert critical == [] , "no critical entry when cpu_target was already None";
+    assert non_critical == [];
+}
+
+# ---------------------------------------------------------------------------
+# Unit tests for HPA warning cascade (_emit_hpa_warnings).
+# These tests do not require a live Kubernetes cluster.
+# ---------------------------------------------------------------------------
+def _make_hpa_target(extra_config: dict[str, Any] = {}) -> Any {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'warn-test';
+    target_config['namespace'] = 'warn-ns';
+    target_config.update(extra_config);
+    mock_logger = unittest.mock.MagicMock();
+    target = DeploymentTargetFactory.create('kubernetes', target_config, mock_logger);
+    return (target, mock_logger);
+}
+
+# Branch 1c: both utilization targets explicitly None → "both ... are disabled" warning
+test "hpa warn both targets explicitly disabled" {
+    (target, mock_logger) = _make_hpa_target(
+        {'cpu_utilization_target': None, 'memory_utilization_target': None}
+    );
+    target._emit_hpa_warnings(None, None, [], []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "both cpu_utilization_target and memory_utilization_target are disabled" in msg;
+}
+
+# Branch 1b: both requests missing → critical only (no limits configured so non-critical suppressed
+#            by setting limits explicitly)
+test "hpa warn both requests missing critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'memory_request': None,
+            'cpu_limit': '500m',
+            'memory_limit': '512Mi'
+        }
+    );
+    critical = [
+        "cpu_request (cpu_utilization_target will be ignored)",
+        "memory_request (memory_utilization_target will be ignored)"
+    ];
+    target._emit_hpa_warnings(None, None, critical, []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "HPA has no active metrics" in msg;
+    assert "Also missing" not in msg;
+}
+
+# Branch 1a: both requests missing AND limits missing → critical + non-critical
+test "hpa warn both requests missing with non critical" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'memory_request': None,
+            'cpu_limit': None,
+            'memory_limit': None
+        }
+    );
+    critical = [
+        "cpu_request (cpu_utilization_target will be ignored)",
+        "memory_request (memory_utilization_target will be ignored)"
+    ];
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(None, None, critical, non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "Also missing (non-critical)" in msg;
+    assert "cpu_limit" in msg;
+    assert "HPA has no active metrics" in msg;
+}
+
+# Branch 2b: only memory_request missing (cpu active) → scales on CPU only, critical only
+test "hpa warn memory request missing cpu active critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi'
+        }
+    );
+    critical = ["memory_request (memory_utilization_target will be ignored)"];
+    target._emit_hpa_warnings(70, None, critical, []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "memory_request" in msg;
+    assert "HPA will scale on CPU only" in msg;
+    assert "Also missing" not in msg;
+}
+
+# Branch 2a: only cpu_request missing (memory active) → scales on memory only, critical + non-critical
+test "hpa warn cpu request missing memory active with non critical" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': None
+        }
+    );
+    critical = ["cpu_request (cpu_utilization_target will be ignored)"];
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(None, 70, critical, non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "Also missing (non-critical)" in msg;
+    assert "HPA will scale on memory only" in msg;
+}
+
+# Branch 2c: both requests set (both metrics active) but limits missing → non-critical only
+test "hpa warn both active limits missing non critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'memory_request': '256Mi',
+            'cpu_limit': None,
+            'memory_limit': None
+        }
+    );
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(70, 70, [], non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_limit" in msg;
+    assert "memory_limit" in msg;
+    assert "HPA will still scale" in msg;
+}
+
+# No logger → no crash, no warn called
+test "hpa warn no logger is silent" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'warn-test';
+    target_config['namespace'] = 'warn-ns';
+    # Pass None as logger — should not AttributeError
+    target = DeploymentTargetFactory.create('kubernetes', target_config, None);
+    # Should not raise
+    target._emit_hpa_warnings(
+        None, None, ["cpu_request (cpu_utilization_target will be ignored)"], []
+    );
 }
 # ---------------------------------------------------------------------------
 # Startup probe + resilient experimental runtime setup (no live cluster)

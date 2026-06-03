@@ -1313,6 +1313,97 @@ obj KubernetesTarget(DeploymentTarget) {
         return repository_name;
     }
 
+    def _emit_hpa_warnings(
+        cpu_target: (int | None),
+        memory_target: (int | None),
+        critical_missing: list[str],
+        non_critical_missing: list[str]
+    ) {
+        if not self.logger {
+            return;
+        }
+        if cpu_target is None and memory_target is None {
+            if critical_missing {
+                if non_critical_missing {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"Also missing (non-critical): {', '.join(
+                            non_critical_missing
+                        )}. "
+                        f"HPA has no active metrics and will not scale the deployment. "
+                        f"Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                } else {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"HPA has no active metrics and will not scale the deployment. "
+                        f"Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                }
+            } else {
+                self.logger.warn(
+                    "HPA: both cpu_utilization_target and memory_utilization_target are disabled. "
+                    "HPA has no active metrics and will not scale the deployment."
+                );
+            }
+        } else {
+            if critical_missing {
+                scales_on = "HPA will scale on CPU only."
+                    if cpu_target is not None
+                    else "HPA will scale on memory only.";
+                if non_critical_missing {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"Also missing (non-critical): {', '.join(
+                            non_critical_missing
+                        )}. "
+                        f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                } else {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                }
+            } elif non_critical_missing {
+                self.logger.warn(
+                    f"HPA: {', '.join(non_critical_missing)} not configured. "
+                    f"HPA will still scale but setting limits is recommended for proper resource management."
+                );
+            }
+        }
+    }
+
+    def _compute_hpa_inputs -> tuple {
+        cpu_target = self.k8s_config.cpu_utilization_target;
+        memory_target = self.k8s_config.memory_utilization_target;
+        critical_missing: list[str] = [];
+        non_critical_missing: list[str] = [];
+        if cpu_target is not None {
+            if self.k8s_config.cpu_request is None {
+                critical_missing.append(
+                    "cpu_request (cpu_utilization_target will be ignored)"
+                );
+                cpu_target = None;
+            }
+            if self.k8s_config.cpu_limit is None {
+                non_critical_missing.append("cpu_limit");
+            }
+        }
+        if memory_target is not None {
+            if self.k8s_config.memory_request is None {
+                critical_missing.append(
+                    "memory_request (memory_utilization_target will be ignored)"
+                );
+                memory_target = None;
+            }
+            if self.k8s_config.memory_limit is None {
+                non_critical_missing.append("memory_limit");
+            }
+        }
+        return (cpu_target, memory_target, critical_missing, non_critical_missing);
+    }
+
     def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
@@ -1516,12 +1607,19 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
+            (cpu_target, memory_target, critical_missing, non_critical_missing) = self._compute_hpa_inputs();
+            self._emit_hpa_warnings(
+                cpu_target, memory_target, critical_missing, non_critical_missing
+            );
             create_hpa(
                 namespace=namespace,
                 deployment_name=app_name,
                 min_replicas=self.k8s_config.min_replicas,
                 max_replicas=self.k8s_config.max_replicas,
-                cpu_target=self.k8s_config.cpu_utilization_target
+                cpu_target=cpu_target,
+                memory_target=memory_target,
+                scale_up_stabilization_window=self.k8s_config.scale_up_stabilization_window,
+                scale_down_stabilization_window=self.k8s_config.scale_down_stabilization_window
             );
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
@@ -1762,7 +1860,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             } except Exception as e {
                 if self.logger {
-                    self.logger.warning(
+                    self.logger.warn(
                         f"Failed to list PVCs while checking resources for '{app_name}': {e}"
                     );
                 }
@@ -2059,7 +2157,7 @@ obj KubernetesTarget(DeploymentTarget) {
                         );
                     } except Exception as e {
                         if self.logger {
-                            self.logger.warning(
+                            self.logger.warn(
                                 f"Failed to delete PVC '{pvc.metadata.name}': {e}"
                             );
                         }
@@ -2104,7 +2202,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     if ns_deleted {
                         self.logger.info(f"Namespace '{namespace}' deleted");
                     } else {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"Timed out waiting for namespace '{namespace}' to be deleted"
                         );
                     }
@@ -2431,9 +2529,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
-                    f"Failed to list Deployments in '{namespace}': {e}"
-                );
+                self.logger.warn(f"Failed to list Deployments in '{namespace}': {e}");
             }
         }
 
@@ -2445,9 +2541,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
-                    f"Failed to list StatefulSets in '{namespace}': {e}"
-                );
+                self.logger.warn(f"Failed to list StatefulSets in '{namespace}': {e}");
             }
         }
 
@@ -2470,7 +2564,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(f"Failed to list Pods in '{namespace}': {e}");
+                self.logger.warn(f"Failed to list Pods in '{namespace}': {e}");
             }
         }
 
@@ -2542,7 +2636,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     f"Failed to resolve service URL for '{app_name}': {e}"
                 );
             }
