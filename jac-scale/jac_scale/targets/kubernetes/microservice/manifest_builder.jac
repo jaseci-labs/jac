@@ -347,6 +347,21 @@ obj MicroserviceManifestBuilder {
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
 
+        # O-02: when distributed tracing is enabled, point pods at the
+        # in-cluster Alloy OTLP/HTTP receiver so install_tracing's
+        # exporter reaches the collector without a hardcoded URL. Added
+        # before user env so a per-service override can still replace it.
+        import from jac_scale.config_loader { get_scale_config }
+        ms_trace_cfg: dict = dict(
+            get_scale_config().get_microservices_config().get("tracing", {})
+        );
+        if ms_trace_cfg.get("enabled", False) {
+            env.append({
+                "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
+            });
+        }
+
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
