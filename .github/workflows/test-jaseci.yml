@@ -110,29 +110,6 @@ jobs:
         jac install -e jac-scale
         pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
 
-    # TEMPORARY (remove before merge): run the desktop GUI dev tests 10x to
-    # confirm they are reliably green under WebKit + Xvfb and not flaky.
-    # `if: always()` so it runs even if the main suite step above fails.
-    - name: Flakiness probe — desktop dev tests x10
-      if: ${{ always() }}
-      run: |
-        pass=0; fail=0
-        for i in $(seq 1 10); do
-          echo "::group::desktop dev tests — iteration $i/10"
-          if xvfb-run -a pytest -p no:cacheprovider \
-               "jac-client/jac_client/tests/test_it_desktop.jac::desktop dev mode starts" \
-               "jac-desktop/jac_desktop/tests/test_it_desktop.jac::desktop dev mode starts vite server"; then
-            echo "iteration $i: PASS"; pass=$((pass+1))
-          else
-            echo "iteration $i: FAIL"; fail=$((fail+1))
-          fi
-          echo "::endgroup::"
-        done
-        echo "==================================================="
-        echo "Flakiness probe: $pass passed, $fail failed (of 10)"
-        echo "==================================================="
-        test "$fail" -eq 0
-
   test-packages-and-docs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
