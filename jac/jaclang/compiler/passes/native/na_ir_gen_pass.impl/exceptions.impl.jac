@@ -405,13 +405,11 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
             handler_bb = func.append_basic_block(name=f"except.handler.{i}");
             is_last = i == len(nd.excepts) - 1;
 
-            if not is_last {
-                next_dispatch_bb = func.append_basic_block(
-                    name=f"except.dispatch.{i + 1}"
-                );
-            } else {
-                next_dispatch_bb = None;
-            }
+            next_dispatch_bb: (ir.Block | None) = (
+                func.append_basic_block(name=f"except.dispatch.{i + 1}")
+                if not is_last
+                else None
+            );
 
             # Get the exception type being caught
             caught_type_name = self._get_name(except_node.ex_type) or "Exception";

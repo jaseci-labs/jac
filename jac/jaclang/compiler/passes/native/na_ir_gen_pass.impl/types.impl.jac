@@ -717,17 +717,19 @@ impl NaIRGenPass._emit_binary_op(
                 done_bb = func.append_basic_block(name="lcat.done");
                 self.builder.branch(loop1_bb);
                 self.builder.position_at_start(loop1_bb);
-                i1 = self.builder.phi(i64, name="lcat.i1");
-                i1.add_incoming(ir.Constant(i64, 0), entry_bb);
-                end1 = self.builder.icmp_unsigned(">=", i1, left_len, name="lcat.end1");
+                lcat_i1 = self.builder.phi(i64, name="lcat.i1");
+                lcat_i1.add_incoming(ir.Constant(i64, 0), entry_bb);
+                end1 = self.builder.icmp_unsigned(
+                    ">=", lcat_i1, left_len, name="lcat.end1"
+                );
                 self.builder.cbranch(end1, mid_bb, body1_bb);
                 self.builder.position_at_start(body1_bb);
-                e1 = self.builder.call(helpers["get"], [left, i1], name="lcat.e1");
+                e1 = self.builder.call(helpers["get"], [left, lcat_i1], name="lcat.e1");
                 self._rc_call_with_ctx(
                     helpers["append"], [new_list, e1], op="list_cat"
                 );
-                n1 = self.builder.add(i1, ir.Constant(i64, 1), name="lcat.n1");
-                i1.add_incoming(n1, body1_bb);
+                n1 = self.builder.add(lcat_i1, ir.Constant(i64, 1), name="lcat.n1");
+                lcat_i1.add_incoming(n1, body1_bb);
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);

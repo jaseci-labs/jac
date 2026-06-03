@@ -972,7 +972,8 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             if ftype_probe_d is not None
             and isinstance(ftype_probe_d, ir.PointerType) {
                 _inner_d = ftype_probe_d.pointee;
-                if _inner_d?.name and _inner_d.name.startswith("List.") {
+                if isinstance(_inner_d, ir.IdentifiedStructType)
+                and _inner_d.name and _inner_d.name.startswith("List.") {
                     _ek_d = _inner_d.name[5:];
                     if _ek_d not in self.list_helpers {
                         if _ek_d == "ptr" {
