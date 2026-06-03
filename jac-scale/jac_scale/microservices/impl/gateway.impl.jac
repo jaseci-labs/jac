@@ -293,7 +293,13 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user", "/graph"};
+     # Bare (no trailing slash) built-in routes. These exist as exact
+     # paths in the monolith but their `/foo/` prefix sibling would NOT
+     # match them via startswith: "/jobs" does not start with "/jobs/".
+     # - /user, /graph: bare GET views
+     # - /jobs: scheduler POST (create) + GET (list); /jobs/{id} is
+     #   already covered by the "/jobs/" prefix above.
+     _BUILTIN_EXACT: set[str] = {"/user", "/graph", "/jobs"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 
@@ -827,7 +833,8 @@ impl MicroserviceGateway.start -> None {
 Creates a `JFastApiServer` instance that *wraps the gateway's existing
 FastAPI app* (instead of constructing a new one), then calls the
 `register_admin_endpoints` (JacAPIServerAdmin) + `register_logs_endpoints`
-(JacAPIServerLogs) methods. They queue JEndPoints via
+(JacAPIServerLogs) + `register_llm_telemetry_endpoints`
+(JacAPIServerLLMTelemetry) methods. They queue JEndPoints via
 `self.server.add_endpoint(...)` which the subsequent
 `self.server.create_server()` materializes into actual FastAPI routes
 on `self.server.app` - same object as `self.app`, so the admin routes
@@ -870,9 +877,14 @@ impl MicroserviceGateway._install_admin_api -> None {
     #    to self.server._endpoints (no FastAPI route is created yet).
     #    register_admin_endpoints comes from JacAPIServerAdmin (A-05c);
     #    register_logs_endpoints from JacAPIServerLogs (A-05a) - the
-    #    /admin/logs/* Loki-query endpoints the in-admin Logs UI hits.
+    #    /admin/logs/* Loki-query endpoints the in-admin Logs UI hits;
+    #    register_llm_telemetry_endpoints from JacAPIServerLLMTelemetry -
+    #    the /admin/llm/telemetry/* endpoints the in-admin LLM metrics UI
+    #    hits. Mirrors the monolith's _register_endpoints (serve.core)
+    #    which calls all three.
     self.register_admin_endpoints();
     self.register_logs_endpoints();
+    self.register_llm_telemetry_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()

@@ -60,7 +60,16 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         }
         mod = llvm.parse_assembly(llvm_ir_str);
         mod.verify();
-        target = llvm.Target.from_default_triple();
+        # Honor a JAC_NATIVE_TARGET cross-compile override; the IR already
+        # carries the matching triple/data layout from NaIRGenPass.postinit.
+        _nc_target_ovr = os.environ.get("JAC_NATIVE_TARGET", "");
+        if _nc_target_ovr {
+            llvm.initialize_all_targets();
+            llvm.initialize_all_asmprinters();
+            target = llvm.Target.from_triple(_nc_target_ovr);
+        } else {
+            target = llvm.Target.from_default_triple();
+        }
         # In debug mode: no optimisation so GDB sees real call frames;
         # jit=True picks the right code model (large on x86-64) for MCJIT.
         _native_debug: bool = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));

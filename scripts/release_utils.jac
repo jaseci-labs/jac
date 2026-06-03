@@ -7,6 +7,7 @@ All release-related scripts import from here to ensure consistency.
 import from __future__ { annotations }
 import os;
 import re;
+import tomllib;
 import urllib.error;
 import urllib.request;
 import from pathlib { Path }
@@ -83,6 +84,16 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         precompile=True,
         extra_build_cmd="jac run scripts/bundle_docs.jac"
     ),
+    "jac-desktop": PackageInfo(
+        dir="jac-desktop",
+        pypi="jac-desktop",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-desktop.md",
+        notes_display="jac-desktop",
+        submodules=True,
+        precompile=True,
+        extra_build_deps="jac-client"
+    ),
     "jaseci": PackageInfo(
         dir="jaseci-package",
         pypi="jaseci",
@@ -98,13 +109,15 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
+    "jac-desktop": ["jaclang", "jac-client"],
     "jaseci": [
         "jaclang",
         "byllm",
         "jac-client",
         "jac-scale",
         "jac-super",
-        "jac-mcp"
+        "jac-mcp",
+        "jac-desktop"
     ]
 },
      DEPENDENTS: dict[(str, list[str])] = {};
@@ -115,6 +128,20 @@ with entry {
         }
     }
 }
+"""Read the current version from a package's manifest.
+
+    Prefers jac.toml; falls back to pyproject.toml for packages (e.g. jac/)
+    that cannot migrate because they bootstrap the jac toolchain itself.
+    """
+def get_current_version(repo_root: Path, pkg_dir: str) -> str {
+    jac_toml = repo_root / pkg_dir / "jac.toml";
+    manifest = jac_toml
+        if jac_toml.exists()
+        else repo_root / pkg_dir / "pyproject.toml";
+    data = tomllib.loads(manifest.read_text());
+    return str(data["project"]["version"]);
+}
+
 """Compute the next semantic version based on bump type.
 
     Given a version like "1.2.3" and bump type:
