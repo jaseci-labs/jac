@@ -11,7 +11,6 @@ Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 """
 import json;
 import logging;
-import time;
 import from collections.abc { Callable, Generator, Iterable }
 import from datetime { datetime, timezone }
 import from pickle { dumps, loads }
@@ -202,13 +201,10 @@ obj ScaleTieredMemory(TieredMemory) {
         _persistence_type: PersistenceType = PersistenceType.NONE,
         # Stable id for this context's L1 in the invalidation registry.
         _l1_id: str = "",
-        # Max seconds a clean L1 entry is trusted before a read reloads it (0 disables).
-        _l1_max_age: float = 0.0,
         use_cache:
             bool = True;  # Override parent default to enable Redis cache by default
 
     def postinit -> None;
-    def get(id: UUID) -> (Anchor | None);
     def commit(anchor: (Anchor | None) = None) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;

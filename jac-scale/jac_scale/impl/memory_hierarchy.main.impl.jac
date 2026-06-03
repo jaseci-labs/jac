@@ -17,12 +17,9 @@ impl ScaleTieredMemory.postinit -> None {
     if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
-        # Start the invalidation listener once and arm the read-time freshness bound.
+        # Start the process-wide invalidation listener once.
         try {
             db_config = get_scale_config().get_database_config();
-            self._l1_max_age = cast(
-                float, db_config.get('redis_l1_max_age_seconds', 300)
-            );
             if db_config.get('redis_l1_invalidation_enabled', True) {
                 ensure_listener(
                     _process_cache,
@@ -207,40 +204,6 @@ impl ScaleTieredMemory.close -> None {
     }
     self.__mem__.clear();
     self.__gc__.clear();
-}
-
-"""Tiered read; a clean L1 entry past `_l1_max_age` is dropped so it reloads
-(bounds staleness from a missed eviction). Dirty entries are never discarded."""
-impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
-    if self._l1_max_age > 0 {
-        existing = self.__mem__.get(id);
-        if existing is not None and existing.persistent {
-            stamped = cast(
-                (float | None), existing.__dict__.get('__jac_l1_loaded_at__')
-            );
-            now = time.monotonic();
-            if stamped is None {
-                existing.__dict__['__jac_l1_loaded_at__'] = now;  # start the clock
-            } elif now - stamped >= self._l1_max_age {
-                try {
-                    if Serializer._compute_hash(existing) == existing.hash {
-                        self.__mem__.pop(id, None);  # clean + stale → reload below
-                    } else {
-                        existing.__dict__['__jac_l1_loaded_at__'] = now;  # dirty: defer
-                    }
-                } except Exception { }
-            }
-        }
-    }
-    anchor = super.get(id);
-    if (
-        anchor is not None
-        and self._l1_max_age > 0
-        and anchor.__dict__.get('__jac_l1_loaded_at__') is None
-    ) {
-        anchor.__dict__['__jac_l1_loaded_at__'] = time.monotonic();
-    }
-    return anchor;
 }
 
 """L1 scan. Snapshots `__mem__` first: the invalidation listener thread may
