@@ -1,4 +1,4 @@
-"""Client framework modules (build orchestration + routing). Build plumbing now lives in jaclang.runtimelib.client."""
-import from jac_client.plugin.src.compiler { ViteCompiler }
+"""Client framework modules (diagnostics, mobile, targets).
 
-glob __all__ = ['ViteCompiler'];
+Build plumbing and the build orchestrator now live in jaclang.runtimelib.client.
+"""

@@ -1402,10 +1402,15 @@ impl JacBasics.set_trigger(
     return deco;
 }
 
-"""Get the client bundle builder instance."""
+"""Get the client bundle builder instance.
+
+Builds via the single Vite/Bun pipeline in core. The package.json is generated
+on demand under `.jac/client/configs/`; bun is auto-installed into `.jac/bin/`
+by the bundler when needed.
+"""
 impl JacClientBundle.get_client_bundle_builder -> ClientBundleBuilder {
-    import from jaclang.runtimelib.client_bundle { ClientBundleBuilder }
-    return ClientBundleBuilder();
+    import from jaclang.runtimelib.client.vite_client_bundle { make_client_bundle_builder }
+    return make_client_bundle_builder();
 }
 
 """Build a client bundle for the supplied module."""

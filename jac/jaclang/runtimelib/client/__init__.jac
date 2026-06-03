@@ -8,6 +8,9 @@ import from .import_processor { ImportProcessor }
 import from .jac_to_js { JacToJSCompiler }
 import from .package_installer { PackageInstaller }
 import from .vite_bundler { ViteBundler }
+import from .route_scanner { RouteScanner, RouteEntry }
+import from .compiler { ViteCompiler }
+import from .vite_client_bundle { ViteClientBundleBuilder, make_client_bundle_builder }
 
 glob __all__ = [
          'get_bun',
@@ -19,5 +22,10 @@ glob __all__ = [
          'ImportProcessor',
          'JacToJSCompiler',
          'PackageInstaller',
-         'ViteBundler'
+         'ViteBundler',
+         'RouteScanner',
+         'RouteEntry',
+         'ViteCompiler',
+         'ViteClientBundleBuilder',
+         'make_client_bundle_builder'
      ];

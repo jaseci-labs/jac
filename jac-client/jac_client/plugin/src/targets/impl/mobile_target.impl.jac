@@ -236,7 +236,7 @@ impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jac_client.plugin.client { JacClient }
+    import from jaclang.runtimelib.client.vite_client_bundle { make_client_bundle_builder }
     import signal;
     import sys;
 
@@ -280,7 +280,7 @@ impl MobileTarget.dev(
     if not package_json_path.exists() {
         bundler.create_package_json();
     }
-    builder = JacClient.get_client_bundle_builder();
+    builder = make_client_bundle_builder(project_dir);
     if not builder.vite_package_json or not builder.vite_package_json.exists() {
         builder.vite_package_json = package_json_path;
     }
