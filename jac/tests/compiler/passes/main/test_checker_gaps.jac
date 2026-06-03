@@ -623,3 +623,26 @@ test "gap 55 literal annotations resolve and discriminate" {
     f"Expected exactly 3 type errors but got {len(program.errors_had)}. "
     f"Errors: {[e.pretty_print() for e in program.errors_had[:8]]}";
 }
+
+# =========================================================================
+# Gap #56: A keyword used as a parameter name (e.g. `by`) cascaded into
+# spurious "too many positional arguments" (E1051) at every call site.
+# The parser dropped the offending parameter (and every parameter after it),
+# truncating the signature, so calls then mismatched the arity. The parser
+# now keeps the parameter for error recovery, so only the real keyword error
+# (E0013) is reported. (jaseci-labs/jaseci#6353 gap #3)
+# =========================================================================
+test "gap 56 keyword param does not cascade into E1051" {
+    program = compile_and_check("checker_keyword_param_no_cascade.jac");
+    msgs = [str(e) for e in program.errors_had];
+    joined = " ".join(msgs);
+    # The real error (keyword used as a parameter name) is still reported.
+    assert "keyword" in joined , (
+        f"Gap #56: expected the E0013 keyword-parameter error. Got: {msgs}"
+    );
+    # ...but it must not cascade into argument-count errors at the call site.
+    assert "Too many positional arguments" not in joined , (
+        "Gap #56: a keyword parameter name must not cascade into spurious "
+        f"'too many positional arguments' (E1051). Got: {msgs}"
+    );
+}
