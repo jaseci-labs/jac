@@ -276,14 +276,7 @@ def content_preview(content: any, max_len: int) -> str {
 }
 
 
-"""Move tool-result images into a trailing user message.
-
-Some providers (e.g. OpenAI) reject images inside `role: "tool"` content.
-Consecutive tool messages are grouped: images batch into ONE user message
-AFTER the run so Anthropic's tool_use/tool_result alternation stays valid.
-Each image is prefixed with `[Tool result for <name> (id <id>)]:`.
-Apply at wire-format time only — never persist the rerouted shape.
-"""
+"""Move tool-result images into a trailing user message; images across consecutive tool messages batch into ONE message."""
 def reroute_tool_images_to_user_message(messages: list) -> list {
     # Common case: no tool images → return the input untouched (no allocations).
     if not any(_tool_msg_has_image(m) for m in messages) {
@@ -304,7 +297,7 @@ def reroute_tool_images_to_user_message(messages: list) -> list {
             );
             pending.extend(images);
         } elif _is_tool_msg(msg) {
-            # Text-only tool — still inside the run; can't flush yet (Anthropic alternation).
+            # Text-only tool - still inside the run; can't flush yet (Anthropic alternation).
             out.append(msg);
         } else {
             if pending {
@@ -343,9 +336,7 @@ def _tool_msg_has_image(msg: object) -> bool {
 }
 
 
-"""Split a tool message into (stripped_msg, image_blocks).
-Text-only remainders collapse to a bare string; empty remainders become a
-placeholder so the message stays valid.  No images → original message + []."""
+"""Split a tool message into (stripped_msg, image_blocks); no images → (msg, [])."""
 def _split_tool_msg_images(msg: dict) -> tuple {
     content = msg.get("content");
     if not isinstance(content, list) {
