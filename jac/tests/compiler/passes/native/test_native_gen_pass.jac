@@ -1816,9 +1816,82 @@ test "clib struct value-type coercion" {
     assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
-    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
-    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+    # System V ABI coercion at the call site: the Color value is reinterpreted
+    # as its register coerce type ({i32}) and the eightbyte is loaded out.
+    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+}
+
+test "clib System V AMD64 ABI lowering" {
+    # x86_64-only: asserts the emitted foreign-call ABI matches what clang/gcc
+    # produce for each eightbyte classification case (Phase 1 of #6353).
+    import platform;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        return;
+    }
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # SSE eightbytes: float fields pack into <2 x float> / trailing float.
+    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
+    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")' in s , "V3 expand + 2-eightbyte SSE return";
+    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    # INTEGER eightbyte: all-int small struct coerces to a single integer.
+    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
+    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    # Two SSE double eightbytes.
+    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return.
+    assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
+    assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
+    assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    # The non-injective return-boxing (gap #7) is gone: a scalar return is never
+    # rerouted through struct boxing.
+    assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
+}
+
+test "clib AArch64 AAPCS ABI lowering" {
+    # Cross-targets aarch64 (works from any host) and asserts the emitted
+    # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _os.environ["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(
+            str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")),
+            options=CompileOptions(type_check=False)
+        );
+        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+        s = str(ir.gen.llvm_ir);
+        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
+        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
+        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
+        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        # HFA of doubles.
+        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
+        # a 4-byte struct).
+        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
+        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
+        # sret for the return.
+        assert 'declare float @"cam_fovy"(%"Cam.cabi"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert "byval" not in s , "AAPCS must not emit byval";
+        assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
 }
 
 # --- TestRefCounting ---
@@ -2173,6 +2246,133 @@ test "sys argv via nacompile" {
             f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
         );
     }
+}
+
+# --- TestNativeAArch64Linker ---
+test "aarch64 standalone binary runs (issue #6366)" {
+    # Cross-compile a trivial program to aarch64 via the in-house ELF linker
+    # and run it under qemu-user. Guards the linker's absolute-address
+    # relocations (R_AARCH64_MOVW_UABS_G0..G3): without them every global /
+    # .rodata reference materializes to NULL and the binary segfaults at entry.
+    import shutil;
+    import tempfile;
+    qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
+    ld_prefix = "/usr/aarch64-linux-gnu";
+    loader = os.path.join(ld_prefix, "lib", "ld-linux-aarch64.so.1");
+    if not qemu or not os.path.exists(loader) {
+        import pytest;
+        pytest.skip("aarch64 qemu-user + cross libc not installed");
+    }
+    fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "a64_roundtrip");
+        # Step 1: cross-compile for aarch64.
+        comp_env = dict(os.environ);
+        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=comp_env
+        );
+        assert comp.returncode == 0 , (
+            f"aarch64 nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        # Step 2: run under qemu-user. total = add(40, 2) = 42, surfaced via
+        # sys.exit. A dropped MOVW_UABS reloc stores to NULL -> SIGSEGV
+        # (returncode -11 / 139) instead of the expected 42.
+        run_env = dict(os.environ);
+        run_env["QEMU_LD_PREFIX"] = ld_prefix;
+        result = subprocess.run(
+            [qemu, out_bin], capture_output=True, text=True, timeout=30, env=run_env
+        );
+        assert result.returncode == 42 , (
+            f"Expected exit 42, got {result.returncode} "
+            f"(SIGSEGV/-11/139 == dropped R_AARCH64_MOVW_UABS relocations).\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+    }
+}
+
+test "elf linker rejects unhandled relocation (issue #6366 guard)" {
+    # Defense-in-depth: the linker must refuse to emit a binary when a
+    # relocation targeting an emitted section has no handler, rather than
+    # silently leaving the reference pointing at NULL (the #6366 failure mode).
+    # Pure link-time check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    # A function that loads a module global forces an address-materialization
+    # relocation into .text against the global.
+    ir = "target triple = \"aarch64-unknown-linux-gnu\"\n" + "@g = global i64 0\n" + "define i64 @f() {\n  %v = load i64, i64* @g\n  ret i64 %v\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("aarch64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6"]
+    );
+    assert linker.parse_object() , "parse_object failed on aarch64 object";
+    assert len(linker.relocations) > 0 , "expected at least one relocation";
+    # Corrupt a relocation that patches the emitted code section to an unknown
+    # type; the linker must raise instead of emitting an unrelocated binary.
+    target = None;
+    for r in linker.relocations {
+        if r.target_sec and "text" in r.target_sec {
+            target = r;
+            break;
+        }
+    }
+    assert target is not None , "no .text relocation found to corrupt";
+    target.rtype = 9999;
+    raised = False;
+    try {
+        linker.build_executable();
+    } except ValueError as e {
+        raised = True;
+        assert "relocation type" in str(e) , f"unexpected message: {e}";
+    }
+    assert raised , "linker silently accepted an unhandled relocation";
+}
+
+test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
+    # A standalone binary must find a sibling shared library regardless of the
+    # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
+    # resolves needed libraries relative to the executable. Pure link-time
+    # check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import struct;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    ir = "target triple = \"x86_64-unknown-linux-gnu\"\n" + "define i64 @f() {\n  ret i64 0\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("x86_64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6", "libfoo.so"]
+    );
+    assert linker.parse_object() , "parse_object failed";
+    out = linker.build_executable();
+    # The $ORIGIN runpath string is emitted into .dynstr ...
+    assert b"$ORIGIN\x00" in out , "DT_RUNPATH $ORIGIN string not emitted";
+    # ... and referenced by a DT_RUNPATH (tag 29) dynamic entry.
+    assert struct.pack("<q", 29) in out , "DT_RUNPATH (tag 29) dynamic entry missing";
 }
 
 # --- TestNativeListBugs ---

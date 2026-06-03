@@ -196,7 +196,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
-    triple = llvm.get_default_triple();
+    triple = os.environ.get("JAC_NATIVE_TARGET", "") or llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
     # Step 4: Inject entry point (platform-specific)
@@ -221,8 +221,18 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     clib_paths = ir_module.gen._clib_paths;
     if clib_paths {
         for lib_path in clib_paths {
-            if lib_path not in needed_libs {
-                needed_libs.append(lib_path);
+            # A relative path with a directory component (e.g. "./libfoo.so")
+            # names a library shipped beside the binary. Record only its soname
+            # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
+            # the executable rather than the launch directory. Absolute paths
+            # (system libraries) and bare sonames are recorded verbatim.
+            _needed = lib_path;
+            if (not os.path.isabs(lib_path))
+            and ("/" in lib_path or "\\" in lib_path) {
+                _needed = os.path.basename(lib_path);
+            }
+            if _needed not in needed_libs {
+                needed_libs.append(_needed);
             }
         }
     }
@@ -236,7 +246,16 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
         return 1;
     }
 
-    target = llvm.Target.from_default_triple();
+    # JAC_NATIVE_TARGET cross-compiles for another triple; the parsed module
+    # already carries that triple/data layout from NaIRGenPass.postinit, so the
+    # emitted object matches. The pure-Python linker selects ELF arch from the
+    # object's e_machine, so the resulting binary targets the requested ISA.
+    _target_ovr = os.environ.get("JAC_NATIVE_TARGET", "");
+    if _target_ovr {
+        target = llvm.Target.from_triple(_target_ovr);
+    } else {
+        target = llvm.Target.from_default_triple();
+    }
     target_machine = target.create_target_machine(opt=2);
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)
@@ -308,7 +327,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     file_size = os.path.getsize(output);
-    console.print(f"  Binary written to [bold]{output}[/bold] ({file_size} bytes).");
+    console.print(f"  Binary written to {output} ({file_size} bytes).");
     console.print(f"  Run with: ./{output}");
     return 0;
 }

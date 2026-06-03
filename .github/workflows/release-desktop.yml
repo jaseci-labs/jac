@@ -1,0 +1,39 @@
+name: Release jac-desktop to PYPI
+
+on: workflow_dispatch
+
+jobs:
+  release-desktop:
+    name: Release
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    defaults:
+      run:
+        working-directory: jac-desktop
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # jac-desktop depends on pytauri-wheel, which only ships wheels up to
+      # cp313 (no Python 3.14 wheel yet). Precompiling for 3.14 would force a
+      # from-source Rust build of the whole Tauri runtime, which fails the
+      # release. Pin to the versions pytauri-wheel actually supports;
+      # jac-desktop requires >=3.12.
+      - name: Set up Python 3.12, 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.12
+            3.13
+
+      - name: Install jaclang and twine
+        run: |
+          pip install -e ../jac
+          pip install twine
+
+      - name: Build and publish
+        run: |
+          jac bundle --precompile
+          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

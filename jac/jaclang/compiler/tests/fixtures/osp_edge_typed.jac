@@ -30,3 +30,15 @@ def edge_typed_py() -> dict[str, any] {
     w spawn a;
     return {"seen": w.seen};
 }
+
+cl {
+    def edge_typed_cl() -> dict[str, any] {
+        a = City(val=1); b = City(val=2); c = City(val=3); d = City(val=4);
+        a +>: Road() :+> b;
+        a +>: Rail() :+> c;
+        b +>: Road() :+> d;
+        w = Router();
+        w spawn a;
+        return {"seen": w.seen};
+    }
+}

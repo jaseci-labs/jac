@@ -11,8 +11,19 @@ impl NaIRGenPass.postinit -> None {
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import llvmlite.binding as _llvm_bind;
-    _llvm_bind.initialize_native_target();
-    _target = _llvm_bind.Target.from_default_triple();
+    # JAC_NATIVE_TARGET cross-compiles for another triple (e.g.
+    # aarch64-unknown-linux-gnu). The triple drives both the data layout and
+    # the platform ABI classification, so it must be set on the module here;
+    # NativeCompilePass and nacompile read the same env var when emitting code.
+    _ni_target_ovr = _ni_os.environ.get("JAC_NATIVE_TARGET", "");
+    if _ni_target_ovr {
+        _llvm_bind.initialize_all_targets();
+        _llvm_bind.initialize_all_asmprinters();
+        _target = _llvm_bind.Target.from_triple(_ni_target_ovr);
+    } else {
+        _llvm_bind.initialize_native_target();
+        _target = _llvm_bind.Target.from_default_triple();
+    }
     _tm = _target.create_target_machine();
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;

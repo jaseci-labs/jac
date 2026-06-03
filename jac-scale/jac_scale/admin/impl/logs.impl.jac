@@ -85,28 +85,77 @@ def _app_namespace -> str {
 }
 
 
-"""Configured microservice route keys + '__gateway__' (becomes the
-'gateway' service name in K-track). Empty list off-K8s."""
+"""Read [plugins.scale.kubernetes].app_name; '' on lookup failure.
+Used in monolith mode to populate the service dropdown / pod regex
+since there's no `[microservices.routes]` table to derive names from."""
+def _app_name -> str {
+    try {
+        return get_scale_config().get_kubernetes_config().get("app_name", "");
+    } except Exception {
+        return "";
+    }
+}
+
+
+"""True when the app declares one or more microservices via
+`[plugins.scale.microservices.routes]`. False for monolith deploys
+(no routes table or it's empty). Drives the per-mode forks below."""
+def _is_microservice_mode -> bool {
+    try {
+        routes: dict = get_scale_config().get_microservices_config().get("routes", {});
+        return bool(routes);
+    } except Exception {
+        return False;
+    }
+}
+
+
+"""Resolve service names from a config dict (pure helper).
+
+In microservice mode: `['gateway']` plus the sorted route keys.
+In monolith mode: a single-element list with the configured
+`app_name`, or `[]` if app_name is unknown - matches what users
+see in `kubectl get pods`. Pure function so tests can exercise
+both modes without touching the global config singleton."""
+def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[str] {
+    if microservice {
+        names: list[str] = list(routes.keys());
+        return ["gateway"] + sorted(names);
+    }
+    return [app_name] if app_name else [];
+}
+
+
+"""Configured services list for the admin UI dropdown."""
 def _microservice_services -> list[str] {
     try {
         ms = get_scale_config().get_microservices_config();
         routes: dict = ms.get("routes", {});
-        names: list[str] = list(routes.keys());
-        # Order: gateway first, then declared services. Matches what
-        # users see in `kubectl get pods` for a microservice deploy.
-        return ["gateway"] + sorted(names);
+        return _services_for_mode(bool(routes), routes, _app_name());
     } except Exception {
         return [];
     }
 }
 
 
-"""Translate a service name into the pod-name regex Loki labels use.
-K-track names pod templates `<svc>-deployment-*` (gateway, builder-sv,
-jac-coder-sv); applied via `pod=~"<svc>-deployment-.*"` in LogQL."""
-def _service_to_pod_regex(service: str) -> str {
+"""Translate a service name into the pod-name regex Loki labels use
+(pure helper). K-track names microservice pods
+`<svc>-deployment-<replicaset>-<random>` (gateway, builder-sv,
+jac-coder-sv); monolith pods are `<app_name>-<replicaset>-<random>`
+with no `-deployment-` infix. Pure function so tests can pin the
+mode explicitly."""
+def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
     safe = service.lower().replace("_", "-");
-    return f"{safe}-deployment-.*";
+    if microservice {
+        return f"{safe}-deployment-.*";
+    }
+    return f"{safe}-.*";
+}
+
+
+"""Translate a service name into the pod-name regex Loki labels use."""
+def _service_to_pod_regex(service: str) -> str {
+    return _service_to_pod_regex_for_mode(service, _is_microservice_mode());
 }
 
 

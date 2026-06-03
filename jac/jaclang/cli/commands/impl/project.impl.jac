@@ -448,8 +448,7 @@ impl install(
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
         console.print(
-            f"\n📦 Editable install: [cyan]{config.project.name}[/cyan] "
-            f"from [dim]{src_dir}[/dim]",
+            f"\n📦 Editable install: {config.project.name} " f"from {src_dir}",
             style="bold"
         );
 
@@ -494,8 +493,7 @@ impl install(
         return 0;
     }
     console.print(
-        f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
-        style="bold"
+        f"\n📦 Installing dependencies for {config.project.name}", style="bold"
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
@@ -532,7 +530,7 @@ impl install(
     all_packages = pip_packages + git_packages;
     if all_packages {
         with console.status(
-            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
+            f"Installing {len(all_packages)} package(s)...", spinner="dots"
         ) as status {
             install_success = installer.install_package(all_packages);
         }
@@ -610,11 +608,9 @@ impl add(
                 pkg_name = pkg_name[:-4];
             }
         }
-        console.print(f"\n📦 Adding [cyan]{pkg_name}[/cyan] from git", style="bold");
+        console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
-        with console.status(
-            f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots"
-        ) as status {
+        with console.status(f"Installing {pkg_name}...", spinner="dots") as status {
             specs = installer._make_git_spec(pkg_name, git);
             git_success = installer.install_package([specs]);
         }
@@ -637,9 +633,7 @@ impl add(
         } else {
             install_spec = name;
         }
-        with console.status(
-            f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-        ) as status {
+        with console.status(f"Installing {name}...", spinner="dots") as status {
             pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
@@ -803,11 +797,11 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         return 0;
     }
     console.print(
-        f"\n📦 Updating {len(specs_to_update)} package(s) for [cyan]{config.project.name}[/cyan]",
+        f"\n📦 Updating {len(specs_to_update)} package(s) for {config.project.name}",
         style="bold"
     );
     with console.status(
-        f"[cyan]Updating {len(specs_to_update)} package(s)...[/cyan]", spinner="dots"
+        f"Updating {len(specs_to_update)} package(s)...", spinner="dots"
     ) as status {
         update_success = installer.install_package(specs_to_update);
     }
@@ -1248,12 +1242,11 @@ def _bundle_wheel(config: any, output: str, precompile: bool) -> int {
         return 1;
     }
     console.print(
-        f"  ✔ Built [bold]{whl_path.name}[/bold] "
-        f"({whl_path.stat().st_size:,} bytes)",
+        f"  ✔ Built {whl_path.name} " f"({whl_path.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
-    console.print("  Upload with: [cyan]twine upload dist/*[/cyan]", style="muted");
+    console.print(f"  Wheel written to: {whl_path}", style="cyan");
+    console.print("  Upload with: twine upload dist/*", style="muted");
     return 0;
 }
 
@@ -1276,12 +1269,11 @@ def _bundle_npm(config: any, output: str) -> int {
         return 1;
     }
     console.print(
-        f"  ✔ Built [bold]{tgz_path.name}[/bold] "
-        f"({tgz_path.stat().st_size:,} bytes)",
+        f"  ✔ Built {tgz_path.name} ({tgz_path.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"  Tarball written to: [cyan]{tgz_path}[/cyan]", style="bold");
-    console.print("  Publish with: [cyan]npm publish[/cyan]", style="muted");
+    console.print(f"  Tarball written to: {tgz_path}", style="cyan");
+    console.print("  Publish with: npm publish", style="muted");
     return 0;
 }
 
@@ -1292,9 +1284,7 @@ def _bundle_npm_runtime(output: str) -> int {
 
     version = importlib.metadata.version("jaclang");
     out_dir = Path(output);
-    console.print(
-        f"\n📦 Building [cyan]{RUNTIME_PKG_NAME}[/cyan] v{version}", style="bold"
-    );
+    console.print(f"\n📦 Building {RUNTIME_PKG_NAME} v{version}", style="bold");
     console.print("\n  Compiling runtime → npm tarball...", style="muted");
     try {
         path = build_runtime_to(out_dir, version);
@@ -1303,11 +1293,10 @@ def _bundle_npm_runtime(output: str) -> int {
         return 1;
     }
     console.print(
-        f"  ✔ Built [bold]{path.name}[/bold] ({path.stat().st_size:,} bytes)",
-        style="success"
+        f"  ✔ Built {path.name} ({path.stat().st_size:,} bytes)", style="success"
     );
-    console.print(f"  Tarball written to: [cyan]{path}[/cyan]", style="bold");
-    console.print("  Publish with: [cyan]npm publish[/cyan]", style="muted");
+    console.print(f"  Tarball written to: {path}", style="cyan");
+    console.print("  Publish with: npm publish", style="muted");
     return 0;
 }
 
@@ -1344,8 +1333,7 @@ impl bundle(
     }
 
     console.print(
-        f"\n📦 Bundling [cyan]{config.project.name}[/cyan] "
-        f"v{config.project.version} [muted]({target})[/muted]",
+        f"\n📦 Bundling {config.project.name} " f"v{config.project.version} ({target})",
         style="bold"
     );
 

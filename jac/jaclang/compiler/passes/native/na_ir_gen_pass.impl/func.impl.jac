@@ -52,6 +52,167 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     sig = nd.signature;
+    # The System V ABI plan is only needed when a by-value struct actually
+    # crosses the boundary. Pure-scalar foreign functions (sqrt, strlen, calloc,
+    # …) keep the legacy path — which also correctly handles reuse of the
+    # compiler's canonical extern declarations (e.g. a user re-declaring strlen
+    # with an `int` parameter still binds to the pre-declared i8* signature).
+    _clib_has_struct = False;
+    for _cp in sig.get_parameters() {
+        _cptn = self._clib_type_name(_cp.type_tag.tag)
+            if (_cp.type_tag and _cp.type_tag.tag)
+            else None;
+        if _cptn is not None and _cptn in self.clib_struct_names {
+            _clib_has_struct = True;
+        }
+    }
+    _crtn = self._clib_type_name(sig.return_type);
+    if _crtn is not None and _crtn in self.clib_struct_names {
+        _clib_has_struct = True;
+    }
+    # Classify struct arguments/returns per the platform psABI (System V AMD64
+    # or AArch64 AAPCS) and record a marshalling plan on self.clib_fn_abi.
+    # Targets without an ABI classifier fall through to the legacy path below.
+    _abi_triple = str(self.llvm_module.triple or "");
+    _abi_supported = (
+        "x86_64" in _abi_triple or "aarch64" in _abi_triple or "arm64" in _abi_triple
+    );
+    if _clib_has_struct and _abi_supported {
+        sysv_param_types: list[ir.Type] = [];
+        param_plan: list = [];
+        for p in sig.get_parameters() {
+            pname = p.name.value if p.name else f"arg{len(param_plan)}";
+            ptn = self._clib_type_name(p.type_tag.tag)
+                if (p.type_tag and p.type_tag.tag)
+                else None;
+            if ptn is not None and ptn in self.clib_struct_names {
+                pcls = self._classify_clib_struct(ptn);
+                if pcls["memory"] {
+                    param_plan.append(
+                        {
+                            "kind": "struct_mem",
+                            "sname": ptn,
+                            "pname": pname,
+                            "align": pcls["align"],
+                            "byval": pcls["byval"],
+                            "argpos": len(sysv_param_types)
+                        }
+                    );
+                    sysv_param_types.append(self._clib_c_type(ptn).as_pointer());
+                } else {
+                    start = len(sysv_param_types);
+                    for ct in pcls["coerce"] {
+                        sysv_param_types.append(ct);
+                    }
+                    param_plan.append(
+                        {
+                            "kind": "struct_reg",
+                            "sname": ptn,
+                            "pname": pname,
+                            "coerce": pcls["coerce"],
+                            "safe": pcls["safe"],
+                            "argpos": start
+                        }
+                    );
+                }
+            } else {
+                lt = self._resolve_clib_type(p.type_tag.tag)
+                    if (p.type_tag and p.type_tag.tag)
+                    else ir.IntType(64);
+                param_plan.append(
+                    {
+                        "kind": "scalar",
+                        "type": lt,
+                        "pname": pname,
+                        "argpos": len(sysv_param_types)
+                    }
+                );
+                sysv_param_types.append(lt);
+            }
+        }
+        rtn = self._clib_type_name(sig.return_type);
+        sysv_sret = False;
+        sysv_ret_plan: dict = {};
+        sysv_ret_type: ir.Type = ir.VoidType();
+        if rtn is not None and rtn in self.clib_struct_names {
+            rcls = self._classify_clib_struct(rtn);
+            if rcls["memory"] {
+                sysv_sret = True;
+                sysv_ret_type = ir.VoidType();
+                sysv_param_types = [
+                    self._clib_c_type(rtn).as_pointer()
+                ] + sysv_param_types;
+                for pp in param_plan {
+                    pp["argpos"] += 1;
+                }
+                sysv_ret_plan = {"kind": "sret", "sname": rtn, "align": rcls["align"]};
+            } else {
+                if len(rcls["coerce"]) == 1 {
+                    sysv_ret_type = rcls["coerce"][0];
+                } else {
+                    sysv_ret_type = ir.LiteralStructType(rcls["coerce"]);
+                }
+                sysv_ret_plan = {
+                    "kind": "struct_reg",
+                    "sname": rtn,
+                    "coerce": rcls["coerce"],
+                    "safe": rcls["safe"]
+                };
+            }
+        } else {
+            sysv_ret_type = self._resolve_clib_type(sig.return_type);
+            sysv_ret_plan = {"kind": "scalar", "type": sysv_ret_type};
+        }
+        sysv_fnty = ir.FunctionType(sysv_ret_type, sysv_param_types);
+        if name in self.extern_funcs {
+            sysv_func = self.extern_funcs[name];
+        } elif name in self.func_symtab {
+            sysv_func = self.func_symtab[name];
+        } else {
+            sysv_func = ir.Function(self.llvm_module, sysv_fnty, name=name);
+        }
+        if sysv_sret and len(sysv_func.args) > 0 {
+            sysv_func.args[0].add_attribute("sret");
+            _sal = sysv_ret_plan["align"];
+            sysv_func.args[0].align = _sal if _sal > 8 else 8;
+            sysv_func.args[0].name = "agg.result";
+        }
+        for pp in param_plan {
+            _pos = pp["argpos"];
+            if pp["kind"] == "struct_mem" and _pos < len(sysv_func.args) {
+                _ba = sysv_func.args[_pos];
+                # System V passes the indirect aggregate as `byval` (the backend
+                # copies it); AAPCS passes a plain pointer to a caller-made copy.
+                if pp["byval"] {
+                    _ba.add_attribute("byval");
+                    _bal = pp["align"];
+                    _ba.align = _bal if _bal > 8 else 8;
+                }
+                _ba.name = pp["pname"];
+            } elif pp["kind"] == "scalar" and _pos < len(sysv_func.args) {
+                sysv_func.args[_pos].name = pp["pname"];
+            } elif pp["kind"] == "struct_reg" {
+                _co = pp["coerce"];
+                if len(_co) == 1 and _pos < len(sysv_func.args) {
+                    sysv_func.args[_pos].name = pp["pname"];
+                } else {
+                    for _j in range(len(_co)) {
+                        if (_pos + _j) < len(sysv_func.args) {
+                            sysv_func.args[_pos + _j].name = f"{pp['pname']}.{_j}";
+                        }
+                    }
+                }
+            }
+        }
+        self.clib_fn_abi[name] = {
+            "params": param_plan,
+            "ret": sysv_ret_plan,
+            "sret": sysv_sret
+        };
+        self.func_symtab[name] = sysv_func;
+        self.has_native_code = True;
+        return;
+    }
     # Build parameter types -- value types for clib structs
     param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {

@@ -84,6 +84,16 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         precompile=True,
         extra_build_cmd="jac run scripts/bundle_docs.jac"
     ),
+    "jac-desktop": PackageInfo(
+        dir="jac-desktop",
+        pypi="jac-desktop",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-desktop.md",
+        notes_display="jac-desktop",
+        submodules=True,
+        precompile=True,
+        extra_build_deps="jac-client"
+    ),
     "jaseci": PackageInfo(
         dir="jaseci-package",
         pypi="jaseci",
@@ -99,13 +109,15 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
+    "jac-desktop": ["jaclang", "jac-client"],
     "jaseci": [
         "jaclang",
         "byllm",
         "jac-client",
         "jac-scale",
         "jac-super",
-        "jac-mcp"
+        "jac-mcp",
+        "jac-desktop"
     ]
 },
      DEPENDENTS: dict[(str, list[str])] = {};

@@ -65,6 +65,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
+        # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
+        # single source of truth for how a foreign call is marshalled — it
+        # replaces the old non-injective `result.type == abi_type` matching that
+        # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
+        clib_fn_abi: dict[str, dict] = {},
         # Enum support (Phase 1)
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
@@ -588,6 +594,39 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
+    # Compute the C in-memory layout of a clib struct: (size, align, scalars)
+    # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
+    # structs are flattened (inlined) recursively to match the C ABI.
+    def _clib_struct_layout(name: str) -> tuple;
+    def _scalar_layout(llt: ir.Type) -> tuple;
+    # Classify a clib struct for the active target's C ABI (dispatches to the
+    # System V or AAPCS variant) into either MEMORY (indirect) or register
+    # coerce types.
+    def _classify_clib_struct(name: str) -> dict;
+    def _classify_clib_struct_sysv(name: str) -> dict;
+    def _classify_clib_struct_aapcs(name: str) -> dict;
+    # Name of the (struct) type an annotation refers to, or None.
+    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
+    # True if the clib struct has a field that is itself a clib struct.
+    def _clib_has_nested(name: str) -> bool;
+    # C-laid-out LLVM type for a clib struct (nested clib structs inlined).
+    def _clib_c_type(name: str) -> ir.Type;
+    # Produce a pointer to a C-laid-out copy of a Jac clib-struct value, ready
+    # for register slicing or byval. Flat structs reuse the value directly.
+    def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
+    # Box a C-laid-out struct pointer into an RC-managed Jac struct pointer.
+    def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
+    # Recursively copy between the Jac (pointer-nested) and C (inlined) layouts.
+    def _clib_copy_jac_to_c(jac_ptr: ir.Value, c_ptr: ir.Value, name: str) -> None;
+    def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
+    # Allocate an RC-managed box for a clib struct (size from GEP-of-null).
+    def _clib_alloc_box(name: str) -> ir.Value;
+    # Marshal a foreign call from its stored ABI plan; returns the call result
+    # already reconstructed into Jac representation (or scalar).
+    def _codegen_clib_call(
+        func: ir.Function, func_name: str, args: list[ir.Value]
+    ) -> (ir.Value | None);
     # Layout metadata export
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;

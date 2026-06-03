@@ -1,6 +1,7 @@
 """Standardized transformation process and error interface."""
 import time;
 import from abc { ABC, abstractmethod }
+import from dataclasses { field }
 import from threading { Event }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
@@ -75,7 +76,12 @@ obj BaseTransform[T_in, T_out](ABC) {
     like error/warning logging with source location tracking.
     """
 obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
-    has cur_node: UniNode by postinit;
+    has cur_node: UniNode by postinit,
+        _cached_check_suppress_tokens: list[str] = field(default_factory=`list),
+        _cached_check_suppress_codes: list[str] = field(default_factory=`list),
+        _cached_inline_suppressions: dict[((str, int), list[str])] = field(
+            default_factory=`dict
+        );
 
     """Initialize pass - set cur_node before parent postinit runs."""
     def postinit -> None;

@@ -3110,7 +3110,11 @@ impl Parser.parse_lambda_param -> ParamVar | None {
     } elif self.is_keyword_token() {
         kw = self.current().value;
         self.emit_diag(E0013, keyword=kw, context="lambda parameter");
-        return None;
+        # Error recovery: keep the param (see parse_param_var) so the lambda's
+        # arity is preserved and call sites don't get cascading argument-count
+        # errors; E0013 already reports the keyword misuse.
+        name_tok = self.advance();
+        name = self.make_name_or_special(name_tok);
     } else {
         # No name follows - not a valid parameter
         return None;
@@ -6533,7 +6537,13 @@ impl Parser.parse_param_var -> ParamVar | None {
     } elif self.is_keyword_token() {
         kw = self.current().value;
         self.emit_diag(E0013, keyword=kw, context="parameter");
-        return None;
+        # Error recovery: consume the keyword as the parameter name anyway so
+        # the signature keeps its correct arity. Dropping the param (return
+        # None) truncates the signature at this point, which cascades into
+        # spurious E1051 "too many positional arguments" at every call site
+        # (#6353 gap #3); E0013 already reports the real problem.
+        name_tok = self.advance();
+        name = self.make_name_or_special(name_tok);
     } else {
         return None;
     }

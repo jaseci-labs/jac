@@ -31,7 +31,18 @@ import logging;
 import from datetime { datetime, timezone }
 import from typing { Any }
 
-glob _SVC_NAME: str = os.getenv("JAC_SV_NAME", "unknown"),
+# Service name resolution. In microservice mode K-track injects
+# `JAC_SV_NAME` per pod (gateway, builder-sv, ...) and that's what
+# we want. In monolith mode no `JAC_SV_NAME` is set, so we fall
+# back to `K8S_APP_NAME` (injected on every jac-scale K8s pod)
+# instead of the bare "unknown" sentinel - which made every JSON
+# line on a monolith deploy land with `"service":"unknown"` and
+# was indistinguishable from a misconfigured microservice.
+glob _SVC_NAME: str = (
+         os.getenv("JAC_SV_NAME", "").strip()
+         or os.getenv("K8S_APP_NAME", "").strip()
+         or "unknown"
+     ),
      _structured_installed: bool = False,
      _root_logger: logging.Logger = logging.getLogger();
 
