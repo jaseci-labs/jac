@@ -37,7 +37,8 @@ import from byllm.types {
     MessageRole,
     IterationAction,
     IterationContext,
-    content_preview
+    content_preview,
+    reroute_tool_images_to_user_message
 }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }

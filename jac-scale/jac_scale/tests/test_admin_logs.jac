@@ -120,3 +120,43 @@ test "search filter doubles backslashes before escaping quotes" {
     # The final LogQL fragment must read: |= "say \"hi\""
     assert '|= "say \\"hi\\""' in q , f"unexpected escape shape: {q}";
 }
+
+
+test "service list collapses to [app_name] in monolith mode" {
+    # Regression: pre-fix the dropdown was hard-coded to
+    # ['gateway'] + routes.keys(), so monolith deploys offered
+    # one bogus entry ('gateway') and no way to pick the actual
+    # app's pods.
+    import from jac_scale.admin.logs { _services_for_mode }
+
+    mono = _services_for_mode(False, {}, "jac-builder-dev");
+    assert mono == ["jac-builder-dev"] , f"monolith services = {mono}";
+
+    mono_no_name = _services_for_mode(False, {}, "");
+    assert mono_no_name == [] , f"monolith w/o name = {mono_no_name}";
+
+    micro = _services_for_mode(
+        True, {"builder-sv": {}, "jac-coder-sv": {}}, "jac-builder-dev"
+    );
+    # Gateway first, then routes sorted - matches kubectl get pods order.
+    assert micro == ["gateway", "builder-sv", "jac-coder-sv"] , f"microservice services = {micro}";
+}
+
+
+test "pod regex drops -deployment- infix in monolith mode" {
+    # Microservice pods are `<svc>-deployment-<rs>-<rand>`; monolith
+    # pods are `<app_name>-<rs>-<rand>` with no `-deployment-` infix.
+    # The Loki `pod=~...` filter needs the right shape for each
+    # mode or it silently matches zero lines.
+    import from jac_scale.admin.logs { _service_to_pod_regex_for_mode }
+
+    micro = _service_to_pod_regex_for_mode("builder-sv", True);
+    assert micro == "builder-sv-deployment-.*" , f"micro regex = {micro}";
+
+    mono = _service_to_pod_regex_for_mode("jac-builder-dev", False);
+    assert mono == "jac-builder-dev-.*" , f"mono regex = {mono}";
+
+    # Underscore-to-hyphen sanity (some users key services with `_`).
+    assert _service_to_pod_regex_for_mode("Foo_Bar", True) == "foo-bar-deployment-.*";
+    assert _service_to_pod_regex_for_mode("Foo_Bar", False) == "foo-bar-.*";
+}

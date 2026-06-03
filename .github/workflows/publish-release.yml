@@ -146,13 +146,20 @@ jobs:
           python-version: "3.12"
 
       # Set up additional Python versions needed for precompile (both plugins and jaclang itself).
-      - name: Set up Python 3.13 and 3.14 (for precompile)
+      - name: Set up Python 3.13 (for precompile)
         if: matrix.precompile == true
         uses: actions/setup-python@v5
         with:
-          python-version: |
-            3.13
-            3.14
+          python-version: "3.13"
+
+      # Python 3.14 is set up for precompile EXCEPT for jac-desktop, whose
+      # pytauri-wheel dependency has no cp314 wheel yet; precompiling for 3.14
+      # there forces a from-source Rust build of the Tauri runtime that fails.
+      - name: Set up Python 3.14 (for precompile)
+        if: matrix.precompile == true && matrix.name != 'jac-desktop'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
       # jaclang itself uses python -m build, so it doesn't need this step.

@@ -16,13 +16,17 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Python 3.12, 3.13, 3.14
+      # jac-desktop depends on pytauri-wheel, which only ships wheels up to
+      # cp313 (no Python 3.14 wheel yet). Precompiling for 3.14 would force a
+      # from-source Rust build of the whole Tauri runtime, which fails the
+      # release. Pin to the versions pytauri-wheel actually supports;
+      # jac-desktop requires >=3.12.
+      - name: Set up Python 3.12, 3.13
         uses: actions/setup-python@v5
         with:
           python-version: |
             3.12
             3.13
-            3.14
 
       - name: Install jaclang and twine
         run: |

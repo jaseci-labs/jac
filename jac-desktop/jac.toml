@@ -1,6 +1,6 @@
 [project]
 name = "jac-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Native desktop target and plugin manager for Jac (PyTauri-based)."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -25,8 +25,8 @@ packages = ["jac_desktop*"]
 jac_desktop = ["examples/**/*", "examples/**/.*"]
 
 [dependencies]
-jaclang = ">=0.15.6"
-jac-client = ">=0.3.20"
+jaclang = ">=0.16.0"
+jac-client = ">=0.3.21"
 pytauri-wheel = ">=0.8"
 anyio = ">=4"
 

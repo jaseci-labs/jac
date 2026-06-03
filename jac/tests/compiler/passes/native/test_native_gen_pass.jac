@@ -2344,6 +2344,37 @@ test "elf linker rejects unhandled relocation (issue #6366 guard)" {
     assert raised , "linker silently accepted an unhandled relocation";
 }
 
+test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
+    # A standalone binary must find a sibling shared library regardless of the
+    # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
+    # resolves needed libraries relative to the executable. Pure link-time
+    # check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import struct;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    ir = "target triple = \"x86_64-unknown-linux-gnu\"\n" + "define i64 @f() {\n  ret i64 0\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("x86_64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6", "libfoo.so"]
+    );
+    assert linker.parse_object() , "parse_object failed";
+    out = linker.build_executable();
+    # The $ORIGIN runpath string is emitted into .dynstr ...
+    assert b"$ORIGIN\x00" in out , "DT_RUNPATH $ORIGIN string not emitted";
+    # ... and referenced by a DT_RUNPATH (tag 29) dynamic entry.
+    assert struct.pack("<q", 29) in out , "DT_RUNPATH (tag 29) dynamic entry missing";
+}
+
 # --- TestNativeListBugs ---
 test "list_bugs pop local removes element" {
     (eng, _) = compile_native("list_bugs.na.jac");
