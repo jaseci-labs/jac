@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.22 (Latest Release)
+## jac-scale 0.2.23 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: LLM telemetry and bare `/jobs` endpoints were missing on the microservice gateway**. Two endpoint groups the monolith registers in `serve.core`'s `_register_endpoints` were not reachable through the microservice gateway, so requests that work in monolith mode 404'd (or returned the SPA `index.html` instead of JSON). (1) The gateway inherited `JacAPIServerAdmin` + `JacAPIServerLogs` and called `register_admin_endpoints` + `register_logs_endpoints` in `_install_admin_api`, but never inherited `JacAPIServerLLMTelemetry` nor called `register_llm_telemetry_endpoints` - so `/admin/llm/telemetry/*` (the in-admin LLM metrics page) was never materialized as FastAPI routes and the `/admin/*` dispatcher's `call_next` hit the SPA catchall. The gateway now wires the telemetry registrar alongside admin + logs. (2) The scheduler registers a bare `/jobs` (POST create, GET list) alongside `/jobs/{job_id}`, but the gateway's builtin passthrough only matched the `/jobs/` prefix and `"/jobs".startswith("/jobs/")` is False, so list/create 404'd while `/jobs/{id}` worked; `/jobs` is now in `_BUILTIN_EXACT`, mirroring how `/graph` handles its own bare form. Regression guards added in `test_gateway.jac`.
+
+## jac-scale 0.2.22
 
 ### New Features
 
