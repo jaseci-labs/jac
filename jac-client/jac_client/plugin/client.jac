@@ -21,13 +21,13 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
 
 """Builds HTML head content from meta data."""
 obj HeaderBuilder {
-    has meta_data: dict,
+    has meta_data: dict[str, any],
         function_name: str,
-        DEFAULTS: dict = {
+        DEFAULTS: dict[str, str] = {
             "charset": "UTF-8",
             "viewport": "width=device-width,initial-scale=1"
         },
-        standard_tags: list = [
+        standard_tags: list[str] = [
             "description",
             "keywords",
             "author",

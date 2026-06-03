@@ -42,7 +42,11 @@ impl JacClient.build_client_bundle(
 impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
     import from jaclang.project.config { find_project_root }
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
-    base_path_dir = Path(Jac.get_base_path_dir());
+    base_path_text = Jac.get_base_path_dir();
+    if base_path_text is None {
+        raise ValueError("Jac base path directory is unavailable");
+    }
+    base_path_dir = Path(base_path_text);
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -75,7 +79,12 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         );
     }
     output_dir = client_dir / 'dist';
-    runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
+    current_file = __file__;
+    if current_file is None {
+        raise RuntimeError("__file__ is not available");
+    }
+    runtime_path = Path(current_file).with_name('client_runtime.cl.jac');
+
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
         vite_package_json=package_json_path,
@@ -100,7 +109,11 @@ impl JacClient.render_page(
         raise ValueError(f"Client function '{function_name}' not found");
     }
     import from jaclang.project.config { find_project_root, get_config }
-    base_path_dir = Path(Jac.get_base_path_dir());
+    base_path_text = Jac.get_base_path_dir();
+    if base_path_text is None {
+        raise ValueError("Jac base path directory is unavailable");
+    }
+    base_path_dir = Path(base_path_text);
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -126,17 +139,27 @@ impl JacClient.render_page(
         css_link = f'<link rel="stylesheet" href="/static/styles.css?hash={css_hash}"/>';
     }
     client_cfg = config.get_plugin_config("client") if config else None;
-    meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
+    if client_cfg and isinstance(client_cfg, dict) {
+        tmp_meta = client_cfg.get("app_meta_data", {});
+        meta_data = tmp_meta if isinstance(tmp_meta, dict) else {};
+    } else {
+        meta_data = {};
+    }
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
     if css_link {
         head_content += f"\n            {css_link}";
     }
-    pwa_head = '';
-    pwa_body = '';
+    pwa_head: str = '';
+    pwa_body: str = '';
     if is_pwa {
-        pwa_cfg = client_cfg.get("pwa", {}) if client_cfg else {};
-        pwa_theme_color = pwa_cfg.get("theme_color", "#000000");
+        if client_cfg and isinstance(client_cfg, dict) {
+            tmp_pwa = client_cfg.get("pwa", {});
+            pwa_cfg = tmp_pwa if isinstance(tmp_pwa, dict) else {};
+        } else {
+            pwa_cfg = {};
+        }
+        pwa_theme_color: str = str(pwa_cfg.get("theme_color", "#000000"));
         pwa_head = f'''
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="{pwa_theme_color}">
@@ -178,7 +201,11 @@ Otherwise returns the introspector bundle.
 impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
     import from jaclang.project.config { find_project_root, get_config }
     # Find project root
-    base_path_dir = Path(Jac.get_base_path_dir());
+    base_path_text = Jac.get_base_path_dir();
+    if base_path_text is None {
+        raise ValueError("Jac base path directory is unavailable");
+    }
+    base_path_dir = Path(base_path_text);
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -203,12 +230,12 @@ impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
     # Fall back to introspector bundle
     introspector.load();
     introspector.ensure_bundle();
-    return introspector._bundle.code;
+    return str(introspector._bundle.code);
 }
 
 """Build complete HTML head."""
 impl HeaderBuilder.build_head -> str {
-    lines: list = [];
+    lines: list[str] = [];
     lines.extend(self._build_special_tags());  # charset, viewport, title
     lines.extend(self._build_meta_tags());  # description, robots, etc
     lines.extend(self._build_og_tags());  # Open Graph
@@ -219,8 +246,11 @@ impl HeaderBuilder.build_head -> str {
 
 """Build generic meta tags (meta_* prefix for any custom metadata)."""
 impl HeaderBuilder._build_generic_meta_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for (key, val) in self.meta_data.items() {
+        if not isinstance(key, str) {
+            continue;
+        }
         if key.startswith("meta_") and val {
             # meta_custom_field → name="custom-field"
             name = key[5:].replace("_", "-");
@@ -232,7 +262,7 @@ impl HeaderBuilder._build_generic_meta_tags -> list[str] {
 
 """Build link tags (link_* prefix or special cases)."""
 impl HeaderBuilder._build_link_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     special_links = {
         "canonical": "canonical",
         "icon": "icon",
@@ -245,6 +275,9 @@ impl HeaderBuilder._build_link_tags -> list[str] {
         }
     }
     for (key, val) in self.meta_data.items() {
+        if not isinstance(key, str) {
+            continue;
+        }
         if key.startswith("link_") and val {
             # link_preconnect_google → rel="preconnect"
             rel = key[5:].replace("_", "-");
@@ -256,8 +289,11 @@ impl HeaderBuilder._build_link_tags -> list[str] {
 
 """Build Open Graph tags (og_* prefix)."""
 impl HeaderBuilder._build_og_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for (key, val) in self.meta_data.items() {
+        if not isinstance(key, str) {
+            continue;
+        }
         if key.startswith("og_") and val {
             property_name = key[3:].replace("_", ":");
             lines.append(
@@ -270,7 +306,7 @@ impl HeaderBuilder._build_og_tags -> list[str] {
 
 """Build standard meta tags (description, robots, keywords, author, etc)."""
 impl HeaderBuilder._build_meta_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for key in self.standard_tags {
         if val := self._get_value(key) {
             # Convert underscore to dash (theme_color → theme-color)
@@ -283,7 +319,7 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
 
 """Build special tags (charset, viewport, title)."""
 impl HeaderBuilder._build_special_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     if charset := self._get_value("charset") {
         lines.append(f'<meta charset={html.escape(charset)} />');
     }
@@ -297,7 +333,8 @@ impl HeaderBuilder._build_special_tags -> list[str] {
 
 """Get value with fallback to defaults."""
 impl HeaderBuilder._get_value(key: str) -> str {
-    return self.meta_data.get(key) or self.DEFAULTS.get(key);
+    value = self.meta_data.get(key) or self.DEFAULTS.get(key) or "";
+    return str(value);
 }
 
 """Format a build error with rich diagnostics."""
