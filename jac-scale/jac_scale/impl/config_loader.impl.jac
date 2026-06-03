@@ -31,8 +31,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             # Cross-pod L1 cache invalidation (issue #6313).
             'redis_l1_invalidation_enabled': True,
             'redis_l1_invalidation_channel': 'jac:anchor:invalidate',
-            # Safety net: max seconds a clean L1 entry survives between sweeps,
-            # bounding staleness if an invalidation is missed (0 disables).
+            # Safety net: max seconds a clean L1 entry is trusted before a read
+            # reloads it, bounding staleness if an invalidation is missed (0 disables).
             'redis_l1_max_age_seconds': 300
         },
         'kubernetes': {

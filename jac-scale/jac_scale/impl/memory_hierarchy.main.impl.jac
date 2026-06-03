@@ -18,9 +18,13 @@ impl ScaleTieredMemory.postinit -> None {
     if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
-        # Start the cross-pod L1 invalidation listener once (issue #6313).
+        # Start the cross-pod L1 invalidation listener once (issue #6313), and arm
+        # the lazy read-time freshness bound for the lossy-reconnect window.
         try {
             db_config = get_scale_config().get_database_config();
+            self._l1_max_age = cast(
+                float, db_config.get('redis_l1_max_age_seconds', 300)
+            );
             if db_config.get('redis_l1_invalidation_enabled', True) {
                 ensure_listener(
                     _process_cache,
@@ -29,8 +33,7 @@ impl ScaleTieredMemory.postinit -> None {
                         str,
                         db_config.get('redis_l1_invalidation_channel')
                         or DEFAULT_INVALIDATION_CHANNEL
-                    ),
-                    cast(float, db_config.get('redis_l1_max_age_seconds', 300))
+                    )
                 );
             }
         } except Exception as e {
@@ -208,23 +211,45 @@ impl ScaleTieredMemory.close -> None {
     self.__gc__.clear();
 }
 
-"""Drop clean, persistent anchors from L1 — the max-age safety net (issue #6313)
-that bounds staleness if a cross-pod invalidation was missed. Dirty (uncommitted)
-anchors and ephemeral (non-persistent) ones are kept, since the former hold
-unsynced work and the latter live only here."""
-impl ScaleTieredMemory.evict_clean_entries -> int {
-    evicted = 0;
-    for id in list(self.__mem__.keys()) {
-        anchor = self.__mem__.get(id);
-        if anchor is None or not anchor.persistent {
-            continue;
-        }
-        try {
-            if Serializer._compute_hash(anchor) == anchor.hash {
-                self.__mem__.pop(id, None);
-                evicted += 1;
+"""Tiered read with lazy freshness (issue #6313).
+
+Pub/sub eviction is fire-and-forget, so a message missed during a Redis
+reconnect could leave a long-lived L1 entry stale. To bound that, an L1 entry
+older than `_l1_max_age` is dropped on read so the inherited tiered read reloads
+it from L2/L3. This only ever refreshes *clean* entries at the moment of a read
+— it never yanks an anchor out from under an in-flight writer, so uncommitted
+work is never lost. The age stamp rides on the anchor, so it is reset whenever
+the entry is reloaded. A miss (or `_l1_max_age == 0`) is a plain `super.get`."""
+impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
+    if self._l1_max_age > 0 {
+        existing = self.__mem__.get(id);
+        if existing is not None and existing.persistent {
+            stamped = cast(
+                (float | None), existing.__dict__.get('__jac_l1_loaded_at__')
+            );
+            now = time.monotonic();
+            if stamped is None {
+                # First sighting (e.g. promoted by batch_get): start the clock.
+                existing.__dict__['__jac_l1_loaded_at__'] = now;
+            } elif now - stamped >= self._l1_max_age {
+                try {
+                    if Serializer._compute_hash(existing) == existing.hash {
+                        self.__mem__.pop(id, None);  # clean + stale → reload below
+                    } else {
+                        # Dirty: never discard uncommitted work; defer the check.
+                        existing.__dict__['__jac_l1_loaded_at__'] = now;
+                    }
+                } except Exception { }
             }
-        } except Exception { }
+        }
     }
-    return evicted;
+    anchor = super.get(id);
+    if (
+        anchor is not None
+        and self._l1_max_age > 0
+        and anchor.__dict__.get('__jac_l1_loaded_at__') is None
+    ) {
+        anchor.__dict__['__jac_l1_loaded_at__'] = time.monotonic();
+    }
+    return anchor;
 }

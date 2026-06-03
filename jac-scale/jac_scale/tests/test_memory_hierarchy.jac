@@ -1848,40 +1848,42 @@ test "L1 invalidation: ensure_listener is idempotent and self-heals (issue 6313)
     }
 }
 
-test "L1 invalidation: clean-sweep safety net drops clean but keeps dirty and ephemeral (issue 6313)" {
-    import from uuid { uuid4 }
+test "L1 invalidation: lazy read-time freshness drops stale-clean, keeps dirty (issue 6313)" {
+    import time;
     import from jaclang.jac0core.archetype { Root }
     import from jaclang.runtimelib.serializer { Serializer }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
-    import from jac_scale.l1_invalidation { sweep_clean_l1s }
 
     os.environ.pop("REDIS_URL", None);
     os.environ.pop("MONGODB_URI", None);
     _reset_process_cache();
     try {
         mem = ScaleTieredMemory();
+        mem._l1_max_age = 0.01;  # force entries past max-age immediately
 
+        # Clean + stale → a read must drop it so the tiered read reloads it.
         clean = Root().__jac__;
         clean.persistent = True;
         clean.hash = Serializer._compute_hash(clean);
+        clean.__dict__['__jac_l1_loaded_at__'] = time.monotonic() - 100;
+        mem.__mem__[clean.id] = clean;
 
+        # Dirty (uncommitted) + stale → must never be dropped.
         dirty = Root().__jac__;
         dirty.persistent = True;
-        dirty.hash = 0;  # uncommitted: hash won't match
-
-        ephemeral = Root().__jac__;
-        ephemeral.persistent = False;
-        ephemeral.hash = Serializer._compute_hash(ephemeral);
-
-        mem.__mem__[clean.id] = clean;
+        dirty.hash = 0;
+        dirty.__dict__['__jac_l1_loaded_at__'] = time.monotonic() - 100;
         mem.__mem__[dirty.id] = dirty;
-        mem.__mem__[ephemeral.id] = ephemeral;
 
-        sweep_clean_l1s();
+        mem.get(clean.id);
+        assert clean.id not in mem.__mem__ , (
+            "stale clean entry must be dropped on read so it reloads from L2/L3"
+        );
 
-        assert clean.id not in mem.__mem__ , "clean persistent entry must be swept";
-        assert dirty.id in mem.__mem__ , "uncommitted entry must be kept";
-        assert ephemeral.id in mem.__mem__ , "ephemeral entry must be kept";
+        got = mem.get(dirty.id);
+        assert dirty.id in mem.__mem__ and got is dirty , (
+            "uncommitted entry must never be dropped, even when stale"
+        );
     } finally {
         _reset_process_cache();
     }
