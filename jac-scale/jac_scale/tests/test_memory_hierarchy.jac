@@ -26,6 +26,11 @@ def get_free_port -> int {
     }
 }
 
+"""Weakref-able stand-in for a registered L1 owner (issue #6313 unit tests)."""
+obj _FakeL1 {
+    has __mem__: dict;
+}
+
 glob FIXTURES_DIR = Path(__file__).parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "todo_app.jac",
      _shared: dict = {};
@@ -1651,6 +1656,203 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
         mem.l3.close();
     } finally {
         os.environ.pop("MONGODB_URI", None);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
+
+# ----------------------------------------------------------------------
+# Cross-pod L1 cache invalidation via Redis pub/sub (issue #6313)
+# ----------------------------------------------------------------------
+"""Unit: evict drops every registered L1 except the origin."""
+test "L1 invalidation: evict skips origin, evicts every sibling (issue 6313)" {
+    import from uuid { uuid4 }
+    import from jac_scale.l1_invalidation {
+        register_l1,
+        deregister_l1,
+        evict_local_l1,
+        new_l1_id
+    }
+
+    anchor_id = uuid4();
+    id_a = new_l1_id();
+    id_b = new_l1_id();
+    id_c = new_l1_id();
+    mem_a = _FakeL1(__mem__={anchor_id: "A"});
+    mem_b = _FakeL1(__mem__={anchor_id: "B"});
+    mem_c = _FakeL1(__mem__={anchor_id: "C"});
+    register_l1(id_a, mem_a);
+    register_l1(id_b, mem_b);
+    register_l1(id_c, mem_c);
+    try {
+        evicted = evict_local_l1(str(anchor_id), id_a);
+        assert evicted == 2 , f"expected 2 sibling evictions, got {evicted}";
+        assert anchor_id in mem_a.__mem__ , "origin L1 must NOT be evicted";
+        assert anchor_id not in mem_b.__mem__ , "sibling B must be evicted";
+        assert anchor_id not in mem_c.__mem__ , "sibling C must be evicted";
+        # A malformed / unknown anchor id is a safe no-op.
+        assert evict_local_l1("not-a-uuid", id_a) == 0 , "bad id must no-op";
+    } finally {
+        deregister_l1(id_a);
+        deregister_l1(id_b);
+        deregister_l1(id_c);
+    }
+}
+
+"""Unit: a context that skips close() can't leak its L1 — GC reclaims it."""
+test "L1 invalidation: registry holds L1 weakly, GC reclaims it (issue 6313)" {
+    import gc;
+    import from uuid { uuid4 }
+    import from jac_scale.l1_invalidation { register_l1, new_l1_id, _l1_registry }
+
+    lid = new_l1_id();
+    mem = _FakeL1(__mem__={uuid4(): "x"});
+    register_l1(lid, mem);
+    assert lid in _l1_registry , "registered id must be present";
+    del mem;
+    gc.collect();
+    assert lid not in _l1_registry , (
+        "weak entry must disappear after its owner is collected"
+    );
+}
+
+"""Integration: end-to-end pub/sub evicts the sibling L1, preserves the writer's.
+
+The publish is retried in the wait loop since pub/sub is fire-and-forget — a
+message sent before the listener's async SUBSCRIBE completes is simply lost."""
+test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved (issue 6313)" {
+    import time;
+    import from uuid { uuid4 }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.l1_invalidation { stop_listener }
+
+    _reset_redis();
+    _reset_process_cache();
+    _redis_result = _get_redis();
+    redis_url: str = cast(str, _redis_result[1]);
+    os.environ["REDIS_URL"] = redis_url;
+    os.environ.pop("MONGODB_URI", None);
+
+    try {
+        mem_a = ScaleTieredMemory();
+        mem_b = ScaleTieredMemory();
+        assert mem_a.l2 is not None , "Redis L2 must be available";
+        assert mem_b.l2 is not None , "Redis L2 must be available";
+
+        anchor_id = uuid4();
+        cast(dict, mem_a.__mem__)[anchor_id] = "stale-on-writer";
+        cast(dict, mem_b.__mem__)[anchor_id] = "stale-on-sibling";
+
+        deadline = time.time() + 5.0;
+        while time.time() < deadline and anchor_id in mem_b.__mem__ {
+            cast(any, mem_a.l2).publish_invalidation(str(anchor_id), mem_a._l1_id);
+            time.sleep(0.05);
+        }
+        assert anchor_id not in mem_b.__mem__ , (
+            "sibling L1 must be evicted via cross-pod pub/sub"
+        );
+        assert anchor_id in mem_a.__mem__ , (
+            "writer's own L1 entry must be preserved (self-suppression)"
+        );
+    } finally {
+        stop_listener(_process_cache);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
+
+"""Integration: after the listener's connection is killed it re-subscribes and
+resumes delivering."""
+test "L1 invalidation: listener recovers after a Redis connection drop (issue 6313)" {
+    import time;
+    import from uuid { uuid4 }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.l1_invalidation { stop_listener }
+
+    _reset_redis();
+    _reset_process_cache();
+    _redis_result = _get_redis();
+    redis_client: any = _redis_result[0];
+    redis_url: str = cast(str, _redis_result[1]);
+    os.environ["REDIS_URL"] = redis_url;
+    os.environ.pop("MONGODB_URI", None);
+
+    try {
+        mem_a = ScaleTieredMemory();
+        mem_b = ScaleTieredMemory();
+        assert mem_a.l2 is not None and mem_b.l2 is not None , "Redis L2 required";
+
+        # 1) Baseline: delivery works before any disruption.
+        aid1 = uuid4();
+        cast(dict, mem_b.__mem__)[aid1] = "x";
+        deadline = time.time() + 5.0;
+        while time.time() < deadline and aid1 in mem_b.__mem__ {
+            cast(any, mem_a.l2).publish_invalidation(str(aid1), mem_a._l1_id);
+            time.sleep(0.05);
+        }
+        assert aid1 not in mem_b.__mem__ , "baseline pub/sub delivery must work";
+
+        # 2) Kill the listener's subscriber connection server-side.
+        with contextlib.suppress(Exception) {
+            redis_client.execute_command("CLIENT", "KILL", "TYPE", "pubsub");
+        }
+        time.sleep(1.0);  # allow the listener to detect, back off, re-subscribe
+
+        # 3) After reconnect, a fresh invalidation is still delivered.
+        aid2 = uuid4();
+        cast(dict, mem_b.__mem__)[aid2] = "y";
+        deadline = time.time() + 8.0;
+        while time.time() < deadline and aid2 in mem_b.__mem__ {
+            cast(any, mem_a.l2).publish_invalidation(str(aid2), mem_a._l1_id);
+            time.sleep(0.1);
+        }
+        assert aid2 not in mem_b.__mem__ , (
+            "listener must re-subscribe and resume delivery after a drop"
+        );
+    } finally {
+        stop_listener(_process_cache);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
+
+"""Unit: ensure_listener reuses a live listener and replaces a dead one."""
+test "L1 invalidation: ensure_listener is idempotent and self-heals (issue 6313)" {
+    import time;
+    import from jac_scale.l1_invalidation { ensure_listener, stop_listener }
+
+    _reset_process_cache();
+    _redis_result = _get_redis();
+    redis_url: str = cast(str, _redis_result[1]);
+    cache: dict = {};
+    try {
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        first: any = cache.get("l1_listener");
+        assert first is not None and first.is_alive() , "listener must start";
+
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        assert cache.get("l1_listener") is first , (
+            "a live listener must be reused, not replaced"
+        );
+
+        # Simulate an unrecoverable death; ensure_listener must replace it.
+        first.stop();
+        first.join(2.0);
+        time.sleep(0.1);
+        assert not first.is_alive() , "listener must stop on request";
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        second: any = cache.get("l1_listener");
+        assert second is not None and second is not first , (
+            "a dead listener must be replaced"
+        );
+        assert second.is_alive() , "replacement listener must be running";
+
+        # A no-op when no redis URL is configured.
+        empty: dict = {};
+        ensure_listener(empty, None, "jac:test:invalidate");
+        assert "l1_listener" not in empty , "no listener without a redis url";
+    } finally {
+        stop_listener(cache);
         os.environ.pop("REDIS_URL", None);
         _reset_process_cache();
     }

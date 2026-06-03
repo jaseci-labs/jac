@@ -231,6 +231,32 @@ impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
 
+"""Broadcast a cross-pod L1 eviction for `anchor_id` (issue #6313).
+
+Best-effort PUBLISH; sibling pods evict the anchor from L1 while `origin_l1_id`
+is excluded by the receiver. Never raises into the commit path; gated by
+`redis_l1_invalidation_enabled`."""
+impl RedisBackend.publish_invalidation(
+    anchor_id: str, origin_l1_id: (str | None) = None
+) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    try {
+        db_config = _get_db_config();
+        if not db_config.get('redis_l1_invalidation_enabled', True) {
+            return;
+        }
+        channel = (
+            db_config.get('redis_l1_invalidation_channel')
+            or DEFAULT_INVALIDATION_CHANNEL
+        );
+        self.redis_client.publish(channel, build_message(anchor_id, origin_l1_id));
+    } except Exception as e {
+        logger.debug(f"Redis publish_invalidation failed: {e}");
+    }
+}
+
 """Get anchor by UUID using native redis.asyncio (no asyncio.to_thread)."""
 impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }

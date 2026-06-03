@@ -29,6 +29,14 @@ import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.l1_invalidation {
+    DEFAULT_INVALIDATION_CHANNEL,
+    build_message,
+    deregister_l1,
+    ensure_listener,
+    new_l1_id,
+    register_l1
+}
 import from jaclang { JacRuntimeInterface as Jac }
 
 glob logger = logging.getLogger(__name__),
@@ -82,6 +90,11 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
+    # Broadcast a cross-pod L1 eviction; `origin_l1_id` is excluded so the
+    # writer keeps its own fresh entry (issue #6313).
+    def publish_invalidation(
+        anchor_id: str, origin_l1_id: (str | None) = None
+    ) -> None;
     # Async overrides — native redis.asyncio (no asyncio.to_thread)
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
@@ -100,6 +113,8 @@ obj MongoBackend(PersistentMemory) {
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
         _l2_ref: (any | None) = None,
+        # Owning context's L1 id, stamped on broadcasts so the writer self-excludes.
+        _l1_id: (str | None) = None,
         fetch_count: int = 0,
         put_count: int = 0,
         _atomic_written: set by postinit;
@@ -107,6 +122,7 @@ obj MongoBackend(PersistentMemory) {
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
     def set_cache_ref(cache: (any | None)) -> None;
+    def set_l1_id(l1_id: str) -> None;
     def is_available -> bool;
     def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
@@ -184,6 +200,8 @@ obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
         _committed: bool = False,
         _persistence_type: PersistenceType = PersistenceType.NONE,
+        # Stable id for this context's L1 in the invalidation registry (issue #6313).
+        _l1_id: str = "",
         use_cache:
             bool = True;  # Override parent default to enable Redis cache by default
 

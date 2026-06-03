@@ -8,12 +8,33 @@ impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
+    # Register this context's L1 so sibling broadcasts can evict our copies
+    # (issue #6313). Held weakly, so close() is best-effort.
+    self._l1_id = new_l1_id();
+    register_l1(self._l1_id, self);
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
     if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
+        # Start the cross-pod L1 invalidation listener once (issue #6313).
+        try {
+            db_config = get_scale_config().get_database_config();
+            if db_config.get('redis_l1_invalidation_enabled', True) {
+                ensure_listener(
+                    _process_cache,
+                    cast((str | None), db_config.get('redis_url')),
+                    cast(
+                        str,
+                        db_config.get('redis_l1_invalidation_channel')
+                        or DEFAULT_INVALIDATION_CHANNEL
+                    )
+                );
+            }
+        } except Exception as e {
+            logger.debug(f"L1 invalidation listener init skipped: {e}");
+        }
     } else {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
@@ -26,6 +47,8 @@ impl ScaleTieredMemory.postinit -> None {
         mongo_backend.set_memory_ref(self.__mem__);
         # Give MongoDB access to L2 cache so quarantine ops can invalidate Redis
         mongo_backend.set_cache_ref(self.l2);
+        # Stamp our L1 id so the backend's broadcasts exclude us.
+        mongo_backend.set_l1_id(self._l1_id);
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
         # Show subtle message (optional - uncomment to enable)
@@ -74,10 +97,15 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
             if self.l2 {
                 for mem_anchor in l2_pending {
                     if mem_anchor.id in atomic_ids {
+                        # _put_node_atomic already broadcast for these.
                         continue;
                     }
                     try {
                         self.l2.put(mem_anchor);
+                        # Evict siblings' stale L1 copy after refreshing L2 (issue #6313).
+                        cast(RedisBackend, self.l2).publish_invalidation(
+                            str(mem_anchor.id), self._l1_id
+                        );
                     } except Exception as l2_err {
                         logger.warning(f"L2 cache update failed: {l2_err}");
                     }
@@ -170,6 +198,10 @@ impl ScaleTieredMemory.close -> None {
     }
     if self.l2 {
         self.l2.close();
+    }
+    # Drop this context's L1 from the invalidation registry (GC reclaims it anyway).
+    if self._l1_id {
+        deregister_l1(self._l1_id);
     }
     self.__mem__.clear();
     self.__gc__.clear();
