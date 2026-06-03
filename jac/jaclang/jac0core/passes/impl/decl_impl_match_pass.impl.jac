@@ -295,9 +295,9 @@ to do so on one node is a degraded-info outcome, not a correctness
 hazard for the others.
 """
 impl DeclImplMatchPass._resolve_symbols_in_subtree(
-    self: DeclImplMatchPass, root: uni.UniNode
+    self: DeclImplMatchPass, root_node: uni.UniNode
 ) -> None {
-    for name_node in root.get_all_sub_nodes(uni.Name) {
+    for name_node in root_node.get_all_sub_nodes(uni.Name) {
         if name_node.sym is not None {
             continue;
         }
@@ -310,7 +310,7 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(
             } except ValueError { }
         }
     }
-    for trailer_node in root.get_all_sub_nodes(uni.AtomTrailer) {
+    for trailer_node in root_node.get_all_sub_nodes(uni.AtomTrailer) {
         chain = trailer_node.as_attr_list;
         if chain and chain[0].sym is None and trailer_node.sym_tab {
             try {
