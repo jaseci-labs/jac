@@ -59,7 +59,7 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
 
 """Generate IR for a single statement."""
 impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
-    if self.builder is None or self.builder.block.is_terminated {
+    if self._builder is None or self._builder.block.is_terminated {
         return;
     }
     if isinstance(nd, uni.ReturnStmt) {

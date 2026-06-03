@@ -54,7 +54,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         slice_struct_type: object by postinit,
         jacval_type: object by postinit,
         # Simple defaults
-        builder: (ir.IRBuilder | None) = None,
+        # Backing state for the `builder` property: None between function
+        # bodies, an IRBuilder during body codegen.
+        _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
@@ -194,6 +196,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         di_cu: object = None,
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {};
+
+    # Non-Optional view of `_builder` for body-codegen helpers (see getter).
+    has builder: ir.IRBuilder { getter; }
 
     def postinit -> None;
     # Main pass logic
