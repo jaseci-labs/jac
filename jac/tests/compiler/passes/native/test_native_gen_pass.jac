@@ -3693,3 +3693,22 @@ test "enum hex/oct/bin int members fold via lit_value" {
     assert get_func(eng, "flag_b", ctypes.c_int64)() == 15;
     assert get_func(eng, "flag_c", ctypes.c_int64)() == 10;
 }
+
+test "parameterless no-return function (def foo {}) is not dropped" {
+    # `def foo { ... }` (no parens, no return type) is semantically
+    # `def foo() -> None`. The native backend used to drop such functions and
+    # their call sites entirely, so `run_ticks(n)` returned 0 instead of n.
+    (eng, _) = compile_native("noret_no_params.na.jac");
+    # The function must actually be emitted, not silently elided.
+    assert eng.get_function_address("tick") != 0 , "void no-signature function 'tick' was dropped from the module";
+    run_ticks = get_func(eng, "run_ticks", ctypes.c_int64, ctypes.c_int64);
+    # If the tick() calls are emitted and run, hits == n.
+    assert run_ticks(5) == 5 , "calls to a no-signature void function were not emitted";
+    assert run_ticks(0) == 0;
+    assert run_ticks(13) == 13;
+    # The no-parens form must behave identically to the explicit `()` form.
+    run_ticks_parens = get_func(
+        eng, "run_ticks_parens", ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_ticks_parens(5) == run_ticks(5);
+}

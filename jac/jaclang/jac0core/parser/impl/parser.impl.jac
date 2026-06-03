@@ -6336,15 +6336,13 @@ impl Parser.parse_ability -> Ability {
         }
         kid.append(tp_rb_uni);
     }
-    # Only add signature if it has actual content (parens/return type present)
-    has_sig_content = not (
-        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
-    );
-    if has_sig_content {
-        kid.append(signature);
-    } else {
-        signature = None;
-    }
+    # A function with neither a parameter list nor a return type is semantically
+    # `def foo() -> None`. Always keep the (possibly empty) signature so every
+    # ability uniformly carries one and an absent return type consistently means
+    # `None` across the whole stack (type check, pyast gen, native backend). An
+    # empty FuncSignature holds only an EmptyToken, so it still round-trips to
+    # source as `def foo` (no parens) rather than `def foo()`.
+    kid.append(signature);
     if body_type == "brace" {
         kid.append(body_lb_uni);
         kid.extend(body);

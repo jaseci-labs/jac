@@ -617,12 +617,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root_node: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = root.__jac__ if root else ctx.user_root;
+    ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
