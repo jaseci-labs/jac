@@ -3,7 +3,7 @@ import os;
 import types;
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.vite_bundler { ViteBundler }
+import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",

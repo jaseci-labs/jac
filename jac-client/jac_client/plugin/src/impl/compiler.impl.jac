@@ -41,7 +41,7 @@ impl ViteCompiler.compile(
     # version of client_runtime.js with the proper ES module exports
     self.compile_runtime_utils();
     # Compile PWA runtime if PWA is enabled
-    import from jac_client.plugin.src.config_loader { JacClientConfig as PwaConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig as PwaConfig }
     pwa_config = PwaConfig(self.project_dir);
     if pwa_config.is_pwa_enabled() {
         self.compile_pwa_runtime();
@@ -88,7 +88,7 @@ impl ViteCompiler._create_pages_entry_content(
     lines: list[str] = [];
     auth_redirect = "/login";
     try {
-        import from ..config_loader { PluginConfig }
+        import from jaclang.runtimelib.client.config_loader { PluginConfig }
         config = PluginConfig.load(self.project_dir);
         if config and config?.routing and config.routing {
             auth_redirect = config.routing.get('auth_redirect', '/login');

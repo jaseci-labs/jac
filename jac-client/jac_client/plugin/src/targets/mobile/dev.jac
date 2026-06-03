@@ -8,7 +8,7 @@ import from pathlib { Path }
 import from typing { Any, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
-import from jac_client.plugin.src.config_loader { JacClientConfig }
+import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 import from jac_client.plugin.src.targets.mobile.common {
     SUBPROCESS_TIMEOUT_SHORT,
     _resolve_npx

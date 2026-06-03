@@ -75,9 +75,9 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         );
     }
     output_dir = client_dir / 'dist';
-    runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
+    # runtime_path defaults (via ClientBundleBuilder.postinit) to core's canonical
+    # @jac/runtime at jaclang/runtimelib/client_runtime.cl.jac.
     return ViteClientBundleBuilder(
-        runtime_path=runtime_path,
         vite_package_json=package_json_path,
         vite_output_dir=output_dir,
         vite_minify=False

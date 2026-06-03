@@ -1,0 +1,23 @@
+"""Core client build plumbing: bun toolchain, Vite bundler, config, npm install, jac->js bridge."""
+
+import from .bun_installer { get_bun, ensure_bun_available, prompt_install_bun }
+import from .client_deps { ensure_client_deps }
+import from .asset_processor { AssetProcessor }
+import from .config_loader { JacClientConfig }
+import from .import_processor { ImportProcessor }
+import from .jac_to_js { JacToJSCompiler }
+import from .package_installer { PackageInstaller }
+import from .vite_bundler { ViteBundler }
+
+glob __all__ = [
+         'get_bun',
+         'ensure_bun_available',
+         'prompt_install_bun',
+         'ensure_client_deps',
+         'AssetProcessor',
+         'JacClientConfig',
+         'ImportProcessor',
+         'JacToJSCompiler',
+         'PackageInstaller',
+         'ViteBundler'
+     ];

@@ -12,7 +12,7 @@ import from jaclang.runtimelib.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
-import from .src.vite_bundler { ViteBundler }
+import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')

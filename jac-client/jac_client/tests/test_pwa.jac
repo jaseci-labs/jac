@@ -54,7 +54,7 @@ typescript = "^5.3.3"
 # =============================================================================
 """Test is_pwa_enabled returns False when no PWA section exists."""
 test "is_pwa_enabled returns false without pwa section" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -76,7 +76,7 @@ test "is_pwa_enabled returns false without pwa section" {
 
 """Test is_pwa_enabled returns True when PWA section exists."""
 test "is_pwa_enabled returns true with pwa section" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -95,7 +95,7 @@ test "is_pwa_enabled returns true with pwa section" {
 
 """Test get_pwa_config returns correct values."""
 test "get_pwa_config returns correct values" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -124,7 +124,7 @@ test "get_pwa_config returns correct values" {
 
 """Test get_pwa_config returns empty dict when no PWA section."""
 test "get_pwa_config returns empty dict without pwa section" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -150,8 +150,8 @@ test "get_pwa_config returns empty dict without pwa section" {
 # =============================================================================
 """Test that @jac/pwa alias is added to vite config when PWA is enabled."""
 test "vite config includes pwa alias when enabled" {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -188,8 +188,8 @@ test "vite config includes pwa alias when enabled" {
 
 """Test that @jac/pwa alias is NOT added when PWA is disabled."""
 test "vite config excludes pwa alias when disabled" {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -231,7 +231,7 @@ test "vite config excludes pwa alias when disabled" {
 # =============================================================================
 """Test PWA install banner config defaults."""
 test "pwa install banner config defaults" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -255,7 +255,7 @@ test "pwa install banner config defaults" {
 
 """Test PWA config with custom banner settings."""
 test "pwa custom banner settings" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -286,7 +286,7 @@ test "pwa custom banner settings" {
 
 """Test PWA banner can be disabled."""
 test "pwa banner can be disabled" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -312,7 +312,7 @@ test "pwa banner can be disabled" {
 # =============================================================================
 """Test PWA is enabled with empty section."""
 test "pwa enabled with empty section" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();

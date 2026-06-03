@@ -132,7 +132,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         );
     }
 
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     bundler = ViteBundler(project_dir=project_dir);
     web_dist_dir = Path(bundler.output_dir).resolve();
     web_dist_dir.mkdir(parents=True, exist_ok=True);
@@ -182,7 +182,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
 impl MobileTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     selected_platform = _normalize_mobile_platform(platform);
     mobile_cfg = _load_mobile_config(project_dir);
 
@@ -235,7 +235,7 @@ impl MobileTarget.build(
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     import from jac_client.plugin.client { JacClient }
     import signal;
     import sys;
@@ -413,7 +413,7 @@ impl MobileTarget.dev(
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
     if api_port != 8000 {
         console.print(
