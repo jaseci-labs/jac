@@ -95,7 +95,7 @@ def _download_bun(bin_dir: Path) -> Path | None {
             zip_path = os.path.join(tmp, "bun.zip");
             # Download
             urllib.request.urlretrieve(url, zip_path);
-            # Extract — bun zips contain a single directory with the binary
+            # Extract - bun zips contain a single directory with the binary
             with zipfile.ZipFile(zip_path, "r") as zf {
                 # Find the bun binary inside the archive
                 members = zf.namelist();
@@ -183,7 +183,7 @@ impl get_bun -> str | None {
         if version_file.exists() and version_file.read_text().strip() == BUN_VERSION {
             return str(local_bun);
         }
-        # Version mismatch — re-download
+        # Version mismatch - re-download
         console.warning(f"Upgrading Bun to v{BUN_VERSION}...", emoji=False);
         local_bun.unlink(missing_ok=True);
     }
@@ -200,7 +200,7 @@ impl get_bun -> str | None {
 
 """Check if bun is available, add to PATH if needed, or prompt to install.
 
-Legacy entry point — now delegates to get_bun().
+Legacy entry point - now delegates to get_bun().
 Returns True if bun is available, False otherwise.
 """
 impl ensure_bun_available -> bool {
@@ -226,7 +226,7 @@ impl ensure_bun_available -> bool {
 
 """Prompt user to install Bun and install if confirmed.
 
-Kept for backward compatibility but no longer prompts — auto-installs.
+Kept for backward compatibility but no longer prompts - auto-installs.
 """
 impl prompt_install_bun -> bool {
     return ensure_bun_available();

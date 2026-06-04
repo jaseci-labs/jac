@@ -226,8 +226,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
             # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
             # the executable rather than the launch directory. Absolute paths
             # (system libraries) and bare sonames are recorded verbatim.
+            #
+            # A name that already carries a loader token ($ORIGIN/... on ELF,
+            # @loader_path/... on Mach-O) is a per-platform logical import
+            # resolved by the native backend (issue #6387): keep it verbatim so
+            # the sub-directory and origin-relative semantics survive.
             _needed = lib_path;
             if (not os.path.isabs(lib_path))
+            and (not lib_path.startswith("$"))
+            and (not lib_path.startswith("@"))
             and ("/" in lib_path or "\\" in lib_path) {
                 _needed = os.path.basename(lib_path);
             }

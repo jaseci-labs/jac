@@ -50,7 +50,7 @@ impl RouteScanner._scan_directory(
                 child_routes = self._scan_directory(entry, url_prefix, group_auth);
                 routes.extend(child_routes);
             } else {
-                # Regular subdirectory — adds to URL path
+                # Regular subdirectory - adds to URL path
                 child_prefix = f"{url_prefix}/{dir_name}";
                 child_routes = self._scan_directory(entry, child_prefix, auth_required);
                 routes.extend(child_routes);
@@ -60,7 +60,7 @@ impl RouteScanner._scan_directory(
                 continue;
             }
             stem = entry.stem;
-            # layout.jac — not a route, it's a layout wrapper
+            # layout.jac - not a route, it's a layout wrapper
             if stem == self.LAYOUT_FILENAME {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {

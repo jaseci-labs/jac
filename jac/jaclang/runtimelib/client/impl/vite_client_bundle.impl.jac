@@ -1,5 +1,42 @@
 import from jaclang.cli.console { console }
 
+"""Construct a Vite client bundle builder for a project (shared construction)."""
+impl make_client_bundle_builder(
+    base_path: (Path | None) = None
+) -> ViteClientBundleBuilder {
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    if base_path is None {
+        import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+        import from jaclang.project.config { find_project_root }
+        base_path_dir = Path(Jac.get_base_path_dir());
+        project_root_result = find_project_root(base_path_dir);
+        if project_root_result {
+            (base_path, _) = project_root_result;
+        } else {
+            base_path = base_path_dir;
+        }
+    }
+    bundler = ViteBundler(base_path);
+    client_dir = bundler._get_client_dir();
+    generated_package_json = client_dir / 'configs' / 'package.json';
+    if not generated_package_json.exists() {
+        generated_path = bundler.create_package_json();
+        if not generated_path.exists() {
+            raise ClientBundleError(
+                f'Failed to generate package.json at {generated_path}'
+            );
+        }
+        package_json_path = generated_path.resolve();
+    } else {
+        package_json_path = generated_package_json.resolve();
+    }
+    return ViteClientBundleBuilder(
+        vite_package_json=package_json_path,
+        vite_output_dir=client_dir / 'dist',
+        vite_minify=False
+    );
+}
+
 """Clean up the compiled directory and its contents."""
 impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> None {
     if (not self.vite_package_json or not self.vite_package_json.exists()) {

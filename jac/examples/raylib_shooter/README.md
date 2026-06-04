@@ -8,10 +8,11 @@ source of our own.
 _A perspective floor grid with floating red target cubes and a live FPS counter; run `./demo.sh` to see it._
 
 The whole renderer is driven from Jac through raylib's C API using Jac's native
-C-import syntax:
+C-import syntax. The library is named by its **logical name** - `import from
+raylib` - with no path and no extension:
 
 ```jac
-import from "./libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> None;
     def rlVertex3f(x: f32, y: f32, z: f32) -> None;
     def rlColor4ub(r: u8, g: u8, b: u8, a: u8) -> None;
@@ -19,11 +20,18 @@ import from "./libraylib.so" {
 }
 ```
 
+The native backend resolves the platform-correct filename from the target triple
+(`libraylib.so` on Linux, `libraylib.dylib` on macOS, `raylib.dll` on Windows), so
+this **one unchanged source targets all three** - no per-OS edits, no renaming. An
+explicit string path (`import from "/usr/lib/.../libm.so.6" { ... }`) is still
+accepted for libraries that need a pinned filename.
+
 Every declaration in that block becomes an `extern` symbol that the Jac native
 linker resolves out of the shared library. Notably, the linker is pure Python -
 there is **no `cc`/`ld` invocation**; `jac nacompile` emits the object code and
-writes the ELF/Mach-O executable itself, recording `libraylib.so` as a needed
-library.
+writes the ELF/Mach-O executable itself, recording the resolved library as a
+needed entry plus a `$ORIGIN`/`@loader_path` runpath so the sibling library
+resolves no matter where the binary is launched from.
 
 ## Run it
 
@@ -35,7 +43,8 @@ library.
 
 1. detect your platform/architecture,
 2. download the matching precompiled raylib release from GitHub,
-3. stage its shared library as `./libraylib.so`,
+3. stage its shared library under the platform's natural name (`libraylib.so` on
+   Linux, `libraylib.dylib` on macOS),
 4. compile `shooter.na.jac` with `jac nacompile`, and
 5. launch the resulting `./shooter` binary.
 

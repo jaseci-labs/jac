@@ -12,7 +12,7 @@ import from jaclang.cli.console { console }
 import from pathlib { Path }
 import from jaclang.project.plugin_config { deep_merge }
 
-# Core dependency versions — individual packages instead of meta-packages.
+# Core dependency versions - individual packages instead of meta-packages.
 # These are the required versions for runtime compatibility.
 
 # Runtime dependencies (always injected)
@@ -189,7 +189,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     # Self-healing dependency management (migration + injection) only runs for
     # projects that have explicitly opted into the client via a [plugins.client]
     # section. Reading config for a non-client project must NEVER mutate jac.toml
-    # — otherwise merely booting the API server (or any read of client config)
+    # - otherwise merely booting the API server (or any read of client config)
     # would inject react/vite/etc. into a backend-only project's jac.toml.
     if 'client' in jac_config.plugins {
         # Migrate legacy meta-packages if present

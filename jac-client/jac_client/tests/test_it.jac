@@ -2053,7 +2053,7 @@ test "diagnostics syntax error in console" {
 # ===========================================================================
 """Test JacClientConfig auto-injects individual deps and migrates legacy meta-packages."""
 test "config_loader_dependency_management" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = Path(temp_dir);

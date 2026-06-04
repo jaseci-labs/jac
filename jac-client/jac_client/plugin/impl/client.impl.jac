@@ -30,60 +30,6 @@ impl JacClient.send_static_file(
     }
 }
 
-"""Build a client bundle for the supplied module."""
-impl JacClient.build_client_bundle(
-    module: types.ModuleType, force: bool = False
-) -> ClientBundle {
-    builder = JacClient.get_client_bundle_builder();
-    return builder.build(module, force=force);
-}
-
-"""Get the client bundle builder instance."""
-impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
-    import from jaclang.project.config { find_project_root }
-    # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
-    base_path_dir = Path(Jac.get_base_path_dir());
-    project_root_result = find_project_root(base_path_dir);
-    if project_root_result {
-        (base_path, _) = project_root_result;
-    } else {
-        # Fallback to base_path_dir if no project root found
-        base_path = base_path_dir;
-    }
-    # Use ViteBundler to get the client directory
-    bundler = ViteBundler(base_path);
-    client_dir = bundler._get_client_dir();
-    # package.json should only exist in .jac/client/configs/
-    generated_package_json = client_dir / 'configs' / 'package.json';
-    # Generate package.json if it doesn't exist
-    if not generated_package_json.exists() {
-        generated_path = bundler.create_package_json();
-        # Verify the file was created and resolve to absolute path
-        if not generated_path.exists() {
-            raise ClientBundleError(
-                f'Failed to generate package.json at {generated_path}'
-            );
-        }
-        package_json_path = generated_path.resolve();
-    } else {
-        package_json_path = generated_package_json.resolve();
-    }
-    # Final verification that package.json exists before creating builder
-    if not package_json_path.exists() {
-        raise ClientBundleError(
-            f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
-        );
-    }
-    output_dir = client_dir / 'dist';
-    runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
-    return ViteClientBundleBuilder(
-        runtime_path=runtime_path,
-        vite_package_json=package_json_path,
-        vite_output_dir=output_dir,
-        vite_minify=False
-    );
-}
-
 """Render HTML page for client function using the Vite bundle."""
 impl JacClient.render_page(
     introspector: ModuleIntrospector,
