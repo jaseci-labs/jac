@@ -376,6 +376,8 @@ class ClJacFile(pytest.File):
     def collect(self) -> list[ClJacTestItem]:
         from jaclang.runtimelib.cl_test_runner import run_cl_test_file
 
+        # bun is auto-installed on demand by the runner (jaclang's bun_installer),
+        # so these run anywhere pytest collects them -- no toolchain gating needed.
         _ensure_jac_runtime()
         _fresh_jac_state()
 

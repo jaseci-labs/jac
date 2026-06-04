@@ -9,27 +9,9 @@ import subprocess;
 import sys;
 import tempfile;
 import time;
-import importlib;
 import from contextlib { suppress }
 import from pathlib { Path }
 import from collections.abc { Callable }
-
-impl find_bun -> (str | None) {
-    found = shutil.which("bun");
-    if found {
-        return found;
-    }
-    candidates = [
-        Path.home() / ".bun" / "bin" / "bun",
-        Path.cwd() / ".jac" / "bin" / "bun"
-    ];
-    for cand in candidates {
-        if cand.is_file() and os.access(cand, os.X_OK) {
-            return str(cand);
-        }
-    }
-    return None;
-}
 
 impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
     import from jaclang.jac0core.program { JacProgram }
@@ -46,28 +28,13 @@ impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
 }
 
 impl _compile_runtime_js -> str {
-    try {
-        _plugin = importlib.import_module("jac_client.plugin");
-    } except Exception as exc {
-        raise RuntimeError(
-            "client tests use @jac/runtime but the jac-client plugin is not "
-            f"installed: {exc}"
-        );
-    }
-    # jac_client.plugin is a namespace package (__file__ is None); resolve the
-    # runtime source via the package search path.
-    runtime_src = None;
-    for pkg_dir in list(getattr(_plugin, "__path__", [])) {
-        cand = Path(pkg_dir) / "client_runtime.cl.jac";
-        if cand.exists() {
-            runtime_src = cand;
-            break;
-        }
-    }
-    if runtime_src is None {
-        raise RuntimeError(
-            "could not locate client_runtime.cl.jac in the jac-client plugin"
-        );
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
+    # `@jac/runtime` is baked into the language and resolves to core's
+    # client_runtime.cl.jac -- the same file the bundler and type checker use.
+    # We compile that single source of truth rather than reaching into a plugin.
+    runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
+    if (not runtime_src) or (not Path(runtime_src).exists()) {
+        raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
     (js, _tests, _imports) = compile_cl_module(runtime_src);
     return js;
@@ -321,11 +288,14 @@ impl _run_harness(
     storage: (dict | None),
     timeout: float
 ) -> list[ClTestResult] {
-    bun = find_bun();
+    import from jaclang.runtimelib.client.bun_installer { get_bun }
+    # Reuse core's bun resolver -- the same one the client bundler uses -- which
+    # locates bun on PATH / in .jac/bin and auto-downloads it when missing.
+    bun = get_bun();
     if bun is None {
         raise RuntimeError(
-            "bun is required to run client (cl) tests but was not found on PATH "
-            "or in ~/.bun/bin."
+            "bun is required to run client (cl) tests but could not be located "
+            "or installed."
         );
     }
 

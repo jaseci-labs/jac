@@ -102,18 +102,16 @@ obj ClTestResult {
         error: (str | None) = None;
 }
 
-"""Locate the `bun` executable used to run client tests."""
-def find_bun -> (str | None);
-
 """Compile a `.cl.jac` file and return `(js, tests, imports)`.
 
 Raises `RuntimeError` if compilation fails."""
 def compile_cl_module(filepath: str) -> tuple[str, list, dict];
 
-"""Compile `client_runtime.cl.jac` (the `@jac/runtime` source) to JS.
+"""Compile core's `client_runtime.cl.jac` (the `@jac/runtime` source) to JS.
 
-Only invoked when a test imports `@jac/runtime`. Requires the jac-client
-plugin to be installed (it ships the client runtime source)."""
+Only invoked when a test imports `@jac/runtime`. Resolves the runtime through
+`@jac/runtime` -- the same source the bundler and type checker use -- so no
+jac-client plugin is required."""
 def _compile_runtime_js -> str;
 
 """Plan stubs for npm imports across *js_sources*.
