@@ -1,5 +1,6 @@
 """Kubernetes deployment target implementation."""
 import from typing { Any }
+import from jaclang.runtimelib.client { BUN_VERSION }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
@@ -219,8 +220,12 @@ obj KubernetesTarget(DeploymentTarget) {
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
 
-        # Install Bun (required for jac-client frontend builds)
-        commands.append('curl -fsSL https://bun.sh/install | bash');
+        # Install Bun (required for jac-client frontend builds), pinned to the
+        # same version jac auto-installs locally (BUN_VERSION is the single
+        # source of truth in jaclang.runtimelib.client.bun_installer).
+        commands.append(
+            f'curl -fsSL https://bun.sh/install | bash -s "bun-v{BUN_VERSION}"'
+        );
         commands.append('export BUN_INSTALL="$HOME/.bun"');
         commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
