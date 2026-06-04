@@ -1,5 +1,5 @@
 import from jaclang.cli.console { console }
-import from jac_client.plugin.utils { get_bun }
+import from jaclang.runtimelib.client { get_bun }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
 
@@ -840,7 +840,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import sys;
     import time;
     import shutil;
-    import from jac_client.plugin.utils { ensure_client_deps }
+    import from jaclang.runtimelib.client { ensure_client_deps }
     # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
     bun = _require_bun();
     # Ensure client npm deps are configured; prompt to install defaults if missing
@@ -1161,7 +1161,7 @@ impl ViteBundler.start_dev_server(
     import sys;
     import time;
     import threading;
-    import from jac_client.plugin.utils { ensure_bun_available }
+    import from jaclang.runtimelib.client { ensure_bun_available }
     # Ensure bun is available before starting dev server
     if not ensure_bun_available() {
         raise ClientBundleError(

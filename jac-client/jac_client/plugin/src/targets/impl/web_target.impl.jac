@@ -3,7 +3,7 @@ import os;
 import types;
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.vite_bundler { ViteBundler }
+import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
@@ -110,7 +110,9 @@ impl WebTarget.build(
 ) -> Path {
     import shutil;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    import from jac_client.plugin.client { JacClient }
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
 
     bundler = ViteBundler(project_dir=project_dir);
 
@@ -139,7 +141,7 @@ impl WebTarget.build(
     if not isinstance(loaded_mod, types.ModuleType) {
         raise RuntimeError(f"Module '{mod}' is not a valid module type");
     }
-    builder = JacClient.get_client_bundle_builder();
+    builder = make_client_bundle_builder(project_dir);
     builder.build(loaded_mod, force=True);
     bundle_path = bundler.find_bundle();
     if not bundle_path {

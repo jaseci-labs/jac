@@ -41,7 +41,7 @@ impl ViteCompiler.compile(
     # version of client_runtime.js with the proper ES module exports
     self.compile_runtime_utils();
     # Compile PWA runtime if PWA is enabled
-    import from jac_client.plugin.src.config_loader { JacClientConfig as PwaConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig as PwaConfig }
     pwa_config = PwaConfig(self.project_dir);
     if pwa_config.is_pwa_enabled() {
         self.compile_pwa_runtime();
@@ -88,7 +88,7 @@ impl ViteCompiler._create_pages_entry_content(
     lines: list[str] = [];
     auth_redirect = "/login";
     try {
-        import from ..config_loader { PluginConfig }
+        import from jaclang.runtimelib.client.config_loader { PluginConfig }
         config = PluginConfig.load(self.project_dir);
         if config and config?.routing and config.routing {
             auth_redirect = config.routing.get('auth_redirect', '/login');
@@ -475,7 +475,7 @@ impl ViteCompiler._scan_and_compile_pages(
 """Generate _routes.js manifest from previously scanned route entries."""
 impl ViteCompiler._generate_routes_manifest(self: ViteCompiler) -> None {
     scanner = self._route_scanner;
-    # Use cached results from _scan_and_compile_pages — don't re-scan
+    # Use cached results from _scan_and_compile_pages - don't re-scan
     routes = scanner._routes;
     layouts = scanner.get_layouts();
     lines: list[str] = [];

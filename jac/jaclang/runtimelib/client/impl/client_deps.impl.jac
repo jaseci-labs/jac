@@ -9,7 +9,7 @@ impl ensure_client_deps(config_loader: object) -> bool {
     if dependencies or dev_dependencies {
         return True;
     }
-    # No deps configured — prompt the user
+    # No deps configured - prompt the user
     return prompt_install_client_deps(config_loader);
 }
 

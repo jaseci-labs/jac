@@ -76,8 +76,9 @@ def _download_bun(bin_dir: Path) -> Path | None {
 
     asset_name = _get_platform_asset();
     if not asset_name {
-        console.print(
-            f"  [red]✖[/red] Unsupported platform: {platform.system()} {platform.machine()}"
+        console.error(
+            f"Unsupported platform: {platform.system()} {platform.machine()}",
+            emoji=False
         );
         return None;
     }
@@ -94,7 +95,7 @@ def _download_bun(bin_dir: Path) -> Path | None {
             zip_path = os.path.join(tmp, "bun.zip");
             # Download
             urllib.request.urlretrieve(url, zip_path);
-            # Extract — bun zips contain a single directory with the binary
+            # Extract - bun zips contain a single directory with the binary
             with zipfile.ZipFile(zip_path, "r") as zf {
                 # Find the bun binary inside the archive
                 members = zf.namelist();
@@ -106,9 +107,7 @@ def _download_bun(bin_dir: Path) -> Path | None {
                     }
                 }
                 if not bun_member {
-                    console.print(
-                        "  [red]✖[/red] Could not find bun binary in archive"
-                    );
+                    console.error("Could not find bun binary in archive", emoji=False);
                     return None;
                 }
                 # Extract just the binary
@@ -130,26 +129,26 @@ def _download_bun(bin_dir: Path) -> Path | None {
             [str(bun_path), "--version"], capture_output=True, text=True, timeout=10
         );
         if result.returncode == 0 {
-            console.print(
-                f"  [green]✔[/green] Bun {result.stdout.strip()} installed to .jac/bin/"
+            console.success(
+                f"Bun {result.stdout.strip()} installed to .jac/bin/", emoji=False
             );
             return bun_path;
         } else {
-            console.print("  [red]✖[/red] Downloaded bun binary failed verification");
+            console.error("Downloaded bun binary failed verification", emoji=False);
             bun_path.unlink(missing_ok=True);
             return None;
         }
     } except urllib.error.URLError as e {
-        console.print(f"  [red]✖[/red] Download failed: {e}");
+        console.error(f"Download failed: {e}", emoji=False);
         return None;
     } except zipfile.BadZipFile {
-        console.print("  [red]✖[/red] Downloaded file is not a valid zip");
+        console.error("Downloaded file is not a valid zip", emoji=False);
         return None;
     } except subprocess.TimeoutExpired {
-        console.print("  [red]✖[/red] Bun verification timed out");
+        console.error("Bun verification timed out", emoji=False);
         return None;
     } except Exception as e {
-        console.print(f"  [red]✖[/red] Installation failed: {e}");
+        console.error(f"Installation failed: {e}", emoji=False);
         return None;
     }
 }
@@ -184,8 +183,8 @@ impl get_bun -> str | None {
         if version_file.exists() and version_file.read_text().strip() == BUN_VERSION {
             return str(local_bun);
         }
-        # Version mismatch — re-download
-        console.print(f"  [yellow]⚠[/yellow] Upgrading Bun to v{BUN_VERSION}...");
+        # Version mismatch - re-download
+        console.warning(f"Upgrading Bun to v{BUN_VERSION}...", emoji=False);
         local_bun.unlink(missing_ok=True);
     }
 
@@ -201,14 +200,14 @@ impl get_bun -> str | None {
 
 """Check if bun is available, add to PATH if needed, or prompt to install.
 
-Legacy entry point — now delegates to get_bun().
+Legacy entry point - now delegates to get_bun().
 Returns True if bun is available, False otherwise.
 """
 impl ensure_bun_available -> bool {
     bun_path = get_bun();
     if bun_path is None {
-        console.print(
-            "\n  [red]✖[/red] Bun is required but could not be installed automatically."
+        console.error(
+            "Bun is required but could not be installed automatically.", emoji=False
         );
         console.print("  Install manually: https://bun.sh\n");
         return False;
@@ -227,7 +226,7 @@ impl ensure_bun_available -> bool {
 
 """Prompt user to install Bun and install if confirmed.
 
-Kept for backward compatibility but no longer prompts — auto-installs.
+Kept for backward compatibility but no longer prompts - auto-installs.
 """
 impl prompt_install_bun -> bool {
     return ensure_bun_available();

@@ -1,11 +1,11 @@
 """Tests for the jaclang.publish npm pipeline.
 
 Covers the npm-package counterparts of the wheel pipeline:
-  package_json — package.json string generation from jac.toml
-  jsdoc        — JSDoc block generation from typed Jac signatures
-  npm_sources  — client-module collector + JS compilation + sv-boundary guard
-  npm_builder  — NpmBuilder end-to-end (.tgz tarball)
-  CLI          — `jac bundle --target npm`
+  package_json - package.json string generation from jac.toml
+  jsdoc        - JSDoc block generation from typed Jac signatures
+  npm_sources  - client-module collector + JS compilation + sv-boundary guard
+  npm_builder  - NpmBuilder end-to-end (.tgz tarball)
+  CLI          - `jac bundle --target npm`
 """
 
 import io;
@@ -174,7 +174,7 @@ test "collect_npm_sources compiles client modules to JS with .js paths" {
 }
 
 
-# npm_builder — end-to-end --------------------------------------------------------------------------
+# npm_builder - end-to-end --------------------------------------------------------------------------
 test "NpmBuilder.build produces a valid npm tarball with package.json and JS" {
     tmpdir = tempfile.mkdtemp();
     try {
@@ -296,7 +296,7 @@ test "build_runtime_tarball packages the runtime with exports" {
         # The export list is drawn from the runtime's public API.
         exports = runtime_export_names(js);
         assert "__jacJsx" in exports;
-        assert "createSignal" in exports;
+        assert "__jacSpawn" in exports;
     }
 }
 

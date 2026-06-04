@@ -30,3 +30,13 @@ def disengage_py() -> dict[str, any] {
     w spawn n1;
     return {"seen": w.seen};
 }
+
+cl {
+    def disengage_cl() -> dict[str, any] {
+        n1 = N(val=1); n2 = N(val=2); n3 = N(val=3); n4 = N(val=4); n5 = N(val=5);
+        n1 ++> n2; n2 ++> n3; n3 ++> n4; n4 ++> n5;
+        w = Stop();
+        w spawn n1;
+        return {"seen": w.seen};
+    }
+}

@@ -39,7 +39,7 @@ impl PackageInstaller.uninstall_package(
 
 """Regenerate package.json from jac.toml and run bun install."""
 impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
-    import from jac_client.plugin.utils { get_bun }
+    import from jaclang.runtimelib.client { get_bun }
     import from jaclang.cli.console { console }
     # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
     bun = get_bun();

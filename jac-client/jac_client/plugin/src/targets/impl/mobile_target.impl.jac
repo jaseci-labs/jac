@@ -132,7 +132,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         );
     }
 
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     bundler = ViteBundler(project_dir=project_dir);
     web_dist_dir = Path(bundler.output_dir).resolve();
     web_dist_dir.mkdir(parents=True, exist_ok=True);
@@ -182,7 +182,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
 impl MobileTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     selected_platform = _normalize_mobile_platform(platform);
     mobile_cfg = _load_mobile_config(project_dir);
 
@@ -235,8 +235,10 @@ impl MobileTarget.build(
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.client { JacClient }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
     import signal;
     import sys;
 
@@ -254,7 +256,7 @@ impl MobileTarget.dev(
     }
 
     console.print(
-        f"\nMobile dev (Capacitor + Vite HMR) — {plat.capitalize()}", style="bold"
+        f"\nMobile dev (Capacitor + Vite HMR) - {plat.capitalize()}", style="bold"
     );
     _try_check_mobile_dependencies(plat);
     _require_macos_for_ios(plat);
@@ -280,14 +282,14 @@ impl MobileTarget.dev(
     if not package_json_path.exists() {
         bundler.create_package_json();
     }
-    builder = JacClient.get_client_bundle_builder();
+    builder = make_client_bundle_builder(project_dir);
     if not builder.vite_package_json or not builder.vite_package_json.exists() {
         builder.vite_package_json = package_json_path;
     }
     compiler = builder._get_compiler();
     compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
     # Full compile graph (entry + all .jac deps) with add_runtime_imports per file,
-    # matching production dev — compiling only the entry leaves imported modules
+    # matching production dev - compiling only the entry leaves imported modules
     # (e.g. components/*.js) without __jacJsx and causes "__jacJsx is not defined".
     (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
     if not mod {
@@ -330,7 +332,7 @@ impl MobileTarget.dev(
     }
 
     # `jac start --dev` normally starts HotReloader, but the mobile pre-hook cancels that
-    # handler — so we watch .jac here and re-run the same ViteCompiler.compile graph Vite serves.
+    # handler - so we watch .jac here and re-run the same ViteCompiler.compile graph Vite serves.
     if _mobile_ensure_watchdog() {
         import from jaclang.runtimelib.watcher { JacFileWatcher }
 
@@ -413,7 +415,7 @@ impl MobileTarget.dev(
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
     if api_port != 8000 {
         console.print(

@@ -1405,3 +1405,46 @@ def build_osp_kernel_js -> str {
     _OSP_KERNEL_JS_CACHE.append(js);
     return js;
 }
+
+"""The cl Object-Spatial graph runtime (raw JS): in-memory adjacency mirroring
+the server's `JacNode.edges_to_nodes` / `build_edge`. A node object holds
+`__edges` (the incident edges); an edge holds `__src` / `__tgt` / `__undirected`
+/ `__tag`. Injected when a cl module lowers a connect op or edge ref.
+
+`__ospConn(srcs, tgts, makeEdge, undirected)` connects each src->tgt, appending
+the edge to both endpoints, and returns the targets (Jac connect returns its
+right operand for chaining). `__ospRefs(nodes, dir, edgeTag, edgesOnly)` walks
+incident edges (dir 1=IN, 2=OUT, 3=ANY; an undirected edge is ANY), optionally
+filtering by edge type tag, and returns the connected nodes (or the edges when
+`edgesOnly`), de-duplicated in first-seen order."""
+def build_osp_graph_js -> str {
+    return r"""
+function __ospConn(srcs, tgts, makeEdge, undirected) {
+  srcs = Array.isArray(srcs) ? srcs : [srcs];
+  tgts = Array.isArray(tgts) ? tgts : [tgts];
+  for (const s of srcs) for (const t of tgts) {
+    const e = makeEdge ? makeEdge() : {};
+    e.__src = s; e.__tgt = t; e.__undirected = !!undirected;
+    (s.__edges ??= []).push(e); (t.__edges ??= []).push(e);
+  }
+  return tgts.length === 1 ? tgts[0] : tgts;
+}
+function __ospRefs(nodes, dir, edgeTag, edgesOnly) {
+  nodes = Array.isArray(nodes) ? nodes : [nodes];
+  const seen = new Set(), out = [];
+  for (const n of nodes) for (const e of (n.__edges || [])) {
+    if (edgeTag != null && e.__tag !== edgeTag) continue;
+    const eff = e.__undirected ? 3 : dir;
+    if ((eff === 2 || eff === 3) && e.__src === n) {
+      const o = edgesOnly ? e : e.__tgt;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+    if ((eff === 1 || eff === 3) && e.__tgt === n) {
+      const o = edgesOnly ? e : e.__src;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+  }
+  return out;
+}
+""";
+}
