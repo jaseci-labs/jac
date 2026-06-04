@@ -9,6 +9,18 @@ body {
     color: #e2e8f0;
 }
 
+/* Ambient console glow: faint orange light pooling in the corners so the
+   glass sidebar (backdrop-blur) has something to frost over, and the
+   whole shell reads like a lit game-console dashboard. Fixed so it
+   doesn't scroll with content. */
+body {
+    background-image:
+        radial-gradient(820px circle at 0% 0%, rgba(249, 115, 22, 0.10), transparent 42%),
+        radial-gradient(640px circle at 100% 8%, rgba(249, 115, 22, 0.05), transparent 40%),
+        radial-gradient(700px circle at 12% 100%, rgba(251, 146, 60, 0.04), transparent 42%);
+    background-attachment: fixed;
+}
+
 body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
