@@ -778,7 +778,6 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 ### jac-scale: Kubernetes
 
 Use `jac.toml` as the source of truth under `[plugins.scale.kubernetes]`.
-Legacy environment-style names should be migrated to TOML keys.
 
 | TOML Keys | Description | Default |
 |----------|-------------|---------|
@@ -810,27 +809,6 @@ Kubernetes runtime env behavior (not `jac.toml` keys):
 - `POD_NAMESPACE` is used for namespace resolution in service DNS.
 - During `jac start --scale`, project `.env` keys are passed into app pod
   environment variables.
-
-Legacy key migration (for existing setups):
-These legacy environment-style names are documented only to help migration of older deployments.
-For active configuration, use the `jac.toml` TOML Keys under `[plugins.scale.kubernetes]`.
-
-| Legacy Name | TOML Keys |
-|-------------|----------|
-| `APP_NAME` | `app_name` |
-| `K8s_NAMESPACE` | `namespace` |
-| `K8s_NODE_PORT` | `ingress_node_port` |
-| `K8s_CPU_REQUEST` | `cpu_request` |
-| `K8s_CPU_LIMIT` | `cpu_limit` |
-| `K8s_MEMORY_REQUEST` | `memory_request` |
-| `K8s_MEMORY_LIMIT` | `memory_limit` |
-| `K8s_READINESS_INITIAL_DELAY` | `readiness_initial_delay` |
-| `K8s_READINESS_PERIOD` | `readiness_period` |
-| `K8s_LIVENESS_INITIAL_DELAY` | `liveness_initial_delay` |
-| `K8s_LIVENESS_PERIOD` | `liveness_period` |
-| `K8s_LIVENESS_FAILURE_THRESHOLD` | `liveness_failure_threshold` |
-| `K8s_MONGODB` | `mongodb_enabled` |
-| `K8s_REDIS` | `redis_enabled` |
 
 ---
 
