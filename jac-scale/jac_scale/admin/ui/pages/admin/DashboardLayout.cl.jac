@@ -17,11 +17,12 @@ cl {
         Users,
         ShieldCheck,
         BarChart3,
-        Cpu,
+        BrainCircuit,
         Bot,
-        Network,
+        Workflow,
         ScrollText,
-        LogOut
+        LogOut,
+        CircleUserRound
     }
 
     # Import pages (implemented only)
@@ -58,13 +59,13 @@ cl {
             return <BarChart3 className={cls}/>;
         }
         if id == "llm_metrics" {
-            return <Cpu className={cls}/>;
+            return <BrainCircuit className={cls}/>;
         }
         if id == "llm_traces" {
             return <Bot className={cls}/>;
         }
         if id == "traces" {
-            return <Network className={cls}/>;
+            return <Workflow className={cls}/>;
         }
         if id == "logs" {
             return <ScrollText className={cls}/>;
@@ -91,7 +92,6 @@ cl {
         }
 
         uname = String(auth["currentUsername"] or "");
-        initial = String(uname or "U").charAt(0).toUpperCase();
 
         return
             <div className="flex h-screen gap-3 p-3 text-slate-200">
@@ -105,9 +105,9 @@ cl {
                     <div className="relative px-4 pt-5 pb-4">
                         <div className="flex items-center gap-3">
                             <div
-                                className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-400 to-amber-600 flex items-center justify-center text-white text-base font-bold shadow-[0_0_22px_-4px_rgba(249,115,22,0.75)]"
+                                className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-400 to-amber-600 flex items-center justify-center text-white shadow-[0_0_22px_-4px_rgba(249,115,22,0.75)]"
                             >
-                                {initial}
+                                <CircleUserRound className="w-6 h-6"/>
                             </div>
                             <div className="min-w-0">
                                 <div className="text-sm font-semibold text-white truncate">

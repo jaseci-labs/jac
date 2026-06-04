@@ -273,7 +273,7 @@ cl {
                     <div>
                         <div className="text-xs text-slate-500 mb-1">Service</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
                             value={filterService}
                             onChange={lambda (e: any) { filterService = e.target.value; }}
                         >
@@ -284,7 +284,7 @@ cl {
                     <div>
                         <div className="text-xs text-slate-500 mb-1">Level</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
                             value={filterLevel}
                             onChange={lambda (e: any) { filterLevel = e.target.value; }}
                         >
@@ -298,7 +298,7 @@ cl {
                     <div>
                         <div className="text-xs text-slate-500 mb-1">Time</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
                             value={filterSince}
                             onChange={lambda (e: any) { filterSince = e.target.value; }}
                         >
@@ -313,7 +313,7 @@ cl {
                         <div className="text-xs text-slate-500 mb-1">Search</div>
                         <input
                             type="text"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
                             placeholder="grep text..."
                             value={filterSearch}
                             onChange={lambda (e: any) { filterSearch = e.target.value; }}
@@ -336,7 +336,7 @@ cl {
                 </div>
                 {backendOffline
                 and <div
-                    className="bg-amber-500/10 border border-amber-500/40 rounded p-3 text-sm text-amber-300"
+                    className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 text-sm text-amber-300"
                 >
                     Log backend unreachable. Make sure
                     <code className="mx-1 font-mono">
@@ -347,19 +347,19 @@ cl {
                 {errorMsg
                 and not backendOffline
                 and <div
-                    className="bg-red-500/10 border border-red-500/40 rounded p-3 text-sm text-red-300"
+                    className="bg-red-500/10 border border-red-500/40 rounded-xl p-3 text-sm text-red-300"
                 >
                     {errorMsg}
                 </div>}
                 {isLoading
                 and <div className="flex items-center justify-center h-32">
-                    <div className="text-sky-400">Loading logs...</div>
+                    <div className="text-orange-400">Loading logs...</div>
                 </div>}
                 {not isLoading
                 and lines.length == 0
                 and not errorMsg
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded p-8 text-slate-500 text-center"
+                    className="bg-slate-900/70 border border-white/[0.06] rounded-2xl p-8 text-slate-500 text-center"
                 >
                     No logs in the selected window. Try a longer time range or hit your gateway to generate some traffic.
                 </div>}
@@ -371,15 +371,15 @@ cl {
                 {not isLoading
                 and lines.length > 0
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded font-mono text-sm overflow-x-auto max-h-[70vh] overflow-y-auto"
+                    className="bg-slate-900/70 border border-white/[0.06] rounded-2xl font-mono text-sm overflow-x-auto max-h-[70vh] overflow-y-auto shadow-sm shadow-black/20"
                 >
                     {lines.map(
                         lambda (line: dict, idx: int) { return
                             <div
                                 key={idx}
-                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer " + (
+                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-white/[0.04] hover:bg-white/[0.03] cursor-pointer transition-colors " + (
                                     panelIdx == idx
-                                    and "bg-sky-500/10 border-l-2 border-l-sky-400"
+                                    and "bg-orange-500/10 border-l-2 border-l-orange-400"
                                     or ""
                                 )}
                                 onClick={lambda { openPanel(idx, line); }}
@@ -426,7 +426,7 @@ cl {
                 </div>}
                 {panelIdx >= 0
                 and <div
-                    className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col z-50"
+                    className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-slate-950/95 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-50"
                 >
                     <div
                         className="flex items-center justify-between px-4 py-3 border-b border-slate-800"

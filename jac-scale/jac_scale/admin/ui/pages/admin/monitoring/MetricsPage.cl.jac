@@ -320,10 +320,10 @@ cl {
                         </div>
                     </div>
                     <div
-                        className="relative bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-6 mb-6 shadow-2xl shadow-teal-500/5"
+                        className="relative bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 mb-6 shadow-2xl shadow-teal-500/5"
                     >
                         <div
-                            className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-teal-500 to-transparent"
+                            className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-orange-500 to-transparent"
                         ></div>
                         <div className="flex items-center justify-center gap-8 mb-6">
                             <div
@@ -347,7 +347,7 @@ cl {
                         <div className="grid grid-cols-4 gap-6">
                             <div className="text-center">
                                 <div
-                                    className="text-4xl font-bold text-teal-400 font-mono"
+                                    className="text-4xl font-bold text-orange-400 font-mono"
                                 >
                                     {totalReqs}
                                 </div>
@@ -367,7 +367,7 @@ cl {
                             </div>
                             <div className="text-center">
                                 <div
-                                    className="text-4xl font-bold text-teal-400 font-mono"
+                                    className="text-4xl font-bold text-orange-400 font-mono"
                                 >
                                     {avgLatencyDisplay}ms
                                 </div>
@@ -390,7 +390,7 @@ cl {
                     <div className="grid grid-cols-3 gap-6">
                         <div className="col-span-2 space-y-6">
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
@@ -411,7 +411,7 @@ cl {
                                     {[
                                         <div
                                             key={str(h["time"])}
-                                            className="flex-1 bg-gradient-to-t from-teal-600 to-cyan-400 rounded-t opacity-80 hover:opacity-100 transition-all"
+                                            className="flex-1 bg-gradient-to-t from-orange-600 to-amber-400 rounded-t opacity-80 hover:opacity-100 transition-all"
                                             style={{
                                                 "height": getBarHeight(
                                                     h["requests"], maxReqs
@@ -459,7 +459,7 @@ cl {
                                                     {req["status"]}
                                                 </span>
                                                 <span
-                                                    className="text-teal-400 font-bold w-12 text-right"
+                                                    className="text-orange-400 font-bold w-12 text-right"
                                                 >
                                                     {req["count"]}
                                                 </span>
@@ -501,7 +501,7 @@ cl {
                                 </div>}
                             </div>
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className="w-2 h-2 rounded-full bg-orange-400"></div>
@@ -517,7 +517,7 @@ cl {
                                             className="h-32 flex items-end justify-center mb-2"
                                         >
                                             <div
-                                                className="w-16 bg-gradient-to-t from-teal-600 to-teal-400 rounded-t"
+                                                className="w-16 bg-gradient-to-t from-orange-600 to-orange-400 rounded-t"
                                                 style={{
                                                     "height": getBarHeight(
                                                         gcGen0, maxGc
@@ -526,7 +526,7 @@ cl {
                                             ></div>
                                         </div>
                                         <div
-                                            className="text-lg font-bold text-teal-400 font-mono"
+                                            className="text-lg font-bold text-orange-400 font-mono"
                                         >
                                             {gcGen0}
                                         </div>
@@ -541,7 +541,7 @@ cl {
                                             className="h-32 flex items-end justify-center mb-2"
                                         >
                                             <div
-                                                className="w-16 bg-gradient-to-t from-teal-600 to-cyan-400 rounded-t"
+                                                className="w-16 bg-gradient-to-t from-orange-600 to-amber-400 rounded-t"
                                                 style={{
                                                     "height": getBarHeight(
                                                         gcGen1, maxGc
@@ -599,7 +599,7 @@ cl {
                         </div>
                         <div className="space-y-6">
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
@@ -668,14 +668,14 @@ cl {
                                         <span className="text-slate-400 font-mono">
                                             RESIDENT
                                         </span>
-                                        <span className="text-teal-400 font-mono">
+                                        <span className="text-orange-400 font-mono">
                                             {formatBytes(residentMem)}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className="w-2 h-2 rounded-full bg-lime-400"></div>
@@ -699,7 +699,7 @@ cl {
                                 </div>
                             </div>
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className="w-2 h-2 rounded-full bg-purple-400"></div>
@@ -726,7 +726,7 @@ cl {
                                 </div>
                             </div>
                             <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
+                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-3">
                                     <div className="w-2 h-2 rounded-full bg-slate-400"></div>
