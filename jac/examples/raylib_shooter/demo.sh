@@ -4,16 +4,17 @@
 #
 #   1. detect the platform / architecture
 #   2. download the matching *precompiled* raylib release from GitHub
-#   3. stage its shared library as ./libraylib.so  (the file shooter.na.jac
-#      links against via `import from "./libraylib.so" { ... }`)
+#   3. stage its shared library under the platform's natural name
+#      (libraylib.so on Linux, libraylib.dylib on macOS) next to this script
 #   4. compile shooter.na.jac into a standalone native binary (`jac nacompile`)
 #   5. run it
 #
-# The Jac native linker records the import path verbatim as the binary's
-# needed-library entry (DT_NEEDED on ELF, LC_LOAD_DYLIB on Mach-O). Because that
-# path contains a slash it is resolved relative to the current directory at
-# load time, so the binary must be launched from this folder - which this
-# script does.
+# shooter.na.jac links against raylib by its *logical* name -
+# `import from raylib { ... }` (no path, no extension). The native backend picks
+# the platform-correct filename (libraylib.so / libraylib.dylib / raylib.dll) for
+# the needed-library entry (DT_NEEDED on ELF, LC_LOAD_DYLIB on Mach-O), and emits
+# a $ORIGIN / @loader_path runpath so the binary finds the sibling library
+# regardless of the directory it is launched from.
 #
 set -euo pipefail
 
@@ -38,11 +39,13 @@ case "$os" in
       *) echo "Unsupported Linux architecture: $arch" >&2; exit 1 ;;
     esac
     lib_glob="libraylib.so*"
+    stage_name="libraylib.so"
     ;;
   Darwin)
     # The macOS release ships a universal (x86_64 + arm64) dylib.
     asset="raylib-${RAYLIB_VERSION}_macos.tar.gz"
     lib_glob="libraylib*.dylib"
+    stage_name="libraylib.dylib"
     ;;
   *)
     echo "Unsupported OS: $os (this demo targets Linux and macOS)" >&2
@@ -62,7 +65,7 @@ else
   echo ">> using cached $tarball"
 fi
 
-# ── 3. Extract and stage the shared library as ./libraylib.so ───────────────
+# ── 3. Extract and stage the shared library under its natural name ──────────
 extract_dir="$BUILD_DIR/extracted"
 rm -rf "$extract_dir"; mkdir -p "$extract_dir"
 tar xzf "$tarball" -C "$extract_dir"
@@ -73,8 +76,8 @@ if [ -z "$lib_file" ]; then
   echo "Could not locate $lib_glob inside the raylib release." >&2
   exit 1
 fi
-cp -f "$lib_file" "$HERE/libraylib.so"
-echo ">> staged   : $(basename "$lib_file") -> ./libraylib.so"
+cp -f "$lib_file" "$HERE/$stage_name"
+echo ">> staged   : $(basename "$lib_file") -> ./$stage_name"
 
 # ── 4. Locate the jac CLI and compile ───────────────────────────────────────
 if command -v jac >/dev/null 2>&1; then
@@ -90,6 +93,6 @@ fi
 echo ">> compiling: $JAC nacompile shooter.na.jac"
 "$JAC" nacompile shooter.na.jac
 
-# ── 5. Run (from this directory, so ./libraylib.so resolves) ────────────────
+# ── 5. Run (the $ORIGIN runpath finds ./$stage_name beside the binary) ──────
 echo ">> launching ./shooter   -   arrows = aim, WASD = move, space = fire, Esc = quit"
 exec ./shooter

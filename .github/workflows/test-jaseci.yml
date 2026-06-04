@@ -90,6 +90,14 @@ jobs:
         pip install playwright
         pip install pyinstaller
 
+    - name: Install desktop runtime libraries
+      run: |
+        # jac-desktop's pytauri shell loads a native extension that links
+        # libwebkit2gtk-4.1.so.0; install the WebKitGTK runtime so the
+        # "desktop dev mode" test can launch the pytauri process.
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libsoup-3.0-0
+
     - name: Install Playwright browsers
       run: playwright install chromium --with-deps
 
