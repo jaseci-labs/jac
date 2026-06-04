@@ -46,34 +46,6 @@ cl {
              "logs": LogsPage
          };
 
-    """Lucide icon for a nav id. Inherits color via currentColor so it
-    tints with the active/hover text state."""
-    def navIcon(id: str) -> JsxElement {
-        cls = "w-[18px] h-[18px] shrink-0";
-        if id == "users" {
-            return <Users className={cls}/>;
-        }
-        if id == "sso" {
-            return <ShieldCheck className={cls}/>;
-        }
-        if id == "metrics" {
-            return <BarChart3 className={cls}/>;
-        }
-        if id == "llm_metrics" {
-            return <BrainCircuit className={cls}/>;
-        }
-        if id == "llm_traces" {
-            return <Bot className={cls}/>;
-        }
-        if id == "traces" {
-            return <Workflow className={cls}/>;
-        }
-        if id == "logs" {
-            return <ScrollText className={cls}/>;
-        }
-        return <Workflow className={cls}/>;
-    }
-
     def:pub DashboardLayout -> JsxElement {
         has activeTab: str = "metrics";
 
@@ -90,6 +62,36 @@ cl {
                 return <PageComponent/>;
             }
             return <div className="text-slate-500 text-sm">Page not found</div>;
+        }
+
+        # Nested (not a top-level def) so it's a plain local function -
+        # a top-level `def ... -> JsxElement` with a param is compiled as
+        # a React component and the arg arrives as props, so `id` would be
+        # undefined and every branch would fall through to the default.
+        def navIcon(id: str) -> JsxElement {
+            cls = "w-[18px] h-[18px] shrink-0";
+            if id == "users" {
+                return <Users className={cls}/>;
+            }
+            if id == "sso" {
+                return <ShieldCheck className={cls}/>;
+            }
+            if id == "metrics" {
+                return <BarChart3 className={cls}/>;
+            }
+            if id == "llm_metrics" {
+                return <BrainCircuit className={cls}/>;
+            }
+            if id == "llm_traces" {
+                return <Bot className={cls}/>;
+            }
+            if id == "traces" {
+                return <Workflow className={cls}/>;
+            }
+            if id == "logs" {
+                return <ScrollText className={cls}/>;
+            }
+            return <Workflow className={cls}/>;
         }
 
         uname = String(auth["currentUsername"] or "");
