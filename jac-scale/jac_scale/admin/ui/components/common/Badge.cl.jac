@@ -3,7 +3,7 @@
 cl {
     def:pub Badge(text: str, variant: str = "default") -> JsxElement {
         variantClasses = {
-            "admin": "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30",
+            "admin": "bg-orange-500/15 text-orange-300 border border-orange-500/30",
             "user": "bg-slate-800 text-slate-300 border border-slate-700",
             "default": "bg-slate-800 text-slate-300 border border-slate-700",
             "success": "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",

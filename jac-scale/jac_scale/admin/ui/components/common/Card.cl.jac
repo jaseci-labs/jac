@@ -27,8 +27,8 @@ cl {
     def:pub StatsCard(label: str, value: any, color: str = "white") -> JsxElement {
         colorClasses = {
             "white": "text-white",
-            "orange": "text-indigo-400",
-            "indigo": "text-indigo-400",
+            "orange": "text-orange-400",
+            "indigo": "text-orange-400",
             "emerald": "text-emerald-400",
             "purple": "text-violet-400",
             "blue": "text-sky-400"

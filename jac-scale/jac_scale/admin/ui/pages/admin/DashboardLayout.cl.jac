@@ -62,7 +62,7 @@ cl {
                         className="h-14 flex items-center gap-2.5 px-5 border-b border-white/[0.06]"
                     >
                         <div
-                            className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-indigo-500/30"
+                            className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-orange-500/30"
                         >
                             J
                         </div>
@@ -86,7 +86,7 @@ cl {
                                             onClick={makeHandler(item["id"])}
                                             className={"w-full flex items-center px-3 py-2 text-sm rounded-lg transition-colors " + (
                                                 activeTab == item["id"]
-                                                and "bg-indigo-500/10 text-indigo-300 font-medium"
+                                                and "bg-orange-500/10 text-orange-300 font-medium"
                                                 or "text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]"
                                             )}
                                         >
