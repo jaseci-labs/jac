@@ -333,46 +333,66 @@ async def _run_untyped_async(slots: list[Slot], a: any, b: any) -> None {
     }
 }
 
-"""Async DFS-recursive visit (mirrors `osp_kernel._visit_recursive` but
+"""Async iterative DFS visit (mirrors `osp_kernel._visit_recursive` but
 `await`s coroutine returns from abilities)."""
 async def _visit_recursive_async(
     rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc, loc: any
 ) -> bool {
-    scope.path.append(loc);
-    loc_tag: int = rt.tag_of(loc);
-    ndesc = rt.node_desc(loc_tag);
-    await _run_typed_async(rt, wdesc.entry, scope.wlk, loc);
-    if scope.disengaged {
-        return False;
-    }
-    await _run_untyped_async(ndesc.entry, loc, scope.wlk);
-    if scope.disengaged {
-        return False;
-    }
-    await _run_typed_async(rt, ndesc.entry, loc, scope.wlk);
-    if scope.disengaged {
-        return False;
-    }
-    while scope.next and (not scope.disengaged) {
-        child = scope.next.pop(0);
-        if child not in scope.ignores {
-            if not await _visit_recursive_async(rt, scope, wdesc, child) {
+    stack: list = [(loc, 0)];
+    while stack {
+        (cur, phase) = stack.pop();
+        if scope.disengaged {
+            return False;
+        }
+        if phase == 0 {
+            scope.path.append(cur);
+            loc_tag: int = rt.tag_of(cur);
+            ndesc = rt.node_desc(loc_tag);
+            await _run_typed_async(rt, wdesc.entry, scope.wlk, cur);
+            if scope.disengaged {
+                return False;
+            }
+            await _run_untyped_async(ndesc.entry, cur, scope.wlk);
+            if scope.disengaged {
+                return False;
+            }
+            await _run_typed_async(rt, ndesc.entry, cur, scope.wlk);
+            if scope.disengaged {
+                return False;
+            }
+            stack.append((cur, 1));
+        } elif phase == 1 {
+            child = None;
+            while scope.next {
+                candidate = scope.next.pop(0);
+                if candidate not in scope.ignores {
+                    child = candidate;
+                    break;
+                }
+            }
+            if child is not None {
+                stack.append((cur, 1));
+                stack.append((child, 0));
+            } else {
+                stack.append((cur, 2));
+            }
+        } else {
+            loc_tag: int = rt.tag_of(cur);
+            ndesc = rt.node_desc(loc_tag);
+            await _run_typed_async(rt, ndesc.exit, cur, scope.wlk);
+            if scope.disengaged {
+                return False;
+            }
+            await _run_untyped_async(ndesc.exit, cur, scope.wlk);
+            if scope.disengaged {
+                return False;
+            }
+            await _run_typed_async(rt, wdesc.exit, scope.wlk, cur);
+            if scope.disengaged {
                 return False;
             }
         }
     }
-    if scope.disengaged {
-        return False;
-    }
-    await _run_typed_async(rt, ndesc.exit, loc, scope.wlk);
-    if scope.disengaged {
-        return False;
-    }
-    await _run_untyped_async(ndesc.exit, loc, scope.wlk);
-    if scope.disengaged {
-        return False;
-    }
-    await _run_typed_async(rt, wdesc.exit, scope.wlk, loc);
     return not scope.disengaged;
 }
 
