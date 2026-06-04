@@ -62,7 +62,7 @@ cl {
                     filterStatus,
                     filterMinDuration,
                     filterSince,
-                    20
+                    50
                 );
                 if result["ok"] and result["data"] {
                     traces = result["data"]["traces"] or [];

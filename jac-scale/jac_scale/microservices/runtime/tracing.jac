@@ -50,7 +50,8 @@ import from jac_scale._optdeps.opentelemetry {
     BatchSpanProcessor,
     ParentBased,
     TraceIdRatioBased,
-    OTLPSpanExporter
+    OTLPSpanExporter,
+    IdGenerator
 }
 
 glob _logger: logging.Logger = logging.getLogger("jac_scale.tracing");
@@ -74,6 +75,15 @@ glob _TP_VERSION: str = "00",
 # don't depend on OpenTelemetry's own context propagation for the one
 # value we need to forward. Empty when there's no active span.
 glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
+
+# Forces the trace id of the next ROOT span created on this context.
+# `start_server_span` stashes the K-12 UUID's 128 bits here before
+# starting a root span; `_JacIdGenerator.generate_trace_id` reads it so
+# the root span gets trace_id == the UUID *and* a genuinely empty parent
+# (the OTel SDK only calls generate_trace_id for parentless spans). This
+# is what makes Tempo show a real root - without it every span carried a
+# synthetic parent id and Tempo reported "<root span not yet received>".
+glob _pending_trace_id: ContextVar[int] = ContextVar("_jac_pending_tid", default=0);
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +210,38 @@ def get_tracer -> any {
     return _tracer;
 }
 
+"""OTel id generator that forces a root span's trace id to the K-12 UUID.
+
+The OTel SDK calls `generate_trace_id` only when a span has no parent
+(i.e. a root span), and `generate_span_id` for every span. We override
+the trace id with the value `start_server_span` stashed in
+`_pending_trace_id` so a root SERVER span gets trace_id == the UUID's
+128 bits while keeping a genuinely empty parent - which is what makes
+Tempo recognise it as the trace root. Subclasses `IdGenerator` so it carries the full interface the SDK calls
+(including `is_trace_id_random`, which OTel 1.4x invokes on the
+generator). The `_optdeps` shim aliases `IdGenerator` to `object` when
+OpenTelemetry is absent so this definition still compiles; it's only
+instantiated under a `HAS_OTEL` guard."""
+class _JacIdGenerator(IdGenerator) {
+    def generate_span_id(self: any) -> int {
+        return new_span_id();
+    }
+
+    def generate_trace_id(self: any) -> int {
+        pend = _pending_trace_id.get(0);
+        if pend != 0 {
+            return pend;
+        }
+        return int.from_bytes(os.urandom(16), "big") & _MASK_128;
+    }
+
+    # Our trace ids are UUID4-derived (uniformly random low bits), so the
+    # ratio sampler can use them. OTel 1.4x calls this on the generator.
+    def is_trace_id_random(self: any) -> bool {
+        return True;
+    }
+}
+
 """Configure the global OpenTelemetry TracerProvider + OTLP exporter.
 
 Idempotent and safe to call once per process (mirrors
@@ -273,7 +315,9 @@ def install_tracing(
         # ("argument after ** must be a mapping"). Positional avoids it.
         sampler = ParentBased(TraceIdRatioBased(ratio));
 
-        provider = TracerProvider(resource=resource, sampler=sampler);
+        provider = TracerProvider(
+            resource=resource, sampler=sampler, id_generator=_JacIdGenerator()
+        );
         # BatchSpanProcessor (NOT SimpleSpanProcessor): buffers finished
         # spans and flushes off the request path in a background thread, so
         # a slow/dead collector drops spans instead of slowing requests.
@@ -351,26 +395,32 @@ def start_server_span(
     }
 
     parsed = parse_traceparent(parent_traceparent);
-    sampled = True;
+    span = None;
     if parsed is not None {
-        parent_span_id = parsed["span_id"];
-        sampled = parsed["sampled"];
+        # CHILD hop: a real upstream span is our parent. Build a remote
+        # parent SpanContext from the inbound traceparent and start as
+        # its child (inherits the trace id + a real parent span id).
+        flags = TraceFlags(_FLAG_SAMPLED if parsed["sampled"] else 0);
+        parent_ctx = SpanContext(
+            trace_id=tid,
+            span_id=parsed["span_id"],
+            is_remote=True,
+            trace_flags=flags
+        );
+        ctx = set_span_in_context(NonRecordingSpan(parent_ctx));
+        span = _tracer.start_span(name, context=ctx, kind=SpanKind.SERVER);
     } else {
-        # Root hop for this trace: synthesize a parent span id so the
-        # SpanContext is valid; the resulting span becomes the visible
-        # root in Tempo.
-        parent_span_id = new_span_id();
+        # ROOT hop: start a parentless span and force its trace id to the
+        # UUID via the id generator (it reads `_pending_trace_id`). This
+        # yields a genuine root (empty parent) so Tempo shows it as the
+        # trace root instead of "<root span not yet received>".
+        tok = _pending_trace_id.set(tid);
+        try {
+            span = _tracer.start_span(name, kind=SpanKind.SERVER);
+        } finally {
+            _pending_trace_id.reset(tok);
+        }
     }
-
-    flags = TraceFlags(_FLAG_SAMPLED if sampled else 0);
-    parent_ctx = SpanContext(
-        trace_id=tid,
-        span_id=parent_span_id,
-        is_remote=True,
-        trace_flags=flags
-    );
-    ctx = set_span_in_context(NonRecordingSpan(parent_ctx));
-    span = _tracer.start_span(name, context=ctx, kind=SpanKind.SERVER);
     if attributes {
         for (k, v) in attributes.items() {
             span.set_attribute(k, v);

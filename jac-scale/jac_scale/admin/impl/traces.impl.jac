@@ -334,6 +334,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
                 "duration_ms": int(t.get("durationMs", 0) or 0)
             });
         }
+        # Newest-first: Tempo's search result order isn't guaranteed, so
+        # sort by trace start time descending for a kubectl-logs-like UX.
+        traces.sort(key=lambda x: x.get("start_ns", 0), reverse=True);
         return JSONResponse(
             content={
                 "ok": True,

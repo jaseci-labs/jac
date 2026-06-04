@@ -26,6 +26,7 @@ with entry {
             ParentBased,
             TraceIdRatioBased
         }
+        import from opentelemetry.sdk.trace.id_generator { IdGenerator }
         import from opentelemetry.exporter.otlp.proto.http.trace_exporter {
             OTLPSpanExporter
         }
@@ -43,6 +44,10 @@ with entry {
         ParentBased = None;
         TraceIdRatioBased = None;
         OTLPSpanExporter = None;
+        # `object` (not None) so a subclass definition still compiles when
+        # OpenTelemetry is absent; the subclass is only instantiated under
+        # a HAS_OTEL guard, so the harmless base is never used at runtime.
+        IdGenerator = object;
         HAS_OTEL = False;
     }
 }
