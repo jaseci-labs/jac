@@ -31,7 +31,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def pytest_collect_file(parent: pytest.Collector, file_path: Path) -> JacFile | None:
+def pytest_collect_file(
+    parent: pytest.Collector, file_path: Path
+) -> JacFile | ClJacFile | None:
     """Return a collector for ``.jac`` files that follow test naming rules."""
     name = file_path.name
 
@@ -43,6 +45,13 @@ def pytest_collect_file(parent: pytest.Collector, file_path: Path) -> JacFile | 
     # not test suites.
     if any(p.name == "fixtures" for p in file_path.parents):
         return None
+
+    # Client (cl) test files run their `test` blocks under bun, not Python.
+    # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
+    if (name.startswith("test_") and name.endswith(".cl.jac")) or name.endswith(
+        ".test.cl.jac"
+    ):
+        return ClJacFile.from_parent(parent, path=file_path)
 
     # Collect test_*.jac (pytest convention) and *.test.jac (Jac convention).
     if (name.startswith("test_") and name.endswith(".jac")) or name.endswith(
@@ -346,6 +355,68 @@ class JacTestItem(pytest.Item):
         # Append the exception message.
         lines.append(f"E   {excinfo.typename}: {excinfo.value}")
         return "\n".join(lines)
+
+    def reportinfo(self) -> tuple[Path, None, str]:
+        return self.path, None, self.name
+
+
+# ---------------------------------------------------------------------------
+# Client (cl) test collection -- runs `test` blocks under bun
+# ---------------------------------------------------------------------------
+
+
+class ClJacFile(pytest.File):
+    """Collector for ``*.cl.jac`` test files.
+
+    The file's ``test`` blocks compile to JavaScript and execute under bun via
+    :mod:`jaclang.runtimelib.cl_test_runner`.  The whole file is compiled and
+    run once at collection time; each result becomes a :class:`ClJacTestItem`.
+    """
+
+    def collect(self) -> list[ClJacTestItem]:
+        from jaclang.runtimelib.cl_test_runner import run_cl_test_file
+
+        # bun is auto-installed on demand by the runner (jaclang's bun_installer),
+        # so these run anywhere pytest collects them -- no toolchain gating needed.
+        _ensure_jac_runtime()
+        _fresh_jac_state()
+
+        try:
+            results = run_cl_test_file(str(self.path))
+        except Exception as exc:  # surface compile/bun errors as one failing item
+            return [
+                ClJacTestItem.from_parent(
+                    self,
+                    name=f"{self.path.name} (cl runner error)",
+                    ok=False,
+                    error=str(exc),
+                )
+            ]
+
+        return [
+            ClJacTestItem.from_parent(
+                self, name=res.description, ok=res.ok, error=res.error
+            )
+            for res in results
+        ]
+
+
+class ClJacTestItem(pytest.Item):
+    """A single client ``test`` block result produced by bun."""
+
+    def __init__(
+        self, name: str, parent: pytest.Collector, ok: bool, error: str | None
+    ) -> None:
+        super().__init__(name, parent)
+        self._ok = ok
+        self._error = error
+
+    def runtest(self) -> None:
+        if not self._ok:
+            raise AssertionError(self._error or "client test failed")
+
+    def repr_failure(self, excinfo: pytest.ExceptionInfo[BaseException]) -> str:
+        return self._error or str(excinfo.value)
 
     def reportinfo(self) -> tuple[Path, None, str]:
         return self.path, None, self.name

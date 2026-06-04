@@ -971,10 +971,24 @@ impl JacBasics.run_test(
     verbose: bool = False
 ) -> int {
     import from jaclang.runtimelib.test { JacTestCheck }
+    import from jaclang.runtimelib.cl_test_runner {
+        is_cl_test_file,
+        is_cl_test_file_for_discovery,
+        run_cl_test_file,
+        register_results_into_jactestcheck
+    }
     test_file = False;
     ret_count = 0;
     if filepath {
-        if filepath.endswith('.jac') {
+        if is_cl_test_file(filepath) {
+            JacTestCheck.reset();
+            results = run_cl_test_file(filepath, test_name=func_name);
+            register_results_into_jactestcheck(os.path.abspath(filepath), results);
+            JacTestCheck.run_test(
+                xit, maxfail, verbose, os.path.abspath(filepath), func_name
+            );
+            ret_count = JacTestCheck.failcount;
+        } elif filepath.endswith('.jac') {
             (base, mod_name) = os.path.split(filepath);
             base = base or './';
             mod_name = mod_name[:-4];
@@ -1009,7 +1023,21 @@ impl JacBasics.run_test(
                 if not file.endswith(('.test.jac', '.impl.jac'))
             ];
             for file in files {
-                if file.endswith('.jac') {
+                if is_cl_test_file_for_discovery(file) {
+                    test_file = True;
+                    cl_path = os.path.join(root_dir, file);
+                    JacConsole.get_console().info(
+                        f"\n\n\t\t* Inside {root_dir}/{file} *"
+                    );
+                    JacTestCheck.reset();
+                    register_results_into_jactestcheck(
+                        os.path.abspath(cl_path),
+                        run_cl_test_file(cl_path, test_name=func_name)
+                    );
+                    JacTestCheck.run_test(
+                        xit, maxfail, verbose, os.path.abspath(file), func_name
+                    );
+                } elif file.endswith('.jac') {
                     test_file = True;
                     JacConsole.get_console().info(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"

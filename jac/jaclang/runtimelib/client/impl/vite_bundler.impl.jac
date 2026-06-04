@@ -1161,9 +1161,9 @@ impl ViteBundler.start_dev_server(
     import sys;
     import time;
     import threading;
-    import from jaclang.runtimelib.client { ensure_bun_available }
+    import from jaclang.runtimelib.client { get_bun }
     # Ensure bun is available before starting dev server
-    if not ensure_bun_available() {
+    if get_bun() is None {
         raise ClientBundleError(
             'Bun is required for dev server. Install manually: https://bun.sh'
         ) from None;

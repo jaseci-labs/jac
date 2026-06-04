@@ -181,6 +181,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_stdlib_modules: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
+        # Maps each clib function's C name to the library path it was imported
+        # from (e.g. "InitWindow" -> "libraylib.dylib"). The Mach-O linker uses
+        # this to emit the correct two-level-namespace dylib ordinal per symbol.
+        _clib_symbol_lib: dict[str, str] = {},
         _native_emit_ctx_class: (type | None) = None,
         # Per-function tracking for borrowed-param promotion: entry-block store instruction
         # per param (for position_after retain insertion) and set of already-promoted params.

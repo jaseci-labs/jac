@@ -184,11 +184,11 @@ def _load_template(template_name: str) -> dict[str, any] | None {
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     import from jaclang.cli.console { console }
-    import from jaclang.runtimelib.client { ensure_bun_available }
+    import from jaclang.runtimelib.client { get_bun }
 
-    # First, ensure Bun is installed (prompt to install if not)
+    # First, ensure Bun is installed (auto-installs to .jac/bin if missing)
     console.print();
-    if not ensure_bun_available() {
+    if get_bun() is None {
         console.warning("Bun is required for client development");
         console.print("  After installing Bun, run: jac add --cl\n", style="muted");
         return;
@@ -361,10 +361,10 @@ def _npm_remove_handler(config: JacConfig, package_name: str, is_dev: bool = Fal
 """Regenerate package.json from jac.toml and run bun install."""
 def _regenerate_and_install(project_dir: Path) {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jaclang.runtimelib.client { ensure_bun_available }
+    import from jaclang.runtimelib.client { get_bun }
 
-    # Ensure Bun is installed before proceeding (prompt to install if not)
-    if not ensure_bun_available() {
+    # Ensure Bun is installed before proceeding (auto-installs to .jac/bin if missing)
+    if get_bun() is None {
         raise RuntimeError(
             "Bun is required. Install manually: https://bun.sh"
         ) from None;

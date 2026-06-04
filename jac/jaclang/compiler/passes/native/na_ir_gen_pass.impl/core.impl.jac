@@ -814,6 +814,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         #   import from foo { ... }              -- logical name (issue #6387),
         #   import from .foo { ... }                resolved to the platform-correct
         #   import from libs.foo { ... }            filename per the target triple.
+        # Remember where this import's lib path(s) land in _clib_paths so each
+        # of its function symbols can be mapped back to the library it imports
+        # from (needed for Mach-O two-level-namespace dylib ordinals).
+        _paths_before = len(self._clib_paths);
         if stmt.from_loc is not None and stmt.from_loc.path {
             _name_components: list[str] = [];
             for path_part in stmt.from_loc.path {
@@ -836,6 +840,11 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 );
             }
         }
+        # The library this import block binds against (last path it added, if
+        # any). Each function symbol below is attributed to it.
+        _cur_lib = self._clib_paths[-1]
+            if len(self._clib_paths) > _paths_before
+            else None;
         # Three-pass processing of clib declarations:
         # Pass 1: Register struct types (opaque, for forward refs)
         for decl in stmt.clib_decls {
@@ -900,12 +909,16 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 self._declare_clib_ability(decl);
                 if fn_name {
                     self.clib_extern_names.add(fn_name);
+                    if _cur_lib is not None {
+                        self._clib_symbol_lib[fn_name] = _cur_lib;
+                    }
                 }
             }
         }
         # Store clib paths on module gen for compile pass
         if self._clib_paths {
             module.gen._clib_paths = self._clib_paths;
+            module.gen._clib_symbol_lib = self._clib_symbol_lib;
             self.has_native_code = True;
         }
     }
