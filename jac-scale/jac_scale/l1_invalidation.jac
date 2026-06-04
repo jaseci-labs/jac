@@ -8,9 +8,10 @@ import json;
 import logging;
 import threading;
 import weakref;
-import from typing { Any, cast }
+import from typing { cast }
 import from uuid { UUID, uuid4 }
 import from jac_scale._optdeps.redis { redis_module as redis }
+import from jaclang.runtimelib.memory { VolatileMemory }
 
 glob logger = logging.getLogger(__name__),
      DEFAULT_INVALIDATION_CHANNEL = "jac:anchor:invalidate",
@@ -26,7 +27,7 @@ def new_l1_id -> str {
 
 
 """Register an active L1 under its id."""
-def register_l1(l1_id: str, mem: Any) {
+def register_l1(l1_id: str, mem: VolatileMemory) {
     with _l1_lock {
         _l1_registry[l1_id] = mem;
     }
@@ -55,7 +56,7 @@ def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
     # Snapshot under the lock; pop outside it (dict.pop is atomic under the GIL).
     with _l1_lock {
         targets = [
-            mem
+            cast(VolatileMemory, mem)
             for (lid, mem) in list(_l1_registry.items())
             if lid != origin_l1_id
         ];
@@ -73,7 +74,7 @@ def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
 
 
 """Decode a pub/sub payload and evict the named anchor."""
-def _handle_message(data: Any) {
+def _handle_message(data: (bytes | str)) {
     try {
         text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data;
         payload = json.loads(cast(str, text));
@@ -98,8 +99,8 @@ def build_message(anchor_id: str, origin_l1_id: (str | None)) -> str {
 obj L1InvalidationListener {
     has redis_url: str,
         channel: str,
-        _stop: Any by postinit,
-        _thread: Any by postinit;
+        _stop: threading.Event by postinit,
+        _thread: threading.Thread by postinit;
 
     def postinit {
         self._stop = threading.Event();
@@ -125,12 +126,12 @@ obj L1InvalidationListener {
     }
 
     def _run {
-        r = cast(Any, redis);
+        r = cast(any, redis);
         backoff = 0.5;
         max_backoff = 30.0;
         while not self._stop.is_set() {
-            pubsub: Any = None;
-            client: Any = None;
+            pubsub: any = None;
+            client: any = None;
             try {
                 client = r.from_url(self.redis_url);
                 pubsub = client.pubsub(ignore_subscribe_messages=True);
@@ -139,7 +140,7 @@ obj L1InvalidationListener {
                 while not self._stop.is_set() {
                     msg = pubsub.get_message(timeout=1.0);
                     if msg is not None and msg.get("type") == "message" {
-                        _handle_message(msg.get("data"));
+                        _handle_message(cast((bytes | str), msg.get("data")));
                     }
                 }
             } except Exception as e {
@@ -166,7 +167,7 @@ obj L1InvalidationListener {
 
 """Start the one process-wide listener (idempotent); replace a dead handle."""
 def ensure_listener(
-    process_cache: dict, redis_url: (str | None), channel: str
+    process_cache: dict[str, any], redis_url: (str | None), channel: str
 ) -> None {
     if redis is None or not redis_url {
         return;
@@ -184,7 +185,7 @@ def ensure_listener(
 
 
 """Stop the process-wide listener."""
-def stop_listener(process_cache: dict) {
+def stop_listener(process_cache: dict[str, any]) {
     with _l1_lock {
         listener = process_cache.pop("l1_listener", None);
     }
