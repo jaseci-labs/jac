@@ -588,8 +588,10 @@ impl PyTauriDesktopTarget.dev(
         bundler.create_package_json();
     }
 
-    import from jac_client.plugin.client { JacClient }
-    builder = JacClient.get_client_bundle_builder();
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+    builder = make_client_bundle_builder();
     if not builder.vite_package_json or not builder.vite_package_json.exists() {
         builder.vite_package_json = package_json_path;
     }
