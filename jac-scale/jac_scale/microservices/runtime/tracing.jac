@@ -243,39 +243,53 @@ def install_tracing(
         return False;
     }
 
-    svc = service_name or os.getenv("JAC_SV_NAME", "unknown");
-    base = endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "http://localhost:4318";
-    traces_url = base.rstrip("/") + "/v1/traces";
+    # Best-effort: the entire SDK setup is wrapped so a tracing problem
+    # (bad endpoint, OTel version skew, exporter init) can NEVER crash
+    # the gateway/service it's installed into. On any failure we log and
+    # return False, leaving the process running without spans.
+    try {
+        svc = service_name or os.getenv("JAC_SV_NAME", "unknown");
+        base = endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "http://localhost:4318";
+        traces_url = base.rstrip("/") + "/v1/traces";
 
-    resource = Resource.create({
-        "service.name": svc,
-        "service.namespace": os.getenv("K8S_NAMESPACE", "default")
-    });
+        resource = Resource.create({
+            "service.name": svc,
+            "service.namespace": os.getenv("K8S_NAMESPACE", "default")
+        });
 
-    # Parent-based ratio sampler: root traces sampled at `sample_ratio`,
-    # children inherit the root's decision via the traceparent sampled
-    # bit (so a trace is all-in or all-out, never partial).
-    ratio = sample_ratio;
-    if ratio < 0.0 {
-        ratio = 0.0;
+        # Parent-based ratio sampler: root traces sampled at `sample_ratio`,
+        # children inherit the root's decision via the traceparent sampled
+        # bit (so a trace is all-in or all-out, never partial).
+        ratio = sample_ratio;
+        if ratio < 0.0 {
+            ratio = 0.0;
+        }
+        if ratio > 1.0 {
+            ratio = 1.0;
+        }
+        # NOTE: pass the root sampler positionally. `root` is a reserved
+        # keyword in Jac (the graph root), so `ParentBased(root=...)`
+        # mis-compiles into a `**`-unpack and throws at runtime
+        # ("argument after ** must be a mapping"). Positional avoids it.
+        sampler = ParentBased(TraceIdRatioBased(ratio));
+
+        provider = TracerProvider(resource=resource, sampler=sampler);
+        # BatchSpanProcessor (NOT SimpleSpanProcessor): buffers finished
+        # spans and flushes off the request path in a background thread, so
+        # a slow/dead collector drops spans instead of slowing requests.
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=traces_url)));
+        trace.set_tracer_provider(provider);
+
+        _provider = provider;
+        _tracer = trace.get_tracer("jac_scale.microservices");
+        _tracing_active = True;
+        _logger.info(f"Tracing active: service={svc} otlp={traces_url} sample_ratio={ratio}");
+        return True;
+    } except Exception as e {
+        _logger.warning(f"Tracing setup failed; continuing without spans: {e}");
+        _tracing_active = False;
+        return False;
     }
-    if ratio > 1.0 {
-        ratio = 1.0;
-    }
-    sampler = ParentBased(root=TraceIdRatioBased(ratio));
-
-    provider = TracerProvider(resource=resource, sampler=sampler);
-    # BatchSpanProcessor (NOT SimpleSpanProcessor): buffers finished
-    # spans and flushes off the request path in a background thread, so
-    # a slow/dead collector drops spans instead of slowing requests.
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=traces_url)));
-    trace.set_tracer_provider(provider);
-
-    _provider = provider;
-    _tracer = trace.get_tracer("jac_scale.microservices");
-    _tracing_active = True;
-    _logger.info(f"Tracing active: service={svc} otlp={traces_url} sample_ratio={ratio}");
-    return True;
 }
 
 """Flush any buffered spans and tear down the provider (best-effort).
