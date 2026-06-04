@@ -6,7 +6,7 @@
 
 - [Overview](#overview) - What native compilation is and when to use it
 - [Quick Reference](#quick-reference) - At-a-glance summary of capabilities
-- [Native Sections in Jac Applications](#native-sections-in-jac-applications) - Mixing `to na:` sections into Python-backed Jac code
+- [Native Sections in Jac Applications](#native-sections-in-jac-applications) - Mixing native sections into Python-backed Jac code
 - [Python-Native Interop](#python-native-interop) - How the two codespaces communicate
 - [Standalone Native Binaries](#standalone-native-binaries) - Compiling `.na.jac` files to executables
 - [Type System](#type-system) - Native type mappings and fixed-width types
@@ -24,7 +24,7 @@
 
 Jac's native codespace compiles code to **machine-code via LLVM** -- the same Jac syntax, but running as native instructions instead of on the Python runtime. You can use it in two ways:
 
-1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `to na:` section header (or `na` statement prefix). The compiler generates the interop layer automatically.
+1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `to na:` section header / `na` statement prefix). The compiler generates the interop layer automatically.
 2. **Standalone `.na.jac` files** -- compile an entire program to a self-contained binary with `jac nacompile`. No Python runtime, no external compiler, no external linker -- the entire toolchain from source to executable runs within Jac itself.
 
 Native compilation is ideal for:
@@ -39,14 +39,14 @@ Native compilation is ideal for:
 
 | Aspect | Details |
 |--------|---------|
-| **Inline section** | `to na:` section header (or `na` prefix) in any `.jac` file |
+| **Inline section** | `na { }` block (or `to na:` header / `na` prefix) in any `.jac` file |
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
 | **CLI command** | `jac nacompile <file> [-o output]` |
 | **Backend** | LLVM IR via llvmlite |
 | **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
-| **C interop** | `import from "libname"` |
+| **C interop** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **Std library** | `import sys` (`sys.argv`, `sys.exit()`) |
 | **Memory model** | Automatic reference counting |
 
@@ -71,23 +71,21 @@ def process_data(items: list[dict]) -> list[dict] {
     return [item for item in items if item["active"]];
 }
 
-to na:
-
-# Native codespace -- compiles to machine code
-def compute_checksum(data: list[int]) -> int {
-    has result: int = 0;
-    for val in data {
-        result = (result * 31 + val) % 1000000007;
+na {
+    # Native codespace -- compiles to machine code
+    def compute_checksum(data: list[int]) -> int {
+        has result: int = 0;
+        for val in data {
+            result = (result * 31 + val) % 1000000007;
+        }
+        return result;
     }
-    return result;
-}
 
-def fibonacci(n: int) -> int {
-    if n <= 1 { return n; }
-    return fibonacci(n - 1) + fibonacci(n - 2);
+    def fibonacci(n: int) -> int {
+        if n <= 1 { return n; }
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
 }
-
-to sv:
 
 with entry {
     # Call both Python and native functions seamlessly
@@ -123,15 +121,13 @@ def py_double(x: int) -> int {
     return x * 2;
 }
 
-to na:
-
-# Native function that calls the Python function
-def native_add_one_to_doubled(x: int) -> int {
-    has doubled: int = py_double(x);
-    return doubled + 1;
+na {
+    # Native function that calls the Python function
+    def native_add_one_to_doubled(x: int) -> int {
+        has doubled: int = py_double(x);
+        return doubled + 1;
+    }
 }
-
-to sv:
 
 with entry {
     print(native_add_one_to_doubled(5));  # prints 11
@@ -498,13 +494,13 @@ with entry {
 
 Fixed-width types (`f64`, `i32`, `c_void`, etc.) are only needed inside the `import from` declaration to match the C function's ABI signature. Everywhere else -- your own functions, variables, call sites -- you use standard Jac types (`int`, `float`, `str`, etc.) and the compiler handles coercion automatically.
 
-### Third-Party Libraries
+### Platform-neutral library names
 
-The same mechanism works with any C-compatible shared library. For example, using [raylib](https://www.raylib.com/) for graphics:
+A library can be named by its **logical name** -- a dotted, extensionless identifier instead of a literal filename. The compiler resolves the platform-correct filename from the target triple, so a single unchanged `.na.jac` targets Linux, macOS, and Windows. For example, using [raylib](https://www.raylib.com/) for graphics:
 
 <!-- jac-skip -->
 ```jac
-import from "libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> c_void;
     def WindowShouldClose() -> i32;
     def BeginDrawing() -> c_void;
@@ -515,12 +511,35 @@ import from "libraylib.so" {
 }
 ```
 
+`import from raylib` resolves to `libraylib.so` on Linux (ELF), `libraylib.dylib` on macOS (Mach-O), and `raylib.dll` on Windows (PE) -- the `lib` prefix and extension follow each platform's convention, exactly like a linker's `-lraylib`. The resolved name becomes the binary's needed-library entry; combined with the `$ORIGIN` / `@loader_path` runpath, the loader finds the library whether it is installed on the system **or** staged next to the executable.
+
 C-string parameters use `str` in the declaration; the compiler lowers `str` to the `i8*` ABI shape shown in the [primitive-type table](#primitive-type-mappings) above. The `i8*` form is an internal LLVM type and is not part of Jac's surface syntax.
 
-Any library that exposes a C ABI can be called this way -- just point to the shared library path and declare the function signatures.
+Two more forms compose with this, mirroring Python's relative imports:
 
-!!! note "Platform-specific library paths"
-    Library paths differ across platforms. On macOS, shared libraries use `.dylib` (e.g., `libraylib.dylib`). On Linux, they use `.so` (e.g., `libraylib.so`). System libraries are typically at `/usr/lib/libSystem.B.dylib` (macOS) or `/usr/lib/libm.so.6` (Linux).
+| Import | Resolves to (Linux / macOS) | Search scope |
+|--------|------------------------------|--------------|
+| `import from raylib` | `libraylib.so` / `libraylib.dylib` | system loader cache **and** binary directory |
+| `import from .raylib` | `$ORIGIN/libraylib.so` / `@loader_path/libraylib.dylib` | binary directory only |
+| `import from vendor.raylib` | `$ORIGIN/vendor/libraylib.so` / `@loader_path/vendor/libraylib.dylib` | `vendor/` beside the binary |
+
+A leading `.` makes the lookup relative to the binary's own directory; a dotted path maps the leading components to a sub-directory. Both compose with the `$ORIGIN` / `@loader_path` runpath so a bundled library is found no matter where the program is launched from.
+
+### Explicit and pinned paths
+
+When you need an exact file -- a versioned soname or an absolute system path that the logical form cannot express -- give a literal string instead. It is recorded verbatim, with no prefix/extension rewriting:
+
+```jac
+# A pinned, versioned system library.
+import from "/usr/lib/libm.so.6" {
+    def sqrt(x: f64) -> f64;
+}
+```
+
+This is the form used for the libm example above. Any library that exposes a C ABI can be called either way -- by logical name for portability, or by explicit path when a specific file is required.
+
+!!! note "Choosing a form"
+    Prefer the logical name (`import from raylib`) for portable code: the platform's `.so` / `.dylib` / `.dll` filename is chosen for you. Reach for an explicit string only when you must pin an exact path or a versioned soname (e.g. `libfoo.so.5`), which the extensionless form does not name.
 
 ---
 
@@ -589,7 +608,7 @@ The following Jac features are **not yet available** in the native codespace:
 | PyPI imports | No Python ecosystem in native binaries |
 
 !!! tip
-    If you need a feature from the list above, keep that code in the Python codespace and use `to na:` sections only for the performance-critical parts. The compiler handles the interop automatically.
+    If you need a feature from the list above, keep that code in the Python codespace and use `na { }` blocks only for the performance-critical parts. The compiler handles the interop automatically.
 
 ---
 
@@ -712,18 +731,16 @@ def serialize(data: dict) -> str {
     return dumps(data);
 }
 
-to na:
-
-# Native side -- compiled to machine code
-def sum_squares(n: int) -> int {
-    has total: int = 0;
-    for i in range(n) {
-        total += i * i;
+na {
+    # Native side -- compiled to machine code
+    def sum_squares(n: int) -> int {
+        has total: int = 0;
+        for i in range(n) {
+            total += i * i;
+        }
+        return total;
     }
-    return total;
 }
-
-to sv:
 
 with entry {
     result = sum_squares(1000);

@@ -17,21 +17,21 @@ import from jaclang.cli.check_report {
 impl check(
     paths: list,
     print_errs: bool = True,
-    ignore: list = [],
-    disable_error_code: list = [],
+    ignore: (list | None) = None,
+    disable_error_code: (list | None) = None,
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
-    import from jaclang.project.config { JacConfig, get_config, set_config }
+    import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     import from time { time }
     if isinstance(paths, str) {
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore);
-    (suppressed_codes, unknown_codes) = _resolve_disable_error_codes(
-        disable_error_code
+    ignore_list = _normalize_ignore_patterns(ignore or []);
+    (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
+        disable_error_code or []
     );
     if unknown_codes {
         console.warning(
@@ -39,22 +39,6 @@ impl check(
                 unknown_codes
             )
         );
-    }
-    added_suppress_codes: list[str] = [];
-    created_config = False;
-    if suppressed_codes {
-        cfg = get_config();
-        if cfg is None {
-            cfg = JacConfig();
-            set_config(cfg);
-            created_config = True;
-        }
-        for code in suppressed_codes {
-            if code not in cfg.check.suppress {
-                cfg.check.suppress.append(code);
-                added_suppress_codes.append(code);
-            }
-        }
     }
     # Helper to process and store single file result
     def process_file_result(file_path: str, idx: int, total: int) {
@@ -106,7 +90,10 @@ impl check(
             prog.compile(
                 file_path=file_path,
                 options=CompileOptions(
-                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                    type_check=not parse_only,
+                    no_cgen=True,
+                    force_target_program=True,
+                    suppress_codes=suppressed_codes
                 )
             );
             new_errors = prog.errors_had[err_start:];
@@ -155,99 +142,33 @@ impl check(
             return (False, 1, 0, [], []);
         }
     }
-    try {
-        total_files = failed_files=total_errors=total_warnings=0;
-        prog = JacProgram();
-        (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
-        total_to_check = len(all_files);
-        for (idx, jac_file_path) in enumerate(all_files, 1) {
-            process_file_result(jac_file_path, idx, total_to_check);
-        }
-        # Print FAILURES section and summary
-        if print_errs and len(failed_results) > 0 {
-            print_failures(failed_results, nowarn);
-        }
-        if failed_files > 0 {
-            print_failed_summary(failed_results);
-        }
-        # Print final summary line
-        elapsed = time() - start_time;
-        print_final_summary(total_files - failed_files, failed_files, elapsed);
-        return 1 if (total_errors > 0 or had_path_errors) else 0;
-    } finally {
-        if added_suppress_codes {
-            cfg = get_config();
-            if cfg is not None {
-                for code in added_suppress_codes {
-                    if code in cfg.check.suppress {
-                        cfg.check.suppress.remove(code);
-                    }
-                }
-            }
-            if created_config {
-                set_config(None);
-            }
-        }
+    total_files = failed_files=total_errors=total_warnings=0;
+    prog = JacProgram();
+    (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    total_to_check = len(all_files);
+    for (idx, jac_file_path) in enumerate(all_files, 1) {
+        process_file_result(jac_file_path, idx, total_to_check);
     }
-}
-
-"""Resolve --disable-error-code tokens into known diagnostic codes.
-
-Accepts space-separated items from CLI and also comma-delimited chunks, e.g.
-["E1030,W2001", "W3001"].
-"""
-def _resolve_disable_error_codes(
-    disable_error_codes: list
-) -> tuple[list[str], list[str]] {
-    import from jaclang.jac0core.diagnostics { DIAGNOSTICS, LINT_ALIASES }
-    resolved: list[str] = [];
-    unknown: list[str] = [];
-    seen: set[str] = set();
-    unknown_seen: set[str] = set();
-    if not disable_error_codes {
-        return (resolved, unknown);
+    # Print FAILURES section and summary
+    if print_errs and len(failed_results) > 0 {
+        print_failures(failed_results, nowarn);
     }
-    for raw_item in disable_error_codes {
-        if not isinstance(raw_item, str) {
-            continue;
-        }
-        for part in raw_item.split(",") {
-            token = part.strip();
-            if not token {
-                continue;
-            }
-            canonical = token.upper();
-            if canonical in DIAGNOSTICS {
-                if canonical not in seen {
-                    seen.add(canonical);
-                    resolved.append(canonical);
-                }
-                continue;
-            }
-            alias_code = LINT_ALIASES.get(token.lower());
-            if alias_code and alias_code in DIAGNOSTICS {
-                if alias_code not in seen {
-                    seen.add(alias_code);
-                    resolved.append(alias_code);
-                }
-                continue;
-            }
-            if canonical not in unknown_seen {
-                unknown_seen.add(canonical);
-                unknown.append(canonical);
-            }
-        }
+    if failed_files > 0 {
+        print_failed_summary(failed_results);
     }
-    return (resolved, unknown);
+    # Print final summary line
+    elapsed = time() - start_time;
+    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
 """Lint .jac files and report violations."""
-impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
+impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
-    ignore_list = _normalize_ignore_patterns(ignore);
+    ignore_list = _normalize_ignore_patterns(ignore or []);
     def lint_report_file(file_path: str) -> tuple[bool, int] {
         # Lint-only: report errors without formatting or writing files
         path_obj = Path(file_path);
@@ -769,7 +690,10 @@ impl grammar(lark: bool = False, output: str = "") -> int {
 Expands directories recursively, filters by ignore patterns.
 Returns (file_list, had_errors) where had_errors is True if any path was invalid.
 """
-def _iter_jac_files(paths: list, ignore_list: list = []) -> tuple[list[str], bool] {
+def _iter_jac_files(
+    paths: list, ignore_list: (list | None) = None
+) -> tuple[list[str], bool] {
+    ignore_list = ignore_list or [];
     result: list[str] = [];
     had_errors = False;
     for path in paths {

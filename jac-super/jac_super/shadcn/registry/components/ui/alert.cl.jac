@@ -1,7 +1,7 @@
 cl import from "class-variance-authority" { cva }
 cl import from ...lib.utils { cn }
 
-glob _alertVariants: Any = cva(
+glob _alertVariants: any = cva(
          "cn-alert w-full relative group/alert",
          {
              "variants": {
@@ -15,46 +15,50 @@ glob _alertVariants: Any = cva(
      );
 
 cl {
-    def:pub Alert(props: Any) -> JsxElement {
-        variant = props.variant or "default";
+    def:pub Alert(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
+        variant = props["variant"] or "default";
         variantsFn = _alertVariants;
         computedClass = cn(
-            variantsFn.call(None, {"variant": variant, "className": props.className})
+            variantsFn.call(None, {"variant": variant, "className": props["className"]})
         );
         return
-            <div {...props} data-slot="alert" role="alert" className={computedClass}/>;
+            <div {**attrs} data-slot="alert" role="alert" className={computedClass}/>;
     }
 
-    def:pub AlertTitle(props: Any) -> JsxElement {
+    def:pub AlertTitle(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="alert-title"
                 className={cn(
                     "cn-alert-title [&_a]:hover:text-foreground [&_a]:underline [&_a]:underline-offset-3",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub AlertDescription(props: Any) -> JsxElement {
+    def:pub AlertDescription(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="alert-description"
                 className={cn(
                     "cn-alert-description [&_a]:hover:text-foreground [&_a]:underline [&_a]:underline-offset-3",
-                    props.className
+                    props["className"]
                 )}
             />;
     }
 
-    def:pub AlertAction(props: Any) -> JsxElement {
+    def:pub AlertAction(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="alert-action"
-                className={cn("cn-alert-action", props.className)}
+                className={cn("cn-alert-action", props["className"])}
             />;
     }
 }

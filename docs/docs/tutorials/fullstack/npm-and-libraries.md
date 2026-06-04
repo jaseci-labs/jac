@@ -323,34 +323,36 @@ This resolves the chosen style's `.cl.jac` components into `components/ui/`, ins
 
 ### Adding Components to Your Code
 
+Components install as `components/ui/<name>.cl.jac`, keeping their hyphenated registry names (`button.cl.jac`, `dropdown-menu.cl.jac`). **Quote the import path** -- it is required for hyphenated names (an unquoted `dropdown-menu` is a parse error) -- and make the leading dots relative to the importing file's folder: `.components.ui.<name>` from a root file like `main.jac`, `.ui.<name>` from a file in `components/`.
+
 ```jac
-cl import from "./components/ui/button" { Button }
+cl {
+    import from ".components.ui.button" { Button }
+    import from ".components.ui.dropdown-menu" { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent }
 
-to cl:
-
-def:pub MyPage() -> JsxElement {
-    return <div>
-        <Button variant="outline">Click me</Button>
-    </div>;
+    def:pub MyPage() -> JsxElement {
+        return <div>
+            <Button variant="outline">Click me</Button>
+        </div>;
+    }
 }
 ```
 
 ### The cn() Utility in Jac
 
-The standard shadcn `cn()` utility can be written entirely in Jac (no TypeScript needed):
+`jac add --shadcn` and `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you, so you rarely write this by hand. For reference, the standard shadcn `cn()` utility is written entirely in Jac (no TypeScript needed) using a variadic parameter:
 
 ```jac
 # lib/utils.cl.jac
-import from "clsx" { clsx }
-import from "tailwind-merge" { twMerge }
+cl import from "clsx" { clsx }
+cl import from "tailwind-merge" { twMerge }
 
-def:pub cn(inputs: any) -> str {
-    args = [].slice.call(arguments);
-    return twMerge(clsx(args));
+def:pub cn(*inputs: any) -> str {
+    return twMerge(clsx(inputs));
 }
 ```
 
-Required dependencies:
+Required dependencies (added automatically by `jac add --shadcn`):
 
 ```toml
 [dependencies.npm]
@@ -359,6 +361,8 @@ tailwind-merge = "*"
 ```
 
 ### Building shadcn Components in Jac
+
+`jac add --shadcn` already installs the full, production-ready primitives into `components/ui/`, so you don't normally hand-write them -- build your own higher-level components on top instead. The simplified examples below are illustrative: they show how a bundled component is structured (CVA for variants, a `...lib.utils` import for `cn()`, JSX prop spread) and how you'd author a custom one.
 
 Here's how the shadcn Button component looks in Jac, using Class Variance Authority (CVA) for variant management:
 

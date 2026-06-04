@@ -2010,12 +2010,12 @@ The native backend supports:
 
 ### C Library Imports
 
-Import C shared libraries directly in native Jac code:
+Import C shared libraries directly in native Jac code. A library can be named by its logical name (dotted, extensionless), which the backend resolves to the platform's filename -- `m` becomes `libm.so` on Linux, `libm.dylib` on macOS, and `m.dll` on Windows:
 
 <!-- jac-skip -->
 ```jac
 # compute.na.jac
-import from "libm" {
+import from m {
     def sin(x: f64) -> f64;
     def cos(x: f64) -> f64;
     def sqrt(x: f64) -> f64;
@@ -2031,7 +2031,7 @@ C structs can be declared inside library import blocks and used as normal Jac ob
 
 <!-- jac-skip -->
 ```jac
-import from "libgraphics" {
+import from graphics {
     obj Color {
         has r: u8, g: u8, b: u8, a: u8;
     }
@@ -2039,14 +2039,14 @@ import from "libgraphics" {
 }
 ```
 
+An explicit path string (`import from "/usr/lib/libm.so.6" { ... }`) is still accepted for a pinned or versioned file. See the [C Library Interop](native-pathway.md#c-library-interop) section of the native pathway reference for the full resolution rules.
+
 ### Python-Native Interop
 
 Native and Python codespaces can call each other within the same module:
 
 ```jac
 # main.jac (Python/server codespace)
-to sv:
-
 def process_data(data: list) -> list {
     # Python code with full PyPI access
     return sorted(data);

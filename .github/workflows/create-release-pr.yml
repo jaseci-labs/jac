@@ -33,6 +33,11 @@ on:
         type: choice
         default: skip
         options: [skip, patch, minor, major]
+      jac-desktop:
+        description: "jac-desktop bump"
+        type: choice
+        default: skip
+        options: [skip, patch, minor, major]
       jaseci:
         description: "jaseci meta-package bump"
         type: choice
@@ -78,6 +83,7 @@ jobs:
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-super "${{ inputs.jac-super }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \
+            --jac-desktop "${{ inputs.jac-desktop }}" \
             --jaseci "${{ inputs.jaseci }}"
 
       - name: Bump versions
@@ -90,6 +96,7 @@ jobs:
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-super "${{ inputs.jac-super }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \
+            --jac-desktop "${{ inputs.jac-desktop }}" \
             --jaseci "${{ inputs.jaseci }}"
 
       - name: Configure git

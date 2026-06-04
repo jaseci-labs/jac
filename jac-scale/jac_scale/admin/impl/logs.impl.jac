@@ -85,28 +85,77 @@ def _app_namespace -> str {
 }
 
 
-"""Configured microservice route keys + '__gateway__' (becomes the
-'gateway' service name in K-track). Empty list off-K8s."""
+"""Read [plugins.scale.kubernetes].app_name; '' on lookup failure.
+Used in monolith mode to populate the service dropdown / pod regex
+since there's no `[microservices.routes]` table to derive names from."""
+def _app_name -> str {
+    try {
+        return get_scale_config().get_kubernetes_config().get("app_name", "");
+    } except Exception {
+        return "";
+    }
+}
+
+
+"""True when the app declares one or more microservices via
+`[plugins.scale.microservices.routes]`. False for monolith deploys
+(no routes table or it's empty). Drives the per-mode forks below."""
+def _is_microservice_mode -> bool {
+    try {
+        routes: dict = get_scale_config().get_microservices_config().get("routes", {});
+        return bool(routes);
+    } except Exception {
+        return False;
+    }
+}
+
+
+"""Resolve service names from a config dict (pure helper).
+
+In microservice mode: `['gateway']` plus the sorted route keys.
+In monolith mode: a single-element list with the configured
+`app_name`, or `[]` if app_name is unknown - matches what users
+see in `kubectl get pods`. Pure function so tests can exercise
+both modes without touching the global config singleton."""
+def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[str] {
+    if microservice {
+        names: list[str] = list(routes.keys());
+        return ["gateway"] + sorted(names);
+    }
+    return [app_name] if app_name else [];
+}
+
+
+"""Configured services list for the admin UI dropdown."""
 def _microservice_services -> list[str] {
     try {
         ms = get_scale_config().get_microservices_config();
         routes: dict = ms.get("routes", {});
-        names: list[str] = list(routes.keys());
-        # Order: gateway first, then declared services. Matches what
-        # users see in `kubectl get pods` for a microservice deploy.
-        return ["gateway"] + sorted(names);
+        return _services_for_mode(bool(routes), routes, _app_name());
     } except Exception {
         return [];
     }
 }
 
 
-"""Translate a service name into the pod-name regex Loki labels use.
-K-track names pod templates `<svc>-deployment-*` (gateway, builder-sv,
-jac-coder-sv); applied via `pod=~"<svc>-deployment-.*"` in LogQL."""
-def _service_to_pod_regex(service: str) -> str {
+"""Translate a service name into the pod-name regex Loki labels use
+(pure helper). K-track names microservice pods
+`<svc>-deployment-<replicaset>-<random>` (gateway, builder-sv,
+jac-coder-sv); monolith pods are `<app_name>-<replicaset>-<random>`
+with no `-deployment-` infix. Pure function so tests can pin the
+mode explicitly."""
+def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
     safe = service.lower().replace("_", "-");
-    return f"{safe}-deployment-.*";
+    if microservice {
+        return f"{safe}-deployment-.*";
+    }
+    return f"{safe}-.*";
+}
+
+
+"""Translate a service name into the pod-name regex Loki labels use."""
+def _service_to_pod_regex(service: str) -> str {
+    return _service_to_pod_regex_for_mode(service, _is_microservice_mode());
 }
 
 
@@ -126,6 +175,10 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
 
     out: dict = {
         "ts": ts_iso,
+        # Raw Loki nanosecond timestamp - kept as a string to avoid
+        # JSON-side precision loss (>53 bits) and used by the
+        # listing endpoint's `before` cursor for older-page paging.
+        "ts_ns": ts_nanos,
         "level": pod_labels.get("level") or "INFO",
         "service": (
             pod_labels.get("service")
@@ -208,15 +261,24 @@ def _build_logql(
     if trace_id {
         # The K-12 trace id is exactly 8 hex chars for the short form
         # we put in the [trace=...] prefix; full UUID elsewhere. Match
-        # both shapes.
-        escaped_tid = trace_id.replace('"', '\\"');
+        # both shapes. The literal brackets need `\\[` / `\\]` in the
+        # LogQL string so the parser unescapes them to `\[` / `\]` for
+        # the regex engine - a bare `\[` is rejected as "invalid char
+        # escape" by Go's strconv.Unquote inside Loki's parser.
+        # Backslashes are doubled first so quotes inserted next don't
+        # get re-doubled (replace order matters here).
+        escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\[trace={escaped_tid[:8]}\\]"'
+            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
         );
     }
     if search {
         # Free-text contains-match. `|=` is case-sensitive substring.
-        escaped_search = search.replace('"', '\\"').replace("\\", "\\\\");
+        # Backslashes MUST be doubled before quotes are escaped,
+        # otherwise the `\"` we just inserted gets re-mangled into
+        # `\\"` which delivers a stray backslash to the substring
+        # match.
+        escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(f'|= "{escaped_search}"');
     }
 
@@ -256,9 +318,14 @@ async def _loki_request(path: str, params: dict) -> dict {
 
 
 """Flatten a Loki query_range response into the UI-shaped log line list.
-Sorted ascending by ts (oldest first) so trace timelines render in
-causal order in the React component."""
-def _flatten_loki_response(payload: dict) -> list[dict] {
+
+`ascending=True` (default) sorts oldest-first so trace timelines render
+in causal order in the React component. `ascending=False` sorts
+newest-first, which is what the main /admin/logs listing wants (matches
+`kubectl logs --tail`'s feel; users expect the most recent line at the
+top of the panel).
+"""
+def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] {
     out: list[dict] = [];
     data = payload.get("data") or {};
     for stream in (data.get("result") or []) {
@@ -272,7 +339,9 @@ def _flatten_loki_response(payload: dict) -> list[dict] {
             out.append(_parse_log_body(body, labels, ts_nanos));
         }
     }
-    out.sort(key=lambda line : line.get("ts", ""));
+    # Sort by the raw nanosecond ts (string-compare is safe: both
+    # sides are zero-padded same-length nanosecond integers from Loki).
+    out.sort(key=lambda line : line.get("ts_ns", ""), reverse=not ascending);
     return out;
 }
 
@@ -356,6 +425,20 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         multiplier_s = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(unit, 60);
         start_ns = now_ns - (magnitude * multiplier_s * 1_000_000_000);
 
+        # `before` is the cursor for "load older": a nanosecond ts
+        # (the oldest entry's ts_ns from the previous page). We
+        # subtract 1 so Loki excludes the boundary entry, otherwise
+        # the same line would re-appear at the top of the next page.
+        before = (qp.get("before") or "").strip();
+        end_ns = now_ns;
+        if before {
+            try {
+                end_ns = int(before) - 1;
+            } except (ValueError, TypeError) {
+                end_ns = now_ns;
+            }
+        }
+
         namespace = _app_namespace();
         logql = _build_logql(namespace, service, level, search, trace);
 
@@ -366,7 +449,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "query": logql,
                     "limit": str(limit),
                     "start": str(start_ns),
-                    "end": str(now_ns),
+                    "end": str(end_ns),
                     "direction": "backward"
                 }
             );
@@ -381,7 +464,16 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             );
         }
 
-        lines = _flatten_loki_response(payload);
+        # Listing wants newest-first - matches `kubectl logs --tail` UX
+        # so the latest line sits at the top of the panel.
+        lines = _flatten_loki_response(payload, ascending=False);
+        # Cursor for the next page: the oldest (last) entry's ts_ns.
+        # `null` when the page is short of `limit` so the UI hides
+        # the "Load older" button.
+        next_before = None;
+        if len(lines) >= limit and lines {
+            next_before = lines[-1].get("ts_ns");
+        }
         return JSONResponse(
             content={
                 "ok": True,
@@ -389,7 +481,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "lines": lines,
                     "count": len(lines),
                     "query": logql,
-                    "namespace": namespace
+                    "namespace": namespace,
+                    "next_before": next_before
                 }
             }
         );
@@ -405,7 +498,10 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             summary="Paginated log query",
             description=(
                 "Query params: service, level, search, trace, since (15m/1h/2d), "
-                "limit (default 200, max 1000). Returns lines sorted ascending."
+                "limit (default 200, max 1000), before (nanosecond ts cursor "
+                "from the previous page's `next_before`). Returns lines sorted "
+                "newest-first; cursor-paginate by passing the response's "
+                "`next_before` back as `before` on the next call."
             )
         )
     );

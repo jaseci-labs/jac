@@ -138,20 +138,6 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_AND_EQ: "emit_op_iand",
          Tok.BW_XOR_EQ: "emit_op_ixor"
      },
-     # Python-only method names that have no JS equivalent. When the static
-     # type of the receiver cannot be proven (issue #5508 / #5453), the
-     # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
-     # which dispatches to the native JS operation at runtime.
-     POLYMORPHIC_METHODS: set[str] = {
-         "lower",
-         "upper",
-         "strip",
-         "lstrip",
-         "rstrip",
-         "append",
-         "extend",
-         "pop"
-     },
      LiteralValue = str | bool | int | float | None;
 
 """Name of the synthesized children accumulator local for a JSX `{...}`
@@ -235,10 +221,42 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         sv_import_stubs: list[es.Statement] = [],
         # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
+        # OSP local-kernel lowering: set when a local walker is spawned via the
+        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
+        # injection in exit_module. `_osp_slots` collects one record per OSP
+        # ability: {owner, kind, name, trigger_names (list, empty = untyped),
+        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
+        # archetypes that need a compile-time type tag.
+        needs_osp_kernel: bool = False,
+        # Set when a connect op / edge ref is lowered: pulls in the cl OSP graph
+        # runtime (`__ospConn` / `__ospRefs`).
+        needs_osp_graph: bool = False,
+        _osp_slots: list[dict] = [],
+        _osp_arch_names: list[str] = [],
+        # Memoized {archetype name -> kind} for every local walker/node/edge in a
+        # module that has local OSP (any event ability). Includes edge types with
+        # no abilities (e.g. used only in connects/refs) so they still get a type
+        # tag + field constructor. Computed up front so emission order doesn't
+        # matter; empty for non-OSP modules.
+        _osp_prescan: (dict | None) = None,
+        # Memoized {variable name -> local archetype name} for `x = Arch(...)`
+        # bindings, so a spawn whose walker is held in a variable (`w spawn n`)
+        # can identify the walker side without type inference.
+        _osp_var_arch_cache: (dict | None) = None,
+        # Memoized {archetype name -> direct local base archetype names}, for the
+        # subtype `is_a` table (a `with Base entry` ability firing on a `Sub`).
+        _osp_bases_cache: (dict | None) = None,
         # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
-        _primitives_es_mod: (object | None) = None;
+        _primitives_es_mod: (object | None) = None,
+        # Set of Python method names that any primitive emitter knows how to
+        # emit (derived from the emitter registry, never hand-maintained). A
+        # method call on a receiver whose static type is not provably a
+        # primitive is routed through `_jac.poly.call(obj, "name", ...)` iff its
+        # name is in this set; otherwise it is a user-defined method and emits a
+        # plain member call. Lazily computed alongside the emitter singletons.
+        _poly_methods: (set[str] | None) = None;
 
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
@@ -286,6 +304,31 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
+    def _osp_ability_info(nd: uni.Ability) -> (dict | None);
+    def _osp_trigger_names(expr: (uni.Expr | None)) -> list[str];
+    def _osp_const_decl(
+        name: str, `init: es.Expression, nd: uni.UniNode
+    ) -> es.VariableDeclaration;
+
+    def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _build_osp_setup_js -> str;
+    def _osp_slots_js(slots: list, tags: dict) -> str;
+    def _local_walker_names -> set[str];
+    def _osp_arch_kinds -> dict[str, str];
+    def _osp_arch_set -> set[str];
+    def _osp_var_arch -> dict[str, str];
+    def _osp_arch_bases -> dict[str, list[str]];
+    def _spawn_walker_arch(expr: uni.Expr) -> (str | None);
+    def _spawn_target_is_local_node(expr: uni.Expr) -> bool;
+    def _build_osp_graph_call(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> (es.Expression | None);
+
+    def _build_edge_ref(nd: uni.EdgeRefTrailer) -> (es.Expression | None);
+    def _build_local_osp_spawn(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> (es.Expression | None);
+
     def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
         nd: (uni.UniNode | None),
@@ -309,6 +352,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
     def exit_ability(nd: uni.Ability) -> None;
+    def exit_visit_stmt(nd: uni.VisitStmt) -> None;
+    def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
+    def exit_report_stmt(nd: uni.ReportStmt) -> None;
+    def exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None;
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
@@ -390,6 +437,29 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         right_es: (es.Expression | None),
         jac_node: uni.UniNode
     ) -> (es.Expression | None);
+
+    def _expr_type_name(expr_node: uni.UniNode) -> str;
+    def _is_collection_expr(expr_node: uni.UniNode) -> bool;
+    def _build_jac_ref(path: list[str], jac_node: uni.UniNode) -> es.Expression;
+    def _build_jac_call(
+        path: list[str], args: list[es.Expression], jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _coerce_truthy(
+        expr_node: (uni.UniNode | None), es_expr: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _is_literal_index(idx_es: es.Expression) -> bool;
+    def _lower_subscript(
+        target_node: uni.UniNode,
+        obj_es: es.Expression,
+        idx_es: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _try_subscript_setitem(
+        target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
+    ) -> (es.Statement | None);
 
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;

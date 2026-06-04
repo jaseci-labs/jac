@@ -19,7 +19,8 @@ cl {
         search: str = "",
         trace: str = "",
         since: str = "15m",
-        limit: int = 200
+        limit: int = 200,
+        before: str = ""
     ) -> dict {
         params: str = f"since={encodeURIComponent(since)}&limit={limit}";
         if service {
@@ -33,6 +34,12 @@ cl {
         }
         if trace {
             params += f"&trace={encodeURIComponent(trace)}";
+        }
+        # `before` is the nanosecond ts cursor for "load older": pass
+        # back the previous response's `data.next_before`. Empty on
+        # the first page so the server uses `now` as the end bound.
+        if before {
+            params += f"&before={encodeURIComponent(before)}";
         }
         return await get("/admin/logs?" + params, token);
     }

@@ -25,6 +25,7 @@ cl {
 
     def:pub LogsPage -> JsxElement {
         has isLoading: bool = True,
+            isLoadingMore: bool = False,
             lines: list = [],
             services: list = [],
             filterService: str = "",
@@ -32,6 +33,10 @@ cl {
             filterSearch: str = "",
             filterSince: str = "15m",
             limit: int = 200,
+            # Cursor for the next "load older" page. Empty when no
+            # more pages are available (server returns `null` once a
+            # short page comes back).
+            nextBefore: str = "",
             autoRefresh: bool = False,
             errorMsg: str = "",
             backendOffline: bool = False,
@@ -62,6 +67,7 @@ cl {
         async def loadLogs {
             isLoading = True;
             backendOffline = False;
+            nextBefore = "";
             try {
                 result = await getLogs(
                     auth["authToken"],
@@ -70,10 +76,12 @@ cl {
                     filterSearch,
                     "",
                     filterSince,
-                    limit
+                    limit,
+                    ""
                 );
                 if result["ok"] and result["data"] {
                     lines = result["data"]["lines"] or [];
+                    nextBefore = String(result["data"]["next_before"] or "");
                     errorMsg = "";
                 } elif result["error"] {
                     errorMsg = result["error"]["message"] or "Failed to load logs";
@@ -88,6 +96,36 @@ cl {
                 errorMsg = "Error loading logs: " + String(e);
             }
             isLoading = False;
+        }
+
+        async def loadMore {
+            if not nextBefore or isLoadingMore {
+                return;
+            }
+            isLoadingMore = True;
+            try {
+                result = await getLogs(
+                    auth["authToken"],
+                    filterService,
+                    filterLevel,
+                    filterSearch,
+                    "",
+                    filterSince,
+                    limit,
+                    nextBefore
+                );
+                if result["ok"] and result["data"] {
+                    older = result["data"]["lines"] or [];
+                    # Append: newer page is already at the top, older
+                    # entries land beneath - the display stays
+                    # newest-first end-to-end.
+                    lines = lines.concat(older);
+                    nextBefore = String(result["data"]["next_before"] or "");
+                }
+            } except Exception as e {
+                console.error("loadMore error:", e);
+            }
+            isLoadingMore = False;
         }
 
         async def loadTrace(tid: str) {
@@ -373,6 +411,18 @@ cl {
                                 </span>}
                             </div>; }
                     )}
+                </div>}
+                {not isLoading
+                and lines.length > 0
+                and nextBefore
+                and <div className="flex justify-center pt-1">
+                    <Button
+                        onClick={lambda { loadMore(); }}
+                        variant="secondary"
+                        disabled={isLoadingMore}
+                    >
+                        {isLoadingMore and "Loading older..." or "Load older"}
+                    </Button>
                 </div>}
                 {panelIdx >= 0
                 and <div

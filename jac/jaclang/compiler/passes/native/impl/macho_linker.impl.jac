@@ -687,10 +687,18 @@ impl MachOLinker.build_executable -> bytes {
     num_lcs += 1;
     lc_total_size += 12 + len(dylinker_str);
 
-    # LC_LOAD_DYLIB for each needed lib
+    # LC_LOAD_DYLIB for each needed lib. A bare name (no directory and no
+    # @-prefix) is a library staged beside the executable, so load it via
+    # @loader_path (dyld resolves that relative to the binary regardless of the
+    # launch directory — the Mach-O counterpart of ELF's DT_RUNPATH=$ORIGIN).
+    # Absolute system paths (e.g. /usr/lib/libSystem.B.dylib) are kept verbatim.
     dylib_strs: list[bytes] = [];
     for lib in self.needed_libs {
-        padded = _lc_str_pad(lib, 24);
+        _dylib_name = lib;
+        if (not lib.startswith("/")) and (not lib.startswith("@")) {
+            _dylib_name = "@loader_path/" + lib;
+        }
+        padded = _lc_str_pad(_dylib_name, 24);
         dylib_strs.append(padded);
         num_lcs += 1;
         lc_total_size += 24 + len(padded);

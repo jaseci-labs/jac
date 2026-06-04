@@ -5,51 +5,49 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Cancel01Icon }
 
 cl {
-    def:pub Sheet(props: Any) -> JsxElement {
-        return
-            <SheetPrimitive.Root data-slot="sheet" {...props}/>;
+    def:pub Sheet(props: any) -> JsxElement {
+        return <SheetPrimitive.Root data-slot="sheet" {**props}/>;
     }
 
-    def:pub SheetTrigger(props: Any) -> JsxElement {
-        return
-            <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props}/>;
+    def:pub SheetTrigger(props: any) -> JsxElement {
+        return <SheetPrimitive.Trigger data-slot="sheet-trigger" {**props}/>;
     }
 
-    def:pub SheetClose(props: Any) -> JsxElement {
-        return
-            <SheetPrimitive.Close data-slot="sheet-close" {...props}/>;
+    def:pub SheetClose(props: any) -> JsxElement {
+        return <SheetPrimitive.Close data-slot="sheet-close" {**props}/>;
     }
 
-    def:pub SheetPortal(props: Any) -> JsxElement {
-        return
-            <SheetPrimitive.Portal data-slot="sheet-portal" {...props}/>;
+    def:pub SheetPortal(props: any) -> JsxElement {
+        return <SheetPrimitive.Portal data-slot="sheet-portal" {**props}/>;
     }
 
-    def:pub SheetOverlay(props: Any) -> JsxElement {
+    def:pub SheetOverlay(props: any) -> JsxElement {
         return
             <SheetPrimitive.Overlay
-                {...props}
+                {**props}
                 data-slot="sheet-overlay"
-                className={cn("cn-sheet-overlay fixed inset-0 z-50", props.className)}
+                className={cn(
+                    "cn-sheet-overlay fixed inset-0 z-50", props["className"]
+                )}
             />;
     }
 
-    def:pub SheetContent(props: Any) -> JsxElement {
-        side = props.side or "right";
-        showCloseButton = props.showCloseButton;
-        if showCloseButton == None {
+    def:pub SheetContent(props: any) -> JsxElement {
+        side = props["side"] or "right";
+        showCloseButton = props["showCloseButton"];
+        if showCloseButton is None {
             showCloseButton = True;
         }
         return
             <SheetPortal>
                 <SheetOverlay/>
                 <SheetPrimitive.Content
-                    {...props}
+                    {**props}
                     data-slot="sheet-content"
                     data-side={side}
-                    className={cn("cn-sheet-content", props.className)}
+                    className={cn("cn-sheet-content", props["className"])}
                 >
-                    {props.children}{showCloseButton
+                    {props["children"]}{showCloseButton
                     and <SheetPrimitive.Close data-slot="sheet-close" asChild={True}>
                         <Button
                             variant="ghost"
@@ -64,39 +62,43 @@ cl {
             </SheetPortal>;
     }
 
-    def:pub SheetHeader(props: Any) -> JsxElement {
+    def:pub SheetHeader(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="sheet-header"
-                className={cn("cn-sheet-header flex flex-col", props.className)}
+                className={cn("cn-sheet-header flex flex-col", props["className"])}
             />;
     }
 
-    def:pub SheetFooter(props: Any) -> JsxElement {
+    def:pub SheetFooter(props: any) -> JsxElement {
+        attrs: dict[str, any] = {** props};
         return
             <div
-                {...props}
+                {**attrs}
                 data-slot="sheet-footer"
-                className={cn("cn-sheet-footer mt-auto flex flex-col", props.className)}
+                className={cn(
+                    "cn-sheet-footer mt-auto flex flex-col", props["className"]
+                )}
             />;
     }
 
-    def:pub SheetTitle(props: Any) -> JsxElement {
+    def:pub SheetTitle(props: any) -> JsxElement {
         return
             <SheetPrimitive.Title
-                {...props}
+                {**props}
                 data-slot="sheet-title"
-                className={cn("cn-sheet-title", props.className)}
+                className={cn("cn-sheet-title", props["className"])}
             />;
     }
 
-    def:pub SheetDescription(props: Any) -> JsxElement {
+    def:pub SheetDescription(props: any) -> JsxElement {
         return
             <SheetPrimitive.Description
-                {...props}
+                {**props}
                 data-slot="sheet-description"
-                className={cn("cn-sheet-description", props.className)}
+                className={cn("cn-sheet-description", props["className"])}
             />;
     }
 }
