@@ -1,1 +1,39 @@
 @import "tailwindcss";
+
+/* Modern dark dev-tool base: cool near-black, antialiased text, thin
+   unobtrusive scrollbars. Page surfaces stay on the slate ramp so every
+   existing page reads as one cohesive theme. */
+html,
+body {
+    background-color: #020617;
+    color: #e2e8f0;
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}

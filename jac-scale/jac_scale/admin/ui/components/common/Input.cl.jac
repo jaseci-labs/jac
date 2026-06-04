@@ -9,7 +9,7 @@ cl {
         placeholder: str = "",
         className: str = ""
     ) -> JsxElement {
-        inputClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm placeholder-slate-600 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition";
+        inputClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-colors";
 
         return
             <div className={className}>
@@ -37,7 +37,7 @@ cl {
         rows: int = 4,
         className: str = ""
     ) -> JsxElement {
-        textareaClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm font-mono placeholder-slate-600 focus:outline-none focus:border-orange-500 transition";
+        textareaClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-colors";
 
         return
             <div className={className}>

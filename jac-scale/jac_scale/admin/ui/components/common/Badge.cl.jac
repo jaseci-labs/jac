@@ -3,15 +3,15 @@
 cl {
     def:pub Badge(text: str, variant: str = "default") -> JsxElement {
         variantClasses = {
-            "admin": "bg-purple-500/20 text-purple-400",
-            "user": "bg-slate-700 text-slate-400",
-            "default": "bg-slate-700 text-slate-400",
-            "success": "text-emerald-400",
-            "warning": "text-amber-400",
-            "error": "text-red-400"
+            "admin": "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30",
+            "user": "bg-slate-800 text-slate-300 border border-slate-700",
+            "default": "bg-slate-800 text-slate-300 border border-slate-700",
+            "success": "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
+            "warning": "bg-amber-500/15 text-amber-300 border border-amber-500/30",
+            "error": "bg-red-500/15 text-red-300 border border-red-500/30"
         };
 
-        classes = "px-2 py-0.5 text-xs font-medium rounded " + (
+        classes = "inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md " + (
             variantClasses[variant] or variantClasses["default"]
         );
 

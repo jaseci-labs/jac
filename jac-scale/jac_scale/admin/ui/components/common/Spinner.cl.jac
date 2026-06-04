@@ -8,7 +8,7 @@ cl {
 
         return
             <div
-                className={"border-2 border-orange-500 border-t-transparent rounded-full animate-spin " + sizeClass}
+                className={"border-2 border-indigo-500 border-t-transparent rounded-full animate-spin " + sizeClass}
             ></div>;
     }
 
