@@ -48,6 +48,7 @@ import from jaclang.jac0core.diagnostics {
     E1035,
     E1040,
     E1041,
+    E1043,
     E1050,
     E1051,
     E1052,
@@ -99,6 +100,7 @@ obj PrefetchedTypes {
         type_class: types.ClassType | None = None,
         union_type_class: types.ClassType | None = None,
         awaitable_class: types.ClassType | None = None,
+        coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
         method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
@@ -187,7 +189,8 @@ obj NarrowingTarget {
 obj NarrowingPredicate {
     has key: str,
         narrow_type: TypeBase,
-        is_inverted: bool = False;
+        is_inverted: bool = False,
+        attr_name: str | None = None;
 }
 
 """Classification of a leaf narrowing condition."""
@@ -198,7 +201,8 @@ enum NarrowingKind {
     NONE_IS_NOT = "none_is_not",
     TRUTHINESS = "truthiness",
     LITERAL_EQ = "literal_eq",
-    LITERAL_NE = "literal_ne"
+    LITERAL_NE = "literal_ne",
+    HASATTR = "hasattr"
 }
 
 """Result of classifying a leaf condition node.
@@ -210,7 +214,8 @@ before reaching classification.
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
-        narrow_type: (TypeBase | None) = None;
+        narrow_type: (TypeBase | None) = None,
+        attr_name: str | None = None;
 }
 
 """Type evaluator for JacLang."""
@@ -223,6 +228,7 @@ obj TypeEvaluator {
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         # Names made ambient by typing_ambient.pyi's __all__, keyed by the
         # source module the stub re-exports them from (typing /
@@ -260,6 +266,12 @@ obj TypeEvaluator {
         # when the module is Jac source (Layer 2 strict-Any applies),
         # False when it is Python source (PEP 484 stays permissive).
         _strict_site_cache: dict[int, bool] = {},
+        # Per-module set of symbol ids bound by `sv import` to a server
+        # function, keyed by `id(module)`. Calls to these are async RPC stubs
+        # on the client. Scoped per module so a server function called
+        # server-side (same shared symbol) is unaffected. Same id-keyed,
+        # recompile-invalidated pattern as `_strict_site_cache`.
+        _sv_async_syms_cache: dict[int, set[int]] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -273,7 +285,12 @@ obj TypeEvaluator {
         # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
         # into builtins: its names (File, native open) resolve only in native
         # context via a gated lookup, so they never leak into regular .jac.
-        na_builtins_module: uni.Module by postinit;
+        na_builtins_module: uni.Module by postinit,
+        # ECMAScript / browser ambient stub for client code. Like na_builtins
+        # (and unlike dom_types), NOT merged into builtins: its names (Date,
+        # Math, console, window, ...) resolve only in client context via a
+        # gated lookup, so they never leak into server .jac code.
+        js_globals_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -312,6 +329,7 @@ obj TypeEvaluator {
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
+    def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _resolve_star_import_symbol(
@@ -329,6 +347,11 @@ obj TypeEvaluator {
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
+    # Apply function-shaped decorators (e.g. contextmanager) to an ability's type.
+    def _apply_function_decorators(
+        node_: uni.Ability, func_type: types.FunctionType
+    ) -> types.FunctionType;
+
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
@@ -466,6 +489,10 @@ obj TypeEvaluator {
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
 
+    def _get_iterable_element_type(
+        iterable_type: TypeBase, node_for_error: uni.Expr | None = None
+    ) -> TypeBase | None;
+
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
@@ -519,6 +546,22 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    # --- async / await modeling ---
+    # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
+    # `async def` call evaluates to). Returns `inner` unchanged if Coroutine
+    # is unavailable or `inner` is already a generator-family type.
+    def _make_coroutine_type(inner: TypeBase) -> TypeBase;
+    # True if `t` is an awaitable (Coroutine/Awaitable instance, or a class
+    # implementing `__await__`).
+    def _is_awaitable_type(t: TypeBase) -> bool;
+    # Unwrap one `await`: Coroutine[Y,S,R]->R, Awaitable[T]->T, else via
+    # `__await__`. Non-awaitables pass through unchanged (lenient).
+    def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
+    # True if `expr` is a call to a function imported via `sv import` in the
+    # enclosing module — such functions lower to async RPC stubs on the
+    # client, so their calls return coroutines even though the server
+    # declaration is synchronous.
+    def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
@@ -526,6 +569,22 @@ obj TypeEvaluator {
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];
+
+    def _literal_type_from_expr(val: uni.Expr) -> types.TypeBase | None;
+    def _build_typeddict_fields(
+        class_type: types.ClassType
+    ) -> dict[str, types.TypeBase];
+
+    def _has_typeddict_special_form_base(node_: uni.Archetype) -> bool;
+    def _typeddict_value_union(base_type: types.ClassType) -> types.TypeBase;
+    def _get_typeddict_indexed_type(
+        base_type: types.ClassType, key_expr: uni.Expr, err_node: uni.UniNode
+    ) -> types.TypeBase | None;
+
+    def _typeddict_as_dict(base_type: types.ClassType) -> types.ClassType | None;
+    def _synthesize_typeddict_method(
+        base_type: types.ClassType, method: str
+    ) -> types.OverloadedType | None;
 
     def _create_dataclass_init_method(
         class_type: types.ClassType
@@ -676,6 +735,12 @@ obj TypeEvaluator {
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
     def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _extract_hasattr_info(condition: uni.Expr) -> tuple[str, str] | None;
+    def _type_has_attribute(t: TypeBase, attr_name: str) -> bool;
+    def _filter_union_for_hasattr(
+        base_type: TypeBase, attr_name: str, keep_with_attr: bool
+    ) -> TypeBase | None;
+
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
     def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;

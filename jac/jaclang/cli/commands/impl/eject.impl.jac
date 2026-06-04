@@ -32,7 +32,18 @@ glob _SV_SUFFIX: str = ".sv.jac",
      _IMPL_SUFFIX: str = ".impl.jac",
      _TEST_SUFFIX: str = ".test.jac",
      # Directories never traversed when collecting source files.
-     _SKIP_DIRS: set = {".jac",".git",".venv","venv","node_modules","__pycache__",".mypy_cache",".pytest_cache","dist","build"};
+     _SKIP_DIRS: set = {
+         ".jac",
+         ".git",
+         ".venv",
+         "venv",
+         "node_modules",
+         "__pycache__",
+         ".mypy_cache",
+         ".pytest_cache",
+         "dist",
+         "build"
+     };
 
 
 """Resolve the output directory for `jac eject`.
@@ -415,10 +426,11 @@ function definition signature and skip the injection to avoid a circular
 import.
 """
 def _inject_runtime_imports(js_code: str) -> str {
+    import from jaclang.runtimelib.client_surface { prepended_runtime_import }
     if "function __jacJsx(" in js_code {
         return js_code;
     }
-    return 'import {__jacJsx, __jacSpawn} from "@jac/runtime";\n' + js_code;
+    return prepended_runtime_import() + '\n' + js_code;
 }
 
 

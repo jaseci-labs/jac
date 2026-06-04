@@ -1,3 +1,3 @@
 # Jaseci v2.0 Meta-package
 # This package installs the complete Jaseci ecosystem
-__version__ = "2.3.13"
+__version__ = "2.3.21"

@@ -543,8 +543,7 @@ cl {
     def TodosPage -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
-            return
-                <Navigate to="/login"/>;
+            return <Navigate to="/login"/>;
         }
 
         has todos: list = [],
@@ -666,11 +665,9 @@ cl {
     # Home/Landing Page - auto-redirect
     def HomePage -> JsxElement {
         if jacIsLoggedIn() {
-            return
-                <Navigate to="/todos"/>;
+            return <Navigate to="/todos"/>;
         }
-        return
-            <Navigate to="/login"/>;
+        return <Navigate to="/login"/>;
     }
 
     # Main App with React Router

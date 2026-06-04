@@ -5,7 +5,30 @@ import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, JacTypeEntry }
 # ── Primitive type names ──────────────────────────────────────
 test "registry contains all 22 expected primitive types" {
     names = JAC_TYPE_REGISTRY.primitive_names();
-    expected = {"int","float","bool","complex","str","bytes","list","dict","set","frozenset","tuple","range","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64"};
+    expected = {
+        "int",
+        "float",
+        "bool",
+        "complex",
+        "str",
+        "bytes",
+        "list",
+        "dict",
+        "set",
+        "frozenset",
+        "tuple",
+        "range",
+        "i8",
+        "u8",
+        "i16",
+        "u16",
+        "i32",
+        "u32",
+        "i64",
+        "u64",
+        "f32",
+        "f64"
+    };
     assert names == expected;
 }
 
@@ -88,13 +111,47 @@ test "types without LLVM representation are excluded from na_type_entries" {
 # ── Builtin function names ───────────────────────────────────
 test "builtin_names contains core builtins" {
     builtins = JAC_TYPE_REGISTRY.builtin_names();
-    core = {"print","len","range","int","str","float","bool","list","dict","set","tuple","isinstance","type","abs","round","min","max","sum"};
+    core = {
+        "print",
+        "len",
+        "range",
+        "int",
+        "str",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "isinstance",
+        "type",
+        "abs",
+        "round",
+        "min",
+        "max",
+        "sum"
+    };
     assert core.issubset(builtins);
 }
 
 test "builtin_names contains type conversions" {
     builtins = JAC_TYPE_REGISTRY.builtin_names();
-    conversions = {"str","int","float","bool","list","dict","set","tuple","frozenset","bytes","complex","range","slice","bytearray"};
+    conversions = {
+        "str",
+        "int",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "frozenset",
+        "bytes",
+        "complex",
+        "range",
+        "slice",
+        "bytearray"
+    };
     assert conversions.issubset(builtins);
 }
 

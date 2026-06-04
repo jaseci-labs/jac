@@ -28,26 +28,9 @@ impl Message.from_dict(d: dict) -> Message | LiteLLMMessage | dict {
 """Convert the message to a dictionary for LLM API calls."""
 impl Message.to_dict -> dict[str, object] {
     if isinstance(self.content, str) {
-        return {"role": self.role.value, "content": self.content,};
+        return {"role": self.role.value, "content": self.content};
     }
-    media_contents = [];
-    for media in self.content {
-        # Pre-serialized blocks from a round-tripped Message — pass through.
-        if isinstance(media, dict) {
-            media_contents.append(media);
-            continue;
-        }
-        semstr = "";
-        if isinstance(media, tuple) {
-            semstr = media[1] or "";
-            media = media[0];
-        }
-        if semstr {
-            media_contents.append({"type": "text", "text": semstr});
-        }
-        media_contents.extend(media.to_dict());
-    }
-    return {"role": self.role.value, "content": media_contents};
+    return {"role": self.role.value, "content": serialize_media_content(self.content)};
 }
 
 #-------------------------------------------------------------------------------
@@ -60,9 +43,14 @@ impl ToolCallResultMsg.postinit -> None {
 
 """Convert the tool call result message to a dictionary."""
 impl ToolCallResultMsg.to_dict -> dict[str, object] {
+    content_out = (
+        self.content
+            if isinstance(self.content, str)
+            else serialize_media_content(self.content)
+    );
     return {
         "role": self.role.value,
-        "content": self.content,
+        "content": content_out,
         "tool_call_id": self.tool_call_id,
         "name": self.name,
 

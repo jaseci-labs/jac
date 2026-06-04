@@ -738,6 +738,61 @@ cl import from "@jac/runtime" {
     assert "renderJsxTree" in item_names;
 }
 
+test "extensionless logical clib import parses as clib decls (issue #6387)" {
+    # A native C-FFI import may name the library by a dotted, extensionless logical
+    # name instead of a string-literal path. The brace block opening with a `def`
+    # is what marks it as a clib block, so the from-path is parsed as Name nodes
+    # and the declarations land in clib_decls (not items).
+    source = """
+import from raylib {
+    def InitWindow(width: i32, height: i32, title: str) -> None;
+    def CloseWindow -> None;
+}
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test_logical_clib.na.jac");
+    assert not prog.errors_had , f"Parser errors: {prog.errors_had}";
+    imports = [
+        stmt
+        for stmt in mod.body
+        if type(stmt).__name__ == "Import"
+    ];
+    assert len(imports) == 1 , "Should have one import statement";
+    import_stmt = imports[0];
+    assert isinstance(import_stmt, uni.Import);
+    # Library named by a bare Name (not a String literal), no extension.
+    assert import_stmt.from_loc is not None , "Import should have from_loc";
+    assert import_stmt.from_loc.dot_path_str == "raylib" , "logical name should be 'raylib'";
+    assert import_stmt.from_loc.path is not None;
+    assert isinstance(import_stmt.from_loc.path[0], uni.Name) , "path must be a Name, not String";
+    # The extern declarations land in clib_decls, and there are no import items.
+    assert import_stmt.clib_decls is not None and len(import_stmt.clib_decls) == 2 , (
+        f"expected 2 clib decls, got {import_stmt.clib_decls}"
+    );
+    assert len(import_stmt.items) == 0 , "clib import must not produce import items";
+}
+
+test "dotted logical clib import parses with sub-path (issue #6387)" {
+    source = """
+import from libs.raylib {
+    def CloseWindow -> None;
+}
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test_dotted_clib.na.jac");
+    assert not prog.errors_had , f"Parser errors: {prog.errors_had}";
+    imports = [
+        stmt
+        for stmt in mod.body
+        if type(stmt).__name__ == "Import"
+    ];
+    assert len(imports) == 1;
+    import_stmt = imports[0];
+    assert import_stmt.from_loc.dot_path_str == "libs.raylib";
+    assert import_stmt.clib_decls is not None and len(import_stmt.clib_decls) == 1;
+    assert len(import_stmt.items) == 0;
+}
+
 glob FILES_EXPECTED_ERRORS = ["uninitialized_hasvars.jac"];
 
 def parser_file_test(rel_path: str) -> None {
@@ -965,6 +1020,35 @@ test "decorated class in code block parses as archetype" {
         "A_InMethodClass"
     ] {
         assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
+}
+
+test "docstring attaches to all member types inside archetype body" {
+    (mod, err) = rd_parse(load_fixture("docstring_with_entry.jac"), "");
+    assert not err , "Parser reported errors for docstrings on archetype members";
+
+    def collect_doc_nodes(nd: uni.UniNode) -> list {
+        results: list = [];
+        if isinstance(nd, (uni.ArchHas, uni.Ability, uni.ModuleCode, uni.Archetype))
+        and nd.doc is not None {
+            results.append(nd);
+        }
+        for k in nd.kid {
+            results.extend(collect_doc_nodes(k));
+        }
+        return results;
+    }
+
+    doc_nodes = collect_doc_nodes(mod);
+    assert len(doc_nodes) == 4 , (
+        f"Expected 4 doc-carrying members (has, def, with entry, nested obj) "
+        f"but got {len(doc_nodes)}: {[type(n).__name__ for n in doc_nodes]}"
+    );
+
+    for nd in doc_nodes {
+        assert nd.doc is not None , (
+            f"{type(nd).__name__}.doc must be set when preceded by a docstring"
+        );
     }
 }
 

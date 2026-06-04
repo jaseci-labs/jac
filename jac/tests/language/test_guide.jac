@@ -288,10 +288,11 @@ test "every ```jac example in a guide checks clean" {
 
 test "guides only reference known jac create templates" {
     # `default` ships with jaclang; `client` / `fullstack` are registered by the
-    # jac-client plugin. A guide naming anything else is a typo or stale name.
+    # jac-client plugin; `jac-shadcn` by the jac-super plugin. A guide naming
+    # anything else is a typo or stale name.
     # (Allowlist, not the live registry: plugin templates are absent unless the
     # plugin is installed, so the registry alone would flag a correct guide.)
-    known: list[str] = ["default", "client", "fullstack"];
+    known: list[str] = ["default", "client", "fullstack", "jac-shadcn"];
     bad: list[str] = [];
     for g in list_guides() {
         # Capture bare template names only; skip path/URL forms (./x.jacpack,

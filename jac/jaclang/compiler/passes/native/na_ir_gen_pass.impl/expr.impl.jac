@@ -98,6 +98,19 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `await e`: native has no event loop, so an awaited coroutine has
+        # already run in this synchronous model — await evaluates to the
+        # value of its target. Correct for sequential async code; it does
+        # not provide concurrency.
+    } elif isinstance(nd, uni.AwaitExpr) {
+        _result = self._codegen_expr(nd.target);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)
@@ -290,6 +303,85 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
+"""Generate walrus `:=` expression.
+
+Binds `nd.left` (always a simple Name — the parser only accepts a Name
+on the left of `:=`) to the value of `nd.right`, then evaluates to that
+value so the enclosing expression can consume it, e.g. `if (n := f()) > 5`.
+
+The binding is stored into the name's local alloca, created in the entry
+block on first use. Pointer-typed values follow the same retain/release
+discipline as a normal assignment: retain a borrowed value before storing,
+release any prior occupant of an existing slot.
+"""
+impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    var_name = self._get_name(nd.left);
+    if var_name is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        return None;
+    }
+    value = self._codegen_expr(nd.right);
+    if value is None {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    if var_name in self.local_vars {
+        # Rebind an existing local: coerce to the slot type, then release
+        # the prior occupant (pointer slots only) after retaining the new one.
+        alloca = self.local_vars[var_name];
+        slot_type = alloca.type.pointee;
+        value = self._coerce_type(value, slot_type);
+        if isinstance(slot_type, ir.PointerType) {
+            if not self._is_owned(value) {
+                self._emit_rc_retain(value, op="walrus", loc=_loc);
+            }
+            old_val = self.builder.load(alloca, name=f"{var_name}.old");
+            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+    } else {
+        # First binding: allocate a slot in the entry block. The store
+        # below always runs before any scope cleanup, so the slot is never
+        # read uninitialized.
+        var_type = value.type;
+        alloca = self._entry_alloca(var_type, var_name);
+        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
+            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+        self.local_vars[var_name] = alloca;
+    }
+    # Evaluate to the bound value. This is a borrowed read of the slot the
+    # local now owns — matching _codegen_name's borrow semantics.
+    return self.builder.load(alloca, name=var_name);
+}
+
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
@@ -299,9 +391,14 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     # Trying to evaluate `nd.left` first would return None, and the
     # function would silently exit returning None — masking the real
     # gap. Catch known-unsupported ops here so the error is loud.
-    if op in (Tok.WALRUS_EQ, Tok.PIPE_FWD) {
-        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
-        return None;
+    if op == Tok.WALRUS_EQ {
+        return self._codegen_walrus(nd);
+    }
+    if op == Tok.PIPE_FWD {
+        return self._codegen_pipe_fwd(nd);
+    }
+    if op == Tok.KW_SPAWN {
+        return self._codegen_spawn(nd);
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
@@ -329,6 +426,94 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         }
     }
     return result;
+}
+
+"""Lower the `spawn` operator: run a walker's entry abilities on a location.
+
+Milestone scope: a direct `walker spawn node` (either operand order) with
+compile-time dispatch and no traversal queue / `visit` yet. Identifies which
+operand is the walker (by archetype kind) and emits direct calls to the
+walker's entry abilities whose trigger matches the spawned location's type (or
+are untyped). Returns the walker, matching `spawn`'s value.
+"""
+impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    left_val = self._codegen_expr(nd.left);
+    right_val = self._codegen_expr(nd.right);
+    if left_val is None or right_val is None {
+        return None;
+    }
+    # Resolve each operand's archetype name from the AST (constructor call or
+    # typed variable).
+    left_name = self._spawn_operand_name(nd.left);
+    right_name = self._spawn_operand_name(nd.right);
+    left_is_walker = left_name is not None and self._is_walker_arch(left_name);
+    right_is_walker = right_name is not None and self._is_walker_arch(right_name);
+    if left_is_walker {
+        self._emit_spawn_entry_dispatch(left_name, left_val, right_name, right_val);
+        return left_val;
+    }
+    if right_is_walker {
+        self._emit_spawn_entry_dispatch(right_name, right_val, left_name, left_val);
+        return right_val;
+    }
+    self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+    return left_val;
+}
+
+"""Resolve a spawn operand to its archetype name (None if not determinable)."""
+impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
+    if isinstance(nd, uni.FuncCall) {
+        return self._get_name(nd.target);
+    }
+    if isinstance(nd, uni.Name) {
+        return self.type_var_map.get(nd.value);
+    }
+    return None;
+}
+
+"""True if `name` is a walker archetype."""
+impl NaIRGenPass._is_walker_arch(name: str) -> bool {
+    arch = self.arch_ast_map.get(name);
+    return (
+        arch is not None
+        and isinstance(arch, uni.Archetype)
+        and arch.arch_type is not None
+        and arch.arch_type.name == Tok.KW_WALKER
+    );
+}
+
+"""Call the walker's entry abilities that fire for the spawned location."""
+impl NaIRGenPass._emit_spawn_entry_dispatch(
+    walker_name: str, walker_val: ir.Value, loc_name: (str | None), loc_val: ir.Value
+) -> None {
+    arch = self.arch_ast_map.get(walker_name);
+    if not isinstance(arch, uni.Archetype) or arch.body is None {
+        return;
+    }
+    for stmt in arch.body {
+        if isinstance(stmt, uni.Ability)
+        and isinstance(stmt.signature, uni.EventSignature) {
+            ev = stmt.signature;
+            if ev.event.name != Tok.KW_ENTRY {
+                continue;
+            }
+            trig = self._get_name(ev.arch_tag_info)
+                if ev.arch_tag_info is not None
+                else None;
+            # Untyped entry fires on every location; a typed entry fires when
+            # the spawned location's type matches its trigger.
+            if trig is None or trig == loc_name {
+                mname = stmt.name_ref.sym_name if stmt.name_ref else None;
+                fn = self.method_funcs.get(f"{walker_name}.{mname}")
+                    if mname is not None
+                    else None;
+                if fn is not None {
+                    arg_loc = self._coerce_type(loc_val, fn.args[1].type);
+                    self.builder.call(fn, [walker_val, arg_loc]);
+                }
+            }
+        }
+    }
 }
 
 """Generate comparison expression."""

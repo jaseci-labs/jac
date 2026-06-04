@@ -205,13 +205,11 @@ impl PluginManager.load_setuptools_entrypoints(group: str) -> int {
     return count;
 }
 
-@property
-impl _DistFacade.project_name -> str {
+impl _DistFacade.project_name.getter -> str {
     return self._dist.metadata['Name'];
 }
 
-@property
-impl _DistFacade.version -> str {
+impl _DistFacade.version.getter -> str {
     return self._dist.metadata.get('Version', '0.0.0');
 }
 

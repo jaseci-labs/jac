@@ -19,7 +19,15 @@ import from jaclang.cli.console { console }
 """Scan the project for .jac files, excluding build artifacts."""
 def scan_jac_files(project_root: str = ".") -> list[str] {
     base_dir = Path(project_root);
-    exclude_dirs: set[str] = {".jac","__pycache__","node_modules",".git","dist","build","__jac_gen__"};
+    exclude_dirs: set[str] = {
+        ".jac",
+        "__pycache__",
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "__jac_gen__"
+    };
     jac_files: list[str] = [];
 
     for f in base_dir.rglob("*.jac") {

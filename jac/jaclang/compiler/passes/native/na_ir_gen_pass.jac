@@ -65,6 +65,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
+        # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
+        # single source of truth for how a foreign call is marshalled — it
+        # replaces the old non-injective `result.type == abi_type` matching that
+        # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
+        clib_fn_abi: dict[str, dict] = {},
         # Enum support (Phase 1)
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
@@ -92,6 +98,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
         _last_type_node_hint: (object | None) = None,
+        # True while codegen'ing the TupleVal of a `return (...)`. In that
+        # context borrowed (field-load / element-read) pointer elements must be
+        # retained so they outlive the owning local's scope-exit teardown — the
+        # returned tuple box does not own its elements (see _codegen_tuple_val).
+        _return_tuple_ctx: bool = False,
         # Inheritance / vtable support (Phase 5)
         class_hierarchy: dict[str, str] = {},
         class_parents: dict[str, list[str]] = {},
@@ -137,6 +148,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Primitive emitter singletons
         _native_emitters: (dict[str, object] | None) = None,
         _native_builtin_emitter: (object | None) = None,
+        # Cache: primitive type name -> named methods its emitter implements
+        _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
         # Reference counting support (Phase RC)
         # Phase R2: compile-time gate on debug-only RC machinery (live-list,
         # ctx attribution, leak dump). Read from JAC_RC_DEBUG_CODEGEN env var
@@ -196,6 +209,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
+    def _codegen_nested_ability(nd: uni.Ability) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
@@ -208,6 +222,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
@@ -271,6 +287,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    def _codegen_iter_for(nd: uni.IterForStmt) -> None;
+    def _codegen_match(nd: uni.MatchStmt) -> None;
+    def _match_pattern_cond(
+        pat: uni.MatchPattern, subj: ir.Value
+    ) -> (ir.Value | None);
+
+    def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
+    def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
@@ -279,6 +303,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module(imported_mod: uni.Module) -> None;
@@ -294,6 +319,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
+    def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
+    def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
+    def _is_walker_arch(name: str) -> bool;
+    def _emit_spawn_entry_dispatch(
+        walker_name: str,
+        walker_val: ir.Value,
+        loc_name: (str | None),
+        loc_val: ir.Value
+    ) -> None;
+
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
@@ -555,8 +592,42 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
     # C library imports: import from "libname" { def ...; }
     def _process_clib_imports(module: uni.Module) -> None;
+    def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
+    # Compute the C in-memory layout of a clib struct: (size, align, scalars)
+    # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
+    # structs are flattened (inlined) recursively to match the C ABI.
+    def _clib_struct_layout(name: str) -> tuple;
+    def _scalar_layout(llt: ir.Type) -> tuple;
+    # Classify a clib struct for the active target's C ABI (dispatches to the
+    # System V or AAPCS variant) into either MEMORY (indirect) or register
+    # coerce types.
+    def _classify_clib_struct(name: str) -> dict;
+    def _classify_clib_struct_sysv(name: str) -> dict;
+    def _classify_clib_struct_aapcs(name: str) -> dict;
+    # Name of the (struct) type an annotation refers to, or None.
+    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
+    # True if the clib struct has a field that is itself a clib struct.
+    def _clib_has_nested(name: str) -> bool;
+    # C-laid-out LLVM type for a clib struct (nested clib structs inlined).
+    def _clib_c_type(name: str) -> ir.Type;
+    # Produce a pointer to a C-laid-out copy of a Jac clib-struct value, ready
+    # for register slicing or byval. Flat structs reuse the value directly.
+    def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
+    # Box a C-laid-out struct pointer into an RC-managed Jac struct pointer.
+    def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
+    # Recursively copy between the Jac (pointer-nested) and C (inlined) layouts.
+    def _clib_copy_jac_to_c(jac_ptr: ir.Value, c_ptr: ir.Value, name: str) -> None;
+    def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
+    # Allocate an RC-managed box for a clib struct (size from GEP-of-null).
+    def _clib_alloc_box(name: str) -> ir.Value;
+    # Marshal a foreign call from its stored ABI plan; returns the call result
+    # already reconstructed into Jac representation (or scalar).
+    def _codegen_clib_call(
+        func: ir.Function, func_name: str, args: list[ir.Value]
+    ) -> (ir.Value | None);
     # Layout metadata export
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
@@ -564,6 +635,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _extract_elem_struct_hint(type_node: object) -> (str | None);
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
+    def _primitive_method_names(type_name: str) -> set[str];
     def _dispatch_primitive_method(
         type_name: str,
         method_name: str,

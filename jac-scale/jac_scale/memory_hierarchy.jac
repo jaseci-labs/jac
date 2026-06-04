@@ -99,11 +99,14 @@ obj MongoBackend(PersistentMemory) {
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
+        _l2_ref: (any | None) = None,
         fetch_count: int = 0,
-        put_count: int = 0;
+        put_count: int = 0,
+        _atomic_written: set by postinit;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
+    def set_cache_ref(cache: (any | None)) -> None;
     def is_available -> bool;
     def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
@@ -133,8 +136,7 @@ obj MongoBackend(PersistentMemory) {
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     # One-time index setup (idempotent). Called from postinit.
     def ensure_indexes -> None;
-    # PersistentMemory-specific
-    def sync -> None;
+    def sync -> set;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
     # Layer 1+2+3 operator surface
     def inspect_summary -> dict;

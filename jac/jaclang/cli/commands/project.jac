@@ -3,7 +3,9 @@
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
-glob registry = get_registry();
+glob registry = get_registry(),
+     # Python 3.X minor versions targeted by `jac bundle --precompile`.
+     _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
 
 """Initialize a new Jac project."""
 @registry.command(
@@ -14,7 +16,7 @@ glob registry = get_registry();
             "name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Project name (defaults to 'jactastic' with incrementing number if exists)"
+            help="Project name (omit to initialize the current directory)"
         ),
         Arg.create(
             "force",
@@ -39,10 +41,7 @@ glob registry = get_registry();
 
     ],
     examples=[
-        (
-            "jac create",
-            "Create new jactastic/ directory (or jactastic1/, jactastic2/, etc.)"
-        ),
+        ("jac create", "Initialize a project in the current directory (name from cwd)"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create myapp --use client", "Create with client jacpack template"),
@@ -366,24 +365,44 @@ def clean(
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-"""Build a wheel from jac.toml into the output directory."""
+"""Build a distributable package from jac.toml into the output directory."""
 @registry.command(
     name="bundle",
-    help="Build a .whl from jac.toml (upload separately with twine)",
+    help="Build a .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
     args=[
         Arg.create(
             "output",
             default="dist",
-            help="Output directory for the built .whl file",
+            help="Output directory for the built artifact",
             short="o"
+        ),
+        Arg.create(
+            "target",
+            default="wheel",
+            help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            short="t"
+        ),
+        Arg.create(
+            "precompile",
+            typ=bool,
+            default=False,
+            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables (wheel only)",
+            short="p"
         ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle --target npm", "Build an npm .tgz into dist/"),
+        (
+            "jac bundle --precompile",
+            "Precompile for all Py-versions on PATH then bundle"
+        ),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def bundle(output: str = "dist") -> int;
+def bundle(
+    output: str = "dist", target: str = "wheel", precompile: bool = False
+) -> int;

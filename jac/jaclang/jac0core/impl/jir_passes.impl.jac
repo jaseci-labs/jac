@@ -323,6 +323,26 @@ impl JirWriter._write_field(
             _write_varint(buf, 1);
             _write_varint(buf, self._get_node_id(val));
         }
+    } elif kind == FieldKind.OPT_NODE_LIST {
+        # Like NODE_LIST but preserves None vs [] via a leading presence byte.
+        # A plain `has` field has accessors=None; a bare NODE_LIST encoding
+        # round-trips None to [], making the field look like a setter-less
+        # property on cache reload (false E1005). The flag keeps the distinction.
+        if val is None {
+            buf.append(0);
+        } else {
+            buf.append(1);
+            if isinstance(val, (list, tuple)) {
+                items = list(val);
+                _write_varint(buf, len(items));
+                for item in items {
+                    _write_varint(buf, self._get_node_id(item));
+                }
+            } else {
+                _write_varint(buf, 1);
+                _write_varint(buf, self._get_node_id(val));
+            }
+        }
     } elif kind == FieldKind.OPT_NODE_REF {
         if val is None {
             buf.append(0);
@@ -734,6 +754,25 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                 }
             }
             nd[fname] = items;
+        } elif kind == FieldKind.OPT_NODE_LIST {
+            flag = data[pos];
+            pos += 1;
+            if flag == 0 {
+                nd[fname] = None;
+            } else {
+                (count, pos) = _read_varint(data, pos);
+                items = [];
+                for _ in range(count) {
+                    (nid, pos) = _read_varint(data, pos);
+                    if nid < _SN {
+                        n = nodes[nid];
+                        if n is not None {
+                            items.append(n);
+                        }
+                    }
+                }
+                nd[fname] = items;
+            }
         } elif kind == FieldKind.OPT_NODE_REF {
             flag = data[pos];
             pos += 1;
@@ -1201,18 +1240,9 @@ impl JirReader._read_name_atom_overlay(
         na_node._sym_category = ST3.UNKNOWN;
     }
 
-    # Ensure remaining defaults
-    if not hasattr(na_node, 'name_of') {
-        na_node.name_of = na_node;
-    }
-    if not hasattr(na_node, '_sym') {
-        na_node._sym = None;
-    }
-    if not hasattr(na_node, '_py_ctx_func') {
-        import ast as ast3;
-        na_node._py_ctx_func = ast3.Load;
-    }
-
+    # name_of / _sym / _py_ctx_func defaults are already seeded by `_read_node`
+    # (via setdefault) when the NameAtom is constructed, before this overlay
+    # runs, so no backfill is needed here.
     return pos;
 }
 

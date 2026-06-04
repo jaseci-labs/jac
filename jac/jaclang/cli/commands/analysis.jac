@@ -30,6 +30,12 @@ glob registry = get_registry();
             help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
+            "disable-error-code",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Diagnostic codes or lint kebab aliases to suppress (same as [check].suppress in jac.toml; e.g. E1030 no-print)"
+        ),
+        Arg.create(
             "parse_only",
             typ=bool,
             default=False,
@@ -50,6 +56,10 @@ glob registry = get_registry();
         ("jac check myproject/", "Check all files in directory"),
         ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
         (
+            "jac check myprogram.jac --disable-error-code E1030 W2001",
+            "Check while suppressing selected diagnostics"
+        ),
+        (
             "jac check myprogram.jac --parse-only",
             "Only check syntax, skip type checking"
         ),
@@ -61,7 +71,8 @@ glob registry = get_registry();
 def check(
     paths: list,
     print_errs: bool = True,
-    ignore: list = [],
+    ignore: (list | None) = None,
+    disable_error_code: (list | None) = None,
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int;
@@ -94,7 +105,7 @@ def check(
     ],
     group="analysis"
 )
-def lint(paths: list, fix: bool = False, ignore: list = []) -> int;
+def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
 
 """Format .jac files with improved code style."""
 @registry.command(

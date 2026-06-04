@@ -99,8 +99,7 @@ def:pub app -> JsxElement {
     def handleBackToChannels -> None;
 
     if checkingAuth {
-        return
-            <div className="lx-loading">Loading...</div>;
+        return <div className="lx-loading">Loading...</div>;
     }
 
     if not isLoggedIn {

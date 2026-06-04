@@ -141,6 +141,44 @@ impl TypeEvaluator._extract_tuple_element_type(
     return None;
 }
 
+"""Element type yielded by iterating `iterable_type` (`__iter__` then
+`__next__`, falling back to the iterator's sole type arg). None when not
+iterable."""
+impl TypeEvaluator._get_iterable_element_type(
+    iterable_type: TypeBase, node_for_error: uni.Expr | None = None
+) -> TypeBase | None {
+    iter_type = self.get_type_of_magic_method_call(
+        iterable_type, "__iter__", [], node_for_error
+    );
+    if not isinstance(iter_type, types.ClassType) {
+        return None;
+    }
+    next_type = self.get_type_of_magic_method_call(
+        iter_type, "__next__", [], node_for_error
+    );
+    if next_type and not isinstance(next_type, types.UnknownType) {
+        return self._convert_to_instance(next_type);
+    }
+    if iter_type.private
+    and iter_type.private.type_args
+    and len(iter_type.private.type_args) == 1 {
+        elem_type = iter_type.private.type_args[0];
+        # Specialize an unbound element TypeVar from the source's type args.
+        if isinstance(elem_type, types.TypeVarType)
+        and isinstance(iterable_type, types.ClassType)
+        and iterable_type.private.type_args {
+            specialized = iter_type.specialize_generics(
+                iterable_type.private.type_args
+            );
+            if len(specialized.private.type_args) == 1 {
+                elem_type = specialized.private.type_args[0];
+            }
+        }
+        return self._convert_to_instance(elem_type);
+    }
+    return None;
+}
+
 """Walk `tuple_type` through a positional index path and return the
 element type at the leaf, or None if any step fails."""
 impl TypeEvaluator._extract_tuple_element_type_path(
@@ -208,6 +246,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             parameters=None,
             function_flags=flags,
             type_params=func_type_params,
+            is_async=node_.is_async,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
@@ -311,8 +350,45 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         parameters=parameters,
         function_flags=flags,
         type_params=func_type_params,
+        is_async=node_.is_async,
     );
+    func_type = self._apply_function_decorators(node_, func_type);
     node_.name_spec.type = func_type;
+    return func_type;
+}
+
+"""Type an ability by applying its callable->callable decorators (e.g. contextmanager).
+
+Binds the decorator's TypeVars from `func_type` and adopts its result, with no
+per-decorator name special-casing. property/classmethod/etc. are ClassType, not
+matched here, and keep their own handling.
+"""
+impl TypeEvaluator._apply_function_decorators(
+    node_: uni.Ability, func_type: types.FunctionType
+) -> types.FunctionType {
+    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
+    if not node_.decorators {
+        return func_type;
+    }
+    for decorator in node_.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if not isinstance(decorator_type, types.FunctionType) {
+            continue;
+        }
+        params = decorator_type.parameters or [];
+        # Only callable->callable decorators: take one function, return one.
+        if len(params) != 1
+        or not isinstance(params[0].param_type, types.FunctionType)
+        or not isinstance(decorator_type.return_type, types.FunctionType) {
+            continue;
+        }
+        bindings: dict[str, TypeBase] = {};
+        self.assign_type_to_type_var(params[0].param_type, func_type, bindings);
+        decorated = apply_solved_type_vars(decorator_type.return_type, bindings);
+        if isinstance(decorated, types.FunctionType) {
+            func_type = decorated;
+        }
+    }
     return func_type;
 }
 
@@ -378,6 +454,14 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         and base.shared.is_builtin_class
         and base.shared.class_name == "NamedTuple" for base in base_classes
     );
+    # TypedDict-ness is inherited, and the direct `TypedDict` base resolves to
+    # a `_SpecialForm` (its alias_name is not attached in base position), so
+    # match either an already-TypedDict base or one written as `TypedDict`.
+    is_typeddict = any(
+        isinstance(base, types.ClassType) and base.shared.is_typeddict
+        for base in base_classes
+    )
+    or self._has_typeddict_special_form_base(node_);
     enum_members: dict[str, types.EnumMemberInfo] | None = None;
     enum_value_type: types.TypeBase | None = None;
     if is_enum_class {
@@ -396,6 +480,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             is_from_stdlib_stub=is_from_stdlib_stub,
             is_data_class=is_data_class,
             is_namedtuple=is_namedtuple,
+            is_typeddict=is_typeddict,
             is_enum_class=is_enum_class,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
@@ -404,6 +489,11 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     );
     # Compute the MRO for the class.
     type_utils.compute_mro_linearization(cls_type);
+    # Collect TypedDict field types now that the MRO is available; the field
+    # annotations are resolved against the completed class.
+    if is_typeddict {
+        cls_type.shared.typeddict_fields = self._build_typeddict_fields(cls_type);
+    }
     # Cache the type, pyright is doing invalidateTypeCacheIfCanceled()
     # we're not doing that any time sooner.
     node_.name_spec.type = cls_type;

@@ -19,7 +19,7 @@ When the check fails for a write-class operation (anything other than
 `read`), build a typed PermissionDenied diagnostic, push it onto the
 request-scoped ExecutionContext.diagnostics list, and either raise
 PermissionError (strict mode) or log a warning. Read denials are part of
-normal traversal (you just don't see foreign nodes) and stay silent —
+normal traversal (you just don't see foreign nodes) and stay silent -
 emitting on every reachable foreign node would be noise.
 
 Strict-mode raise happens *after* the diagnostic is recorded, so a
@@ -39,7 +39,7 @@ impl JacAccessValidation._check_access(
         if operation != "read" {
             # `min_level` is the strict-greater-than threshold (e.g.
             # CONNECT for write_access). The user-facing "required"
-            # level is the next step up — the level they actually need
+            # level is the next step up - the level they actually need
             # to pass the check.
             required = AccessLevel(min_level.value + 1);
             diag = PermissionDenied(
@@ -332,472 +332,66 @@ impl JacWalker.`visit(
         ),
     insert_loc: int = -1
 ) -> bool {
+    # Resolve a path expression to its archetype list, then enqueue the
+    # corresponding anchors onto the active walk via the portable kernel.
+    import from jaclang.jac0core.osp_kernel { osp_visit }
     if isinstance(expr, ObjectSpatialPath) {
         expr.from_visit = True;
         expr = JacRuntimeInterface.refs(expr);
     }
-    if isinstance(`walker, WalkerArchetype) {
-        'Walker visits node.';
-        wanch = `walker.__jac__;
-        before_len = len(wanch.next);
-        next = [];
-        for anchor in (i.__jac__ for i in expr)
-            if isinstance(expr, `list)
-            else [expr.__jac__]
-                if isinstance(expr, (NodeArchetype, EdgeArchetype))
-                else [] {
-            if (anchor not in wanch.ignores) {
-                if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
-                    next.append(anchor);
-                } else {
-                    raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.');
-                }
-            }
-        }
-        if (insert_loc < -len(wanch.next)) {
-            insert_loc = 0;
-        } elif (insert_loc < 0) {
-            insert_loc += len(wanch.next) + 1;
-        }
-        wanch.next = wanch.next[:insert_loc] + next + wanch.next[insert_loc:];
-        return (len(wanch.next) > before_len);
-    } else {
+    if not isinstance(`walker, WalkerArchetype) {
         raise TypeError('Invalid walker object');
     }
+    items: list = `list(expr)
+        if isinstance(expr, `list)
+        else ([expr] if isinstance(expr, (NodeArchetype, EdgeArchetype)) else []);
+    targets: list = [];
+    for arch in items {
+        anchor = arch.__jac__;
+        if not isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
+            raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.');
+        }
+        targets.append(anchor);
+    }
+    return osp_visit(targets, insert_loc);
 }
 
-"""Execute all entry abilities for current location.
+"""Jac's spawn operator feature.
 
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._execute_entries(
-    warch: WalkerArchetype,
-    `walker: WalkerAnchor,
-    current_loc: (NodeArchetype | EdgeArchetype)
-) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
-    for i in warch._jac_entry_funcs_ {
-        if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
-            and isinstance(current_loc, i.trigger)
-        ) {
-            i.func(warch, current_loc);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_entry_funcs_ {
-        if not i.trigger {
-            i.func(current_loc, warch);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_entry_funcs_ {
-        if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
-            and isinstance(warch, i.trigger)
-        ) {
-            i.func(current_loc, warch);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    return True;
-}
-
-"""Execute all exit abilities for current location.
-
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._execute_exits(
-    warch: WalkerArchetype,
-    `walker: WalkerAnchor,
-    current_loc: (NodeArchetype | EdgeArchetype)
-) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
-    for i in current_loc._jac_exit_funcs_ {
-        if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
-            and isinstance(warch, i.trigger)
-        ) {
-            i.func(current_loc, warch);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_exit_funcs_ {
-        if not i.trigger {
-            i.func(current_loc, warch);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in warch._jac_exit_funcs_ {
-        if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
-            and isinstance(current_loc, i.trigger)
-        ) {
-            i.func(warch, current_loc);
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    return True;
-}
-
-"""Recursively visit a node with DFS semantics.
-
-    1. Execute entries for this node
-    2. Recursively visit all children added during entry
-    3. Execute exits for this node (post-order)
-
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._visit_node_recursive(
-    warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
-) -> bool {
-    current_loc = anchor.archetype;
-    if not current_loc {
-        return True;
-    }
-    `walker.path.append(anchor);
-    if not JacWalker._execute_entries(warch, `walker, current_loc) {
-        return False;
-    }
-    while `walker.next {
-        child_anchor = `walker.next.pop(0);
-        if (
-            (child_anchor not in `walker.ignores)
-            and not JacWalker._visit_node_recursive(warch, `walker, child_anchor)
-        ) {
-            return False;
-        }
-    }
-    return JacWalker._execute_exits(warch, `walker, current_loc);
-}
-
-"""Jac's spawn operator feature with recursive DFS semantics.
-
-    Entry abilities execute when entering a node, exit abilities execute
-    after all descendants are visited (post-order/LIFO).
+    Lowers to the portable Object-Spatial kernel; see `osp_kernel` for the
+    traversal algorithm (DFS recursion, post-order exits, queue-FIFO across
+    branches, opt-in visit-once via `ignores`) and `osp_kernel_sv` for the sv
+    `OspRuntime` (anchor unwrap, report bubbling, persistence commit).
     """
 impl JacWalker.spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
+    import from jaclang.jac0core.osp_kernel { osp_spawn }
+    import from jaclang.jac0core.osp_kernel_sv { desc_for, make_sv_runtime }
     warch = `walker.archetype;
-    `walker.path = [];
-    current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
-    walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
-    try {
-        for i in warch._jac_entry_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                `walker.ignores = [];
-                walker_succeeded = True;
-                return warch;
-            }
-        }
-        while `walker.next {
-            next_anchor = `walker.next.pop(0);
-            if (
-                (next_anchor not in `walker.ignores)
-                and not JacWalker._visit_node_recursive(warch, `walker, next_anchor)
-            ) {
-                break;
-            }
-        }
-        if `walker.path {
-            current_loc = `walker.path[-1].archetype;
-        }
-        for i in warch._jac_exit_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                break;
-            }
-        }
-        `walker.ignores = [];
-        walker_succeeded = True;
-        return warch;
-    } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # Flush deferred persistence at the outermost spawn boundary, on
-            # success only — mirrors ExecutionManager.spawn_walker so direct
-            # `walker spawn node` flows (tests, `jac run`, CLI) persist without
-            # callers having to call Jac.commit() manually. Skipped on
-            # exception so partial walker state is dropped with the L1 buffer.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
-        }
-    }
+    osp_spawn(make_sv_runtime(), warch, desc_for(`type(warch)), `list(`walker.next));
+    return warch;
 }
 
-"""Async version: Execute all entry abilities for current location.
+"""Jac's async spawn operator feature.
 
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._async_execute_entries(
-    warch: WalkerArchetype,
-    `walker: WalkerAnchor,
-    current_loc: (NodeArchetype | EdgeArchetype)
-) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
-    for i in warch._jac_entry_funcs_ {
-        if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
-            and isinstance(current_loc, i.trigger)
-        ) {
-            result = i.func(warch, current_loc);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_entry_funcs_ {
-        if not i.trigger {
-            result = i.func(current_loc, warch);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_entry_funcs_ {
-        if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
-            and isinstance(warch, i.trigger)
-        ) {
-            result = i.func(current_loc, warch);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    return True;
-}
-
-"""Async version: Execute all exit abilities for current location.
-
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._async_execute_exits(
-    warch: WalkerArchetype,
-    `walker: WalkerAnchor,
-    current_loc: (NodeArchetype | EdgeArchetype)
-) -> bool {
-    import from jaclang.runtimelib.utils { all_issubclass }
-    for i in current_loc._jac_exit_funcs_ {
-        if (
-            i.trigger
-            and all_issubclass(i.trigger, WalkerArchetype)
-            and isinstance(warch, i.trigger)
-        ) {
-            result = i.func(current_loc, warch);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in current_loc._jac_exit_funcs_ {
-        if not i.trigger {
-            result = i.func(current_loc, warch);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    for i in warch._jac_exit_funcs_ {
-        if (
-            i.trigger
-            and (
-                all_issubclass(i.trigger, NodeArchetype)
-                or all_issubclass(i.trigger, EdgeArchetype)
-            )
-            and isinstance(current_loc, i.trigger)
-        ) {
-            result = i.func(warch, current_loc);
-            if isinstance(result, Coroutine) {
-                await result;
-            }
-        }
-        if `walker.disengaged {
-            return False;
-        }
-    }
-    return True;
-}
-
-"""Async version: Recursively visit a node with DFS semantics.
-
-    1. Execute entries for this node
-    2. Recursively visit all children added during entry
-    3. Execute exits for this node (post-order)
-
-    Returns True if walker should continue, False if disengaged.
-    """
-impl JacWalker._async_visit_node_recursive(
-    warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
-) -> bool {
-    current_loc = anchor.archetype;
-    if not current_loc {
-        return True;
-    }
-    `walker.path.append(anchor);
-    if not await JacWalker._async_execute_entries(warch, `walker, current_loc) {
-        return False;
-    }
-    while `walker.next {
-        child_anchor = `walker.next.pop(0);
-        if (
-            (child_anchor not in `walker.ignores)
-            and not await JacWalker._async_visit_node_recursive(
-                warch, `walker, child_anchor
-            )
-        ) {
-            return False;
-        }
-    }
-    return await JacWalker._async_execute_exits(warch, `walker, current_loc);
-}
-
-"""Jac's async spawn operator feature with recursive DFS semantics.
-
-    Entry abilities execute when entering a node, exit abilities execute
-    after all descendants are visited (post-order/LIFO).
+    Lowers to the portable Object-Spatial kernel via `osp_spawn_async`, which
+    awaits any coroutine result returned by an ability. Same traversal
+    semantics + `OspRuntime` plumbing as the sync path.
     """
 impl JacWalker.async_spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
-    import from jaclang.runtimelib.context { CallState }
+    import from jaclang.jac0core.osp_kernel_sv {
+        osp_spawn_async,
+        desc_for,
+        make_sv_runtime
+    }
     warch = `walker.archetype;
-    `walker.path = [];
-    current_loc = nd.archetype;
-    ctx = JacRuntimeInterface.get_context();
-    call_state = ctx.call_state.get(None);
-    owns_call_state = False;
-    walker_succeeded = False;
-    if not call_state {
-        call_token = ctx.call_state.set(CallState());
-        call_state = ctx.call_state.get();
-        owns_call_state = True;
-    }
-    try {
-        for i in warch._jac_entry_funcs_ {
-            if not i.trigger {
-                result = i.func(warch, current_loc);
-                if isinstance(result, Coroutine) {
-                    await result;
-                }
-            }
-            if `walker.disengaged {
-                `walker.ignores = [];
-                walker_succeeded = True;
-                return warch;
-            }
-        }
-        while `walker.next {
-            next_anchor = `walker.next.pop(0);
-            if (
-                (next_anchor not in `walker.ignores)
-                and not await JacWalker._async_visit_node_recursive(
-                    warch, `walker, next_anchor
-                )
-            ) {
-                break;
-            }
-        }
-        if `walker.path {
-            current_loc = `walker.path[-1].archetype;
-        }
-        for i in warch._jac_exit_funcs_ {
-            if not i.trigger {
-                result = i.func(warch, current_loc);
-                if isinstance(result, Coroutine) {
-                    await result;
-                }
-            }
-            if `walker.disengaged {
-                break;
-            }
-        }
-        `walker.ignores = [];
-        walker_succeeded = True;
-        return warch;
-    } finally {
-        if owns_call_state {
-            reports = [];
-            while not call_state.reports.empty() {
-                item = call_state.reports.get_nowait();
-                if item is not call_state._sentinel {
-                    reports.append(item);
-                }
-            }
-            warch.reports = reports;
-            ctx.call_state.reset(call_token);
-            # See spawn_call: flush deferred persistence on success only.
-            if walker_succeeded {
-                ctx.mem.commit();
-            }
-        }
-    }
+    await osp_spawn_async(
+        make_sv_runtime(), warch, desc_for(`type(warch)), `list(`walker.next)
+    );
+    return warch;
 }
 
 impl JacWalker.`spawn(
@@ -852,7 +446,11 @@ impl JacWalker.`spawn(
 
 """Jac's disengage stmt feature."""
 impl JacWalker.`disengage(`walker: WalkerArchetype) -> bool {
+    import from jaclang.jac0core.osp_kernel { osp_disengage }
+    # Mirror onto the walker anchor for backwards-compatible read access while
+    # signalling the active kernel scope to halt.
     `walker.__jac__.disengaged = True;
+    osp_disengage();
     return True;
 }
 
@@ -1009,7 +607,7 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     ctx.mem.commit(anchor);
 }
 
-"""Async commit — persists through the async Memory surface."""
+"""Async commit - persists through the async Memory surface."""
 impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     if isinstance(anchor, Archetype) {
         anchor = anchor.__jac__;
@@ -1019,12 +617,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root_node: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = root.__jac__ if root else ctx.user_root;
+    ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
@@ -1062,7 +660,7 @@ impl JacBasics.get_object(id: str) -> (Archetype | None) {
     return None;
 }
 
-"""Async mirror of get_object — resolves through the async Memory surface."""
+"""Async mirror of get_object - resolves through the async Memory surface."""
 impl JacBasics.aget_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
@@ -1096,14 +694,19 @@ impl JacBasics.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         (fn.name, fn) for fn in cls._jac_exit_funcs_
     );
     for func in cls.__dict__.values() {
-        if callable(func) {
+        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
+            # Trigger is compiler-stamped via @set_trigger; absent only for
+            # hand-built/dynamic archetypes, where DSFunc falls back to inspect.
+            dsfunc = JacRuntimeInterface.DSFunc(
+                func.__name__, func, func.__jac_trigger__
+            )
+                if func?.__jac_trigger__
+                else JacRuntimeInterface.DSFunc(func.__name__, func);
             if func?.__jac_entry {
-                entries[func.__name__] = JacRuntimeInterface.DSFunc(
-                    func.__name__, func
-                );
+                entries[func.__name__] = dsfunc;
             }
             if func?.__jac_exit {
-                exits[func.__name__] = JacRuntimeInterface.DSFunc(func.__name__, func);
+                exits[func.__name__] = dsfunc;
             }
         }
     }
@@ -1326,7 +929,7 @@ impl JacBasics.jac_test(description: str = "") -> Callable {
         file_path = getfile(test_fun);
         func_name = test_fun.__name__;
         def test_deco {
-            test_fun(JacTestCheck());
+            test_fun();
         }
         test_deco.__name__ = test_fun.__name__;
         JacTestCheck.add_test(
@@ -1447,16 +1050,29 @@ impl JacBasics.field(
     return field(`init=`init);
 }
 
+
 """Jac's report stmt feature."""
 impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
-    ctx = JacRuntimeInterface.get_context();
+    import from jaclang.jac0core.osp_kernel { osp_report, _current_scope }
     if custom {
-        ctx.custom = expr;
+        JacRuntimeInterface.get_context().custom = expr;
     } else {
         JacConsole.get_console().print(expr);
-        call_state = ctx.call_state.get(None);
-        if call_state {
-            call_state.reports.put_nowait(expr);
+        if _current_scope() is not None {
+            # Inside a walk: hand the value to the kernel scope, which bubbles
+            # collected reports to the request CallState at the spawn boundary.
+            osp_report(expr);
+        } else {
+            # No active walk (e.g. `report` inside a plain `def:pub` function
+            # served via `/function/...`): bridge straight to the request
+            # CallState -- the same sink the in-walk path reaches when the
+            # kernel bubbles `scope.reports`. This preserves function-level
+            # reports (including streamed generator reports). No CallState
+            # (cl/na, or outside a server request) -> no-op.
+            cs = JacRuntimeInterface.get_context().call_state.get(None);
+            if cs is not None {
+                cs.reports.put_nowait(expr);
+            }
         }
     }
 }
@@ -1775,10 +1391,28 @@ impl JacBasics.on_exit(func: Callable) -> Callable {
     return func;
 }
 
-"""Get the client bundle builder instance."""
+"""Stamp an ability with its compiler-known trigger type (a lazy thunk)."""
+impl JacBasics.set_trigger(
+    trigger_thunk: Callable
+) -> Callable[([Callable], Callable)] {
+    def deco(func: Callable) -> Callable {
+        setattr(func, '__jac_trigger__', trigger_thunk);
+        return func;
+    }
+    return deco;
+}
+
+"""Get the client bundle builder instance.
+
+Builds via the single Vite/Bun pipeline in core. The package.json is generated
+on demand under `.jac/client/configs/`; bun is auto-installed into `.jac/bin/`
+by the bundler when needed.
+"""
 impl JacClientBundle.get_client_bundle_builder -> ClientBundleBuilder {
-    import from jaclang.runtimelib.client_bundle { ClientBundleBuilder }
-    return ClientBundleBuilder();
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+    return make_client_bundle_builder();
 }
 
 """Build a client bundle for the supplied module."""
@@ -1916,7 +1550,7 @@ Two response shapes are honoured:
     TransportResponse wire format. Decoded and unwrapped.
   - SSE stream (`Content-Type: text/event-stream`): the function on
     the other end returned an iterator. We hand back a Python
-    generator that yields parsed event dicts as they arrive — the
+    generator that yields parsed event dicts as they arrive - the
     caller's `for ev in sv_func(...)` loop sees live events instead
     of a str-ified generator object. See jac/jaclang/runtimelib/
     sv_sse.jac for the framing contract.
@@ -1937,7 +1571,7 @@ impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) 
         ct = resp.headers.get("content-type", "");
         if ct.startswith("text/event-stream") {
             # Hand off lifecycle to the wrapper. It will exhaust
-            # iter_lines() and call __exit__ on the cm in finally —
+            # iter_lines() and call __exit__ on the cm in finally -
             # we MUST NOT exit it here.
             return _wrap_sse_keepalive(stream_cm, resp, None, func_label);
         }
@@ -2061,7 +1695,7 @@ then `__exit__` the parent context manager (and `close()` the owning
 Client, if any) once the consumer is done iterating. Hoisted to module
 scope (Jac doesn't support nested defs).
 
-`client` may be None — the TestClient code path passes None because
+`client` may be None - the TestClient code path passes None because
 the TestClient instance is owned by sv_client._test_clients and lives
 beyond the call.
 """
@@ -2279,7 +1913,7 @@ impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> any {
     return random_value_for_type(return_type);
 }
 
-"""Base stub for acall_llm — returns random value. byllm overrides with native async dispatch.
+"""Base stub for acall_llm - returns random value. byllm overrides with native async dispatch.
 
 Uses await so this impl compiles to an async def, matching the static async def declaration
 and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
@@ -2832,7 +2466,7 @@ impl JacRuntime.get_full_target_path -> (str | None) {
 """Set the seed base path used to bootstrap new contexts.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
-    Already-constructed contexts are unaffected — they carry their own
+    Already-constructed contexts are unaffected - they carry their own
     `base_path_dir` captured at postinit time.
     """
 impl JacRuntime.set_base_path(base_path: (str | None)) -> None {

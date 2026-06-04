@@ -65,12 +65,12 @@ test "compr unpacking variables" {
     mod = JacProgram().compile(file_path);
     test_cases = [
         (0, {"x"}, uni.ListCompr),
-        (1, {"a","b","rest"}, uni.ListCompr),
-        (2, {"a","b","c","d"}, uni.ListCompr),
-        (3, {"a","b"}, uni.SetCompr),
-        (4, {"k","v"}, uni.DictCompr),
-        (5, {"a","b"}, uni.GenCompr),
-        (6, {"row","name","val"}, uni.ListCompr)
+        (1, {"a", "b", "rest"}, uni.ListCompr),
+        (2, {"a", "b", "c", "d"}, uni.ListCompr),
+        (3, {"a", "b"}, uni.SetCompr),
+        (4, {"k", "v"}, uni.DictCompr),
+        (5, {"a", "b"}, uni.GenCompr),
+        (6, {"row", "name", "val"}, uni.ListCompr)
     ];
     for (scope_idx, expected_vars, expected_type) in test_cases {
         scope = mod.sym_tab.kid_scope[scope_idx];
@@ -154,12 +154,6 @@ Always = "always_available"
     never_sym = mod.lookup("Never", deep=True, incl_inner_scope=True);
     future_sym = mod.lookup("Future", deep=True, incl_inner_scope=True);
     always_sym = mod.lookup("Always", deep=True, incl_inner_scope=True);
-
-    print(f"\nPython version: {sys.version_info.major}.{sys.version_info.minor}");
-    print(f"Self symbol: {self_sym}");
-    print(f"Never symbol: {never_sym}");
-    print(f"Future symbol: {future_sym}");
-    print(f"Always symbol: {always_sym}");
 
     # Always should always be found
     assert always_sym is not None , "Always should always be found";

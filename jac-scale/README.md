@@ -87,7 +87,7 @@ Install both packages in editable mode from the cloned repository:
 
 ```bash
 pip install -e ./jac
-pip install -e ./jac-scale
+jac install -e ./jac-scale
 ```
 
 ### 5. Download the Demo Application
@@ -340,8 +340,8 @@ Install the packages in editable mode from the cloned repository:
 
 ```bash
 pip install -e ./jac
-pip install -e ./jac-scale
-pip install -e ./jac-client
+jac install -e ./jac-scale
+jac install -e ./jac-client
 ```
 
 ### 5. Create Todo application using jac-client

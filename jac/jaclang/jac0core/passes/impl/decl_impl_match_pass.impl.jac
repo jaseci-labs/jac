@@ -125,6 +125,28 @@ impl DeclImplMatchPass.connect_impls(
         name_of_links.append(decl_node) if decl_node else None;
         for name in arch_refs[1:] {
             if decl_node {
+                # Native property accessor (`impl Cls.prop.getter/.setter/.deleter`):
+                # resolve within the property's own accessor list rather than the
+                # enclosing class scope, where every accessor of a given kind is
+                # registered under the same bare name (`getter`) and would
+                # otherwise all collapse onto one symbol.
+                if (
+                    isinstance(decl_node.name_of, uni.HasVar)
+                    and (decl_node.name_of.accessors is not None)
+                    and (name in ["getter", "setter", "deleter"])
+                ) {
+                    want_kind = "property" if (name == "getter") else name;
+                    acc_match: (uni.Ability | None) = None;
+                    for acc in decl_node.name_of.accessors {
+                        if acc.accessor_kind == want_kind {
+                            acc_match = acc;
+                            break;
+                        }
+                    }
+                    decl_node = acc_match.name_ref if acc_match else None;
+                    name_of_links.append(decl_node) if decl_node else None;
+                    continue;
+                }
                 lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
                     if decl_node.name_of.sym_tab
                     else None;
@@ -273,9 +295,9 @@ to do so on one node is a degraded-info outcome, not a correctness
 hazard for the others.
 """
 impl DeclImplMatchPass._resolve_symbols_in_subtree(
-    self: DeclImplMatchPass, root: uni.UniNode
+    self: DeclImplMatchPass, root_node: uni.UniNode
 ) -> None {
-    for name_node in root.get_all_sub_nodes(uni.Name) {
+    for name_node in root_node.get_all_sub_nodes(uni.Name) {
         if name_node.sym is not None {
             continue;
         }
@@ -288,7 +310,7 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(
             } except ValueError { }
         }
     }
-    for trailer_node in root.get_all_sub_nodes(uni.AtomTrailer) {
+    for trailer_node in root_node.get_all_sub_nodes(uni.AtomTrailer) {
         chain = trailer_node.as_attr_list;
         if chain and chain[0].sym is None and trailer_node.sym_tab {
             try {

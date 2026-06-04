@@ -31,7 +31,7 @@ import from byllm.mcp { McpTool }
 glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
 
 """Enum for message roles in LLM interactions."""
-enum MessageRole ( StrEnum ) {
+enum MessageRole(StrEnum) {
     SYSTEM = "system",
     USER = "user",
     ASSISTANT = "assistant",
@@ -126,7 +126,7 @@ obj StreamEvent {
 }
 
 """Control action returned by on_iteration callback."""
-enum IterationAction ( StrEnum ) {
+enum IterationAction(StrEnum) {
     CONTINUE = "continue",
     ABORT = "abort",
     ABORT_WITH_SUMMARY = "abort_with_summary"
@@ -194,4 +194,176 @@ obj Video(Media) {
     def postinit -> None;
     def load_frames -> None;
     def to_dict -> list[dict];
+}
+
+
+"""Serialize message content into provider content blocks.
+
+Element shapes accepted: dict (already-serialized, passed through),
+`(media, semstring)` tuple (semstring emitted as a text prelude),
+and Media (via `to_dict()`).
+"""
+def serialize_media_content(content: list) -> list[dict] {
+    blocks: list = [];
+    for item in content {
+        if isinstance(item, dict) {
+            blocks.append(item);
+            continue;
+        }
+        semstring = "";
+        if isinstance(item, tuple) {
+            semstring = item[1] or "";
+            item = item[0];
+        }
+        if semstring {
+            blocks.append({"type": "text", "text": semstring});
+        }
+        blocks.extend(item.to_dict());
+    }
+    return blocks;
+}
+
+
+"""Normalize a tool's return value into Message-compatible content.
+
+str → str (common case).  Media → `[Media]`.  `list[Media]` → unchanged.
+Anything else is stringified for back-compat with tools that return
+dicts, ints, etc.
+"""
+def normalize_tool_result(value: any) -> str | list {
+    if isinstance(value, str) {
+        return value;
+    }
+    if isinstance(value, Media) {
+        return [value];
+    }
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(elem, Media) for elem in value)
+    ) {
+        return value;
+    }
+    return str(value);
+}
+
+
+"""Build a length-bounded printable string from message content.
+
+Stream events and logging consumers expect `result` to be a string.
+Multimodal content (e.g. a screenshot returned by a tool) would otherwise
+leak ~30KB of base64 into every observability surface.
+"""
+def content_preview(content: any, max_len: int) -> str {
+    if isinstance(content, str) {
+        return content[:max_len];
+    }
+    if not isinstance(content, list) {
+        return str(content)[:max_len];
+    }
+    parts: list = [];
+    for item in content {
+        if isinstance(item, str) {
+            parts.append(item);
+        } elif isinstance(item, Text) {
+            parts.append(item.text);
+        } else {
+            kind = type(item).__name__.lower();
+            parts.append(f"[{kind}]");
+        }
+    }
+    return " ".join(parts)[:max_len];
+}
+
+
+"""Move tool-result images into a trailing user message; images across consecutive tool messages batch into ONE message."""
+def reroute_tool_images_to_user_message(messages: list) -> list {
+    # Common case: no tool images → return the input untouched (no allocations).
+    if not any(_tool_msg_has_image(m) for m in messages) {
+        return messages;
+    }
+
+    out: list = [];
+    pending: list = [];  # image blocks buffered until the tool-result run ends
+
+    for msg in messages {
+        if _tool_msg_has_image(msg) {
+            (stripped, images) = _split_tool_msg_images(msg);
+            out.append(stripped);
+            name = msg.get("name", "tool");
+            call_id = msg.get("tool_call_id", "");
+            pending.append(
+                {"type": "text", "text": f"[Tool result for {name} (id {call_id})]:"}
+            );
+            pending.extend(images);
+        } elif _is_tool_msg(msg) {
+            # Text-only tool - still inside the run; can't flush yet (Anthropic alternation).
+            out.append(msg);
+        } else {
+            if pending {
+                out.append({"role": "user", "content": pending});
+                pending = [];
+            }
+            out.append(msg);
+        }
+    }
+    if pending {
+        out.append({"role": "user", "content": pending});
+    }
+    return out;
+}
+
+
+def _is_tool_msg(msg: object) -> bool {
+    return isinstance(msg, dict) and msg.get("role") == "tool";
+}
+
+
+def _tool_msg_has_image(msg: object) -> bool {
+    if not _is_tool_msg(msg) {
+        return False;
+    }
+    content = msg.get("content");
+    if not isinstance(content, list) {
+        return False;
+    }
+    for block in content {
+        if isinstance(block, dict) and block.get("type") in ("image_url", "image") {
+            return True;
+        }
+    }
+    return False;
+}
+
+
+"""Split a tool message into (stripped_msg, image_blocks); no images → (msg, [])."""
+def _split_tool_msg_images(msg: dict) -> tuple {
+    content = msg.get("content");
+    if not isinstance(content, list) {
+        return (msg, []);
+    }
+    text_blocks: list = [];
+    image_blocks: list = [];
+    for block in content {
+        if isinstance(block, dict) and block.get("type") in ("image_url", "image") {
+            image_blocks.append(block);
+        } else {
+            text_blocks.append(block);
+        }
+    }
+    if not image_blocks {
+        return (msg, []);
+    }
+    text_only = all(
+        isinstance(b, dict) and b.get("type") == "text" for b in text_blocks
+    );
+    if text_only {
+        stripped_content = " ".join(b.get("text", "") for b in text_blocks).strip();
+        if not stripped_content {
+            stripped_content = "(image attached in following user message)";
+        }
+    } else {
+        stripped_content = text_blocks;
+    }
+    return ({** msg, "content": stripped_content}, image_blocks);
 }

@@ -25,8 +25,12 @@ Bug index:
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
+  #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
+  #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
+  #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
+  #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
 """
 
 import os;
@@ -305,6 +309,15 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
 }
 
 # =========================================================================
+# Bug #UNPACK-1: Assignment unpacking of a non-tuple iterable typed as Unknown
+# =========================================================================
+test "bug_unpack1_assign_non_tuple_iterable" {
+    program = compile_and_check("checker_bug_unpack_iterable_assign.jac");
+    assert len(program.errors_had) == 3 , "Bug #UNPACK-1: unpacking a non-tuple iterable. "
+    f"Expected 3 type errors but got {len(program.errors_had)}.";
+}
+
+# =========================================================================
 # Bug #ANY-1: typing.Any attribute access incorrectly raises E1030
 #
 # TypeBase.is_any_type() missed ClassType-wrapped typing.Any.
@@ -484,6 +497,14 @@ test "bug_tvar5_module_typevar_shadowed_by_class_param" {
     assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
 }
 
+# Bug #TVAR-6: glob-form TypeVar not solved at free-function call sites.
+test "bug_tvar6_glob_typevar_in_free_function" {
+    program = compile_and_check("checker_bug_typevar_glob_free_func.jac");
+    assert len(program.errors_had) == 0 , f"Bug #TVAR-6: Expected 0 errors but got {len(
+        program.errors_had
+    )}: {[e.msg for e in program.errors_had]}.";
+}
+
 # =========================================================================
 # Bug #IMPL-1: `has` var reassigned in impl body shadows the parent type
 #
@@ -585,6 +606,15 @@ test "bug_super1_super_call_returns_parent_instance" {
         "parent instance so that attribute access dispatches through the "
         "parent's MRO. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_dstr1_docstring_before_local_declaration" {
+    program = compile_and_check("checker_bug_docstring_local_decl.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #DSTR-1: a docstring before a declaration inside a function body "
+        "must attach to the declaration without producing W0060 or parse errors. "
     );
 }
 
@@ -788,5 +818,80 @@ test "bug_stub_vguard_module_level_symbol_resolves" {
         "Bug #STUB-VGUARD: `datetime.UTC` (defined under `if sys.version_info "
         ">= (3, 11):` in typeshed) must resolve to its declared type, not Unknown. "
         f"Got W1051 warnings: {[str(w) for w in unresolved]}"
+    );
+}
+
+# Bug #NARROW-ANY: isinstance on a symbol typed Any (e.g. the element of a
+# bare `list`) did not narrow because get_narrowed_type's guard accepted only
+# Union/Class/Unknown, so `item.label` after `isinstance(item, Foo)` stayed
+# Unknown and raised E1001/E1002.
+test "bug_narrow_any_symbol_isinstance" {
+    program = compile_and_check("checker_narrow_anytype_isinstance.jac");
+    assert program.errors_had == [] , (
+        "Bug #NARROW-ANY: isinstance must narrow an Any-typed symbol, so "
+        "accessing a member of the narrowed type does not error. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #HOGEN-1: TypeVars were not bound through function-typed arguments, so
+# `apply(f: Callable[[], T]) -> T` returned an unbound T. Fixing the binder
+# also enables generic decorator-application (e.g. @contextmanager) with no
+# name special-casing.
+test "bug_hogen_1_typevar_bound_through_callable_arg" {
+    program = compile_and_check("checker_higher_order_typevar.jac");
+    assert program.errors_had == [] , (
+        "Bug #HOGEN-1: a TypeVar passed through a Callable argument must bind "
+        "to the callable's return type. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_hogen_1_contextmanager_generic_apply" {
+    program = compile_and_check("checker_contextmanager_generic_apply.jac");
+    assert program.errors_had == [] , (
+        "Bug #HOGEN-1: an annotated-generator @contextmanager method must type "
+        "as a context manager via generic decorator-application, so `with` "
+        "produces no errors. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_hogen_1_plain_method_in_with_still_errors" {
+    program = compile_and_check("checker_with_plain_method_errors.jac");
+    e1091 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1091"
+    );
+    e1092 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1092"
+    );
+    assert e1091 == 1 and e1092 == 1 , (
+        "Bug #HOGEN-1 guard: a plain (non-context-manager) method in `with` "
+        f"must still produce E1091 + E1092. Got E1091={e1091}, E1092={e1092}."
+    );
+}
+
+# Bug #WITHAS-1: `with cm() as x` bound x to the context manager rather than
+# __enter__'s result, and `async with` was checked against the sync protocol.
+# The alias now binds through __enter__/__aenter__ (awaited for async), and the
+# protocol check picks the methods by the `async with` flag.
+test "bug_withas_1_as_binds_enter_result" {
+    program = compile_and_check("checker_with_as_enter_binding.jac");
+    assert program.errors_had == [] , (
+        "Bug #WITHAS-1: `with cm() as x` must bind x to __enter__'s return "
+        f"type. Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_withas_1_async_with_as_binds_and_checks" {
+    program = compile_and_check("checker_async_with_as_binding.jac");
+    assert program.errors_had == [] , (
+        "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
+        "and bind x to the awaited __aenter__ result. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

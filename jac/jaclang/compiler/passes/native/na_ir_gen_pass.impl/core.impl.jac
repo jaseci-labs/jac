@@ -11,8 +11,19 @@ impl NaIRGenPass.postinit -> None {
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import llvmlite.binding as _llvm_bind;
-    _llvm_bind.initialize_native_target();
-    _target = _llvm_bind.Target.from_default_triple();
+    # JAC_NATIVE_TARGET cross-compiles for another triple (e.g.
+    # aarch64-unknown-linux-gnu). The triple drives both the data layout and
+    # the platform ABI classification, so it must be set on the module here;
+    # NativeCompilePass and nacompile read the same env var when emitting code.
+    _ni_target_ovr = _ni_os.environ.get("JAC_NATIVE_TARGET", "");
+    if _ni_target_ovr {
+        _llvm_bind.initialize_all_targets();
+        _llvm_bind.initialize_all_asmprinters();
+        _target = _llvm_bind.Target.from_triple(_ni_target_ovr);
+    } else {
+        _llvm_bind.initialize_native_target();
+        _target = _llvm_bind.Target.from_default_triple();
+    }
     _tm = _target.create_target_machine();
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
@@ -89,12 +100,9 @@ impl NaIRGenPass.postinit -> None {
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Auto-promote a compatible .jac module to native context when requested
-    if (
-        getattr(self.prog, '_auto_promote_native', False)
-        and self.ir_in.gen.native_compat
-    ) {
+    if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
-        main_target = getattr(self.prog, '_auto_promote_target', "");
+        main_target = self.prog._auto_promote_target;
         if (
             mod_path == main_target
             and not mod_path.endswith('.na.jac')
@@ -317,13 +325,33 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
+        # the enum name from the AST sig so the marshaller maps the ordinal back
+        # to the Python enum member.
+        ret_enum: (str | None) = None;
+        if ret_type == "i64" {
+            _fsig = self.method_ast_sigs.get(fname);
+            if _fsig and _fsig.return_type {
+                _rt = _fsig.return_type;
+                # Peel `T | None` (and general unions) to the first member.
+                if isinstance(_rt, uni.BinaryExpr)
+                and getattr(_rt.op, 'value', '') == "|" {
+                    _rt = _rt.left;
+                }
+                _rname = self._get_name(_rt);
+                if _rname is not None and _rname in self.enum_types {
+                    ret_enum = _rname;
+                }
+            }
+        }
         layout.functions[fname] = NativeFuncLayout(
             name=fname,
             param_types=param_types,
             param_names=param_names,
             ret_type=ret_type,
             ret_struct_name=ret_struct,
-            ret_tuple_layout=ret_tuple
+            ret_tuple_layout=ret_tuple,
+            ret_enum_type=ret_enum
         );
     }
     # Methods
@@ -540,6 +568,14 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 Skips clib imports (from "libname") and non-module imports."""
 impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+        return None;
+    }
+    # A native C-FFI import (`import from raylib { def ...; }`) is a shared
+    # library, not a cross-module native Jac import: its symbols come from the
+    # clib_decls and its from-path is a logical/explicit library name. Excluding
+    # it here keeps a bare-name clib path from being resolved as a .na.jac module
+    # (issue #6387) — mirroring the existing skip for an explicit string path.
+    if imp.clib_decls {
         return None;
     }
     if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
@@ -773,8 +809,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             }
             continue;
         }
-        # Extract library path from from_loc
+        # Extract the library reference from from_loc. Two surface forms:
+        #   import from "./libfoo.so" { ... }   -- explicit path, used verbatim
+        #   import from foo { ... }              -- logical name (issue #6387),
+        #   import from .foo { ... }                resolved to the platform-correct
+        #   import from libs.foo { ... }            filename per the target triple.
         if stmt.from_loc is not None and stmt.from_loc.path {
+            _name_components: list[str] = [];
             for path_part in stmt.from_loc.path {
                 if isinstance(path_part, uni.String) {
                     raw = path_part.value;
@@ -782,9 +823,17 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     if (len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'") {
                         raw = raw[1:-1];
                     }
-                    # Store library path for NativeCompilePass to load
+                    # Explicit path: store verbatim for the linker / loader.
                     self._clib_paths.append(raw);
+                } elif isinstance(path_part, uni.Name) {
+                    _name_components.append(path_part.value);
                 }
+            }
+            if _name_components {
+                # Dotted/extensionless logical name -> per-platform filename.
+                self._clib_paths.append(
+                    self._resolve_clib_lib_name(_name_components, stmt.from_loc.level)
+                );
             }
         }
         # Three-pass processing of clib declarations:
@@ -862,6 +911,60 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
     }
 }
 
+"""Resolve a dotted/extensionless native-import name to a platform filename.
+
+Mirrors what a linker/loader does for `-lfoo`, keyed off the target triple
+(JAC_NATIVE_TARGET or the host default, already on `self.llvm_module.triple`):
+
+  - the last dotted component is the library stem; leading components are a
+    sub-directory (Python-style, `libs.foo` -> `libs/`).
+  - extension by OS: ELF/Linux `.so`, Mach-O/macOS `.dylib`, PE/Windows `.dll`.
+  - `lib` prefix on ELF/Mach-O, omitted on PE.
+  - a bare single name (no sub-dir, no leading dot) becomes a bare soname so the
+    loader searches both the system cache and the `$ORIGIN`/`@loader_path`
+    runpath emitted by #6380.
+  - a leading `.` (source-relative) or a sub-dir pins the lookup to the binary's
+    directory via the loader token (`$ORIGIN/...` on ELF, `@loader_path/...` on
+    Mach-O), composing with #6380.
+"""
+impl NaIRGenPass._resolve_clib_lib_name(components: list[str], level: int) -> str {
+    triple = str(self.llvm_module.triple or "").lower();
+    if ("darwin" in triple)
+    or ("apple" in triple)
+    or ("macos" in triple)
+    or ("ios" in triple) {
+        prefix = "lib";
+        ext = ".dylib";
+        origin_token = "@loader_path";
+    } elif ("windows" in triple)
+    or ("win32" in triple)
+    or ("mingw" in triple)
+    or ("msvc" in triple) {
+        prefix = "";
+        ext = ".dll";
+        # PE has no $ORIGIN/@loader_path runpath; a bare DLL name is searched
+        # next to the executable first by the Windows loader, so a sub-dir is
+        # the only case that needs an explicit relative prefix.
+        origin_token = ".";
+    } else {
+        # ELF (Linux and the default) -- also the host fallback when the triple
+        # carries no recognizable OS field.
+        prefix = "lib";
+        ext = ".so";
+        origin_token = "$ORIGIN";
+    }
+    stem = components[-1];
+    subdir_parts = components[:-1];
+    filename = prefix + stem + ext;
+    if subdir_parts or level > 0 {
+        # Source/binary-relative: pin to the loader's origin directory.
+        rel = "/".join(subdir_parts + [filename]) if subdir_parts else filename;
+        return origin_token + "/" + rel;
+    }
+    # Bare soname: system search + $ORIGIN/@loader_path runpath (#6380).
+    return filename;
+}
+
 # ─── Primitive Emitter Dispatch ────────────────────────────────
 """Lazily initialize primitive emitter singletons."""
 impl NaIRGenPass._ensure_emitters -> None {
@@ -879,6 +982,41 @@ impl NaIRGenPass._ensure_emitters -> None {
     }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
     self._native_emit_ctx_class = _pn.NativeEmitCtx;
+}
+
+"""Named (non-operator) instance methods a primitive emitter implements.
+
+The emitter (whose contract lives in primitives.jac) is the single source of
+truth for which methods a primitive supports, so dispatch keys off this instead
+of hardcoded method-name lists. Operators (emit_op_*) and static methods like
+from_bytes/fromhex (which take no target and are dispatched separately) are
+excluded. Cached per type name.
+"""
+impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
+    import inspect;
+    self._ensure_emitters();
+    if self._primitive_method_name_cache is None {
+        self._primitive_method_name_cache = {};
+    }
+    _cached = self._primitive_method_name_cache.get(type_name);
+    if _cached is not None {
+        return _cached;
+    }
+    _names: set[str] = set();
+    _emitter = self._native_emitters.get(type_name);
+    if _emitter is not None {
+        for _n in dir(_emitter) {
+            if _n.startswith("emit_") and not _n.startswith("emit_op_") {
+                _fn = getattr(_emitter, _n);
+                # Instance methods take (ctx, target, args); static ones (ctx, args).
+                if len(inspect.signature(_fn).parameters) >= 3 {
+                    _names.add(_n.removeprefix("emit_"));
+                }
+            }
+        }
+    }
+    self._primitive_method_name_cache[type_name] = _names;
+    return _names;
 }
 
 """Dispatch a primitive type method call through the emitter layer."""
