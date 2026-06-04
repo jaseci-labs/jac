@@ -8,22 +8,23 @@ a page in PAGE_ROUTES; pages render their own headers. Icons come from
 lucide-react (declared in jac.toml [dependencies.npm]).
 """
 
+cl import from "lucide-react" {
+    Users,
+    ShieldCheck,
+    BarChart3,
+    BrainCircuit,
+    Bot,
+    Workflow,
+    ScrollText,
+    LogOut,
+    CircleUserRound
+}
+
 cl {
     import from ...components.common.Alert { Alert }
     import from ...context.AuthContext { useAuth }
     import from ...context.AlertContext { useAlert }
     import from ...constants.categories { navGroups }
-    import from "lucide-react" {
-        Users,
-        ShieldCheck,
-        BarChart3,
-        BrainCircuit,
-        Bot,
-        Workflow,
-        ScrollText,
-        LogOut,
-        CircleUserRound
-    }
 
     # Import pages (implemented only)
     import from .users.UsersPage { UsersPage }
@@ -70,7 +71,7 @@ cl {
         if id == "logs" {
             return <ScrollText className={cls}/>;
         }
-        return <Network className={cls}/>;
+        return <Workflow className={cls}/>;
     }
 
     def:pub DashboardLayout -> JsxElement {
