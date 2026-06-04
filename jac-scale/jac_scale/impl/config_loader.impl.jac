@@ -63,11 +63,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'memory_limit': None,
             # Probe timings (aligned with microservice drain semantics;
             # see kubernetes_config.jac probe-default comment).
-            'readiness_initial_delay': 5,
-            'readiness_period': 5,
-            'liveness_initial_delay': 15,
-            'liveness_period': 10,
-            'liveness_failure_threshold': 3
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'secrets': {},
         'server': {
