@@ -1802,6 +1802,12 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
 # ─── Phase 1: For Loops ──────────────────────────────────────
 """Generate for loop (currently supports range(n) and range(start, stop))."""
 impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
+    # Iterator protocol (#6403): map/filter/enumerate/zip/iter collections are
+    # driven through first-class JacIter objects. Container collections (plain
+    # list/str/dict/range) fall through to the fast paths below.
+    if self._try_iter_protocol_for(nd) {
+        return;
+    }
     # Extract loop variable name
     loop_var_name = self._get_name(nd.target);
     if loop_var_name is None {

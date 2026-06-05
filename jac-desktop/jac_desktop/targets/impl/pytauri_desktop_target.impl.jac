@@ -14,7 +14,7 @@ import from pathlib { Path }
 import from typing { Optional, Any }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { JacConfig }
-import from jac_client.plugin.src.config_loader { JacClientConfig }
+import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 import from jac_desktop.config_loader {
     get_desktop_config,
     DesktopIdentity,
@@ -25,7 +25,7 @@ import from jac_desktop.enums {
     plugin_id_to_npm_package,
     permissions_for_plugin_ids
 }
-import from jac_client.plugin.src.vite_bundler { API_BASE_URL_ENV_VAR }
+import from jaclang.runtimelib.client.vite_bundler { API_BASE_URL_ENV_VAR }
 import from jac_desktop.helpers.desktop_helpers {
     _make_localhost_url,
     _get_toml_api_base_url,
@@ -567,7 +567,7 @@ def _write_launcher_script(dist_dir: Path, pytauri_dir: Path) {
 impl PyTauriDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
     console.print("\n🐍 Starting desktop dev", style="bold");
 
@@ -588,8 +588,10 @@ impl PyTauriDesktopTarget.dev(
         bundler.create_package_json();
     }
 
-    import from jac_client.plugin.client { JacClient }
-    builder = JacClient.get_client_bundle_builder();
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+    builder = make_client_bundle_builder();
     if not builder.vite_package_json or not builder.vite_package_json.exists() {
         builder.vite_package_json = package_json_path;
     }

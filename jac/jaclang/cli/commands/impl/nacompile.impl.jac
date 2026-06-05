@@ -219,12 +219,42 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     # in the compiled module and its transitive dependencies.
     # _clib_paths is accumulated by _compile_and_link_native_imports.
     clib_paths = ir_module.gen._clib_paths;
+    # Maps a raw clib path to the soname actually recorded in needed_libs, so
+    # the per-symbol library attribution below lines up with the linker's
+    # LC_LOAD_DYLIB ordinals.
+    _lib_norm: dict[str, str] = {};
     if clib_paths {
         for lib_path in clib_paths {
-            if lib_path not in needed_libs {
-                needed_libs.append(lib_path);
+            # A relative path with a directory component (e.g. "./libfoo.so")
+            # names a library shipped beside the binary. Record only its soname
+            # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
+            # the executable rather than the launch directory. Absolute paths
+            # (system libraries) and bare sonames are recorded verbatim.
+            #
+            # A name that already carries a loader token ($ORIGIN/... on ELF,
+            # @loader_path/... on Mach-O) is a per-platform logical import
+            # resolved by the native backend (issue #6387): keep it verbatim so
+            # the sub-directory and origin-relative semantics survive.
+            _needed = lib_path;
+            if (not os.path.isabs(lib_path))
+            and (not lib_path.startswith("$"))
+            and (not lib_path.startswith("@"))
+            and ("/" in lib_path or "\\" in lib_path) {
+                _needed = os.path.basename(lib_path);
             }
+            if _needed not in needed_libs {
+                needed_libs.append(_needed);
+            }
+            _lib_norm[lib_path] = _needed;
         }
+    }
+
+    # Build the symbol -> soname map the Mach-O linker uses to emit two-level
+    # dylib ordinals (e.g. "InitWindow" -> "libraylib.dylib"). On ELF this is
+    # unused (the loader searches all DT_NEEDED libs flatly).
+    symbol_lib_map: dict[str, str] = {};
+    for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+        symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 
     # Step 6: Emit object code via llvmlite
@@ -285,7 +315,10 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
 
         try {
             success = MachOLinker.link(
-                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+                obj_bytes=obj_bytes,
+                output_path=output,
+                needed_libs=needed_libs,
+                symbol_lib_map=symbol_lib_map
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -317,7 +350,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     file_size = os.path.getsize(output);
-    console.print(f"  Binary written to [bold]{output}[/bold] ({file_size} bytes).");
+    console.print(f"  Binary written to {output} ({file_size} bytes).");
     console.print(f"  Run with: ./{output}");
     return 0;
 }
