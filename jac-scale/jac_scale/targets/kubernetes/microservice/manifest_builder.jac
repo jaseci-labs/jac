@@ -393,7 +393,9 @@ obj MicroserviceManifestBuilder {
     right at 1Gi and OOM-kills there. Priority: per-service >
     [plugins.scale.kubernetes] > defaults. Empty string opts back to
     BestEffort."""
-    def _build_resources(svc_cfg: dict[str, any], is_gateway: bool = False) -> dict[str, any] {
+    def _build_resources(
+        svc_cfg: dict[str, any], is_gateway: bool = False
+    ) -> dict[str, any] {
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
