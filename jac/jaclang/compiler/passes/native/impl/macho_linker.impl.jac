@@ -785,27 +785,31 @@ impl MachOLinker.build_executable -> bytes {
     linkedit_vmaddr = base_vmaddr + linkedit_foff;
 
     # --- Bind info ---
-    # Use ULEB encoding for dylib ordinal for clarity.
+    # Mach-O is a two-level namespace: every undefined symbol must name the
+    # exact dylib (by 1-based LC_LOAD_DYLIB ordinal) that exports it, unlike
+    # ELF's flat search across all DT_NEEDED libs. needed_libs[0] is always
+    # libSystem (ordinal 1); a `import from <lib> { ... }` block records each of
+    # its symbols in symbol_lib_map, so those resolve to the lib's ordinal while
+    # every compiler-emitted libc call falls through to libSystem.
+    lib_ordinals: dict[str, int] = {};
+    for (li, lib) in enumerate(self.needed_libs) {
+        lib_ordinals[lib] = li + 1;
+    }
     bind_data = bytearray();
     # data_seg is segment index 2 (after __PAGEZERO=0, __TEXT=1)
     data_seg_idx = 2;
-    for (i, sym_name) in enumerate(extern_func_syms) {
+    all_bind_syms = extern_func_syms + extern_data_syms;
+    for (i, sym_name) in enumerate(all_bind_syms) {
         got_offset = i * 8;
+        # macOS prepends a leading underscore to C symbols; the clib symbol map
+        # is keyed by the bare C name, so strip one underscore before lookup.
+        _lookup = sym_name[1:] if sym_name.startswith("_") else sym_name;
+        _lib = self.symbol_lib_map.get(_lookup);
+        ordinal = lib_ordinals.get(_lib, 1) if _lib is not None else 1;
         # SET_DYLIB_ORDINAL_ULEB (0x20) + ULEB128(ordinal)
         bind_data.append(0x20);
-        bind_data.extend(_encode_uleb128(1));
+        bind_data.extend(_encode_uleb128(ordinal));
         # SET_SYMBOL_TRAILING_FLAGS_IMM (0x40 = opcode, flags=0 in low nibble)
-        bind_data.append(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM);
-        bind_data.extend(sym_name.encode("utf-8") + b"\x00");
-        bind_data.append(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER);
-        bind_data.append(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | data_seg_idx);
-        bind_data.extend(_encode_uleb128(got_offset));
-        bind_data.append(BIND_OPCODE_DO_BIND);
-    }
-    for (i, sym_name) in enumerate(extern_data_syms) {
-        got_offset = (len(extern_func_syms) + i) * 8;
-        bind_data.append(0x20);
-        bind_data.extend(_encode_uleb128(1));
         bind_data.append(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM);
         bind_data.extend(sym_name.encode("utf-8") + b"\x00");
         bind_data.append(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER);
@@ -1523,14 +1527,16 @@ def _write_section_header(
 impl MachOLinker.link(
     obj_bytes: bytes,
     output_path: str,
-    needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"]
+    needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"],
+    symbol_lib_map: dict[str, str] = {}
 ) -> bool {
     linker = MachOLinker(
         obj_data=obj_bytes,
         sections=[],
         symbols=[],
         relocations=[],
-        needed_libs=needed_libs
+        needed_libs=needed_libs,
+        symbol_lib_map=symbol_lib_map
     );
     if not linker.parse_object() {
         return False;

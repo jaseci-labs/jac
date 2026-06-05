@@ -1047,8 +1047,7 @@ test "vite build prompts for missing client deps" {
         # Mock input to accept, and mock bun/vite so we don't need real installs.
         with unittest.mock.patch("builtins.input", return_value="Y") {
             with unittest.mock.patch(
-                "jaclang.runtimelib.client.bun_installer.ensure_bun_available",
-                return_value=True
+                "jaclang.runtimelib.client.bun_installer.get_bun", return_value="bun"
             ) {
                 with unittest.mock.patch("subprocess.run") as mock_subprocess {
                     # bun install returns success, vite build returns failure

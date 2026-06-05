@@ -19,11 +19,10 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
 
-# Pin the bun version jac-client ships with.
-# Bump this when a new bun release is validated.
-glob BUN_VERSION = "1.3.11",
-     # Map (system, machine) to bun release asset name.
-     _PLATFORM_MAP: dict[str, dict[str, str]] = {
+# Map (system, machine) to bun release asset name.
+# (BUN_VERSION is defined in the bun_installer.jac interface — the single
+#  source of truth shared with deployment targets.)
+glob _PLATFORM_MAP: dict[str, dict[str, str]] = {
          "Darwin": {
              "arm64": "bun-darwin-aarch64",
              "aarch64": "bun-darwin-aarch64",
@@ -154,80 +153,61 @@ def _download_bun(bin_dir: Path) -> Path | None {
 }
 
 
-"""Resolve the path to the bun binary.
+"""Resolve the path to the bun binary, auto-installing if needed.
 
 Resolution order:
   1. System PATH
   2. .jac/bin/bun (project-local, check version)
   3. Auto-download to .jac/bin/
 
+On success the resolved directory is prepended to PATH so subprocesses
+that resolve via PATH (e.g. shell=True) can find bun too.
 Returns the absolute path to bun, or None if unavailable.
 """
 impl get_bun -> str | None {
     is_windows = platform.system() == "Windows";
     bun_name = "bun.exe" if is_windows else "bun";
 
+    bun_path: str | None = None;
+
     # 1. System PATH
     system_bun = shutil.which("bun");
     if system_bun {
-        return system_bun;
-    }
-
-    # 2. .jac/bin/bun (may already be downloaded)
-    bin_dir = _get_jac_bin_dir();
-    local_bun = bin_dir / bun_name;
-
-    if local_bun.exists() {
-        # Check if version matches (upgrade if stale)
-        version_file = bin_dir / ".bun-version";
-        if version_file.exists() and version_file.read_text().strip() == BUN_VERSION {
-            return str(local_bun);
+        bun_path = system_bun;
+    } else {
+        bin_dir = _get_jac_bin_dir();
+        local_bun = bin_dir / bun_name;
+        # 2. .jac/bin/bun (may already be downloaded)
+        if local_bun.exists() {
+            # Check if version matches (upgrade if stale)
+            version_file = bin_dir / ".bun-version";
+            if version_file.exists()
+            and version_file.read_text().strip() == BUN_VERSION {
+                bun_path = str(local_bun);
+            } else {
+                # Version mismatch - re-download
+                console.warning(f"Upgrading Bun to v{BUN_VERSION}...", emoji=False);
+                local_bun.unlink(missing_ok=True);
+            }
         }
-        # Version mismatch - re-download
-        console.warning(f"Upgrading Bun to v{BUN_VERSION}...", emoji=False);
-        local_bun.unlink(missing_ok=True);
+        # 3. Auto-download
+        if bun_path is None {
+            result = _download_bun(bin_dir);
+            if result {
+                bun_path = str(result);
+            }
+        }
     }
 
-    # 3. Auto-download
-    result = _download_bun(bin_dir);
-    if result {
-        return str(result);
-    }
-
-    return None;
-}
-
-
-"""Check if bun is available, add to PATH if needed, or prompt to install.
-
-Legacy entry point - now delegates to get_bun().
-Returns True if bun is available, False otherwise.
-"""
-impl ensure_bun_available -> bool {
-    bun_path = get_bun();
     if bun_path is None {
-        console.error(
-            "Bun is required but could not be installed automatically.", emoji=False
-        );
-        console.print("  Install manually: https://bun.sh\n");
-        return False;
+        return None;
     }
 
-    # Ensure the directory containing bun is on PATH for subprocess calls
-    # that use shell=True or rely on PATH resolution.
+    # Ensure bun's directory is on PATH for subprocesses that resolve via PATH.
     bun_dir = str(Path(bun_path).parent);
     current_path = os.environ.get("PATH", "");
     if bun_dir not in current_path.split(os.pathsep) {
         os.environ["PATH"] = f"{bun_dir}{os.pathsep}{current_path}";
     }
-    return True;
-}
-
-
-"""Prompt user to install Bun and install if confirmed.
-
-Kept for backward compatibility but no longer prompts - auto-installs.
-"""
-impl prompt_install_bun -> bool {
-    return ensure_bun_available();
+    return bun_path;
 }
