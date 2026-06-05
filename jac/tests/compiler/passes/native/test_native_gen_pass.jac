@@ -1795,6 +1795,88 @@ test "clib import inside na block" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib extensionless logical import produces extern declares (issue #6387)" {
+    # `import from raylib { def ... }` (no path, no extension) must still emit
+    # extern `declare`s for the brace-block decls and resolve to exactly one
+    # logical library name -- no cross-module dependency leak.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_logical_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
+    assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
+    assert 'define void @"open_then_close"' in s , "wrapper not defined";
+    assert ir.gen._clib_paths is not None;
+    assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
+    # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
+    # module, so the type-checker emits no W1100 "module not found" for it. (A
+    # W5021 "C library not found" at JIT time is expected here and unrelated --
+    # raylib is not installed on the test host.)
+    _warns = [
+        w
+        for w in prog.warnings_had
+        if w?.code and w.code.code == "W1100"
+    ];
+    assert not _warns , f"unexpected W1100 module-not-found: {[
+        str(w.msg) for w in _warns
+    ]}";
+}
+
+test "clib extensionless import resolves per platform (issue #6387)" {
+    # The same source names the platform-correct filename off the target triple:
+    # libraylib.so (ELF) / libraylib.dylib (Mach-O) / raylib.dll (PE). Cross-
+    # targets via JAC_NATIVE_TARGET, mirroring the AArch64 ABI test below.
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _fix = str(os.path.join(FIXTURES, "clib_logical_import.na.jac"));
+    try {
+        for (tgt, want) in [
+            ("x86_64-unknown-linux-gnu", "libraylib.so"),
+            ("aarch64-unknown-linux-gnu", "libraylib.so"),
+            ("x86_64-apple-darwin", "libraylib.dylib"),
+            ("arm64-apple-darwin", "libraylib.dylib"),
+            ("x86_64-pc-windows-msvc", "raylib.dll")
+        ] {
+            _os.environ["JAC_NATIVE_TARGET"] = tgt;
+            prog = JacProgram();
+            ir = prog.compile(_fix, options=CompileOptions(type_check=False));
+            assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
+            assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
+        }
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
+}
+
+test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
+    # A dotted name puts leading components in a sub-directory and pins the
+    # lookup to the binary's directory via the loader token, composing with the
+    # $ORIGIN / @loader_path runpath from #6380.
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.na.jac"));
+    try {
+        _os.environ["JAC_NATIVE_TARGET"] = "x86_64-unknown-linux-gnu";
+        ir = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
+        assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
+        _os.environ["JAC_NATIVE_TARGET"] = "arm64-apple-darwin";
+        ir2 = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
+        assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
+}
+
 test "clib struct value-type coercion" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")));
@@ -3692,4 +3774,23 @@ test "enum hex/oct/bin int members fold via lit_value" {
     assert get_func(eng, "flag_a", ctypes.c_int64)() == 255;
     assert get_func(eng, "flag_b", ctypes.c_int64)() == 15;
     assert get_func(eng, "flag_c", ctypes.c_int64)() == 10;
+}
+
+test "parameterless no-return function (def foo {}) is not dropped" {
+    # `def foo { ... }` (no parens, no return type) is semantically
+    # `def foo() -> None`. The native backend used to drop such functions and
+    # their call sites entirely, so `run_ticks(n)` returned 0 instead of n.
+    (eng, _) = compile_native("noret_no_params.na.jac");
+    # The function must actually be emitted, not silently elided.
+    assert eng.get_function_address("tick") != 0 , "void no-signature function 'tick' was dropped from the module";
+    run_ticks = get_func(eng, "run_ticks", ctypes.c_int64, ctypes.c_int64);
+    # If the tick() calls are emitted and run, hits == n.
+    assert run_ticks(5) == 5 , "calls to a no-signature void function were not emitted";
+    assert run_ticks(0) == 0;
+    assert run_ticks(13) == 13;
+    # The no-parens form must behave identically to the explicit `()` form.
+    run_ticks_parens = get_func(
+        eng, "run_ticks_parens", ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_ticks_parens(5) == run_ticks(5);
 }

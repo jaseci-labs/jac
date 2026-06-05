@@ -1233,19 +1233,34 @@ def _bundle_wheel(config: any, output: str, precompile: bool) -> int {
 
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
+    builder = WheelBuilder(config=config, project_root=config.project_root);
+
     console.print("\n  Building wheel...", style="muted");
     try {
-        builder = WheelBuilder(config=config, project_root=config.project_root);
         whl_path = builder.build_to(out_dir);
     } except Exception as e {
-        console.error(f"Build failed: {e}");
+        console.error(f"Wheel build failed: {e}");
         return 1;
     }
     console.print(
-        f"  ✔ Built {whl_path.name} " f"({whl_path.stat().st_size:,} bytes)",
+        f"  ✔ Built {whl_path.name} ({whl_path.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"  Wheel written to: {whl_path}", style="cyan");
+
+    console.print("  Building sdist...", style="muted");
+    try {
+        sdist_path = builder.build_sdist_to(out_dir);
+    } except Exception as e {
+        console.error(f"Sdist build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ {sdist_path.name} ({sdist_path.stat().st_size:,} bytes)", style="success"
+    );
+
+    console.print(
+        f"\n  Distributions written to: [cyan]{out_dir}[/cyan]", style="bold"
+    );
     console.print("  Upload with: twine upload dist/*", style="muted");
     return 0;
 }

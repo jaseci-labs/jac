@@ -5,13 +5,15 @@ Covers the four new modules added in this branch:
   record    — RECORD CSV with SHA-256 fingerprints
   wheel_meta — WHEEL file and entry_points.txt generators
   sources   — source-file collector
-  builder   — WheelBuilder end-to-end
+  builder   — WheelBuilder end-to-end (wheel + sdist)
 """
 
 import hashlib;
 import base64;
 import csv;
 import io;
+import tarfile;
+import tomllib;
 import zipfile;
 import json;
 import tempfile;
@@ -21,14 +23,16 @@ import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata {
     normalize_package_name,
     normalize_constraint,
-    generate_metadata
+    generate_metadata,
+    generate_pyproject_toml
 }
 import from jaclang.publish.record { record_entry_from_bytes, generate_record }
 import from jaclang.publish.wheel_meta {
     generate_wheel_file,
     generate_entry_points,
     wheel_filename,
-    dist_info_dirname
+    dist_info_dirname,
+    sdist_filename
 }
 import from jaclang.publish.sources {
     SourceFile,
@@ -44,19 +48,19 @@ def sha256_b64(data: bytes) -> str {
     return f"sha256={b64.decode('ascii')}";
 }
 
-def scaffold_pkg(root: Path, name: str = "mypkg") {
-    pkg = root / name;
+def scaffold_pkg(pkg_dir: Path, name: str = "mypkg") {
+    pkg = pkg_dir / name;
     pkg.mkdir(exist_ok=True);
     (pkg / "__init__.jac").write_text(f"# {name}\n");
     (pkg / "core.jac").write_text("# core\n");
 }
 
 def pkg_config_with_include(
-    root: Path, name: str = "mypkg", version: str = "1.0.0"
+    pkg_dir: Path, name: str = "mypkg", version: str = "1.0.0"
 ) -> JacConfig {
-    toml = '[package]\nname = "' + name + '"\nversion = "' + version + '"\nrequires-python = ">=3.11"\n\n[package.include]\npackages = ["' + name + '"]\n';
+    toml = '[project]\nname = "' + name + '"\nversion = "' + version + '"\nrequires-python = ">=3.11"\n\n[project.include]\npackages = ["' + name + '"]\n';
     cfg = JacConfig.from_toml_str(toml);
-    cfg.project_root = root;
+    cfg.project_root = pkg_dir;
     return cfg;
 }
 
@@ -76,7 +80,7 @@ test "normalize_constraint converts npm caret tilde and wildcard" {
 
 test "generate_metadata produces correct METADATA 2.4 output" {
     cfg = JacConfig.from_toml_str(
-        '[package]\nname = "mypkg"\nversion = "1.2.3"\nrequires-python = ">=3.11"\nlicense = "MIT"\n\n[dependencies]\nrequests = ">=2.28.0"\nnumpy = "^1.24.0"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n'
+        '[project]\nname = "mypkg"\nversion = "1.2.3"\nrequires-python = ">=3.11"\nlicense = "MIT"\n\n[dependencies]\nrequests = ">=2.28.0"\nnumpy = "^1.24.0"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n'
     );
     meta = generate_metadata(cfg);
 
@@ -99,9 +103,6 @@ test "generate_metadata emits Classifier headers in order" {
         '[project]\nname = "mypkg"\nversion = "1.0.0"\nclassifiers = [\n  "Programming Language :: Python :: 3",\n  "License :: OSI Approved :: MIT License",\n  "Framework :: Jac",\n]\n'
     );
     meta = generate_metadata(cfg);
-    assert "Classifier: Programming Language :: Python :: 3" in meta;
-    assert "Classifier: License :: OSI Approved :: MIT License" in meta;
-    assert "Classifier: Framework :: Jac" in meta;
     lines = [
         l
         for l in meta.splitlines()
@@ -162,7 +163,7 @@ test "generate_wheel_file has required headers and ends with newline" {
 
 test "generate_entry_points maps scripts to console_scripts" {
     cfg = JacConfig.from_toml_str(
-        '[package]\nname = "p"\nversion = "1.0.0"\n\n[entrypoints.scripts]\nmycli = "p.cli:main"\n\n[entrypoints.jac]\nplugin = "p:Plugin"\n'
+        '[project]\nname = "p"\nversion = "1.0.0"\n\n[entrypoints.scripts]\nmycli = "p.cli:main"\n\n[entrypoints.jac]\nplugin = "p:Plugin"\n'
     );
     ep = generate_entry_points(cfg);
     assert "[console_scripts]" in ep;
@@ -172,7 +173,7 @@ test "generate_entry_points maps scripts to console_scripts" {
 
 test "wheel_filename and dist_info_dirname are consistent" {
     cfg = JacConfig.from_toml_str(
-        '[package]\nname = "mypkg"\nversion = "2.0.0"\nrequires-python = ">=3.11"\n'
+        '[project]\nname = "mypkg"\nversion = "2.0.0"\nrequires-python = ">=3.11"\n'
     );
     assert wheel_filename(cfg) == "mypkg-2.0.0-py3-none-any.whl";
     assert dist_info_dirname(cfg) == "mypkg-2.0.0.dist-info";
@@ -198,8 +199,8 @@ test "read_source_file returns preloaded content and reads from disk" {
 test "collect_source_files gathers jac files and excludes build artifacts" {
     tmpdir = tempfile.mkdtemp();
     try {
-        root = Path(tmpdir);
-        pkg = root / "mypkg";
+        proj = Path(tmpdir);
+        pkg = proj / "mypkg";
         pkg.mkdir();
         (pkg / "main.jac").write_text("# main");
         (pkg / "helper.py").write_text("# py");
@@ -207,8 +208,8 @@ test "collect_source_files gathers jac files and excludes build artifacts" {
         pycache = pkg / "__pycache__";
         pycache.mkdir();
         (pycache / "main.cpython-312.pyc").write_bytes(bytes([0]));
-        cfg = pkg_config_with_include(root, "mypkg");
-        files = collect_source_files(cfg, project_root=root);
+        cfg = pkg_config_with_include(proj, "mypkg");
+        files = collect_source_files(cfg, project_root=proj);
         paths = [sf.wheel_path for sf in files];
         assert any("main.jac" in p for p in paths);
         assert any("helper.py" in p for p in paths);
@@ -222,7 +223,7 @@ test "collect_source_files gathers jac files and excludes build artifacts" {
 
 test "collect_source_files raises without project root or package section" {
     cfg_no_root = JacConfig.from_toml_str(
-        "[package]\nname = \"p\"\nversion = \"1.0.0\"\n"
+        "[project]\nname = \"p\"\nversion = \"1.0.0\"\n"
     );
     raised = False;
     try {
@@ -253,10 +254,10 @@ test "collect_source_files raises without project root or package section" {
 test "WheelBuilder.build produces a valid whl with required dist-info files" {
     tmpdir = tempfile.mkdtemp();
     try {
-        root = Path(tmpdir);
-        scaffold_pkg(root);
-        cfg = pkg_config_with_include(root);
-        data = WheelBuilder(config=cfg, project_root=root).build();
+        proj = Path(tmpdir);
+        scaffold_pkg(proj);
+        cfg = pkg_config_with_include(proj);
+        data = WheelBuilder(config=cfg, project_root=proj).build();
 
         with zipfile.ZipFile(io.BytesIO(data)) as zf {
             names = zf.namelist();
@@ -275,10 +276,10 @@ test "WheelBuilder.build produces a valid whl with required dist-info files" {
 test "WheelBuilder.build is reproducible" {
     tmpdir = tempfile.mkdtemp();
     try {
-        root = Path(tmpdir);
-        scaffold_pkg(root);
-        cfg = pkg_config_with_include(root);
-        builder = WheelBuilder(config=cfg, project_root=root);
+        proj = Path(tmpdir);
+        scaffold_pkg(proj);
+        cfg = pkg_config_with_include(proj);
+        builder = WheelBuilder(config=cfg, project_root=proj);
         assert builder.build() == builder.build();
     } finally {
         shutil.rmtree(tmpdir, ignore_errors=True);
@@ -288,10 +289,10 @@ test "WheelBuilder.build is reproducible" {
 test "WheelBuilder.build_to writes file with correct name" {
     tmpdir = tempfile.mkdtemp();
     try {
-        root = Path(tmpdir);
-        scaffold_pkg(root, "testpkg");
-        cfg = pkg_config_with_include(root, "testpkg", "2.0.0");
-        result = WheelBuilder(config=cfg, project_root=root).build_to(root / "dist");
+        proj = Path(tmpdir);
+        scaffold_pkg(proj, "testpkg");
+        cfg = pkg_config_with_include(proj, "testpkg", "2.0.0");
+        result = WheelBuilder(config=cfg, project_root=proj).build_to(proj / "dist");
         assert result.exists();
         assert result.name == wheel_filename(cfg);
     } finally {
@@ -302,13 +303,13 @@ test "WheelBuilder.build_to writes file with correct name" {
 test "WheelBuilder.install_editable writes pth and dist-info" {
     tmpdir = tempfile.mkdtemp();
     try {
-        root = Path(tmpdir);
-        src = root / "src";
+        proj = Path(tmpdir);
+        src = proj / "src";
         src.mkdir();
-        site = root / "site-packages";
+        site = proj / "site-packages";
         site.mkdir();
-        cfg = pkg_config_with_include(root);
-        pth = WheelBuilder(config=cfg, project_root=root).install_editable(src, site);
+        cfg = pkg_config_with_include(proj);
+        pth = WheelBuilder(config=cfg, project_root=proj).install_editable(src, site);
         assert pth.exists() and pth.suffix == ".pth";
         assert str(src) in pth.read_text();
         di_dir = site / dist_info_dirname(cfg);
@@ -331,7 +332,7 @@ test "WheelBuilder raises without package section or project root" {
     }
     assert raised1;
 
-    cfg = JacConfig.from_toml_str("[package]\nname = \"p\"\nversion = \"1.0.0\"\n");
+    cfg = JacConfig.from_toml_str("[project]\nname = \"p\"\nversion = \"1.0.0\"\n");
     raised2 = False;
     try {
         WheelBuilder(config=cfg, project_root=None).build();
@@ -339,4 +340,119 @@ test "WheelBuilder raises without package section or project root" {
         raised2 = True;
     }
     assert raised2;
+}
+
+
+# sdist (generate_pyproject_toml + build_sdist / build_sdist_to) -----------------
+test "sdist_filename applies full name normalisation" {
+    # Regression: was using name.replace('-','_') which left dots/uppercase intact.
+    cfg = JacConfig.from_toml_str('[project]\nname = "My.Pkg"\nversion = "1.0.0"\n');
+    assert sdist_filename(cfg) == "my_pkg-1.0.0.tar.gz";
+}
+
+test "generate_pyproject_toml produces valid TOML covering structure, deps, and escaping" {
+    # One config that exercises all three concerns together:
+    # - required build-system + project table structure
+    # - optional/dev dependencies (fix #6 regression)
+    # - double-quote escaping in license/keywords/classifiers (fixes #2-5 regression)
+    cfg = JacConfig.from_toml_str(
+        '[project]\nname = "mypkg"\nversion = "1.2.3"\nrequires-python = ">=3.11"\n'
+        'license = "MIT \\"Modified\\""\n'
+        'keywords = ["key\\"word"]\n'
+        'classifiers = ["Dev :: \\"Alpha\\""]\n\n'
+        '[dependencies]\nrequests = ">=2.28"\n\n'
+        '[optional-dependencies.video]\nopencv = ">=4.0"\n\n'
+        '[dev-dependencies]\npytest = ">=7.0"\n'
+    );
+    toml_str = generate_pyproject_toml(cfg);
+    tomllib.loads(toml_str);  # raises TOMLDecodeError on any invalid TOML
+
+    # structure
+    assert 'build-backend = "_jac_build"' in toml_str;
+    assert 'requires = ["jaclang"]' in toml_str;
+    assert 'name = "mypkg"' in toml_str;
+    assert 'version = "1.2.3"' in toml_str;
+
+    # optional and dev deps
+    assert '[project.optional-dependencies]' in toml_str;
+    assert 'video = [' in toml_str;
+    assert 'opencv' in toml_str;
+    assert 'dev = [' in toml_str;
+    assert 'pytest' in toml_str;
+}
+
+test "WheelBuilder.build_sdist top-level directory matches filename stem (PEP 625)" {
+    # Every member path must start with <stem>/ where stem == sdist_filename without .tar.gz.
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        scaffold_pkg(proj);
+        cfg = pkg_config_with_include(proj);
+        data = WheelBuilder(config=cfg, project_root=proj).build_sdist();
+        stem = sdist_filename(cfg)[:-len(".tar.gz")];
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf {
+            for member in tf.getmembers() {
+                assert member.name.startswith(stem + "/") , (
+                    f"member '{member.name}' not under expected prefix '{stem}/'"
+                );
+            }
+        }
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "WheelBuilder.build_sdist contains required files and valid PKG-INFO" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        scaffold_pkg(proj);
+        cfg = pkg_config_with_include(proj);
+        data = WheelBuilder(config=cfg, project_root=proj).build_sdist();
+        extract_dir = proj / "extracted";
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf {
+            names = tf.getnames();
+            assert any(n.endswith("/PKG-INFO") for n in names);
+            assert any(n.endswith("/pyproject.toml") for n in names);
+            assert any(n.endswith("/_jac_build.py") for n in names);
+            assert any(n.endswith(".jac") for n in names);
+            tf.extractall(path=str(extract_dir), filter="data");
+        }
+        pkg_info_files = list(extract_dir.rglob("PKG-INFO"));
+        assert len(pkg_info_files) == 1;
+        pkg_info = pkg_info_files[0].read_text("utf-8");
+        assert "Name: mypkg" in pkg_info;
+        assert "Version: 1.0.0" in pkg_info;
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "WheelBuilder.build_sdist is reproducible" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        scaffold_pkg(proj);
+        cfg = pkg_config_with_include(proj);
+        builder = WheelBuilder(config=cfg, project_root=proj);
+        assert builder.build_sdist() == builder.build_sdist();
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "WheelBuilder.build_sdist_to writes file with correct name" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        scaffold_pkg(proj, "testpkg");
+        cfg = pkg_config_with_include(proj, "testpkg", "2.0.0");
+        result = WheelBuilder(config=cfg, project_root=proj).build_sdist_to(
+            proj / "dist"
+        );
+        assert result.exists();
+        assert result.name == sdist_filename(cfg);
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
 }

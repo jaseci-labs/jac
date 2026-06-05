@@ -58,19 +58,10 @@ obj HPAView {
         if not isinstance(hpa, dict) {
             return None;
         }
-        spec = dget(hpa, "spec");
-        cpu_target: int = 0;
-        for m in lget(spec, "metrics") {
-            resource = dget(m, "resource");
-            if sget(resource, "name") == "cpu" {
-                cpu_target = iget(dget(resource, "target"), "averageUtilization", 0);
-                break;
-            }
-        }
         return HPAView(
-            min_replicas=iget(spec, "minReplicas", 1),
-            max_replicas=iget(spec, "maxReplicas", 1),
-            cpu_target=cpu_target
+            min_replicas=iget(hpa, "min", 1),
+            max_replicas=iget(hpa, "max", 1),
+            cpu_target=iget(hpa, "cpu_target", 0)
         );
     }
 }
@@ -332,7 +323,11 @@ def _render_totals(bundle: Any) {
     n_svc = len(dget(bundle, "services"));
     parts.append(f"{n_dep} deployment{'s' if n_dep != 1 else ''}");
     parts.append(f"{n_svc} service{'s' if n_svc != 1 else ''}");
-    for (key, label) in [("hpas", "HPA"), ("pdbs", "PDB"), ("pvcs", "PVC")] {
+    for (key, label) in [
+        ("autoscalers", "Autoscaler"),
+        ("pdbs", "PDB"),
+        ("pvcs", "PVC")
+    ] {
         entry = _n(key, label);
         if entry {
             parts.append(entry);
@@ -372,7 +367,7 @@ obj Plan {
             routes = routes_any;
         }
         deployments = dget(bundle, "deployments");
-        hpas = dget(bundle, "hpas");
+        autoscalers = dget(bundle, "autoscalers");
         pdbs = dget(bundle, "pdbs");
 
         # User-declared first (in [routes] order), gateway last, defensive
@@ -404,7 +399,7 @@ obj Plan {
                 ServiceView.from_manifests(
                     name=svc,
                     deployment=deployments.get(svc),
-                    hpa=hpas.get(svc),
+                    hpa=autoscalers.get(svc),
                     pdb=pdbs.get(svc),
                     route_path=route_path
                 )
@@ -553,7 +548,7 @@ obj Plan {
         if self.bundle.get("user_secret") {
             out.append(self.bundle["user_secret"]);
         }
-        for key in ["pvcs", "deployments", "services", "hpas", "pdbs"] {
+        for key in ["pvcs", "deployments", "services", "pdbs"] {
             for m in dget(self.bundle, key).values() {
                 out.append(m);
             }

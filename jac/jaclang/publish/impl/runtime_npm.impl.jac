@@ -20,7 +20,10 @@ impl runtime_api_names -> set {
     }
     text = _runtime_source_path().read_text(encoding="utf-8");
     names: set = set();
-    for m in re.finditer(r"(?m)^(?:def|glob)\s+([A-Za-z_][A-Za-z0-9_]*)", text) {
+    # Top-level `def`/`glob`, optionally `async` and/or an access tag (`:pub`).
+    for m in re.finditer(
+        r"(?m)^(?:async\s+)?(?:def|glob)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
+    ) {
         names.add(m.group(1));
     }
     _api_names_cache = names;

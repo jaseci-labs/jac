@@ -3,8 +3,11 @@
 import unittest.mock;
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
@@ -189,6 +192,99 @@ test "deployment target factory custom target overrides builtin" {
     assert result is mock_target;
     # Clean up - restore built-in behavior
     del DeploymentTargetFactory._registry["kubernetes"];
+}
+
+test "autoscaler factory creates hpa autoscaler for engine=hpa" {
+    autoscaler = AutoscalerFactory.create("hpa", {});
+    assert isinstance(autoscaler, HPAAutoscaler);
+}
+
+test "autoscaler factory creates hpa autoscaler for engine=None" {
+    autoscaler = AutoscalerFactory.create(None, {});
+    assert isinstance(autoscaler, HPAAutoscaler);
+}
+
+test "autoscaler factory raises for unsupported engine" {
+    raised = False;
+    try {
+        AutoscalerFactory.create("unsupported", {});
+    } except ValueError as e {
+        raised = True;
+        assert "Unsupported autoscaler engine" in str(e);
+    }
+    assert raised , "Expected ValueError for unsupported engine";
+}
+
+test "autoscaler factory register and create custom engine" {
+    mock_autoscaler = unittest.mock.MagicMock();
+
+    def custom_factory(config: dict, logger: object = None) -> object {
+        return mock_autoscaler;
+    }
+
+    AutoscalerFactory.register("custom-scaler", custom_factory);
+    try {
+        result = AutoscalerFactory.create("custom-scaler", {});
+        assert result is mock_autoscaler;
+    } finally {
+        del AutoscalerFactory._registry["custom-scaler"];
+    }
+}
+
+test "autoscaler factory custom engine overrides builtin" {
+    mock_autoscaler = unittest.mock.MagicMock();
+
+    def override_factory(config: dict, logger: object = None) -> object {
+        return mock_autoscaler;
+    }
+
+    AutoscalerFactory.register("hpa", override_factory);
+    try {
+        result = AutoscalerFactory.create("hpa", {});
+        assert result is mock_autoscaler;
+    } finally {
+        del AutoscalerFactory._registry["hpa"];
+    }
+}
+
+test "hpa autoscaler build manifests produces correct dict" {
+    spec = AutoscalerSpec(
+        scale_target_name="my-service-deployment",
+        autoscaler_name="my-service-hpa",
+        namespace="default",
+        min_replicas=1,
+        max_replicas=3,
+        triggers=[Trigger(type="cpu", metadata={"averageUtilization": "70"})]
+    );
+    result = HPAAutoscaler()._build_manifests(spec);
+    expected = {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "metadata": {
+            "name": "my-service-hpa",
+            "namespace": "default",
+            "labels": {"app": "my-service-deployment", "managed": "jac-scale"}
+        },
+        "spec": {
+            "scaleTargetRef": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "my-service-deployment"
+            },
+            "minReplicas": 1,
+            "maxReplicas": 3,
+            "metrics": [
+                {
+                    "type": "Resource",
+                    "resource": {
+                        "name": "cpu",
+                        "target": {"type": "Utilization", "averageUtilization": 70}
+                    }
+                }
+            ]
+        }
+    };
+    assert result == expected;
 }
 
 test "image registry factory register and create custom registry" {

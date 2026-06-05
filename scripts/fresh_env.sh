@@ -4,6 +4,7 @@ pip install -e jac
 jac install -e jac-byllm
 jac install -e jac-scale
 jac install -e jac-client
+jac install -e jac-desktop
 jac install -e jac-super
 jac install -e jac-mcp
 pip install pre-commit

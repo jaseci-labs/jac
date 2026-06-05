@@ -7,12 +7,9 @@ import types;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any, Literal, TypeAlias }
-import from jaclang.runtimelib.client_bundle { ClientBundle, ClientBundleError }
 import from jaclang.runtimelib.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
-import from .vite_client_bundle { ViteClientBundleBuilder }
-import from .src.vite_bundler { ViteBundler }
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
@@ -44,16 +41,14 @@ obj HeaderBuilder {
     def _build_generic_meta_tags -> list[str];
 }
 
-"""Jac Client."""
+"""Jac Client.
+
+Client bundling (`get_client_bundle_builder` / `build_client_bundle`) is handled
+by core's default hook (the single Vite/Bun pipeline in jaclang.runtimelib.client).
+This plugin provides the framework serving layer: static files, page rendering,
+the client JS endpoint, and rich build-error formatting.
+"""
 class JacClient {
-    @hookimpl
-    static def get_client_bundle_builder -> ViteClientBundleBuilder;
-
-    @hookimpl
-    static def build_client_bundle(
-        module: types.ModuleType, force: bool = False
-    ) -> ClientBundle;
-
     @hookimpl
     static def send_static_file(
         handler: BaseHTTPRequestHandler,

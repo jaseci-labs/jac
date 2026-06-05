@@ -112,7 +112,7 @@ def readme_content_type(ext: str) -> str {
 impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> str {
     if not config.project.name {
         raise ValueError(
-            "Cannot generate METADATA: [project] name is missing in jac.toml"
+            "Cannot generate METADATA: [project] name is missing in jac.toml."
         );
     }
 
@@ -184,4 +184,101 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     }
 
     return "\n".join(lines);
+}
+
+def _toml_str(s: str) -> str {
+    return (
+        s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace(
+            "\r", "\\r"
+        ).replace(
+            "\t", "\\t"
+        )
+    );
+}
+
+impl generate_pyproject_toml(config: JacConfig) -> str {
+    if not config.project.name {
+        raise ValueError(
+            "Cannot generate pyproject.toml: [project] name is missing in jac.toml."
+        );
+    }
+
+    pkg = config.project;
+    lines: list[str] = [
+        "[build-system]",
+        'requires = ["jaclang"]',
+        'build-backend = "_jac_build"',
+        'backend-path = ["."]',
+        "",
+        "[project]",
+        f'name = "{normalize_package_name(pkg.name)}"',
+        f'version = "{pkg.version}"',
+
+    ];
+
+    if pkg.description {
+        lines.append(f'description = "{_toml_str(pkg.description)}"');
+    }
+    if pkg.requires_python {
+        lines.append(f'requires-python = "{pkg.requires_python}"');
+    }
+    if pkg.license {
+        lines.append(f'license = {{text = "{_toml_str(pkg.license)}"}}');
+    }
+    if pkg.keywords {
+        kw_items = ", ".join(f'"{_toml_str(k)}"' for k in pkg.keywords);
+        lines.append(f'keywords = [{kw_items}]');
+    }
+    if pkg.classifiers {
+        lines.append("classifiers = [");
+        for cls in pkg.classifiers {
+            lines.append(f'    "{_toml_str(cls)}",');
+        }
+        lines.append("]");
+    }
+    if pkg.authors {
+        lines.append("authors = [");
+        for p in pkg.authors {
+            if p.name and p.email {
+                lines.append(
+                    f'    {{name = "{_toml_str(p.name)}", email = "{_toml_str(
+                        p.email
+                    )}"}},'
+                );
+            } elif p.name {
+                lines.append(f'    {{name = "{_toml_str(p.name)}"}},');
+            } elif p.email {
+                lines.append(f'    {{email = "{_toml_str(p.email)}"}},');
+            }
+        }
+        lines.append("]");
+    }
+    if config.dependencies {
+        lines.append("dependencies = [");
+        for (dep_name, raw_ver) in config.dependencies.items() {
+            spec = normalize_constraint(raw_ver);
+            norm_name = normalize_package_name(dep_name);
+            dep_str = f"{norm_name}{spec}" if spec else norm_name;
+            lines.append(f'    "{dep_str}",');
+        }
+        lines.append("]");
+    }
+
+    all_extras: dict[str, dict[str, str]] = dict(config.optional_dependencies);
+    if config.dev_dependencies {
+        all_extras["dev"] = config.dev_dependencies;
+    }
+    if all_extras {
+        lines.append("");
+        lines.append("[project.optional-dependencies]");
+        for (group, deps) in all_extras.items() {
+            lines.append(f"{group} = [");
+            for (dep_name, raw_ver) in deps.items() {
+                lines.append(f'    "{build_requires_dist(dep_name, raw_ver)}",');
+            }
+            lines.append("]");
+        }
+    }
+
+    return "\n".join(lines) + "\n";
 }
