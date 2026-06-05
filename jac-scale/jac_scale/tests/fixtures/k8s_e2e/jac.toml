@@ -48,6 +48,15 @@ products_app = "/api/products"
 orders_app = "/api/orders"
 cart_app = "/api/cart"
 
+# Gateway memory. The gateway loads the admin portal, LLM-telemetry, log
+# wiring and runtime OpenAPI aggregation that service pods don't, so its
+# startup working set rides right at the 1Gi service default and
+# OOM-kills there. manifest_builder already defaults the gateway role to
+# 2Gi; pinned here too so a default regression can't silently reintroduce
+# the CrashLoopBackOff. "__gateway__" is the reserved gateway service key.
+[plugins.scale.microservices.services.__gateway__]
+memory_limit = "2Gi"
+
 [plugins.scale.microservices.client]
 entry = "main.jac"
 dist_dir = ".jac/client/dist"

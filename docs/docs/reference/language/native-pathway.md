@@ -300,6 +300,7 @@ Collections are represented as LLVM struct types:
 | While loops | `while x > 0 { x -= 1; }` |
 | For-in range | `for i in range(10) { ... }` |
 | For-in collection | `for item in items { ... }` |
+| For-in lazy adapters | `for x in map(f, items) { ... }`, also `filter` / `enumerate` / `zip` |
 | Break / Continue | `break;` / `continue;` |
 | Ternary | `x = a if condition else b;` |
 
@@ -431,6 +432,10 @@ Collections are represented as LLVM struct types:
 | `chr()` / `ord()` | Character conversion |
 | `str()` / `int()` | Type conversion |
 | `input()` | Read a line from stdin |
+| `map()` / `filter()` | Lazy iterator adapters; iterate in a `for` loop |
+| `enumerate()` / `zip()` | Lazy adapters yielding tuples; unpack in a `for` loop |
+
+The `map`, `filter`, `enumerate`, and `zip` builtins are lazy iterator adapters: a `for` loop consumes them, and they compose without building intermediate lists (e.g. `for x in map(double, filter(is_even, items)) { ... }`, or `for (i, x) in enumerate(items) { ... }`). They are supported as `for`-loop iterables; binding an iterator to a variable and advancing it with `next()` is not available.
 
 ### Standard Library Modules
 
@@ -627,6 +632,35 @@ def fib(n: int) -> int {
 with entry {
     for i in range(10) {
         print(f"fib({i}) = {fib(i)}");
+    }
+}
+```
+
+### Lazy Iterators (map / filter / enumerate / zip)
+
+```jac
+# pipeline.na.jac
+
+def double(x: int) -> int { return x * 2; }
+def is_even(x: int) -> bool { return x % 2 == 0; }
+
+with entry {
+    nums: list[int] = [1, 2, 3, 4, 5, 6];
+
+    # map and filter compose lazily, with no intermediate lists
+    total: int = 0;
+    for x in map(double, filter(is_even, nums)) {
+        total = total + x;
+    }
+    print(f"sum of doubled evens: {total}");
+
+    # enumerate and zip yield tuples unpacked in the loop header
+    for (i, n) in enumerate(nums) {
+        print(f"#{i}: {n}");
+    }
+    scores: list[int] = [10, 20, 30];
+    for (n, s) in zip(nums, scores) {
+        print(f"{n} scored {s}");
     }
 }
 ```
