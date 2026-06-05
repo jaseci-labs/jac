@@ -216,7 +216,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     regardless of the toggle state at teardown time."""
     def _deploy_observability(app_name: str) -> None {
         logs_cfg = self._read_microservices_logs_config();
-        if not logs_cfg.get("enabled", False) {
+        tracing_cfg = self._read_microservices_tracing_config();
+        # O-02: the observability stack now also fires for tracing-only
+        # deploys (Tempo + Alloy OTLP lane), not just logs.
+        if not logs_cfg.get("enabled", False) and not tracing_cfg.get("enabled", False) {
             return;
         }
 
@@ -316,7 +319,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_observability_config -> KubernetesConfig {
         overrides: dict[str, Any] = dict(self.k8s_config.to_dict());
         overrides["monitoring_enabled"] = True;
-        overrides["loki_enabled"] = True;
+        # loki_enabled / tracing_enabled track the per-leg toggles so a
+        # logs-only, traces-only, or both deploy each builds the right
+        # subset (MonitoringDeployer.deploy gates Loki/Tempo/Alloy on
+        # these). The Prometheus + Grafana base always comes up.
+        overrides["loki_enabled"] = self._read_microservices_logs_config().get(
+            "enabled", False
+        );
+        overrides["tracing_enabled"] = self._read_microservices_tracing_config().get(
+            "enabled", False
+        );
         return KubernetesConfig.from_dict(KubernetesConfig, overrides);
     }
 
@@ -331,6 +343,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.warn(
                     f"Could not read [plugins.scale.microservices.logs] - "
                     f"observability stack will not be deployed: {e}"
+                );
+            }
+            return {};
+        }
+    }
+
+    """Read `[plugins.scale.microservices.tracing]` (O-02). Empty dict on
+    any failure (missing block, malformed TOML, loader exception)."""
+    def _read_microservices_tracing_config -> dict[str, Any] {
+        try {
+            ms_cfg = get_scale_config().get_microservices_config();
+            return dict(ms_cfg.get("tracing", {}));
+        } except Exception as e {
+            if self.logger {
+                self.logger.warn(
+                    f"Could not read [plugins.scale.microservices.tracing] - "
+                    f"tracing stack will not be deployed: {e}"
                 );
             }
             return {};
