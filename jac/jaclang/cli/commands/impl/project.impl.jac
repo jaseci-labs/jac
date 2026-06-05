@@ -429,6 +429,12 @@ impl install(
         import site;
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
+
+        # Phase 1 — validate all paths, collect combined dep specs so that pip
+        # resolves the full dependency graph in a single call (prevents silent
+        # cross-package downgrades when packages share transitive deps).
+        editable_targets: list = [];
+        all_dep_specs: list[str] = [];
         for editable_path in editable {
             src_dir: Path = Path(editable_path).resolve();
             # force_discover bypasses the module-level cache, which may already
@@ -437,57 +443,71 @@ impl install(
             if config is None {
                 console.error(
                     "No jac.toml found",
-                    hint=f"Clone the library repo and run 'jac install -e .' inside it. (path: {src_dir})"
+                    hint=f"Make sure {src_dir} contains a jac.toml."
                 );
                 return 1;
             }
             installer = DependencyInstaller(
                 config=config, verbose=verbose, install_flags=install_flags
             );
-            console.print(
-                f"\n📦 Editable install: {config.project.name} from {src_dir}",
-                style="bold"
-            );
             dep_specs = installer.get_pip_package_specs(include_dev=dev);
             if extras {
                 try {
                     extra_specs = installer.get_extra_package_specs(extras);
+                    if extra_specs {
+                        dep_specs.extend(extra_specs);
+                    }
                 } except ValueError as e {
-                    console.error(str(e));
-                    return 1;
-                }
-                if extra_specs {
-                    console.print(f"  Extras: {', '.join(extras)}", style="muted");
-                }
-                dep_specs.extend(extra_specs);
-            }
-            if dep_specs {
-                console.print(
-                    f"  Installing {len(dep_specs)} dependencies...", style="muted"
-                );
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
-                    capture_output=not verbose,
-                    text=True,
-                );
-                if result.returncode != 0 {
-                    console.error(
-                        f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    # Extras group absent in this package — warn and skip rather
+                    # than aborting the whole multi-package install.
+                    console.warning(
+                        f"  Skipping extras for {config.project.name}: {e}"
                     );
-                    return 1;
                 }
             }
-            if dry_run {
-                console.print(
-                    "  ✔ Dry run complete (nothing installed).", style="success"
+            all_dep_specs.extend(dep_specs);
+            editable_targets.append((config, src_dir));
+            console.print(
+                f"\n📦 Editable: {config.project.name} ({src_dir})", style="bold"
+            );
+        }
+
+        # Phase 2 — single pip call for all combined deps (unified resolver)
+        if all_dep_specs {
+            console.print(
+                f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
+            );
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade"
+                ] + install_flags + all_dep_specs,
+                capture_output=not verbose,
+                text=True,
+            );
+            if result.returncode != 0 {
+                console.error(
+                    f"Dependency install failed:\n{result.stderr or result.stdout}"
                 );
-                continue;
+                return 1;
             }
-            site_pkgs = Path(site.getsitepackages()[0]);
+        }
+
+        if dry_run {
+            console.print("  ✔ Dry run complete (nothing installed).", style="success");
+            return 0;
+        }
+
+        # Phase 3 — link each package as editable
+        site_pkgs = Path(site.getsitepackages()[0]);
+        for (config, src_dir) in editable_targets {
             WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
             console.print(f"  ✔ Linked {src_dir}", style="success");
-            console.print("  ✔ Editable install complete.", style="success");
         }
+        console.print("  ✔ Editable install complete.", style="success");
         return 0;
     }
     # ── Normal (non-editable) install ─────────────────────────────────────────
