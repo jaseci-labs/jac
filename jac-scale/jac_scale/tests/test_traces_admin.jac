@@ -1,4 +1,4 @@
-"""Tests for the in-admin Traces backend (O-02, /admin/traces/*).
+"""Tests for the in-admin Traces backend (/admin/traces/*).
 
 Pure-function unit tests for the Tempo-proxy helpers in
 `admin/impl/traces.impl.jac`: trace-id normalization (the join key
@@ -16,7 +16,7 @@ import from jac_scale.admin.traces {
 
 
 test "normalize_trace_id: dashed UUID or 32-hex -> 32-hex; garbage -> ''" {
-    # The K-12 dashed UUID and Tempo's 32-hex are the same 128 bits.
+    # A dashed UUID and Tempo's 32-hex are the same 128 bits.
     assert _normalize_trace_id("0af76519-16cd-43dd-8448-eb211c80319c") == "0af7651916cd43dd8448eb211c80319c";
     assert _normalize_trace_id("0AF7651916CD43DD8448EB211C80319C") == "0af7651916cd43dd8448eb211c80319c";
     assert _normalize_trace_id("") == "";

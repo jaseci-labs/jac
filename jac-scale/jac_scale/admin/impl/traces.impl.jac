@@ -1,17 +1,9 @@
-"""Implementation of JacAPIServerTraces - O-02 distributed-trace endpoints.
+"""Implementation of JacAPIServerTraces - distributed-trace endpoints.
 
-Proxies Tempo's HTTP API for the in-admin Distributed Traces page:
-
-  /admin/traces/services       - service dropdown (routes table)
-  /admin/traces                 - TraceQL search -> list of traces
-  /admin/traces/{trace_id}      - one trace's spans, flattened for the
-                                  React waterfall
-
-Tempo resolution mirrors the Loki resolver in logs.impl.jac: TEMPO_URL
-env override -> in-cluster `http://<app>-tempo-service:3200` DNS ->
-localhost. trace_id values accept the K-12 dashed UUID and normalize to
-the 32-hex form Tempo stores (the same 128 bits), so a click from the
-logs page lands on the right trace.
+Proxies Tempo's HTTP API for the in-admin Distributed Traces page.
+Tempo resolution: TEMPO_URL env override -> in-cluster
+`http://<app>-tempo-service:3200` DNS -> localhost. trace_id values
+accept a dashed UUID and normalize to the 32-hex form Tempo stores.
 """
 import os;
 import logging;
@@ -29,8 +21,7 @@ import from jac_scale.config_loader { get_scale_config }
 glob logger = logging.getLogger(__name__);
 
 
-"""Tempo base URL: TEMPO_URL env -> K8s DNS -> localhost. Same
-resolution order as logs.impl.jac's `_loki_base_url`, port 3200."""
+"""Tempo base URL: TEMPO_URL env -> K8s DNS -> localhost (port 3200)."""
 def _tempo_base_url -> str {
     env = os.getenv("TEMPO_URL", "").strip();
     if env {
@@ -71,10 +62,9 @@ def _trace_services -> list[str] {
 
 """Normalize a trace id to the 32-hex form Tempo stores.
 
-Accepts the K-12 dashed UUID (`7c3e9a1b-...`) or a raw hex string,
-strips dashes, lowercases, and validates it parses as hex. Returns ''
-when the input isn't usable so the handler can 400 instead of querying
-Tempo with garbage."""
+Accepts a dashed UUID or raw hex, strips dashes, lowercases, and
+validates it parses as hex. Returns '' when unusable so the handler can
+400 instead of querying Tempo with garbage."""
 def _normalize_trace_id(raw: str) -> str {
     hex_str = (raw or "").replace("-", "").strip().lower();
     if not hex_str {
@@ -406,7 +396,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
                     data_type="string",
                     required=True,
                     default=None,
-                    description="K-12 trace id (dashed UUID or 32-hex Tempo form)",
+                    description="Trace id (dashed UUID or 32-hex Tempo form)",
                     type=ParameterType.PATH
                 )
             ],

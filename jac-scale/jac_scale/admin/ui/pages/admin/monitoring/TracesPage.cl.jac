@@ -1,8 +1,6 @@
-"""Distributed Traces page for the admin dashboard (O-02).
+"""Distributed Traces page for the admin dashboard.
 
-The generic-span sibling of the LogsPage (A-05a, Loki) and a
-counterpart to the LLMTracesPage (A-05b, byLLM telemetry). Queries
-Tempo via /admin/traces/* and renders:
+Queries Tempo via /admin/traces/* and renders:
 
 - a TraceQL search bar (service / errors-only / min-duration / window),
 - a list of matching traces (root service + name, duration), and
@@ -10,8 +8,8 @@ Tempo via /admin/traces/* and renders:
   span, positioned by start offset and sized by duration, nested by
   parent_span_id, colored by service.
 
-The trace_id here is the same id the logs page surfaces (the K-12
-UUID's 128 bits), so the two views cross-link directly.
+The trace_id here is the same id the logs page surfaces, so the two
+views cross-link directly.
 """
 
 cl {
