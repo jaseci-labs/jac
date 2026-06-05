@@ -39,10 +39,12 @@ test "otlp value + attrs extraction" {
     assert _otlp_value({"stringValue": "GET"}) == "GET";
     assert _otlp_value({"intValue": "5"}) == "5";
     assert _otlp_value({}) == "";
-    attrs = _otlp_attrs([
-        {"key": "http.method", "value": {"stringValue": "GET"}},
-        {"key": "http.status_code", "value": {"intValue": "200"}}
-    ]);
+    attrs = _otlp_attrs(
+        [
+            {"key": "http.method", "value": {"stringValue": "GET"}},
+            {"key": "http.status_code", "value": {"intValue": "200"}}
+        ]
+    );
     assert attrs["http.method"] == "GET";
     assert attrs["http.status_code"] == "200";
 }
@@ -69,7 +71,10 @@ test "flatten_tempo_trace -> flat spans with service, timing, attributes" {
                                 "endTimeUnixNano": "1300000000",
                                 "status": {"code": "STATUS_CODE_OK"},
                                 "attributes": [
-                                    {"key": "http.method", "value": {"stringValue": "GET"}}
+                                    {
+                                        "key": "http.method",
+                                        "value": {"stringValue": "GET"}
+                                    }
                                 ]
                             }
                         ]

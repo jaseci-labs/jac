@@ -113,9 +113,7 @@ async def _tempo_request(path: str, params: dict, accept_json: bool = False) -> 
         headers["Accept"] = "application/json";
     }
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(8.0, connect=3.0)
-        ) as cl {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as cl {
             resp = await cl.get(url, params=params, headers=headers);
             resp.raise_for_status();
             return resp.json();
@@ -192,22 +190,26 @@ def _flatten_tempo_trace(payload: dict) -> dict {
                     max_end = end_ns;
                 }
                 status = span.get("status", {}) or {};
-                spans.append({
-                    "span_id": span.get("spanId", ""),
-                    "parent_span_id": span.get("parentSpanId", ""),
-                    "name": span.get("name", ""),
-                    "service": service,
-                    "kind": span.get("kind", ""),
-                    "start_ns": start_ns,
-                    "duration_ms": (end_ns - start_ns) / 1_000_000.0 if end_ns >= start_ns else 0,
-                    "status": str(status.get("code", "")),
-                    "attributes": _otlp_attrs(span.get("attributes", []))
-                });
+                spans.append(
+                    {
+                        "span_id": span.get("spanId", ""),
+                        "parent_span_id": span.get("parentSpanId", ""),
+                        "name": span.get("name", ""),
+                        "service": service,
+                        "kind": span.get("kind", ""),
+                        "start_ns": start_ns,
+                        "duration_ms": (end_ns - start_ns) / 1_000_000.0
+                            if end_ns >= start_ns
+                            else 0,
+                        "status": str(status.get("code", "")),
+                        "attributes": _otlp_attrs(span.get("attributes", []))
+                    }
+                );
             }
         }
     }
     # Sort by start time so the UI can lay the waterfall top-down.
-    spans.sort(key=lambda s: s.get("start_ns", 0));
+    spans.sort(key=lambda s : s.get("start_ns", 0));
     total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
     return {
         "spans": spans,
@@ -316,17 +318,19 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
         raw_traces = payload.get("traces", []) or [];
         traces: list[dict] = [];
         for t in raw_traces {
-            traces.append({
-                "trace_id": t.get("traceID", ""),
-                "root_service": t.get("rootServiceName", ""),
-                "root_name": t.get("rootTraceName", ""),
-                "start_ns": int(t.get("startTimeUnixNano", 0) or 0),
-                "duration_ms": int(t.get("durationMs", 0) or 0)
-            });
+            traces.append(
+                {
+                    "trace_id": t.get("traceID", ""),
+                    "root_service": t.get("rootServiceName", ""),
+                    "root_name": t.get("rootTraceName", ""),
+                    "start_ns": int(t.get("startTimeUnixNano", 0) or 0),
+                    "duration_ms": int(t.get("durationMs", 0) or 0)
+                }
+            );
         }
         # Newest-first: Tempo's search result order isn't guaranteed, so
         # sort by trace start time descending for a kubectl-logs-like UX.
-        traces.sort(key=lambda x: x.get("start_ns", 0), reverse=True);
+        traces.sort(key=lambda x : x.get("start_ns", 0), reverse=True);
         return JSONResponse(
             content={
                 "ok": True,
@@ -368,9 +372,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             );
         }
         try {
-            payload = await _tempo_request(
-                f"/api/traces/{norm}", {}, accept_json=True
-            );
+            payload = await _tempo_request(f"/api/traces/{norm}", {}, accept_json=True);
         } except ConnectionError as e {
             logger.warning(f"Tempo trace fetch failed: {e}");
             return JSONResponse(

@@ -15,11 +15,7 @@ views cross-link directly.
 cl {
     import from react { useEffect }
     import from ....context.AuthContext { useAuth }
-    import from ....services.tracesService {
-        getTraceServices,
-        searchTraces,
-        getTrace
-    }
+    import from ....services.tracesService { getTraceServices, searchTraces, getTrace }
 
     def:pub TracesPage -> JsxElement {
         has isLoading: bool = False,
@@ -221,7 +217,6 @@ cl {
                         Refresh
                     </button>
                 </div>
-
                 <div className="flex flex-wrap gap-3 items-end">
                     <select
                         value={filterService}
@@ -241,7 +236,9 @@ cl {
                     </select>
                     <select
                         value={String(filterMinDuration)}
-                        onChange={lambda e: any { filterMinDuration = Number(e.target.value); }}
+                        onChange={lambda e: any { filterMinDuration = Number(
+                            e.target.value
+                        ); }}
                         className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200"
                     >
                         <option value="0">Any duration</option>
@@ -260,56 +257,63 @@ cl {
                         <option value="1d">Last 24 hours</option>
                     </select>
                 </div>
-
-                {<div className="text-amber-300 text-sm bg-amber-500/10 border border-amber-500/30 rounded p-3">
-                    Trace backend unavailable. Enable tracing with
-                    [plugins.scale.microservices.tracing].enabled = true and
-                    redeploy so Tempo + the Alloy OTLP lane come up.
-                </div> if backendOffline else None}
-
+                {<div
+                    className="text-amber-300 text-sm bg-amber-500/10 border border-amber-500/30 rounded p-3"
+                >
+                    Trace backend unavailable. Enable tracing with [plugins.scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
+                </div>
+                    if backendOffline
+                    else None}
                 {<div className="text-red-300 text-sm">{errorMsg}</div>
-                    if (errorMsg and not backendOffline) else None}
-
+                    if (errorMsg and not backendOffline)
+                    else None}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-1 space-y-2">
                         <div className="text-xs uppercase tracking-wide text-slate-500">
                             Traces ({len(traces)})
                         </div>
                         {<div className="text-slate-500 text-sm">Loading...</div>
-                            if isLoading else None}
-                        {[<div
-                            key={t["trace_id"]}
-                            className={
-                                "p-2 rounded border cursor-pointer "
-                                + ("border-sky-500 bg-sky-500/10"
-                                   if (t["trace_id"] == selectedTraceId)
-                                   else "border-slate-800 bg-slate-900 hover:bg-slate-800")
-                            }
-                            onClick={lambda { openTrace(t["trace_id"]); }}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-200">
-                                    {t["root_service"] or "unknown"}
-                                </span>
-                                <span className="text-xs text-slate-400">
-                                    {fmtMs(t["duration_ms"])}
-                                </span>
-                            </div>
-                            <div className="text-xs text-slate-500 truncate">
-                                {t["root_name"] or t["trace_id"]}
-                            </div>
-                        </div> for t in traces]}
+                            if isLoading
+                            else None}
+                        {[
+                            <div
+                                key={t["trace_id"]}
+                                className={"p-2 rounded border cursor-pointer " + (
+                                    "border-sky-500 bg-sky-500/10"
+                                        if (t["trace_id"] == selectedTraceId)
+                                        else "border-slate-800 bg-slate-900 hover:bg-slate-800"
+                                )}
+                                onClick={lambda { openTrace(t["trace_id"]); }}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span
+                                        className="text-sm font-medium text-slate-200"
+                                    >
+                                        {t["root_service"] or "unknown"}
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        {fmtMs(t["duration_ms"])}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-slate-500 truncate">
+                                    {t["root_name"] or t["trace_id"]}
+                                </div>
+                            </div> for t in traces
+                        ]}
                         {<div className="text-slate-500 text-sm">
                             No traces in this window.
-                        </div> if (not isLoading and len(traces) == 0) else None}
+                        </div>
+                            if (not isLoading and len(traces) == 0)
+                            else None}
                     </div>
-
                     <div className="lg:col-span-2">
                         {<div className="text-slate-500 text-sm">Loading trace...</div>
-                            if isLoadingTrace else None}
-                        {<div className="space-y-1">
+                            if isLoadingTrace
+                            else None}{<div className="space-y-1">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-mono text-slate-400 truncate">
+                                <span
+                                    className="text-xs font-mono text-slate-400 truncate"
+                                >
                                     {selectedTraceId}
                                 </span>
                                 <button
@@ -319,43 +323,63 @@ cl {
                                     close
                                 </button>
                             </div>
-                            {[<div key={sp["span_id"]} className="flex items-center gap-2 text-xs">
+                            {[
                                 <div
-                                    className="w-1/3 truncate text-slate-300"
-                                    style={{"paddingLeft": String(spanDepth(sp, byIdMap) * 12) + "px"}}
+                                    key={sp["span_id"]}
+                                    className="flex items-center gap-2 text-xs"
                                 >
-                                    <span className="text-slate-500">{sp["service"]}</span>
-                                    {" "}
-                                    {sp["name"]}
-                                </div>
-                                <div className="flex-1 relative h-4 bg-slate-900 rounded">
                                     <div
-                                        className={
-                                            "absolute h-4 rounded "
-                                            + (serviceColorBar(sp["service"]))
-                                            + (" ring-1 ring-red-400"
-                                               if (sp["status"] == "STATUS_CODE_ERROR"
-                                                   or sp["status"] == "2")
-                                               else "")
-                                        }
+                                        className="w-1/3 truncate text-slate-300"
                                         style={{
-                                            "left": String(barLeft(sp)) + "%",
-                                            "width": String(barWidth(sp)) + "%"
+                                            "paddingLeft": String(
+                                                spanDepth(sp, byIdMap) * 12
+                                            ) + "px"
                                         }}
-                                        title={sp["name"] + " " + fmtMs(sp["duration_ms"])}
-                                    ></div>
-                                </div>
-                                <div className="w-16 text-right text-slate-400">
-                                    {fmtMs(sp["duration_ms"])}
-                                </div>
-                            </div> for sp in spans]}
+                                    >
+                                        <span className="text-slate-500">
+                                            {sp["service"]}
+                                        </span>
+                                        {" "}
+                                        {sp["name"]}
+                                    </div>
+                                    <div
+                                        className="flex-1 relative h-4 bg-slate-900 rounded"
+                                    >
+                                        <div
+                                            className={"absolute h-4 rounded " + (
+                                                serviceColorBar(sp["service"])
+                                            ) + (
+                                                " ring-1 ring-red-400"
+                                                    if (
+                                                        sp["status"] == "STATUS_CODE_ERROR"
+                                                        or sp["status"] == "2"
+                                                    )
+                                                    else ""
+                                            )}
+                                            style={{
+                                                "left": String(barLeft(sp)) + "%",
+                                                "width": String(barWidth(sp)) + "%"
+                                            }}
+                                            title={sp["name"] + " " + fmtMs(
+                                                sp["duration_ms"]
+                                            )}
+                                        ></div>
+                                    </div>
+                                    <div className="w-16 text-right text-slate-400">
+                                        {fmtMs(sp["duration_ms"])}
+                                    </div>
+                                </div> for sp in spans
+                            ]}
                             {<div className="text-slate-500 text-sm">
                                 No spans for this trace.
-                            </div> if (not isLoadingTrace and len(spans) == 0) else None}
-                        </div> if selectedTraceId else
-                        <div className="text-slate-500 text-sm">
-                            Select a trace to view its flame graph.
-                        </div>}
+                            </div>
+                                if (not isLoadingTrace and len(spans) == 0)
+                                else None}
+                        </div>
+                            if selectedTraceId
+                            else <div className="text-slate-500 text-sm">
+                                Select a trace to view its flame graph.
+                            </div>}
                     </div>
                 </div>
             </div>;
