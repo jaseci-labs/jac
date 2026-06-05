@@ -14,7 +14,15 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+def _jac_root -> str {
+    here = __file__;
+    if here is None {
+        raise RuntimeError("test __file__ is unavailable");
+    }
+    return str(Path(here).resolve().parent.parent.parent.parent.parent);
+}
+
+glob JAC_ROOT = _jac_root(),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
