@@ -33,6 +33,7 @@ import from jaclang.jac0core.diagnostics {
     W2013,
     E2016,
     E2017,
+    E2026,
     W2080
 }
 

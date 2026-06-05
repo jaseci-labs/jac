@@ -231,6 +231,32 @@ impl DeclImplMatchPass.connect_impls(
             );
         }
     }
+    # Detect bare re-declaring definitions in .impl.jac files that match
+    # unlinked stubs in the parent module. This catches the common mistake
+    # of writing `def foo() { ... }` instead of `impl foo() { ... }`.
+    if (source_sym_tab is not target_sym_tab) {
+        for sym in source_sym_tab.names_in_scope.values() {
+            if isinstance(sym.decl.name_of, uni.ImplDef) {
+                continue;
+            }
+            if not isinstance(sym.decl.name_of, uni.AstImplNeedingNode) {
+                continue;
+            }
+            lookup = target_sym_tab.lookup(sym.sym_name, deep=False);
+            if not lookup {
+                continue;
+            }
+            decl_node = self.defn_lookup(lookup);
+            if (
+                decl_node
+                and isinstance(decl_node.name_of, uni.AstImplNeedingNode)
+                and decl_node.name_of.needs_impl
+                and not decl_node.name_of.body
+            ) {
+                self.emit(E2026, node_override=sym.decl.name_of, name=sym.sym_name);
+            }
+        }
+    }
     for source_scope in source_sym_tab.kid_scope {
         if (source_sym_tab is target_sym_tab) {
             self.connect_impls(source_scope, source_scope);
