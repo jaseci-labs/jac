@@ -433,15 +433,11 @@ impl install(
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
 
-        # Phase 1 — validate all paths, collect combined dep specs so that pip
-        # resolves the full dependency graph in a single call (prevents silent
-        # cross-package downgrades when packages share transitive deps).
+        # Phase 1 — collect all dep specs for a single unified pip call.
         editable_targets: list = [];
         all_dep_specs: list[str] = [];
         for editable_path in editable {
             src_dir: Path = Path(editable_path).resolve();
-            # force_discover bypasses the module-level cache, which may already
-            # hold a prior project's config when installing multiple paths.
             config = get_config(start_path=src_dir, force_discover=True);
             if config is None {
                 console.error(
