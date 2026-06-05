@@ -43,7 +43,13 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     }
     for (key, labels) in cfg_labels.items() {
         if labels {
-            stmts_str = '\\n'.join([stmt.replace('"', '\\"') for stmt in labels]);
+            stmts_str = '\\n'.join(
+                [
+                    stmt.replace('"', '\\"')
+                    for stmt in labels
+                    if stmt
+                ]
+            );
             dot += f'  {key} [label="BB{key}\\n{stmts_str}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
@@ -173,6 +179,27 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
             return kw + ' ' + nd.name_ref.unparse();
         }
         return kw;
+    }
+    # ReturnStmt whose value is a ternary: suppress label here -- the condition
+    # and each branch are already shown as separate BBs below this block.
+    if isinstance(nd, uni.ReturnStmt) {
+        if nd.expr and isinstance(nd.expr, uni.IfElseExpr) {
+            return "";
+        }
+        return nd.unparse();
+    }
+    # CfgExpr that is the value or else_value (not the condition) of a ternary
+    # directly inside a ReturnStmt: re-attach "return" so the branch label
+    # makes the control-flow intent visible.
+    if isinstance(nd, uni.CfgExpr) {
+        par = nd.parent;
+        if (
+            isinstance(par, uni.IfElseExpr)
+            and (nd is par.value or nd is par.else_value)
+            and isinstance(par.parent, uni.ReturnStmt)
+        ) {
+            return "return " + nd.unparse();
+        }
     }
     return nd.unparse();
 }
