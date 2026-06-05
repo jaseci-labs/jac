@@ -145,6 +145,54 @@ test "guardrail: yield expression is rejected" {
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Import / builtin gaps (issue #6357)
+# ─────────────────────────────────────────────────────────────────────
+# Native compilation cannot import arbitrary Python modules: the import is
+# dropped, then `math.pi` lowers to nothing and the binary prints empty
+# output. That silent-wrong result is the worst failure mode -- reject it.
+test "guardrail: Python module import is rejected" {
+    prog = compile_na_inline(
+        "py_import_math", "import math;\n" "with entry { print(f\"pi: {math.pi}\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'math', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# A dotted Python import (`import os.path;`) is equally unsupported.
+test "guardrail: dotted Python module import is rejected" {
+    prog = compile_na_inline(
+        "py_import_dotted", "import os.path;\n" "with entry { print(\"hi\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'os.path', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Builtins that are not lowered to the native subset (sum, min, max, ...)
+# currently dispatch to nothing and silently yield an empty value. Reject
+# the call rather than emitting a binary that prints garbage.
+test "guardrail: unsupported builtin over an iterable is rejected" {
+    prog = compile_na_inline(
+        "py_builtin_sum", "with entry { print(f\"Total: {sum(range(1, 101))}\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported builtin 'sum', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# A call to a function that resolves to nothing must also be loud.
+test "guardrail: call to an undefined function is rejected" {
+    prog = compile_na_inline(
+        "undefined_call",
+        "def use() -> int { return mystery(3); }\n" "with entry { print(use()); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for call to undefined 'mystery', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
 # Negative controls — supported features must NOT trigger E5090
 # ─────────────────────────────────────────────────────────────────────
 test "guardrail: supported features do not trigger E5090" {
@@ -170,6 +218,17 @@ test "guardrail: supported features do not trigger E5090" {
         "}\n"
     );
     assert not has_error_code(prog, "E5090") , f"Supported features triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
+
+# `import sys;` is the one Python import the native backend models (sys.argv,
+# sys.platform). Rejecting unsupported imports must not regress it.
+test "guardrail: import sys is not rejected" {
+    prog = compile_na_inline(
+        "import_sys_ok", "import sys;\n" "with entry { print(sys.platform); }\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"`import sys` should be supported, got: {fmt_errors(
         prog
     )}";
 }

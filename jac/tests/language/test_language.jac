@@ -908,3 +908,8 @@ test "as cast does not disturb with/except alias" {
     output = run_jac(os.path.join(FIXTURES, "as_cast_with_except.jac"));
     assert output == "with-ternary-ok\nwith-paren-cast-ok\nboom\n";
 }
+
+test "deep walker chain does not hit recursion limit" {
+    output = run_jac(os.path.join(FIXTURES, "deep_walker_chain.jac"));
+    assert "1500" in output , f"Walker should visit all 1500 nodes: {output}";
+}

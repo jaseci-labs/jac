@@ -788,7 +788,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         if isinstance(s, uni.Import)
     ];
     for stmt in imports {
-        # Recognize `import sys;` for native sys module support
+        # Recognize natively-supported stdlib imports (e.g. `import sys;`)
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
@@ -802,8 +802,38 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         }
                         mod_name = ".".join(parts);
                     }
-                    if mod_name == "sys" {
-                        self._native_stdlib_modules.add("sys");
+                    if mod_name in NATIVE_SUPPORTED_STDLIB {
+                        # A stdlib module the native backend lowers (its members
+                        # are intercepted in codegen). Track it so those
+                        # intercepts know it was imported. Grows with the
+                        # Python-congruent stdlib roadmap (issue #6404).
+                        self._native_stdlib_modules.add(mod_name);
+                    } elif mod_name is not None
+                    and stmt.code_context == CodeContext.NATIVE {
+                        # A plain `import math;` carries a ModulePath item and no
+                        # from_loc. Native compilation cannot import arbitrary
+                        # Python modules: the import is dropped, then attribute
+                        # access on the module name (`math.pi`) lowers to nothing
+                        # and the binary prints empty/garbage. Reject it loudly
+                        # instead of emitting a silently-wrong binary (issue
+                        # #6357). The NATIVE-context guard matters because this
+                        # pass also runs over ordinary .jac modules in the
+                        # standard pipeline, where a Python import is valid and
+                        # SERVER-context -- only `.na.jac` modules and `na {}`
+                        # blocks make a bare Python import an error. C libraries
+                        # (`import from "lib" {...}`) and other native modules
+                        # (`import from mod {...}`) carry a from_loc and are
+                        # handled below / by interop resolution.
+                        _supported = ", ".join(
+                            f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
+                        );
+                        self.emit(
+                            E5090,
+                            node_override=item,
+                            kind="Python module import",
+                            name=mod_name,
+                            help_text=f"Native compilation supports these stdlib imports: {_supported}; C-library imports (`import from \"lib\" {{...}}`); and other native (.na.jac) modules (`import from mod {{...}}`). Move Python-dependent code to a @sv/Python context."
+                        );
                     }
                 }
             }
@@ -814,6 +844,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         #   import from foo { ... }              -- logical name (issue #6387),
         #   import from .foo { ... }                resolved to the platform-correct
         #   import from libs.foo { ... }            filename per the target triple.
+        # Remember where this import's lib path(s) land in _clib_paths so each
+        # of its function symbols can be mapped back to the library it imports
+        # from (needed for Mach-O two-level-namespace dylib ordinals).
+        _paths_before = len(self._clib_paths);
         if stmt.from_loc is not None and stmt.from_loc.path {
             _name_components: list[str] = [];
             for path_part in stmt.from_loc.path {
@@ -836,6 +870,11 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 );
             }
         }
+        # The library this import block binds against (last path it added, if
+        # any). Each function symbol below is attributed to it.
+        _cur_lib = self._clib_paths[-1]
+            if len(self._clib_paths) > _paths_before
+            else None;
         # Three-pass processing of clib declarations:
         # Pass 1: Register struct types (opaque, for forward refs)
         for decl in stmt.clib_decls {
@@ -900,12 +939,16 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 self._declare_clib_ability(decl);
                 if fn_name {
                     self.clib_extern_names.add(fn_name);
+                    if _cur_lib is not None {
+                        self._clib_symbol_lib[fn_name] = _cur_lib;
+                    }
                 }
             }
         }
         # Store clib paths on module gen for compile pass
         if self._clib_paths {
             module.gen._clib_paths = self._clib_paths;
+            module.gen._clib_symbol_lib = self._clib_symbol_lib;
             self.has_native_code = True;
         }
     }

@@ -135,8 +135,37 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
                 continue;
             }
         }
-        self.emit(W2001, node_override=name_nd, name=name_nd.value);
+        # Common cross-language literal slips: Jac/Python spell the boolean
+        # and null singletons `True` / `False` / `None`. Lowercase `true` /
+        # `false` / `null` / `none` (and Ruby/Lua's `nil`) parse as ordinary
+        # undefined names, which otherwise only surfaces downstream as a
+        # confusing "Cannot return <Unknown>" type error. A targeted hint
+        # turns that dead end into a one-line fix (issue #6357).
+        hint = None;
+        suggestion = self._literal_case_suggestion(name_nd.value);
+        if suggestion is not None {
+            hint = f"Jac uses Python-style literals -- did you mean `{suggestion}`?";
+        }
+        self.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
+}
+
+
+"""Map a lowercase boolean/null literal slip to its Jac/Python spelling.
+
+Returns the canonical literal (`True`/`False`/`None`) for a known
+cross-language lowercase variant, or None when the name is not such a slip.
+"""
+impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {
+    return {
+        "true": "True",
+        "false": "False",
+        "none": "None",
+        "null": "None",
+        "nil": "None"
+    }.get(
+        name
+    );
 }
 
 

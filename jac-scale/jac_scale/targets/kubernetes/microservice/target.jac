@@ -28,6 +28,12 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
 import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
+import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
+import from jac_scale.abstractions.autoscaler {
+    AutoscalerSpec,
+    Trigger,
+    DEFAULT_CPU_UTILIZATION_TARGET
+}
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.config_loader { get_scale_config }
 
@@ -410,7 +416,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
@@ -479,12 +484,38 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        for (svc_name, hpa_manifest) in bundle.get("hpas", {}).items() {
-            self._apply_or_replace_hpa(autoscaling_v2, namespace, hpa_manifest);
+        for svc_name in bundle.get("autoscalers", {}).keys() {
+            k8s_name = k8s_safe_name(svc_name);
+            cfg = dict(bundle.get("autoscalers", {}).get(svc_name, {}));
+            autoscaler = AutoscalerFactory.create(
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
+            );
+            autoscaler.apply(
+                AutoscalerSpec(
+                    scale_target_name=f"{k8s_name}-deployment",
+                    autoscaler_name=f"{k8s_name}-hpa",
+                    namespace=namespace,
+                    min_replicas=int(cfg.get("min", 1)),
+                    max_replicas=int(cfg.get("max", 3)),
+                    triggers=[
+                        Trigger(
+                            type="cpu",
+                            metadata={
+                                "averageUtilization": str(
+                                    cfg.get(
+                                        "cpu_target", DEFAULT_CPU_UTILIZATION_TARGET
+                                    )
+                                )
+                            }
+                        )
+                    ]
+                )
+            );
             if self.logger {
                 self.logger.info(
-                    f"Applied HPA for '{svc_name}'",
-                    {"name": hpa_manifest["metadata"]["name"]}
+                    f"Applied HPA for '{svc_name}'", {"name": f"{k8s_name}-hpa"}
                 );
             }
         }
@@ -576,28 +607,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    def _apply_or_replace_hpa(
-        autoscaling_v2: any, namespace: str, manifest: dict[str, any]
-    ) {
-        name: str = manifest["metadata"]["name"];
-        try {
-            autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
-                name=name, namespace=namespace
-            );
-            autoscaling_v2.patch_namespaced_horizontal_pod_autoscaler(
-                name=name, namespace=namespace, body=manifest
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                autoscaling_v2.create_namespaced_horizontal_pod_autoscaler(
-                    namespace=namespace, body=manifest
-                );
-            } else {
-                raise;
-            }
-        }
-    }
-
     def _apply_or_replace_pdb(
         policy_v1: any, namespace: str, manifest: dict[str, any]
     ) {
@@ -654,7 +663,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
@@ -673,8 +681,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         try {
-            autoscaling_v2.delete_collection_namespaced_horizontal_pod_autoscaler(
-                namespace=namespace, label_selector=ms_selector
+            AutoscalerFactory.create(
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
+            ).destroy_collection(
+                namespace, ms_selector
             );
         } except ApiException as e {
             if e.status != 404 {

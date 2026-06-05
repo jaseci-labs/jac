@@ -1,13 +1,20 @@
 # Downloaded raylib release + extraction cache
 .build/
 
-# Shared library staged by demo.sh
+# Shared library staged by demo.sh (incl. versioned SONAME symlinks)
 libraylib.so
+libraylib.so.*
 libraylib*.dylib
 
 # Compiled native binaries
 /shooter
+/shooter_zig
+/shooter_zig.o
 /smoke
+
+# Benchmark scratch files (switch written by demo.sh, result by the binaries)
+.bench_seconds
+.bench_result
 
 # Jac native IR cache
 .jac_ir/
