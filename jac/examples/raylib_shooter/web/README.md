@@ -1,50 +1,57 @@
-# Jac Cube Shooter - WASM / WebGL build
+# Jac Cube Shooter - full-stack (`na` wasm + `cl` WebGL) via `jac start`
 
-The **same** `shooter.na.jac` that the native demo links against `libraylib.so`,
-here compiled to a browser `.wasm` module and rendered with WebGL - a *fourth*
-target for one unchanged rlgl source.
+The same rlgl cube shooter as the parent example, as a **full-stack Jac app**: the
+game is an `na {}` codespace compiled to WebAssembly, the page is a `cl {}` React
+component, and `jac start` builds + serves both. One app module, no hand-run build
+steps, no `.mjs`.
 
 ```bash
-./demo.sh           # builds shooter.wasm and serves http://localhost:8099
-# then click the canvas to capture the mouse:
-#   WASD move · mouse/arrows aim · Space fire · Tab release the cursor
+jac start          # build the cl bundle + na->wasm, serve on http://localhost:8000
+jac start --dev    # same with hot reload
+# open http://localhost:8000, click the canvas: WASD move, mouse/arrows aim,
+# Space fire, Tab release the cursor
 ```
 
-## How it works
+(`jac build` produces the same artifacts under `.jac/client/dist/` without serving.)
 
-`jac nacompile --target wasm32 shooter.na.jac -o shooter.wasm` runs the native
-LLVM backend at the `wasm32-unknown-unknown` triple and links the single
-relocatable object into an instantiable module with the **pure-Jac wasm linker**
-([`compiler/passes/native/wasm_linker.jac`](../../../jaclang/compiler/passes/native/wasm_linker.jac)),
-with no `wasm-ld` or emscripten dependency.
+## How it fits together
 
-The game's `import from raylib { ... }` block (`rlVertex3f`, `rlColor4ub`,
-`rlTranslatef`, `IsKeyDown`, ...) does not resolve to a shared library here.
-Undefined externs simply **become the module's wasm imports**, and the WebGL
-shim in [`raylib_web.mjs`](./raylib_web.mjs) supplies them: it emulates rlgl's
-immediate mode (a projection/modelview matrix stack + an `rlBegin`/`rlVertex3f`
-batch) on one WebGL shader, and maps keyboard/mouse/pointer-lock to raylib's
-scalar input calls. The small libc/runtime surface the Jac native runtime needs
-(`malloc`/`free`/`memcpy`, `__multi3`, ...) is provided as `env` imports too.
+```
+main.jac
+  na { import from raylib { ... }  ...game...  init()  frame()  get_score() }
+        -> compiled to /static/main.wasm by the client build (pure-Jac wasm linker)
+  cl { import from .raylib_shim { run_game };  def:pub app -> JsxElement { <canvas/> } }
+        -> React bundle; on mount calls run_game(canvas)
 
-The only source change vs the native build is the entry shape: the blocking
-`with entry { while !WindowShouldClose() ... }` loop is split into `init()` (once)
-and `frame()` (per `requestAnimationFrame`), because a browser tab cannot block
-its main thread. All state already lived in module globals, so the split is
-mechanical.
+raylib_shim.cl.jac   (reusable client library)
+  emulates raylib's scalar rlgl immediate-mode API + input on WebGL/DOM,
+  supplies the libc/__multi3 the Jac native runtime needs, instantiates
+  /static/main.wasm, and drives init()/frame() per requestAnimationFrame.
+```
+
+The `na` block's `import from raylib { ... }` externs do **not** link a native
+library here - they become the wasm module's **imports**, which `raylib_shim`
+satisfies. Same source contract as the native build; a different host fulfills it.
+
+### Why the shim is a separate `.cl.jac`
+
+The shim is generic browser infra (a WebGL/DOM raylib emulation), not app code -
+so it lives in a reusable `cl` library, imported like `react`. It is also where
+the low-level glue (typed-array/`BigInt` marshalling, bitwise allocator math)
+lives; a `.cl.jac` library is compiled but not strictly type-checked, which that
+glue currently needs. The game and the page stay in `main.jac`.
+
+## What's a shim vs. real raylib
+
+This renders with a hand-written WebGL emulation of the rlgl subset the game uses
+
+- it is raylib-*compatible*, not raylib itself.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `shooter.na.jac` | the game (native rlgl source + `init()`/`frame()` entry) |
-| `raylib_web.mjs` | WebGL shim: the `env` import object (rlgl + input + runtime) |
-| `index.html`     | canvas + HUD; instantiates the wasm and drives the rAF loop |
-| `demo.sh`        | build (`nacompile --target wasm32`) + serve |
-| `shooter.wasm`   | build output (git-ignored) |
-
-## Build surface (`int` is `i64`)
-
-Jac `int` lowers to wasm `i64`, so any exported function taking/returning `int`
-needs `BigInt` at the JS boundary (`e.get_score()` returns a BigInt). The hot
-rlgl/input surface is all `i32`/`f32`, so it stays `BigInt`-free.
+| `main.jac` | `na {}` game (-> `main.wasm`) + `cl {}` page that mounts the canvas |
+| `raylib_shim.cl.jac` | WebGL/DOM shim: rlgl + input + libc -> the wasm's `env` imports |
+| `jac.toml` | project + `[plugins.client]` + react deps |
+| `.jac/client/dist/` | build output (git-ignored): `client.*.js` + `main.wasm` |

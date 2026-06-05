@@ -1,6 +1,80 @@
 # Single-file full-stack build: the SAME rlgl shooter as ../shooter.na.jac,
 # now an na{} codespace compiled to wasm by `jac build`/`jac start`, with a
 # cl{} WebGL shim + page in the same module. Run: jac start (open localhost).
+
+# ─── Client: the page + HUD. The WebGL shim (rlgl/input/libc -> wasm imports) is
+# the reusable raylib_shim.cl.jac library; here we mount the canvas, style the
+# page like the standalone web build, and drive a live score/fps HUD. ──────────
+cl {
+    import from .raylib_shim { run_game }
+
+    def:pub app -> JsxElement {
+        can with entry {
+            existing: any = document.getElementById("shooter-styles");
+            if not existing {
+                css = """
+                body { margin: 0; background: #0b0e16; }
+                #page { min-height: 100vh; box-sizing: border-box; color: #cdd6e6;
+                        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+                        display: flex; flex-direction: column; align-items: center;
+                        gap: 12px; padding: 18px; }
+                #page h1 { font-size: 16px; font-weight: 600; margin: 4px 0 0; }
+                #hint { opacity: 0.7; }
+                #hint b, #hud b { color: #f5c451; }
+                #wrap { position: relative; }
+                #glcanvas { background: #0f121c; border: 1px solid #232a3d;
+                            border-radius: 6px; display: block; cursor: crosshair; }
+                #hud { position: absolute; top: 8px; left: 10px; pointer-events: none;
+                       text-shadow: 0 1px 2px #000; }
+                """;
+                st: any = document.createElement("style");
+                st.id = "shooter-styles";
+                st.textContent = css;
+                head: any = document.head;
+                head.appendChild(st);
+            }
+            run_game(
+                document.getElementById("glcanvas"),
+                lambda exports: any , fps: int {
+                    score_el: any = document.getElementById("hud-score");
+                    fps_el: any = document.getElementById("hud-fps");
+                    score_el.textContent = exports.get_score();
+                    fps_el.textContent = fps;
+                }
+            );
+        }
+        # The inter-element spaces below are written as explicit {" "} string
+        # children on purpose: `jac format` reflows mixed JSX (text next to
+        # inline elements) onto separate lines and drops the significant
+        # whitespace, so plain `mouse · <b>WASD</b> move` would render as
+        # `mouse ·WASDmove`. Keep these literals until the formatter preserves
+        # JSX whitespace on break.
+        return
+            <div id="page">
+                <h1>Jac Cube Shooter - na wasm + cl WebGL, one app module</h1>
+                <div id="hint">
+                    {"Click the canvas to capture the mouse · "}
+                    <b>WASD</b>
+                    {" move · mouse/arrows aim · "}
+                    <b>Space</b>
+                    {" fire · "}
+                    <b>Tab</b>
+                    {" release"}
+                </div>
+                <div id="wrap">
+                    <canvas id="glcanvas" width={960} height={600}></canvas>
+                    <div id="hud">
+                        {"score "}
+                        <b id="hud-score">0</b>
+                        {" · "}
+                        <b id="hud-fps">0</b>
+                        {" fps"}
+                    </div>
+                </div>
+            </div>;
+    }
+}
+
 na {
     import from raylib {
         def InitWindow(width: i32, height: i32, title: str) -> None;  def WindowShouldClose -> bool;  def CloseWindow -> None;  def SetTargetFPS(
@@ -580,25 +654,5 @@ resolved once at startup; `frames`/`max_fps` are tallied across the run."""
     """Current score (targets destroyed) - for an HTML/`sv` HUD."""
     def get_score -> int {
         return score;
-    }
-}
-
-# ─── Client: the page. The WebGL shim (rlgl/input/libc -> wasm imports) is the
-# reusable raylib_shim.cl.jac library; here we just mount a canvas and run it. ─
-cl {
-    import from .raylib_shim { run_game }
-
-    def:pub app -> JsxElement {
-        can with entry {
-            run_game(document.getElementById("glcanvas"));
-        }
-        return
-            <div>
-                <h1>Jac Cube Shooter - na wasm + cl WebGL, one app module</h1>
-                <p>
-                    Click the canvas to capture the mouse - WASD move, Space fire, Tab release.
-                </p>
-                <canvas id="glcanvas" width={960} height={600}></canvas>
-            </div>;
     }
 }

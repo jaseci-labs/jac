@@ -33,7 +33,8 @@ obj Shim {
         dt: float = 0.016,
         time: float = 0.0,
         t0: float = 0.0,
-        draws: int = 0;
+        draws: int = 0,
+        on_tick: any = None;
 }
 
 def _m_ident -> list {
@@ -293,12 +294,15 @@ def _build_env(sh: any) -> dict {
         "TextToInteger": lambda p: int { return 0; },
         "SaveFileText": lambda p: int , t: int { return 0; },
         "malloc": lambda n: int {
+            # n arrives as an i64 (BigInt at the JS boundary); coerce so the
+            # bump-allocator arithmetic stays Number-only (see web shim).
+            sz = Number(n);
             p = sh.heap;
-            sh.heap = (sh.heap + n + 7) & ~7;
+            sh.heap = (sh.heap + sz + 7) & ~7;
             return p;
         },
         "calloc": lambda c: int , s: int {
-            n = c * s;
+            n = Number(c) * Number(s);
             p = sh.heap;
             sh.heap = (sh.heap + n + 7) & ~7;
             new(Uint8Array, sh.mem.buffer).fill(0, p, p + n);
@@ -307,13 +311,15 @@ def _build_env(sh: any) -> dict {
         "free": lambda p: int { },
         "malloc_usable_size": lambda p: int { return 0; },
         "memcpy": lambda d: int , s: int , n: int {
-            new(Uint8Array, sh.mem.buffer).copyWithin(d, s, s + n);
+            sz = Number(n);
+            new(Uint8Array, sh.mem.buffer).copyWithin(d, s, s + sz);
             return d;
         },
         "memcmp": lambda a: int , b: int , n: int {
             u8 = new(Uint8Array, sh.mem.buffer);
+            sz = Number(n);
             i = 0;
-            while i < n {
+            while i < sz {
                 df = u8[a + i] - u8[b + i];
                 if df != 0 {
                     return df;
@@ -428,6 +434,12 @@ def _frame_tick(sh: any, ts: float) {
     }
     sh.time = now;
     closed = sh.exports.frame();
+    # Optional per-frame hook so a page can drive a HUD (score/fps) without the
+    # shim needing to know anything game-specific.
+    if sh.on_tick is not None {
+        fps = Math.round(1.0 / sh.dt) if sh.dt > 0.0 else 0;
+        sh.on_tick(sh.exports, fps);
+    }
     sh.pressed = {};
     sh.mpressed = {};
     if not closed {
@@ -435,8 +447,9 @@ def _frame_tick(sh: any, ts: float) {
     }
 }
 
-async def:pub run_game(canvas: any) {
+async def:pub run_game(canvas: any, on_tick: any = None) {
     sh = Shim();
+    sh.on_tick = on_tick;
     sh.canvas = canvas;
     sh.gl = canvas.getContext("webgl");
     sh.proj = _m_ident();
