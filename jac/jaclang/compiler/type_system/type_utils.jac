@@ -129,6 +129,18 @@ def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
 ) -> (Symbol | None);
 
+"""Collect a name's [primary, *overloads] from a scope, descending through
+statically-live `if`/`elif`/`else` branches.
+
+`sys.version_info` / `TYPE_CHECKING` guards do not create Python name scopes,
+so a declaration nested under a live guard belongs to the enclosing
+class/module. The symbol table holds every branch (it is complete); this skips
+the branches a type checker treats as dead so guarded overload sets (e.g.
+typeshed `zip.__new__`) resolve to exactly the live definitions."""
+def collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol];
+
 def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool;

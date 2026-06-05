@@ -112,19 +112,17 @@ test "inner compr scope linking" {
     assert inner_compr.lookup("pool", True) is not None;
 }
 
-"""Test that sys.version_info conditionals are evaluated during symbol table building.
+"""SymTabBuildPass records every branch of a `sys.version_info` guard.
 
-Pyright reference: staticExpressions.ts - evaluateStaticBoolLikeExpression
-This ensures symbols inside version conditionals like 'if sys.version_info >= (3, 11): Self: _SpecialForm'
-are properly registered when the condition is true for the current Python version.
+The symbol table is complete and version-agnostic: declarations from both the
+live and the dead branch exist in it. Deciding which branch a type checker
+sees is a type-layer concern (collect_member_syms), not symbol-table building.
 """
-test "version conditional evaluation" {
-    import sys;
+test "version conditional symbols are all recorded in the symbol table" {
     import ast as py_ast;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
     import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 
-    # Test Python code with version conditionals
     code = """
 import sys
 
@@ -148,47 +146,40 @@ Always = "always_available"
 
     SymTabBuildPass(ir_in=mod, prog=prog);
 
-    # Check which symbols are registered
-    # Use incl_inner_scope=True to search child scopes (if statements don't create namespaces in Python)
-    self_sym = mod.lookup("Self", deep=True, incl_inner_scope=True);
-    never_sym = mod.lookup("Never", deep=True, incl_inner_scope=True);
-    future_sym = mod.lookup("Future", deep=True, incl_inner_scope=True);
-    always_sym = mod.lookup("Always", deep=True, incl_inner_scope=True);
-
-    # Always should always be found
-    assert always_sym is not None , "Always should always be found";
-
-    # On Python 3.11+, Self and Never should be found
-    if sys.version_info >= (3, 11) {
-        assert self_sym is not None , "Self should be found on Python 3.11+";
-        assert never_sym is not None , "Never should be found on Python 3.11+";
-    }
-
-    # Future should NOT be found (requires Python 3.15+)
-    assert future_sym is None , "Future should NOT be found on Python < 3.15";
+    # Every guarded declaration is in the (complete) symbol table, regardless
+    # of whether its guard is statically live — including the >= 3.15 branch.
+    assert mod.lookup("Always", deep=True, incl_inner_scope=True) is not None;
+    assert mod.lookup("Self", deep=True, incl_inner_scope=True) is not None;
+    assert mod.lookup("Never", deep=True, incl_inner_scope=True) is not None;
+    assert mod.lookup("Future", deep=True, incl_inner_scope=True) is not None;
 }
 
-"""Regression test: module-level symbols inside `if sys.version_info` guards
-must be flattened into the top-level scope by proc_module.
+"""The type-layer collector resolves only the version-live branch.
 
-Before fix: `import from datetime { UTC }` → Unknown
-After fix:  `import from datetime { UTC }` → timezone
+collect_member_syms descends statically-live `if sys.version_info` branches and
+skips the dead ones, so the dead-branch symbol does not resolve even though it
+exists in the symbol table.
 """
-test "module-level stub symbol inside version guard resolves correctly" {
+test "version-live branch resolves, dead branch does not" {
+    import sys;
     import ast as py_ast;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
     import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.type_system.type_utils { collect_member_syms }
 
+    # Annotated module-level declarations, as typeshed writes guarded symbols
+    # (e.g. `UTC: timezone` in datetime.pyi). These stay in the guard's scope
+    # rather than hoisting to module level, so liveness is the collector's call.
     code = """
 import sys
 
-MINYEAR = 1
+MINYEAR: int
 
 if sys.version_info >= (3, 11):
-    UTC = "timezone_utc"
+    UTC: str
 
 if sys.version_info >= (3, 15):
-    FUTURE_CONST = "not_yet"
+    FUTURE_CONST: str
 """;
 
     prog = JacProgram();
@@ -199,13 +190,61 @@ if sys.version_info >= (3, 15):
     ).ir_out;
     SymTabBuildPass(ir_in=mod, prog=prog);
 
-    # top-level symbol — always found
-    assert mod.lookup("MINYEAR") is not None , "MINYEAR should be at top-level scope";
+    # Unguarded top-level symbol resolves directly.
+    assert collect_member_syms(mod, "MINYEAR") , "MINYEAR should resolve";
 
-    # version guard (>= 3.11) is true on Python 3.12 — must be flattened to top-level
-    # lookup() with no args only checks top-level scope, not inside IfStmt nodes
-    assert mod.lookup("UTC") is not None , "UTC should be at top-level scope after version guard flattening";
+    # >= 3.11 guard is live (we run on >= 3.11): UTC resolves through it.
+    if sys.version_info >= (3, 11) {
+        assert collect_member_syms(mod, "UTC") , "UTC's guard is live; it should resolve";
+    }
 
-    # version guard (>= 3.15) is false — must not appear
-    assert mod.lookup("FUTURE_CONST") is None , "FUTURE_CONST should not be found (>= 3.15 guard is false)";
+    # >= 3.15 guard is dead today: FUTURE_CONST is in the symbol table but the
+    # collector skips the dead branch, so it does not resolve.
+    assert not collect_member_syms(mod, "FUTURE_CONST") , "FUTURE_CONST's guard is dead; the collector must not resolve it";
+}
+
+"""Class members defined in version-guarded branches resolve to the live
+branch's definition, the way typeshed declares e.g. `zip.__new__` per Python
+version. The collector descends the live branch and skips the dead one.
+"""
+test "version-guarded class members resolve to the live branch" {
+    import sys;
+    import ast as py_ast;
+    import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+    import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.type_system.type_utils { collect_member_syms }
+
+    code = """
+import sys
+
+class C:
+    if sys.version_info >= (3, 11):
+        def live_method(self) -> int: ...
+    else:
+        def dead_method(self) -> int: ...
+
+    if sys.version_info >= (3, 15):
+        def future_method(self) -> int: ...
+""";
+
+    prog = JacProgram();
+    source = uni.Source(code, "test_guarded_class.py");
+    py_ast_node = py_ast.parse(code);
+    mod = PyastBuildPass(
+        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
+    ).ir_out;
+    SymTabBuildPass(ir_in=mod, prog=prog);
+
+    cls_sym = mod.lookup("C", deep=False);
+    assert cls_sym is not None , "class C should resolve";
+    cls_scope = cls_sym.decl.name_of.sym_tab;
+
+    if sys.version_info >= (3, 11) {
+        # >= 3.11 guard live: the `if` method resolves, its `else` sibling does not.
+        assert collect_member_syms(cls_scope, "live_method") , "live_method's guard is live; it should resolve";
+        assert not collect_member_syms(cls_scope, "dead_method") , "dead_method is in the dead else branch; it must not resolve";
+    }
+
+    # >= 3.15 guard dead today: future_method must not resolve.
+    assert not collect_member_syms(cls_scope, "future_method") , "future_method's guard is dead; it must not resolve";
 }

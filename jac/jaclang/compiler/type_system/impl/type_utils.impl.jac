@@ -175,7 +175,20 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    symbol = symtable.lookup(name, deep=True, incl_inner_scope=True);
+    # Resolve own scope + statically-live `if`/`elif`/`else` branches (e.g.
+    # version-guarded stub declarations), climbing enclosing scopes, before the
+    # plain deep walk. This ordering matters: a name declared in a live guard
+    # branch here (e.g. typing_extensions' `else`-branch `class ParamSpec`)
+    # otherwise loses to a same-named builtins import that the filter below then
+    # discards, leaving the real declaration unreachable. The collector skips
+    # the branches a type checker treats as dead.
+    symbol: (Symbol | None) = None;
+    if (inner := collect_member_syms(symtable, name, deep=True)) {
+        symbol = inner[0];
+    }
+    if symbol is None {
+        symbol = symtable.lookup(name, deep=True, incl_inner_scope=False);
+    }
     # Filter out imported symbols from builtins module when accessed from user code.
     # In Python stub files, imports are NOT re-exported by default.
     # Symbols like 'types', 'SupportsAdd' are imported into builtins.pyi
@@ -191,6 +204,69 @@ impl lookup_symtab(
         return None;
     }
     return symbol;
+}
+
+impl collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol] {
+    import from jaclang.jac0core.helpers { evaluate_version_condition }
+
+    # Resolve an if/elif/else chain to its statically-live branch scope(s):
+    # a True/None guard contributes its own scope, a False guard hands off to
+    # its else branch (recursing through nested `elif`s).
+    def live_branches(guard: uni.IfStmt) -> list[uni.UniScopeNode] {
+        eval_result = evaluate_version_condition(guard.condition);
+        if eval_result is None or eval_result {
+            return [guard];
+        }
+        if isinstance(guard.else_body, uni.ElseIf) {
+            return live_branches(guard.else_body);
+        }
+        if isinstance(guard.else_body, uni.ElseStmt) {
+            return [guard.else_body];
+        }
+        return [];
+    }
+
+    # Names declared directly here, else descend version-live control-flow
+    # child scopes (transparent to name resolution). Skip Python name scopes
+    # (a nested class/def is opaque) and else branches reached as chain
+    # continuations rather than as the head guard.
+    def descend(s: uni.UniScopeNode) -> list[Symbol] {
+        if (here := s.lookup_all(name, deep=False)) {
+            return here;
+        }
+        for kid in s.kid_scope {
+            if isinstance(kid, uni.UniScopeNode.get_python_scoping_nodes()) {
+                continue;
+            }
+            if isinstance(kid, (uni.ElseStmt, uni.ElseIf))
+            and isinstance(kid.parent, uni.IfStmt) {
+                continue;
+            }
+            branches = live_branches(kid) if isinstance(kid, uni.IfStmt) else [kid];
+            for branch in branches {
+                if (found := descend(branch)) {
+                    return found;
+                }
+            }
+        }
+        return [];
+    }
+
+    if not deep {
+        return descend(scope);
+    }
+    s: uni.UniScopeNode | None = scope;
+    while s is not None {
+        # Climb enclosing scopes so a guarded declaration in a parent module/
+        # class resolves from a nested ability body (deep + inner descent).
+        if (found := descend(s)) {
+            return found;
+        }
+        s = s.parent_scope;
+    }
+    return [];
 }
 
 """Return a list of completion items for the type."""
