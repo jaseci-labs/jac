@@ -15,6 +15,23 @@ impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Emit E5090 for a builtin call the native emitter could not lower.
+
+Shared by the multi-arg and single-arg builtin dispatch paths so the
+diagnostic and its guidance stay consistent (issue #6357).
+"""
+impl NaIRGenPass._emit_unsupported_builtin_call(
+    nd: uni.FuncCall, func_name: str
+) -> None {
+    self.emit(
+        E5090,
+        node_override=nd,
+        kind="builtin call",
+        name=func_name,
+        help_text="This builtin is implemented for some argument types but could not be lowered for the argument(s) at this call site (for example `sum`/`min`/`max` over a `range` rather than a list). Restructure to a supported form, or move the code to a @sv/Python context."
+    );
+}
+
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.symbol_utils { classify_call, CallKind }
@@ -365,6 +382,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 if result is not None {
                     return result;
                 }
+                # Builtin recognized with arguments, but the native emitter
+                # could not lower it for these argument types (e.g. `sum`/`min`/
+                # `max` over a `range` rather than a materialized list). Fail
+                # loudly instead of returning None and emitting a binary that
+                # silently prints an empty value (issue #6357).
+                self._emit_unsupported_builtin_call(nd, func_name);
+                return None;
             }
         }
         # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
@@ -407,6 +431,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     if result is not None {
                         return result;
                     }
+                    # Builtin recognized with an argument, but the native
+                    # emitter could not lower it for this argument type. Fail
+                    # loudly rather than silently dropping the value (#6357).
+                    self._emit_unsupported_builtin_call(nd, func_name);
+                    return None;
                 }
             }
         }
@@ -654,6 +683,20 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
                 return _icall_result;
             }
+        }
+        # Nothing resolved this free-function call: not a user function,
+        # struct constructor, interop binding, or callable local. A genuinely
+        # unknown name (typo'd or Python-only function) cannot be lowered to
+        # the native subset -- emit a structured error rather than silently
+        # returning None, which would leave the call site empty and produce a
+        # binary that prints garbage instead of failing the compile (issue
+        # #6357). Builtin-classified names are excluded here: a no-arg
+        # collection constructor like `set()`/`dict()`/`list()` legitimately
+        # reaches this point and is materialized from the assignment's type
+        # annotation; builtin calls that truly cannot be lowered are caught at
+        # their dispatch site above (where the arguments are known).
+        if _call_kind != CallKind.BUILTIN {
+            self.emit(E5090, node_override=nd, kind="function", name=func_name);
         }
         return None;
     }

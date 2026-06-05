@@ -14,6 +14,20 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
 
+# ── Python stdlib modules the native backend can lower ────────────────────
+# Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
+# `X.func(...)`) the native codegen actually intercepts and lowers. A native
+# `import` of anything NOT in this set is rejected (issue #6357) so it fails
+# loudly instead of dropping the import and emitting a silently-wrong binary.
+#
+# This is the extension point for the Python-congruent native stdlib roadmap
+# (issue #6404): as each module gains real native lowering (e.g. `math` via
+# libm intercepts + types in na_builtins.pyi), add its name here in the SAME
+# change that adds the codegen support. Only list a module once its members
+# are genuinely lowered — listing it early re-introduces the silent-wrong
+# failure this guard exists to prevent.
+glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys"};
+
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
@@ -145,6 +159,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # File I/O support (Phase 15)
         _file_struct_type: (object | None) = None,
         _file_helpers_emitted: bool = False,
+        # Iterator protocol (#6403): boxed JacIter + per-kind state structs.
+        _jac_iter_type: (object | None) = None,
+        _iter_structs_registered: bool = False,
+        _iter_next_fns: dict[str, ir.Function] = {},
+        _iter_uid: int = 0,
         # Primitive emitter singletons
         _native_emitters: (dict[str, object] | None) = None,
         _native_builtin_emitter: (object | None) = None,
@@ -181,6 +200,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_stdlib_modules: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
+        # Maps each clib function's C name to the library path it was imported
+        # from (e.g. "InitWindow" -> "libraylib.dylib"). The Mach-O linker uses
+        # this to emit the correct two-level-namespace dylib ordinal per symbol.
+        _clib_symbol_lib: dict[str, str] = {},
         _native_emit_ctx_class: (type | None) = None,
         # Per-function tracking for borrowed-param promotion: entry-block store instruction
         # per param (for position_after retain insertion) and set of already-promoted params.
@@ -227,6 +250,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
     # Lambda expressions (Phase 17)
     # Maps variable name → list of (cap_name, cap_alloca) for closure injection.
     # Populated during assignment of a capturing lambda, consumed during calls.
@@ -587,11 +611,38 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_file_struct_type -> ir.Type;
     def _emit_file_helpers -> None;
     def _emit_open(nd: uni.FuncCall) -> (ir.Value | None);
+    # Iterator protocol (#6403)
+    def _ensure_iter_types -> None;
+    def _register_iter_struct(
+        name: str, field_names: list[str], field_types: list[ir.Type]
+    ) -> None;
+
+    def _alloc_iter_struct(name: str) -> ir.Value;
+    def _make_jac_iter(next_fn: ir.Function, state_ptr: ir.Value) -> ir.Value;
+    def _emit_iter_advance(
+        b: ir.IRBuilder, iter_val: ir.Value, out_ptr: ir.Value
+    ) -> ir.Value;
+
+    def _list_iter_next_fn(elem_type_name: str, elem_type: ir.Type) -> ir.Function;
+    def _str_iter_next_fn -> ir.Function;
+    def _make_list_iter(
+        list_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+    ) -> ir.Value;
+
+    def _make_str_iter(str_val: ir.Value) -> ir.Value;
+    def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
+    def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
+    def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
+    def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
+    def _make_enumerate_iter(up: tuple) -> (tuple | None);
+    def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
+    def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
     # C library imports: import from "libname" { def ...; }
     def _process_clib_imports(module: uni.Module) -> None;
+    def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───

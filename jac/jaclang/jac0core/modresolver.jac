@@ -100,9 +100,9 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
 
 """Resolve the built-in `@jac/*` virtual module alias.
 
-`@jac/runtime` is baked into the language — it is mapped to
-`jaclang/runtimelib/client_runtime.cl.jac` at bundle time and must be resolvable
-during static analysis so the type checker agrees with the runtime.
+`@jac/runtime` is baked into the language - it is mapped to the single canonical
+client runtime at `jaclang/runtimelib/client_runtime.cl.jac`, which the bundler
+also compiles, so static analysis and the bundle resolve the same file.
 
 Returns `(path, lang)` when `target` begins with `@jac/`, otherwise `None`.
 """

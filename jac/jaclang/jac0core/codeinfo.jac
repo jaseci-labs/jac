@@ -17,7 +17,8 @@ obj ClientManifest {
         globals_values: dict[(str, Any)] = field(default_factory=`dict),
         has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict),
-        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict);
+        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        tests: list[dict[(str, str)]] = field(default_factory=`list);
 }
 
 """Codespace context for interop bindings."""
@@ -240,7 +241,11 @@ obj CodeGenTarget {
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.
-        _clib_paths: list[str] = field(default_factory=`list);
+        _clib_paths: list[str] = field(default_factory=`list),
+        # Maps each clib function's C name to the library it was imported from
+        # (e.g. "InitWindow" -> "libraylib.dylib"). Set by the same pass and
+        # consumed by the nacompile CLI to drive Mach-O two-level dylib ordinals.
+        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
 }

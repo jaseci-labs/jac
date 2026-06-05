@@ -303,6 +303,9 @@ obj TypeEvaluator {
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
     # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Widen literal types (e.g. Literal["x"] -> str) for the *declared* type
+    # of an unannotated variable, inferred from its first binding.
+    def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
     def _import_module_from_path(

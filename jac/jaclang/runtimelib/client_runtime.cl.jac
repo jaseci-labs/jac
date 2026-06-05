@@ -1,276 +1,117 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
-# JSX element representation
-obj JsxElement {
-    has tag: any,
-        props: dict[str, any] = {},
-        children: list[any] = [];
+import from 'react' { * as React }
+import from 'react' { useState as reactUseState, useEffect as reactUseEffect }
+import from 'react-dom/client' { * as ReactDOM }
+import from 'react-router-dom' {
+    BrowserRouter as ReactRouterBrowserRouter,
+    Routes as ReactRouterRoutes,
+    Route as ReactRouterRoute,
+    Link as ReactRouterLink,
+    Navigate as ReactRouterNavigate,
+    Outlet as ReactRouterOutlet,
+    useNavigate as reactRouterUseNavigate,
+    useLocation as reactRouterUseLocation,
+    useParams as reactRouterUseParams
 }
-# JSX factory function
-def __jacJsx(
-    tag: any, props: dict[str, any] = {}, children: list[any] = []
-) -> JsxElement;
-# DOM rendering function
-def renderJsxTree(nd: JsxElement, container: any) -> None;
-# Internal: Build DOM from JSX tree
-def __buildDom(nd: any) -> any;
-# Internal: Apply property to DOM element
-def __applyProp(element: any, key: str, value: any) -> None;
-# ============================================================================
-# View wrappers — compiler-emitted for `try`/`awaiting`/`except` JSX
-# ============================================================================
-# Synthesized by the view-lowering pass: `try { ... } awaiting { ... }` lowers
-# to `<JacAwaiting fallback={...}>{...}</JacAwaiting>`, and `except` arms add a
-# `<JacClientErrorBoundary fallback={...}>`. jac-client backs these with
-# `React.Suspense` and `react-error-boundary`; bare-serve has neither, so these
-# render their resolved children directly (no suspense, no error capture). They
-# exist so the same view code compiles and the emitted imports resolve in both
-# runtimes.
-def JacAwaiting(props: dict[str, any]) -> any;
-def JacClientErrorBoundary(props: dict[str, any]) -> any;
-# ============================================================================
-# Reactive State Management System
-# ============================================================================
+import from 'react-error-boundary' { ErrorBoundary }
+import from 'react-hook-form' { useForm }
+import from '@hookform/resolvers/zod' { zodResolver }
+import from 'zod' { z }
 
-# Global reactive context for managing signals, effects, and re-renders
-glob __jacReactiveContext = {
-         "signals": [],  # Global signal storage (enables closures)
-         "pendingRenders": [],  # Batched re-renders queue
-         "flushScheduled": False,  # Debounce flag for batching
-         "rootComponent": None,  # Root function to re-render
-         "currentComponent": None,  # Current component ID being rendered
-         "currentEffect": None,  # Current effect for dependency tracking
-         "router": None,  # Global router instance
-         "mountedComponents": {},  # Track which components have mounted (for onMount)
-         "hookIndex": 0,  # Current hook index during render
-         "hooks": []
-     };
-# Create a reactive signal (primitive value)
-# Returns [getter, setter] tuple for reactive primitive value
-def createSignal(initialValue: any) -> list[any];
-# Create reactive state (object/dict)
-# Returns [getter, setter] tuple for reactive object
-def createState(initialState: dict[str, any]) -> list[any];
-# Run effect when dependencies change
-# Executes effectFn and re-runs when tracked signals change
-def createEffect(effectFn: any) -> None;
-# Run effect once when component mounts (similar to useEffect with empty deps)
-# Executes mountFn once when the component first renders
-def onMount(mountFn: any) -> None;
-# Internal: Track component dependencies
-def __jacTrackDependency(subscribers: list[any]) -> None;
-# Internal: Notify subscribers of state change
-def __jacNotifySubscribers(subscribers: list[any]) -> None;
-# Internal: Run an effect function with dependency tracking
-def __jacRunEffect(effectFn: any) -> None;
-# Schedule a re-render (batched)
-def __jacScheduleRerender(componentId: any) -> None;
-# Schedule a flush of pending renders
-def __jacScheduleFlush -> None;
-# Flush all pending renders
-def __jacFlushRenders -> None;
-# Re-render the root component
-def __jacRerenderComponent(componentId: any) -> None;
-# ============================================================================
-# Routing — React Router v6-shaped surface
-# ============================================================================
-# Bare-serve implements this surface natively (no React dependency); jac-client
-# re-exports the same names from `react-router-dom`. User code that uses the
-# routing surface is portable between the two runtimes.
+def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
 
-# Provider component. In bare-serve this is an identity wrapper — routing
-# state lives in `__jacReactiveContext.router`. jac-client aliases this name
-# to React Router's `BrowserRouter` so the same JSX (`<Router>...</Router>`)
-# works in both runtimes.
-def Router(children: any = None) -> JsxElement;
+# React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
+glob:pub useState = reactUseState,
+     useEffect = reactUseEffect,
+     Router = ReactRouterBrowserRouter,
+     Routes = ReactRouterRoutes,
+     Route = ReactRouterRoute,
+     Link = ReactRouterLink,
+     Navigate = ReactRouterNavigate,
+     useNavigate = reactRouterUseNavigate,
+     useLocation = reactRouterUseLocation,
+     useParams = reactRouterUseParams,
+     Outlet = ReactRouterOutlet,
+     JacClientErrorBoundary = ErrorBoundary,
+     JacSchema = __createJacSchema(z);
 
-# Picks the matching `<Route>` child against the current URL and renders
-# its `element`. Renders `null` if no child matches.
-def Routes(children: any = None) -> JsxElement;
+def:pub __createJacSchema(zodLib: any) -> any;
+def:pub useRouter -> dict;
+def:pub navigate(path: str) -> None;
+async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
+def:pub __normalizeIdentity(x: any) -> dict;
+def:pub __normalizeCredential(x: any) -> dict;
+async def:pub jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict;
 
-# Route configuration. Path may include `:param` placeholders
-# (e.g. `/users/:id`) — extracted params are exposed via `useParams`.
-# Rendered directly (outside a `<Routes>`) is a no-op.
-# `element` is `any` rather than `JsxElement | None` because the JSX prop
-# validator currently rejects `JsxElement` against `JsxElement | NoneType`.
-def Route(
-    path: str = "",
-    element: any = None,
-    index: bool = False,
-    caseSensitive: bool = False,
-    children: any = None
-) -> JsxElement;
-
-# Declarative navigation link. Renders an `<a>` that intercepts clicks and
-# pushes to the History API instead of doing a full page load.
-# `to` is a Jac keyword, hence the backtick escape — the public attribute name
-# remains `to` for both JSX (`<Link to="/x">`) and call sites.
-def Link(
-    `to: str,
-    replace: bool = False,
-    state: any = None,
-    className: str = "",
-    style: dict[str, str] = {},
-    children: any = None
-) -> JsxElement;
-
-# Declarative redirect — navigates to `to` on render and renders nothing.
-def Navigate(`to: str, replace: bool = False) -> JsxElement;
-
-# Placeholder for nested-route content. Bare-serve's router is currently
-# flat (no nested routes), so this is always a no-op; declared for surface
-# parity so jac-client apps using `<Outlet/>` typecheck under bare-serve.
-def Outlet -> JsxElement;
-
-# Programmatic navigation hook — returns a function that pushes to history.
-def useNavigate -> any;
-
-# Current location — `{pathname, search, hash}`. Subscribes to the router
-# signal so dependent renders re-run on URL changes.
-def useLocation -> dict[str, any];
-
-# URL params from the matched route's `:param` placeholders.
-def useParams -> dict[str, any];
-
-# Imperative navigation — equivalent to calling `useNavigate()(path)`.
-def navigate(path: str) -> None;
-
-# Returns `{navigate, location, params, pathname, search, hash}` — the
-# bundle of router state most apps reach for. Same shape in both runtimes.
-def useRouter -> dict[str, any];
-
-# Internal: pathname for the current URL.
-def __jacGetPath -> str;
-
-# Internal: lazy-initialize the router state (path signal + popstate listener).
-# Declared so the bundler ships the helper alongside the public surface.
-def _ensureRouter -> dict[str, any];
-
-# Internal: match a `path` pattern (with `:param` placeholders) against the
-# current URL pathname. Returns extracted params on match, `None` on miss.
-def _matchRoutePath(pattern: str, path: str) -> any;
-# ============================================================================
-# Walker spawn function
-# ============================================================================
-async def __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any;
-# Synchronous spawn helper — surface parity with jac-client.
-def jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any;
-# Function call function - calls server-side functions from client
-async def __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any;
-# ============================================================================
-# Auto-cache — compiler-driven caching for walker/function calls
-# ============================================================================
-# Reader endpoints are cached (LRU + TTL) and concurrent identical requests are
-# deduped; writer endpoints invalidate the readers they touch. Endpoint effects
-# are supplied by the compiler (serialized into `globalThis.__jacEndpointEffects__`
-# at module load, with a `__jac_init__` fallback), so an endpoint with no
-# metadata simply fetches directly. Runtime-agnostic — same logic backs
-# jac-client; bare-serve owns it natively with no npm dependency.
-
-# Read compiler-provided endpoint effects.
-def __getEndpointEffects -> dict[str, any];
-# Get or initialize cache state on globalThis.
-def __getCacheState -> dict[str, any];
-# Whether a cache entry is still within its TTL.
-def __isFresh(`entry: dict[str, any]) -> bool;
-# Get a cache entry and promote it in LRU order.
-def __cacheGet(key: str) -> any;
-# Store an entry with LRU eviction.
-def __cacheSet(key: str, data: any, ttl: int) -> None;
-# Evict the oldest cache entry.
-def __evictOldest -> None;
-# Whether two lists share any element.
-def __overlaps(list1: list[any], list2: list[any]) -> bool;
-# Invalidate all cache entries under an endpoint-key prefix.
-def __invalidateEndpoint(endpoint_key: str) -> None;
-# Raw walker fetch (POST /walker/<name>[/<nodeId>]) — no caching.
-async def __doWalkerFetch(`walker: str, nodeId: str, fields: dict[str, any]) -> any;
-# Raw function fetch (POST /function/<name>) — no caching.
-async def __doFuncFetch(function_name: str, args: dict[str, any]) -> any;
-# Cache-aware dispatch shared by __jacSpawn and __jacCallFunction.
-async def __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any;
-# Authentication helpers
-def __normalizeIdentity(x: any) -> dict[str, any];
-def __normalizeCredential(x: any) -> dict[str, any];
-# `profile` is jac-client-style optional signup metadata; bare-serve forwards
-# it to the server unchanged so apps written against jac-client also work
-# under bare-serve without per-call edits.
-async def jacSignup(
-    identities_or_username: (str | list[str]),
-    credential_or_password: (str | dict[str, any]),
-    profile: (dict[str, any] | None) = None
-) -> dict[str, any];
-
-async def jacLogin(
-    identity_or_username: (str | dict[str, any]),
-    credential_or_password: (str | dict[str, any])
+async def:pub jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
 ) -> bool;
 
-def jacLogout -> None;
-def jacIsLoggedIn -> bool;
-# Browser API shims
-def __getLocalStorage(key: str) -> str;
-def __setLocalStorage(key: str, value: str) -> None;
+def:pub jacLogout -> None;
+def:pub jacIsLoggedIn -> bool;
+def:pub __getApiBaseUrl -> str;
+def:pub __getLocalStorage(key: str) -> str;
+def:pub __setLocalStorage(key: str, value: str) -> None;
+def:pub __removeLocalStorage(key: str) -> None;
+def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
+def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 
-def __removeLocalStorage(key: str) -> None;
-def __isObject(value: any) -> bool;
+# `<JacAwaiting fallback={...}>{children}</JacAwaiting>` - the compile-
+# time wrapper for a `try { ... } awaiting { ... }` template clause. The
+# view-lowering pass synthesizes this element on the `cl` target; the
+# `fallback` prop is the awaiting-clause's rendered fragment, the
+# children are the try-clause's rendered fragment. Today this is a thin
+# wrapper over `React.Suspense`; once the language's `flow`/`wait` story
+# integrates with `use()`, the same wrapper picks up real async behavior
+# with no change at the call site. The `error` slot tied to `except`
+# clauses is intentionally not part of v1 - wrap with a separate
+# `JacClientErrorBoundary` for now.
+def:pub JacAwaiting(props: dict) -> JsxElement;
+def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+def:pub JacForm(props: dict) -> JsxElement;
 
-def __isFunction(value: any) -> bool;
-def __objectKeys(`obj: any) -> list[str];
-# Low-level helpers
-def __jacHasOwn(`obj: any, key: any) -> bool;
-# Internal polyfill for Python-style dict.get on plain JS objects
-def __jacEnsureObjectGetPolyfill -> None;
-# Common utility helpers
-def __jacGetDocument(scope: any) -> any;
-def __jacParseJsonObject(text: str) -> any;
-
-def __jacBuildOrderedArgs(order: list[str], argsDict: dict[str, any]) -> list[any];
-def __jacResolveRenderer(scope: any) -> any;
-
-def __jacResolveTarget(
-    moduleRecord: dict[str, any], registry: dict[str, any], name: str
+# ============================================================================
+# AUTO-CACHE INTERNALS - Compiler-driven caching for walker/function calls
+# ============================================================================
+def:pub __getEndpointEffects -> dict;
+def:pub __getCacheState -> dict;
+def:pub __isFresh(`entry: dict) -> bool;
+def:pub __cacheGet(key: str) -> dict;
+def:pub __cacheSet(key: str, data: any, ttl: int) -> None;
+def:pub __evictOldest -> None;
+async def:pub __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any;
+async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
+async def:pub __cachedEndpointCall(
+    endpoint_key: str, args_key: str, fetch_fn: any
 ) -> any;
 
-def __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list[any], targetName: str
-) -> dict[str, any];
-# Runtime support helpers for client module registration / hydration
-def __jacGlobalScope -> any;
-def __jacEnsureRegistry -> dict[str, any];
-def __jacApplyRender(renderer: any, container: any, nd: any) -> None;
-
-def __jacHydrateFromDom(defaultModuleName: str) -> None;
-def __jacExecuteHydration -> None;
-def __jacEnsureHydration(moduleName: str) -> None;
-
-def __jacRegisterClientModule(
-    moduleName: str, clientFunctions: list[str] = [], clientGlobals: dict[str, any] = {}
-) -> None;
-
-# ============================================================================
-# React-style API aliases for compatibility
-# ============================================================================
-# These provide React-like API using the core reactive primitives
-def useState(initialValue: any) -> list[any];
-
-def useEffect(effectFn: any, deps: list[any] = []) -> None;
+def:pub __invalidateEndpoint(endpoint_key: str) -> None;
+def:pub __overlaps(list1: list, list2: list) -> bool;
 
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
-# Report client-side errors to the server for logging.
 # `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
 # captured by the boundary's onError; the JS `stack` is engine frames only.
-def __jacReportError(
+def:pub __jacReportError(
     message: str,
     stack: str = "",
     url: str = "",
     source: str = "",
     componentStack: str = ""
 ) -> None;
-# Install global error handlers (window.onerror, unhandledrejection)
-def __jacInstallErrorHandlers -> None;
-# onError prop for ErrorBoundary; captures React's componentStack which
-# FallbackComponent props don't expose, then forwards via __jacReportError.
-def __jacReactErrorHandler(error: any, info: any) -> None;
+
+def:pub __jacInstallErrorHandlers -> None;
+
+# onError prop for JacClientErrorBoundary. Wired by entry-script generators
+# so `info.componentStack` reaches the server (FallbackComponent's props
+# don't include `info`, so reporting from there can't see componentStack).
+def:pub __jacReactErrorHandler(error: any, info: any) -> None;

@@ -68,7 +68,8 @@ glob DT_NULL = 0,
      DT_JMPREL = 23,
      DT_RELA = 7,
      DT_RELASZ = 8,
-     DT_RELAENT = 9;
+     DT_RELAENT = 9,
+     DT_RUNPATH = 29;
 
 # ── Symbol binding/type ──────────────────────────────────────────
 glob STB_GLOBAL = 1,
@@ -720,8 +721,10 @@ impl ElfLinker.build_executable -> bytes {
         interp_data = arch.interp_paths[0].encode() + b"\x00";
     }
 
-    # Build dynamic string table
-    dynstr_strings = [""] + extern_syms + self.needed_libs;
+    # Build dynamic string table. "$ORIGIN" backs the DT_RUNPATH entry so the
+    # loader resolves needed libraries relative to the executable's own
+    # directory (a sibling .so is found no matter the launch CWD).
+    dynstr_strings = [""] + extern_syms + self.needed_libs + ["$ORIGIN"];
     (dynstr_data, dynstr_offsets) = _build_strtab(dynstr_strings);
 
     # Build dynamic symbol table
@@ -755,6 +758,10 @@ impl ElfLinker.build_executable -> bytes {
     for lib in self.needed_libs {
         dyn_entries.append((DT_NEEDED, dynstr_offsets.get(lib, 0)));
     }
+    # Resolve needed libraries relative to the executable directory ($ORIGIN),
+    # so a sibling shared library is found regardless of the launch CWD. The
+    # value is a .dynstr offset (like DT_NEEDED), so it is not vaddr-patched.
+    dyn_entries.append((DT_RUNPATH, dynstr_offsets.get("$ORIGIN", 0)));
     dyn_entries.append((DT_HASH, 0));
     dyn_entries.append((DT_STRTAB, 0));
     dyn_entries.append((DT_SYMTAB, 0));

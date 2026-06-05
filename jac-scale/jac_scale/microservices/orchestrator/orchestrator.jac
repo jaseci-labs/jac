@@ -263,34 +263,39 @@ obj MicroserviceOrchestrator {
         static_mounts: list[dict[str, str]]
     ) {
         console.print();
-        console.print("[bold cyan]  Jac Microservice Mode[/bold cyan]");
-        console.print(f"  [bold]Gateway:[/bold] http://{gateway_host}:{gateway_port}");
+        console.print("  Jac Microservice Mode", style="bold cyan");
+        console.print(f"  Gateway: http://{gateway_host}:{gateway_port}", style="bold");
         console.print();
-        console.print("  [bold]Services[/bold]");
-        console.print(f"  [dim]{'-' * 48}[/dim]");
+        console.print("  Services", style="bold");
+        console.print(f"  {'-' * 48}", style="muted");
         for (name, entry) in registry.entries.items() {
             if entry.status == ServiceStatus.HEALTHY {
-                icon = "[green]●[/green]";
+                icon = "●";
+                row_style = "success";
             } else {
-                icon = "[yellow]○[/yellow]";
+                icon = "○";
+                row_style = "warning";
             }
-            console.print(f"  {icon} {name:18s} {entry.prefix:20s} -> {entry.url}");
+            console.print(
+                f"  {icon} {name:18s} {entry.prefix:20s} -> {entry.url}",
+                style=row_style
+            );
         }
 
         if client_config and dict(client_config).get("entry") {
             console.print();
-            console.print(f"  [bold]Client:[/bold] {dict(client_config)['entry']}");
-            console.print(f"  [bold]Static:[/bold] {client_dist}");
+            console.print(f"  Client: {dict(client_config)['entry']}", style="bold");
+            console.print(f"  Static: {client_dist}", style="bold");
         }
 
         if static_mounts {
             console.print();
-            console.print("  [bold]Static mounts[/bold]");
-            console.print(f"  [dim]{'-' * 48}[/dim]");
+            console.print("  Static mounts", style="bold");
+            console.print(f"  {'-' * 48}", style="muted");
             for mount in static_mounts {
                 console.print(
-                    f"  [cyan]->[/cyan] {mount['url_prefix']:20s} "
-                    f"-> {mount['local_path']}"
+                    f"  -> {mount['url_prefix']:20s} -> {mount['local_path']}",
+                    style="cyan"
                 );
                 logger.info(
                     f"Static mount: {mount['url_prefix']} -> {mount['local_path']}"
