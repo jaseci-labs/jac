@@ -283,9 +283,13 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             }
         }
     } elif arg.kind == ArgKind.APPEND {
-        # Repeatable flag: -e ./a -e ./b  →  ["./a", "./b"]
+        # Repeatable flag accepting one or more values each time:
+        #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]
+        # Flatten in the caller to get ["./a","./b","./c"].
+        # nargs="+" ensures `-e` with no path is a hard argparse error.
         kwargs["action"] = "append";
-        kwargs["default"] = arg.default if arg.default is not None else [];
+        kwargs["nargs"] = "+";
+        kwargs["default"] = None;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {

@@ -424,6 +424,9 @@ impl install(
         if enabled
     ];
     # ── Editable install ──────────────────────────────────────────────────────
+    # Flatten nested lists produced by action="append" with nargs="+":
+    #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
+    editable = [p for group in (editable or []) for p in group];
     if editable {
         import sys;
         import site;
