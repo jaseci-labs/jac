@@ -48,6 +48,14 @@ redis = ">=7.1.0,<8.0.0"
 [optional-dependencies.monitoring]
 prometheus-client = ">=0.21.0,<1.0.0"
 
+# O-02 distributed tracing. App-side OpenTelemetry SDK + OTLP/HTTP
+# exporter to the Alloy collector (M-14.a DaemonSet doubles as an OTel
+# collector) -> Tempo. Soft dependency: jac-scale runs without it, just
+# without spans (see jac_scale/_optdeps/opentelemetry.jac).
+[optional-dependencies.tracing]
+opentelemetry-sdk = ">=1.27.0,<2.0.0"
+opentelemetry-exporter-otlp-proto-http = ">=1.27.0,<2.0.0"
+
 [optional-dependencies.scheduler]
 apscheduler = ">=3.11.2,<4.0.0"
 
@@ -66,7 +74,7 @@ docker = ">=7.1.0,<8.0.0"
 boto3 = ">=1.40.0"
 
 [optional-dependencies.all]
-"jac-scale[data,monitoring,scheduler,deploy,aws]" = "*"
+"jac-scale[data,monitoring,tracing,scheduler,deploy,aws]" = "*"
 
 [optional-dependencies.test]
 "jac-scale[all]" = "*"
