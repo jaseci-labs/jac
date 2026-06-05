@@ -25,6 +25,7 @@ import from jac_scale.microservices.runtime.util {
 # React fails on `Unexpected token '<'` (or spins on "Loading logs...").
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.logs { JacAPIServerLogs }
+import from jac_scale.admin.traces { JacAPIServerTraces }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 
 glob logger = logging.getLogger(__name__),
@@ -50,7 +51,7 @@ gateway's existing FastAPI app, then calls the inherited
 `register_admin_endpoints` + `register_logs_endpoints` +
 `register_llm_telemetry_endpoints`.
 """
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,

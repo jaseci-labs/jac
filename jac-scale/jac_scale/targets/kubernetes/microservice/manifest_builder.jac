@@ -348,6 +348,21 @@ obj MicroserviceManifestBuilder {
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
 
+        # When tracing is enabled, point pods at the in-cluster Alloy OTLP
+        # receiver. Added before user env so a per-service override wins.
+        import from jac_scale.config_loader { get_scale_config }
+        ms_trace_cfg: dict = dict(
+            get_scale_config().get_microservices_config().get("tracing", {})
+        );
+        if ms_trace_cfg.get("enabled", False) {
+            env.append(
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
+                }
+            );
+        }
+
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
@@ -388,9 +403,15 @@ obj MicroserviceManifestBuilder {
     """Container resources with Burstable-QoS defaults (128Mi req / 1Gi
     limit / 50m cpu req). BestEffort pods get evicted first under memory
     pressure, so tiny defaults bump QoS without constraining real
-    workloads. Priority: per-service > [plugins.scale.kubernetes] >
-    defaults. Empty string opts back to BestEffort."""
-    def _build_resources(svc_cfg: dict[str, any]) -> dict[str, any] {
+    workloads. The gateway defaults to a 2Gi limit instead: it loads the
+    admin portal, LLM-telemetry, log wiring and runtime OpenAPI
+    aggregation that service pods don't, so its startup working set rides
+    right at 1Gi and OOM-kills there. Priority: per-service >
+    [plugins.scale.kubernetes] > defaults. Empty string opts back to
+    BestEffort."""
+    def _build_resources(
+        svc_cfg: dict[str, any], is_gateway: bool = False
+    ) -> dict[str, any] {
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
@@ -405,7 +426,7 @@ obj MicroserviceManifestBuilder {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            memory_limit_val = "1Gi";
+            memory_limit_val = "2Gi" if is_gateway else "1Gi";
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -690,7 +711,7 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
-        resources = self._build_resources(svc_cfg);
+        resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }
