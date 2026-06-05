@@ -2611,6 +2611,14 @@ impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
     return self._type_sym_tab;
 }
 
+impl Expr.sem_kind.getter -> SemTypeKind {
+    # Lazy runtime import: the module-level `import type` of SemTypeKind is
+    # type-only (avoids a unitree -> type_system import cycle), so the classifier
+    # must be pulled in here for the runtime call.
+    import from jaclang.compiler.type_system.type_utils { sem_kind_of }
+    return sem_kind_of(self.type);
+}
+
 impl Expr.type_sym_tab.setter(type_sym_tab: UniScopeNode) {
     self._type_sym_tab = type_sym_tab;
 }

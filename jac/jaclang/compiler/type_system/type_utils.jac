@@ -54,6 +54,42 @@ codegen backends instead of each re-deriving it.
 """
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
+"""Normalized, backend-facing category of a resolved type.
+
+A coarse classification layered on top of the pyright-style `TypeCategory`
+(`types.jac`): collapses the many `ClassType` flavours into Primitive /
+Collection / Struct / Enum and folds Function/Overload into Callable. Codegen
+backends switch on this single field instead of string-matching class names.
+Produced by `sem_kind_of`.
+"""
+enum SemTypeKind {
+    Primitive,
+    Collection,
+    Struct,
+    Enum,
+    Callable,
+    Union,
+    Module,
+    Any,
+    Unknown,
+    Never,
+    NoneType,
+    TypeVar
+}
+
+"""Classify a resolved type into its normalized backend-facing `SemTypeKind`.
+
+The single source of truth for "what kind of thing is this type", shared by the
+native (NA) and ECMAScript (CL) backends. Built on `primitive_type_name_of` +
+`JAC_TYPE_REGISTRY.is_collection` + `ClassType` flags so the primitive/MRO logic
+is not re-derived. `None` and otherwise-unresolved types classify as `Unknown`.
+
+Note: this reflects whatever `TypeBase` is handed in. When the caller needs the
+CFG-narrowed view (e.g. the CL backend), it must classify the evaluator's
+narrowed result, not a raw cached `Expr.type` -- see `Expr.sem_kind`.
+"""
+def sem_kind_of(ty: (types.TypeBase | None)) -> SemTypeKind;
+
 """
 Tracks parameter assignments for function calls.
 

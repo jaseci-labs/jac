@@ -51,142 +51,149 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
 
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
 
-Handles primitives (registry-backed), enums, user structs, and the builtin
-collections list/dict/set/frozenset/tuple — recursing on type arguments.
+Dispatches on the normalized `sem_kind_of` category instead of string-matching
+class names. Handles primitives + enums (registry-backed `type_map`), user
+structs, and the builtin collections list/dict/set/frozenset/tuple — recursing
+on type arguments. Registry primitives without a native spec (bytes / complex /
+range) are absent from `type_map` and intentionally return None (unsupported).
 """
 impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
+    import from jaclang.compiler.type_system.type_utils { sem_kind_of, SemTypeKind }
     cname = t.shared.class_name;
-    # Primitive (registry-backed): int/float/bool/str/i8../f64..
+    # Scalar primitives (int/float/bool/str/i8../f64..) AND enums share the
+    # registry-backed `type_map`: _codegen_enum registers every enum name there
+    # with i64 backing. Kept as a fast-path first lookup so both resolve
+    # regardless of category. Registry primitives without a native spec
+    # (bytes / complex / range) are not in `type_map` and fall through below.
     if cname in self.type_map {
         return self.type_map[cname];
     }
-    if cname in ("NoneType", "None") {
+    kind = sem_kind_of(t);
+    if kind == SemTypeKind.NoneType {
         return ir.VoidType();
     }
     # Both Jac's lowercase `any` and the central checker's normalised
     # `Any` ClassType wrapper lower to the boxed jacval representation.
-    if cname in ("any", "Any", "object") {
+    if kind == SemTypeKind.Any {
         return self.jacval_type;
     }
-    # (No enum branch: _codegen_enum registers every enum name in both
-    # enum_types and type_map with the same i64 backing, and type_map is
-    # checked above -- so an enum_types lookup here could never be reached.)
-    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
-    # its struct on demand so a `File` annotation lowers even before any file
-    # op has emitted the helpers.
-    if cname == "File" {
-        return self._get_file_struct_type().as_pointer();
+    if kind == SemTypeKind.Struct {
+        # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+        # its struct on demand so a `File` annotation lowers even before any file
+        # op has emitted the helpers.
+        if cname == "File" {
+            return self._get_file_struct_type().as_pointer();
+        }
+        # User-defined object/struct -> pointer to struct.
+        if cname in self.struct_types {
+            return self.struct_types[cname].as_pointer();
+        }
+        return None;
     }
-    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
-    # its struct on demand so a `File` annotation lowers even before any file
-    # op has emitted the helpers.
-    if cname == "File" {
-        return self._get_file_struct_type().as_pointer();
-    }
-    # User-defined object/struct -> pointer to struct.
-    if cname in self.struct_types {
-        return self.struct_types[cname].as_pointer();
-    }
-    type_args = t.private.type_args or [];
-    # list[T] — bare `list` defaults to a list of i64.
-    if cname == "list" {
-        elem_llvm: ir.Type = ir.IntType(64);
-        if type_args {
-            _e = self._lower_type(type_args[0]);
-            if _e is None {
+    if kind == SemTypeKind.Collection {
+        type_args = t.private.type_args or [];
+        # list[T] — bare `list` defaults to a list of i64.
+        if cname == "list" {
+            elem_llvm: ir.Type = ir.IntType(64);
+            if type_args {
+                _e = self._lower_type(type_args[0]);
+                if _e is None {
+                    return None;
+                }
+                elem_llvm = _e;
+            }
+            spec = "i64";
+            if isinstance(elem_llvm, ir.DoubleType) {
+                spec = "f64";
+            } elif isinstance(elem_llvm, ir.PointerType) {
+                spec = "ptr";
+            }
+            self._emit_list_helpers(spec, elem_llvm);
+            return self.list_types[spec].as_pointer();
+        }
+        # dict[K, V] — bare `dict` defaults to dict[i64, i64].
+        if cname == "dict" {
+            k_llvm: ir.Type = ir.IntType(64);
+            v_llvm: ir.Type = ir.IntType(64);
+            if len(type_args) >= 2 {
+                _k = self._lower_type(type_args[0]);
+                _v = self._lower_type(type_args[1]);
+                if _k is None or _v is None {
+                    return None;
+                }
+                k_llvm = _k;
+                v_llvm = _v;
+            }
+            # Key spec: i64 / f64 / ptr / tuple{size}.
+            k_spec = "i64";
+            k_size = 0;
+            if isinstance(k_llvm, ir.DoubleType) {
+                k_spec = "f64";
+            } elif isinstance(k_llvm, ir.PointerType) {
+                k_spec = "ptr";
+                if isinstance(k_llvm.pointee, ir.LiteralStructType) {
+                    k_size = self._get_struct_size(k_llvm.pointee);
+                    k_spec = f"tuple{k_size}";
+                }
+            }
+            # Value spec: i64 / f64 / ptr / jacval.
+            v_spec = "i64";
+            if isinstance(v_llvm, ir.DoubleType) {
+                v_spec = "f64";
+            } elif isinstance(v_llvm, ir.PointerType) {
+                v_spec = "ptr";
+            } elif self?.jacval_type and v_llvm == self.jacval_type {
+                v_spec = "jacval";
+            }
+            self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
+            return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+        }
+        # set[T] / frozenset[T] — bare forms default to a set of i64.
+        if cname in ("set", "frozenset") {
+            elem_llvm: ir.Type = ir.IntType(64);
+            if type_args {
+                _e = self._lower_type(type_args[0]);
+                if _e is None {
+                    return None;
+                }
+                elem_llvm = _e;
+            }
+            spec = "i64";
+            esize = 0;
+            if isinstance(elem_llvm, ir.DoubleType) {
+                spec = "f64";
+            } elif isinstance(elem_llvm, ir.PointerType) {
+                spec = "ptr";
+                if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
+                    esize = self._get_struct_size(elem_llvm.pointee);
+                    spec = f"tuple{esize}";
+                }
+            }
+            self._emit_set_helpers(spec, elem_llvm, esize);
+            return self.set_types[spec].as_pointer();
+        }
+        # tuple[T1, T2, ...] -> pointer to an LLVM literal struct.
+        if cname == "tuple" {
+            if not type_args {
                 return None;
             }
-            elem_llvm = _e;
-        }
-        spec = "i64";
-        if isinstance(elem_llvm, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem_llvm, ir.PointerType) {
-            spec = "ptr";
-        }
-        self._emit_list_helpers(spec, elem_llvm);
-        return self.list_types[spec].as_pointer();
-    }
-    # dict[K, V] — bare `dict` defaults to dict[i64, i64].
-    if cname == "dict" {
-        k_llvm: ir.Type = ir.IntType(64);
-        v_llvm: ir.Type = ir.IntType(64);
-        if len(type_args) >= 2 {
-            _k = self._lower_type(type_args[0]);
-            _v = self._lower_type(type_args[1]);
-            if _k is None or _v is None {
-                return None;
+            elem_types: list[ir.Type] = [];
+            for a in type_args {
+                _et = self._lower_type(a);
+                if _et is None {
+                    return None;
+                }
+                elem_types.append(_et);
             }
-            k_llvm = _k;
-            v_llvm = _v;
-        }
-        # Key spec: i64 / f64 / ptr / tuple{size}.
-        k_spec = "i64";
-        k_size = 0;
-        if isinstance(k_llvm, ir.DoubleType) {
-            k_spec = "f64";
-        } elif isinstance(k_llvm, ir.PointerType) {
-            k_spec = "ptr";
-            if isinstance(k_llvm.pointee, ir.LiteralStructType) {
-                k_size = self._get_struct_size(k_llvm.pointee);
-                k_spec = f"tuple{k_size}";
+            n = len(elem_types);
+            tuple_key = f"Tuple.{n}." + ".".join([str(x) for x in elem_types]);
+            if tuple_key not in self.tuple_types {
+                self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
             }
+            return self.tuple_types[tuple_key].as_pointer();
         }
-        # Value spec: i64 / f64 / ptr / jacval.
-        v_spec = "i64";
-        if isinstance(v_llvm, ir.DoubleType) {
-            v_spec = "f64";
-        } elif isinstance(v_llvm, ir.PointerType) {
-            v_spec = "ptr";
-        } elif self?.jacval_type and v_llvm == self.jacval_type {
-            v_spec = "jacval";
-        }
-        self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
-        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
-    }
-    # set[T] / frozenset[T] — bare forms default to a set of i64.
-    if cname in ("set", "frozenset") {
-        elem_llvm: ir.Type = ir.IntType(64);
-        if type_args {
-            _e = self._lower_type(type_args[0]);
-            if _e is None {
-                return None;
-            }
-            elem_llvm = _e;
-        }
-        spec = "i64";
-        esize = 0;
-        if isinstance(elem_llvm, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem_llvm, ir.PointerType) {
-            spec = "ptr";
-            if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
-                esize = self._get_struct_size(elem_llvm.pointee);
-                spec = f"tuple{esize}";
-            }
-        }
-        self._emit_set_helpers(spec, elem_llvm, esize);
-        return self.set_types[spec].as_pointer();
-    }
-    # tuple[T1, T2, ...] -> pointer to an LLVM literal struct.
-    if cname == "tuple" {
-        if not type_args {
-            return None;
-        }
-        elem_types: list[ir.Type] = [];
-        for a in type_args {
-            _et = self._lower_type(a);
-            if _et is None {
-                return None;
-            }
-            elem_types.append(_et);
-        }
-        n = len(elem_types);
-        tuple_key = f"Tuple.{n}." + ".".join([str(x) for x in elem_types]);
-        if tuple_key not in self.tuple_types {
-            self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
-        }
-        return self.tuple_types[tuple_key].as_pointer();
+        # `bytes` (and any other collection lacking a native lowering) -> None.
+        return None;
     }
     return None;
 }
@@ -225,7 +232,13 @@ runtime `File` (modeled by na_builtins.pyi) -- including annotations in
 imported .na.jac modules (type-checked on load, #6117). The former name-based
 fallback (struct_types / type_map lookups) is gone: with `File` modeled
 centrally (#6118) it was reached zero times across the native suite.
-Unhandled cases default to i64.
+
+Contract: an absent annotation (`type_expr is None`, i.e. an untyped param) and
+any type the central checker leaves unresolved (no `.type`, Unknown, or a
+category `_lower_type` does not lower) default to i64. This is the native
+backend's deliberate "strongly-typed or i64" rule, not a silent guess -- routing
+unresolved types through the boxed jacval representation would change the ABI and
+is intentionally out of scope here.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {

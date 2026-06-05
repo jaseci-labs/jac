@@ -32,6 +32,14 @@ obj JacTypeEntry {
 obj JacTypeRegistry {
     has _entries: dict[str, JacTypeEntry],
         _builtin_names: frozenset[str],
+        # Subset of `_entries` whose values are container types (list/dict/set/
+        # frozenset/tuple/bytes). Distinguishes collections from scalar
+        # primitives -- both live in `_entries`, so `is_primitive` alone cannot
+        # tell them apart. `str` is excluded (its truthiness and subscript
+        # semantics match a scalar, not a container, for codegen). `range` is
+        # excluded too: it dispatches through its own primitive emitter and is
+        # not treated as a container for truthiness.
+        _collection_names: frozenset[str],
         # Builtin exception hierarchy (child -> direct parent), ordered
         # topologically so parents precede children. The root maps to None.
         # See the "Exception Types" section of primitives.jac for the human
@@ -51,6 +59,17 @@ obj JacTypeRegistry {
     """True if name is a primitive type."""
     def is_primitive(name: str) -> bool {
         return name in self._entries;
+    }
+
+    """True if name is a builtin collection/container type.
+
+    Container types (list/dict/set/frozenset/tuple/bytes) are a subset of the
+    registered primitives; this distinguishes them from scalar primitives so
+    backends can categorize without re-deriving from class names. `str` and
+    `range` are NOT collections here (see `_collection_names`).
+    """
+    def is_collection(name: str) -> bool {
+        return name in self._collection_names;
     }
 
     """List of (name, emitter_suffix) pairs for building emitter dicts."""
@@ -222,6 +241,9 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              ),
 
          },
+         _collection_names=frozenset(
+             {"list", "dict", "set", "frozenset", "tuple", "bytes"}
+         ),
          _builtin_names=frozenset(
              {
                  # I/O

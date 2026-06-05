@@ -23,6 +23,7 @@ import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.modresolver { resolve_relative_path }
 import type from jaclang.compiler.type_system.types { TypeBase }
+import type from jaclang.compiler.type_system.type_utils { SemTypeKind }
 
 import from jaclang.jac0core.treeprinter {
     print_ast_tree,
@@ -287,6 +288,14 @@ obj Expr(UniNode) {
         getter;
         setter(type_sym_tab: UniScopeNode);
     }
+
+    # Normalized backend-facing category of this expression's resolved type
+    # (Primitive / Collection / Struct / Enum / Callable / Union / ...). The
+    # single field backends switch on instead of string-matching class names.
+    # Reflects the UN-NARROWED cached `type`: callers needing the CFG-narrowed
+    # category (e.g. the CL backend) must classify the evaluator's narrowed
+    # result via `sem_kind_of` directly, not read this getter.
+    has sem_kind: SemTypeKind { getter; }
 }
 
 """Wrapper that promotes an expression to a CFG-participating conditional node.

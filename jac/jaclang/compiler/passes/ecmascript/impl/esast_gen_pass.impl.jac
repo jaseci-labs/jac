@@ -2233,16 +2233,7 @@ impl EsastGenPass._try_primitive_op(
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
     import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-    _obj_type = None;
-    try {
-        _te = self.prog.get_type_evaluator();
-        if _te {
-            _obj_type = _te.get_type_of_expression(expr_node);
-        }
-    } except Exception {
-        _obj_type = None;
-    }
-    _type_name = self._resolve_primitive_type_name(_obj_type);
+    _type_name = self._resolve_primitive_type_name(self._narrowed_type_of(expr_node));
     if not _type_name {
         return None;
     }
@@ -2268,24 +2259,36 @@ impl EsastGenPass._try_primitive_op(
     return self.sync_loc(es.Identifier(name=_result), jac_node=jac_node);
 }
 
-"""Resolve the primitive type name of an expression, or "" if unknown."""
-impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
-    _obj_type = None;
+"""Fetch an expression's CFG-narrowed resolved type via the evaluator, or None.
+
+The single evaluator lookup shared by the type-category helpers, so each caller
+doesn't re-implement the fetch. Uses `get_type_of_expression` (NOT the raw cached
+`Expr.type`) to preserve CFG narrowing -- e.g. `x: list | None` narrowed to `list`
+inside `if x:`. Returns None when no evaluator is available or evaluation raises
+(the evaluator can throw on unresolved symbols / recursion)."""
+impl EsastGenPass._narrowed_type_of(expr_node: uni.UniNode) -> any {
     try {
         _te = self.prog.get_type_evaluator();
         if _te {
-            _obj_type = _te.get_type_of_expression(expr_node);
+            return _te.get_type_of_expression(expr_node);
         }
     } except Exception {
-        _obj_type = None;
+        return None;
     }
-    return self._resolve_primitive_type_name(_obj_type);
+    return None;
+}
+
+"""Resolve the primitive type name of an expression, or "" if unknown."""
+impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
+    return self._resolve_primitive_type_name(self._narrowed_type_of(expr_node));
 }
 
 """True if an expression is statically a collection whose JS truthiness and
-subscript semantics diverge from Python (list/dict/set/tuple/bytes). str is
-excluded: empty-string falsiness and `.at()` already agree with Python."""
+subscript semantics diverge from Python (list/dict/set/frozenset/tuple/bytes).
+str is excluded: empty-string falsiness and `.at()` already agree with Python.
+Delegates the category decision to the centralized `sem_kind_of` classifier."""
 impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
+    import from jaclang.compiler.type_system.type_utils { sem_kind_of, SemTypeKind }
     # `and`/`or` evaluate to one of their operands (Python returns the operand,
     # not a bool), so the result can be a collection -- and thus needs
     # Python-truthiness coercion in a boolean context -- whenever any operand
@@ -2300,14 +2303,8 @@ impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
         }
         return False;
     }
-    return self._expr_type_name(expr_node) in {
-        "list",
-        "dict",
-        "set",
-        "tuple",
-        "frozenset",
-        "bytes"
-    };
+    # Classify the CFG-narrowed type (not raw `Expr.type`) so narrowing is kept.
+    return sem_kind_of(self._narrowed_type_of(expr_node)) == SemTypeKind.Collection;
 }
 
 """Build a member-access chain like `_jac.poly.getitem` from a name path."""

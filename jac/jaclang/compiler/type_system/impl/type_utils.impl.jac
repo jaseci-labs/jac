@@ -15,6 +15,76 @@ impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
     return None;
 }
 
+impl sem_kind_of(ty: (types.TypeBase | None)) -> SemTypeKind {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if ty is None {
+        return SemTypeKind.Unknown;
+    }
+    # `SemTypeKind` is a projection of the structural `TypeCategory` tag: every
+    # category except `Class` maps onto a kind with no registry lookup, so read
+    # the tag directly -- this keeps the two enums in lockstep and isolates all
+    # registry/MRO knowledge to the single `Class` arm, which is the only
+    # category that fans out (Primitive/Collection/Struct/Enum/NoneType/Any).
+    match ty.category {
+        case types.TypeCategory.Union:
+            return SemTypeKind.Union;
+
+        case types.TypeCategory.Function | types.TypeCategory.Overload:
+            return SemTypeKind.Callable;
+
+        case types.TypeCategory.Module:
+            return SemTypeKind.Module;
+
+        case types.TypeCategory.TypeVar:
+            return SemTypeKind.TypeVar;
+
+        case types.TypeCategory.EnumMember:
+            return SemTypeKind.Enum;
+
+        case types.TypeCategory.Never:
+            return SemTypeKind.Never;
+
+        case types.TypeCategory.Any:
+            return SemTypeKind.Any;
+
+        case types.TypeCategory.Class:
+            # `isinstance` narrows `ty` to ClassType for the attribute reads
+            # below (the structural tag alone doesn't narrow for `jac check`).
+            if isinstance(ty, types.ClassType) {
+                # Read `_shared` directly -- detached property ClassTypes carry
+                # `_shared = None` and would trip the `.shared` non-null assert.
+                if ty._shared is None {
+                    return SemTypeKind.Unknown;
+                }
+                cname = ty._shared.class_name;
+                if cname in ("NoneType", "None") {
+                    return SemTypeKind.NoneType;
+                }
+                if cname in ("any", "Any", "object") {
+                    return SemTypeKind.Any;
+                }
+                # `primitive_type_name_of` walks the MRO and returns the
+                # registered name for BOTH scalar primitives and collections
+                # (both live in the registry); split the two on `is_collection`.
+                prim_name = primitive_type_name_of(ty);
+                if prim_name is not None {
+                    if JAC_TYPE_REGISTRY.is_collection(prim_name) {
+                        return SemTypeKind.Collection;
+                    }
+                    return SemTypeKind.Primitive;
+                }
+                if ty.is_enum_class() {
+                    return SemTypeKind.Enum;
+                }
+                # User-defined object / node / edge / walker class.
+                return SemTypeKind.Struct;
+            }
+
+    }
+    # Unbound / Unknown, and any future TypeBase leaf without a backend meaning.
+    return SemTypeKind.Unknown;
+}
+
 # Generator / Iterator return-type helpers.
 """Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 impl get_generator_type_args(
