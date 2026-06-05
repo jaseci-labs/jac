@@ -1086,6 +1086,24 @@ impl SqliteMemory.sync -> None {
                         }
                         changed = True;
                     }
+                    # Topology index is a derived adjacency cache on root
+                    # NodeAnchors, updated by edges *anywhere* in the subtree —
+                    # so a deep edge change leaves this root's own edges and
+                    # archetype fields untouched while the index blob still
+                    # changes. It is not an archetype field, so neither the
+                    # edge merge above nor the field-hash dirty check below
+                    # catches it; without this the update is silently dropped
+                    # on persist. Gate on CONNECT access, like edges, since the
+                    # index reflects connectivity.
+                    if (
+                        isinstance(stored_anchor, NodeAnchor)
+                        and isinstance(anchor, NodeAnchor)
+                        and anchor.topology_index_data != stored_anchor.topology_index_data
+                        and Jac.check_connect_access(anchor)
+                    ) {
+                        stored_anchor.topology_index_data = anchor.topology_index_data;
+                        changed = True;
+                    }
                     # Handle access/archetype updates (WRITE access)
                     access_changed = _canonical_json(stored_anchor.access) != _canonical_json(
                         anchor.access

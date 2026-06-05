@@ -5,6 +5,10 @@ import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
 def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
+    # Reject every file from an egg-info package directory.
+    if pkg_root.name.endswith(".egg-info") {
+        return True;
+    }
     # Check every path component for excluded directory names
     try {
         rel = file_path.relative_to(pkg_root);

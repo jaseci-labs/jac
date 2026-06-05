@@ -5,7 +5,6 @@ import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
-import from rich.table { Table }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
@@ -146,9 +145,8 @@ def _scale_pre_hook(context: HookContext) -> None {
         dry_run = context.get_arg("dry_run", False);
         if dry_run {
             if target != "kubernetes-microservice" {
-                console.print(
-                    f"\n[yellow]--dry-run only supported with "
-                    f"kubernetes-microservice target (got {target!r}).[/yellow]"
+                console.warning(
+                    f"--dry-run only supported with kubernetes-microservice target (got {target!r})."
                 );
                 context.set_data("cancel_execution", True);
                 context.set_data("cancel_return_code", 1);
@@ -163,7 +161,7 @@ def _scale_pre_hook(context: HookContext) -> None {
                 );
                 exit_code = 2 if has_errors(diagnostics) else 0;
             } except Exception as e {
-                console.print(f"\n[red]--dry-run failed:[/red] {e}");
+                console.error(f"--dry-run failed: {e}", emoji=False);
                 context.set_data("cancel_execution", True);
                 context.set_data("cancel_return_code", 1);
                 return;
@@ -187,15 +185,14 @@ def _scale_pre_hook(context: HookContext) -> None {
         try {
             result = deployment_target.deploy(app_config);
         } except Exception as e {
-            console.print(f"\n[red]Deployment failed:[/red] {e}");
+            console.error(f"Deployment failed: {e}", emoji=False);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 1);
             return;
         }
         if not result.success {
-            console.print(
-                f"\n[red]Deployment failed:[/red] "
-                f"{result.message or 'unknown error'}"
+            console.error(
+                f"Deployment failed: {result.message or 'unknown error'}", emoji=False
             );
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 1);
@@ -221,63 +218,70 @@ def _print_deployment_status(status_data: dict) -> None {
     error = status_data.get('error');
 
     console.print();
-    console.print("[bold cyan]  Jac Scale - Deployment Status[/bold cyan]");
-    console.print(
-        f"  [bold]App:[/bold] {app_name}   [bold]Namespace:[/bold] {namespace}"
-    );
+    console.print("  Jac Scale - Deployment Status", style="bold cyan");
+    console.print(f"  App: {app_name}   Namespace: {namespace}", style="bold");
     console.print();
 
     if error {
-        console.print(f"  [bold red]Cannot connect to cluster:[/bold red] {error}");
+        console.error(f"Cannot connect to cluster: {error}", emoji=False);
         console.print();
         return;
     }
 
-    table = Table(show_header=True, header_style="bold dim", box=None, padding=(0, 2));
-    table.add_column("Component", min_width=18);
-    table.add_column("Status", min_width=22);
-    table.add_column("Pods", justify="right", min_width=6);
-
     status_display = {
-        'running': '[bold green]● Running[/bold green]',
-        'degraded': '[bold yellow]◑ Degraded[/bold yellow]',
-        'pending': '[bold yellow]⟳ Pending[/bold yellow]',
-        'restarting': '[bold red]↺ Restarting[/bold red]',
-        'failed': '[bold red]✗ Failed[/bold red]',
-        'not_deployed': '[dim]○ Not Deployed[/dim]',
-        'unknown': '[dim]? Unknown[/dim]',
+        'running': '● Running',
+        'degraded': '◑ Degraded',
+        'pending': '⟳ Pending',
+        'restarting': '↺ Restarting',
+        'failed': '✗ Failed',
+        'not_deployed': '○ Not Deployed',
+        'unknown': '? Unknown',
+
+    };
+    status_style = {
+        'running': 'bold green',
+        'degraded': 'bold yellow',
+        'pending': 'bold yellow',
+        'restarting': 'bold red',
+        'failed': 'bold red',
+        'not_deployed': 'muted',
+        'unknown': 'muted',
 
     };
 
+    console.print(
+        f"  {'Component':18s}  {'Status':22s}  {'Pods':>6s}", style="bold dim"
+    );
     for comp in components {
         s = comp.get('status', 'unknown');
         ready = comp.get('ready', 0);
         total = comp.get('total', 0);
-        icon = status_display.get(s, s);
+        label = status_display.get(s, s);
         if s in ['not_deployed', 'unknown'] {
             pods_str = '-';
         } else {
             pods_str = f"{ready}/{total}";
         }
-        table.add_row(comp.get('name', ''), icon, pods_str);
+        console.print(
+            f"  {comp.get('name', ''):18s}  {label:22s}  {pods_str:>6s}",
+            style=status_style.get(s, 'muted')
+        );
     }
 
-    console.print(table);
-
     if urls {
-        console.print("  [bold]Service URLs[/bold]");
-        console.print(f"  [dim]{'─' * 48}[/dim]");
+        console.print("  Service URLs", style="bold");
+        console.print(f"  {'─' * 48}", style="muted");
         if 'app' in urls {
-            console.print(f"  [bold]Application:[/bold]   {urls['app']}");
+            console.print(f"  Application:   {urls['app']}", style="bold");
         }
         if 'grafana' in urls {
-            console.print(f"  [bold]Grafana:[/bold]       {urls['grafana']}");
+            console.print(f"  Grafana:       {urls['grafana']}", style="bold");
         }
         if 'redis_insight' in urls {
-            console.print(f"  [bold]RedisInsight:[/bold]  {urls['redis_insight']}");
+            console.print(f"  RedisInsight:  {urls['redis_insight']}", style="bold");
         }
         if 'mongo_express' in urls {
-            console.print(f"  [bold]Mongo Express:[/bold] {urls['mongo_express']}");
+            console.print(f"  Mongo Express: {urls['mongo_express']}", style="bold");
         }
         console.print();
     }
@@ -414,15 +418,17 @@ class JacCmd {
             ];
             if component and target != 'kubernetes' {
                 console.print(
-                    f"[bold red]ERROR:[/bold red] --component is only supported for the 'kubernetes' target."
+                    "ERROR: --component is only supported for the 'kubernetes' target.",
+                    style="error"
                 );
                 return 1;
             }
             if component and component not in valid_components {
                 console.print(
-                    f"[bold red]ERROR:[/bold red] Invalid component '{component}'. Valid choices: {', '.join(
+                    f"ERROR: Invalid component '{component}'. Valid choices: {', '.join(
                         valid_components
-                    )}"
+                    )}",
+                    style="error"
                 );
                 return 1;
             }
@@ -451,11 +457,13 @@ class JacCmd {
             # Warn user and require confirmation before proceeding
             if component {
                 console.print(
-                    f"[bold red]WARNING:[/bold red] You are about to delete component '{component}' from deployment '{app_name}'."
+                    f"WARNING: You are about to delete component '{component}' from deployment '{app_name}'.",
+                    style="bold red"
                 );
             } else {
                 console.print(
-                    f"[bold red]WARNING:[/bold red] You are about to delete namespace '{namespace}' and all its associated resources."
+                    f"WARNING: You are about to delete namespace '{namespace}' and all its associated resources.",
+                    style="bold red"
                 );
             }
             confirmation = input(
@@ -583,7 +591,8 @@ class JacCmd {
         ) -> int {
             if subcommand != "microservice" {
                 console.print(
-                    f"[bold red]Unknown setup type:[/bold red] '{subcommand}'. Use 'microservice'."
+                    f"Unknown setup type: '{subcommand}'. Use 'microservice'.",
+                    style="error"
                 );
                 return 1;
             }
@@ -653,14 +662,15 @@ class JacCmd {
 
             if not ms_config.get("enabled", False) {
                 console.print(
-                    "[bold red]Microservice mode is not enabled in jac.toml[/bold red]"
+                    "Microservice mode is not enabled in jac.toml", style="error"
                 );
                 return 1;
             }
 
             if not ms_config.get("routes", {}) {
                 console.print(
-                    "[bold red]No routes configured in [plugins.scale.microservices.routes][/bold red]"
+                    "No routes configured in [plugins.scale.microservices.routes]",
+                    style="error"
                 );
                 return 1;
             }
@@ -671,7 +681,7 @@ class JacCmd {
             if action == "status" {
                 svc_status = deployer.status();
                 console.print();
-                console.print("[bold cyan]  Microservice Status[/bold cyan]");
+                console.print("  Microservice Status", style="bold cyan");
                 console.print();
                 for (name, info) in svc_status.items() {
                     status_str = info.get("status", "unknown");
@@ -681,11 +691,12 @@ class JacCmd {
                     prefix = info.get("prefix", "");
                     if running {
                         console.print(
-                            f"  [green]●[/green] {name:12s} {prefix:20s} port={port} pid={pid}"
+                            f"  ● {name:12s} {prefix:20s} port={port} pid={pid}",
+                            style="success"
                         );
                     } else {
                         console.print(
-                            f"  [red]○[/red] {name:12s} {prefix:20s} (not running)"
+                            f"  ○ {name:12s} {prefix:20s} (not running)", style="error"
                         );
                     }
                 }
@@ -693,33 +704,33 @@ class JacCmd {
             } elif action == "stop" {
                 if not service_name {
                     console.print(
-                        "[bold red]Service name required: jac scale stop <name>[/bold red]"
+                        "Service name required: jac scale stop <name>", style="error"
                     );
                     return 1;
                 }
                 if deployer.stop_service(service_name) {
-                    console.print(f"[green]Stopped {service_name}[/green]");
+                    console.success(f"Stopped {service_name}", emoji=False);
                 } else {
-                    console.print(f"[red]Failed to stop {service_name}[/red]");
+                    console.error(f"Failed to stop {service_name}", emoji=False);
                     return 1;
                 }
             } elif action == "restart" {
                 if not service_name {
                     console.print(
-                        "[bold red]Service name required: jac scale restart <name>[/bold red]"
+                        "Service name required: jac scale restart <name>", style="error"
                     );
                     return 1;
                 }
                 if deployer.restart_service(service_name) {
-                    console.print(f"[green]Restarted {service_name}[/green]");
+                    console.success(f"Restarted {service_name}", emoji=False);
                 } else {
-                    console.print(f"[red]Failed to restart {service_name}[/red]");
+                    console.error(f"Failed to restart {service_name}", emoji=False);
                     return 1;
                 }
             } elif action == "logs" {
                 if not service_name {
                     console.print(
-                        "[bold red]Service name required: jac scale logs <name>[/bold red]"
+                        "Service name required: jac scale logs <name>", style="error"
                     );
                     return 1;
                 }
@@ -727,7 +738,7 @@ class JacCmd {
                 console.print(log_output);
             } elif action == "destroy" {
                 deployer.destroy_all();
-                console.print("[green]All services stopped[/green]");
+                console.success("All services stopped", emoji=False);
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
@@ -737,7 +748,7 @@ class JacCmd {
                 start_gateway_only(ms_config);
                 return 0;
             } else {
-                console.print(f"[bold red]Unknown action:[/bold red] '{action}'");
+                console.error(f"Unknown action: '{action}'", emoji=False);
                 console.print("Actions: status, stop, restart, logs, destroy, gateway");
                 return 1;
             }

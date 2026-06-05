@@ -22,7 +22,7 @@ def _write_toml(temp_dir: str, content: str) -> tuple[Path, bytes] {
 # =============================================================================
 """A project without [plugins.client] is left untouched when config is read."""
 test "non client project config read does not mutate jac toml" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -65,7 +65,7 @@ test "non client project config read does not mutate jac toml" {
 # =============================================================================
 """A project with [plugins.client] still gets core deps injected on load."""
 test "client project gets dependencies injected on load" {
-    import from jac_client.plugin.src.config_loader { JacClientConfig }
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();

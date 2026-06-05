@@ -54,12 +54,19 @@ obj MachOLinker {
         relocations: list[MachOReloc],
         needed_libs: list[str],
         cpu_type: int = 0,
-        cpu_subtype: int = 0;
+        cpu_subtype: int = 0,
+        # Maps an undefined symbol's C name (no leading underscore) to the
+        # `needed_libs` entry that exports it, e.g. "InitWindow" ->
+        # "libraylib.dylib". Drives the per-symbol dylib ordinal emitted in the
+        # two-level-namespace bind table; symbols absent from the map bind to
+        # libSystem (ordinal 1), which covers all compiler-emitted libc calls.
+        symbol_lib_map: dict[str, str] = {};
 
     static def link(
         obj_bytes: bytes,
         output_path: str,
-        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"]
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"],
+        symbol_lib_map: dict[str, str] = {}
     ) -> bool;
 
     def parse_object -> bool;

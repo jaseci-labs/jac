@@ -1319,6 +1319,30 @@ test "inferred_local_type_frozen" {
     );
 }
 
+test "inferred_local_type_widens_literals" {
+    # Only the cross-type reassignment errors, and the message reports the
+    # widened base type (`str`), not a leaked `Literal[...]`.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_literal_widening_reassignment.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert program.errors_had[0].code.code == "E1001";
+    msg = program.errors_had[0].pretty_print();
+    assert "Cannot assign int to str" in msg , f"Expected widened-base message, got: {msg}";
+    assert "Literal[" not in msg , f"Frozen type should not leak a literal: {msg}";
+    assert_error_pretty_found(
+        """
+        name = 5;  # <-- Error
+        ^^^^^^^^
+    """, msg
+    );
+}
+
 test "unannotated_reassignment_frozen" {
     # `None`-sentinel variables evolve their inferred type; every other
     # unannotated variable is frozen to its first-binding type, and

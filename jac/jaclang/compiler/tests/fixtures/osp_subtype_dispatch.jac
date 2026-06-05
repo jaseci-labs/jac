@@ -32,3 +32,12 @@ def subtype_dispatch_py() -> dict[str, any] {
     w spawn Other(val=7);
     return {"base": w.base, "either": w.either};
 }
+
+cl {
+    def subtype_dispatch_cl() -> dict[str, any] {
+        w = W();
+        w spawn Sub(val=5);
+        w spawn Other(val=7);
+        return {"base": w.base, "either": w.either};
+    }
+}

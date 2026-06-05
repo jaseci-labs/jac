@@ -322,7 +322,7 @@ test "sidecar uses console after import" {
 test "pytauri target imports api base url env var" {
     content = _PYTAURI_TARGET_IMPL.read_text(encoding="utf-8");
     assert (
-        "import from jac_client.plugin.src.vite_bundler { API_BASE_URL_ENV_VAR }" in content
+        "import from jaclang.runtimelib.client.vite_bundler { API_BASE_URL_ENV_VAR }" in content
     );
 }
 
