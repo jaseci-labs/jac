@@ -1440,9 +1440,24 @@ obj MonitoringDeployer {
                 'type': 'ClusterIP',
                 'selector': {'app': tempo_name},
                 'ports': [
-                    {'name': 'http', 'protocol': 'TCP', 'port': 3200, 'targetPort': 3200},
-                    {'name': 'otlp-grpc', 'protocol': 'TCP', 'port': 4317, 'targetPort': 4317},
-                    {'name': 'otlp-http', 'protocol': 'TCP', 'port': 4318, 'targetPort': 4318}
+                    {
+                        'name': 'http',
+                        'protocol': 'TCP',
+                        'port': 3200,
+                        'targetPort': 3200
+                    },
+                    {
+                        'name': 'otlp-grpc',
+                        'protocol': 'TCP',
+                        'port': 4317,
+                        'targetPort': 4317
+                    },
+                    {
+                        'name': 'otlp-http',
+                        'protocol': 'TCP',
+                        'port': 4318,
+                        'targetPort': 4318
+                    }
                 ]
             }
         };
@@ -1684,11 +1699,7 @@ obj MonitoringDeployer {
         # River pipeline: a header plus two optional lanes - the logs lane
         # (loki_enabled) and the OTLP traces lane (tracing_enabled).
         alloy_header = (
-            "logging {\n"
-            "  level  = \"info\"\n"
-            "  format = \"logfmt\"\n"
-            "}\n"
-            "\n"
+            "logging {\n" "  level  = \"info\"\n" "  format = \"logfmt\"\n" "}\n" "\n"
         );
 
         # Logs lane: discover pods, relabel to per-container log paths under
@@ -2071,8 +2082,18 @@ obj MonitoringDeployer {
                     'type': 'ClusterIP',
                     'selector': {'app': alloy_name},
                     'ports': [
-                        {'name': 'otlp-grpc', 'protocol': 'TCP', 'port': 4317, 'targetPort': 4317},
-                        {'name': 'otlp-http', 'protocol': 'TCP', 'port': 4318, 'targetPort': 4318}
+                        {
+                            'name': 'otlp-grpc',
+                            'protocol': 'TCP',
+                            'port': 4317,
+                            'targetPort': 4317
+                        },
+                        {
+                            'name': 'otlp-http',
+                            'protocol': 'TCP',
+                            'port': 4318,
+                            'targetPort': 4318
+                        }
                     ]
                 }
             };

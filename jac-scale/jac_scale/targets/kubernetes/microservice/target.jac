@@ -209,7 +209,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _deploy_observability(app_name: str) -> None {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
-        if not logs_cfg.get("enabled", False) and not tracing_cfg.get("enabled", False) {
+        if not logs_cfg.get("enabled", False)
+        and not tracing_cfg.get("enabled", False) {
             return;
         }
 

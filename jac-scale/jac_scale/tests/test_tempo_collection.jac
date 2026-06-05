@@ -82,9 +82,7 @@ test "_deploy_alloy emits the otelcol OTLP->Tempo lane when tracing is on" {
 
     # _deploy_alloy constructs a RbacAuthorizationV1Api internally; mock it.
     with unittest.mock.patch.object(
-        mon_module.client,
-        "RbacAuthorizationV1Api",
-        lambda : unittest.mock.MagicMock()
+        mon_module.client, "RbacAuthorizationV1Api", lambda : unittest.mock.MagicMock()
     ) {
         dep._deploy_alloy("myapp", "ns", apps_v1, core_v1);
     }

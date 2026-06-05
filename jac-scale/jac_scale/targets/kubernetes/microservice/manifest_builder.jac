@@ -355,10 +355,12 @@ obj MicroserviceManifestBuilder {
             get_scale_config().get_microservices_config().get("tracing", {})
         );
         if ms_trace_cfg.get("enabled", False) {
-            env.append({
-                "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
-                "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
-            });
+            env.append(
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
+                }
+            );
         }
 
         routes: dict[str, str] = self._microservice_routes();

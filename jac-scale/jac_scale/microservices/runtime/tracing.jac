@@ -54,7 +54,6 @@ glob _pending_trace_id: ContextVar[int] = ContextVar(
 
 
 # --- Pure id helpers (no OpenTelemetry dependency) -------------------------
-
 """UUID string -> 128-bit trace id (dashes stripped). 0 if unparseable."""
 def uuid_to_trace_id(uuid_str: str | None) -> int {
     if not uuid_str {
@@ -129,7 +128,6 @@ def parse_traceparent(header: str | None) -> dict | None {
 
 
 # --- SDK bootstrap (no-op without OpenTelemetry) ---------------------------
-
 """True once install_tracing has activated and spans are being emitted."""
 def tracing_active -> bool {
     return _tracing_active;
@@ -261,7 +259,6 @@ def shutdown_tracing {
 
 
 # --- Span creation ---------------------------------------------------------
-
 """Start a SERVER span whose trace id is the given UUID. A root hop (no
 inbound `parent_traceparent`) becomes a genuine parentless root; a child
 hop inherits the inbound parent. Stashes the span's traceparent in
