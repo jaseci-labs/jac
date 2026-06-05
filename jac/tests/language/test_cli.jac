@@ -1216,6 +1216,105 @@ test "install editable resolves config from cwd when given dot path" {
     }
 }
 
+test "jac install -e accepts space-separated and repeated flag forms" {
+    _tmpdir = tempfile.mkdtemp();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+
+        # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
+        process = subprocess.Popen(
+            [
+                "jac",
+                "install",
+                "-e",
+                str(pkg_a),
+                str(pkg_b),
+                "-e",
+                str(pkg_c),
+                "--dry-run"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+
+        assert process.returncode == 0 , (
+            f"Expected exit 0, got {process.returncode}.\n{combined}"
+        );
+        assert "pkg-a" in combined , f"pkg-a not mentioned in output:\n{combined}";
+        assert "pkg-b" in combined , f"pkg-b not mentioned in output:\n{combined}";
+        assert "pkg-c" in combined , f"pkg-c not mentioned in output:\n{combined}";
+    } finally {
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install -e links all packages for space-separated and repeated flag forms" {
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+
+        linked: list = [];
+        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+            linked.append(src_dir);
+        }
+
+        with patch(
+            "jaclang.publish.builder.WheelBuilder.install_editable",
+            fake_install_editable
+        ) {
+            # [[pkg_a, pkg_b], [pkg_c]] mirrors: -e pkg_a pkg_b -e pkg_c
+            result = project.install(editable=[[str(pkg_a), str(pkg_b)], [str(pkg_c)]]);
+        }
+
+        assert result == 0 , f"Expected exit 0, got {result}";
+        assert len(linked) == 3 , f"Expected install_editable called 3 times, got {len(
+            linked
+        )}";
+        assert pkg_a in linked , f"pkg-a not linked; linked={linked}";
+        assert pkg_b in linked , f"pkg-b not linked; linked={linked}";
+        assert pkg_c in linked , f"pkg-c not linked; linked={linked}";
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
 # --- TestConfigCommand tests ---
 test "config groups" {
     tmp_path = tempfile.mkdtemp();
