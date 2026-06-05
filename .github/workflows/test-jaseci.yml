@@ -11,6 +11,7 @@ on:
 
 jobs:
   test-core-compiler:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -35,6 +36,7 @@ jobs:
       run: pytest -x jac/tests/compiler -n auto
 
   test-core-runtime:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -66,6 +68,12 @@ jobs:
 
   test-client:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # TEMP(fix/desktop-ci-xvfb): run 10x in parallel to flush out flakiness in
+    # the headless desktop dev-mode test before merge.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -124,6 +132,7 @@ jobs:
         pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
 
   test-packages-and-docs:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -170,6 +179,7 @@ jobs:
       run: pytest docs/tests/e2e/test_code_blocks.jac -v
 
   test-mcp:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -194,6 +204,7 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -297,8 +308,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    # Runs by default. Add the 'skip-k8s' label to a PR to skip it.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Check out code
@@ -347,6 +357,7 @@ jobs:
           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
+    if: false  # TEMP(fix/desktop-ci-xvfb): disabled to iterate on test-client
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
