@@ -163,10 +163,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
-        # Observability stack (M-14.a): opt-in centralised logs via
-        # `[plugins.scale.microservices.logs].enabled`. Surfaces a failure
-        # in `details` but does not fail the deploy - the app is healthy
-        # without logs; the operator can re-run once Loki settles.
+        # Observability stack (logs and/or traces). Surfaces a failure in
+        # `details` but does not fail the deploy - the app is healthy
+        # without it; the operator can re-run once it settles.
         observability_err: str = "";
         try {
             self._deploy_observability(app_name);
@@ -202,23 +201,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
-    """M-14.a: deploy Loki + Grafana Alloy (+ the surrounding Prometheus
-    / Grafana stack the Pod Logs dashboard depends on) when
-    `[plugins.scale.microservices.logs].enabled = true`. No-op otherwise.
-
-    Reuses the same `MonitoringDeployer` the monolith target uses, so
-    microservice mode is the second caller of one builder. The
-    monitoring stack is gated on `KubernetesConfig.monitoring_enabled`
-    and Loki specifically on `loki_enabled`; the deploy path hands
-    `MonitoringDeployer` a fresh `KubernetesConfig` clone with both
-    flags set (see `_build_observability_config`). The destroy path
-    deletes resources by name unconditionally so it stays idempotent
-    regardless of the toggle state at teardown time."""
+    """Deploy the observability stack (Loki/Tempo + Grafana Alloy + the
+    surrounding Prometheus/Grafana stack) when logs and/or tracing is
+    enabled. No-op otherwise. Reuses the monolith target's
+    `MonitoringDeployer` with a `KubernetesConfig` clone carrying the
+    relevant flags; teardown deletes by name so it stays idempotent."""
     def _deploy_observability(app_name: str) -> None {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
-        # O-02: the observability stack now also fires for tracing-only
-        # deploys (Tempo + Alloy OTLP lane), not just logs.
         if not logs_cfg.get("enabled", False) and not tracing_cfg.get("enabled", False) {
             return;
         }
@@ -349,8 +339,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Read `[plugins.scale.microservices.tracing]` (O-02). Empty dict on
-    any failure (missing block, malformed TOML, loader exception)."""
+    """Read `[plugins.scale.microservices.tracing]`. Empty dict on any
+    failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
             ms_cfg = get_scale_config().get_microservices_config();
@@ -768,11 +758,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # M-14.a: tear down the observability stack symmetrically to
-        # `_deploy_observability`. Unconditional (mirroring the monolith
-        # destroy at kubernetes_target.jac) because MonitoringDeployer
-        # treats every API not-found as a no-op; calling it on a stack
-        # that was never deployed is harmless.
+        # Tear down the observability stack. Unconditional: MonitoringDeployer
+        # treats every API not-found as a no-op, so calling it on a stack that
+        # was never deployed is harmless.
         try {
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.destroy(app_name, namespace, apps_v1, core_v1);

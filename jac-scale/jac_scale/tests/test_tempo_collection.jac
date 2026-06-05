@@ -1,4 +1,4 @@
-"""Tests for O-02.a trace-collection infra (Tempo + Alloy OTLP lane).
+"""Tests for trace-collection infra (Tempo + Alloy OTLP lane).
 
 Manifest-shape unit tests with a mocked Kubernetes client (no cluster):
 - KubernetesConfig round-trips the `tracing_enabled` flag.

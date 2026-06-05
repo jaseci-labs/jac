@@ -675,10 +675,8 @@ obj MonitoringDeployer {
                 "    editable: true\n"
             );
         }
-        # O-02: Tempo trace datasource. `nodeGraph` draws the service
-        # graph; `tracesToLogsV2` (added only when Loki is present) makes
-        # the "Trace to logs" pivot work - click a span, jump to its log
-        # lines by trace_id (the same id the spans and logs share).
+        # Tempo trace datasource. `tracesToLogsV2` (added when Loki is
+        # present) enables the span -> logs pivot by trace_id.
         if self.k8s_config.tracing_enabled {
             tempo_name = f"{app_name}-tempo";
             tempo_url = f"http://{tempo_name}-service:3200";
@@ -1260,16 +1258,11 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Tempo as a single-binary trace store (O-02).
+    """Deploy Tempo as a single-binary trace store.
 
-    Sibling of `_deploy_loki`: same ConfigMap + ServiceAccount +
-    Deployment + ClusterIP Service shape, same emptyDir storage (so
-    traces are ephemeral, suitable for dev/staging; PVC/S3 is a later
-    follow-up like M-14.c is for Loki). Tempo exposes an OTLP receiver
-    (the Alloy collector exports spans here on 4317) and an HTTP API on
-    3200 (TraceQL search + trace-by-id, queried by Grafana and the
-    in-admin Traces page). Indexes only the trace id, like Loki indexes
-    only labels, so it stays cheap.
+    OTLP receivers on 4317/4318 (the Alloy collector exports spans here)
+    and an HTTP API on 3200 for TraceQL search. emptyDir storage, so
+    traces are ephemeral (suitable for dev/staging).
     """
     def _deploy_tempo(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         tempo_name = f"{app_name}-tempo";
@@ -1672,14 +1665,10 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Grafana Alloy as a DaemonSet to tail pod logs and ship them to Loki.
+    """Deploy Grafana Alloy as a DaemonSet for logs and/or traces.
 
-    Alloy is Grafana's OpenTelemetry-compatible successor to Promtail
-    (Promtail went EOL on 2026-03-02). Same job: K8s SD discovers pods,
-    Alloy reads logs from /var/log/pods on each node and forwards them
-    to the Loki ClusterIP service. River-syntax config; otherwise the
-    DaemonSet shape, RBAC, hostPath mounts, and security context are
-    a port of the Promtail layout PR #5731 introduced.
+    Tails pod logs to Loki and/or receives OTLP spans and forwards them
+    to Tempo, depending on which signals are enabled. River-syntax config.
     """
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         loki_name = f"{app_name}-loki";
@@ -1692,9 +1681,8 @@ obj MonitoringDeployer {
         tempo_name = f"{app_name}-tempo";
         tempo_otlp_endpoint = f"{tempo_name}-service:4317";
 
-        # River-syntax pipeline, assembled from a header plus two optional
-        # lanes: the M-14.a logs lane (loki_enabled) and the O-02 OTLP
-        # traces lane (tracing_enabled). One DaemonSet, both signals.
+        # River pipeline: a header plus two optional lanes - the logs lane
+        # (loki_enabled) and the OTLP traces lane (tracing_enabled).
         alloy_header = (
             "logging {\n"
             "  level  = \"info\"\n"
@@ -1703,12 +1691,8 @@ obj MonitoringDeployer {
             "\n"
         );
 
-        # M-14.a logs lane. Mirrors the Promtail relabel + CRI flow:
-        # discovery.kubernetes finds pods, discovery.relabel lifts
-        # namespace/pod/container labels and rewrites __path__ to the
-        # pod's per-container log file under /var/log/pods, local.file_match
-        # globs those paths, loki.source.file tails them, loki.process
-        # parses the containerd CRI wrapper, loki.write pushes to Loki.
+        # Logs lane: discover pods, relabel to per-container log paths under
+        # /var/log/pods, tail them, parse the CRI wrapper, push to Loki.
         alloy_logs_lane = (
             "discovery.kubernetes \"pods\" {\n"
             "  role = \"pod\"\n"
@@ -1771,12 +1755,8 @@ obj MonitoringDeployer {
             "  // app wrote to stdout.\n"
             "  stage.cri {}\n"
             "\n"
-            "  // M-14.b structured-JSON parse. Lifts top-level keys out of\n"
-            "  // the JSON body produced by jac-scale's `install_structured_\n"
-            "  // logging`. Non-JSON lines (third-party libraries that emit\n"
-            "  // text, or pods that predate M-14.b) fall through unmolested\n"
-            "  // - Alloy's stage.json doesn't drop the line on extraction\n"
-            "  // failure, the variables just stay unset.\n"
+            "  // Lift top-level keys out of structured-JSON log lines.\n"
+            "  // Non-JSON lines fall through unmolested (variables stay unset).\n"
             "  stage.json {\n"
             "    expressions = {\n"
             "      ts       = \"ts\",\n"
@@ -1786,21 +1766,17 @@ obj MonitoringDeployer {
             "    }\n"
             "  }\n"
             "\n"
-            "  // Use the app-emitted timestamp when present. Defends against\n"
-            "  // clock skew across nodes (M-14 crash course gotcha 8).\n"
-            "  // action_on_failure = \"skip\" keeps lines without a valid ts\n"
-            "  // (text-mode, or malformed JSON) - they get the agent's clock.\n"
+            "  // Use the app-emitted timestamp when present (defends against\n"
+            "  // node clock skew); lines without a valid ts keep the agent's.\n"
             "  stage.timestamp {\n"
             "    source            = \"ts\"\n"
             "    format            = \"RFC3339Nano\"\n"
             "    action_on_failure = \"skip\"\n"
             "  }\n"
             "\n"
-            "  // Promote bounded-cardinality fields to Loki labels. service\n"
-            "  // is one of a handful (gateway + N microservices); level is\n"
-            "  // five values. trace_id is deliberately NOT here - it would\n"
-            "  // be one stream per request (high-cardinality killer). Query\n"
-            "  // trace_id via `{namespace=ns} | json | trace_id=\"...\"`.\n"
+            "  // Promote bounded-cardinality fields to Loki labels. trace_id\n"
+            "  // is deliberately NOT a label (one stream per request); query\n"
+            "  // it via `{namespace=ns} | json | trace_id=\"...\"`.\n"
             "  stage.labels {\n"
             "    values = {\n"
             "      service = \"\",\n"
@@ -1821,10 +1797,7 @@ obj MonitoringDeployer {
             alloy_logs_lane = "";
         }
 
-        # O-02 traces lane: receive OTLP from app pods, batch, export to
-        # Tempo. Alloy IS an OpenTelemetry Collector, so the trace
-        # pipeline is three more River components on the agent already
-        # shipping logs - no second DaemonSet.
+        # Traces lane: receive OTLP from app pods, batch, export to Tempo.
         alloy_otel_lane = "";
         if self.k8s_config.tracing_enabled {
             alloy_otel_lane = (
@@ -2082,12 +2055,9 @@ obj MonitoringDeployer {
             }
         }
 
-        # O-02: ClusterIP Service in front of the Alloy DaemonSet so app
-        # pods have a stable OTLP target (`<app>-alloy-service:4318`).
-        # The Service load-balances across node-local Alloy pods; any
-        # collector can batch + forward to Tempo, so that's fine. Only
-        # created for the traces leg (the logs leg pushes outbound to
-        # Loki and needs no inbound Service).
+        # ClusterIP Service in front of the Alloy DaemonSet so app pods
+        # have a stable OTLP target (`<app>-alloy-service:4318`). Only the
+        # traces leg needs an inbound Service (logs push outbound to Loki).
         if self.k8s_config.tracing_enabled {
             alloy_service = {
                 'apiVersion': 'v1',
@@ -2143,16 +2113,14 @@ obj MonitoringDeployer {
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, provider);
-        # O-02: Tempo (trace store) when tracing is enabled.
         if self.k8s_config.tracing_enabled {
             self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
         }
         if self.k8s_config.loki_enabled {
             self._deploy_loki(app_name, namespace, apps_v1, core_v1);
         }
-        # Alloy is BOTH the log shipper (M-14.a, loki_enabled) AND the
-        # OTLP trace collector (O-02, tracing_enabled). Deploy it when
-        # either leg is on; its River config is built from both flags.
+        # Alloy serves both legs (logs to Loki, traces to Tempo); deploy it
+        # when either is on - its River config is built from both flags.
         if self.k8s_config.loki_enabled or self.k8s_config.tracing_enabled {
             self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
         }
@@ -2298,7 +2266,7 @@ obj MonitoringDeployer {
                 raise;
             }
         }
-        # O-02: the Alloy OTLP Service (only present in traces deploys).
+        # The Alloy OTLP Service (only present in traces deploys).
         delete_if_exists(
             core_v1.delete_namespaced_service,
             f"{alloy_name}-service",
@@ -2321,8 +2289,8 @@ obj MonitoringDeployer {
             }
         }
 
-        # Tempo resources (O-02). Deleted by name unconditionally so
-        # teardown is idempotent regardless of the tracing toggle state.
+        # Tempo resources. Deleted by name unconditionally so teardown is
+        # idempotent regardless of the tracing toggle state.
         tempo_name = f"{app_name}-tempo";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'

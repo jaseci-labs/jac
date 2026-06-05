@@ -55,9 +55,8 @@ obj KubernetesConfig(BaseConfig) {
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
         loki_enabled: bool = False,
-        # O-02: deploy Tempo + the Alloy OTLP-receiver lane for
-        # distributed traces. Implied by
-        # `[plugins.scale.microservices.tracing].enabled`.
+        # Deploy Tempo + the Alloy OTLP-receiver lane for distributed
+        # traces. Set from `[plugins.scale.microservices.tracing].enabled`.
         tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
         # Dashboard configuration
