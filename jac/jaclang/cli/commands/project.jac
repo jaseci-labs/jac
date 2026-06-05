@@ -66,8 +66,9 @@ def create(
     args=[
         Arg.create(
             "editable",
-            default="",
-            help="Install the package at this path in editable mode (like pip install -e)",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Install the package(s) at these paths in editable mode (like pip install -e)",
             short="e"
         ),
         Arg.create(
@@ -134,6 +135,10 @@ def create(
         ("jac install", "Install all dependencies"),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
+        (
+            "jac install -e ./jac-byllm ./jac-client",
+            "Install multiple packages in editable mode"
+        ),
         ("jac install --dev", "Include dev dependencies"),
         ("jac install --extras data monitoring", "Include optional dependency groups"),
         ("jac install -e . --extras all", "Editable install with all optional deps"),
@@ -148,7 +153,7 @@ def create(
     group="project"
 )
 def install(
-    editable: str = "",
+    editable: list = [],
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,

@@ -391,7 +391,7 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 
 """Install all dependencies from jac.toml."""
 impl install(
-    editable: str = "",
+    editable: list = [],
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,
@@ -408,21 +408,6 @@ impl install(
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
-    # force_discover bypasses the module-level cache, which may already hold
-    # the calling project's config when invoked from outside the target dir.
-    if editable {
-        src_dir: Path = Path(editable).resolve();
-        config = get_config(start_path=src_dir, force_discover=True);
-    } else {
-        config = get_config();
-    }
-    if config is None {
-        hint = "Clone the library repo and run 'jac install -e .' inside it."
-            if editable
-            else "Run 'jac create' to create a project first.";
-        console.error("No jac.toml found", hint=hint);
-        return 1;
-    }
     flag_defs: list = [
         (force_reinstall, "--force-reinstall"),
         (no_cache_dir, "--no-cache-dir"),
@@ -438,60 +423,84 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
-    );
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
         import sys;
         import site;
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
-        console.print(
-            f"\n📦 Editable install: {config.project.name} " f"from {src_dir}",
-            style="bold"
-        );
-
-        dep_specs = installer.get_pip_package_specs(include_dev=dev);
-        if extras {
-            try {
-                extra_specs = installer.get_extra_package_specs(extras);
-            } except ValueError as e {
-                console.error(str(e));
-                return 1;
-            }
-            if extra_specs {
-                console.print(f"  Extras: {', '.join(extras)}", style="muted");
-            }
-            dep_specs.extend(extra_specs);
-        }
-        if dep_specs {
-            console.print(
-                f"  Installing {len(dep_specs)} dependencies...", style="muted"
-            );
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
-                capture_output=not verbose,
-                text=True,
-            );
-            if result.returncode != 0 {
+        for editable_path in editable {
+            src_dir: Path = Path(editable_path).resolve();
+            # force_discover bypasses the module-level cache, which may already
+            # hold a prior project's config when installing multiple paths.
+            config = get_config(start_path=src_dir, force_discover=True);
+            if config is None {
                 console.error(
-                    f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    "No jac.toml found",
+                    hint=f"Clone the library repo and run 'jac install -e .' inside it. (path: {src_dir})"
                 );
                 return 1;
             }
+            installer = DependencyInstaller(
+                config=config, verbose=verbose, install_flags=install_flags
+            );
+            console.print(
+                f"\n📦 Editable install: {config.project.name} from {src_dir}",
+                style="bold"
+            );
+            dep_specs = installer.get_pip_package_specs(include_dev=dev);
+            if extras {
+                try {
+                    extra_specs = installer.get_extra_package_specs(extras);
+                } except ValueError as e {
+                    console.error(str(e));
+                    return 1;
+                }
+                if extra_specs {
+                    console.print(f"  Extras: {', '.join(extras)}", style="muted");
+                }
+                dep_specs.extend(extra_specs);
+            }
+            if dep_specs {
+                console.print(
+                    f"  Installing {len(dep_specs)} dependencies...", style="muted"
+                );
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
+                    capture_output=not verbose,
+                    text=True,
+                );
+                if result.returncode != 0 {
+                    console.error(
+                        f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    );
+                    return 1;
+                }
+            }
+            if dry_run {
+                console.print(
+                    "  ✔ Dry run complete (nothing installed).", style="success"
+                );
+                continue;
+            }
+            site_pkgs = Path(site.getsitepackages()[0]);
+            WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
+            console.print(f"  ✔ Linked {src_dir}", style="success");
+            console.print("  ✔ Editable install complete.", style="success");
         }
-
-        if dry_run {
-            console.print("  ✔ Dry run complete (nothing installed).", style="success");
-            return 0;
-        }
-        site_pkgs = Path(site.getsitepackages()[0]);
-        WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
-        console.print(f"  ✔ Linked {src_dir}", style="success");
-        console.print("  ✔ Editable install complete.", style="success");
         return 0;
     }
+    # ── Normal (non-editable) install ─────────────────────────────────────────
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=install_flags
+    );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
     );
