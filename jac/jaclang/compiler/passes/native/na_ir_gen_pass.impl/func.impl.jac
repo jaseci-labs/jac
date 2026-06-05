@@ -1,11 +1,6 @@
 """Function/ability declaration and codegen for native compilation."""
 
-"""Non-Optional accessor for the active IRBuilder.
-
-Body-codegen helpers only run while a builder is installed; a None here means
-a helper ran outside an active function body, so raise instead of letting a
-NoneType-deref surface deep in the helper. Lifecycle code uses `_builder`.
-"""
+"""Non-Optional accessor for the active IRBuilder."""
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {
         raise RuntimeError(

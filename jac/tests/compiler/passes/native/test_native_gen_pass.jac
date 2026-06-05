@@ -152,9 +152,6 @@ test "recursion fibonacci" {
     assert fib(15) == 610;
 }
 
-# Nested functions are the case where codegen saves and restores the active
-# builder around the inner body. Exercising them end-to-end guards the
-# builder save/restore plumbing behind the non-optional `builder` accessor.
 test "nested functions helper recursion and module global" {
     (eng, _) = compile_native("nested_def.na.jac");
     use_helper = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
