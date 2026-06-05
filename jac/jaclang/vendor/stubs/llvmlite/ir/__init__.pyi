@@ -1,20 +1,13 @@
 """Hand-written type stub for the subset of `llvmlite.ir` used by Jac.
 
-llvmlite ships no type information, so without this stub the type checker
-falls back to the package's unannotated source and infers `object` / missing
-attributes for things like `Value.type`, `PointerType.pointee`,
-`Type.as_pointer()`, and the `IRBuilder` instruction builders. This stub
-models the public API surface the native IR-gen pass relies on. It is not a
-complete model of llvmlite; extend it as the pass uses more of the library.
+llvmlite ships no type information; this stub models the public API surface the
+native IR-gen pass relies on. It is not a complete model of llvmlite; extend it
+as the pass uses more of the library.
 
-IRBuilder methods take `Any` arguments on purpose: the pass passes optional
-(`Function | None`) and not-yet-typed operands through them, exactly as it did
-when llvmlite was untyped. They return the common `Value` base (not the
-concrete instruction subclass) so a variable reused across instruction kinds
--- e.g. an `icmp` result in one branch and an `fcmp` result in another -- does
-not collide. `phi` and `alloca` are the exceptions: they return the concrete
-instruction because callers use members (`add_incoming`) or field types
-(`AllocaInstr`) that only those classes provide.
+IRBuilder methods take `Any` arguments and return the common `Value` base, so a
+variable reused across instruction kinds does not collide. `phi` and `alloca`
+return their concrete instruction types, whose members (`add_incoming`) and
+field types (`AllocaInstr`) callers depend on.
 """
 
 from typing import Any, Iterable

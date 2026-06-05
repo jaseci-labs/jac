@@ -445,14 +445,7 @@ def convert_to_js_import_path(path: str) -> str {
     return path;
 }
 
-"""Return the stub search directories for third-party / stdlib type info.
-
-Order matters: jac-owned hand-written stubs in `vendor/stubs` are searched
-first, then the vendored typeshed `stubs` and `stdlib`. `vendor/stubs` holds
-stubs for untyped third-party packages that typeshed does not cover (e.g.
-`llvmlite`), so the type checker can resolve their API instead of falling
-through to the package's unannotated source.
-"""
+"""Return the stub search directories: jac-owned stubs first, then typeshed stubs and stdlib."""
 def get_typeshed_paths -> list[str] {
     vendor = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'vendor'));
     jac_stubs = os.path.join(vendor, 'stubs');

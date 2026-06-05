@@ -28,7 +28,6 @@ def build_phi(b: ir.IRBuilder, blk: ir.Block) -> ir.Value {
 }
 
 obj TypeRegistry {
-    # Mirrors the native pass's struct registries (the Cat C pattern).
     has types: dict[str, ir.Type] = {};
 
     def ptr_for(key: str) -> ir.Type {

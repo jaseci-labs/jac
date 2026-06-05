@@ -18,9 +18,6 @@ glob FIXTURES = os.path.join(
 test "llvmlite ir API type-checks cleanly with the bundled stub" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "llvmlite_stub_check.jac"));
-    # Value.type, PointerType.pointee, Type.as_pointer(), IRBuilder.phi() +
-    # add_incoming(), and dict[str, ir.Type] lookups all resolve via the stub;
-    # without it these are ~7 false-positive errors.
     errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"llvmlite stub did not resolve cleanly: {errs}";
 }
