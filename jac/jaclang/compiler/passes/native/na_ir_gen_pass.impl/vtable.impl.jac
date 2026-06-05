@@ -1,35 +1,28 @@
 """Virtual table (vtable) support for inheritance with C3 MRO."""
 """Build vtable layout for a class (merge from all MRO ancestors + own methods)."""
 impl NaIRGenPass._build_vtable(arch_name: str) -> None {
-    layout: list[str] = [];
-    seen_methods: set[str] = set();
-    # Merge method slots from all ancestors in MRO order
-    mro = self.mro_order.get(arch_name, [arch_name]);
-    for ancestor_name in mro[1:] {
-        ancestor_layout = self.vtable_layouts.get(ancestor_name, []);
-        for method_name in ancestor_layout {
-            if method_name not in seen_methods {
-                layout.append(method_name);
-                seen_methods.add(method_name);
-            }
+    # Consume the centralized vtable slot assignment (merged from MRO ancestors
+    # + own methods, in canonical order) instead of re-deriving it from a
+    # string-prefix scan of method_funcs (#6386, Category C).
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
+    _methods = layout_reg.get_methods(arch_name);
+    if not _methods {
+        # Imported archetype: vtable slot order lives in its defining module.
+        _arch = self.arch_ast_map.get(arch_name);
+        _owner = _arch.find_parent_of_type(uni.Module) if _arch is not None else None;
+        if _owner is not None and _owner is not self.ir_in {
+            _methods = get_layout_registry(_owner, self.prog).get_methods(arch_name);
         }
     }
-    # Add own methods (those forward-declared with this class name)
-    prefix = f"{arch_name}.";
-    for full_name in self.method_funcs {
-        if full_name.startswith(prefix) {
-            method_name = full_name[len(prefix):];
-            if method_name not in seen_methods {
-                layout.append(method_name);
-                seen_methods.add(method_name);
-            }
-        }
+    layout: list[str] = [];
+    index_map: dict[(str, int)] = {};
+    for mslot in _methods {
+        layout.append(mslot.name);
+        index_map[mslot.name] = mslot.index;
     }
     self.vtable_layouts[arch_name] = layout;
-    self.vtable_method_indices[arch_name] = {};
-    for (i, name) in enumerate(layout) {
-        self.vtable_method_indices[arch_name][name] = i;
-    }
+    self.vtable_method_indices[arch_name] = index_map;
 }
 
 """Emit a vtable global constant for a class."""

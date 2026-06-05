@@ -101,6 +101,12 @@ obj LayoutRegistry {
     def get_method_slot(class_name: str, method_name: str) -> (int | None);
     def is_subclass(child: str, parent: str) -> bool;
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
+    # Read accessors over already-computed layout data so backends consume the
+    # registry instead of rebuilding parallel field/vtable tables (#6386).
+    def get_fields(class_name: str) -> list[FieldInfo];
+    def get_methods(class_name: str) -> list[MethodSlot];
+    def get_field_info(class_name: str, field_name: str) -> (FieldInfo | None);
+    def get_parent_field_start(class_name: str) -> dict[str, int];
 }
 
 """Layout analysis pass.

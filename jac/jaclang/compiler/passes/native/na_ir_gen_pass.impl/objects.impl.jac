@@ -330,7 +330,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         return;
     }
     needs_vtable = arch_name in self.has_vtable;
-    # Collect fields
+    # Implicit vtable pointer occupies native slot 0; LayoutRegistry indexes
+    # fields 0-based *excluding* that slot, so native_index = fi.index + off.
+    vtable_off = 1 if needs_vtable else 0;
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
@@ -339,90 +341,62 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if needs_vtable {
         field_types.append(ir.IntType(8).as_pointer().as_pointer());
     }
-    # Flatten fields from all ancestors in MRO order (diamond dedup by name)
-    mro = self.mro_order.get(arch_name, [arch_name]);
-    seen_fields: set[str] = set();
-    for ancestor_name in mro[1:] {
-        if ancestor_name not in self.struct_field_indices {
-            continue;
+    # Consume the centralized field layout (already flattened in MRO order and
+    # diamond-deduped by LayoutPass) instead of re-walking the hierarchy and
+    # re-implementing diamond dedup / index assignment here (#6386, Category C).
+    # _codegen_archetype runs for local archetypes (this module's registry) AND
+    # for imported ones via the cross-module import path (core.impl). An imported
+    # archetype's layout lives in its *defining* module's registry, so resolve
+    # against that module rather than re-deriving the layout here.
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
+    _fields = layout_reg.get_fields(arch_name);
+    _pfs = layout_reg.get_parent_field_start(arch_name);
+    if not _fields {
+        _owner = nd.find_parent_of_type(uni.Module);
+        if _owner is not None and _owner is not self.ir_in {
+            _owner_reg = get_layout_registry(_owner, self.prog);
+            _fields = _owner_reg.get_fields(arch_name);
+            _pfs = _owner_reg.get_parent_field_start(arch_name);
         }
-        ancestor_indices = self.struct_field_indices[ancestor_name];
-        ancestor_types = self.struct_field_types.get(ancestor_name, {});
-        ancestor_defaults = self.struct_field_defaults.get(ancestor_name, {});
-        # Record start index for this ancestor's region
-        if arch_name not in self.parent_field_start {
-            self.parent_field_start[arch_name] = {};
+    }
+    for fi in _fields {
+        ftype = (
+            self._resolve_jac_type(fi.type_node)
+                if fi.type_node is not None
+                else ir.IntType(64)
+        );
+        # fields come in index order, so a plain append lands each at its slot.
+        field_types.append(ftype);
+        field_index_map[fi.name] = fi.index + vtable_off;
+        field_type_map[fi.name] = ftype;
+        if fi.default_expr is not None {
+            field_default_map[fi.name] = fi.default_expr;
         }
-        self.parent_field_start[arch_name][ancestor_name] = len(field_types);
-        # Build reverse map: index → field name, then iterate in order
-        idx_to_name: dict[(int, str)] = {};
-        for (fname, pidx) in ancestor_indices.items() {
-            idx_to_name[pidx] = fname;
-        }
-        sorted_idxs = sorted(idx_to_name.keys());
-        for pidx in sorted_idxs {
-            fname = idx_to_name[pidx];
-            if fname in seen_fields {
-                continue;  # Diamond dedup: skip fields already present
+        if fi.type_node is not None {
+            if arch_name not in self.field_type_node {
+                self.field_type_node[arch_name] = {};
             }
-            seen_fields.add(fname);
-            ftype = ancestor_types.get(fname, ir.IntType(64));
-            new_idx = len(field_types);
-            field_types.append(ftype);
-            field_index_map[fname] = new_idx;
-            field_type_map[fname] = ftype;
-            if fname in ancestor_defaults {
-                field_default_map[fname] = ancestor_defaults[fname];
-            }
-            # Propagate Jac-level type AST from ancestor
-            if ancestor_name in self.field_type_node
-            and fname in self.field_type_node[ancestor_name] {
-                if arch_name not in self.field_type_node {
-                    self.field_type_node[arch_name] = {};
+            self.field_type_node[arch_name][fi.name] = fi.type_node;
+            # Track enum-typed fields (stored as their i64 ordinal).
+            ftag_name = self._get_name(fi.type_node);
+            if ftag_name is not None and ftag_name in self.enum_types {
+                if arch_name not in self.struct_field_enum_type {
+                    self.struct_field_enum_type[arch_name] = {};
                 }
-                self.field_type_node[arch_name][fname] = self.field_type_node[
-                    ancestor_name
-                ][fname];
+                self.struct_field_enum_type[arch_name][fi.name] = ftag_name;
             }
         }
     }
-    # Add own fields from ArchHas nodes
-    if (nd).body is not None {
-        for stmt in (nd).body {
-            if isinstance(stmt, uni.ArchHas) {
-                for var in stmt.vars {
-                    fname = var.name.value if var.name else "field";
-                    if fname in seen_fields {
-                        continue;  # Skip fields already inherited
-                    }
-                    seen_fields.add(fname);
-                    ftype = ir.IntType(64);
-                    if var.type_tag and var.type_tag.tag {
-                        ftype = self._resolve_jac_type(var.type_tag.tag);
-                        # Track Jac-level type AST for nested type resolution
-                        if arch_name not in self.field_type_node {
-                            self.field_type_node[arch_name] = {};
-                        }
-                        self.field_type_node[arch_name][fname] = var.type_tag.tag;
-                        # Track enum-typed fields
-                        ftag_name = self._get_name(var.type_tag.tag);
-                        if ftag_name is not None and ftag_name in self.enum_types {
-                            if arch_name not in self.struct_field_enum_type {
-                                self.struct_field_enum_type[arch_name] = {};
-                            }
-                            self.struct_field_enum_type[arch_name][fname] = ftag_name;
-                        }
-                    }
-                    new_idx = len(field_types);
-                    field_types.append(ftype);
-                    field_index_map[fname] = new_idx;
-                    field_type_map[fname] = ftype;
-                    if var.value is not None {
-                        field_default_map[fname] = var.value;
-                    }
-                }
-            }
+    # Per-ancestor field-region start: registry is vtable-agnostic, so shift by
+    # the implicit vtable slot to match native indices.
+    _pfs = layout_reg.get_parent_field_start(arch_name);
+    if _pfs {
+        _adj: dict[(str, int)] = {};
+        for (_anc, _i) in _pfs.items() {
+            _adj[_anc] = _i + vtable_off;
         }
+        self.parent_field_start[arch_name] = _adj;
     }
     # Define the struct body (always call set_body, even with empty field_types,
     # to make the struct type non-opaque so GEP operations work)

@@ -410,6 +410,48 @@ impl LayoutRegistry.is_subclass(child: str, parent: str) -> bool {
     return parent in mro;
 }
 
+"""All fields (inherited + own, in layout order) of a class, or []."""
+impl LayoutRegistry.get_fields(class_name: str) -> list[FieldInfo] {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return [];
+    }
+    return layout.fields;
+}
+
+"""All vtable method slots of a class, or []."""
+impl LayoutRegistry.get_methods(class_name: str) -> list[MethodSlot] {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return [];
+    }
+    return layout.methods;
+}
+
+"""The FieldInfo for one field, or None if the class/field is unknown."""
+impl LayoutRegistry.get_field_info(
+    class_name: str, field_name: str
+) -> (FieldInfo | None) {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return None;
+    }
+    idx = layout.field_index.get(field_name);
+    if idx is None {
+        return None;
+    }
+    return layout.fields[idx];
+}
+
+"""Per-ancestor starting field index for a class, or {}."""
+impl LayoutRegistry.get_parent_field_start(class_name: str) -> dict[str, int] {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return {};
+    }
+    return layout.parent_field_start;
+}
+
 """Check if ancestor is reachable via primary parent chain from child."""
 impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
     current = child;
