@@ -1663,12 +1663,13 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
 # ----------------------------------------------------------------------
 # Cross-pod L1 cache invalidation via Redis pub/sub
 # ----------------------------------------------------------------------
-test "L1 invalidation: evict skips origin, evicts every sibling" {
+test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
     import from uuid { uuid4 }
     import from jac_scale.l1_invalidation {
         register_l1,
         deregister_l1,
         evict_local_l1,
+        consume_stale,
         new_l1_id
     }
 
@@ -1683,16 +1684,74 @@ test "L1 invalidation: evict skips origin, evicts every sibling" {
     register_l1(id_b, mem_b);
     register_l1(id_c, mem_c);
     try {
-        evicted = evict_local_l1(str(anchor_id), id_a);
-        assert evicted == 2 , f"expected 2 sibling evictions, got {evicted}";
-        assert anchor_id in mem_a.__mem__ , "origin L1 must NOT be evicted";
-        assert anchor_id not in mem_b.__mem__ , "sibling B must be evicted";
-        assert anchor_id not in mem_c.__mem__ , "sibling C must be evicted";
+        marked = evict_local_l1(str(anchor_id), id_a);
+        assert marked == 2 , f"expected 2 siblings marked, got {marked}";
+        # The listener marks; it must never pop a sibling's __mem__.
+        assert anchor_id in mem_a.__mem__ , "origin __mem__ must be untouched";
+        assert anchor_id in mem_b.__mem__ , "sibling B __mem__ must be untouched";
+        assert anchor_id in mem_c.__mem__ , "sibling C __mem__ must be untouched";
+        assert not consume_stale(id_a, anchor_id) , "origin must NOT be marked";
+        assert consume_stale(id_b, anchor_id) , "sibling B must be marked stale";
+        assert consume_stale(id_c, anchor_id) , "sibling C must be marked stale";
+        assert not consume_stale(id_b, anchor_id) , "the stale mark must be one-shot";
         assert evict_local_l1("not-a-uuid", id_a) == 0 , "bad id must no-op";
     } finally {
         deregister_l1(id_a);
         deregister_l1(id_b);
         deregister_l1(id_c);
+    }
+}
+
+test "L1 invalidation: get() drops a clean stale entry but keeps a dirty one" {
+    import from jaclang.runtimelib.serializer { Serializer }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
+    import sys;
+    sys.path.insert(0, str(FIXTURES_DIR));
+    import from mutation_app { Item }
+
+    os.environ.pop("REDIS_URL", None);
+    os.environ.pop("MONGODB_URI", None);
+
+    mem = ScaleTieredMemory();
+    # No L2/L3, so a miss returns None and we can see whether the entry was dropped.
+    mem.l2 = None;
+    mem.l3 = None;
+    try {
+        clean_item = Item(id=1);
+        clean = clean_item.__jac__;
+        clean.persistent = True;
+        clean.hash = Serializer._compute_hash(clean);
+
+        # Mutated after its hash was stamped: an uncommitted in-flight write.
+        dirty_item = Item(id=2);
+        dirty = dirty_item.__jac__;
+        dirty.persistent = True;
+        dirty.hash = Serializer._compute_hash(dirty);
+        dirty_item.completed = True;
+
+        cast(dict, mem.__mem__)[clean.id] = clean;
+        cast(dict, mem.__mem__)[dirty.id] = dirty;
+
+        other = new_l1_id();
+        evict_local_l1(str(clean.id), other);
+        evict_local_l1(str(dirty.id), other);
+
+        _ = mem.get(clean.id);
+        assert clean.id not in mem.__mem__ , (
+            "a clean stale entry must be dropped so the next read reloads it"
+        );
+
+        # The regression guard: a dirty entry must NOT be dropped, else the
+        # uncommitted write is silently lost at commit.
+        got = mem.get(dirty.id);
+        assert dirty.id in mem.__mem__ , (
+            "a dirty (uncommitted) entry must survive invalidation"
+        );
+        assert got is dirty , "get must return the in-flight dirty anchor, not a reload";
+        assert dirty_item.completed == True , "the uncommitted mutation must survive";
+    } finally {
+        deregister_l1(mem._l1_id);
     }
 }
 
@@ -1712,11 +1771,11 @@ test "L1 invalidation: registry holds L1 weakly, GC reclaims it" {
     );
 }
 
-test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved" {
+test "L1 invalidation: sibling L1 marked stale via pub/sub, origin preserved" {
     import time;
     import from uuid { uuid4 }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
-    import from jac_scale.l1_invalidation { stop_listener }
+    import from jac_scale.l1_invalidation { stop_listener, consume_stale }
 
     _reset_redis();
     _reset_process_cache();
@@ -1732,19 +1791,25 @@ test "L1 invalidation: sibling L1 evicted via pub/sub, origin preserved" {
         assert mem_b.l2 is not None , "Redis L2 must be available";
 
         anchor_id = uuid4();
-        cast(dict, mem_a.__mem__)[anchor_id] = "stale-on-writer";
-        cast(dict, mem_b.__mem__)[anchor_id] = "stale-on-sibling";
+        cast(dict, mem_a.__mem__)[anchor_id] = "writer-copy";
+        cast(dict, mem_b.__mem__)[anchor_id] = "sibling-copy";
 
+        delivered = False;
         deadline = time.time() + 5.0;
-        while time.time() < deadline and anchor_id in mem_b.__mem__ {
+        while time.time() < deadline and not delivered {
             cast(any, mem_a.l2).publish_invalidation(str(anchor_id), mem_a._l1_id);
             time.sleep(0.05);
+            if consume_stale(mem_b._l1_id, anchor_id) {
+                delivered = True;
+            }
         }
-        assert anchor_id not in mem_b.__mem__ , (
-            "sibling L1 must be evicted via cross-pod pub/sub"
+        assert delivered , ("sibling L1 must be marked stale via cross-pod pub/sub");
+        assert anchor_id in mem_b.__mem__ , (
+            "listener must not mutate the sibling's __mem__"
         );
-        assert anchor_id in mem_a.__mem__ , (
-            "writer's own L1 entry must be preserved (self-suppression)"
+        assert anchor_id in mem_a.__mem__ , ("writer's own L1 entry must be preserved");
+        assert not consume_stale(mem_a._l1_id, anchor_id) , (
+            "writer's own L1 must not be marked (self-suppression)"
         );
     } finally {
         stop_listener(_process_cache);
@@ -1757,7 +1822,7 @@ test "L1 invalidation: listener recovers after a Redis connection drop" {
     import time;
     import from uuid { uuid4 }
     import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
-    import from jac_scale.l1_invalidation { stop_listener }
+    import from jac_scale.l1_invalidation { stop_listener, consume_stale }
 
     _reset_redis();
     _reset_process_cache();
@@ -1775,12 +1840,16 @@ test "L1 invalidation: listener recovers after a Redis connection drop" {
         # 1) Baseline: delivery works before any disruption.
         aid1 = uuid4();
         cast(dict, mem_b.__mem__)[aid1] = "x";
+        delivered1 = False;
         deadline = time.time() + 5.0;
-        while time.time() < deadline and aid1 in mem_b.__mem__ {
+        while time.time() < deadline and not delivered1 {
             cast(any, mem_a.l2).publish_invalidation(str(aid1), mem_a._l1_id);
             time.sleep(0.05);
+            if consume_stale(mem_b._l1_id, aid1) {
+                delivered1 = True;
+            }
         }
-        assert aid1 not in mem_b.__mem__ , "baseline pub/sub delivery must work";
+        assert delivered1 , "baseline pub/sub delivery must work";
 
         # 2) Kill the listener's subscriber connection server-side.
         with contextlib.suppress(Exception) {
@@ -1791,12 +1860,16 @@ test "L1 invalidation: listener recovers after a Redis connection drop" {
         # 3) After reconnect, a fresh invalidation is still delivered.
         aid2 = uuid4();
         cast(dict, mem_b.__mem__)[aid2] = "y";
+        delivered2 = False;
         deadline = time.time() + 8.0;
-        while time.time() < deadline and aid2 in mem_b.__mem__ {
+        while time.time() < deadline and not delivered2 {
             cast(any, mem_a.l2).publish_invalidation(str(aid2), mem_a._l1_id);
             time.sleep(0.1);
+            if consume_stale(mem_b._l1_id, aid2) {
+                delivered2 = True;
+            }
         }
-        assert aid2 not in mem_b.__mem__ , (
+        assert delivered2 , (
             "listener must re-subscribe and resume delivery after a drop"
         );
     } finally {

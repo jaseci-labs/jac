@@ -32,6 +32,7 @@ import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.l1_invalidation {
     DEFAULT_INVALIDATION_CHANNEL,
     build_message,
+    consume_stale,
     deregister_l1,
     ensure_listener,
     new_l1_id,
@@ -208,6 +209,7 @@ obj ScaleTieredMemory(TieredMemory) {
     def commit(anchor: (Anchor | None) = None) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
+    def get(id: UUID) -> (Anchor | None);
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
     def query(
         filter: (Callable[[Anchor], bool] | None) = None

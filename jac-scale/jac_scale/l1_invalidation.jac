@@ -17,6 +17,8 @@ glob logger = logging.getLogger(__name__),
      DEFAULT_INVALIDATION_CHANNEL = "jac:anchor:invalidate",
      # l1_id -> owning ScaleTieredMemory, held weakly; RLock guards it.
      _l1_registry = weakref.WeakValueDictionary(),
+     # l1_id -> anchor ids a sibling write invalidated, consumed by the owner on get.
+     _stale_marks: dict[str, set[UUID]] = {},
      _l1_lock = threading.RLock();
 
 
@@ -34,42 +36,63 @@ def register_l1(l1_id: str, mem: VolatileMemory) {
 }
 
 
-"""Deregister an L1 (GC also reclaims it via the weak ref)."""
+"""Deregister an L1 and drop its stale marks (GC also reclaims it via the weak ref)."""
 def deregister_l1(l1_id: str) {
     with _l1_lock {
         _l1_registry.pop(l1_id, None);
+        _stale_marks.pop(l1_id, None);
     }
 }
 
 
-"""Evict `anchor_id` from every active L1 except the origin; return count evicted.
+"""Mark `anchor_id` stale in every active L1 except the origin; return count marked.
 
-Runs on the listener thread, so it mutates request-owned `__mem__` dicts from
-outside their owning thread. Invariant: anyone iterating an L1 must snapshot it
-first (e.g. `list(__mem__.values())`) — a live iteration can race this pop."""
+Marks rather than pops: this runs on the listener thread, and popping an anchor
+out of a sibling's `__mem__` would strand that request's uncommitted write
+(commit scans `__mem__`). The owner drops it on its next `get` instead."""
 def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
     try {
         key = UUID(anchor_id);
     } except Exception {
         return 0;
     }
-    # Snapshot under the lock; pop outside it (dict.pop is atomic under the GIL).
+    marked = 0;
     with _l1_lock {
-        targets = [
-            cast(VolatileMemory, mem)
-            for (lid, mem) in list(_l1_registry.items())
-            if lid != origin_l1_id
-        ];
-    }
-    evicted = 0;
-    for mem in targets {
-        try {
-            if mem.__mem__.pop(key, None) is not None {
-                evicted += 1;
+        for (lid, mem) in list(_l1_registry.items()) {
+            sid = cast(str, lid);
+            if sid == origin_l1_id {
+                continue;
             }
-        } except Exception { }
+            try {
+                if key in cast(VolatileMemory, mem).__mem__ {
+                    marks = _stale_marks.get(sid);
+                    if marks is None {
+                        marks = set();
+                        _stale_marks[sid] = marks;
+                    }
+                    marks.add(key);
+                    marked += 1;
+                }
+            } except Exception { }
+        }
     }
-    return evicted;
+    return marked;
+}
+
+
+"""Consume the stale mark for (l1_id, anchor id); True if it was marked (one-shot)."""
+def consume_stale(l1_id: str, id: UUID) -> bool {
+    with _l1_lock {
+        marks = _stale_marks.get(l1_id);
+        if marks is not None and id in marks {
+            marks.discard(id);
+            if not marks {
+                _stale_marks.pop(l1_id, None);
+            }
+            return True;
+        }
+    }
+    return False;
 }
 
 

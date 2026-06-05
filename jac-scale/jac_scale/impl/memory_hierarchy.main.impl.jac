@@ -206,8 +206,22 @@ impl ScaleTieredMemory.close -> None {
     self.__gc__.clear();
 }
 
-"""L1 scan. Snapshots `__mem__` first: the invalidation listener thread may
-pop concurrently, and iterating the live dict would raise (see evict_local_l1)."""
+"""L1 read. If a sibling write flagged this id stale, drop our copy (only if it
+is clean) so the tiered read reloads it fresh; a dirty entry is kept so the
+in-flight write survives."""
+impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
+    if consume_stale(self._l1_id, id) {
+        existing = self.__mem__.get(id);
+        if existing is not None
+        and existing.persistent
+        and Serializer._compute_hash(existing) == existing.hash {
+            self.__mem__.pop(id, None);
+        }
+    }
+    return super.get(id);
+}
+
+"""L1 scan, snapshotting `__mem__` so iteration is decoupled from concurrent gets."""
 impl ScaleTieredMemory.query(
     filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {

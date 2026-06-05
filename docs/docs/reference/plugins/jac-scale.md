@@ -2492,13 +2492,16 @@ already loaded.
 
 To prevent that, every write broadcasts a small invalidation message over a
 **Redis pub/sub channel**. One daemon listener per process subscribes to that
-channel and, on each message, drops the named anchor from every _other_ live L1
-in the process -- so sibling requests reload the fresh copy from L3 on their next
-access instead of serving stale data. The writer's own L1 is excluded (it
-already holds the freshly merged copy), and deletes/quarantines evict everyone.
+channel and, on each message, flags the named anchor _stale_ in every _other_
+live L1 in the process. The listener never mutates a sibling's cache directly;
+instead each owning request, on its next read of that anchor, drops its copy and
+reloads fresh from L3 -- but **only if the copy is unmodified**. A request that
+has its own uncommitted change to that anchor keeps it, so an in-flight write is
+never silently discarded. The writer's own L1 is excluded from the broadcast (it
+already holds the freshly merged copy), and deletes/quarantines flag everyone.
 The listener self-heals across Redis restarts with capped exponential backoff,
 and if Redis or the `redis` extra is unavailable the feature simply stays off:
-the system degrades to plain per-request L1s with no cross-pod eviction.
+the system degrades to plain per-request L1s with no cross-pod coherence.
 
 This is on by default whenever a Redis URL resolves. Tune it under
 `[plugins.scale.database]`:
