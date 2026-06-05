@@ -20,3 +20,6 @@ def build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> st
 
 """Generate the full METADATA 2.4 string from a JacConfig. Raises ValueError when project name is missing."""
 def generate_metadata(config: JacConfig, project_root: Path | None = None) -> str;
+
+"""Generate pyproject.toml (PEP 517 build-system + [project] table) for inclusion in the sdist."""
+def generate_pyproject_toml(config: JacConfig) -> str;

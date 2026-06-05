@@ -46,7 +46,7 @@ Native compilation is ideal for:
 | **Backend** | LLVM IR via llvmlite |
 | **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
-| **C interop** | `import from "libname"` |
+| **C interop** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **Std library** | `import sys` (`sys.argv`, `sys.exit()`) |
 | **Memory model** | Automatic reference counting |
 
@@ -300,6 +300,7 @@ Collections are represented as LLVM struct types:
 | While loops | `while x > 0 { x -= 1; }` |
 | For-in range | `for i in range(10) { ... }` |
 | For-in collection | `for item in items { ... }` |
+| For-in lazy adapters | `for x in map(f, items) { ... }`, also `filter` / `enumerate` / `zip` |
 | Break / Continue | `break;` / `continue;` |
 | Ternary | `x = a if condition else b;` |
 
@@ -431,6 +432,10 @@ Collections are represented as LLVM struct types:
 | `chr()` / `ord()` | Character conversion |
 | `str()` / `int()` | Type conversion |
 | `input()` | Read a line from stdin |
+| `map()` / `filter()` | Lazy iterator adapters; iterate in a `for` loop |
+| `enumerate()` / `zip()` | Lazy adapters yielding tuples; unpack in a `for` loop |
+
+The `map`, `filter`, `enumerate`, and `zip` builtins are lazy iterator adapters: a `for` loop consumes them, and they compose without building intermediate lists (e.g. `for x in map(double, filter(is_even, items)) { ... }`, or `for (i, x) in enumerate(items) { ... }`). They are supported as `for`-loop iterables; binding an iterator to a variable and advancing it with `next()` is not available.
 
 ### Standard Library Modules
 
@@ -494,13 +499,13 @@ with entry {
 
 Fixed-width types (`f64`, `i32`, `c_void`, etc.) are only needed inside the `import from` declaration to match the C function's ABI signature. Everywhere else -- your own functions, variables, call sites -- you use standard Jac types (`int`, `float`, `str`, etc.) and the compiler handles coercion automatically.
 
-### Third-Party Libraries
+### Platform-neutral library names
 
-The same mechanism works with any C-compatible shared library. For example, using [raylib](https://www.raylib.com/) for graphics:
+A library can be named by its **logical name** -- a dotted, extensionless identifier instead of a literal filename. The compiler resolves the platform-correct filename from the target triple, so a single unchanged `.na.jac` targets Linux, macOS, and Windows. For example, using [raylib](https://www.raylib.com/) for graphics:
 
 <!-- jac-skip -->
 ```jac
-import from "libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> c_void;
     def WindowShouldClose() -> i32;
     def BeginDrawing() -> c_void;
@@ -511,12 +516,35 @@ import from "libraylib.so" {
 }
 ```
 
+`import from raylib` resolves to `libraylib.so` on Linux (ELF), `libraylib.dylib` on macOS (Mach-O), and `raylib.dll` on Windows (PE) -- the `lib` prefix and extension follow each platform's convention, exactly like a linker's `-lraylib`. The resolved name becomes the binary's needed-library entry; combined with the `$ORIGIN` / `@loader_path` runpath, the loader finds the library whether it is installed on the system **or** staged next to the executable.
+
 C-string parameters use `str` in the declaration; the compiler lowers `str` to the `i8*` ABI shape shown in the [primitive-type table](#primitive-type-mappings) above. The `i8*` form is an internal LLVM type and is not part of Jac's surface syntax.
 
-Any library that exposes a C ABI can be called this way -- just point to the shared library path and declare the function signatures.
+Two more forms compose with this, mirroring Python's relative imports:
 
-!!! note "Platform-specific library paths"
-    Library paths differ across platforms. On macOS, shared libraries use `.dylib` (e.g., `libraylib.dylib`). On Linux, they use `.so` (e.g., `libraylib.so`). System libraries are typically at `/usr/lib/libSystem.B.dylib` (macOS) or `/usr/lib/libm.so.6` (Linux).
+| Import | Resolves to (Linux / macOS) | Search scope |
+|--------|------------------------------|--------------|
+| `import from raylib` | `libraylib.so` / `libraylib.dylib` | system loader cache **and** binary directory |
+| `import from .raylib` | `$ORIGIN/libraylib.so` / `@loader_path/libraylib.dylib` | binary directory only |
+| `import from vendor.raylib` | `$ORIGIN/vendor/libraylib.so` / `@loader_path/vendor/libraylib.dylib` | `vendor/` beside the binary |
+
+A leading `.` makes the lookup relative to the binary's own directory; a dotted path maps the leading components to a sub-directory. Both compose with the `$ORIGIN` / `@loader_path` runpath so a bundled library is found no matter where the program is launched from.
+
+### Explicit and pinned paths
+
+When you need an exact file -- a versioned soname or an absolute system path that the logical form cannot express -- give a literal string instead. It is recorded verbatim, with no prefix/extension rewriting:
+
+```jac
+# A pinned, versioned system library.
+import from "/usr/lib/libm.so.6" {
+    def sqrt(x: f64) -> f64;
+}
+```
+
+This is the form used for the libm example above. Any library that exposes a C ABI can be called either way -- by logical name for portability, or by explicit path when a specific file is required.
+
+!!! note "Choosing a form"
+    Prefer the logical name (`import from raylib`) for portable code: the platform's `.so` / `.dylib` / `.dll` filename is chosen for you. Reach for an explicit string only when you must pin an exact path or a versioned soname (e.g. `libfoo.so.5`), which the extensionless form does not name.
 
 ---
 
@@ -604,6 +632,35 @@ def fib(n: int) -> int {
 with entry {
     for i in range(10) {
         print(f"fib({i}) = {fib(i)}");
+    }
+}
+```
+
+### Lazy Iterators (map / filter / enumerate / zip)
+
+```jac
+# pipeline.na.jac
+
+def double(x: int) -> int { return x * 2; }
+def is_even(x: int) -> bool { return x % 2 == 0; }
+
+with entry {
+    nums: list[int] = [1, 2, 3, 4, 5, 6];
+
+    # map and filter compose lazily, with no intermediate lists
+    total: int = 0;
+    for x in map(double, filter(is_even, nums)) {
+        total = total + x;
+    }
+    print(f"sum of doubled evens: {total}");
+
+    # enumerate and zip yield tuples unpacked in the loop header
+    for (i, n) in enumerate(nums) {
+        print(f"#{i}: {n}");
+    }
+    scores: list[int] = [10, 20, 30];
+    for (n, s) in zip(nums, scores) {
+        print(f"{n} scored {s}");
     }
 }
 ```

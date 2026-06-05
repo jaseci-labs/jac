@@ -24,3 +24,6 @@ def wheel_filename(
 
 """Build the .dist-info directory name (e.g. 'byllm-0.6.4.dist-info'); raises ValueError when project name is missing."""
 def dist_info_dirname(config: JacConfig) -> str;
+
+"""Build the canonical .tar.gz sdist filename (PEP 625); raises ValueError when project name is missing."""
+def sdist_filename(config: JacConfig) -> str;

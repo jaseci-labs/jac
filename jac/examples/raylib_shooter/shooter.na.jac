@@ -1,10 +1,15 @@
 """Jac Cube Shooter - a tiny first-person 3D shooter compiled to a native binary
 that links directly against a precompiled raylib shared library.
 
-It binds raylib with Jac's native C-import syntax (import from "./libraylib.so").
-Every declaration in that block becomes an extern symbol the native linker
-resolves out of the shared library at load time (a DT_NEEDED entry on ELF, an
-LC_LOAD_DYLIB on Mach-O). The linker is pure Python, so no cc/ld is needed.
+It binds raylib with Jac's native C-import syntax. The library is named by its
+*logical* name - `import from raylib` - with no path and no extension; the native
+backend resolves the platform-correct filename (`libraylib.so` on Linux,
+`libraylib.dylib` on macOS, `raylib.dll` on Windows) from the target triple, so a
+single unchanged source targets all three. Every declaration in that block becomes
+an extern symbol the native linker resolves out of the shared library at load time
+(a DT_NEEDED entry on ELF, an LC_LOAD_DYLIB on Mach-O); combined with the
+`$ORIGIN`/`@loader_path` runpath the binary finds a sibling library regardless of
+the launch directory. The linker is pure Python, so no cc/ld is needed.
 
 Only scalar / small-struct entry points are bound. The 3D pipeline uses raylib's
 scalar rlgl immediate-mode API (rlVertex3f / rlColor4ub / rlTranslatef / ...)
@@ -16,7 +21,7 @@ Controls: mouse / arrows aim (click or Tab to capture the cursor for mouse-look)
 WASD move, Space fire, Tab release / re-capture cursor, Esc quit.
 """
 
-import from "./libraylib.so" {
+import from raylib {
     def InitWindow(width: i32, height: i32, title: str) -> None;  def WindowShouldClose -> bool;  def CloseWindow -> None;  def SetTargetFPS(
         fps: i32
     ) -> None;  def BeginDrawing -> None;  def EndDrawing -> None;  def rlClearColor(
@@ -37,7 +42,11 @@ import from "./libraylib.so" {
         x: f32, y: f32, z: f32
     ) -> None;  def rlColor4ub(r: u8, g: u8, b: u8, a: u8) -> None;  def rlEnableDepthTest -> None;  def rlDisableDepthTest -> None;  def rlSetLineWidth(
         width: f32
-    ) -> None;  def EndMode3D -> None;
+    ) -> None;  def EndMode3D -> None;  def GetTime -> f64;  def FileExists(
+        fileName: str
+    ) -> bool;  def LoadFileText(fileName: str) -> str;  def TextToInteger(
+        text: str
+    ) -> i32;  def SaveFileText(fileName: str, text: str) -> bool;
 }
 
 glob RL_MODELVIEW: int = 0x1700,
@@ -252,6 +261,46 @@ def draw_floor(half: int, step: float) {
     rlEnd();
 }
 
+
+"""Seconds elapsed since the window opened (raylib's own clock)."""
+def clock -> float {
+    return GetTime();
+}
+
+"""Benchmark duration in seconds, or 0 for normal (interactive) play.
+
+`demo.sh` writes the requested duration into a sibling `.bench_seconds` file
+before launching, then deletes it; when that file is absent (every interactive
+run, or a bare `./shooter`) this returns 0 and the game loop runs until the
+window is closed. The whole benchmark path is dormant unless the file exists.
+The value is read with raylib's own cross-platform file helpers, so no libc
+binding is needed."""
+def bench_seconds -> float {
+    if FileExists(".bench_seconds") {
+        return float(TextToInteger(LoadFileText(".bench_seconds")));
+    }
+    return 0.0;
+}
+
+"""Hand the benchmark result back to demo.sh.
+
+raylib paints its FPS counter onto the framebuffer, never stdout, and this
+repo's Jac lint rules disallow `print`, so the result is written to a sibling
+`.bench_result` file via raylib's SaveFileText. Fields are positional:
+avg_fps max_fps frames seconds."""
+def write_bench_result(
+    avg_fps: float, peak_fps: float, frame_count: int, seconds: float
+) {
+    SaveFileText(
+        ".bench_result", f"BENCH_RESULT {avg_fps} {peak_fps} {frame_count} {seconds}"
+    );
+}
+
+"""Benchmark accumulators. `bench` is the requested duration (0 = interactive),
+resolved once at startup; `frames`/`max_fps` are tallied across the run."""
+glob bench: float = bench_seconds(),
+     frames: int = 0,
+     max_fps: float = 0.0;
 
 glob KEY_W: int = 87,
      KEY_A: int = 65,
@@ -508,6 +557,14 @@ with entry {
         step = dt();
         world_t += step;
 
+        frames += 1;
+        if step > 0.0 {
+            inst = 1.0 / step;
+            if inst > max_fps {
+                max_fps = inst;
+            }
+        }
+
         handle_input(step);
         fire_cd -= step;
         if key_held(KEY_SPACE) and fire_cd <= 0.0 {
@@ -548,6 +605,19 @@ with entry {
         end_camera(960.0, 600.0);
         draw_fps(10, 10);
         end_frame();
+
+        if bench > 0.0 and clock() >= bench {
+            break;
+        }
+    }
+
+    if bench > 0.0 {
+        elapsed = clock();
+        avg_fps = 0.0;
+        if elapsed > 0.0 {
+            avg_fps = float(frames) / elapsed;
+        }
+        write_bench_result(avg_fps, max_fps, frames, elapsed);
     }
 
     close_window();

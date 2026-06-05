@@ -1,5 +1,6 @@
 """Kubernetes deployment target implementation."""
 import from typing { Any }
+import from jaclang.runtimelib.client { BUN_VERSION }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
@@ -39,7 +40,8 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
+import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 import time;
 
 """Kubernetes deployment target implementation."""
@@ -219,8 +221,12 @@ obj KubernetesTarget(DeploymentTarget) {
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
 
-        # Install Bun (required for jac-client frontend builds)
-        commands.append('curl -fsSL https://bun.sh/install | bash');
+        # Install Bun (required for jac-client frontend builds), pinned to the
+        # same version jac auto-installs locally (BUN_VERSION is the single
+        # source of truth in jaclang.runtimelib.client.bun_installer).
+        commands.append(
+            f'curl -fsSL https://bun.sh/install | bash -s "bun-v{BUN_VERSION}"'
+        );
         commands.append('export BUN_INSTALL="$HOME/.bun"');
         commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
@@ -1516,12 +1522,27 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
-            create_hpa(
-                namespace=namespace,
-                deployment_name=app_name,
-                min_replicas=self.k8s_config.min_replicas,
-                max_replicas=self.k8s_config.max_replicas,
-                cpu_target=self.k8s_config.cpu_utilization_target
+            AutoscalerFactory.create(
+                self.k8s_config.autoscaler_engine,
+                self.k8s_config.to_dict(),
+                self.logger
+            ).apply(
+                AutoscalerSpec(
+                    scale_target_name=app_name,
+                    namespace=namespace,
+                    min_replicas=self.k8s_config.min_replicas,
+                    max_replicas=self.k8s_config.max_replicas,
+                    triggers=[
+                        Trigger(
+                            type="cpu",
+                            metadata={
+                                "averageUtilization": str(
+                                    self.k8s_config.cpu_utilization_target
+                                )
+                            }
+                        )
+                    ]
+                )
             );
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
@@ -1810,12 +1831,10 @@ obj KubernetesTarget(DeploymentTarget) {
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
-        autoscaling_v2 = client.AutoscalingV2Api();
-        delete_if_exists(
-            autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
-            f"{app_name}-hpa",
-            namespace,
-            'HorizontalPodAutoscaler'
+        AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
+        ).destroy(
+            f"{app_name}-hpa", namespace
         );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'

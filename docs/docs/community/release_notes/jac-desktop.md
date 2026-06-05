@@ -1,6 +1,18 @@
 # jac-desktop Release Notes
 
-## jac-desktop 0.1.0 (Latest Release)
+## jac-desktop 0.1.1 (Latest Release)
+
+### New Features
+
+- **Feature: jac-desktop plugin**: New PyTauri-based desktop target plugin with three entry points: `jac desktop` (CLI), `desktop_plugin_config` (schema), and `jac_client` group `desktop` (runtime `get_client_targets` hook on jac-client's plugin manager).
+- **Feature: `[plugins.desktop]` configuration**: Desktop app metadata, window geometry, sidecar plugin bundling, and Tauri plugin ids live under `[plugins.desktop]` in `jac.toml`, using the same `PluginConfigBase` pattern as jac-scale and jac-client.
+- **Feature: `jac desktop plugin` commands**: `list`, `add`, `remove`, and `sync` manage `[plugins.desktop].tauri_plugins`, regenerate `capabilities/` and sync matching `@tauri-apps/plugin-*` npm dependencies. The `src-pytauri/app.py` stub is stable and delegates to `jac_desktop.runtime`.
+
+### Documentation
+
+- **Docs: jac-desktop reference**: New dedicated reference page at `reference/plugins/jac-desktop.md` (nav under Full-Stack Development). Desktop-specific content moved out of jac-client; tutorial and CLI cross-link to the new page.
+
+## jac-desktop 0.1.0
 
 Initial release of jac-desktop, the native desktop target and PyTauri plugin manager for Jac, split out of `jac-client`.
 
