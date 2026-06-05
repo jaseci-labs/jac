@@ -1165,7 +1165,7 @@ test "install editable resolves config from target package when outside project 
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=[str(pkg_dir)]);
+            result = project.install(editable=[[str(pkg_dir)]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
@@ -1201,7 +1201,7 @@ test "install editable resolves config from cwd when given dot path" {
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=["."]);
+            result = project.install(editable=[["."]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
