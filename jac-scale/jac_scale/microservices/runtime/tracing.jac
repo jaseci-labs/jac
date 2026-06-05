@@ -83,13 +83,14 @@ glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
 # (the OTel SDK only calls generate_trace_id for parentless spans). This
 # is what makes Tempo show a real root - without it every span carried a
 # synthetic parent id and Tempo reported "<root span not yet received>".
-glob _pending_trace_id: ContextVar[int] = ContextVar("_jac_pending_tid", default=0);
+glob _pending_trace_id: ContextVar[int] = ContextVar(
+         "_jac_pending_tid", default=0
+     );
 
 
 # ---------------------------------------------------------------------------
 # Pure id-reconciliation helpers (no OpenTelemetry dependency).
 # ---------------------------------------------------------------------------
-
 """Convert a K-12 UUID4 trace-id string into a 128-bit OTel trace id.
 
 A UUID4 is 16 bytes = 32 hex chars once the dashes are stripped, which
@@ -137,7 +138,9 @@ def new_span_id -> int {
 Format: `{version}-{trace_id:032x}-{span_id:016x}-{flags:02x}`, e.g.
 `00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01`.
 """
-def build_traceparent(trace_id_int: int, span_id_int: int, sampled: bool = True) -> str {
+def build_traceparent(
+    trace_id_int: int, span_id_int: int, sampled: bool = True
+) -> str {
     flags = _FLAG_SAMPLED if sampled else 0;
     tid = format(trace_id_int & _MASK_128, "032x");
     sid = format(span_id_int & _MASK_64, "016x");
@@ -164,7 +167,10 @@ def parse_traceparent(header: str | None) -> dict | None {
     tid_hex = parts[1];
     sid_hex = parts[2];
     flags_hex = parts[3];
-    if len(version) != 2 or len(tid_hex) != 32 or len(sid_hex) != 16 or len(flags_hex) != 2 {
+    if len(version) != 2
+    or len(tid_hex) != 32
+    or len(sid_hex) != 16
+    or len(flags_hex) != 2 {
         return None;
     }
     try {
@@ -178,18 +184,13 @@ def parse_traceparent(header: str | None) -> dict | None {
     if tid == 0 or sid == 0 {
         return None;
     }
-    return {
-        "trace_id": tid,
-        "span_id": sid,
-        "sampled": bool(flags & _FLAG_SAMPLED)
-    };
+    return {"trace_id": tid, "span_id": sid, "sampled": bool(flags & _FLAG_SAMPLED)};
 }
 
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry SDK bootstrap (optional dependency; no-op without it).
 # ---------------------------------------------------------------------------
-
 """True once install_tracing has succeeded and spans are being emitted."""
 def tracing_active -> bool {
     return _tracing_active;
@@ -265,7 +266,7 @@ def install_tracing(
     endpoint: str | None = None,
     sample_ratio: float = 1.0
 ) -> bool {
-    global _tracer, _provider, _tracing_installed, _tracing_active;
+    global _tracer,_provider,_tracing_installed,_tracing_active;
 
     if _tracing_installed {
         return _tracing_active;
@@ -291,13 +292,17 @@ def install_tracing(
     # return False, leaving the process running without spans.
     try {
         svc = service_name or os.getenv("JAC_SV_NAME", "unknown");
-        base = endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "http://localhost:4318";
+        base = endpoint
+        or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        or "http://localhost:4318";
         traces_url = base.rstrip("/") + "/v1/traces";
 
-        resource = Resource.create({
-            "service.name": svc,
-            "service.namespace": os.getenv("K8S_NAMESPACE", "default")
-        });
+        resource = Resource.create(
+            {
+                "service.name": svc,
+                "service.namespace": os.getenv("K8S_NAMESPACE", "default")
+            }
+        );
 
         # Parent-based ratio sampler: root traces sampled at `sample_ratio`,
         # children inherit the root's decision via the traceparent sampled
@@ -321,13 +326,17 @@ def install_tracing(
         # BatchSpanProcessor (NOT SimpleSpanProcessor): buffers finished
         # spans and flushes off the request path in a background thread, so
         # a slow/dead collector drops spans instead of slowing requests.
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=traces_url)));
+        provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=traces_url))
+        );
         trace.set_tracer_provider(provider);
 
         _provider = provider;
         _tracer = trace.get_tracer("jac_scale.microservices");
         _tracing_active = True;
-        _logger.info(f"Tracing active: service={svc} otlp={traces_url} sample_ratio={ratio}");
+        _logger.info(
+            f"Tracing active: service={svc} otlp={traces_url} sample_ratio={ratio}"
+        );
         return True;
     } except Exception as e {
         _logger.warning(f"Tracing setup failed; continuing without spans: {e}");
@@ -341,7 +350,7 @@ def install_tracing(
 Called on graceful drain so in-flight spans aren't lost when a pod
 exits. No-op when tracing is inactive.
 """
-def shutdown_tracing -> None {
+def shutdown_tracing {
     global _tracing_active;
     if _provider is not None {
         try {
@@ -357,7 +366,6 @@ def shutdown_tracing -> None {
 # ---------------------------------------------------------------------------
 # Span creation - ties an OTel span to the K-12 UUID4 trace id.
 # ---------------------------------------------------------------------------
-
 """Start a SERVER span whose trace id is the given K-12 UUID4.
 
 This is the reconciliation point. Instead of letting the SDK mint a
@@ -402,10 +410,7 @@ def start_server_span(
         # its child (inherits the trace id + a real parent span id).
         flags = TraceFlags(_FLAG_SAMPLED if parsed["sampled"] else 0);
         parent_ctx = SpanContext(
-            trace_id=tid,
-            span_id=parsed["span_id"],
-            is_remote=True,
-            trace_flags=flags
+            trace_id=tid, span_id=parsed["span_id"], is_remote=True, trace_flags=flags
         );
         ctx = set_span_in_context(NonRecordingSpan(parent_ctx));
         span = _tracer.start_span(name, context=ctx, kind=SpanKind.SERVER);
@@ -440,7 +445,7 @@ def start_server_span(
 No-op when `span` is None (tracing inactive). Best-effort: a span-end
 error must never break request handling.
 """
-def end_span(span: any) -> None {
+def end_span(span: any) {
     if span is not None {
         try {
             span.end();

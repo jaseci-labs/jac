@@ -22,10 +22,7 @@ with entry {
         import from opentelemetry.sdk.resources { Resource }
         import from opentelemetry.sdk.trace { TracerProvider }
         import from opentelemetry.sdk.trace.export { BatchSpanProcessor }
-        import from opentelemetry.sdk.trace.sampling {
-            ParentBased,
-            TraceIdRatioBased
-        }
+        import from opentelemetry.sdk.trace.sampling { ParentBased, TraceIdRatioBased }
         import from opentelemetry.sdk.trace.id_generator { IdGenerator }
         import from opentelemetry.exporter.otlp.proto.http.trace_exporter {
             OTLPSpanExporter
