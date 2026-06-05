@@ -184,32 +184,14 @@ impl nacompile(
     # imports for the JS host. No entry injection / DT_NEEDED - JS calls the
     # exported functions directly.
     if is_wasm {
-        import llvmlite.binding as llvm;
-        llvm.initialize_all_targets();
-        llvm.initialize_all_asmprinters();
-        wasm_ir_str = str(ir_module.gen.llvm_ir);
+        # Emit one relocatable wasm object and link it into a module. Undefined
+        # externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
+        # imports for the JS host; no entry injection / DT_NEEDED.
+        import from jaclang.compiler.passes.native.wasm_build { emit_wasm_from_ir }
         try {
-            wmod = llvm.parse_assembly(wasm_ir_str);
-            wmod.verify();
+            wasm_bytes = emit_wasm_from_ir(str(ir_module.gen.llvm_ir));
         } except Exception as e {
-            console.error(f"LLVM IR verification failed: {e}");
-            return 1;
-        }
-        wtm = llvm.Target.from_triple("wasm32-unknown-unknown").create_target_machine(
-            opt=2
-        );
-        # Optimise (clean reloc set), but do NOT internalize: every defined
-        # function is an export the JS host may call.
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
-        pb = llvm.create_pass_builder(wtm, pto);
-        pb.getModulePassManager().run(wmod, pb);
-        obj_bytes = wtm.emit_object(wmod);
-        console.print(f"  Wasm object emitted ({len(obj_bytes)} bytes).");
-        import from jaclang.compiler.passes.native.wasm_linker { WasmLinker }
-        try {
-            wasm_bytes = WasmLinker.link(obj_bytes, [], 256);
-        } except Exception as e {
-            console.error(f"Wasm linking failed: {e}");
+            console.error(f"Wasm emit/link failed: {e}");
             import traceback;
             traceback.print_exc();
             return 1;

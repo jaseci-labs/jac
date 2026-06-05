@@ -64,7 +64,51 @@ impl ViteCompiler.compile_and_bundle(
     entry_file = self.compiled_dir / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
+    # If the module carries an `na {}` codespace, compile it to a wasm module
+    # and drop it in the served dist dir (AFTER the Vite build, which wipes
+    # dist). Client code fetches it at `/static/<stem>.wasm`. The `na` externs
+    # (raylib, libc, ...) stay as wasm imports the cl shim supplies.
+    self._emit_na_wasm(module_path);
     return (bundle_code, bundle_hash, client_exports, client_globals);
+}
+
+"""Compile the module's native (`na {}`) codespace to a wasm module served at
+`/static/<stem>.wasm`. No-op when the module has no native code."""
+impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
+    import re;
+    try {
+        src = module_path.read_text(encoding='utf-8');
+    } except (FileNotFoundError, OSError) {
+        return;
+    }
+    has_na = bool(
+        re.search(r'(^|[\s;}])na\s*\{', src)
+        or re.search(r'(^|\n)\s*to\s+na\s*:', src)
+        or re.search(
+            r'(^|[\s;])na\s+(def|can|impl|obj|node|walker|glob|class|enum)\b', src
+        )
+        or module_path.name.endswith('.na.jac')
+    );
+    if not has_na {
+        return;
+    }
+    import from jaclang.compiler.passes.native.wasm_build { compile_to_wasm }
+    try {
+        wasm = compile_to_wasm(str(module_path));
+    } except Exception as e {
+        console.warning(f"Skipped na->wasm for '{module_path.name}': {e}");
+        return;
+    }
+    if wasm is None {
+        return;
+    }
+    dist = self._get_client_dir() / 'dist';
+    dist.mkdir(parents=True, exist_ok=True);
+    out_path = dist / f"{module_path.stem}.wasm";
+    out_path.write_bytes(wasm);
+    console.print(
+        f"  Native wasm module: /static/{module_path.stem}.wasm ({len(wasm)} bytes)"
+    );
 }
 
 """Create the main entry file for Vite bundling."""
