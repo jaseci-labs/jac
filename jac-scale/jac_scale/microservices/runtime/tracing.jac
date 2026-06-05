@@ -1,37 +1,11 @@
-"""Distributed tracing (OpenTelemetry) for microservice + gateway pods.
+"""OpenTelemetry tracing for the gateway and microservices.
 
-This is the O-02 leg of the observability tripod. K-13 ships metrics,
-M-14 ships logs; this module ships **spans** - the timed parent/child
-tree that becomes a flame graph in Grafana/Tempo.
-
-It builds directly on the K-12 trace-id plumbing in `trace_ctx.jac`.
-K-12 already mints one `X-Trace-Id` (a UUID4) per external request and
-threads it through every hop. This module turns that id into a real
-OpenTelemetry trace and emits one SERVER span per hop (plus CLIENT
-spans on cross-service RPC), exported over OTLP to a collector
-(the Grafana Alloy DaemonSet from M-14.a, which doubles as an OTel
-collector) and on to Tempo.
-
-Design rules that keep this safe to import everywhere:
-
-1. **OpenTelemetry is an OPTIONAL dependency** (`jac-scale[tracing]`),
-   re-exported through `_optdeps/opentelemetry.jac`. Every function
-   degrades to a no-op when `HAS_OTEL` is False - the gateway and
-   services run unchanged, just without spans. Same contract as
-   `metrics.jac` vs `prometheus_client`.
-
-2. **The UUID4 IS the trace id.** A UUID4 is 128 bits, which is exactly
-   the width of a W3C trace-id. We strip the dashes and reuse those
-   128 bits as the OTel `trace_id`, so a request's logs (keyed on the
-   UUID4 string via `log_emit.jac`) and its spans (keyed on the same
-   128 bits in Tempo) share ONE id. This is the single most important
-   correctness property: without it, Grafana's trace<->log pivots land
-   on empty results. See `uuid_to_trace_id` / `build_traceparent`.
-
-The id-reconciliation helpers (`uuid_to_trace_id`, `build_traceparent`,
-`parse_traceparent`) are pure string/int math with NO OpenTelemetry
-dependency, so they are fully unit-testable even where the SDK isn't
-installed - which is also where the highest-risk format bugs live.
+Reuses the per-request `X-Trace-Id` UUID as the OpenTelemetry trace id so
+a request's spans and its log lines share one id. OpenTelemetry is an
+optional dependency (`jac-scale[tracing]`); every function is a no-op
+when it isn't installed. The pure id helpers (`uuid_to_trace_id` /
+`build_traceparent` / `parse_traceparent`) need no SDK and are unit
+tested directly.
 """
 
 import os;
@@ -56,8 +30,6 @@ import from jac_scale._optdeps.opentelemetry {
 
 glob _logger: logging.Logger = logging.getLogger("jac_scale.tracing");
 
-# Set once by install_tracing(). None until then (or permanently None
-# when OpenTelemetry isn't installed / tracing is disabled).
 glob _tracer: any = None,
      _provider: any = None,
      _tracing_installed: bool = False,
@@ -69,75 +41,49 @@ glob _TP_VERSION: str = "00",
      _MASK_128: int = (1 << 128) - 1,
      _MASK_64: int = (1 << 64) - 1;
 
-# Per-request `traceparent` of the active SERVER span, set by
-# `start_server_span` and read by the proxy/RPC paths for outbound
-# injection. A ContextVar (request-scoped, like `_trace_id`) so we
-# don't depend on OpenTelemetry's own context propagation for the one
-# value we need to forward. Empty when there's no active span.
+# `traceparent` of the active SERVER span, read by the proxy/RPC paths to
+# forward to downstream hops. Request-scoped; empty when no active span.
 glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
 
-# Forces the trace id of the next ROOT span created on this context.
-# `start_server_span` stashes the K-12 UUID's 128 bits here before
-# starting a root span; `_JacIdGenerator.generate_trace_id` reads it so
-# the root span gets trace_id == the UUID *and* a genuinely empty parent
-# (the OTel SDK only calls generate_trace_id for parentless spans). This
-# is what makes Tempo show a real root - without it every span carried a
-# synthetic parent id and Tempo reported "<root span not yet received>".
+# Trace id to force on the next ROOT span (read by `_JacIdGenerator`), so
+# a parentless root gets trace_id == the UUID and Tempo treats it as the
+# trace root.
 glob _pending_trace_id: ContextVar[int] = ContextVar(
          "_jac_pending_tid", default=0
      );
 
 
-# ---------------------------------------------------------------------------
-# Pure id-reconciliation helpers (no OpenTelemetry dependency).
-# ---------------------------------------------------------------------------
-"""Convert a K-12 UUID4 trace-id string into a 128-bit OTel trace id.
+# --- Pure id helpers (no OpenTelemetry dependency) -------------------------
 
-A UUID4 is 16 bytes = 32 hex chars once the dashes are stripped, which
-is exactly a W3C/OTel trace-id. Returns the integer form OTel's API
-expects. Returns 0 (an invalid trace-id, which callers treat as "mint
-a fresh one") if the input isn't parseable as hex.
-"""
+"""UUID string -> 128-bit trace id (dashes stripped). 0 if unparseable."""
 def uuid_to_trace_id(uuid_str: str | None) -> int {
     if not uuid_str {
         return 0;
     }
     hex_str = uuid_str.replace("-", "").strip();
     try {
-        # 32 hex chars -> 128-bit int. Mask to 128 bits so an oversized
-        # input can't produce an out-of-range trace id.
         return int(hex_str, 16) & _MASK_128;
     } except ValueError {
         return 0;
     }
 }
 
-"""Format a 128-bit trace id as the canonical 32-char lowercase hex.
-
-This is the form Tempo stores and the form that must appear in the
-`trace_id` log field for trace<->log correlation to join. Use this
-(not the dashed UUID) anywhere an id crosses into the tracing world.
-"""
+"""128-bit trace id -> canonical 32-char lowercase hex (the form Tempo
+stores and the `trace_id` log field must match)."""
 def trace_id_hex(trace_id_int: int) -> str {
     return format(trace_id_int & _MASK_128, "032x");
 }
 
-"""Mint a fresh random 64-bit span id (never zero)."""
+"""Fresh random 64-bit span id (never zero)."""
 def new_span_id -> int {
-    # os.urandom is fine here (not Math.random); 8 bytes = 64-bit span id.
     val = int.from_bytes(os.urandom(8), "big");
     if val == 0 {
-        # 0 is the "invalid span" sentinel in OTel; retry-free fixup.
         return 1;
     }
     return val;
 }
 
-"""Build a W3C `traceparent` header value.
-
-Format: `{version}-{trace_id:032x}-{span_id:016x}-{flags:02x}`, e.g.
-`00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01`.
-"""
+"""Build a W3C `traceparent`: `00-<32hex trace>-<16hex span>-<2hex flags>`."""
 def build_traceparent(
     trace_id_int: int, span_id_int: int, sampled: bool = True
 ) -> str {
@@ -148,13 +94,8 @@ def build_traceparent(
     return f"{_TP_VERSION}-{tid}-{sid}-{flg}";
 }
 
-"""Parse a W3C `traceparent` header into its parts.
-
-Returns a dict `{trace_id, span_id, sampled}` (ints + bool) on success,
-or None if the header is missing or malformed. Strict on shape (4
-dash-separated fields, correct hex widths) so a garbage header can't
-silently corrupt a trace.
-"""
+"""Parse a W3C `traceparent` into `{trace_id, span_id, sampled}`, or None
+if missing/malformed (strict on field count + hex widths)."""
 def parse_traceparent(header: str | None) -> dict | None {
     if not header {
         return None;
@@ -180,7 +121,6 @@ def parse_traceparent(header: str | None) -> dict | None {
     } except ValueError {
         return None;
     }
-    # All-zero trace/span ids are invalid per the spec.
     if tid == 0 or sid == 0 {
         return None;
     }
@@ -188,41 +128,29 @@ def parse_traceparent(header: str | None) -> dict | None {
 }
 
 
-# ---------------------------------------------------------------------------
-# OpenTelemetry SDK bootstrap (optional dependency; no-op without it).
-# ---------------------------------------------------------------------------
-"""True once install_tracing has succeeded and spans are being emitted."""
+# --- SDK bootstrap (no-op without OpenTelemetry) ---------------------------
+
+"""True once install_tracing has activated and spans are being emitted."""
 def tracing_active -> bool {
     return _tracing_active;
 }
 
-"""True once install_tracing has run (whether or not it activated).
-
-Lets per-request callers (jfast_api) skip re-reading config + re-calling
-install on every request: read config and install once, then this gate
-is True forever after.
-"""
+"""True once install_tracing has run (lets per-request callers install
+once and skip re-reading config thereafter)."""
 def tracing_installed -> bool {
     return _tracing_installed;
 }
 
-"""Return the process tracer, or None when tracing is inactive."""
+"""Process tracer, or None when tracing is inactive."""
 def get_tracer -> any {
     return _tracer;
 }
 
-"""OTel id generator that forces a root span's trace id to the K-12 UUID.
-
-The OTel SDK calls `generate_trace_id` only when a span has no parent
-(i.e. a root span), and `generate_span_id` for every span. We override
-the trace id with the value `start_server_span` stashed in
-`_pending_trace_id` so a root SERVER span gets trace_id == the UUID's
-128 bits while keeping a genuinely empty parent - which is what makes
-Tempo recognise it as the trace root. Subclasses `IdGenerator` so it carries the full interface the SDK calls
-(including `is_trace_id_random`, which OTel 1.4x invokes on the
-generator). The `_optdeps` shim aliases `IdGenerator` to `object` when
-OpenTelemetry is absent so this definition still compiles; it's only
-instantiated under a `HAS_OTEL` guard."""
+"""Id generator that forces a root span's trace id to the UUID stashed in
+`_pending_trace_id` (the SDK calls generate_trace_id only for parentless
+spans). Subclasses `IdGenerator` for the full interface OTel 1.4x calls;
+the shim aliases `IdGenerator` to `object` when OpenTelemetry is absent so
+this still compiles (it's only instantiated under a HAS_OTEL guard)."""
 class _JacIdGenerator(IdGenerator) {
     def generate_span_id(self: any) -> int {
         return new_span_id();
@@ -236,30 +164,15 @@ class _JacIdGenerator(IdGenerator) {
         return int.from_bytes(os.urandom(16), "big") & _MASK_128;
     }
 
-    # Our trace ids are UUID4-derived (uniformly random low bits), so the
-    # ratio sampler can use them. OTel 1.4x calls this on the generator.
     def is_trace_id_random(self: any) -> bool {
         return True;
     }
 }
 
-"""Configure the global OpenTelemetry TracerProvider + OTLP exporter.
-
-Idempotent and safe to call once per process (mirrors
-`install_structured_logging`). Returns True if tracing is now active,
-False if it's a no-op (OpenTelemetry not installed, or disabled).
-
-Arguments (all optional; env vars take over when omitted):
-- `service_name`: the `service.name` resource attribute. Defaults to
-  `JAC_SV_NAME` env (the same value `log_emit._SVC_NAME` reads) so a
-  span's service matches its log lines.
-- `endpoint`: OTLP/HTTP base URL of the collector (Alloy/Tempo). The
-  exporter appends `/v1/traces`. Defaults to `OTEL_EXPORTER_OTLP_ENDPOINT`
-  env, then `http://localhost:4318`.
-- `sample_ratio`: head-sampling ratio in [0, 1]. 1.0 keeps every trace
-  (the O-02 default while traffic is small). Parent-based, so a child
-  always honours the root's decision and a trace is never half-sampled.
-"""
+"""Configure the global TracerProvider + OTLP exporter once per process.
+Returns True if tracing is now active, False if it's a no-op (disabled or
+OpenTelemetry not installed). `service_name`/`endpoint`/`sample_ratio`
+fall back to the `JAC_SV_NAME` / `OTEL_EXPORTER_OTLP_ENDPOINT` env vars."""
 def install_tracing(
     enabled: bool = True,
     service_name: str | None = None,
@@ -271,25 +184,18 @@ def install_tracing(
     if _tracing_installed {
         return _tracing_active;
     }
-    # Mark installed up front so a disabled/failed/absent-SDK attempt
-    # doesn't re-read config + retry on every request.
     _tracing_installed = True;
 
     if not enabled {
-        # Configured off: install marked done, tracing stays inactive.
         return False;
     }
-
     if not HAS_OTEL {
-        # Expected when jac-scale[tracing] isn't installed.
         _logger.debug("OpenTelemetry not installed; tracing disabled.");
         return False;
     }
 
-    # Best-effort: the entire SDK setup is wrapped so a tracing problem
-    # (bad endpoint, OTel version skew, exporter init) can NEVER crash
-    # the gateway/service it's installed into. On any failure we log and
-    # return False, leaving the process running without spans.
+    # Wrapped best-effort: a tracing setup problem must never crash the
+    # host gateway/service.
     try {
         svc = service_name or os.getenv("JAC_SV_NAME", "unknown");
         base = endpoint
@@ -304,9 +210,6 @@ def install_tracing(
             }
         );
 
-        # Parent-based ratio sampler: root traces sampled at `sample_ratio`,
-        # children inherit the root's decision via the traceparent sampled
-        # bit (so a trace is all-in or all-out, never partial).
         ratio = sample_ratio;
         if ratio < 0.0 {
             ratio = 0.0;
@@ -314,18 +217,15 @@ def install_tracing(
         if ratio > 1.0 {
             ratio = 1.0;
         }
-        # NOTE: pass the root sampler positionally. `root` is a reserved
-        # keyword in Jac (the graph root), so `ParentBased(root=...)`
-        # mis-compiles into a `**`-unpack and throws at runtime
-        # ("argument after ** must be a mapping"). Positional avoids it.
+        # Pass the root sampler positionally: `root` is a reserved keyword
+        # in Jac, so `ParentBased(root=...)` mis-compiles and throws.
         sampler = ParentBased(TraceIdRatioBased(ratio));
 
         provider = TracerProvider(
             resource=resource, sampler=sampler, id_generator=_JacIdGenerator()
         );
-        # BatchSpanProcessor (NOT SimpleSpanProcessor): buffers finished
-        # spans and flushes off the request path in a background thread, so
-        # a slow/dead collector drops spans instead of slowing requests.
+        # BatchSpanProcessor flushes off the request path, so a slow/dead
+        # collector drops spans instead of slowing requests.
         provider.add_span_processor(
             BatchSpanProcessor(OTLPSpanExporter(endpoint=traces_url))
         );
@@ -345,11 +245,8 @@ def install_tracing(
     }
 }
 
-"""Flush any buffered spans and tear down the provider (best-effort).
-
-Called on graceful drain so in-flight spans aren't lost when a pod
-exits. No-op when tracing is inactive.
-"""
+"""Flush buffered spans and tear down the provider (best-effort). Called
+on graceful drain; no-op when tracing is inactive."""
 def shutdown_tracing {
     global _tracing_active;
     if _provider is not None {
@@ -363,29 +260,13 @@ def shutdown_tracing {
 }
 
 
-# ---------------------------------------------------------------------------
-# Span creation - ties an OTel span to the K-12 UUID4 trace id.
-# ---------------------------------------------------------------------------
-"""Start a SERVER span whose trace id is the given K-12 UUID4.
+# --- Span creation ---------------------------------------------------------
 
-This is the reconciliation point. Instead of letting the SDK mint a
-random trace id (which would NOT match the UUID4 in the log lines), we:
-
-  1. derive the 128-bit trace id from the UUID4 (`uuid_to_trace_id`);
-  2. build a *remote parent* SpanContext carrying that trace id and the
-     inbound `traceparent`'s span id (or a fresh one when this hop is
-     the trace root);
-  3. start the real span as a child of that context, so it inherits the
-     trace id but gets its own fresh span id.
-
-Returns the started span or None when tracing is inactive. Caller MUST
-pass the returned span to `end_span` when the request finishes - see
-the gateway middleware wiring. As a side effect, stashes this span's
-`traceparent` in `_current_tp` so the proxy/RPC paths forward it.
-
-`parent_traceparent` is the inbound W3C header, if any. `attributes`
-are set on the span at creation.
-"""
+"""Start a SERVER span whose trace id is the given UUID. A root hop (no
+inbound `parent_traceparent`) becomes a genuine parentless root; a child
+hop inherits the inbound parent. Stashes the span's traceparent in
+`_current_tp` for outbound forwarding. Returns None when tracing is
+inactive; the caller MUST pass the span to `end_span`."""
 def start_server_span(
     name: str,
     trace_uuid: str | None,
@@ -398,16 +279,13 @@ def start_server_span(
 
     tid = uuid_to_trace_id(trace_uuid);
     if tid == 0 {
-        # No usable id - fall back to a fresh random trace.
         tid = int.from_bytes(os.urandom(16), "big") & _MASK_128;
     }
 
     parsed = parse_traceparent(parent_traceparent);
     span = None;
     if parsed is not None {
-        # CHILD hop: a real upstream span is our parent. Build a remote
-        # parent SpanContext from the inbound traceparent and start as
-        # its child (inherits the trace id + a real parent span id).
+        # Child hop: start under the inbound span as parent.
         flags = TraceFlags(_FLAG_SAMPLED if parsed["sampled"] else 0);
         parent_ctx = SpanContext(
             trace_id=tid, span_id=parsed["span_id"], is_remote=True, trace_flags=flags
@@ -415,10 +293,8 @@ def start_server_span(
         ctx = set_span_in_context(NonRecordingSpan(parent_ctx));
         span = _tracer.start_span(name, context=ctx, kind=SpanKind.SERVER);
     } else {
-        # ROOT hop: start a parentless span and force its trace id to the
-        # UUID via the id generator (it reads `_pending_trace_id`). This
-        # yields a genuine root (empty parent) so Tempo shows it as the
-        # trace root instead of "<root span not yet received>".
+        # Root hop: parentless span, trace id forced to the UUID via the
+        # id generator reading `_pending_trace_id`.
         tok = _pending_trace_id.set(tid);
         try {
             span = _tracer.start_span(name, kind=SpanKind.SERVER);
@@ -431,8 +307,6 @@ def start_server_span(
             span.set_attribute(k, v);
         }
     }
-    # Stash this span's traceparent so build_forward_headers /
-    # sv_service_call forward it, making downstream hops our children.
     tp = _span_traceparent(span);
     if tp {
         _current_tp.set(tp);
@@ -441,10 +315,7 @@ def start_server_span(
 }
 
 """End a span started by `start_server_span` and clear `_current_tp`.
-
-No-op when `span` is None (tracing inactive). Best-effort: a span-end
-error must never break request handling.
-"""
+No-op/best-effort: a span-end error must never break request handling."""
 def end_span(span: any) {
     if span is not None {
         try {
@@ -453,12 +324,10 @@ def end_span(span: any) {
             _logger.debug(f"span.end error (ignored): {e}");
         }
     }
-    # Clear so the next request on this worker re-derives its own value
-    # rather than inheriting this request's traceparent.
     _current_tp.set("");
 }
 
-"""Build a `traceparent` from a live OTel span's context, or None."""
+"""Build a `traceparent` from a live span's context, or None."""
 def _span_traceparent(span: any) -> str | None {
     sc = span.get_span_context();
     if sc is not None and sc.trace_id != 0 and sc.span_id != 0 {
@@ -469,24 +338,14 @@ def _span_traceparent(span: any) -> str | None {
     return None;
 }
 
-"""Return the `traceparent` to forward on outbound proxy/RPC calls.
-
-Prefers the active SERVER span's traceparent (set by
-`start_server_span`) so the downstream hop links as our child. When
-tracing is active but no span is set on this path, synthesizes one from
-`trace_uuid` so the trace id still propagates.
-
-Returns None when tracing is inactive (so we add no `traceparent`
-header at all and preserve pre-O-02 behavior) or when no usable id is
-available.
-"""
+"""`traceparent` to forward on outbound proxy/RPC calls: the active
+span's, else synthesized from `trace_uuid` so the id still propagates.
+None when tracing is inactive (forward no header) or no id is available."""
 def current_traceparent(trace_uuid: str | None = None) -> str | None {
     cur = _current_tp.get("");
     if cur {
         return cur;
     }
-    # No active SERVER span on this path. Only keep propagating the id
-    # when tracing is actually on; when it's off, emit no header.
     if not _tracing_active {
         return None;
     }

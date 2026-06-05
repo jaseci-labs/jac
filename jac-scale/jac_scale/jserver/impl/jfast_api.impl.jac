@@ -1171,12 +1171,8 @@ impl JFastApiServer.init(
         }
         install_structured_logging();
 
-        # O-02: configure the tracing SDK once per process (idempotent;
-        # `tracing_installed` gates the config read so it doesn't run on
-        # every request). Then open one SERVER span for this request,
-        # parented by the inbound `traceparent` so it nests under the
-        # gateway's span, trace id seeded from the K-12 id so span and
-        # logs share one id. No-op without jac-scale[tracing] / when off.
+        # O-02: configure tracing once (gated by tracing_installed), then
+        # open a SERVER span parented by the inbound traceparent.
         import from jac_scale.microservices.runtime.tracing {
             install_tracing,
             tracing_installed,

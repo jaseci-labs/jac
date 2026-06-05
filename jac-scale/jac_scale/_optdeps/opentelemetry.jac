@@ -1,12 +1,8 @@
 """Guarded re-exports for opentelemetry (install group: [tracing]).
 
-O-02 distributed tracing. Mirrors `prometheus.jac` / `docker.jac`: a
-single guarded import block so the rest of jac-scale can `import from
-jac_scale._optdeps.opentelemetry { ... }` and branch on `HAS_OTEL`
-instead of repeating try/except ImportError everywhere. Every symbol is
-None when the optional dependency isn't installed, and `HAS_OTEL` is
-False, so callers degrade to a no-op (the gateway + services run
-unchanged, just without spans).
+Mirrors `prometheus.jac` / `docker.jac`: callers import from here and
+branch on `HAS_OTEL`. Symbols are None (and `HAS_OTEL` False) when the
+optional dependency isn't installed, so tracing degrades to a no-op.
 """
 
 with entry {

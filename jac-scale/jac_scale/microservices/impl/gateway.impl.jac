@@ -653,11 +653,8 @@ impl MicroserviceGateway.setup -> FastAPI {
         )
     );
 
-    # O-02: distributed tracing. Configure the OpenTelemetry SDK once
-    # per process when `[plugins.scale.microservices.tracing].enabled`
-    # is set (no-op without jac-scale[tracing] installed). The
-    # dispatcher below opens one SERVER span per request, seeded with
-    # the K-12 trace id so spans and logs share one id in Tempo.
+    # O-02: configure tracing once per process (no-op when disabled /
+    # jac-scale[tracing] absent); the dispatcher opens a span per request.
     import from jac_scale.microservices.runtime.tracing {
         install_tracing,
         start_server_span,
@@ -682,10 +679,7 @@ impl MicroserviceGateway.setup -> FastAPI {
         trace_id = ensure_trace_id(request.headers.get("X-Trace-Id"));
         tok = set_current_trace(trace_id);
 
-        # O-02: open one SERVER span per request, trace id seeded from
-        # the K-12 id so the span shares the log lines' trace_id in
-        # Tempo. `span` is None when tracing is inactive (no SDK / not
-        # enabled), in which case every span call below is skipped.
+        # O-02: open one SERVER span per request (None when inactive).
         span = start_server_span(
             f"{request.method} {path}",
             trace_id,
@@ -775,9 +769,7 @@ impl MicroserviceGateway.setup -> FastAPI {
             # Echo trace id so clients can correlate and our e2e can
             # verify end-to-end propagation across the gateway hop.
             resp.headers["X-Trace-Id"] = trace_id;
-            # O-02: record the outcome on the SERVER span (no-op when
-            # tracing inactive). svc_label is now resolved to the
-            # matched service / builtin / static bucket.
+            # O-02: record the outcome on the SERVER span.
             if span is not None {
                 span.set_attribute("http.status_code", resp.status_code);
                 span.set_attribute("jac.service", svc_label);

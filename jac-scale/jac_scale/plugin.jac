@@ -1069,11 +1069,7 @@ class JacScalePlugin {
         if trace {
             headers["X-Trace-Id"] = trace;
         }
-        # O-02: forward the W3C `traceparent` so the downstream service's
-        # SERVER span links as a child of this hop's span (same trace id
-        # as X-Trace-Id). current_traceparent prefers the active span,
-        # else synthesizes from the trace id; returns None when neither
-        # exists (tracing off + no id), in which case nothing is added.
+        # O-02: forward traceparent so the downstream span links as our child.
         import from jac_scale.microservices.runtime.tracing { current_traceparent }
         tp = current_traceparent(trace);
         if tp {
@@ -1199,11 +1195,7 @@ class JacScalePlugin {
         if trace {
             headers["X-Trace-Id"] = trace;
         }
-        # O-02: forward the W3C `traceparent` so the downstream service's
-        # SERVER span links as a child of this hop's span (same trace id
-        # as X-Trace-Id). current_traceparent prefers the active span,
-        # else synthesizes from the trace id; returns None when neither
-        # exists (tracing off + no id), in which case nothing is added.
+        # O-02: forward traceparent so the downstream span links as our child.
         import from jac_scale.microservices.runtime.tracing { current_traceparent }
         tp = current_traceparent(trace);
         if tp {
