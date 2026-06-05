@@ -256,9 +256,9 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         if arg.default is not None {
             kwargs["nargs"] = "?";
             kwargs["default"] = arg.default;
-        } elif not arg.required {
-            kwargs["nargs"] = "?";
         }
+        # Positionals without a default are required (argparse default).
+        # Optional positionals must supply a default (e.g. start's main.jac).
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.MULTI {
         # Multiple arguments
