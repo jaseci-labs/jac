@@ -112,12 +112,7 @@ test "inner compr scope linking" {
     assert inner_compr.lookup("pool", True) is not None;
 }
 
-"""SymTabBuildPass records every branch of a `sys.version_info` guard.
-
-The symbol table is complete and version-agnostic: declarations from both the
-live and the dead branch exist in it. Deciding which branch a type checker
-sees is a type-layer concern (collect_member_syms), not symbol-table building.
-"""
+"""The symbol table records every guard branch, live or dead (version-agnostic)."""
 test "version conditional symbols are all recorded in the symbol table" {
     import ast as py_ast;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -154,12 +149,7 @@ Always = "always_available"
     assert mod.lookup("Future", deep=True, incl_inner_scope=True) is not None;
 }
 
-"""The type-layer collector resolves only the version-live branch.
-
-collect_member_syms descends statically-live `if sys.version_info` branches and
-skips the dead ones, so the dead-branch symbol does not resolve even though it
-exists in the symbol table.
-"""
+"""collect_member_syms resolves the live guard branch and skips the dead one."""
 test "version-live branch resolves, dead branch does not" {
     import sys;
     import ast as py_ast;
@@ -167,9 +157,8 @@ test "version-live branch resolves, dead branch does not" {
     import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
     import from jaclang.compiler.type_system.type_utils { collect_member_syms }
 
-    # Annotated module-level declarations, as typeshed writes guarded symbols
-    # (e.g. `UTC: timezone` in datetime.pyi). These stay in the guard's scope
-    # rather than hoisting to module level, so liveness is the collector's call.
+    # Annotated decls (as typeshed writes guarded symbols) stay in the guard
+    # scope instead of hoisting to module level.
     code = """
 import sys
 
@@ -190,23 +179,16 @@ if sys.version_info >= (3, 15):
     ).ir_out;
     SymTabBuildPass(ir_in=mod, prog=prog);
 
-    # Unguarded top-level symbol resolves directly.
-    assert collect_member_syms(mod, "MINYEAR") , "MINYEAR should resolve";
-
-    # >= 3.11 guard is live (we run on >= 3.11): UTC resolves through it.
+    assert collect_member_syms(mod, "MINYEAR") , "unguarded symbol should resolve";
     if sys.version_info >= (3, 11) {
-        assert collect_member_syms(mod, "UTC") , "UTC's guard is live; it should resolve";
+        assert collect_member_syms(mod, "UTC") , "live guard should resolve";
     }
-
-    # >= 3.15 guard is dead today: FUTURE_CONST is in the symbol table but the
-    # collector skips the dead branch, so it does not resolve.
-    assert not collect_member_syms(mod, "FUTURE_CONST") , "FUTURE_CONST's guard is dead; the collector must not resolve it";
+    # >= 3.15 is dead: in the symbol table, but the collector must not resolve it.
+    assert not collect_member_syms(mod, "FUTURE_CONST") , "dead guard must not resolve";
 }
 
-"""Class members defined in version-guarded branches resolve to the live
-branch's definition, the way typeshed declares e.g. `zip.__new__` per Python
-version. The collector descends the live branch and skips the dead one.
-"""
+"""Version-guarded class members resolve to the live branch (typeshed
+`zip.__new__`-style per-version definitions)."""
 test "version-guarded class members resolve to the live branch" {
     import sys;
     import ast as py_ast;
@@ -240,11 +222,8 @@ class C:
     cls_scope = cls_sym.decl.name_of.sym_tab;
 
     if sys.version_info >= (3, 11) {
-        # >= 3.11 guard live: the `if` method resolves, its `else` sibling does not.
-        assert collect_member_syms(cls_scope, "live_method") , "live_method's guard is live; it should resolve";
-        assert not collect_member_syms(cls_scope, "dead_method") , "dead_method is in the dead else branch; it must not resolve";
+        assert collect_member_syms(cls_scope, "live_method") , "live `if` should resolve";
+        assert not collect_member_syms(cls_scope, "dead_method") , "dead `else` must not resolve";
     }
-
-    # >= 3.15 guard dead today: future_method must not resolve.
-    assert not collect_member_syms(cls_scope, "future_method") , "future_method's guard is dead; it must not resolve";
+    assert not collect_member_syms(cls_scope, "future_method") , "dead guard must not resolve";
 }

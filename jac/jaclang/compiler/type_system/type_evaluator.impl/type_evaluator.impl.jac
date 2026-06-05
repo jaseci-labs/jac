@@ -628,9 +628,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # and is required for proper type checking of overloaded functions.
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
-                            # Look up all symbols with the same name to find
-                            # overloads, descending statically-live guard
-                            # branches (e.g. version-guarded stub overloads).
+                            # Overloads, including version-guarded ones.
                             all_syms = type_utils.collect_member_syms(
                                 base_type.symbol_table, expr.right.value
                             );

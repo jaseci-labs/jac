@@ -175,13 +175,9 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    # Resolve own scope + statically-live `if`/`elif`/`else` branches (e.g.
-    # version-guarded stub declarations), climbing enclosing scopes, before the
-    # plain deep walk. This ordering matters: a name declared in a live guard
-    # branch here (e.g. typing_extensions' `else`-branch `class ParamSpec`)
-    # otherwise loses to a same-named builtins import that the filter below then
-    # discards, leaving the real declaration unreachable. The collector skips
-    # the branches a type checker treats as dead.
+    # Live-guard-branch resolution before the plain deep walk, so a guarded
+    # declaration (e.g. typing_extensions' `else`-branch ParamSpec) isn't
+    # shadowed by a same-named builtins import the filter below discards.
     symbol: (Symbol | None) = None;
     if (inner := collect_member_syms(symtable, name, deep=True)) {
         symbol = inner[0];
@@ -211,9 +207,7 @@ impl collect_member_syms(
 ) -> list[Symbol] {
     import from jaclang.jac0core.helpers { evaluate_version_condition }
 
-    # Resolve an if/elif/else chain to its statically-live branch scope(s):
-    # a True/None guard contributes its own scope, a False guard hands off to
-    # its else branch (recursing through nested `elif`s).
+    # Live branch of a guard chain: True/None keeps it, False hands off to else.
     def live_branches(guard: uni.IfStmt) -> list[uni.UniScopeNode] {
         eval_result = evaluate_version_condition(guard.condition);
         if eval_result is None or eval_result {
@@ -228,10 +222,8 @@ impl collect_member_syms(
         return [];
     }
 
-    # Names declared directly here, else descend version-live control-flow
-    # child scopes (transparent to name resolution). Skip Python name scopes
-    # (a nested class/def is opaque) and else branches reached as chain
-    # continuations rather than as the head guard.
+    # Own scope, else live control-flow children. Skip Python name scopes
+    # (opaque) and else-branches handled via their head guard above.
     def descend(s: uni.UniScopeNode) -> list[Symbol] {
         if (here := s.lookup_all(name, deep=False)) {
             return here;
@@ -257,10 +249,9 @@ impl collect_member_syms(
     if not deep {
         return descend(scope);
     }
+    # deep: also climb enclosing scopes (resolve from a nested ability body).
     s: uni.UniScopeNode | None = scope;
     while s is not None {
-        # Climb enclosing scopes so a guarded declaration in a parent module/
-        # class resolves from a nested ability body (deep + inner descent).
         if (found := descend(s)) {
             return found;
         }
