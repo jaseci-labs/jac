@@ -121,6 +121,7 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
     l1_misses: list[UUID] = [];
     for id in ids {
+        self._refresh_if_stale(id);
         if (anchor := self.__mem__.get(id)) {
             result[id] = anchor;
         } else {
@@ -206,10 +207,10 @@ impl ScaleTieredMemory.close -> None {
     self.__gc__.clear();
 }
 
-"""L1 read. If a sibling write flagged this id stale, drop our copy (only if it
-is clean) so the tiered read reloads it fresh; a dirty entry is kept so the
-in-flight write survives."""
-impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
+"""Drop our L1 copy of `id` if a sibling write flagged it stale and it is clean,
+so the next tiered read reloads it; a dirty (uncommitted) entry is kept so the
+in-flight write survives. Called from every memory-routed read path."""
+impl ScaleTieredMemory._refresh_if_stale(id: UUID) -> None {
     if consume_stale(self._l1_id, id) {
         existing = self.__mem__.get(id);
         if existing is not None
@@ -218,7 +219,40 @@ impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
             self.__mem__.pop(id, None);
         }
     }
+}
+
+impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
+    self._refresh_if_stale(id);
     return super.get(id);
+}
+
+"""Tiered find: delegate to get() so it honors lower tiers and stale marks
+(VolatileMemory.find is L1-only and would miss both), matching SqliteMemory.find."""
+impl ScaleTieredMemory.find(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                yield anchor;
+            }
+        }
+    }
+}
+
+impl ScaleTieredMemory.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
+        }
+    }
+    return None;
 }
 
 """L1 scan, snapshotting `__mem__` so iteration is decoupled from concurrent gets."""

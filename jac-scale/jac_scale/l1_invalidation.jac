@@ -56,32 +56,48 @@ def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
     } except Exception {
         return 0;
     }
-    marked = 0;
     with _l1_lock {
-        for (lid, mem) in list(_l1_registry.items()) {
-            sid = cast(str, lid);
-            if sid == origin_l1_id {
-                continue;
+        targets = [
+            (cast(str, lid), cast(VolatileMemory, mem))
+            for (lid, mem) in list(_l1_registry.items())
+            if lid != origin_l1_id
+        ];
+    }
+    to_mark: list[str] = [];
+    for (sid, mem) in targets {
+        try {
+            if key in mem.__mem__ {
+                to_mark.append(sid);
             }
-            try {
-                if key in cast(VolatileMemory, mem).__mem__ {
-                    marks = _stale_marks.get(sid);
-                    if marks is None {
-                        marks = set();
-                        _stale_marks[sid] = marks;
-                    }
-                    marks.add(key);
-                    marked += 1;
-                }
-            } except Exception { }
+        } except Exception { }
+    }
+    if not to_mark {
+        return 0;
+    }
+    with _l1_lock {
+        for sid in to_mark {
+            marks = _stale_marks.get(sid);
+            if marks is None {
+                marks = set();
+                _stale_marks[sid] = marks;
+            }
+            marks.add(key);
         }
     }
-    return marked;
+    return len(to_mark);
 }
 
 
-"""Consume the stale mark for (l1_id, anchor id); True if it was marked (one-shot)."""
+"""Consume the stale mark for (l1_id, anchor id); True if it was marked (one-shot).
+
+Lock-free fast path: the common case (no mark for this L1) reads one atomic
+`dict.get` and returns, so the read hot path takes the lock only when there is
+actually a mark to clear."""
 def consume_stale(l1_id: str, id: UUID) -> bool {
+    marks = _stale_marks.get(l1_id);
+    if marks is None or id not in marks {
+        return False;
+    }
     with _l1_lock {
         marks = _stale_marks.get(l1_id);
         if marks is not None and id in marks {

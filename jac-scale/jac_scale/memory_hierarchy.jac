@@ -210,8 +210,18 @@ obj ScaleTieredMemory(TieredMemory) {
     async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     def get(id: UUID) -> (Anchor | None);
+    def find(
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def find_one(
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
+
+    def _refresh_if_stale(id: UUID) -> None;
 }

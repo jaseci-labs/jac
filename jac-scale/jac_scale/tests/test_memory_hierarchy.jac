@@ -1755,6 +1755,52 @@ test "L1 invalidation: get() drops a clean stale entry but keeps a dirty one" {
     }
 }
 
+test "L1 invalidation: batch_get and find_one also honor stale marks" {
+    import from jaclang.runtimelib.serializer { Serializer }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
+    import sys;
+    sys.path.insert(0, str(FIXTURES_DIR));
+    import from mutation_app { Item }
+
+    os.environ.pop("REDIS_URL", None);
+    os.environ.pop("MONGODB_URI", None);
+
+    mem = ScaleTieredMemory();
+    mem.l2 = None;
+    mem.l3 = None;
+    try {
+        # batch_get path (used by graph-edge prefetch): clean dropped, dirty kept.
+        bc = Item(id=1).__jac__;
+        bc.persistent = True;
+        bc.hash = Serializer._compute_hash(bc);
+        bd_item = Item(id=2);
+        bd = bd_item.__jac__;
+        bd.persistent = True;
+        bd.hash = Serializer._compute_hash(bd);
+        bd_item.completed = True;
+        cast(dict, mem.__mem__)[bc.id] = bc;
+        cast(dict, mem.__mem__)[bd.id] = bd;
+        other = new_l1_id();
+        evict_local_l1(str(bc.id), other);
+        evict_local_l1(str(bd.id), other);
+        _ = mem.batch_get([bc.id, bd.id]);
+        assert bc.id not in mem.__mem__ , "batch_get must drop a clean stale entry";
+        assert bd.id in mem.__mem__ , "batch_get must keep a dirty entry";
+
+        # find_one path.
+        fc = Item(id=3).__jac__;
+        fc.persistent = True;
+        fc.hash = Serializer._compute_hash(fc);
+        cast(dict, mem.__mem__)[fc.id] = fc;
+        evict_local_l1(str(fc.id), other);
+        _ = mem.find_one(fc.id);
+        assert fc.id not in mem.__mem__ , "find_one must drop a clean stale entry";
+    } finally {
+        deregister_l1(mem._l1_id);
+    }
+}
+
 test "L1 invalidation: registry holds L1 weakly, GC reclaims it" {
     import gc;
     import from uuid { uuid4 }
