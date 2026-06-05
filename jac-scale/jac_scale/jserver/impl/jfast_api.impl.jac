@@ -1170,8 +1170,33 @@ impl JFastApiServer.init(
             install_structured_logging
         }
         install_structured_logging();
+
+        # O-02: configure tracing once (gated by tracing_installed), then
+        # open a SERVER span parented by the inbound traceparent.
+        import from jac_scale.microservices.runtime.tracing {
+            install_tracing,
+            tracing_installed,
+            start_server_span,
+            end_span
+        }
+        if not tracing_installed() {
+            import from jac_scale.config_loader { get_scale_config }
+            _trc_cfg = get_scale_config().get_microservices_config().get("tracing", {});
+            install_tracing(
+                enabled=_trc_cfg.get("enabled", False),
+                endpoint=_trc_cfg.get("endpoint"),
+                sample_ratio=float(_trc_cfg.get("sample_ratio", 1.0))
+            );
+        }
+
         trace_id = ensure_trace_id(request.headers.get('X-Trace-Id'));
         trace_token = set_current_trace(trace_id);
+        trace_span = start_server_span(
+            f"{request.method} {request.url.path}",
+            trace_id,
+            request.headers.get("traceparent"),
+            {"http.method": request.method, "http.target": request.url.path}
+        );
 
         user_id = request.state?.user_root_id if request?.state else None;
 
@@ -1200,6 +1225,10 @@ impl JFastApiServer.init(
             if trace_id {
                 response.headers["X-Trace-Id"] = trace_id;
             }
+            # O-02: record the status on this service's SERVER span.
+            if trace_span is not None {
+                trace_span.set_attribute("http.status_code", response.status_code);
+            }
 
             return response;
         } finally {
@@ -1213,6 +1242,11 @@ impl JFastApiServer.init(
                 reset_current_auth(auth_token);
             } except Exception as e {
                 logger.warning(f"Failed to reset auth context: {e}", exc_info=True);
+            }
+            try {
+                end_span(trace_span);
+            } except Exception as e {
+                logger.warning(f"Failed to end trace span: {e}", exc_info=True);
             }
             try {
                 reset_current_trace(trace_token);
