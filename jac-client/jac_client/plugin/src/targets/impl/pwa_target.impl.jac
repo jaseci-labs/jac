@@ -1,7 +1,7 @@
 """Implementation of PWATarget methods."""
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.vite_bundler { ViteBundler }
+import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
 import json;

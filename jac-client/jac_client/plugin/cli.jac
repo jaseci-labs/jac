@@ -312,7 +312,7 @@ def _handle_npm_add(ctx: HookContext) -> None {
                 style="bold"
             );
             with console.status(
-                f"[cyan]Installing {dep_type.name} packages...[/cyan]", spinner="dots"
+                f"Installing {dep_type.name} packages...", spinner="dots"
             ) as status {
                 dep_type.install_all_handler(config);
             }
@@ -335,9 +335,7 @@ def _handle_npm_add(ctx: HookContext) -> None {
         );
         for pkg_spec in packages {
             (name, version) = resolver.parse_spec(pkg_spec);
-            with console.status(
-                f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-            ) as status {
+            with console.status(f"Installing {name}...", spinner="dots") as status {
                 dep_type.install_handler(config, name, version, dev);
             }
             console.print(f"  ✔ {name}", style="success");

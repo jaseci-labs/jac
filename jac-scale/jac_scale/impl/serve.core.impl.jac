@@ -241,7 +241,7 @@ impl JacAPIServerCore.start(
                 start_time = time.time();
                 try {
                     with console.status(
-                        "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                        "Building client bundle...", spinner="dots"
                     ) as status {
                         self.introspector.ensure_bundle();
                     }

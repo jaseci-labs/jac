@@ -29,9 +29,9 @@ def _diags_for(diagnostics: list[Diagnostic], service: str | None) -> list[Diagn
 
 
 def _print_diag(d: Diagnostic, indent: str = "    ") {
-    marker = "[red]X[/red]" if d.severity == "error" else "[yellow]![/yellow]";
-    color = "red" if d.severity == "error" else "yellow";
-    console.print(f"{indent}{marker} [{color}]{d.message}[/{color}]");
+    marker = "X" if d.severity == "error" else "!";
+    style = "error" if d.severity == "error" else "warning";
+    console.print(f"{indent}{marker} {d.message}", style=style);
 }
 
 
@@ -58,19 +58,10 @@ obj HPAView {
         if not isinstance(hpa, dict) {
             return None;
         }
-        spec = dget(hpa, "spec");
-        cpu_target: int = 0;
-        for m in lget(spec, "metrics") {
-            resource = dget(m, "resource");
-            if sget(resource, "name") == "cpu" {
-                cpu_target = iget(dget(resource, "target"), "averageUtilization", 0);
-                break;
-            }
-        }
         return HPAView(
-            min_replicas=iget(spec, "minReplicas", 1),
-            max_replicas=iget(spec, "maxReplicas", 1),
-            cpu_target=cpu_target
+            min_replicas=iget(hpa, "min", 1),
+            max_replicas=iget(hpa, "max", 1),
+            cpu_target=iget(hpa, "cpu_target", 0)
         );
     }
 }
@@ -198,7 +189,7 @@ obj ServiceView {
         }
 
         console.print();
-        console.print(f"  [bold]{self.name}[/bold]");
+        console.print(f"  {self.name}", style="bold");
         console.print(f"    image:     {self.image}");
         console.print(f"    replicas:  {replicas_line}");
         console.print(
@@ -272,7 +263,7 @@ obj IngressView {
 
     def render {
         console.print();
-        console.print("[bold]Ingress[/bold]");
+        console.print("Ingress", style="bold");
         for rule in self.rules {
             console.print(f"  {rule.host}");
             for (path, svc) in rule.paths {
@@ -315,7 +306,7 @@ def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
         return;
     }
     console.print();
-    console.print("[bold]Cluster-wide[/bold]");
+    console.print("Cluster-wide", style="bold");
     for line in lines {
         console.print(line);
     }
@@ -332,7 +323,11 @@ def _render_totals(bundle: Any) {
     n_svc = len(dget(bundle, "services"));
     parts.append(f"{n_dep} deployment{'s' if n_dep != 1 else ''}");
     parts.append(f"{n_svc} service{'s' if n_svc != 1 else ''}");
-    for (key, label) in [("hpas", "HPA"), ("pdbs", "PDB"), ("pvcs", "PVC")] {
+    for (key, label) in [
+        ("autoscalers", "Autoscaler"),
+        ("pdbs", "PDB"),
+        ("pvcs", "PVC")
+    ] {
         entry = _n(key, label);
         if entry {
             parts.append(entry);
@@ -342,7 +337,7 @@ def _render_totals(bundle: Any) {
         parts.append("1 ingress");
     }
     console.print();
-    console.print("[bold]Totals[/bold]");
+    console.print("Totals", style="bold");
     console.print(f"  {', '.join(parts)}");
 }
 
@@ -372,7 +367,7 @@ obj Plan {
             routes = routes_any;
         }
         deployments = dget(bundle, "deployments");
-        hpas = dget(bundle, "hpas");
+        autoscalers = dget(bundle, "autoscalers");
         pdbs = dget(bundle, "pdbs");
 
         # User-declared first (in [routes] order), gateway last, defensive
@@ -404,7 +399,7 @@ obj Plan {
                 ServiceView.from_manifests(
                     name=svc,
                     deployment=deployments.get(svc),
-                    hpa=hpas.get(svc),
+                    hpa=autoscalers.get(svc),
                     pdb=pdbs.get(svc),
                     route_path=route_path
                 )
@@ -478,24 +473,26 @@ obj Plan {
             ]
         );
         console.print();
-        console.print("[bold cyan]=== jac scale plan: dry-run ===[/bold cyan]");
+        console.print("=== jac scale plan: dry-run ===", style="bold cyan");
         console.print(
-            f"[bold]Cluster:[/bold]    {self.cluster_type}    "
-            f"[bold]Namespace:[/bold] {self.namespace}"
+            f"Cluster:    {self.cluster_type}    Namespace: {self.namespace}",
+            style="bold"
         );
         if n_err {
             console.print(
-                f"[red]X {n_err} error{'s' if n_err != 1 else ''}, "
+                f"X {n_err} error{'s' if n_err != 1 else ''}, "
                 f"{n_warn} warning{'s' if n_warn != 1 else ''}  -  "
-                f"fix errors before deploying[/red]"
+                f"fix errors before deploying",
+                style="error"
             );
         } elif n_warn {
             console.print(
-                f"[yellow]! {n_warn} warning{'s' if n_warn != 1 else ''}  -  "
-                f"advisory; deploy not blocked[/yellow]"
+                f"! {n_warn} warning{'s' if n_warn != 1 else ''}  -  "
+                f"advisory; deploy not blocked",
+                style="warning"
             );
         } else {
-            console.print("[green]check: no errors or warnings[/green]");
+            console.print("check: no errors or warnings", style="success");
         }
     }
 
@@ -505,7 +502,7 @@ obj Plan {
             return;
         }
         console.print();
-        console.print("[bold]Global findings[/bold]");
+        console.print("Global findings", style="bold");
         for d in globals_ {
             _print_diag(d, indent="  ");
         }
@@ -515,13 +512,13 @@ obj Plan {
         if not self.services {
             console.print();
             console.print(
-                "[dim](no microservices declared in "
-                "[plugins.scale.microservices.routes])[/dim]"
+                "(no microservices declared in [plugins.scale.microservices.routes])",
+                style="muted"
             );
             return;
         }
         console.print();
-        console.print(f"[bold]Microservices ({len(self.services)})[/bold]");
+        console.print(f"Microservices ({len(self.services)})", style="bold");
         for svc in self.services {
             svc.render(diagnostics);
         }
@@ -530,7 +527,7 @@ obj Plan {
     def _render_yaml_or_hint(show_yaml: bool) {
         if show_yaml {
             console.print();
-            console.print("[bold]--- YAML (would be applied) ---[/bold]");
+            console.print("--- YAML (would be applied) ---", style="bold");
             console.print(
                 yaml.safe_dump_all(
                     self._flatten_manifests(), default_flow_style=False, sort_keys=False
@@ -539,7 +536,7 @@ obj Plan {
         } else {
             console.print();
             console.print(
-                "[dim]To see the raw YAML manifests, re-run with --show-yaml[/dim]"
+                "To see the raw YAML manifests, re-run with --show-yaml", style="muted"
             );
         }
     }
@@ -551,7 +548,7 @@ obj Plan {
         if self.bundle.get("user_secret") {
             out.append(self.bundle["user_secret"]);
         }
-        for key in ["pvcs", "deployments", "services", "hpas", "pdbs"] {
+        for key in ["pvcs", "deployments", "services", "pdbs"] {
             for m in dget(self.bundle, key).values() {
                 out.append(m);
             }

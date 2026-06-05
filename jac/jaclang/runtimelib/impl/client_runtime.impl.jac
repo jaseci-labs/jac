@@ -1,490 +1,102 @@
-impl __jacJsx(
-    tag: any, props: dict[str, any] = {}, children: list[any] = []
-) -> JsxElement {
-    return JsxElement(tag=tag, props=props, children=children);
-}
-
-impl renderJsxTree(nd: JsxElement, container: any) -> None {
-    container.replaceChildren(__buildDom(nd));
-}
-
-impl __buildDom(nd: any) -> any {
-    if nd == None {
-        return document.createTextNode("");
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
+    if tag == None {
+        tag = React.Fragment;
     }
-    # Handle arrays (from .map() calls) - return a document fragment
-    if Array.isArray(nd) {
-        fragment = document.createDocumentFragment();
-        for item in nd {
-            childDom = __buildDom(item);
-            if childDom {
-                fragment.appendChild(childDom);
-            }
-        }
-        return fragment;
-    }
-    if not __isObject(nd) {
-        return document.createTextNode(str(nd));
-    }
-    # `unsafe_html(...)` sentinel -- caller has asserted the content is
-    # trusted, render it as raw HTML in a wrapper <span>. The wrapper
-    # exists so adjacent siblings keep their own DOM nodes.
-    if nd.__jacUnsafeHtml != undefined {
-        span = document.createElement("span");
-        span.innerHTML = nd.__jacUnsafeHtml;
-        return span;
-    }
-    # Handle component functions
-    tag = nd.tag;
-    if __isFunction(tag) {
-        props = nd.props;
-        children = nd.children;
-        # Merge children into props for component
-        if children and len(children) > 0 {
-            props["children"] = children;
-        }
-        return __buildDom(tag(props));
-    }
-    # Create element
-    element = document.createElement(tag or "div");
-    # Apply properties
-    props = nd.props;
-    for key in __objectKeys(props) {
-        value = props.get(key);
-        __applyProp(element, key, value);
-    }
-    # Render children
-    children = nd.children;
-    for child in children {
-        childDom = __buildDom(child);
-        if childDom {
-            element.appendChild(childDom);
-        }
-    }
-    return element;
-}
-
-impl __applyProp(element: any, key: str, value: any) -> None {
-    if key.startswith("on") {
-        # Event handler: onclick -> click
-        event = key[2:].lower();
-        element.addEventListener(event, value);
-    } elif key == "className" or key == "class" {
-        element.className = value;
-    } elif key == "style" and __isObject(value) {
-        # Style object
-        for styleKey in __objectKeys(value) {
-            element.style[styleKey] = value[styleKey];
-        }
-    } elif key == "checked"
-    or key == "disabled"
-    or key == "readonly"
-    or key == "selected" {
-        # Boolean attributes - use property instead of attribute
-        element[key] = bool(value);
-    } elif key == "value" {
-        # Value property for form elements
-        element.value = value;
-    } elif key != "children" {
-        element.setAttribute(key, str(value));
-    }
-}
-
-impl JacAwaiting(props: dict[str, any]) -> any {
-    # Bare-serve has no React Suspense; there is no async boundary here, so the
-    # resolved try-clause children render directly. `fallback` is unused — it
-    # only has meaning under jac-client's React.Suspense backing. Returning the
-    # children array lets `__buildDom` render them as a fragment (no wrapper
-    # node), matching React.Suspense's transparent output. The view-lowering
-    # pass always emits this wrapper with a children array, so it is present.
-    return props["children"];
-}
-
-impl JacClientErrorBoundary(props: dict[str, any]) -> any {
-    # Bare-serve has no React error boundary; children render directly. The
-    # `fallback` (except-clause content) is not shown on throw — errors
-    # propagate. Surface parity only; jac-client backs this with
-    # react-error-boundary.
-    return props["children"];
-}
-
-impl createSignal(initialValue: any) -> list[any] {
-    signalId = len(__jacReactiveContext.signals);
-    signalData = {"value": initialValue, "subscribers": []};
-    __jacReactiveContext.signals.append(signalData);
-    def readVal -> any {
-        __jacTrackDependency(signalData.subscribers);
-        return signalData.value;
-    }
-    def writeVal(newValue: any) {
-        if newValue != signalData.value {
-            signalData.value = newValue;
-            __jacNotifySubscribers(signalData.subscribers);
-        }
-    }
-    return [readVal, writeVal];
-}
-
-impl createState(initialState: dict[str, any]) -> list[any] {
-    signalId = len(__jacReactiveContext.signals);
-    signalData = {"value": initialState, "subscribers": []};
-    __jacReactiveContext.signals.append(signalData);
-    def readVal -> dict {
-        __jacTrackDependency(signalData.subscribers);
-        return signalData.value;
-    }
-    def writeVal(updates: dict) {
-        # Shallow merge
-        newState = {};
-        stateValue = signalData.value;
-        for key in __objectKeys(stateValue) {
-            newState[key] = stateValue[key];
-        }
-        for key in __objectKeys(updates) {
-            newState[key] = updates[key];
-        }
-        signalData.value = newState;
-        __jacNotifySubscribers(signalData.subscribers);
-    }
-    return [readVal, writeVal];
-}
-
-impl createEffect(effectFn: any) -> None {
-    __jacRunEffect(effectFn);
-}
-
-impl onMount(mountFn: any) -> None {
-    currentComponent = __jacReactiveContext.currentComponent;
-    if not currentComponent {
-        # Not in a component context, run immediately
-        __jacRunEffect(mountFn);
-        return;
-    }
-    # Track mounted components
-    if not __jacReactiveContext.mountedComponents {
-        __jacReactiveContext.mountedComponents = {};
-    }
-    # Check if this component has already mounted
-    componentId = f"{currentComponent}";
-    if not __jacHasOwn(__jacReactiveContext.mountedComponents, componentId) {
-        # Mark as mounted and run the effect
-        __jacReactiveContext.mountedComponents[componentId] = True;
-        # Run in next tick to ensure component is fully rendered
-        try {
-            setTimeout(lambda { __jacRunEffect(mountFn); }, 0);
-        } except Exception {
-            # Fallback if setTimeout not available
-            __jacRunEffect(mountFn);
-        }
-    }
-}
-
-impl __jacTrackDependency(subscribers: list[any]) -> None {
-    currentEffect = __jacReactiveContext.currentEffect;
-    if currentEffect {
-        alreadySubscribed = False;
-        for sub in subscribers {
-            if sub == currentEffect {
-                alreadySubscribed = True;
-            }
-        }
-        if not alreadySubscribed {
-            subscribers.append(currentEffect);
-        }
-    }
-    currentComponent = __jacReactiveContext.currentComponent;
-    if currentComponent {
-        alreadySubscribed = False;
-        for sub in subscribers {
-            if sub == currentComponent {
-                alreadySubscribed = True;
-            }
-        }
-        if not alreadySubscribed {
-            subscribers.append(currentComponent);
-        }
-    }
-}
-
-impl __jacNotifySubscribers(subscribers: list[any]) -> None {
-    for subscriber in subscribers {
-        if __isFunction(subscriber) {
-            # It's an effect function - re-run it
-            __jacRunEffect(subscriber);
+    childrenArray = [];
+    if children != None {
+        if Array.isArray(children) {
+            childrenArray = children;
         } else {
-            # It's a component ID - schedule re-render
-            __jacScheduleRerender(subscriber);
+            childrenArray = [children];
         }
     }
-}
-
-impl __jacRunEffect(effectFn: any) -> None {
-    previousEffect = __jacReactiveContext.currentEffect;
-    __jacReactiveContext.currentEffect = effectFn;
-    try {
-        effectFn();
-    } except Exception as err {
-        console.error("[Jac] Error in effect:", err);
-    }
-    __jacReactiveContext.currentEffect = previousEffect;
-}
-
-impl __jacScheduleRerender(componentId: any) -> None {
-    pending = __jacReactiveContext.pendingRenders;
-    # Check if already scheduled
-    alreadyScheduled = False;
-    for item in pending {
-        if item == componentId {
-            alreadyScheduled = True;
+    reactChildren = [];
+    for child in childrenArray {
+        # Skip both `null` and `undefined`: a missing prop or omitted slot
+        # surfaces as `undefined` in the compiled bundle, and accessing
+        # `.__jacUnsafeHtml` on it would TypeError.
+        if child == None or child == undefined {
+            continue;
+        }
+        # `unsafe_html(...)` sentinel: wrap in a <span dangerouslySetInnerHTML>
+        # so the raw markup renders inline with surrounding siblings. Property
+        # access on primitives (string / number / boolean) returns `undefined`
+        # in JS, so the check naturally rejects non-marker children -- no
+        # `typeof` / `__isObject` guard needed. Both `null` and `undefined`
+        # children were filtered above, so this access is safe.
+        if child.__jacUnsafeHtml != undefined {
+            reactChildren.append(
+                React.createElement(
+                    "span",
+                    {"dangerouslySetInnerHTML": {"__html": child.__jacUnsafeHtml}}
+                )
+            );
+        } else {
+            reactChildren.append(child);
         }
     }
-    if not alreadyScheduled {
-        pending.append(componentId);
-        __jacScheduleFlush();
-    }
-}
-
-impl __jacScheduleFlush -> None {
-    if not __jacReactiveContext.flushScheduled {
-        __jacReactiveContext.flushScheduled = True;
-        # Use requestAnimationFrame for batching, fallback to setTimeout
-        try {
-            requestAnimationFrame(__jacFlushRenders);
-        } except Exception {
-            setTimeout(__jacFlushRenders, 0);
+    if len(reactChildren) > 0 {
+        args = [tag, props];
+        for child in reactChildren {
+            args.append(child);
         }
-    }
-}
-
-impl __jacFlushRenders -> None {
-    pending = __jacReactiveContext.pendingRenders;
-    __jacReactiveContext.pendingRenders = [];
-    __jacReactiveContext.flushScheduled = False;
-    for componentId in pending {
-        __jacRerenderComponent(componentId);
-    }
-}
-
-impl __jacRerenderComponent(componentId: any) -> None {
-    rootEl = document.getElementById("__jac_root");
-    if not rootEl {
-        return;
-    }
-    rootComponent = __jacReactiveContext.rootComponent;
-    if not rootComponent {
-        return;
-    }
-    try {
-        previousComponent = __jacReactiveContext.currentComponent;
-        __jacReactiveContext.currentComponent = componentId;
-        # Reset hook index for useState tracking
-        __jacReactiveContext.hookIndex = 0;
-
-        component = rootComponent();
-        renderJsxTree(component, rootEl);
-
-        __jacReactiveContext.currentComponent = previousComponent;
-    } except Exception as err {
-        console.error("[Jac] Error re-rendering component:", err);
-    }
-}
-
-# ---- Routing -----------------------------------------------------------------
-# Bare-serve implements a React Router v6-shaped surface natively. The router
-# state lives in `__jacReactiveContext.router` and is created lazily on first
-# access; `_ensureRouter` is the choke point that installs the popstate listener
-# and the path signal, which `<Routes>` and the `useNavigate`/`useLocation`/
-# `useParams` hooks subscribe to.
-impl _ensureRouter -> dict[str, any] {
-    existing = __jacReactiveContext.router;
-    if existing {
-        return existing;
-    }
-    initialPath = __jacGetPath();
-    [currentPath, setCurrentPath] = createSignal(initialPath);
-    window.addEventListener(
-        "popstate",
-        lambda event: any {
-            newPath = __jacGetPath();
-            setCurrentPath(newPath or "/");
-        }
-    );
-    router = {"path": currentPath, "setPath": setCurrentPath, "params": {}};
-    __jacReactiveContext.router = router;
-    return router;
-}
-
-# Match a Route's `path` pattern against the current URL pathname. Returns
-# the extracted `:param` map on match, or `None` on miss. Bare-serve's matcher
-# is intentionally tiny: segment-count equality + per-segment string compare,
-# with `:name` segments captured into the params dict.
-impl _matchRoutePath(pattern: str, path: str) -> any {
-    pattern_segs = pattern.split("/");
-    path_segs = path.split("/");
-    if len(pattern_segs) != len(path_segs) {
-        return None;
-    }
-    params = {};
-    i = 0;
-    while i < len(pattern_segs) {
-        ps = pattern_segs[i];
-        if ps and ps[0] == ":" {
-            params[ps[1:]] = path_segs[i];
-        } elif ps != path_segs[i] {
-            return None;
-        }
-        i = i + 1;
-    }
-    return params;
-}
-
-impl Router(children: any = None) -> JsxElement {
-    # Identity provider — bare-serve's routing state is global; jac-client's
-    # Router (= ReactRouterBrowserRouter) pushes a real React context. Both
-    # render their children, so the same `<Router>...</Router>` JSX works in
-    # either runtime.
-    return children;
-}
-
-impl Routes(children: any = None) -> JsxElement {
-    router = _ensureRouter();
-    current_path = router.path();  # subscribe to path signal
-    children_list = [];
-    if children == None {
-        children_list = [];
-    } elif Array.isArray(children) {
-        children_list = children;
+        return React.createElement.apply(React, args);
     } else {
-        children_list = [children];
+        return React.createElement(tag, props);
     }
-    for child in children_list {
-        if not __isObject(child) {
-            continue;
-        }
-        if child.tag != Route {
-            continue;
-        }
-        child_props = child.props;
-        path_pat = child_props.path if __jacHasOwn(child_props, "path") else "";
-        params = _matchRoutePath(path_pat, current_path);
-        if params != None {
-            router.params = params;
-            return child_props.element if __jacHasOwn(child_props, "element") else None;
-        }
-    }
-    router.params = {};
-    return None;
 }
 
-impl Route(
-    path: str = "",
-    element: any = None,
-    index: bool = False,
-    caseSensitive: bool = False,
-    children: any = None
-) -> JsxElement {
-    # Config-only component. `<Routes>` introspects path/element from the JSX
-    # tree directly; rendering a Route outside Routes is a no-op.
-    return None;
-}
-
-impl Link(
-    `to: str,
-    replace: bool = False,
-    state: any = None,
-    className: str = "",
-    style: dict[str, str] = {},
-    children: any = None
-) -> JsxElement {
-    target = `to;
-    def handleClick(event: any) {
-        event.preventDefault();
-        navigate(target);
-    }
-    attrs = {"href": target, "onclick": handleClick};
-    if className {
-        attrs["className"] = className;
-    }
-    if style and len(__objectKeys(style)) > 0 {
-        attrs["style"] = style;
-    }
-    return __jacJsx("a", attrs, children);
-}
-
-impl Navigate(`to: str, replace: bool = False) -> JsxElement {
-    navigate(`to);
-    return None;
-}
-
-impl Outlet -> JsxElement {
-    # Bare-serve's router is currently flat. Declared for surface parity with
-    # jac-client (React Router) so JSX `<Outlet/>` typechecks; nested-route
-    # support is a future enhancement.
-    return None;
-}
-
-impl useNavigate -> any {
-    return navigate;
-}
-
-impl useLocation -> dict[str, any] {
-    router = _ensureRouter();
-    pathname = router.path();  # subscribe to path signal
+impl useRouter -> dict {
+    navigate = reactRouterUseNavigate();
+    location = reactRouterUseLocation();
+    params = reactRouterUseParams();
     return {
-        "pathname": pathname,
-        "search": window.location.search,
-        "hash": window.location.hash,
-        "state": None
+        "navigate": navigate,
+        "location": location,
+        "params": params,
+        "pathname": location.pathname,
+        "search": location.search,
+        "hash": location.hash
     };
-}
-
-impl useParams -> dict[str, any] {
-    router = _ensureRouter();
-    return router.params or {};
 }
 
 impl navigate(path: str) -> None {
-    router = _ensureRouter();
     window.history.pushState({}, "", path);
-    router.setPath(path);
+    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
 }
 
-impl useRouter -> dict[str, any] {
-    router = _ensureRouter();
-    pathname = router.path();  # subscribe so consumers re-render on URL change
-    return {
-        "navigate": navigate,
-        "location": {
-            "pathname": pathname,
-            "search": window.location.search,
-            "hash": window.location.hash,
-            "state": None
-        },
-        "params": router.params or {},
-        "pathname": pathname,
-        "search": window.location.search,
-        "hash": window.location.hash
+impl __createJacSchema(zodLib: any) -> any {
+    handler = {
+        "apply": lambda target: any , thisArg: any , argumentsList: any -> any {
+        # When called as JacSchema({...}), call z.object({...})
+        return zodLib.object.apply(zodLib, argumentsList); },
+        "get": lambda target: any , prop: any , receiver: any -> any {
+        # When accessing properties like JacSchema.string(), forward to z
+        return zodLib[prop]; }
     };
+    # Create a dummy function as the proxy target
+    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
+    return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
-impl __jacGetPath -> str {
-    pathname = window.location.pathname;
-    if pathname {
-        return pathname;
-    }
-    return "/";
+impl __getApiBaseUrl -> str {
+    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
+    # Falls back to empty string (same-origin) when not configured.
+    return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
 # ============================================================================
-# Auto-cache infrastructure
+# AUTO-CACHE INFRASTRUCTURE
 # ============================================================================
-impl __getEndpointEffects -> dict[str, any] {
+
+# Read compiler-provided endpoint effects from __jac_init__ JSON
+impl __getEndpointEffects -> dict {
     if not globalThis.__jacEndpointEffects__ {
         initEl = None;
         try {
             initEl = document.getElementById("__jac_init__");
         } except Exception as e {
-            console.warn("[bare-serve] Failed to find __jac_init__ element:", e);
+            console.warn("[jac-client] Failed to find __jac_init__ element:", e);
         }
         if initEl {
             try {
@@ -492,7 +104,7 @@ impl __getEndpointEffects -> dict[str, any] {
                 globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
             } except Exception as e {
                 console.warn(
-                    "[bare-serve] Failed to parse __jac_init__ data, using empty effects:",
+                    "[jac-client] Failed to parse __jac_init__ data, using empty effects:",
                     e
                 );
                 globalThis.__jacEndpointEffects__ = {};
@@ -504,7 +116,8 @@ impl __getEndpointEffects -> dict[str, any] {
     return globalThis.__jacEndpointEffects__;
 }
 
-impl __getCacheState -> dict[str, any] {
+# Get or initialize cache state on globalThis
+impl __getCacheState -> dict {
     if not globalThis.__jacCacheState__ {
         globalThis.__jacCacheState__ = {
             "cache": {},
@@ -516,7 +129,8 @@ impl __getCacheState -> dict[str, any] {
     return globalThis.__jacCacheState__;
 }
 
-impl __isFresh(`entry: dict[str, any]) -> bool {
+# Check if a cache entry is still fresh
+impl __isFresh(`entry: dict) -> bool {
     if not `entry {
         return False;
     }
@@ -524,7 +138,8 @@ impl __isFresh(`entry: dict[str, any]) -> bool {
     return age < `entry["ttl"];
 }
 
-impl __cacheGet(key: str) -> any {
+# Get a cache entry and promote it in LRU order
+impl __cacheGet(key: str) -> dict {
     state = __getCacheState();
     entry = state["cache"][key];
     if not entry {
@@ -539,6 +154,7 @@ impl __cacheGet(key: str) -> any {
     return entry;
 }
 
+# Store an entry in the cache with LRU eviction
 impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state = __getCacheState();
     # Remove existing entry if present
@@ -548,7 +164,7 @@ impl __cacheSet(key: str, data: any, ttl: int) -> None {
             state["order"].splice(idx, 1);
         }
     }
-    # Evict oldest while at capacity
+    # Evict oldest if at capacity
     while len(state["order"]) >= state["config"]["maxEntries"] {
         __evictOldest();
     }
@@ -556,6 +172,7 @@ impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state["order"].push(key);
 }
 
+# Evict the oldest cache entry
 impl __evictOldest -> None {
     state = __getCacheState();
     if len(state["order"]) > 0 {
@@ -566,7 +183,8 @@ impl __evictOldest -> None {
     }
 }
 
-impl __overlaps(list1: list[any], list2: list[any]) -> bool {
+# Check if two lists share any element
+impl __overlaps(list1: list, list2: list) -> bool {
     for item in list1 {
         if list2.includes(item) {
             return True;
@@ -575,6 +193,7 @@ impl __overlaps(list1: list[any], list2: list[any]) -> bool {
     return False;
 }
 
+# Invalidate all cache entries for a given endpoint key prefix
 impl __invalidateEndpoint(endpoint_key: str) -> None {
     state = __getCacheState();
     keys_to_delete = [];
@@ -593,49 +212,84 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 }
 
 # ============================================================================
-# Raw fetch helpers (no caching)
+# RAW FETCH HELPERS (no caching, just HTTP)
 # ============================================================================
-impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict[str, any]) -> any {
+
+# Direct walker fetch (POST /walker/<name>[/<nodeId>])
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     token = __getLocalStorage("jac_token");
-    url = f"/walker/{`walker}";
+    base_url = __getApiBaseUrl();
+    url = f"{base_url}/walker/{`walker}";
     if nodeId != "" {
-        url = f"/walker/{`walker}/{nodeId}";
+        url = f"{base_url}/walker/{`walker}/{nodeId}";
+    }
+    headers = {"Content-Type": "application/json", "Accept": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
     }
     response = await fetch(
-        url,
-        {
-            "method": "POST",
-            "accept": "application/json",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify(fields)
-        }
+        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
     );
     if not response.ok {
-        error_text = await response.json();
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+            window.location.reload();
+            return {};
+        }
+        error_text = await response.text();
         walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
         raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
-    # Handle TransportResponse envelope format
-    return payload["data"] if payload["data"] else payload;
+    return payload["data"] if payload["data"] else {};
+}
+
+# Direct function fetch (POST /function/<name>)
+impl __doFuncFetch(function_name: str, args: dict) -> any {
+    token = __getLocalStorage("jac_token");
+    base_url = __getApiBaseUrl();
+    headers = {"Content-Type": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
+    response = await fetch(
+        f"{base_url}/function/{function_name}",
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
+    );
+    if not response.ok {
+        error_text = await response.text();
+        raise Exception(f"Function {function_name} failed: {error_text}");
+    }
+    payload = await response.json();
+    if not payload["ok"] {
+        error_msg = payload["error"] if payload["error"] else "Unknown error";
+        raise Exception(f"Function {function_name} failed: {error_msg}");
+    }
+    result = None;
+    try {
+        if payload["data"] and payload["data"]["result"] {
+            result = payload["data"]["result"];
+        }
+    } except Exception as e {
+        console.warn(f"Failed to extract result for {function_name}:", e);
+    }
+    return result;
 }
 
 # ============================================================================
-# Cache-aware dispatch shared by __jacSpawn and __jacCallFunction
+# AUTO-CACHE DISPATCH - shared by __jacSpawn and __jacCallFunction
 # ============================================================================
 impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
-    # Known READER — check cache first, then dedup concurrent identical calls.
+    # If endpoint is a known READER, check cache first
     if info and not info["is_writer"] {
         cached = __cacheGet(args_key);
         if cached and __isFresh(cached) {
             return cached["data"];
         }
+        # Dedup concurrent identical requests
         if state["pending"][args_key] {
             return await state["pending"][args_key];
         }
@@ -649,7 +303,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
             Reflect.deleteProperty(state["pending"], args_key);
         }
     }
-    # Known WRITER — fetch, then invalidate readers it touches.
+    # If endpoint is a known WRITER, fetch then auto-invalidate readers
     if info and info["is_writer"] {
         data = await fetch_fn();
         writer_touches = info["touches"];
@@ -664,12 +318,15 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
         }
         return data;
     }
-    # Unknown endpoint (no metadata) — direct fetch, no caching.
+    # Unknown endpoint (no metadata) - direct fetch, no caching
     return await fetch_fn();
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
-    # Auth walkers must never be cached.
+# ============================================================================
+# PUBLIC API - __jacSpawn and __jacCallFunction with auto-caching
+# ============================================================================
+impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+    # Auth walkers always skip cache
     if left == "login"
     or left == "signup"
     or left == "logout"
@@ -685,43 +342,11 @@ impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any 
     );
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
-    # Sync caller — returns the promise from __jacSpawn so callers that don't
-    # need the resolved value can fire-and-forget. Surface parity with
-    # jac-client which exposes both `__jacSpawn` (async) and `jacSpawn` (sync).
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     return __jacSpawn(left, right, fields);
 }
 
-impl __doFuncFetch(function_name: str, args: dict[str, any]) -> any {
-    token = __getLocalStorage("jac_token");
-    response = await fetch(
-        f"/function/{function_name}",
-        {
-            "method": "POST",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify(args)
-        }
-    );
-    if not response.ok {
-        error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}");
-    }
-    payload = JSON.parse(await response.text());
-    # Handle TransportResponse envelope format
-    response_data = payload["data"] if payload["data"] else payload;
-    result = None;
-    try {
-        if response_data["result"] {
-            result = response_data["result"];
-        }
-    } except Exception { }
-    return result;
-}
-
-impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
+impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     endpoint_key = f"func:{function_name}";
     args_key = f"{endpoint_key}:{JSON.stringify(args)}";
     return await __cachedEndpointCall(
@@ -731,38 +356,38 @@ impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
     );
 }
 
-def __normalizeIdentity(x: any) -> dict[str, any] {
-    if __isObject(x) {
+impl __normalizeIdentity(x: any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-def __normalizeCredential(x: any) -> dict[str, any] {
-    if __isObject(x) {
+impl __normalizeCredential(x: any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "password", "password": x};
 }
 
 impl jacSignup(
-    identities_or_username: (str | list[str]),
-    credential_or_password: (str | dict[str, any]),
-    profile: (dict[str, any] | None) = None
-) -> dict[str, any] {
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict {
+    base_url = __getApiBaseUrl();
     credential = __normalizeCredential(credential_or_password);
     identities = (
         identities_or_username
             if Array.isArray(identities_or_username)
             else [__normalizeIdentity(identities_or_username)]
     );
-    primary_username = identities[0]["value"] if len(identities) > 0 else "";
     body = {"identities": identities, "credential": credential};
-    if profile {
+    if profile != None {
         body["profile"] = profile;
     }
     response = await fetch(
-        "/user/register",
+        f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -770,42 +395,30 @@ impl jacSignup(
         }
     );
     if response.ok {
-        payload = JSON.parse(await response.text());
-        # Handle TransportResponse envelope format
-        response_data = payload["data"] if payload["data"] else payload;
-        token = None;
+        body_text = await response.text();
+        user_id = None;
         try {
-            if response_data["token"] {
-                token = response_data["token"];
+            data = JSON.parse(body_text);
+            if data["data"] and data["data"]["user_id"] {
+                user_id = data["data"]["user_id"];
             }
-        } except Exception { }
-        if token {
-            # Signup auto-logs-in (sets the token) — an auth change, so drop
-            # all cached reader responses just like jacLogin/jacLogout.
-            state = __getCacheState();
-            for key in Object.keys(state["cache"]) {
-                Reflect.deleteProperty(state["cache"], key);
-            }
-            state["order"].splice(0, state["order"].length);
-            __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": primary_username};
+        } except Exception as e {
+            return {
+                "success": False,
+                "error": f"Signup response was not valid JSON: {e}"
+            };
         }
-        return {"success": False, "error": "No token received"};
+        return {"success": True, "user_id": user_id};
     } else {
         error_text = await response.text();
         try {
-            error_payload = JSON.parse(error_text);
-            # Handle TransportResponse envelope format
-            error_data = error_payload["data"]
-                if error_payload["data"]
-                else error_payload;
-            error_msg = None;
-            try {
-                if error_data["error"] {
-                    error_msg = error_data["error"];
-                }
-            } except Exception { }
-            return {"success": False, "error": error_msg or "Signup failed"};
+            error_data = JSON.parse(error_text);
+            return {
+                "success": False,
+                "error": error_data["error"]
+                    if error_data["error"] != None
+                    else "Signup failed"
+            };
         } except Exception {
             return {"success": False, "error": error_text};
         }
@@ -813,13 +426,13 @@ impl jacSignup(
 }
 
 impl jacLogin(
-    identity_or_username: (str | dict[str, any]),
-    credential_or_password: (str | dict[str, any])
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
 ) -> bool {
+    base_url = __getApiBaseUrl();
     identity = __normalizeIdentity(identity_or_username);
     credential = __normalizeCredential(credential_or_password);
     response = await fetch(
-        "/user/login",
+        f"{base_url}/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -827,17 +440,17 @@ impl jacLogin(
         }
     );
     if response.ok {
-        payload = JSON.parse(await response.text());
-        # Handle TransportResponse envelope format
-        response_data = payload["data"] if payload["data"] else payload;
+        data = JSON.parse(await response.text());
         token = None;
         try {
-            if response_data["token"] {
-                token = response_data["token"];
+            if data["data"] and data["data"]["token"] {
+                token = data["data"]["token"];
             }
-        } except Exception { }
+        } except Exception as e {
+            console.warn("Failed to extract login token:", e);
+        }
         if token {
-            # Auth change — drop all cached reader responses.
+            # Clear cache on auth change
             state = __getCacheState();
             for key in Object.keys(state["cache"]) {
                 Reflect.deleteProperty(state["cache"], key);
@@ -851,7 +464,7 @@ impl jacLogin(
 }
 
 impl jacLogout -> None {
-    # Auth change — drop all cached reader responses.
+    # Clear cache on auth change
     state = __getCacheState();
     for key in Object.keys(state["cache"]) {
         Reflect.deleteProperty(state["cache"], key);
@@ -884,402 +497,550 @@ impl __removeLocalStorage(key: str) -> None {
     }
 }
 
-impl __isObject(value: any) -> bool {
-    if value == None {
-        return False;
+"""Auth guard component for file-based routing. Renders child routes if
+authenticated, otherwise redirects to the login path."""
+impl AuthGuard(redirect: str = "/login") -> JsxElement {
+    if jacIsLoggedIn() {
+        return <ReactRouterOutlet/>;
     }
-    return Object.prototype.toString.call(value) == "[object Object]";
+    return <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-impl __isFunction(value: any) -> bool {
-    return Object.prototype.toString.call(value) == "[object Function]";
+# Thin wrapper over React.Suspense for the `awaiting` template clause.
+# When a child throws a Promise (the React Suspense protocol), the
+# `fallback` element renders until the Promise settles. `flow`/`wait`
+# don't throw Promises today, so the fallback only appears when the
+# try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
+# a fetcher that suspends). The wrapper is still useful as the named
+# integration point so the language-level lowering stays stable.
+impl JacAwaiting(props: dict) -> JsxElement {
+    return React.createElement(
+        React.Suspense, {"fallback": props.fallback}, props.children
+    );
 }
 
-impl __objectKeys(`obj: any) -> list[str] {
-    if `obj == None {
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
+    # which is the only place React exposes `info.componentStack`.
+    return
+        <div
+            role="alert"
+            style={{
+                minHeight: "100vh",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                backgroundColor: "#f9fafb",
+                fontFamily: "system-ui, sans-serif",
+
+            }}
+        >
+            <div
+                role="alert"
+                style={{
+                    minHeight: "100vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    backgroundColor: "#f9fafb",
+                    fontFamily: "system-ui, sans-serif",
+
+                }}
+            >
+                <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
+                    🚨 Something went wrong
+                </h2>
+                <p style={{color: "#374151", marginBottom: "16px"}}>
+                    An unexpected error occurred. Please try again.
+                </p>
+                <pre
+                    style={{
+                        color: "#991b1b",
+                        background: "#fee2e2",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        fontSize: "14px",
+                        overflowX: "auto",
+                        marginBottom: "16px",
+
+                    }}
+                >
+                    {error.error.message}
+                </pre>
+                <button
+                    onClick={lambda { error.resetErrorBoundary(); }}
+                    style={{
+                        backgroundColor: "#2563eb",
+                        color: "#fff",
+                        padding: "10px 16px",
+                        borderRadius: "8px",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: "14px",
+
+                    }}
+                >
+                    🔄 Try again
+                </button>
+            </div>
+        </div>;
+}
+
+impl errorOverlay(filePath: str, errors: str) -> JsxElement {
+    return (
+        <div
+            style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: "rgba(0, 0, 0, 0.85)",
+                color: "#fff",
+                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+                fontSize: 14,
+                zIndex: 999999,
+                overflow: "auto",
+                padding: 20,
+                boxSizing: "border-box",
+
+            }}
+        >
+            <div style={{maxWidth: 1200, margin: "0 auto"}}>
+                <div
+                    style={{
+                        background: "#d32f2f",
+                        color: "white",
+                        padding: "16px 24px",
+                        borderRadius: "8px 8px 0 0",
+                        fontSize: 18,
+                        fontWeight: "bold",
+
+                    }}
+                >
+                    ⚠️ Compilation Error
+                </div>
+                <div
+                    style={{
+                        background: "#1e1e1e",
+                        padding: 24,
+                        borderRadius: "0 0 8px 8px",
+
+                    }}
+                >
+                    <div style={{marginBottom: 16}}>
+                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
+                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
+                            {filePath}
+                        </div>
+                    </div>
+                    <div>
+                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
+                        <pre
+                            style={{
+                                background: "#2d2d2d",
+                                padding: 16,
+                                borderRadius: 4,
+                                overflowX: "auto",
+                                margin: 0,
+                                borderLeft: "4px solid #d32f2f",
+                                lineHeight: 1.6,
+                                color: "#ff6b6b",
+
+                            }}
+                        >
+                            {errors}
+                        </pre>
+                    </div>
+                    <div
+                        style={{
+                            marginTop: 24,
+                            paddingTop: 16,
+                            borderTop: "1px solid #444",
+                            color: "#888",
+                            fontSize: 13,
+
+                        }}
+                    >
+                        💡 Fix the error and save the file to continue development.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+impl useJacForm(form_mode: str, schema: any) -> any {
+    return useForm(mode=form_mode, resolver=zodResolver(schema));
+}
+
+"""Auto-generated JacForm component that can render forms based on Zod schemas with built-in validation and styling.
+        Props:
+        - schema: Zod schema defining the form fields and validation
+        - onSubmit: function to call with form data on submit
+        - layout: "vertical" (default), "horizontal", "inline", or "grid"
+        - field_config: dict mapping field names to {type, label, placeholder, options, rows, showPasswordToggle, className, inputClassName, labelClassName}
+            - type: REQUIRED - field type ("text", "email", "password", "number", "date", "datetime-local", "checkbox", "select", "radio", "textarea", etc.)
+            - label: field label (defaults to field name)
+            - placeholder: placeholder text
+            - options: array of options for radio buttons (e.g., ["option1", "option2"])
+            - rows: number of rows for textarea (default 4)
+            - showPasswordToggle: boolean - show "Show password" checkbox for password fields (default false)
+            - className, inputClassName, labelClassName: CSS classes for styling
+        - submitLabel: custom label for the submit button (default "Submit")
+        - submitClassName: custom className for submit button
+        - gridColumns: number of columns for grid layout (default 2)
+        - validateMode: validation mode for react-hook-form (default "onTouched")
+        - className: additional CSS class for the form element
+"""
+impl JacForm(props: dict) -> JsxElement {
+    # Destructure props (JSX passes all props as a single object)
+    schema = props.schema;
+    onSubmit = props.onSubmit;
+    layout = props.layout || "vertical";
+    field_config = props.field_config || {};
+    submitLabel = props.submitLabel || "Submit";
+    submitClassName = props.submitClassName || "";
+    gridColumns = props.gridColumns || 2;
+    validateMode = props.validateMode || "onTouched";
+    className = props.className || "";
+    # Extract field names from schema
+    # Handle ZodEffects (schemas with .refine()) by unwrapping
+    actualSchema = schema;
+    try {
+        if schema._def and schema._def.schema {
+            # This is a ZodEffects, unwrap to get the base schema
+            actualSchema = schema._def.schema;
+        }
+    } except Exception as e {
+        console.warn("Failed to unwrap schema:", e);
+    }
+    schemaShape = actualSchema.shape || {};
+    fieldNames = Object.keys(schemaShape);
+    # Initialize form with the original schema (not the unwrapped one)
+    form = useJacForm(validateMode, schema);
+    errors = form.formState.errors;
+    isSubmitting = form.formState.isSubmitting;
+    isDirty = form.formState.isDirty;
+    # # State for password visibility (separate state for each field)
+    [passwordVisible, setPasswordVisible] = useState({});
+    # Helper function to recursively unwrap Zod wrapper types
+    def unwrapZodSchema(schema: any, depth: int = 0) -> any {
+        maxDepth = 10;  # Prevent infinite recursion
+        if not schema._def or depth >= maxDepth {
+            return schema;
+        }
+
+        typeValue = schema._def.type;
+
+        # Unwrap ZodOptional (.optional())
+        if typeValue == "optional" and schema._def.innerType {
+            return unwrapZodSchema(schema._def.innerType, depth + 1);
+        }
+
+        # Unwrap ZodDefault (.default())
+        if typeValue == "default" and schema._def.innerType {
+            return unwrapZodSchema(schema._def.innerType, depth + 1);
+        }
+
+        # Unwrap ZodEffects (.refine(), .transform(), etc.)
+        if schema._def.checks and schema._def.schema {
+            return unwrapZodSchema(schema._def.schema, depth + 1);
+        }
+
+        # Base case: not a wrapper type
+        return schema;
+    }
+    # Helper: Render error message
+    def renderError(error: any) -> JsxElement | None {
+        if not error {
+            return None;
+        }
+        return (
+            <p style={{color: "#ef4444", fontSize: "0.85rem", marginTop: "0.25rem"}}>
+                ⚠️{error.message}
+            </p>
+        );
+    }
+    # Helper: Extract enum options from schema
+    def getEnumOptions(fieldSchema: any) -> list {
+        unwrapped = unwrapZodSchema(fieldSchema);
+        if unwrapped._def and unwrapped._def.entries {
+            return Object.keys(unwrapped._def.entries);
+        } elif unwrapped.def and unwrapped.def.entries {
+            return Object.keys(unwrapped.def.entries);
+        }
         return [];
     }
-    return Object.keys(`obj);
-}
+    # Helper: Render the actual input element based on type
+    def renderInput(
+        fieldType: str,
+        field: any,
+        error: any,
+        config: dict,
+        fieldSchema: any,
+        fieldName: str
+    ) -> JsxElement {
+        inputClassName = config.inputClassName or "";
+        labelClassName = config.labelClassName or "";
+        placeholder = config.placeholder or "";
+        label = config.label or fieldName;
 
-impl __jacHasOwn(`obj: any, key: any) -> bool {
-    try {
-        return Object.prototype.hasOwnProperty.call(`obj, key);
-    } except Exception {
-        return False;
-    }
-}
-
-impl __jacEnsureObjectGetPolyfill -> None {
-    proto = Object.prototype;
-    if proto.get {
-        return;
-    }
-    # Define the polyfill function inline
-    def get_polyfill(key: any, defaultValue: any = None) -> any {
-        if __jacHasOwn(this, key) {
-            return this[key];
+        # Checkbox
+        if fieldType == "checkbox" {
+            watchValue = form.watch(fieldName);
+            return (
+                <label
+                    style={{
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem"
+                    }}
+                >
+                    <input
+                        type="checkbox"
+                        name={field.name}
+                        ref={field.ref}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        checked={watchValue || False}
+                        className={inputClassName}
+                        style={{cursor: "pointer"}}
+                    />
+                    <span className={labelClassName}>{label}</span>
+                </label>
+            );
         }
-        if defaultValue != None {
-            return defaultValue;
+
+        # Select dropdown
+        if fieldType == "select" {
+            options = getEnumOptions(fieldSchema);
+            watchValue = form.watch(fieldName);
+            return (
+                <select
+                    name={field.name}
+                    ref={field.ref}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    value={watchValue || ""}
+                    className={inputClassName}
+                    style={{width: "100%", boxSizing: "border-box"}}
+                >
+                    <option value="">{placeholder or f"Select {label}"}</option>
+                    {[<option value={opt} key={opt}>{opt}</option> for opt in options]}
+                </select>
+            );
         }
-        return None;
-    }
-    Object.defineProperty(
-        proto, "get", {"value": get_polyfill, "configurable": True, "writable": True}
-    );
-}
 
-impl __jacGetDocument(scope: any) -> any {
-    try {
-        return scope.document;
-    } except Exception {
-        return None;
-    }
-}
-
-impl __jacParseJsonObject(text: str) -> any {
-    try {
-        parsed = JSON.parse(text);
-        if __isObject(parsed) {
-            return parsed;
+        # Radio buttons
+        if fieldType == "radio" {
+            options = getEnumOptions(fieldSchema);
+            watchValue = form.watch(fieldName);
+            return (
+                <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
+                    {[
+                        <label
+                            key={opt}
+                            style={{
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem"
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name={field.name}
+                                value={opt}
+                                ref={field.ref}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                checked={watchValue == opt}
+                                className={inputClassName}
+                                style={{cursor: "pointer"}}
+                            />
+                            <span>{opt}</span>
+                        </label> for opt in options
+                    ]}
+                </div>
+            );
         }
-        console.error("[Jac] Hydration payload is not an object");
-        return None;
-    } except Exception as err {
-        console.error("[Jac] Failed to parse hydration payload", err);
-        return None;
-    }
-}
 
-impl __jacBuildOrderedArgs(order: list[str], argsDict: dict[str, any]) -> list[any] {
-    result = [];
-    if not order {
-        return result;
-    }
-    values = argsDict if __isObject(argsDict) else {};
-    for name in order {
-        result.append(values.get(name));
-    }
-    return result;
-}
+        # Textarea
+        if fieldType == "textarea" {
+            rows = config.rows or 4;
+            return (
+                <textarea
+                    placeholder={placeholder}
+                    rows={rows}
+                    {**field}
+                    className={inputClassName}
+                    style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        border: ("2px solid #ef4444" if error else "2px solid #e5e7eb"),
+                        padding: "0.5rem",
+                        fontFamily: "inherit",
+                        fontSize: "inherit",
+                        resize: "vertical"
+                    }}
+                />
+            );
+        }
 
-impl __jacResolveRenderer(scope: any) -> any {
-    if scope.renderJsxTree {
-        return scope.renderJsxTree;
-    }
-    if __isFunction(renderJsxTree) {
-        return renderJsxTree;
-    }
-    return None;
-}
+        # Regular input (text, email, password, number, date, datetime-local, tel, url, etc.)
+        # Special handling for password fields with visibility toggle
+        if fieldType == "password" and config.showPasswordToggle {
+            isVisible = passwordVisible[fieldName] || False;
+            return (
+                <div>
+                    <div style={{position: "relative"}}>
+                        <input
+                            type={"text" if isVisible else "password"}
+                            placeholder={placeholder}
+                            {**field}
+                            className={inputClassName}
+                            style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                border: (
+                                    "2px solid #ef4444"
+                                        if error
+                                        else "2px solid #e5e7eb"
+                                ),
+                                paddingRight: "2.5rem"
+                            }}
+                        />
+                    </div>
+                    <label
+                        style={{
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            marginTop: "0.5rem",
+                            fontSize: "0.875rem",
+                            color: "#6b7280"
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={isVisible}
+                            onChange={lambda e: any { setPasswordVisible(
+                                lambda prev: any -> dict {
+                                    newState = Object.assign({}, prev);
+                                    newState[fieldName] = not isVisible;
+                                    return newState;
+                                }
+                            ); }}
+                            style={{cursor: "pointer"}}
+                        />
+                        <span>Show password</span>
+                    </label>
+                </div>
+            );
+        }
 
-impl __jacResolveTarget(
-    moduleRecord: dict[str, any], registry: dict[str, any], name: str
-) -> any {
-    moduleFunctions = (
-        moduleRecord.moduleFunctions
-            if moduleRecord and moduleRecord.moduleFunctions
-            else {}
-    );
-    if __jacHasOwn(moduleFunctions, name) {
-        return moduleFunctions[name];
-    }
-    registryFunctions = registry.functions if registry and registry.functions else {};
-    if __jacHasOwn(registryFunctions, name) {
-        return registryFunctions[name];
-    }
-    return None;
-}
-
-impl __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list[any], targetName: str
-) -> dict[str, any] {
-    try {
-        result = target.apply(scope, orderedArgs);
-        return {"ok": True, "value": result};
-    } except Exception as err {
-        console.error("[Jac] Error executing client function " + targetName, err);
-        return {"ok": False, "value": None};
-    }
-}
-
-impl __jacGlobalScope -> any {
-    try {
-        return globalThis;
-    } except Exception { }
-    try {
-        return window;
-    } except Exception { }
-    try {
-        return self;
-    } except Exception { }
-    return {};
-}
-
-impl __jacEnsureRegistry -> dict[str, any] {
-    scope = __jacGlobalScope();
-    registry = scope.__jacClient;
-    if not registry {
-        registry = {
-            "functions": {},
-            "globals": {},
-            "modules": {},
-            "state": {"globals": {}},
-            "__hydration": {"registered": False},
-            "lastModule": None
-        };
-        scope.__jacClient = registry;
-        return registry;
-    }
-    if not registry.functions {
-        registry.functions = {};
-    }
-    if not registry.globals {
-        registry.globals = {};
-    }
-    if not registry.modules {
-        registry.modules = {};
-    }
-    if not registry.state {
-        registry.state = {"globals": {}};
-    } elif not registry.state.globals {
-        registry.state.globals = {};
-    }
-    if not registry.__hydration {
-        registry.__hydration = {"registered": False};
-    }
-    return registry;
-}
-
-impl __jacApplyRender(renderer: any, container: any, nd: any) -> None {
-    if not renderer or not container {
-        return;
-    }
-    try {
-        renderer(nd, container);
-    } except Exception as err {
-        console.error("[Jac] Failed to render JSX tree", err);
-    }
-}
-
-impl __jacHydrateFromDom(defaultModuleName: str) -> None {
-    __jacEnsureObjectGetPolyfill();
-    scope = __jacGlobalScope();
-    documentRef = __jacGetDocument(scope);
-    if not documentRef {
-        return;
-    }
-    initEl = documentRef.getElementById("__jac_init__");
-    rootEl = documentRef.getElementById("__jac_root");
-    if not initEl or not rootEl {
-        return;
-    }
-    dataset = initEl.dataset or None;
-    if dataset and dataset.jacHydrated == "true" {
-        return;
-    }
-    if dataset {
-        dataset.jacHydrated = "true";
-    }
-    payloadText = initEl.textContent or "{}";
-    payload = __jacParseJsonObject(payloadText);
-    if not payload {
-        return;
-    }
-    targetName = payload.get("function");
-    if not targetName {
-        return;
-    }
-    fallbackModule = defaultModuleName or "";
-    moduleCandidate = payload.get("module");
-    moduleName = moduleCandidate or fallbackModule;
-    registry = __jacEnsureRegistry();
-    modulesStore = registry.modules or {};
-    moduleRecord = modulesStore[moduleName]
-        if __jacHasOwn(modulesStore, moduleName)
-        else None;
-    if not moduleRecord {
-        console.error("[Jac] Client module not registered: " + moduleName);
-        return;
-    }
-    argOrderRaw = payload.get("argOrder", []);
-    argOrder = argOrderRaw if Array.isArray(argOrderRaw) else [];
-    argsDictRaw = payload.get("args", {});
-    argsDict = argsDictRaw if __isObject(argsDictRaw) else {};
-    orderedArgs = __jacBuildOrderedArgs(argOrder, argsDict);
-    payloadGlobalsRaw = payload.get("globals", {});
-    payloadGlobals = payloadGlobalsRaw if __isObject(payloadGlobalsRaw) else {};
-    registry.state.globals[moduleName] = payloadGlobals;
-    for gName in __objectKeys(payloadGlobals) {
-        gValue = payloadGlobals[gName];
-        scope[gName] = gValue;
-        registry.globals[gName] = gValue;
-    }
-    target = __jacResolveTarget(moduleRecord, registry, targetName);
-    if not target {
-        console.error("[Jac] Client function not found: " + targetName);
-        return;
-    }
-    # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda -> any {
-        __jacReactiveContext.currentComponent = "__root__";
-        result = target.apply(scope, orderedArgs);
-        __jacReactiveContext.currentComponent = None;
-        return result;
-    };
-    renderer = __jacResolveRenderer(scope);
-    if not renderer {
-        console.warn("[Jac] renderJsxTree is not available in client bundle");
-    }
-    # Initial render - reset hook index and call the root component
-    __jacReactiveContext.hookIndex = 0;
-    value = __jacReactiveContext.rootComponent();
-    if value and __isObject(value) and __isFunction(value.then) {
-        value.then(lambda nd: any { __jacApplyRender(renderer, rootEl, nd); }).catch(
-            lambda err: any { console.error(
-                "[Jac] Error resolving client function promise", err
-            ); }
-        );
-    } else {
-        __jacApplyRender(renderer, rootEl, value);
-    }
-}
-
-impl __jacExecuteHydration -> None {
-    registry = __jacEnsureRegistry();
-    defaultModule = registry.lastModule or "";
-    __jacHydrateFromDom(defaultModule);
-}
-
-impl __jacEnsureHydration(moduleName: str) -> None {
-    __jacEnsureObjectGetPolyfill();
-    registry = __jacEnsureRegistry();
-    registry.lastModule = moduleName;
-    existingHydration = registry.__hydration or None;
-    hydration = existingHydration or {"registered": False};
-    registry.__hydration = hydration;
-    scope = __jacGlobalScope();
-    documentRef = __jacGetDocument(scope);
-    if not documentRef {
-        return;
-    }
-    alreadyRegistered = hydration.registered or False;
-    if not alreadyRegistered {
-        hydration.registered = True;
-        documentRef.addEventListener(
-            "DOMContentLoaded",
-            lambda _event: any { __jacExecuteHydration(); },
-            {"once": True}
+        # Regular input without toggle
+        return (
+            <input
+                type={fieldType}
+                placeholder={placeholder}
+                {**field}
+                className={inputClassName}
+                style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: ("2px solid #ef4444" if error else "2px solid #e5e7eb")
+                }}
+            />
         );
     }
-    if documentRef.readyState != "loading" {
-        __jacExecuteHydration();
-    }
-}
+    # Main field renderer
+    def renderField(fieldName: str) -> JsxElement {
+        fieldSchema = schemaShape[fieldName];
+        config = field_config[fieldName] if field_config[fieldName] else {};
 
-impl __jacRegisterClientModule(
-    moduleName: str, clientFunctions: list[str] = [], clientGlobals: dict[str, any] = {}
-) -> None {
-    __jacEnsureObjectGetPolyfill();
-    __jacInstallErrorHandlers();
-    scope = __jacGlobalScope();
-    registry = __jacEnsureRegistry();
-    moduleFunctions = {};
-    registeredFunctions = [];
-    if clientFunctions {
-        for funcName in clientFunctions {
-            funcRef = scope[funcName];
-            if not funcRef {
-                console.error(
-                    "[Jac] Client function not found during registration: " + funcName
-                );
-                continue;
-            }
-            moduleFunctions[funcName] = funcRef;
-            registry.functions[funcName] = funcRef;
-            scope[funcName] = funcRef;
-            registeredFunctions.append(funcName);
-        }
+        # Note: "type" gets compiled to "key" in JavaScript to avoid conflicts with React's type prop
+        fieldType = config.key or "text";
+        label = config.label or fieldName;
+        fieldClassName = config.className or "";
+        labelClassName = config.labelClassName or "";
+
+        # Register field and get error state
+        # valueAsNumber: true is required for number fields because <input type="number">
+        registerOptions = {"valueAsNumber": True} if fieldType == "number" else {};
+        field = form.register(fieldName, registerOptions);
+        error = errors[fieldName];
+
+        # Render: wrapper > input > error
+        return (
+            <div
+                className={fieldClassName}
+                style={{marginBottom: "1rem"}}
+                key={fieldName}
+            >
+                <label
+                    className={labelClassName}
+                    style={{display: "block", marginBottom: "0.5rem"}}
+                >
+                    {label}
+                </label>
+                {renderInput(fieldType, field, error, config, fieldSchema, fieldName)}
+                {renderError(error)}
+            </div>
+        );
     }
-    moduleGlobals = {};
-    globalNames = [];
-    globalsMap = clientGlobals or {};
-    for gName in __objectKeys(globalsMap) {
-        globalNames.append(gName);
-        defaultValue = globalsMap[gName];
-        existing = scope[gName];
-        if existing == None {
-            scope[gName] = defaultValue;
-            moduleGlobals[gName] = defaultValue;
+    # Generate layout styles based on layout prop
+    def getLayoutStyle -> dict {
+        if layout == "grid" {
+            return {
+                display: "grid",
+                gridTemplateColumns: f"repeat({gridColumns}, 1fr)",
+                gap: "1rem"
+            };
+        } elif layout == "horizontal" {
+            return {
+                display: "flex",
+                gap: "1rem",
+                flexWrap: "wrap",
+                alignItems: "flex-start"
+            };
+        } elif layout == "inline" {
+            return {display: "flex", gap: "0.5rem", alignItems: "flex-end"};
         } else {
-            moduleGlobals[gName] = existing;
-        }
-        registry.globals[gName] = scope[gName];
-    }
-    modulesStore = registry.modules or {};
-    existingRecord = modulesStore[moduleName]
-        if __jacHasOwn(modulesStore, moduleName)
-        else None;
-    moduleRecord = existingRecord or {};
-    moduleRecord.moduleFunctions = moduleFunctions;
-    moduleRecord.moduleGlobals = moduleGlobals;
-    moduleRecord.functions = registeredFunctions;
-    moduleRecord.globals = globalNames;
-    moduleRecord.defaults = globalsMap;
-    registry.modules[moduleName] = moduleRecord;
-    stateGlobals = registry.state.globals;
-    if not __jacHasOwn(stateGlobals, moduleName) {
-        stateGlobals[moduleName] = {};
-    }
-    __jacEnsureHydration(moduleName);
-}
-
-# ============================================================================
-# React-style API aliases
-# ============================================================================
-"""useState - React-compatible state hook.
-Returns [value, setter] where value is the current state (not a getter function).
-When setter is called, schedules a re-render of the component.
-Uses hook index tracking to maintain state across re-renders.
-"""
-impl useState(initialValue: any) -> list[any] {
-    # Get current hook index
-    hookIndex = __jacReactiveContext.hookIndex;
-    hooks = __jacReactiveContext.hooks;
-    # Check if this hook already exists (re-render) or needs to be created (first render)
-    if hookIndex < len(hooks) {
-        # Re-render: return existing state
-        hookData = hooks[hookIndex];
-        __jacReactiveContext.hookIndex = hookIndex + 1;
-        return [hookData.value, hookData.setter];
-    }
-    # First render: create new state
-    signalData = {"value": initialValue};
-    # Setter that updates value and triggers re-render
-    def writeVal(newValue: any) {
-        if newValue != signalData.value {
-            signalData.value = newValue;
-            # Schedule re-render of root component
-            __jacScheduleRerender("__root__");
+            # vertical (default)
+            return {};
         }
     }
-    # Store in hooks array for subsequent renders
-    signalData["setter"] = writeVal;
-    hooks.append(signalData);
-    __jacReactiveContext.hookIndex = hookIndex + 1;
-    # Return current value and setter
-    return [signalData.value, writeVal];
-}
-
-"""useEffect - React-compatible effect hook.
-When deps is empty [], runs once on mount (like onMount).
-Otherwise tracks dependencies and re-runs when they change.
-"""
-impl useEffect(effectFn: any, deps: list[any] = []) -> None {
-    # For now, always run on mount since we don't have React's dep tracking
-    # This matches useEffect(() => { ... }, []) behavior
-    onMount(effectFn);
+    # Render all fields
+    fields = [];
+    for fieldName in fieldNames {
+        fields.append(renderField(fieldName));
+    }
+    layoutStyle = getLayoutStyle();
+    formClassName = className or "";
+    buttonClassName = submitClassName or "";
+    return (
+        <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
+            <div style={layoutStyle}>{fields}</div>
+            <button
+                type="submit"
+                disabled={isSubmitting or not isDirty}
+                className={buttonClassName}
+                style={{
+                    width: "100%",
+                    cursor: (
+                        "not-allowed" if (isSubmitting or not isDirty) else "pointer"
+                    )
+                }}
+            >
+                {isSubmitting and "Submitting..."}{not isSubmitting and submitLabel}
+            </button>
+        </form>
+    );
 }
 
 # ============================================================================
@@ -1296,8 +1057,9 @@ impl __jacReportError(
     componentStack: str = ""
 ) -> None {
     try {
+        baseUrl = __getApiBaseUrl();
         fetch(
-            "/cl/__error__",
+            f"{baseUrl}/cl/__error__",
             {
                 "method": "POST",
                 "headers": {"Content-Type": "application/json"},
@@ -1314,14 +1076,15 @@ impl __jacReportError(
             }
         );
     } except Exception {
-    # Silently ignore - never let error reporting cause more errors
+    # Intentionally silent - error reporting must never throw, as that
+    # could cause infinite loops or mask the original error.
     }
 }
 
-"""onError prop for ErrorBoundary. The FallbackComponent React passes to
-ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
-therefore `info.componentStack`, the only thing that names user components
-when the JS stack lives inside react-dom) is exclusively delivered to onError.
+"""onError prop for JacClientErrorBoundary. The FallbackComponent React passes
+to ErrorBoundary only receives `{error, resetErrorBoundary}` - `info` (and
+therefore `info.componentStack`, the only thing that names user components when
+the JS stack lives inside react-dom) is exclusively delivered to onError.
 Wiring this here is the one place we can capture it."""
 impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
@@ -1335,20 +1098,15 @@ impl __jacReactErrorHandler(error: any, info: any) -> None {
 }
 
 """Install global error handlers to catch unhandled JS errors and rejections.
-Called once during client module initialization.
+Called once during app initialization.
 """
 impl __jacInstallErrorHandlers -> None {
-    scope = __jacGlobalScope();
-    if not scope or not scope.addEventListener {
+    if window.__jacErrorHandlersInstalled {
         return;
     }
-    # Guard against double-install
-    if scope.__jacErrorHandlersInstalled {
-        return;
-    }
-    scope.__jacErrorHandlersInstalled = True;
+    window.__jacErrorHandlersInstalled = True;
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
-    scope.addEventListener(
+    window.addEventListener(
         "error",
         lambda event: any { __jacReportError(
             event.message or "Unknown error",
@@ -1358,7 +1116,7 @@ impl __jacInstallErrorHandlers -> None {
         ); }
     );
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
-    scope.addEventListener(
+    window.addEventListener(
         "unhandledrejection",
         lambda event: any {
             reason = event.reason;

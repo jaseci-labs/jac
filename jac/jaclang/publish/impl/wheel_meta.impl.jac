@@ -60,7 +60,7 @@ impl wheel_filename(
 ) -> str {
     if not config.project.name {
         raise ValueError(
-            "Cannot build wheel filename: [project] name is missing in jac.toml"
+            "Cannot build wheel filename: [project] name is missing in jac.toml."
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
@@ -69,8 +69,17 @@ impl wheel_filename(
 impl dist_info_dirname(config: JacConfig) -> str {
     if not config.project.name {
         raise ValueError(
-            "Cannot build dist-info name: [project] name is missing in jac.toml"
+            "Cannot build dist-info name: [project] name is missing in jac.toml."
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}.dist-info";
+}
+
+impl sdist_filename(config: JacConfig) -> str {
+    if not config.project.name {
+        raise ValueError(
+            "Cannot build sdist filename: [project] name is missing in jac.toml."
+        );
+    }
+    return f"{_pkg_norm_name(config)}-{config.project.version}.tar.gz";
 }
