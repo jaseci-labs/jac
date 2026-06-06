@@ -431,6 +431,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         op="dict_init",
         loc=_dinit_loc
     );
+    # For dict[*, any] the value is boxed into a JacVal struct stored by value,
+    # so helpers["set"] does NOT retain the inner pointer the way the typed-set
+    # path does. Retain it explicitly to mirror that contract — otherwise the
+    # owned-release below frees a pointer the dict still references (use-after-
+    # free with two+ owned string values; issue #6404).
+    if use_jacval and isinstance(first_val.type, ir.PointerType) {
+        self._emit_rc_retain(first_val, op="dict_init", loc=_dinit_loc);
+    }
     # release owned refs (fresh allocs/fn-call results) after set retained them
     if isinstance(first_key.type, ir.PointerType) and self._is_owned(first_key) {
         self._emit_rc_release_simple(first_key, op="dict_init", loc=_dinit_loc);
@@ -455,6 +463,11 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             self._rc_call_with_ctx(
                 helpers["set"], [dict_val, k, v], op="dict_init", loc=_dinit_loc
             );
+            # Retain the inner pointer for boxed (dict[*, any]) values — see the
+            # first-pair note above; balances the owned-release below (#6404).
+            if use_jacval and isinstance(_orig_v.type, ir.PointerType) {
+                self._emit_rc_retain(_orig_v, op="dict_init", loc=_dinit_loc);
+            }
             # release owned refs after set retained them
             if isinstance(_orig_k.type, ir.PointerType) and self._is_owned(_orig_k) {
                 self._emit_rc_release_simple(_orig_k, op="dict_init", loc=_dinit_loc);

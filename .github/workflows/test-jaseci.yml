@@ -100,9 +100,11 @@ jobs:
       run: |
         # jac-desktop's pytauri shell loads a native extension that links
         # libwebkit2gtk-4.1.so.0; install the WebKitGTK runtime so the
-        # "desktop dev mode" test can launch the pytauri process.
+        # "desktop dev mode" test can launch the pytauri process. xvfb gives
+        # the GTK window a virtual display so it initializes on the headless
+        # runner instead of panicking in gtk::rt::init.
         sudo apt-get update
-        sudo apt-get install -y libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libsoup-3.0-0
+        sudo apt-get install -y xvfb libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libsoup-3.0-0
 
     - name: Install Playwright browsers
       run: playwright install chromium --with-deps
@@ -112,7 +114,9 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      run: pytest -x jac-client jac-desktop -n auto
+      # xvfb-run provides a virtual X display so the desktop dev-mode test can
+      # launch the pytauri GTK window; -a auto-picks a free server number.
+      run: xvfb-run -a pytest -x jac-client jac-desktop -n auto
 
     - name: Re-run auth roundtrip e2e against jac-scale backend
       run: |

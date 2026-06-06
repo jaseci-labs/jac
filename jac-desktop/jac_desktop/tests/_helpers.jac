@@ -79,9 +79,20 @@ def get_env_with_bun -> dict[str, str] {
 glob get_env_with_npm = get_env_with_bun;
 
 """Block until a TCP port is accepting connections or timeout."""
-def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None {
+def wait_for_port(
+    host: str,
+    port: int,
+    timeout: float = 60.0,
+    process: (subprocess.Popen | None) = None
+) -> None {
     deadline = time.time() + timeout;
     while time.time() < deadline {
+        if process is not None and process.poll() is not None {
+            raise RuntimeError(
+                f"Process exited (code {process.returncode}) before {host}:{port} "
+                f"opened; the dev shell crashed instead of timing out"
+            );
+        }
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
             sock.settimeout(0.5);
             try {

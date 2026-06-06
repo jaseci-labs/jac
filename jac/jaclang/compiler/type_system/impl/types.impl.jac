@@ -281,8 +281,9 @@ impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list | None = None
 ) -> (Symbol | None) {
     import jaclang.jac0core.unitree as uni;
+    import from jaclang.compiler.type_system.type_utils { collect_member_syms }
     for cls in self.shared.mro {
-        all_syms = cls.shared.symbol_table.lookup_all(member, deep=False);
+        all_syms = collect_member_syms(cls.shared.symbol_table, member);
         if all_syms {
             if r_overloaded is not None and len(all_syms) > 1 {
                 r_overloaded.extend(all_syms[1:]);

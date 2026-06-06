@@ -40,7 +40,7 @@ def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
 
 """Inject main() into the LLVM IR for Mach-O (macOS).
 
-Only main() is needed — dyld handles entry via LC_MAIN, and the
+Only main() is needed - dyld handles entry via LC_MAIN, and the
 system CRT manages _start. No exit() declaration needed since
 returning from main() is handled by dyld.
 """
@@ -56,7 +56,9 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 
 
 """Compile a .na.jac file to a standalone native binary."""
-impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
+impl nacompile(
+    filename: str, output: str = "", scrub: bool = False, target: str = ""
+) -> int {
     # Validate input
     if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
         console.error("Input must be a .jac or .na.jac file.");
@@ -65,6 +67,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     if not os.path.exists(filename) {
         console.error(f"File not found: {filename}");
         return 1;
+    }
+
+    # wasm32 target: emit a browser-loadable wasm module instead of a host binary.
+    # The native LLVM backend already targets wasm32; we set the triple before
+    # compiling so NaIRGenPass picks it up (data layout + ABI), then link the
+    # single relocatable object into a module with the pure-Jac wasm linker.
+    is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
+    if is_wasm {
+        os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
     }
 
     # Scrub: wipe all .jac_ir/ cache directories under the source tree
@@ -95,6 +106,9 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
             output = output[:-7];
         } elif output.endswith(".jac") {
             output = output[:-4];
+        }
+        if is_wasm {
+            output = output + ".wasm";
         }
     }
 
@@ -165,6 +179,31 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
         console.print("  Auto-promoted to native compilation.");
     }
 
+    # wasm32 path: emit one relocatable object and link it into a module.
+    # Undefined externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
+    # imports for the JS host. No entry injection / DT_NEEDED - JS calls the
+    # exported functions directly.
+    if is_wasm {
+        # Emit one relocatable wasm object and link it into a module. Undefined
+        # externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
+        # imports for the JS host; no entry injection / DT_NEEDED.
+        import from jaclang.compiler.passes.native.wasm_build { emit_wasm_from_ir }
+        try {
+            wasm_bytes = emit_wasm_from_ir(str(ir_module.gen.llvm_ir));
+        } except Exception as e {
+            console.error(f"Wasm emit/link failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        with open(output, "wb") as _wf {
+            _wf.write(wasm_bytes);
+        }
+        console.print(f"  Wasm module written to {output} ({len(wasm_bytes)} bytes).");
+        console.print(f"  Instantiate in a browser/Node with an `env` import object.");
+        return 0;
+    }
+
     # Step 2: Check for Python/server interop (can't compile standalone)
     manifest = ir_module.gen.interop_manifest;
     if manifest and manifest.native_imports {
@@ -207,11 +246,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     # Step 5: Determine needed libraries
-    # Note: libgc (Boehm GC) no longer needed — using reference counting
+    # Note: libgc (Boehm GC) no longer needed - using reference counting
     if is_macos {
+        # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
-        needed_libs: list[str] = ["libc.so.6"];
+        # libm.so.6 supplies math-module symbols (e.g. hypot) that are not all
+        # re-exported from libc; the loader only binds referenced symbols, so
+        # linking it unconditionally is harmless (issue #6404).
+        needed_libs: list[str] = ["libc.so.6", "libm.so.6"];
     }
 
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)

@@ -152,11 +152,9 @@ def:pub app -> JsxElement {
                 <strong>dialog</strong>
                 ,
                 <strong>fs</strong>
-                , and
-                {" "}
+                , and{" "}
                 <strong>notification</strong>
-                are declared in
-                {" "}
+                are declared in{" "}
                 <code>jac.toml</code>
                 as
                 <code>[plugins.desktop] tauri_plugins</code>

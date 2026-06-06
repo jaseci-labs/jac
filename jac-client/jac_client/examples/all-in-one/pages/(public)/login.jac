@@ -115,8 +115,7 @@ cl {
                             "fontSize": "14px"
                         }}
                     >
-                        Need an account?
-                        {" "}
+                        Need an account?{" "}
                         <Link to="/signup">Sign up</Link>
                     </p>
                 </div>

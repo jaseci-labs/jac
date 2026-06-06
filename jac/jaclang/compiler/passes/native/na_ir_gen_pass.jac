@@ -26,7 +26,48 @@ import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
 # change that adds the codegen support. Only list a module once its members
 # are genuinely lowered — listing it early re-introduces the silent-wrong
 # failure this guard exists to prevent.
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys"};
+glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"};
+
+# time-module function names lowered by _emit_time_call. Gated explicitly (not
+# via a None return) because time.sleep legitimately produces a void result.
+glob NATIVE_TIME_FUNCS: set[str] = {
+         "time",
+         "monotonic",
+         "perf_counter",
+         "time_ns",
+         "monotonic_ns",
+         "perf_counter_ns",
+         "sleep",
+
+     };
+
+# os-module function names lowered by _emit_os_call. Gated explicitly because
+# most are void (chdir/mkdir/rmdir/remove/unlink/rename) — None ≠ unhandled.
+glob NATIVE_OS_FUNCS: set[str] = {
+         "getpid",
+         "getcwd",
+         "getenv",
+         "chdir",
+         "mkdir",
+         "rmdir",
+         "remove",
+         "unlink",
+         "rename",
+         "system",
+
+     };
+
+# random-module function names lowered by _emit_random_call. Gated explicitly
+# because random.seed is void (None ≠ unhandled).
+glob NATIVE_RANDOM_FUNCS: set[str] = {
+         "seed",
+         "random",
+         "getrandbits",
+         "randint",
+         "randrange",
+         "uniform",
+
+     };
 
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
@@ -198,6 +239,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        # names of one-time stdlib runtime-helper groups already emitted (#6404)
+        _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         # Maps each clib function's C name to the library path it was imported
@@ -479,6 +522,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Native stdlib: sys module
     def _emit_sys_argv -> (ir.Value | None);
     def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
+    # Native stdlib: math module (libm intercepts, issue #6404)
+    def _emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_math_const(name: str) -> (ir.Value | None);
+    # Native stdlib: time module (clock_gettime/nanosleep intercepts, #6404)
+    def _emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_clock_gettime(clock_id: int) -> tuple;
+    # Native stdlib: os / os.path modules (libc intercepts, issue #6404)
+    def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    # Native stdlib: random module (CPython-faithful MT19937, issue #6404)
+    def _mt_ensure -> None;
+    def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples
