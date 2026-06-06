@@ -2,9 +2,10 @@
 
 Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
-2. Inject main() (+ _start on Linux) as pure LLVM IR (zero assembly)
+2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
 3. Emit object code via llvmlite
-4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS)
+4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
+   PE/COFF .exe on Windows)
 """
 
 import os;
@@ -55,6 +56,30 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 }
 
 
+"""Inject main() and _jac_win_start into the LLVM IR for PE (Windows).
+
+_jac_win_start is the PE entry point (AddressOfEntryPoint). Unlike the ELF
+_start, the Windows loader calls the entry as an ordinary function (no
+argc/argv on the stack), so we recover them via msvcrt's __getmainargs and
+forward to main(), then exit() cleanly. _fltused is defined locally because
+it is an MSVC CRT marker symbol (not exported by msvcrt); defining it keeps
+the backend's floating-point-use reference from becoming a failed import.
+"""
+def _inject_entry_pe(llvm_ir_str: str) -> str {
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
+    exit_decl = "" if has_exit else 'declare void @exit(i32)\n\n';
+    fltused = "" if "@_fltused" in llvm_ir_str else '@_fltused = global i32 0\n\n';
+    ir = (
+        '\n; --- injected PE entry ---\n' + globals_ir + exit_decl + fltused + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '    %argc.addr = alloca i32\n' + '    %argv.addr = alloca ptr\n' + '    %env.addr = alloca ptr\n' + '    %si = alloca i32\n' + '    store i32 0, ptr %si\n' + '    %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n' + '    %ac = load i32, ptr %argc.addr\n' + '    %av = load ptr, ptr %argv.addr\n' + '    %r = call i32 @main(i32 %ac, ptr %av)\n' + '    call void @exit(i32 %r)\n' + '    ret void\n' + '}\n'
+    );
+    return llvm_ir_str + ir;
+}
+
+
 """Compile a .na.jac file to a standalone native binary."""
 impl nacompile(
     filename: str, output: str = "", scrub: bool = False, target: str = ""
@@ -76,6 +101,18 @@ impl nacompile(
     is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
     if is_wasm {
         os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    }
+
+    # windows target: emit a PE/COFF .exe instead of a host binary. Set the
+    # triple before compiling so NaIRGenPass picks it up (data layout + ABI),
+    # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
+    # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
+    # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
+    is_windows = ("windows" in target) or (target in ["win", "win64", "mingw"]);
+    if is_windows {
+        os.environ["JAC_NATIVE_TARGET"] = (
+            target if "-" in target else "x86_64-pc-windows-msvc"
+        );
     }
 
     # Scrub: wipe all .jac_ir/ cache directories under the source tree
@@ -109,6 +146,8 @@ impl nacompile(
         }
         if is_wasm {
             output = output + ".wasm";
+        } elif is_windows {
+            output = output + ".exe";
         }
     }
 
@@ -239,7 +278,9 @@ impl nacompile(
     console.print(f"  Target: {triple}");
 
     # Step 4: Inject entry point (platform-specific)
-    if is_macos {
+    if is_windows {
+        llvm_ir_str = _inject_entry_pe(llvm_ir_str);
+    } elif is_macos {
         llvm_ir_str = _inject_entry_macho(llvm_ir_str);
     } else {
         llvm_ir_str = _inject_entry_elf(llvm_ir_str, triple);
@@ -247,7 +288,12 @@ impl nacompile(
 
     # Step 5: Determine needed libraries
     # Note: libgc (Boehm GC) no longer needed - using reference counting
-    if is_macos {
+    if is_windows {
+        # msvcrt.dll ships on every Windows and exports the classic C runtime
+        # (printf, malloc, free, memcpy, math, ...). Undefined externals bind
+        # here unless symbol_lib_map names a different DLL (e.g. a clib import).
+        needed_libs: list[str] = ["msvcrt.dll"];
+    } elif is_macos {
         # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
@@ -353,9 +399,29 @@ impl nacompile(
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
 
     # Step 7: Link into native executable (platform-specific)
-    if is_macos {
-        import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
+    if is_windows {
+        import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 
+        try {
+            success = PeLinker.link(
+                obj_bytes=obj_bytes,
+                output_path=output,
+                needed_libs=needed_libs,
+                symbol_lib_map=symbol_lib_map
+            );
+        } except Exception as e {
+            console.error(f"PE linking failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+
+        if not success {
+            console.error("PE linking failed: could not parse object file.");
+            return 1;
+        }
+    } elif is_macos {
+        import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
         try {
             success = MachOLinker.link(
                 obj_bytes=obj_bytes,
@@ -369,7 +435,6 @@ impl nacompile(
             traceback.print_exc();
             return 1;
         }
-
         if not success {
             console.error("Mach-O linking failed: could not parse object file.");
             return 1;
