@@ -227,6 +227,12 @@ jobs:
         working-directory: ${{ matrix.dir }}
         env:
           JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
+          # When a plugin depends on a sibling plugin whose new version isn't on
+          # PyPI yet (e.g. jac-desktop -> jac-client during a combined release),
+          # install that sibling from local source so precompile's version pin
+          # resolves without hitting PyPI. extra_build_deps already names the
+          # sibling's repo dir.
+          JAC_PRECOMPILE_LOCAL_DEPS: ${{ matrix.extra_build_deps != '' && format('{0}/{1}', github.workspace, matrix.extra_build_deps) || '' }}
         run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
       - name: Upload package artifacts

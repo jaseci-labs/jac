@@ -1119,6 +1119,17 @@ def _run_precompile_in_venv(
     # or source tree) instead of PyPI when the named version isn't yet published.
     local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
     jac_spec = local_install or f"jaclang=={jac_version}";
+    # Sibling escape hatch: when a package depends on another Jac package whose
+    # new version isn't on PyPI yet (e.g. jac-desktop -> jac-client during a
+    # combined release), install those siblings from local source FIRST so the
+    # version pin in dep_specs is already satisfied and pip never queries PyPI
+    # for them. Comma-separated list of local Jac-package source dirs.
+    local_deps_raw = os.environ.get("JAC_PRECOMPILE_LOCAL_DEPS", "");
+    local_dep_specs = [
+        d.strip()
+        for d in local_deps_raw.split(",")
+        if d.strip()
+    ];
 
     with tempfile.TemporaryDirectory() as tmp {
         venv_dir = Path(tmp) / "venv";
@@ -1145,6 +1156,20 @@ def _run_precompile_in_venv(
             return f"pip install {jac_spec} failed:\n{jac_install.stderr.decode(
                 errors='replace'
             )}";
+        }
+        # Install local sibling Jac packages from source before the PyPI deps so
+        # any not-yet-published sibling version pin resolves against local source.
+        # Jac plugins have no pyproject.toml (jac.toml is the source of truth), so
+        # they must be installed with `jac install -e`, not `pip install`.
+        for sib in local_dep_specs {
+            sib_install = subprocess.run(
+                [venv_jac, "install", "-e", sib, "--quiet"], capture_output=True
+            );
+            if sib_install.returncode != 0 {
+                return f"jac install -e {sib} (local sibling) failed:\n{sib_install.stderr.decode(
+                    errors='replace'
+                )}";
+            }
         }
         if dep_specs {
             deps_install = subprocess.run(
