@@ -149,6 +149,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
         var_list_elem_type: dict[str, str] = {},
+        # For ptr-element lists holding boxed tuples, the pointer-to-struct
+        # LLVM type of an element (e.g. `{i64, i64}*`). Lets `(a, b) = lst.pop()`
+        # recover the tuple shape for a bare `list` whose annotation carries no
+        # element type. Populated from list literals / appends (see #6435).
+        var_list_elem_struct: dict[str, object] = {},
+        # Transient: pointer-to-struct LLVM type of the element a list literal
+        # just boxed, read by the enclosing assignment to seed
+        # var_list_elem_struct. Reset at the start of each list-literal codegen.
+        _pending_list_elem_struct: (object | None) = None,
         field_type_node: dict[str, dict] = {},
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
@@ -505,6 +514,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Type | None);
 
     def _resolve_ptr_elem_cast_type(type_node: (object | None)) -> (ir.Type | None);
+    def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     # Phase 7: String Methods and Builtins
     def _codegen_string_index(
         target_val: ir.Value, index_val: ir.Value

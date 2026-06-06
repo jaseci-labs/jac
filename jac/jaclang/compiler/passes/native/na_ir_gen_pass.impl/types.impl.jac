@@ -1684,6 +1684,10 @@ impl NaIRGenPass._peel_list_type(type_node: (object | None)) -> tuple {
                         inner_elem_name = "f64";
                     } elif isinstance(inner_type, ir.PointerType) {
                         inner_elem_name = "ptr";
+                    } elif self?.jacval_type and inner_type == self.jacval_type {
+                        # `list[any]` slots hold boxed JacVal structs; key them
+                        # distinctly from `i64` (see _codegen_list_val).
+                        inner_elem_name = "jacval";
                     }
                     return (inner, inner_type, inner_elem_name);
                 }

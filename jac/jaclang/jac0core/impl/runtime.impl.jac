@@ -1009,7 +1009,17 @@ impl JacBasics.run_test(
     }
     if (filter or directory) {
         current_dir = directory or os.getcwd();
-        for (root_dir, _, files) in os.walk(current_dir, topdown=True) {
+        for (root_dir, dirs, files) in os.walk(current_dir, topdown=True) {
+            # Prune hidden / build-cache / pycache directories in place so the
+            # walk never descends into them — e.g. the per-project ".jac" build
+            # cache, which holds generated artifacts that are not test sources.
+            # Mutating the list in place is required: os.walk in topdown mode
+            # only honors pruning of the same list object it yields.
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (d.startswith('.') or d == '__pycache__')
+            ];
             files = [
                 file
                 for file in files

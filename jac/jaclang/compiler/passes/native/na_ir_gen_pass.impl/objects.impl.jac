@@ -488,6 +488,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -496,6 +497,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -602,6 +604,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
@@ -625,6 +628,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -635,6 +639,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -684,6 +689,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
@@ -745,6 +751,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -755,6 +762,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -815,6 +823,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;

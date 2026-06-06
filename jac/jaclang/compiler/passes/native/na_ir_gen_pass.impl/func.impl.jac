@@ -448,6 +448,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_type_var_map = self.type_var_map;
     saved_var_type_node = self.var_type_node;
     saved_var_list = self.var_list_elem_type;
+    saved_var_list_struct = self.var_list_elem_struct;
     saved_var_dict = self.var_dict_type;
     saved_var_set = self.var_set_elem_type;
     saved_var_enum = self.var_enum_type;
@@ -457,6 +458,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self.type_var_map = {};
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_enum_type = {};
@@ -497,6 +499,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self.type_var_map = saved_type_var_map;
     self.var_type_node = saved_var_type_node;
     self.var_list_elem_type = saved_var_list;
+    self.var_list_elem_struct = saved_var_list_struct;
     self.var_dict_type = saved_var_dict;
     self.var_set_elem_type = saved_var_set;
     self.var_enum_type = saved_var_enum;
