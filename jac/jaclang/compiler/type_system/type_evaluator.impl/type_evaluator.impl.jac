@@ -66,6 +66,14 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                for s in expr.strings {
+                    if isinstance(s, uni.String) and isinstance(s.lit_value, bytes) {
+                        if self.prefetch.bytes_class {
+                            return self._convert_to_instance(self.prefetch.bytes_class);
+                        }
+                        return types.UnknownType();
+                    }
+                }
                 # Forward-reference resolution for single-string type annotations.
                 # When 'Path' is used as a type annotation, the parser wraps
                 # the String in a MultiString. Check if this is in a type context.
