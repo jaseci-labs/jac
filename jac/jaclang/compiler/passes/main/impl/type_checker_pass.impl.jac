@@ -231,6 +231,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 and target.sym.decl.name_of.parent.type_tag is None
             ) {
                 is_unannotated_reassign = True;
+                # `node_.type` caches the narrow literal as the hover type, so
+                # widen it to the frozen declared type before the compat check.
+                # See `_widen_literal_for_declaration`.
+                left_type = self.evaluator._widen_literal_for_declaration(left_type);
             }
             # `target.type` is the hover cache — show the post-write type
             # for re-assignments, declared type otherwise. `left_type`
@@ -509,6 +513,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
 
 """Exit an import node."""
 impl TypeCheckPass.exit_import(self: TypeCheckPass, nd: uni.Import) -> None {
+    # A native C-FFI import (`import from foo { def ...; }`) names a shared
+    # library, not a managed module: its symbols come from `clib_decls`, and the
+    # from-path is resolved per-platform by the native backend. Resolving it as a
+    # managed module would (for a bare-name path like `raylib`) hit sys.path and
+    # spuriously emit W1100 "module not found". Treat it as fully inert here.
+    if nd.clib_decls {
+        return;
+    }
     if nd.from_loc {
         self.evaluator.get_type_of_module(nd.from_loc);
         for item in nd.items {

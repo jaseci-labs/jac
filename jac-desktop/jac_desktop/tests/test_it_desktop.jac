@@ -361,7 +361,7 @@ test "desktop dev mode starts vite server" {
                 cwd=project_dir,
                 env=env,
             );
-            wait_for_port("127.0.0.1", vite_port, timeout=90.0);
+            wait_for_port("127.0.0.1", vite_port, timeout=90.0, process=dev_process);
             with urlopen(f"http://127.0.0.1:{vite_port}/", timeout=10) as resp {
                 assert resp.status == 200 , "Dev server should return 200";
             }

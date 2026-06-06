@@ -75,3 +75,47 @@ def visit_order_py() -> dict[str, any] {
         "cycle": _cycle()
     };
 }
+
+cl {
+    def _chain_cl() -> list {
+        n1 = Pos(val=1); n2 = Pos(val=2); n3 = Pos(val=3); n4 = Pos(val=4);
+        n1 ++> n2; n2 ++> n3; n3 ++> n4;
+        w = Tracer();
+        w spawn n1;
+        return w.seen;
+    }
+
+    def _diamond_cl() -> list {
+        a = Pos(val=1); b = Pos(val=2); c = Pos(val=3); d = Pos(val=4);
+        a ++> b; a ++> c; b ++> d; c ++> d;
+        w = Tracer();
+        w spawn a;
+        return w.seen;
+    }
+
+    def _fanout_cl() -> list {
+        root_n = Pos(val=1);
+        c1 = Pos(val=2); c2 = Pos(val=3); c3 = Pos(val=4);
+        root_n ++> c1; root_n ++> c2; root_n ++> c3;
+        w = Tracer();
+        w spawn root_n;
+        return w.seen;
+    }
+
+    def _cycle_cl() -> list {
+        n1 = Pos(val=1); n2 = Pos(val=2); n3 = Pos(val=3);
+        n1 ++> n2; n2 ++> n3; n3 ++> n1;
+        w = GuardedTracer();
+        w spawn n1;
+        return w.seen;
+    }
+
+    def visit_order_cl() -> dict[str, any] {
+        return {
+            "chain": _chain_cl(),
+            "diamond": _diamond_cl(),
+            "fanout": _fanout_cl(),
+            "cycle": _cycle_cl()
+        };
+    }
+}

@@ -1187,6 +1187,58 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_sys_exit(arg_vals);
         }
     }
+    # --- Native stdlib math module calls: math.sqrt(x), math.pow(a, b), ... ---
+    if (
+        target_name == "math"
+        and self?._native_stdlib_modules
+        and "math" in self._native_stdlib_modules
+    ) {
+        _mres = self._emit_math_call(method_name, nd);
+        if _mres is not None {
+            return _mres;
+        }
+    }
+    # --- Native stdlib time module calls: time.time(), time.sleep(s), ... ---
+    # Gated on the known name set so a void result (time.sleep) is not mistaken
+    # for "unhandled" and routed to E5090.
+    if (
+        target_name == "time"
+        and self?._native_stdlib_modules
+        and "time" in self._native_stdlib_modules
+        and method_name in NATIVE_TIME_FUNCS
+    ) {
+        return self._emit_time_call(method_name, nd);
+    }
+    # --- Native stdlib os.path.X(...) (nested attribute: trailer.target is
+    # itself the AtomTrailer `os.path`). Checked before the flat os.* path. ---
+    if (
+        isinstance(trailer.target, uni.AtomTrailer)
+        and trailer.target.is_attr
+        and self._get_name(trailer.target.target) == "os"
+        and self._get_name(trailer.target.right) == "path"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+    ) {
+        return self._emit_ospath_call(method_name, nd);
+    }
+    # --- Native stdlib flat os.X(...) calls ---
+    if (
+        target_name == "os"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+        and method_name in NATIVE_OS_FUNCS
+    ) {
+        return self._emit_os_call(method_name, nd);
+    }
+    # --- Native stdlib random.X(...) calls (gated: random.seed is void) ---
+    if (
+        target_name == "random"
+        and self?._native_stdlib_modules
+        and "random" in self._native_stdlib_modules
+        and method_name in NATIVE_RANDOM_FUNCS
+    ) {
+        return self._emit_random_call(method_name, nd);
+    }
     # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
     if target_name == "int" and method_name == "from_bytes" {
         params = nd.params or [];

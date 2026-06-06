@@ -1067,6 +1067,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     import platform as _plat;
                     return self._make_global_string(_plat.system().lower());
                 }
+                if right_name == "maxsize" {
+                    # Native int is i64, so maxsize is INT64_MAX (matches a
+                    # 64-bit CPython build).
+                    return ir.Constant(ir.IntType(64), 0x7FFFFFFFFFFFFFFF);
+                }
+                if right_name == "byteorder" {
+                    # Resolved at compile time from the host (the AOT target is
+                    # the host arch). CPython reports "little"/"big" the same way.
+                    import sys as _sys;
+                    return self._make_global_string(_sys.byteorder);
+                }
+            }
+            # Native stdlib math constants: math.pi, math.e, math.tau, ...
+            if (
+                target_name == "math"
+                and self?._native_stdlib_modules
+                and "math" in self._native_stdlib_modules
+            ) {
+                _mc = self._emit_math_const(right_name);
+                if _mc is not None {
+                    return _mc;
+                }
             }
             # Check enum member access: Color.WHITE
             full_name = f"{target_name}.{right_name}";

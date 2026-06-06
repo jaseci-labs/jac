@@ -129,7 +129,9 @@ glob id_bag: dict = {},
      };
 
 """Recursively generate ast tree in dot format."""
-def printgraph_ast_tree(root: UniNode, dot_lines: (list[str] | None) = None) -> str {
+def printgraph_ast_tree(
+    root_node: UniNode, dot_lines: (list[str] | None) = None
+) -> str {
     starting_call = False;
     if (dot_lines is None) {
         starting_call = True;
@@ -173,9 +175,9 @@ def printgraph_ast_tree(root: UniNode, dot_lines: (list[str] | None) = None) -> 
         label = f"{label} {shape} {style} {fillcolor}".strip();
         return f"[label={label}]";
     }
-    dot_lines.append(f"{gen_node_id(root)} {gen_node_parameters(root)};");
-    for i in root.kid {
-        dot_lines.append(f"{gen_node_id(root)}  -> {gen_node_id(i)};");
+    dot_lines.append(f"{gen_node_id(root_node)} {gen_node_parameters(root_node)};");
+    for i in root_node.kid {
+        dot_lines.append(f"{gen_node_id(root_node)}  -> {gen_node_id(i)};");
         printgraph_ast_tree(i, dot_lines);
     }
     if starting_call {
@@ -186,7 +188,7 @@ def printgraph_ast_tree(root: UniNode, dot_lines: (list[str] | None) = None) -> 
 
 """Recursively print ast tree."""
 def print_ast_tree(
-    root: (UniNode | ast3.AST),
+    root_node: (UniNode | ast3.AST),
     marker: str = '+-- ',
     level_markers: (list[bool] | None) = None,
     output_file: (str | None) = None,
@@ -296,7 +298,7 @@ def print_ast_tree(
         return '-:- - -:-';
     }
     if (
-        (root is None)
+        (root_node is None)
         or ((max_depth is not None) and (len((level_markers or [])) >= max_depth))
     ) {
         return '';
@@ -311,20 +313,20 @@ def print_ast_tree(
         [connection_str if draw else empty_str for draw in level_markers[:-1]]
     );
     markers += marker if (level > 0) else '';
-    if isinstance(root, uni.UniNode) {
-        tree_str = f"{root.loc}	{markers}{__node_repr_in_tree(root)}\n";
+    if isinstance(root_node, uni.UniNode) {
+        tree_str = f"{root_node.loc}	{markers}{__node_repr_in_tree(root_node)}\n";
         if (
-            isinstance(root, uni.Module)
-            and root.is_raised_from_py
+            isinstance(root_node, uni.Module)
+            and root_node.is_raised_from_py
             and not print_py_raise
         ) {
             kids: list[UniNode] = [
                 x
-                for x in root.get_all_sub_nodes(uni.Module)
+                for x in root_node.get_all_sub_nodes(uni.Module)
                 if x.is_raised_from_py
             ];
         } else {
-            kids = root.kid;
+            kids = root_node.kid;
         }
         for (i, child) in enumerate(kids) {
             is_last = i == (len(kids) - 1);
@@ -332,12 +334,12 @@ def print_ast_tree(
                 child, marker, [*level_markers, not is_last], output_file, max_depth
             );
         }
-    } elif isinstance(root, ast3.AST) {
-        tree_str = f"{get_location_info(root)}	{markers}{__node_repr_in_py_tree(
-            root
+    } elif isinstance(root_node, ast3.AST) {
+        tree_str = f"{get_location_info(root_node)}	{markers}{__node_repr_in_py_tree(
+            root_node
         )}\n";
-        for (i_a, child_a) in enumerate(ast3.iter_child_nodes(root)) {
-            is_last = i_a == (len(`list(ast3.iter_child_nodes(root))) - 1);
+        for (i_a, child_a) in enumerate(ast3.iter_child_nodes(root_node)) {
+            is_last = i_a == (len(`list(ast3.iter_child_nodes(root_node))) - 1);
             tree_str += print_ast_tree(
                 child_a, marker, [*level_markers, not is_last], output_file, max_depth
             );
@@ -370,12 +372,12 @@ class SymbolTree {
 def _build_symbol_tree_common(
     nd: UniScopeNode, parent_node: (SymbolTree | None) = None
 ) -> SymbolTree {
-    root = SymbolTree(
+    root_node = SymbolTree(
         node_name=f"SymTable::{nd.__class__.__name__}({nd.scope_name})",
         parent=parent_node
     );
-    symbols = SymbolTree(node_name='Symbols', parent=root);
-    children = SymbolTree(node_name='Sub Tables', parent=root);
+    symbols = SymbolTree(node_name='Symbols', parent=root_node);
+    children = SymbolTree(node_name='Sub Tables', parent=root_node);
     syms_to_iterate = `set(nd.names_in_scope.values());
     for sym in syms_to_iterate {
         symbol_node = SymbolTree(node_name=f"{sym.sym_name}", parent=symbols);
@@ -407,31 +409,31 @@ def _build_symbol_tree_common(
         }
         _build_symbol_tree_common(k, children);
     }
-    return root;
+    return root_node;
 }
 
 """Recursively print symbol table tree."""
 def print_symtab_tree(
-    root: UniScopeNode,
+    root_node: UniScopeNode,
     marker: str = '+-- ',
     level_markers: (list[bool] | None) = None,
     output_file: (str | None) = None,
     depth: (int | None) = None
 ) -> str {
     return get_symtab_tree_str(
-        _build_symbol_tree_common(root), marker, level_markers, output_file, depth
+        _build_symbol_tree_common(root_node), marker, level_markers, output_file, depth
     );
 }
 
 """Recursively print symbol table tree."""
 def get_symtab_tree_str(
-    root: SymbolTree,
+    root_node: SymbolTree,
     marker: str = '+-- ',
     level_markers: (list[bool] | None) = None,
     output_file: (str | None) = None,
     depth: (int | None) = None
 ) -> str {
-    if ((root is None) or (depth == 0) or (root.name in dir(builtins))) {
+    if ((root_node is None) or (depth == 0) or (root_node.name in dir(builtins))) {
         return '';
     }
     level_markers = level_markers or [];
@@ -445,7 +447,7 @@ def get_symtab_tree_str(
             if level_markers
             else ''
     );
-    line = f"{markers}{root.name}\n";
+    line = f"{markers}{root_node.name}\n";
     if output_file {
         with open(output_file, 'a+') as f {
             f.write(line);
@@ -456,10 +458,10 @@ def get_symtab_tree_str(
             get_symtab_tree_str(
                 child,
                 marker,
-                (level_markers + [(i < (len(root.kid) - 1))]),
+                (level_markers + [(i < (len(root_node.kid) - 1))]),
                 output_file,
                 None if (depth is None) else (depth - 1)
-            ) for (i, child) in enumerate(root.kid)
+            ) for (i, child) in enumerate(root_node.kid)
         )
     );
 }

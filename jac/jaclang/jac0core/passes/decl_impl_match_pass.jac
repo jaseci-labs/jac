@@ -75,7 +75,7 @@ declarations in the main module.
 
     """Resolve unresolved Name and AtomTrailer symbols in a subtree."""
     def _resolve_symbols_in_subtree(
-        self: DeclImplMatchPass, root: uni.UniNode
+        self: DeclImplMatchPass, root_node: uni.UniNode
     ) -> None;
 
     """Populate self-member symbols from impl body to archetype's symbol table.

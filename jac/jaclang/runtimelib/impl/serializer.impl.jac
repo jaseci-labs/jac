@@ -760,12 +760,6 @@ impl Serializer._compute_hash(anchor: Anchor) -> int {
     import from json { dumps }
     try {
         data = Serializer.serialize(anchor, include_type=True);
-        # Exclude topology_index_data from hash — it's a derived cache,
-        # not user-mutable state. Including it would double the cost of
-        # every serialize round-trip for large graphs.
-        if isinstance(data, dict) {
-            data.pop('topology_index_data', None);
-        }
         return hash(dumps(data, sort_keys=True));
     } except Exception {
         return 0;

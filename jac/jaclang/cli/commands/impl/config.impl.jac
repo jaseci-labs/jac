@@ -274,18 +274,14 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
         if not disabled_plugins {
             console.info("No plugins are currently disabled");
         } elif '*' in disabled_plugins {
-            console.print(
-                "\n⚠ [yellow]All external plugins are disabled (wildcard *)[/yellow]"
-            );
+            console.warning("All external plugins are disabled (wildcard *)");
             if config and config.toml_path {
                 console.print(f"   Configured in: {config.toml_path}", style="muted");
             }
         } else {
-            console.print(
-                f"\n⚠ [yellow]Currently disabled ({len(disabled_plugins)})[/yellow]"
-            );
+            console.warning(f"Currently disabled ({len(disabled_plugins)})");
             for name in sorted(disabled_plugins) {
-                console.print(f"  ✖ [dim]{name}[/dim]");
+                console.print(f"  ✖ {name}", style="muted");
             }
             if config and config.toml_path {
                 console.print(f"\n   Configured in: {config.toml_path}", style="muted");
@@ -346,9 +342,10 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
         }
     }
     console.print(
-        f"\n🔌 [bold cyan]Installed Jac Plugins[/bold cyan] ({named_plugin_count} plugins from {len(
+        f"\n🔌 Installed Jac Plugins ({named_plugin_count} plugins from {len(
             plugins_by_dist
-        )} packages)\n"
+        )} packages)\n",
+        style="bold"
     );
     # Print plugins organized by distribution
     for dist_key in sorted(plugins_by_dist.keys()) {
@@ -356,9 +353,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
 
         # Style package name based on type
         if "(built-in)" in dist_key {
-            console.print(f"  📦 [dim]{dist_key}[/dim]");
+            console.print(f"  📦 {dist_key}", style="muted");
         } else {
-            console.print(f"  📦 [cyan]{dist_key}[/cyan]");
+            console.print(f"  📦 {dist_key}", style="cyan");
         }
 
         # Extract package name from dist_key (remove version if present)
@@ -375,11 +372,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
         ) in plugins_in_dist {
             # Check disabled status using qualified name
             if qualified_name in disabled_plugins {
-                console.print(
-                    f"     ✖ [dim]{qualified_name}[/dim] [red][DISABLED][/red]"
-                );
+                console.print(f"     ✖ {qualified_name} [DISABLED]", style="muted");
             } else {
-                console.print(f"     ✔ [green]{qualified_name}[/green]");
+                console.print(f"     ✔ {qualified_name}", style="success");
             }
 
             if verbose {
@@ -423,7 +418,7 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
         pkg_commands = commands_by_package.get(pkg_name, []);
         if pkg_commands {
             console.print(
-                f"     💻 Commands: [yellow]{', '.join(sorted(pkg_commands))}[/yellow]"
+                f"     💻 Commands: {', '.join(sorted(pkg_commands))}", style="warning"
             );
         }
 
@@ -432,15 +427,11 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     # Show disabled plugins summary if any
     if disabled_plugins {
         if '*' in disabled_plugins {
-            console.print(
-                "⚠ [yellow]All external plugins are disabled (wildcard *)[/yellow]"
-            );
+            console.warning("All external plugins are disabled (wildcard *)");
         } else {
-            console.print(
-                f"\n⚠ [yellow]Disabled plugins ({len(disabled_plugins)})[/yellow]"
-            );
+            console.warning(f"Disabled plugins ({len(disabled_plugins)})");
             for name in sorted(disabled_plugins) {
-                console.print(f"  ✖ [dim]{name}[/dim]");
+                console.print(f"  ✖ {name}", style="muted");
             }
         }
     }

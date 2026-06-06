@@ -38,3 +38,13 @@ def exit_ordering_py() -> dict[str, any] {
     w spawn root_n;
     return {"order": w.log};
 }
+
+cl {
+    def exit_ordering_cl() -> dict[str, any] {
+        root_n = N(val=1); a = N(val=2); b = N(val=3);
+        root_n ++> a; root_n ++> b;
+        w = Ex();
+        w spawn root_n;
+        return {"order": w.log};
+    }
+}

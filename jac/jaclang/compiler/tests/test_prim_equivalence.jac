@@ -101,6 +101,44 @@ test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
+# --- Stdlib: math module (Mechanism A → libm, issue #6404 v1) ---
+test "math" {
+    run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
+}
+
+# --- Stdlib: time module (Mechanism A → clock_gettime/nanosleep, #6404 v1) ---
+test "time" {
+    run_with_both("prim_time.jac", "time_py", "time_cl", "time_na", require=["na"]);
+}
+
+# --- Stdlib: sys module (Mechanism A, issue #6404 v1) ---
+test "sys" {
+    run_with_both("prim_sys.jac", "sys_py", "sys_cl", "sys_na", require=["na"]);
+}
+
+# --- Stdlib: os + os.path (Mechanism A/H → libc, issue #6404 v1) ---
+test "os" {
+    run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
+}
+
+# --- Stdlib: random module (CPython-faithful MT19937, issue #6404 v1) ---
+test "random" {
+    run_with_both(
+        "prim_random.jac", "random_py", "random_cl", "random_na", require=["na"]
+    );
+}
+
+# --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
+test "dict order" {
+    run_with_both(
+        "prim_dictorder.jac",
+        "dictorder_py",
+        "dictorder_cl",
+        "dictorder_na",
+        require=["na"]
+    );
+}
+
 # --- Exception Types (ExceptionEmitter) — dict-comparison for py/cl ---
 test "exception hierarchy" {
     py_result = run_py_fixture("prim_exceptions", "exceptions_py");

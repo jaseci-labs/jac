@@ -41,17 +41,61 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         if clib_paths {
             for lib_path in clib_paths {
                 try {
-                    # Try as absolute/relative path first
-                    if os.path.exists(lib_path) {
-                        llvm.load_library_permanently(lib_path);
-                    } else {
-                        # Try system library lookup
-                        found = ctypes.util.find_library(lib_path);
+                    # A logical import (issue #6387) may carry a loader token
+                    # ($ORIGIN/@loader_path) meant for the AOT binary; at JIT
+                    # time there is no output binary, so strip it and resolve
+                    # the remainder relative to the current directory.
+                    probe = lib_path;
+                    if probe.startswith("$ORIGIN/") {
+                        probe = probe[8:];
+                    } elif probe.startswith("@loader_path/") {
+                        probe = probe[13:];
+                    }
+                    base = os.path.basename(probe);
+                    loaded = False;
+                    # 1. An explicit/relative/sibling file that exists on disk.
+                    #    Pass the ABSOLUTE path: dlopen only loads a named file
+                    #    when the string contains a slash; a bare "libfoo.so" is
+                    #    treated as a soname and searched on the system path
+                    #    instead of the cwd-relative file we just found.
+                    for cand in [lib_path, probe, os.path.join(".", base)] {
+                        if cand and os.path.exists(cand) {
+                            llvm.load_library_permanently(os.path.abspath(cand));
+                            loaded = True;
+                            break;
+                        }
+                    }
+                    # 2. dlopen by soname (searches LD_LIBRARY_PATH + ldcache).
+                    if not loaded {
+                        try {
+                            llvm.load_library_permanently(base);
+                            loaded = True;
+                        } except Exception {
+                            loaded = False;
+                        }
+                    }
+                    # 3. find_library on the bare stem (handles versioned
+                    #    sonames, e.g. libraylib.so -> libraylib.so.5).
+                    if not loaded {
+                        stem = base;
+                        if stem.startswith("lib") {
+                            stem = stem[3:];
+                        }
+                        for _ext in [".so", ".dylib", ".dll"] {
+                            _i = stem.find(_ext);
+                            if _i != -1 {
+                                stem = stem[:_i];
+                            }
+                        }
+                        found = ctypes.util.find_library(stem)
+                        or ctypes.util.find_library(probe);
                         if found {
                             llvm.load_library_permanently(found);
-                        } else {
-                            self.emit(W5021, path=lib_path);
+                            loaded = True;
                         }
+                    }
+                    if not loaded {
+                        self.emit(W5021, path=lib_path);
                     }
                 } except Exception as lib_err {
                     self.emit(W5022, path=lib_path, error=str(lib_err));

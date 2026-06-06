@@ -40,7 +40,7 @@ def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
 
 """Inject main() into the LLVM IR for Mach-O (macOS).
 
-Only main() is needed — dyld handles entry via LC_MAIN, and the
+Only main() is needed - dyld handles entry via LC_MAIN, and the
 system CRT manages _start. No exit() declaration needed since
 returning from main() is handled by dyld.
 """
@@ -56,7 +56,9 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 
 
 """Compile a .na.jac file to a standalone native binary."""
-impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
+impl nacompile(
+    filename: str, output: str = "", scrub: bool = False, target: str = ""
+) -> int {
     # Validate input
     if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
         console.error("Input must be a .jac or .na.jac file.");
@@ -65,6 +67,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     if not os.path.exists(filename) {
         console.error(f"File not found: {filename}");
         return 1;
+    }
+
+    # wasm32 target: emit a browser-loadable wasm module instead of a host binary.
+    # The native LLVM backend already targets wasm32; we set the triple before
+    # compiling so NaIRGenPass picks it up (data layout + ABI), then link the
+    # single relocatable object into a module with the pure-Jac wasm linker.
+    is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
+    if is_wasm {
+        os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
     }
 
     # Scrub: wipe all .jac_ir/ cache directories under the source tree
@@ -95,6 +106,9 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
             output = output[:-7];
         } elif output.endswith(".jac") {
             output = output[:-4];
+        }
+        if is_wasm {
+            output = output + ".wasm";
         }
     }
 
@@ -165,6 +179,31 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
         console.print("  Auto-promoted to native compilation.");
     }
 
+    # wasm32 path: emit one relocatable object and link it into a module.
+    # Undefined externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
+    # imports for the JS host. No entry injection / DT_NEEDED - JS calls the
+    # exported functions directly.
+    if is_wasm {
+        # Emit one relocatable wasm object and link it into a module. Undefined
+        # externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
+        # imports for the JS host; no entry injection / DT_NEEDED.
+        import from jaclang.compiler.passes.native.wasm_build { emit_wasm_from_ir }
+        try {
+            wasm_bytes = emit_wasm_from_ir(str(ir_module.gen.llvm_ir));
+        } except Exception as e {
+            console.error(f"Wasm emit/link failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        with open(output, "wb") as _wf {
+            _wf.write(wasm_bytes);
+        }
+        console.print(f"  Wasm module written to {output} ({len(wasm_bytes)} bytes).");
+        console.print(f"  Instantiate in a browser/Node with an `env` import object.");
+        return 0;
+    }
+
     # Step 2: Check for Python/server interop (can't compile standalone)
     manifest = ir_module.gen.interop_manifest;
     if manifest and manifest.native_imports {
@@ -207,11 +246,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     # Step 5: Determine needed libraries
-    # Note: libgc (Boehm GC) no longer needed — using reference counting
+    # Note: libgc (Boehm GC) no longer needed - using reference counting
     if is_macos {
+        # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
-        needed_libs: list[str] = ["libc.so.6"];
+        # libm.so.6 supplies math-module symbols (e.g. hypot) that are not all
+        # re-exported from libc; the loader only binds referenced symbols, so
+        # linking it unconditionally is harmless (issue #6404).
+        needed_libs: list[str] = ["libc.so.6", "libm.so.6"];
     }
 
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
@@ -219,12 +262,42 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     # in the compiled module and its transitive dependencies.
     # _clib_paths is accumulated by _compile_and_link_native_imports.
     clib_paths = ir_module.gen._clib_paths;
+    # Maps a raw clib path to the soname actually recorded in needed_libs, so
+    # the per-symbol library attribution below lines up with the linker's
+    # LC_LOAD_DYLIB ordinals.
+    _lib_norm: dict[str, str] = {};
     if clib_paths {
         for lib_path in clib_paths {
-            if lib_path not in needed_libs {
-                needed_libs.append(lib_path);
+            # A relative path with a directory component (e.g. "./libfoo.so")
+            # names a library shipped beside the binary. Record only its soname
+            # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
+            # the executable rather than the launch directory. Absolute paths
+            # (system libraries) and bare sonames are recorded verbatim.
+            #
+            # A name that already carries a loader token ($ORIGIN/... on ELF,
+            # @loader_path/... on Mach-O) is a per-platform logical import
+            # resolved by the native backend (issue #6387): keep it verbatim so
+            # the sub-directory and origin-relative semantics survive.
+            _needed = lib_path;
+            if (not os.path.isabs(lib_path))
+            and (not lib_path.startswith("$"))
+            and (not lib_path.startswith("@"))
+            and ("/" in lib_path or "\\" in lib_path) {
+                _needed = os.path.basename(lib_path);
             }
+            if _needed not in needed_libs {
+                needed_libs.append(_needed);
+            }
+            _lib_norm[lib_path] = _needed;
         }
+    }
+
+    # Build the symbol -> soname map the Mach-O linker uses to emit two-level
+    # dylib ordinals (e.g. "InitWindow" -> "libraylib.dylib"). On ELF this is
+    # unused (the loader searches all DT_NEEDED libs flatly).
+    symbol_lib_map: dict[str, str] = {};
+    for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+        symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 
     # Step 6: Emit object code via llvmlite
@@ -285,7 +358,10 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
 
         try {
             success = MachOLinker.link(
-                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+                obj_bytes=obj_bytes,
+                output_path=output,
+                needed_libs=needed_libs,
+                symbol_lib_map=symbol_lib_map
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -317,7 +393,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     file_size = os.path.getsize(output);
-    console.print(f"  Binary written to [bold]{output}[/bold] ({file_size} bytes).");
+    console.print(f"  Binary written to {output} ({file_size} bytes).");
     console.print(f"  Run with: ./{output}");
     return 0;
 }

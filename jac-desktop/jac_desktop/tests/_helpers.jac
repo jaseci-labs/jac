@@ -13,6 +13,7 @@ import from jac_desktop.helpers.desktop_helpers { get_jac_command }
 glob _TESTS_DIR: Path = Path(str(__file__)).parent,
      _JAC_DESKTOP_ROOT: Path = _TESTS_DIR.parent,
      _JAC_CLIENT_ROOT: Path = _TESTS_DIR.parent.parent.parent / "jac-client" / "jac_client",
+     _JACLANG_ROOT: Path = _TESTS_DIR.parent.parent.parent / "jac" / "jaclang",
      _DESKTOP_HELPERS_JAC: Path = _JAC_DESKTOP_ROOT / "helpers" / "desktop_helpers.jac",
      _DESKTOP_HELPERS_IMPL: Path = (
          _JAC_DESKTOP_ROOT / "helpers" / "impl" / "desktop_helpers.impl.jac"
@@ -28,9 +29,9 @@ glob _TESTS_DIR: Path = Path(str(__file__)).parent,
      ),
      _RUNTIME_PY: Path = _DESKTOP_HELPERS_JAC,
      _JAC_CLIENT_FIXTURES: Path = _JAC_CLIENT_ROOT / "tests" / "fixtures",
-     _VITE_BUNDLER_JAC: Path = _JAC_CLIENT_ROOT / "plugin" / "src" / "vite_bundler.jac",
+     _VITE_BUNDLER_JAC: Path = _JACLANG_ROOT / "runtimelib" / "client" / "vite_bundler.jac",
      _VITE_BUNDLER_IMPL: Path = (
-         _JAC_CLIENT_ROOT / "plugin" / "src" / "impl" / "vite_bundler.impl.jac"
+         _JACLANG_ROOT / "runtimelib" / "client" / "impl" / "vite_bundler.impl.jac"
      ),
      _JAC_CLIENT_CLI: Path = _JAC_CLIENT_ROOT / "plugin" / "cli.jac";
 
@@ -59,7 +60,7 @@ def get_free_port -> int {
 
 """Get environment dict with bun in PATH."""
 def get_env_with_bun -> dict[str, str] {
-    import from jac_client.plugin.utils { get_bun }
+    import from jaclang.runtimelib.client { get_bun }
     env = os.environ.copy();
     bun_path = get_bun();
     if not bun_path {
@@ -78,9 +79,20 @@ def get_env_with_bun -> dict[str, str] {
 glob get_env_with_npm = get_env_with_bun;
 
 """Block until a TCP port is accepting connections or timeout."""
-def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None {
+def wait_for_port(
+    host: str,
+    port: int,
+    timeout: float = 60.0,
+    process: (subprocess.Popen | None) = None
+) -> None {
     deadline = time.time() + timeout;
     while time.time() < deadline {
+        if process is not None and process.poll() is not None {
+            raise RuntimeError(
+                f"Process exited (code {process.returncode}) before {host}:{port} "
+                f"opened; the dev shell crashed instead of timing out"
+            );
+        }
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
             sock.settimeout(0.5);
             try {
