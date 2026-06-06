@@ -178,6 +178,33 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
+        # Object-Spatial kernel lowering (Phase 4 / issue #6146).
+        # osp_tags: stable per-archetype int type-tag (walker/node/edge),
+        #   shared by the instance __type_tag field, the is_a table, and the
+        #   descriptor table.
+        # osp_arch_kind: archetype name -> "walker" | "node" | "edge".
+        # osp_type_tag_field: archetype name -> struct field index holding the
+        #   i64 __type_tag (fixed at 1: vtable slot is field 0).
+        # osp_thunk_funcs: f"{Arch}.{ability}" -> the (JacVal,JacVal)->JacVal
+        #   dispatch thunk that adapts the raw ability to a kernel Slot.fn.
+        osp_tags: dict[str, int] = {},
+        osp_arch_kind: dict[str, str] = {},
+        osp_type_tag_field: dict[str, int] = {},
+        osp_thunk_funcs: dict[str, ir.Function] = {},
+        # The native-context osp_kernel module AST registered into this program
+        # (None until _register_osp_kernel_module runs); NativeCompilePass links
+        # its IR + glob-init.
+        _osp_kernel_mod: (object | None) = None,
+        # __osp_setup() globals: __ospDESC (i8* array of per-tag descriptors),
+        # __ospRT (OspRuntime*), and the generated runtime function (built once
+        # by _emit_osp_setup, called from the program's glob-init).
+        _osp_desc_global: (object | None) = None,
+        _osp_rt_global: (object | None) = None,
+        _osp_setup_fn: (object | None) = None,
+        # __osp_ensure_init(): lazy idempotent init (kernel glob-init + setup)
+        # that spawn lowering calls, so descriptors/_walk_stack exist regardless
+        # of whether the program ran through a `with entry`.
+        _osp_ensure_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         var_tuple_type: dict[str, str] = {},
@@ -391,6 +418,24 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
+    # Object-Spatial kernel lowering (Phase 4 / issue #6146)
+    def _arch_kind(nd: uni.Archetype) -> (str | None);
+    def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
+    def _register_osp_kernel_module -> None;
+    def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
+    def _osp_trigger_names(nd: (uni.UniNode | None)) -> list[str];
+    def _emit_osp_setup -> None;
+    def _osp_rc_new(struct_name: str) -> (ir.Value | None);
+    def _osp_make_immortal(ptr: ir.Value) -> None;
+    def _osp_build_slot(trig_tag: int, thunk: ir.Function) -> (ir.Value | None);
+    def _osp_build_descriptor(
+        struct_name: str, type_tag: int, entry_slots: list, exit_slots: list
+    ) -> (ir.Value | None);
+
+    def _osp_build_slot_list(pairs: list) -> ir.Value;
+    def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
+    def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
@@ -398,15 +443,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_kernel_spawn(
+        walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+    ) -> (ir.Value | None);
+
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _emit_spawn_entry_dispatch(
-        walker_name: str,
-        walker_val: ir.Value,
-        loc_name: (str | None),
-        loc_val: ir.Value
-    ) -> None;
-
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(

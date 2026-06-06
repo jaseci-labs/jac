@@ -448,16 +448,79 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     right_name = self._spawn_operand_name(nd.right);
     left_is_walker = left_name is not None and self._is_walker_arch(left_name);
     right_is_walker = right_name is not None and self._is_walker_arch(right_name);
+    (walker_name, walker_val, loc_val) = (None, None, None);
     if left_is_walker {
-        self._emit_spawn_entry_dispatch(left_name, left_val, right_name, right_val);
+        (walker_name, walker_val, loc_val) = (left_name, left_val, right_val);
+    } elif right_is_walker {
+        (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
+    } else {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
         return left_val;
     }
-    if right_is_walker {
-        self._emit_spawn_entry_dispatch(right_name, right_val, left_name, left_val);
-        return right_val;
+    # `walker spawn loc` lowers to the portable osp_kernel (issue #6146):
+    # dispatch by the location's RUNTIME type tag, so computed locations,
+    # subtype / tuple triggers, exit abilities, and nested spawns all work. The
+    # kernel + descriptors are always registered for an OSP program (see
+    # _register_archetypes Pass 4.7), so this is the single spawn path.
+    if (walker_name in self.osp_tags)
+    and (self._osp_rt_global is not None)
+    and ("osp_spawn" in self.func_symtab) {
+        return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
     }
+    # Reaching here means the OSP kernel was not registered for a walker that
+    # nonetheless has a type-tag -- an internal inconsistency rather than a user
+    # error; surface it instead of silently no-op'ing.
     self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
-    return left_val;
+    return walker_val;
+}
+
+"""Lower `walker spawn loc` to `osp_spawn(rt, box(walker), wdesc, [loc])` after
+a lazy `__osp_ensure_init()`. Dispatch happens at runtime in the kernel keyed on
+the location's `__type_tag`, so the location may be any expression."""
+impl NaIRGenPass._codegen_kernel_spawn(
+    walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+) -> (ir.Value | None) {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    # Lazily build descriptors / init _walk_stack (idempotent).
+    if self._osp_ensure_fn is not None {
+        self.builder.call(self._osp_ensure_fn, []);
+    }
+    osp_spawn_fn = self.func_symtab.get("osp_spawn");
+    if osp_spawn_fn is None {
+        return walker_val;
+    }
+    _argtys = osp_spawn_fn.function_type.args;
+    # starts: List.i64 carrying the start location as a ptrtoint'd handle (the
+    # kernel boxes it through `any`; tag_of recovers the type at the field).
+    _h = self.list_helpers.get("i64");
+    _starts = self._rc_call_with_ctx(
+        _h["new"], [], op="new", loc="", name="spawn.starts"
+    );
+    self._rc_call_with_ctx(
+        _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
+    );
+    # wdesc = (WalkerDesc*) __ospDESC[walker_tag]
+    _wtag = self.osp_tags.get(walker_name, 0);
+    _descp = self.builder.load(
+        self.builder.gep(
+            self._osp_desc_global,
+            [ir.Constant(i32, 0), ir.Constant(i32, _wtag)],
+            name="spawn.descp"
+        ),
+        name="spawn.desc.i8"
+    );
+    _rt = self.builder.load(self._osp_rt_global, name="spawn.rt");
+    self.builder.call(
+        osp_spawn_fn,
+        [
+            self._coerce_type(_rt, _argtys[0]),
+            self._coerce_type(walker_val, _argtys[1]),
+            self._coerce_type(_descp, _argtys[2]),
+            self._coerce_type(_starts, _argtys[3])
+        ]
+    );
+    return walker_val;
 }
 
 """Resolve a spawn operand to its archetype name (None if not determinable)."""
@@ -480,40 +543,6 @@ impl NaIRGenPass._is_walker_arch(name: str) -> bool {
         and arch.arch_type is not None
         and arch.arch_type.name == Tok.KW_WALKER
     );
-}
-
-"""Call the walker's entry abilities that fire for the spawned location."""
-impl NaIRGenPass._emit_spawn_entry_dispatch(
-    walker_name: str, walker_val: ir.Value, loc_name: (str | None), loc_val: ir.Value
-) -> None {
-    arch = self.arch_ast_map.get(walker_name);
-    if not isinstance(arch, uni.Archetype) or arch.body is None {
-        return;
-    }
-    for stmt in arch.body {
-        if isinstance(stmt, uni.Ability)
-        and isinstance(stmt.signature, uni.EventSignature) {
-            ev = stmt.signature;
-            if ev.event.name != Tok.KW_ENTRY {
-                continue;
-            }
-            trig = self._get_name(ev.arch_tag_info)
-                if ev.arch_tag_info is not None
-                else None;
-            # Untyped entry fires on every location; a typed entry fires when
-            # the spawned location's type matches its trigger.
-            if trig is None or trig == loc_name {
-                mname = stmt.name_ref.sym_name if stmt.name_ref else None;
-                fn = self.method_funcs.get(f"{walker_name}.{mname}")
-                    if mname is not None
-                    else None;
-                if fn is not None {
-                    arg_loc = self._coerce_type(loc_val, fn.args[1].type);
-                    self.builder.call(fn, [walker_val, arg_loc]);
-                }
-            }
-        }
-    }
 }
 
 """Generate comparison expression."""

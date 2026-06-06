@@ -299,6 +299,7 @@ Tag 2 = str (i8* ptrtoint to i64)
 Tag 3 = list pointer (any List.T* ptrtoint to i64)
 Tag 4 = dict pointer (any Dict.K:V* ptrtoint to i64)
 Tag 5 = set pointer  (any Set.T* ptrtoint to i64)
+Tag 6 = archetype/struct pointer (any %Arch* ptrtoint to i64)
 """
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     b = self.builder;
@@ -358,6 +359,16 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
             for (_, stype) in self.set_types.items() {
                 if value.type == stype.as_pointer() {
                     ptr_tag = 5;
+                    break;
+                }
+            }
+        }
+        if ptr_tag == 2 {
+            # Archetype / struct pointer (node / walker / edge / obj instance)
+            # → tag 6, so a struct handle can round-trip through `any`.
+            for (_, structt) in self.struct_types.items() {
+                if value.type == structt.as_pointer() {
+                    ptr_tag = 6;
                     break;
                 }
             }
