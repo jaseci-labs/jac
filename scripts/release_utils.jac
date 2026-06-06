@@ -84,20 +84,23 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         precompile=True,
         extra_build_cmd="jac run scripts/bundle_docs.jac"
     ),
+    # Tier 3: depends on a tier-2 plugin (jac-client), so it must publish AFTER
+    # tier 2 is on PyPI, not alongside it.
     "jac-desktop": PackageInfo(
         dir="jac-desktop",
         pypi="jac-desktop",
-        tier=2,
+        tier=3,
         release_notes="docs/docs/community/release_notes/jac-desktop.md",
         notes_display="jac-desktop",
         submodules=True,
         precompile=True,
         extra_build_deps="jac-client"
     ),
+    # Tier 4: the meta-package depends on everything above (incl. jac-desktop).
     "jaseci": PackageInfo(
         dir="jaseci-package",
         pypi="jaseci",
-        tier=3,
+        tier=4,
         release_notes="",
         notes_display="jaseci"
     )
