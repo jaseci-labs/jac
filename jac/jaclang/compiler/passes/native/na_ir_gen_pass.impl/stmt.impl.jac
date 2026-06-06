@@ -667,6 +667,9 @@ impl NaIRGenPass._bind_match_capture(
         return;
     }
     alloca = self._entry_alloca(subj.type, cap_name);
+    # Bound only on the matching path; null-init so scope cleanup is safe
+    # for pointer captures when this case isn't taken.
+    self._null_init_ptr_alloca(alloca);
     self.builder.store(subj, alloca);
     self.local_vars[cap_name] = alloca;
     tn = self._infer_type_name(subj);
@@ -772,6 +775,9 @@ impl NaIRGenPass._emit_match_sequence(
             elem_name, helpers, subj, ir.Constant(i64, star_idx), end_idx
         );
         s_alloca = self._entry_alloca(sub_list.type, star_name);
+        # The capture only binds on the matching path; null-init so scope
+        # cleanup doesn't release a garbage pointer when this case isn't taken.
+        self._null_init_ptr_alloca(s_alloca);
         self.builder.store(sub_list, s_alloca);
         self.local_vars[star_name] = s_alloca;
     }
@@ -1048,6 +1054,9 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
         cap_name = self._get_name(pat.name) if pat.name else None;
         if cap_name is not None {
             alloca = self._entry_alloca(subj.type, cap_name);
+            # Bound only on the matching path; null-init so scope cleanup is
+            # safe for pointer captures when this case isn't taken.
+            self._null_init_ptr_alloca(alloca);
             self.builder.store(subj, alloca);
             self.local_vars[cap_name] = alloca;
         }

@@ -299,6 +299,27 @@ impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     return alloca;
 }
 
+"""Null-initialize a pointer-typed alloca in the entry block.
+
+For a slot that may be read by scope cleanup on a path where it was never
+assigned (e.g. a match capture whose case isn't taken), the uninitialized
+slot would otherwise hold stack garbage that `_emit_scope_cleanup` would
+hand to `__rc_release_simple` — a wild-pointer free. Storing null up front
+makes that release a no-op. The store is placed right after the alloca in
+the entry block so it runs unconditionally before any branch. Scalar slots
+are left alone (cleanup skips non-pointer pointees).
+"""
+impl NaIRGenPass._null_init_ptr_alloca(alloca: ir.Value) -> None {
+    pointee = alloca.type.pointee;
+    if not isinstance(pointee, ir.PointerType) {
+        return;
+    }
+    saved_block = self.builder.block;
+    self.builder.position_after(alloca);
+    self.builder.store(ir.Constant(pointee, None), alloca);
+    self.builder.position_at_end(saved_block);
+}
+
 """Convert a value to i1 (boolean)."""
 impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     if isinstance(val.type, ir.IntType) and val.type.width == 1 {

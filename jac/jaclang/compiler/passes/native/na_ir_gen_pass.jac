@@ -348,6 +348,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
+    def _null_init_ptr_alloca(alloca: ir.Value) -> None;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _promote_to_float(
