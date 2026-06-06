@@ -6,6 +6,7 @@ import from typing { Any }
 import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
+import type from jaclang.jac0core.constant { CodeContext }
 import type from jaclang.jac0core.unitree { Source, Token }
 import type from llvmlite.binding { ModuleRef, ExecutionEngine }
 
@@ -226,11 +227,43 @@ than rediscovering language-level contracts during target-specific lowering.
 
 New shared analysis data should be added here first.
 """
+obj ModuleCodeContextFacts {
+    has all_stmts: list = field(default_factory=`list),
+        stmts_by_context: dict[(CodeContext, list)] = field(default_factory=`dict),
+        shared_archetypes_by_context: dict[(CodeContext, list)] = field(
+            default_factory=`dict
+        );
+}
+
+"""Module-wide symbol indexes that multiple analysis/codegen stages reuse."""
+obj ModuleSymbolFacts {
+    has archetypes_by_name: dict[(str, any)] = field(default_factory=`dict),
+        top_level_archetypes_by_name: dict[(str, any)] = field(default_factory=`dict);
+}
+
+"""C library linking facts discovered while lowering native imports."""
+obj NativeClibFacts {
+    has paths: list[str] = field(default_factory=`list),
+        symbol_lib: dict[(str, str)] = field(default_factory=`dict);
+}
+
+"""Native auto-promotion compatibility facts for a module."""
+obj NativeCompatFacts {
+    has is_compatible: bool = False,
+        has_entry: bool = False,
+        disqualifiers: list[str] = field(default_factory=`list);
+}
+
 obj ModuleAnalysis {
     has interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         client_manifest: ClientManifest = field(default_factory=ClientManifest),
         native_layout: (NativeModuleLayout | None) = None,
-        native_compat: bool = False,
+        native_compat: NativeCompatFacts = field(default_factory=NativeCompatFacts),
+        code_contexts: ModuleCodeContextFacts = field(
+            default_factory=ModuleCodeContextFacts
+        ),
+        symbols: ModuleSymbolFacts = field(default_factory=ModuleSymbolFacts),
+        native_clibs: NativeClibFacts = field(default_factory=NativeClibFacts),
         layout_registry: any = None;
 }
 
@@ -249,15 +282,7 @@ obj CodeGenTarget {
         native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
-        _interop_callbacks: list[any] = field(default_factory=`list),
-        # Paths to C shared libraries discovered during native compilation.
-        # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
-        # and nacompile CLI for transitive .so loading and AOT linking.
-        _clib_paths: list[str] = field(default_factory=`list),
-        # Maps each clib function's C name to the library it was imported from
-        # (e.g. "InitWindow" -> "libraylib.dylib"). Set by the same pass and
-        # consumed by the nacompile CLI to drive Mach-O two-level dylib ordinals.
-        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict);
+        _interop_callbacks: list[any] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
 }

@@ -112,11 +112,11 @@ impl JacCompiler.get_native_layout(
     actual_program = self._resolve_program(full_target, target_program);
     if (full_target in actual_program._native_cache) {
         gen = actual_program._native_cache[full_target];
-        return gen?.native_layout;
+        return gen?.analysis.native_layout;
     }
     if (full_target in actual_program.mod.hub) {
         mod = actual_program.mod.hub[full_target];
-        return mod.gen?.native_layout;
+        return mod.gen?.analysis.native_layout;
     }
     return None;
 }
@@ -723,7 +723,7 @@ impl JacCompiler.compile(
             not is_native_mod
             and actual_program._auto_promote_native
             and mod_targ?.gen
-            and mod_targ.gen.analysis.native_compat
+            and mod_targ.gen.analysis.native_compat.is_compatible
         ) {
             is_native_mod = True;
         }

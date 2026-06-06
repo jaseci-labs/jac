@@ -143,7 +143,8 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
-        if auto_promote and not (ir_module and ir_module.gen.analysis.native_compat) {
+        if auto_promote
+        and not (ir_module and ir_module.gen.analysis.native_compat.is_compatible) {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
                 "  It may use walkers, nodes, edges, async, lambdas, or other\n"
@@ -217,8 +218,8 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
     # These come from `import from "/path/to/lib.so" { ... }` declarations
     # in the compiled module and its transitive dependencies.
-    # _clib_paths is accumulated by _compile_and_link_native_imports.
-    clib_paths = ir_module.gen._clib_paths;
+    # Native C library paths are accumulated by _compile_and_link_native_imports.
+    clib_paths = ir_module.gen.analysis.native_clibs.paths;
     # Maps a raw clib path to the soname actually recorded in needed_libs, so
     # the per-symbol library attribution below lines up with the linker's
     # LC_LOAD_DYLIB ordinals.
@@ -253,7 +254,7 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     # dylib ordinals (e.g. "InitWindow" -> "libraylib.dylib"). On ELF this is
     # unused (the loader searches all DT_NEEDED libs flatly).
     symbol_lib_map: dict[str, str] = {};
-    for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+    for (_sym, _raw) in ir_module.gen.analysis.native_clibs.symbol_lib.items() {
         symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 

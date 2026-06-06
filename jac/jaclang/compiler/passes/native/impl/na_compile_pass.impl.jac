@@ -37,7 +37,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # Note: libgc (Boehm GC) no longer needed — using reference counting
         # Load C shared libraries from import from "lib" { ... } declarations
         import os;
-        clib_paths = module.gen._clib_paths;
+        clib_paths = module.gen.analysis.native_clibs.paths;
         if clib_paths {
             for lib_path in clib_paths {
                 try {
@@ -550,7 +550,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 continue;
             }
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
-            dep_clib_paths = imported_ir.gen._clib_paths or [];
+            dep_clib_paths = imported_ir.gen.analysis.native_clibs.paths or [];
             # Collect transitive dep paths for cache metadata
             dep_transitive_paths: list = [];
             dep_manifest = imported_ir.gen.analysis.interop_manifest;
@@ -612,8 +612,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # Propagate dep C-lib paths back to the main module so that
             # nacompile (AOT) can discover all needed shared libraries.
             for dep_lib_path in dep_clib_paths {
-                if dep_lib_path not in module.gen._clib_paths {
-                    module.gen._clib_paths.append(dep_lib_path);
+                if dep_lib_path not in module.gen.analysis.native_clibs.paths {
+                    module.gen.analysis.native_clibs.paths.append(dep_lib_path);
                 }
                 try {
                     if os.path.exists(dep_lib_path) {

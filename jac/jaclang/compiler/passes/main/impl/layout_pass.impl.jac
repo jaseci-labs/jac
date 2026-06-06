@@ -1,8 +1,8 @@
 """Layout pass implementation — computes class hierarchy, C3 MRO,
 field layout, and vtable structure for all archetypes."""
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
@@ -47,18 +47,11 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
 
 """Collect all Archetype nodes from the module, deduplicating forward declarations."""
 impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
-    arch_map: dict[str, uni.Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype, brute_force=True) {
-        aname = nd.name.value if nd.name else None;
-        if aname is None {
-            continue;
-        }
-        # Full definition overrides forward declaration
-        if aname not in arch_map or nd.body is not None {
-            arch_map[aname] = nd;
-        }
+    symbols = module.gen.analysis.symbols;
+    if not symbols.archetypes_by_name and module.body {
+        ModuleCodegenPass.index_code_contexts(module);
     }
-    return arch_map;
+    return symbols.archetypes_by_name;
 }
 
 """Extract parent names from base_classes and compute C3 MRO for all archetypes."""

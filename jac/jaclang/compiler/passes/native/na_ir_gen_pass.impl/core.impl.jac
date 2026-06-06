@@ -100,7 +100,10 @@ impl NaIRGenPass.postinit -> None {
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Auto-promote a compatible .jac module to native context when requested
-    if (self.prog._auto_promote_native and self.ir_in.gen.analysis.native_compat) {
+    if (
+        self.prog._auto_promote_native
+        and self.ir_in.gen.analysis.native_compat.is_compatible
+    ) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
         main_target = self.prog._auto_promote_target;
         if (
@@ -111,6 +114,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         ) {
             import from jaclang.jac0core.compiler { _coerce_native_module }
             _coerce_native_module(self.ir_in);
+            ModuleCodegenPass.index_code_contexts(self.ir_in);
         }
     }
     # Emit reference counting helper functions (must be first)
@@ -945,10 +949,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
-        # Store clib paths on module gen for compile pass
+        # Store durable clib facts on module analysis for compile/link passes.
         if self._clib_paths {
-            module.gen._clib_paths = self._clib_paths;
-            module.gen._clib_symbol_lib = self._clib_symbol_lib;
+            module.gen.analysis.native_clibs.paths = self._clib_paths;
+            module.gen.analysis.native_clibs.symbol_lib = self._clib_symbol_lib;
             self.has_native_code = True;
         }
     }

@@ -231,6 +231,9 @@ what a Jac module means independent of any one emitted artifact.
 | `client_manifest` | `EsastGenPass` | client bundling and runtime registration |
 | `native_layout` | `NaIRGenPass` today; intended to move toward a native layout analysis pass | native marshalling, native compile/cache paths, Python/native bridge code |
 | `native_compat` | `UniTreeEnrichPass` | auto-native promotion decisions |
+| `code_contexts` | `UniTreeEnrichPass` / `ModuleCodegenPass` | flattened top-level declarations per codespace and shared archetype indexes |
+| `symbols` | `UniTreeEnrichPass` / `ModuleCodegenPass` | reusable module symbol indexes, currently archetypes by name |
+| `native_clibs` | `NaIRGenPass` native import lowering | native compile/cache paths and nacompile linker inputs |
 | `layout_registry` | `LayoutPass` | Shared archetype field layout, C3 MRO, vtable structure, and backend layout queries |
 
 Consumers read shared facts from `module.gen.analysis` directly, or through a

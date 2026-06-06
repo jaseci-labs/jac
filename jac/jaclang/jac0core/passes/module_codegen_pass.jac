@@ -29,6 +29,63 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return None;
     }
 
+    """Populate module-level code-context indexes once for all codegen passes."""
+    static def index_code_contexts(module: uni.Module) {
+        facts = module.gen.analysis.code_contexts;
+        facts.all_stmts = [];
+        facts.stmts_by_context = {
+            CodeContext.SERVER: [],
+            CodeContext.CLIENT: [],
+            CodeContext.NATIVE: []
+        };
+        for stmt in module.body {
+            if isinstance(stmt, uni.NativeBlock) {
+                facts.all_stmts.extend(stmt.body);
+                facts.stmts_by_context[CodeContext.NATIVE].extend(stmt.body);
+            } elif isinstance(stmt, uni.ClientBlock) {
+                facts.all_stmts.extend(stmt.body);
+                facts.stmts_by_context[CodeContext.CLIENT].extend(stmt.body);
+            } elif isinstance(stmt, uni.ServerBlock) {
+                facts.all_stmts.extend(stmt.body);
+                facts.stmts_by_context[CodeContext.SERVER].extend(stmt.body);
+            } else {
+                facts.all_stmts.append(stmt);
+                if isinstance(stmt, uni.ContextAwareNode) {
+                    facts.stmts_by_context[stmt.code_context].append(stmt);
+                } else {
+                    # Undecorated top-level nodes default to SERVER context.
+                    facts.stmts_by_context[CodeContext.SERVER].append(stmt);
+                }
+            }
+        }
+        symbols = module.gen.analysis.symbols;
+        symbols.archetypes_by_name = {};
+        symbols.top_level_archetypes_by_name = {};
+        for arch in module.get_all_sub_nodes(uni.Archetype, brute_force=True) {
+            aname = arch.name.value if arch.name else None;
+            if aname is None {
+                continue;
+            }
+            if aname not in symbols.archetypes_by_name or arch.body is not None {
+                symbols.archetypes_by_name[aname] = arch;
+            }
+            if isinstance(arch.parent, uni.Module) {
+                if aname not in symbols.top_level_archetypes_by_name
+                or arch.body is not None {
+                    symbols.top_level_archetypes_by_name[aname] = arch;
+                }
+            }
+        }
+        facts.shared_archetypes_by_context = {};
+        for ctx in [CodeContext.SERVER, CodeContext.CLIENT, CodeContext.NATIVE] {
+            facts.shared_archetypes_by_context[ctx] = (
+                ModuleCodegenPass._shared_archetypes_from_index(
+                    module, ctx, symbols.top_level_archetypes_by_name
+                )
+            );
+        }
+    }
+
     """Iterate top-level statements for a given context.
 
     Unwraps NativeBlock/ClientBlock/ServerBlock and yields their
@@ -38,34 +95,14 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     static def iter_context_stmts(
         module: uni.Module, ctx: (CodeContext | None) = None
     ) -> list[uni.ElementStmt] {
-        result: list[uni.ElementStmt] = [];
-        for stmt in module.body {
-            if isinstance(stmt, uni.NativeBlock) {
-                if (ctx is None or ctx == CodeContext.NATIVE) {
-                    result.extend(stmt.body);
-                }
-            } elif isinstance(stmt, uni.ClientBlock) {
-                if (ctx is None or ctx == CodeContext.CLIENT) {
-                    result.extend(stmt.body);
-                }
-            } elif isinstance(stmt, uni.ServerBlock) {
-                if (ctx is None or ctx == CodeContext.SERVER) {
-                    result.extend(stmt.body);
-                }
-            } elif ctx is None {
-                result.append(stmt);
-            } elif (
-                isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx
-            ) {
-                result.append(stmt);
-            } elif (
-                not isinstance(stmt, uni.ContextAwareNode) and ctx == CodeContext.SERVER
-            ) {
-                # Undecorated top-level nodes default to SERVER context
-                result.append(stmt);
-            }
+        facts = module.gen.analysis.code_contexts;
+        if not facts.all_stmts and module.body {
+            ModuleCodegenPass.index_code_contexts(module);
         }
-        return result;
+        if ctx is None {
+            return facts.all_stmts;
+        }
+        return facts.stmts_by_context.get(ctx, []);
     }
 
     """Names of archetypes referenced anywhere under `nd` (constructors, type
@@ -97,15 +134,16 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     static def shared_archetypes_for_context(
         module: uni.Module, ctx: CodeContext
     ) -> list[uni.Archetype] {
-        shared: dict[(str, uni.Archetype)] = {};
-        for arch in module.get_all_sub_nodes(uni.Archetype, brute_force=True) {
-            if (arch.name is not None) and isinstance(arch.parent, uni.Module) {
-                shared[arch.name.value] = arch;
-            }
+        facts = module.gen.analysis.code_contexts;
+        if ctx not in facts.shared_archetypes_by_context {
+            ModuleCodegenPass.index_code_contexts(module);
         }
-        if not shared {
-            return [];
-        }
+        return facts.shared_archetypes_by_context.get(ctx, []);
+    }
+
+    static def _shared_archetypes_from_index(
+        module: uni.Module, ctx: CodeContext, shared: dict[(str, uni.Archetype)]
+    ) -> list[uni.Archetype] {
         worklist: list[str] = [];
         for stmt in ModuleCodegenPass.iter_context_stmts(module, ctx) {
             worklist.extend(ModuleCodegenPass.archetype_refs(stmt));

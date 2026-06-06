@@ -1775,8 +1775,8 @@ test "clib import produces extern declares" {
     # Native Jac function should be 'define' (has body)
     assert 'define double @"hypotenuse"' in llvm_ir_str;
     # Library path should be stored for the compile pass
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert ir.gen.analysis.native_clibs.paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen.analysis.native_clibs.paths;
 }
 
 test "clib import inside na block" {
@@ -1791,8 +1791,8 @@ test "clib import inside na block" {
     # Native Jac function should be 'define'
     assert 'define double @"round_up"' in llvm_ir_str;
     # Library path should be stored
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert ir.gen.analysis.native_clibs.paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen.analysis.native_clibs.paths;
 }
 
 test "clib extensionless logical import produces extern declares (issue #6387)" {
@@ -1806,8 +1806,8 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
     assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
     assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
     assert 'define void @"open_then_close"' in s , "wrapper not defined";
-    assert ir.gen._clib_paths is not None;
-    assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
+    assert ir.gen.analysis.native_clibs.paths is not None;
+    assert len(ir.gen.analysis.native_clibs.paths) == 1 , f"unexpected clib paths: {ir.gen.analysis.native_clibs.paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
     # module, so the type-checker emits no W1100 "module not found" for it. (A
     # W5021 "C library not found" at JIT time is expected here and unrelated --
@@ -1842,7 +1842,7 @@ test "clib extensionless import resolves per platform (issue #6387)" {
             prog = JacProgram();
             ir = prog.compile(_fix, options=CompileOptions(type_check=False));
             assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
-            assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
+            assert list(ir.gen.analysis.native_clibs.paths) == [want] , f"{tgt}: got {ir.gen.analysis.native_clibs.paths}, want [{want}]";
         }
     } finally {
         if _saved is None {
@@ -1864,10 +1864,14 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
     try {
         _os.environ["JAC_NATIVE_TARGET"] = "x86_64-unknown-linux-gnu";
         ir = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
-        assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
+        assert list(ir.gen.analysis.native_clibs.paths) == [
+            "$ORIGIN/libs/libraylib.so"
+        ] , f"ELF: {ir.gen.analysis.native_clibs.paths}";
         _os.environ["JAC_NATIVE_TARGET"] = "arm64-apple-darwin";
         ir2 = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
-        assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
+        assert list(ir2.gen.analysis.native_clibs.paths) == [
+            "@loader_path/libs/libraylib.dylib"
+        ] , f"Mach-O: {ir2.gen.analysis.native_clibs.paths}";
     } finally {
         if _saved is None {
             del _os.environ["JAC_NATIVE_TARGET"];
@@ -2185,7 +2189,7 @@ def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
 test "auto promote chess.jac detects native compatible" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
-    assert ir.gen.analysis.native_compat , (
+    assert ir.gen.analysis.native_compat.is_compatible , (
         "chess.jac should be auto-promoted to native"
     );
     assert ir.gen.native_engine is not None , (
@@ -3123,7 +3127,7 @@ test "transitive glob init: push through mid updates deep glob list" {
 # When module A imports module B which in turn imports a .so (e.g. libm), the
 # .so was only loaded during B's compilation. When A linked B's bitcode, MCJIT
 # could not resolve the extern symbols from B's clib import, causing a segfault.
-# Fix: _compile_and_link_native_imports now propagates dep._clib_paths back to
+# Fix: _compile_and_link_native_imports now propagates dep native clib paths to
 # the main module and calls llvm.load_library_permanently for each entry.
 test "transitive clib: compiles without errors when dep imports a .so" {
     prog = JacProgram();
@@ -3132,14 +3136,14 @@ test "transitive clib: compiles without errors when dep imports a .so" {
     assert ir.gen.native_engine is not None , "No native engine created";
 }
 
-test "transitive clib: _clib_paths of dep module propagated to entry module" {
-    # The entry's _clib_paths must include libm even though only the lib module
+test "transitive clib: dep native clib paths propagated to entry module" {
+    # The entry's native clib paths must include libm even though only the lib module
     # directly imports it.
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    clib_paths = ir.gen._clib_paths;
-    assert clib_paths , "_clib_paths not set on entry module IR";
+    clib_paths = ir.gen.analysis.native_clibs.paths;
+    assert clib_paths , "native clib paths not set on entry module IR";
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
 }
 
