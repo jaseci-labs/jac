@@ -675,6 +675,33 @@ obj MonitoringDeployer {
                 "    editable: true\n"
             );
         }
+        # Tempo trace datasource. `tracesToLogsV2` (added when Loki is
+        # present) enables the span -> logs pivot by trace_id.
+        if self.k8s_config.tracing_enabled {
+            tempo_name = f"{app_name}-tempo";
+            tempo_url = f"http://{tempo_name}-service:3200";
+            tempo_ds = (
+                "  - name: Tempo\n"
+                "    uid: tempo\n"
+                "    type: tempo\n"
+                f"    url: {tempo_url}\n"
+                "    access: proxy\n"
+                "    editable: true\n"
+                "    jsonData:\n"
+                "      nodeGraph:\n"
+                "        enabled: true\n"
+            );
+            if self.k8s_config.loki_enabled {
+                tempo_ds = tempo_ds + (
+                    "      tracesToLogsV2:\n"
+                    "        datasourceUid: loki\n"
+                    "        filterByTraceID: true\n"
+                    "        spanStartTimeShift: \"-1h\"\n"
+                    "        spanEndTimeShift: \"1h\"\n"
+                );
+            }
+            datasource_yaml = datasource_yaml + tempo_ds;
+        }
         grafana_ds_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -1231,6 +1258,228 @@ obj MonitoringDeployer {
         }
     }
 
+    """Deploy Tempo as a single-binary trace store.
+
+    OTLP receivers on 4317/4318 (the Alloy collector exports spans here)
+    and an HTTP API on 3200 for TraceQL search. emptyDir storage, so
+    traces are ephemeral (suitable for dev/staging).
+    """
+    def _deploy_tempo(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        tempo_name = f"{app_name}-tempo";
+        tempo_sa_name = f"{tempo_name}-sa";
+
+        tempo_config_yaml = (
+            "server:\n"
+            "  http_listen_port: 3200\n"
+            "distributor:\n"
+            "  receivers:\n"
+            "    otlp:\n"
+            "      protocols:\n"
+            "        grpc:\n"
+            "          endpoint: 0.0.0.0:4317\n"
+            "        http:\n"
+            "          endpoint: 0.0.0.0:4318\n"
+            "ingester:\n"
+            "  trace_idle_period: 10s\n"
+            "  max_block_duration: 5m\n"
+            "compactor:\n"
+            "  compaction:\n"
+            "    block_retention: 48h\n"
+            "storage:\n"
+            "  trace:\n"
+            "    backend: local\n"
+            "    local:\n"
+            "      path: /var/tempo/blocks\n"
+            "    wal:\n"
+            "      path: /var/tempo/wal\n"
+            "usage_report:\n"
+            "  reporting_enabled: false\n"
+        );
+        tempo_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{tempo_name}-config",
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'data': {'tempo.yaml': tempo_config_yaml}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace, body=tempo_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=tempo_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': tempo_sa_name,
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=tempo_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=tempo_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': tempo_name,
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': tempo_name}},
+                'template': {
+                    'metadata': {'labels': {'app': tempo_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': tempo_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'tempo',
+                                'image': 'grafana/tempo:2.7.0',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 10001,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': ['-config.file=/etc/tempo/tempo.yaml'],
+                                'ports': [
+                                    {'containerPort': 3200, 'name': 'http'},
+                                    {'containerPort': 4317, 'name': 'otlp-grpc'},
+                                    {'containerPort': 4318, 'name': 'otlp-http'}
+                                ],
+                                'readinessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3200},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'livenessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3200},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'volumeMounts': [
+                                    {
+                                        'name': 'tempo-config-vol',
+                                        'mountPath': '/etc/tempo'
+                                    },
+                                    {'name': 'tempo-data', 'mountPath': '/var/tempo'},
+                                    {'name': 'tmp', 'mountPath': '/tmp'}
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'tempo-config-vol',
+                                'configMap': {'name': f"{tempo_name}-config"}
+                            },
+                            {'name': 'tempo-data', 'emptyDir': {}},
+                            {'name': 'tmp', 'emptyDir': {}}
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.patch_namespaced_deployment(
+                name=tempo_name, namespace=namespace, body=tempo_deployment
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=tempo_deployment
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{tempo_name}-service",
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': tempo_name},
+                'ports': [
+                    {
+                        'name': 'http',
+                        'protocol': 'TCP',
+                        'port': 3200,
+                        'targetPort': 3200
+                    },
+                    {
+                        'name': 'otlp-grpc',
+                        'protocol': 'TCP',
+                        'port': 4317,
+                        'targetPort': 4317
+                    },
+                    {
+                        'name': 'otlp-http',
+                        'protocol': 'TCP',
+                        'port': 4318,
+                        'targetPort': 4318
+                    }
+                ]
+            }
+        };
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{tempo_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=tempo_service
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Tempo deployed for '{app_name}'");
+        }
+    }
+
     """Deploy Loki as a single-process log store.
 
     Loki is always ClusterIP — Grafana and Alloy talk to it internally.
@@ -1431,14 +1680,10 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Grafana Alloy as a DaemonSet to tail pod logs and ship them to Loki.
+    """Deploy Grafana Alloy as a DaemonSet for logs and/or traces.
 
-    Alloy is Grafana's OpenTelemetry-compatible successor to Promtail
-    (Promtail went EOL on 2026-03-02). Same job: K8s SD discovers pods,
-    Alloy reads logs from /var/log/pods on each node and forwards them
-    to the Loki ClusterIP service. River-syntax config; otherwise the
-    DaemonSet shape, RBAC, hostPath mounts, and security context are
-    a port of the Promtail layout PR #5731 introduced.
+    Tails pod logs to Loki and/or receives OTLP spans and forwards them
+    to Tempo, depending on which signals are enabled. River-syntax config.
     """
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         loki_name = f"{app_name}-loki";
@@ -1448,19 +1693,18 @@ obj MonitoringDeployer {
         cluster_role_binding_name = f"{namespace}-{alloy_name}";
         rbac_v1 = client.RbacAuthorizationV1Api();
         loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
+        tempo_name = f"{app_name}-tempo";
+        tempo_otlp_endpoint = f"{tempo_name}-service:4317";
 
-        # River-syntax pipeline. Mirrors the Promtail relabel + CRI flow:
-        # discovery.kubernetes finds pods, discovery.relabel lifts
-        # namespace/pod/container labels and rewrites __path__ to the
-        # pod's per-container log file under /var/log/pods, local.file_match
-        # globs those paths, loki.source.file tails them, loki.process
-        # parses the containerd CRI wrapper, loki.write pushes to Loki.
-        alloy_config_river = (
-            "logging {\n"
-            "  level  = \"info\"\n"
-            "  format = \"logfmt\"\n"
-            "}\n"
-            "\n"
+        # River pipeline: a header plus two optional lanes - the logs lane
+        # (loki_enabled) and the OTLP traces lane (tracing_enabled).
+        alloy_header = (
+            "logging {\n" "  level  = \"info\"\n" "  format = \"logfmt\"\n" "}\n" "\n"
+        );
+
+        # Logs lane: discover pods, relabel to per-container log paths under
+        # /var/log/pods, tail them, parse the CRI wrapper, push to Loki.
+        alloy_logs_lane = (
             "discovery.kubernetes \"pods\" {\n"
             "  role = \"pod\"\n"
             "}\n"
@@ -1522,12 +1766,8 @@ obj MonitoringDeployer {
             "  // app wrote to stdout.\n"
             "  stage.cri {}\n"
             "\n"
-            "  // M-14.b structured-JSON parse. Lifts top-level keys out of\n"
-            "  // the JSON body produced by jac-scale's `install_structured_\n"
-            "  // logging`. Non-JSON lines (third-party libraries that emit\n"
-            "  // text, or pods that predate M-14.b) fall through unmolested\n"
-            "  // - Alloy's stage.json doesn't drop the line on extraction\n"
-            "  // failure, the variables just stay unset.\n"
+            "  // Lift top-level keys out of structured-JSON log lines.\n"
+            "  // Non-JSON lines fall through unmolested (variables stay unset).\n"
             "  stage.json {\n"
             "    expressions = {\n"
             "      ts       = \"ts\",\n"
@@ -1537,21 +1777,17 @@ obj MonitoringDeployer {
             "    }\n"
             "  }\n"
             "\n"
-            "  // Use the app-emitted timestamp when present. Defends against\n"
-            "  // clock skew across nodes (M-14 crash course gotcha 8).\n"
-            "  // action_on_failure = \"skip\" keeps lines without a valid ts\n"
-            "  // (text-mode, or malformed JSON) - they get the agent's clock.\n"
+            "  // Use the app-emitted timestamp when present (defends against\n"
+            "  // node clock skew); lines without a valid ts keep the agent's.\n"
             "  stage.timestamp {\n"
             "    source            = \"ts\"\n"
             "    format            = \"RFC3339Nano\"\n"
             "    action_on_failure = \"skip\"\n"
             "  }\n"
             "\n"
-            "  // Promote bounded-cardinality fields to Loki labels. service\n"
-            "  // is one of a handful (gateway + N microservices); level is\n"
-            "  // five values. trace_id is deliberately NOT here - it would\n"
-            "  // be one stream per request (high-cardinality killer). Query\n"
-            "  // trace_id via `{namespace=ns} | json | trace_id=\"...\"`.\n"
+            "  // Promote bounded-cardinality fields to Loki labels. trace_id\n"
+            "  // is deliberately NOT a label (one stream per request); query\n"
+            "  // it via `{namespace=ns} | json | trace_id=\"...\"`.\n"
             "  stage.labels {\n"
             "    values = {\n"
             "      service = \"\",\n"
@@ -1566,6 +1802,41 @@ obj MonitoringDeployer {
             "  }\n"
             "}\n"
         );
+        # Drop the logs lane entirely when Loki is off (tracing-only
+        # deploy): no point tailing pods if there's nowhere to ship them.
+        if not self.k8s_config.loki_enabled {
+            alloy_logs_lane = "";
+        }
+
+        # Traces lane: receive OTLP from app pods, batch, export to Tempo.
+        alloy_otel_lane = "";
+        if self.k8s_config.tracing_enabled {
+            alloy_otel_lane = (
+                "\n"
+                "otelcol.receiver.otlp \"default\" {\n"
+                "  grpc { endpoint = \"0.0.0.0:4317\" }\n"
+                "  http { endpoint = \"0.0.0.0:4318\" }\n"
+                "  output {\n"
+                "    traces = [otelcol.processor.batch.default.input]\n"
+                "  }\n"
+                "}\n"
+                "\n"
+                "otelcol.processor.batch \"default\" {\n"
+                "  output {\n"
+                "    traces = [otelcol.exporter.otlp.tempo.input]\n"
+                "  }\n"
+                "}\n"
+                "\n"
+                "otelcol.exporter.otlp \"tempo\" {\n"
+                "  client {\n"
+                f"    endpoint = \"{tempo_otlp_endpoint}\"\n"
+                "    tls { insecure = true }\n"
+                "  }\n"
+                "}\n"
+            );
+        }
+
+        alloy_config_river = alloy_header + alloy_logs_lane + alloy_otel_lane;
         alloy_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -1678,6 +1949,14 @@ obj MonitoringDeployer {
             }
         }
 
+        # Base agent port; add the OTLP receiver ports when tracing is on
+        # so app pods can send spans to this Alloy via the Alloy Service.
+        alloy_ports = [{'containerPort': 12345, 'name': 'http'}];
+        if self.k8s_config.tracing_enabled {
+            alloy_ports.append({'containerPort': 4317, 'name': 'otlp-grpc'});
+            alloy_ports.append({'containerPort': 4318, 'name': 'otlp-http'});
+        }
+
         alloy_daemonset = {
             'apiVersion': 'apps/v1',
             'kind': 'DaemonSet',
@@ -1726,7 +2005,7 @@ obj MonitoringDeployer {
                                     '--storage.path=/tmp/alloy',
                                     '/etc/alloy/config.alloy'
                                 ],
-                                'ports': [{'containerPort': 12345, 'name': 'http'}],
+                                'ports': alloy_ports,
                                 'volumeMounts': [
                                     {
                                         'name': 'alloy-config-vol',
@@ -1787,6 +2066,52 @@ obj MonitoringDeployer {
             }
         }
 
+        # ClusterIP Service in front of the Alloy DaemonSet so app pods
+        # have a stable OTLP target (`<app>-alloy-service:4318`). Only the
+        # traces leg needs an inbound Service (logs push outbound to Loki).
+        if self.k8s_config.tracing_enabled {
+            alloy_service = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': {
+                    'name': f"{alloy_name}-service",
+                    'namespace': namespace,
+                    'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+                },
+                'spec': {
+                    'type': 'ClusterIP',
+                    'selector': {'app': alloy_name},
+                    'ports': [
+                        {
+                            'name': 'otlp-grpc',
+                            'protocol': 'TCP',
+                            'port': 4317,
+                            'targetPort': 4317
+                        },
+                        {
+                            'name': 'otlp-http',
+                            'protocol': 'TCP',
+                            'port': 4318,
+                            'targetPort': 4318
+                        }
+                    ]
+                }
+            };
+            try {
+                core_v1.read_namespaced_service(
+                    name=f"{alloy_name}-service", namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    core_v1.create_namespaced_service(
+                        namespace=namespace, body=alloy_service
+                    );
+                } else {
+                    raise;
+                }
+            }
+        }
+
         if self.logger {
             self.logger.info(f"Alloy deployed for '{app_name}'");
         }
@@ -1809,8 +2134,15 @@ obj MonitoringDeployer {
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, provider);
+        if self.k8s_config.tracing_enabled {
+            self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
+        }
         if self.k8s_config.loki_enabled {
             self._deploy_loki(app_name, namespace, apps_v1, core_v1);
+        }
+        # Alloy serves both legs (logs to Loki, traces to Tempo); deploy it
+        # when either is on - its River config is built from both flags.
+        if self.k8s_config.loki_enabled or self.k8s_config.tracing_enabled {
             self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
@@ -1955,6 +2287,13 @@ obj MonitoringDeployer {
                 raise;
             }
         }
+        # The Alloy OTLP Service (only present in traces deploys).
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{alloy_name}-service",
+            namespace,
+            'Service'
+        );
         alloy_cr_name = f"{namespace}-{alloy_name}";
         try {
             rbac_v1.delete_cluster_role(name=alloy_cr_name);
@@ -1965,6 +2304,37 @@ obj MonitoringDeployer {
         }
         try {
             rbac_v1.delete_cluster_role_binding(name=alloy_cr_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Tempo resources. Deleted by name unconditionally so teardown is
+        # idempotent regardless of the tracing toggle state.
+        tempo_name = f"{app_name}-tempo";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{tempo_name}-service",
+            namespace,
+            'Service'
+        );
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{tempo_name}-sa", namespace=namespace
+            );
         } except ApiException as e {
             if e.status != 404 {
                 raise;

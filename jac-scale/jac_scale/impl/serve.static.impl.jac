@@ -164,7 +164,8 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
     import from jaclang.project.config { get_config }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = self.introspector.resolve_root_app(configured_root);
     # Register the configurable cl route (e.g., /cl/{page_name})
     self.server.add_endpoint(
         JEndPoint(
@@ -285,7 +286,8 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
     if (not file_ext or (file_ext not in allowed_extensions)) {
         # SPA catch-all: serve base_route_app for extensionless paths
-        base_route_app = config.serve.base_route_app if config else "";
+        configured_root = config.serve.base_route_app if config else "";
+        base_route_app = self.introspector.resolve_root_app(configured_root);
         if (
             not file_ext and base_route_app and not file_path.startswith(api_prefixes)
         ) {
