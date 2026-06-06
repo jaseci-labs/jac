@@ -991,6 +991,44 @@ impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] 
     return dict(self._client_functions);
 }
 
+"""Resolve which client page should be served at the root path (/).
+
+Honors an explicitly configured base_route_app first. When none is set,
+infers a root page only from an intent-bearing signal: a conventionally
+named entry point (app/index/main/home/root). Returns "" otherwise, leaving
+the root path as the JSON API index.
+
+Inference is deliberately driven by intent, not incidence. A page named by
+convention says "this is the entry point"; an app that merely happens to
+expose one `cl` page (reachable at /cl/<name>) has not asked to become a
+single-page app, and silently promoting it would replace the JSON API index
+and impose the full client build toolchain on an otherwise API-only server.
+To serve a non-conventionally-named page at /, set base_route_app explicitly.
+Name matching is case-insensitive; the first declared spelling wins.
+"""
+impl ModuleIntrospector.resolve_root_app(configured: str = "") -> str {
+    if configured {
+        return configured;
+    }
+    # Client-only `cl` pages have no server-side attribute, so the manifest's
+    # export list (not get_client_functions) is the source of truth here.
+    self.load();
+    names = list(self._client_manifest.get('exports', []));
+    if not names {
+        return "";
+    }
+    by_lower: dict[(str, str)] = {};
+    for n in names {
+        by_lower.setdefault(n.lower(), n);
+    }
+    for candidate in ["app", "index", "main", "home", "root"] {
+        if candidate in by_lower {
+            return by_lower[candidate];
+        }
+    }
+    return "";
+}
+
 """Get callable signature information."""
 impl ModuleIntrospector.introspect_callable(
     func: Callable[(..., Any)]
@@ -1849,9 +1887,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/') {
-                base_route_app = config.serve.base_route_app if config else "";
+                configured_root = config.serve.base_route_app if config else "";
+                base_route_app = server.introspector.resolve_root_app(configured_root);
                 if base_route_app {
-                    # Serve the configured base route app at /
+                    # Serve the configured (or inferred) base route app at /
                     query_params = parse_qs(parsed_path.query, keep_blank_values=True);
                     args = {
                         key: values[0] if (len(values) == 1) else values
@@ -1955,7 +1994,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 );
             } else {
                 # SPA catch-all: serve base_route_app for unmatched extensionless paths
-                base_route_app = config.serve.base_route_app if config else "";
+                configured_root = config.serve.base_route_app if config else "";
+                base_route_app = server.introspector.resolve_root_app(configured_root);
                 if base_route_app {
                     self._render_page(base_route_app, {});
                 } else {
@@ -2319,7 +2359,8 @@ impl JacAPIServer.start(
     }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = self.introspector.resolve_root_app(configured_root);
     with self.server as httpd {
         console.print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         console.print(f"Module: {self.module_name}");
@@ -2341,7 +2382,8 @@ impl JacAPIServer.start(
             f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
         );
         if base_route_app {
-            console.print(f'\nBase route (/) configured to serve: {base_route_app}');
+            origin = "configured" if configured_root else "inferred";
+            console.print(f'\nBase route (/) {origin} to serve: {base_route_app}');
         }
         console.print('\nPress Ctrl+C to stop the server');
         # Display bundle error after endpoints if one occurred
@@ -2468,7 +2510,8 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = server.introspector.resolve_root_app(configured_root);
     section('CLIENT PAGES', 'Public');
     if client_exports {
         funcs_list = ', '.join(sorted(client_exports)[:8]);

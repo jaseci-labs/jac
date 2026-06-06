@@ -504,7 +504,13 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         # so KubernetesMicroserviceTarget can read `enabled` and (in
         # M-14.c) nested storage / retention knobs without revisiting
         # this loader on every new key.
-        'logs': dict(ms_config.get('logs', {}))
+        'logs': dict(ms_config.get('logs', {})),
+        # O-02: distributed tracing (OpenTelemetry -> Alloy/Tempo).
+        # Opaque pass-through, same shape as `logs`: `enabled` toggles
+        # the app-side SDK + Tempo deploy; `endpoint` overrides the OTLP
+        # collector URL; `sample_ratio` sets head sampling. Read by the
+        # gateway/service setup (install_tracing) and the K8s target.
+        'tracing': dict(ms_config.get('tracing', {}))
     };
 }
 
