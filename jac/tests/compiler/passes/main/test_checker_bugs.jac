@@ -31,6 +31,7 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
 """
 
 import os;
@@ -893,5 +894,19 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_starguard_1_guarded_star_reexport_resolves" {
+    program = compile_and_check("checker_star_reexport_guard.jac");
+    e1055 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1055"
+    );
+    assert e1055 == 1 , (
+        "Bug #STARGUARD-1: `bytes + str` must error because str is not a "
+        "Buffer. The guarded ReadableBuffer/Buffer re-export must resolve so "
+        f"bytes.__add__ rejects str. Expected 1 E1055, got {e1055}."
     );
 }
