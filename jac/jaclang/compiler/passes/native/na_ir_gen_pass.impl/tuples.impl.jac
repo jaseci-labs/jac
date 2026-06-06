@@ -56,6 +56,36 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     return val;
 }
 
+"""Infer the pointer-to-struct LLVM type of a boxed tuple read from a list.
+
+`nd` is the RHS of a tuple-unpack assignment — typically `lst.pop()`,
+`lst.pop(i)`, or `lst[i]`. Returns the element pointer type (e.g. `{i64,i64}*`)
+recovered from the source list's declared annotation (`list[tuple[...]]`) or,
+for a bare `list`, from the element-struct shape tracked at literal/append time.
+Returns None when the source isn't an identifiable list. See #6435.
+"""
+impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
+    list_name: (str | None) = None;
+    if isinstance(nd, uni.FuncCall) {
+        tgt = nd.target;
+        if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+            list_name = self._get_name(tgt.target);
+        }
+    } elif isinstance(nd, uni.AtomTrailer) and not nd.is_attr and nd.right?.slices {
+        list_name = self._get_name(nd.target);
+    }
+    if list_name is None {
+        return None;
+    }
+    # 1. Typed `list[tuple[...]]` — recover from the declared annotation.
+    cast = self._resolve_ptr_elem_cast_type(self.var_type_node.get(list_name));
+    if cast is not None {
+        return cast;
+    }
+    # 2. Bare `list` — recover the boxed-tuple struct tracked at literal time.
+    return self.var_list_elem_struct.get(list_name);
+}
+
 """Unpack a tuple into multiple variables. Handles both value and pointer tuples."""
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
@@ -69,6 +99,22 @@ impl NaIRGenPass._codegen_tuple_unpack(
     } elif isinstance(tuple_val.type, ir.PointerType)
     and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
         struct_type = tuple_val.type.pointee;
+    }
+    # A boxed tuple read from a list (`(a, b) = lst.pop()` / `lst[i]`) arrives as
+    # an opaque `i8*` — recover its struct shape from the source list and bitcast
+    # so the pointer-extract path below can destructure it (see #6435).
+    if struct_type is None
+    and isinstance(tuple_val.type, ir.PointerType)
+    and tuple_node is not None {
+        cast_ptr_type = self._infer_unpack_struct_ptr(tuple_node);
+        if cast_ptr_type is not None
+        and isinstance(cast_ptr_type, ir.PointerType)
+        and isinstance(cast_ptr_type.pointee, ir.LiteralStructType) {
+            tuple_val = self.builder.bitcast(
+                tuple_val, cast_ptr_type, name="unpack.cast"
+            );
+            struct_type = cast_ptr_type.pointee;
+        }
     }
     if struct_type is None {
         return;

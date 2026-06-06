@@ -9,9 +9,8 @@ Run with:  jac test test_littlex.jac
 
 import os;
 import pytest;
-import from typing { Any }
 import from tempfile { mkdtemp }
-import from jaclang.runtimelib.testing { JacTestClient }
+import from jaclang.runtimelib.testing { JacTestClient, TestResponse }
 
 glob SERVER = os.path.join(os.path.dirname(__file__), "server.jac");
 
@@ -27,16 +26,16 @@ def login_as(client: JacTestClient, username: str, password: str) {
 }
 
 """Return the walker's report list from a response."""
-def reports_of(response: Any) -> list {
+def reports_of(response: TestResponse) -> list {
     data = response.data;
     if data and "reports" in data {
-        return data["reports"];
+        return list(data["reports"]);
     }
     return [];
 }
 
 """Return the first reported value (or None if the walker reported nothing)."""
-def first_report(response: Any) -> Any {
+def first_report(response: TestResponse) -> any {
     reports = reports_of(response);
     return reports[0] if reports else None;
 }
@@ -96,7 +95,7 @@ test "create tweet shows up in the feed" {
     assert tweet["is_mine"] == True;
 
     feed = first_report(client.post("/walker/load_feed", json={}));
-    assert len(feed) == 1;
+    assert len(list(feed)) == 1;
     assert feed[0]["content"] == "hello world";
 
     client.close();
@@ -115,7 +114,7 @@ test "like and comment on a tweet" {
         client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
     );
     assert liked["liked"] == True;
-    assert "alice" in liked["likes"];
+    assert "alice" in list(liked["likes"]);
 
     unliked = first_report(
         client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
@@ -130,7 +129,7 @@ test "like and comment on a tweet" {
     assert commented["success"] == True;
 
     profile = first_report(client.post("/walker/get_profile", json={}));
-    assert len(profile["tweets"][0]["comments"]) == 1;
+    assert len(list(profile["tweets"][0]["comments"])) == 1;
 
     client.close();
 }
@@ -149,7 +148,7 @@ test "delete a tweet removes it from the feed" {
     assert deleted["success"] == True;
 
     feed = first_report(client.post("/walker/load_feed", json={}));
-    assert len(feed) == 0;
+    assert len(list(feed)) == 0;
 
     client.close();
 }
@@ -162,7 +161,7 @@ test "search filters the feed by content" {
     client.post("/walker/create_tweet", json={"content": "python is fine"});
 
     hits = first_report(client.post("/walker/load_feed", json={"search_query": "jac"}));
-    assert len(hits) == 1;
+    assert len(list(hits)) == 1;
     assert hits[0]["content"] == "jac is great";
 
     client.close();
@@ -203,12 +202,12 @@ test "follow and unfollow another user" {
     assert first_report(followed)["success"] == True;
 
     after_follow = first_report(client.post("/walker/get_profile", json={}));
-    assert len(after_follow["following"]) == 1;
+    assert len(list(after_follow["following"])) == 1;
     assert after_follow["following"][0]["username"] == "bob";
 
     client.post("/walker/unfollow_user", json={"target_id": bob_id});
     after_unfollow = first_report(client.post("/walker/get_profile", json={}));
-    assert len(after_unfollow["following"]) == 0;
+    assert len(list(after_unfollow["following"])) == 0;
 
     client.close();
 }
@@ -285,14 +284,14 @@ test "channel create, join, post and detail" {
     assert joined["success"] == True;
 
     listing = first_report(client.post("/walker/get_channels", json={}));
-    assert len(listing) == 1;
+    assert len(list(listing)) == 1;
     assert listing[0]["member_count"] == 2;
 
     detail = first_report(
         client.post("/walker/get_channel_detail", json={"channel_id": channel_id})
     );
     assert detail["is_member"] == True;
-    assert len(detail["posts"]) == 1;
+    assert len(list(detail["posts"])) == 1;
     assert detail["posts"][0]["content"] == "welcome to the channel";
 
     client.close();

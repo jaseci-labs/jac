@@ -71,6 +71,47 @@ test "list" {
     run_with_both("prim_list.jac", "list_py", "list_cl", "list_na");
 }
 
+# --- Native list/`any` codegen gaps (#6435), na required ---
+test "native list pop index" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "pop_index_py",
+        "pop_index_cl",
+        "pop_index_na",
+        require=["na"]
+    );
+}
+
+test "native list tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "tuple_roundtrip_py",
+        "tuple_roundtrip_cl",
+        "tuple_roundtrip_na",
+        require=["na"]
+    );
+}
+
+test "native list any literal" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_literal_py",
+        "any_literal_cl",
+        "any_literal_na",
+        require=["na"]
+    );
+}
+
+test "native list any unpack stack" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_stack_py",
+        "any_stack_cl",
+        "any_stack_na",
+        require=["na"]
+    );
+}
+
 # --- Collection Types (DictEmitter) ---
 test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");

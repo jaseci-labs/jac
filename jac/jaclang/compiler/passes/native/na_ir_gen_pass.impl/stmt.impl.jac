@@ -1736,6 +1736,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         for (ename, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 self.var_list_elem_type[var_name] = ename;
+                # Seed the boxed-tuple element-struct shape from the literal that
+                # produced this value (if any), so `(a, b) = var.pop()` on a bare
+                # `list` can recover the tuple type later. See #6435.
+                if self._pending_list_elem_struct is not None {
+                    self.var_list_elem_struct[var_name] = self._pending_list_elem_struct;
+                }
                 break;
             }
         }
