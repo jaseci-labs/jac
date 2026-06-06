@@ -177,7 +177,7 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
    - Click on the job, then click **Review deployments**
    - Select the `pypi` environment and click **Approve and deploy**
 3. The workflow then handles everything automatically:
-   - Builds all packages once ([precompiling bytecode](docs/docs/reference/publishing.md#2-build-the-wheel) for packages that need it)
+   - Builds all packages once ([precompiling bytecode](https://docs.jaseci.org/reference/publishing/) for packages that need it)
    - Publishes in dependency order (tiered):
      - **Tier 1**: `jaclang` (base package; everything depends on it)
      - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
