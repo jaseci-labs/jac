@@ -994,10 +994,16 @@ impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] 
 """Resolve which client page should be served at the root path (/).
 
 Honors an explicitly configured base_route_app first. When none is set,
-infers the most likely intended page from the available client functions:
-  1. a conventionally-named entry point (app/index/main/home/root), or
-  2. the sole client function when there is exactly one, or
-  3. "" when the choice is ambiguous (caller falls back to its default).
+infers a root page only from an intent-bearing signal: a conventionally
+named entry point (app/index/main/home/root). Returns "" otherwise, leaving
+the root path as the JSON API index.
+
+Inference is deliberately driven by intent, not incidence. A page named by
+convention says "this is the entry point"; an app that merely happens to
+expose one `cl` page (reachable at /cl/<name>) has not asked to become a
+single-page app, and silently promoting it would replace the JSON API index
+and impose the full client build toolchain on an otherwise API-only server.
+To serve a non-conventionally-named page at /, set base_route_app explicitly.
 Name matching is case-insensitive; the first declared spelling wins.
 """
 impl ModuleIntrospector.resolve_root_app(configured: str = "") -> str {
@@ -1019,9 +1025,6 @@ impl ModuleIntrospector.resolve_root_app(configured: str = "") -> str {
         if candidate in by_lower {
             return by_lower[candidate];
         }
-    }
-    if len(names) == 1 {
-        return names[0];
     }
     return "";
 }
