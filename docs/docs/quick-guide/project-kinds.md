@@ -1,6 +1,6 @@
 # What You Can Build
 
-Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, or a desktop/mobile build. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
+Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`, which also compiles to in-browser WebAssembly) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, a desktop/mobile build, or native compute that runs in the browser. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
 
 Every example below was run against the current toolchain. Install once and follow along:
 
@@ -23,16 +23,17 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Python package (PyPI)](#python-package-pypi) | ● | | | | wheel | | twine¹ |
 | [npm package (npmjs.com)](#npm-package) | | ● | | | npm | | npm³ |
 | [Full-stack app](#full-stack-app) | ● | ● | | ● | | | -- |
+| [In-browser native (wasm)](#in-browser-native-wasm) | | ● | ● | ● | | | -- |
 | [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | Tauri² |
 | [Mobile app (webview)](#mobile-app-webview) | ◐ | ● | | | | mobile | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
-**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile · **served** = exposes a REST API via `jac start` · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding Jac plugins (jac-scale, jac-client, jac-desktop), which install through the Jac ecosystem.
+**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding Jac plugins (jac-scale, jac-client, jac-desktop), which install through the Jac ecosystem.
 
 <small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² Pulled in by the `jac-desktop` plugin via pip (no Rust); uses the OS webview. &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
 
-Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; a desktop app is that plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
+Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
 ---
 
@@ -338,6 +339,71 @@ jac start --dev    # hot-module reload while you edit
 Open [http://localhost:8000](http://localhost:8000). No database, no separate frontend project, no glue code.
 
 :octicons-arrow-right-24: Full tutorial: [Full-Stack Project Setup](../tutorials/fullstack/setup.md)
+
+### In-browser native (wasm)
+
+The `na` runtime's other target: rather than a host binary, an `na {}` block compiles to **WebAssembly** and runs *in the browser*, driven by a `cl` page -- native-speed compute (a game loop, a simulation, a hot inner loop) executing client-side with no server round-trip. It's the mirror image of a [full-stack app](#full-stack-app): there the heavy lifting runs on the server (`sv`); here it runs in the browser (`na` -> wasm). The block's `import from ...` externs become the wasm module's *imports*, satisfied from JavaScript -- the same native source contract as a [native binary](#native-binary), fulfilled by a different host.
+
+One module holds both halves:
+
+```jac
+# main.jac
+na {
+    """Count primes below n -- a tight integer loop, compiled to WebAssembly."""
+    def count_primes(n: int) -> int {
+        count = 0;
+        i = 2;
+        while i < n {
+            is_prime = True;
+            j = 2;
+            while j < i {
+                if i % j == 0 { is_prime = False; break; }
+                j += 1;
+            }
+            if is_prime { count += 1; }
+            i += 1;
+        }
+        return count;
+    }
+}
+
+cl {
+    def:pub app -> JsxElement {
+        has answer: str = "computing...";
+        async can with entry {
+            res: any = await WebAssembly.instantiateStreaming(
+                fetch("/static/main.wasm"), {"env": {"puts": lambda { return 0; }}}
+            );
+            wasm: any = res.instance.exports;
+            wasm.__jac_glob_init();
+            # an i64 crosses the JS boundary as a BigInt; format it straight to text
+            answer = f"{wasm.count_primes(BigInt(20000))}";
+        }
+        return <div>
+            <h1>Native compute in the browser</h1>
+            <p>{"primes below 20000 (computed in wasm): "}<b>{answer}</b></p>
+        </div>;
+    }
+}
+```
+
+It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[plugins.client]`).
+
+```bash
+jac start          # builds the cl bundle + na->wasm, serves on http://localhost:8000
+jac start --dev    # same, with hot reload
+```
+
+`jac start` compiles the `na` block to `/static/main.wasm` as part of the client build -- no emscripten and no `wasm-ld`; Jac's own WebAssembly linker turns the object into an instantiable module -- and the page fetches it on mount. Open [http://localhost:8000](http://localhost:8000):
+
+```text
+primes below 20000 (computed in wasm): 2262
+```
+
+!!! note "The boundary is the raw wasm ABI"
+    A `cl` page drives the module through the WebAssembly interface directly -- `instantiateStreaming`, `exports`, and C-ABI value marshalling (an `int` / `i64` arrives in JavaScript as a `BigInt`). Wrapping that glue in a reusable `.cl.jac` keeps the page clean: the full example below does exactly this with a WebGL shim that fulfills a graphics module's `import from raylib` externs in the browser.
+
+:octicons-arrow-right-24: Full example: [raylib cube shooter (web)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/raylib_shooter/web) · Reference: [Native pathway](../reference/language/native-pathway.md)
 
 ### Desktop app
 
