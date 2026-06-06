@@ -827,25 +827,70 @@ impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeB
 
 """Resolve the imported symbols to the actual symbol."""
 impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
-    if (
-        isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
+    resolved = sym;
+    seen: set[int] = set();
+    while (
+        isinstance(resolved.decl, uni.Name)
+        and resolved.decl.find_parent_of_type(uni.ModuleItem)
     ) {
-        mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
+        if id(resolved) in seen {
+            return resolved;
+        }
+        seen.add(id(resolved));
+        mod_item = resolved.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
-            return mod_item.name.sym;
+        if (
+            isinstance(mod_item.name, uni.Name)
+            and mod_item.name.sym
+            and mod_item.name.sym is not resolved
+        ) {
+            resolved = mod_item.name.sym;
+            continue;
         }
         # Symbol not resolved yet - call get_type_of_module_item to set it up.
         # This is needed when modules are loaded from JIR cache and their
         # import statements haven't been processed by the type evaluator.
         self.get_type_of_module_item(mod_item);
-        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
-            return mod_item.name.sym;
+        if (
+            isinstance(mod_item.name, uni.Name)
+            and mod_item.name.sym
+            and mod_item.name.sym is not resolved
+        ) {
+            resolved = mod_item.name.sym;
+            continue;
         }
-        return sym;
+        if isinstance(mod_item.name, uni.Name)
+        and (import_node := mod_item.parent_of_type(uni.Import))
+        and import_node.from_loc
+        and isinstance(
+            from_mod_type := self.get_type_of_module(import_node.from_loc),
+            types.ModuleType
+        )
+        and from_mod_type.symbol_table {
+            target_sym = type_utils.lookup_symtab(
+                from_mod_type.symbol_table,
+                mod_item.name.value,
+                self.builtins_module
+            );
+            if target_sym is None and isinstance(from_mod_type.symbol_table, uni.Module) {
+                target_sym = self._resolve_star_import_symbol(
+                    from_mod_type.symbol_table,
+                    mod_item.name.value
+                );
+            }
+            if target_sym and target_sym is not resolved {
+                mod_item.name.sym = target_sym;
+                if mod_item.alias {
+                    mod_item.alias.sym = target_sym;
+                }
+                resolved = target_sym;
+                continue;
+            }
+        }
+        return resolved;
     }
-    return sym;
+    return resolved;
 }
 
 """Set symbol and type for a module item node and its alias if present."""
