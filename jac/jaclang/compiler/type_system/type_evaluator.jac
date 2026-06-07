@@ -712,7 +712,6 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _symbols_assigned_in_loop(loop_node: uni.UniNode) -> set[str];
-
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
