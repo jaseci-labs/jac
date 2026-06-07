@@ -669,7 +669,9 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
                             # Tuple field — compute byte size
                             total = 0;
                             for el in pointee.elements {
-                                total += el.width // 8 if isinstance(el, ir.IntType) else 8;
+                                total += el.width // 8
+                                    if isinstance(el, ir.IntType)
+                                    else 8;
                             }
                             elem_size = total;
                             elem_type_name = f"tuple{elem_size}";

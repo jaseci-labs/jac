@@ -407,8 +407,8 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
 
             next_dispatch_bb: (ir.Block | None) = (
                 func.append_basic_block(name=f"except.dispatch.{i + 1}")
-                if not is_last
-                else None
+                    if not is_last
+                    else None
             );
 
             # Get the exception type being caught
