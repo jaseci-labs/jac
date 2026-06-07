@@ -730,8 +730,9 @@ impl JacCompiler.compile(
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
-        # schedule — TypeCheckPass + StaticAnalysis + Portability + the
-        # enrich-pass-second-pass + Lint.
+        # diagnostics schedule. UniTreeEnrichPass is intentionally not part of
+        # that schedule because get_ir_gen_sched() already ran it once and its
+        # native_compat pass state must not be recomputed from a partial walk.
         #
         # The implicit native run (.na.jac trigger) only needs Expr.type
         # populated for NaIRGenPass, so it runs the inference-only schedule

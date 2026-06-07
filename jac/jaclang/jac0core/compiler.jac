@@ -141,15 +141,15 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.portability_check_pass {
             PortabilityCheckPass
         }
-        import from jaclang.compiler.passes.main.unitree_enrich_pass {
-            UniTreeEnrichPass
-        }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
+        # UniTreeEnrichPass is intentionally omitted: it already runs at
+        # the tail of get_ir_gen_sched() and its exit_module rewrites
+        # native_compat non-idempotently, corrupting NaIRGenPass state
+        # if run a second time. See #6323.
         return [
             TypeCheckPass,
             StaticAnalysisPass,
             PortabilityCheckPass,
-            UniTreeEnrichPass,
             JacLintCheckPass
         ];
     } except ImportError {
