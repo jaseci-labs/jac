@@ -6,7 +6,7 @@ import from contextvars { ContextVar }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.utils { generate_random_password }
+import from jac_scale.utils { generate_random_password, is_safe_loopback_redirect }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jac_scale.identity_storage {
@@ -81,7 +81,7 @@ obj JacScaleUserManager(UserManager) {
     # SSO methods
     def get_sso(platform: str) -> SSOProvider | None;
     async def sso_initiate(
-        platform: str, operation: str
+        platform: str, operation: str, client_callback: str | None = None
     ) -> Response | TransportResponse;
 
     async def sso_callback(request: Request, platform: str) -> TransportResponse;

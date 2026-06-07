@@ -1,27 +1,24 @@
 # jac-desktop
 
-Native desktop target and plugin manager for [Jac](https://jac-lang.org), built on
-[PyTauri](https://pytauri.github.io/) -- no Rust toolchain required.
-
-This package extracts the desktop functionality that used to live inside
-`jac-client` so that web-only users don't have to pull in pytauri/anyio and so
-that desktop-specific commands can grow without bloating the client surface.
+Jac-native desktop target for [Jac](https://jac-lang.org): a desktop app is **one
+`jac nacompile`d binary + the OS's own web engine** - no Rust toolchain, no
+PyInstaller, no separate process.
 
 ## What you get
 
 - A `desktop` build target registered with `jac-client`'s target registry, so
-  `jac setup desktop`, `jac build --client desktop`, and
-  `jac start --client desktop --dev` all keep working -- install this package
-  and the target appears.
-- A native CLI for managing the pytauri plugins your app links against,
-  without ever opening a Python file:
+  `jac build --client desktop` and `jac start --client desktop` work once this
+  package is installed.
+- The build pipeline:
+  1. builds your `cl` codespace with the standard Vite pipeline (via `WebTarget`),
+  2. compiles a native host (`na`) that embeds CPython to serve that bundle on a
+     loopback port and renders it in the OS-native webview (WebKitGTK on Linux /
+     WKWebView on macOS / WebView2 on Windows),
+  3. produces a single self-contained binary under `.jac/client/desktop/`.
 
-  ```sh
-  jac desktop plugin list                # show available + installed
-  jac desktop plugin add dialog fs       # add to [plugins.desktop].tauri_plugins, regen caps + npm
-  jac desktop plugin remove dialog       # remove from jac.toml and regenerate
-  jac desktop plugin sync                # idempotent regen after manual edits
-  ```
+The native webview binding + build tooling live under
+[`jac_desktop/native/webview/`](jac_desktop/native/webview/) (see its README for
+the phase-by-phase design and the dependency-free test suite).
 
 ## Install
 
@@ -29,27 +26,39 @@ that desktop-specific commands can grow without bloating the client surface.
 pip install jac-client jac-desktop
 ```
 
-`jac-desktop` depends on `jac-client` because the desktop target extends
-`WebTarget` (the same web/vite pipeline) for its frontend build.
+Building a desktop app needs the OS web engine + a C toolchain so the native host
+can link `libwebview.so` (built on first use). On Debian/Ubuntu:
+
+```sh
+sudo ./jac_desktop/native/webview/install_webkit_deps.sh
+# (build-essential, pkg-config, libgtk-3-dev, libwebkit2gtk-4.1-dev)
+```
 
 ## Project flow
 
 ```sh
-jac create --use fullstack my-app       # or start from an existing web app
+jac create --use fullstack my-app      # or any project with a cl codespace
 cd my-app
-jac setup desktop                       # one-time scaffold of src-pytauri/
-jac desktop plugin add dialog fs        # opt into tauri plugins
-jac start --client desktop --dev        # live-reload dev shell
-jac build --client desktop              # production-style staging build
+jac build --client desktop             # -> .jac/client/desktop/<app>  (single binary)
+jac start --client desktop             # build + launch the native window
 ```
 
-## Distribution status
+Window geometry + app identity come from `[plugins.desktop]` in `jac.toml`:
 
-`jac build --client desktop` is a **dev/build pipeline**, not a shipping platform yet:
+```toml
+[plugins.desktop]
+name = "my-app"
 
-- **Sidecar** (Jac backend): PyInstaller-frozen standalone binary; no Python required at runtime.
-- **Shell** (PyTauri webview): runs via `python app.py`; requires Python and `pytauri-wheel` on the machine that launches the app.
+[plugins.desktop.window]
+title = "My App"
+width = 1000
+height = 700
+```
 
-Build output under `src-pytauri/dist/` includes `run.sh` / `run.bat` launchers for local testing. The sidecar under `src-pytauri/binaries/` is standalone; the shell still needs Python + `pytauri-wheel`. Standalone shell packaging is planned.
+## Status
 
-See the [Building a Desktop App](https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/tutorials/fullstack/desktop.md) tutorial and [jac-desktop Reference](https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/reference/plugins/jac-desktop.md).
+`jac build --client desktop` produces a working, self-contained native desktop
+binary that renders your `cl` UI. The host embeds CPython (it serves the bundle
+and is where `sv` runs in-process). Remaining: wiring the `sv` codespace/walkers
+onto the embedded interpreter, HMR dev mode, and per-OS packaging/signing - see
+[issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).

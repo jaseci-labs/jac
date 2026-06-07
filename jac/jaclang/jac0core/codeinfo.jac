@@ -17,7 +17,12 @@ obj ClientManifest {
         globals_values: dict[(str, Any)] = field(default_factory=`dict),
         has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict),
-        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict);
+        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        tests: list[dict[(str, str)]] = field(default_factory=`list),
+        # Absolute paths of server (`sv import`) modules this client file binds
+        # to. A full-stack cl test boots these directly instead of guessing the
+        # backend by filename.
+        server_imports: list[str] = field(default_factory=`list);
 }
 
 """Codespace context for interop bindings."""
@@ -240,7 +245,17 @@ obj CodeGenTarget {
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.
-        _clib_paths: list[str] = field(default_factory=`list);
+        _clib_paths: list[str] = field(default_factory=`list),
+        # Maps each clib function's C name to the library it was imported from
+        # (e.g. "InitWindow" -> "libraylib.dylib"). Set by the same pass and
+        # consumed by the nacompile CLI to drive Mach-O two-level dylib ordinals.
+        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),
+        # Names of `:pub` functions/globals to export across the C ABI when
+        # building a shared library (jac nacompile --shared). Recorded by
+        # NaIRGenPass, propagated across AOT-linked imports by NativeCompilePass,
+        # and consumed by the nacompile CLI + platform linkers to build the
+        # export table (ELF .dynsym / Mach-O export trie / PE export directory).
+        _exported_symbols: list[str] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
 }

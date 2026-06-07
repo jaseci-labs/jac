@@ -128,6 +128,14 @@ test "cfg raise terminal" {
     assert dot == expected_dot;
 }
 
+test "cfg ternary return entry block label" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_ternary_return.jac"));
+    expected_dot = (
+        "digraph G {\n" + '  0 [label="BB0\\nobj Items\\nhas data : list [ str ] = [ ] ;", shape=box];\n' + '  1 [label="BB1\\nobj Container\\nhas items : Items | None = None ;", shape=box];\n' + '  2 [label="BB2\\ndef simple_attr_access( c : Container ) -> list [ str ]", shape=box];\n' + '  3 [label="BB3\\nreturn c . items . data", shape=box];\n' + '  4 [label="BB4\\nc . items", shape=box];\n' + '  5 [label="BB5\\nreturn [ ]", shape=box];\n' + "  2 -> 4;\n" + '  4 -> 3 [label="T"];\n' + '  4 -> 5 [label="F"];\n' + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
 test "cfg boolean short circuit" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_bool_expr.jac"));
     expected_dot = (

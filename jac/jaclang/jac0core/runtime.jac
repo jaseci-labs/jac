@@ -320,7 +320,7 @@ class JacBasics {
     static async def acommit(anchor: Anchor | Archetype | None = None) -> None;
 
     """Purge current or target graph."""
-    static def reset_graph(root: (Root | None) = None) -> int;
+    static def reset_graph(root_node: (Root | None) = None) -> int;
 
     """Get object given id."""
     static def get_object(id: str) -> (Archetype | None);

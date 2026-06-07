@@ -605,7 +605,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
     import from pathlib { Path }
 
     try {
-        import from jac_client.plugin.src.vite_bundler { ViteBundler }
+        import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
         project_dir = Path(base_path);
         bundler = ViteBundler(project_dir);

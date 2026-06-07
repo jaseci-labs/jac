@@ -189,3 +189,13 @@ test "gc reduces rss for chess" {
     );
     print(f"[chess] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
+
+test "gc reclaims owned temporaries across consumption seams" {
+    # Regression guard for #6464: each iteration produces heap temporaries that
+    # are consumed by a for-loop, a comprehension, an `in` test, set.add, and
+    # call arguments. If any seam fails to release its temporary the leak
+    # survives even with GC on, so the GC-vs-no-GC delta collapses. With the
+    # releases in place GC keeps RSS flat while no-GC balloons.
+    (gc, nogc) = _measure_gc_savings("perf_owned_temps.na.jac", min_savings_kb=10240);
+    print(f"[owned_temps] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
+}

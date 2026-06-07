@@ -10,6 +10,7 @@ import from typing { cast, get_args, get_origin, get_type_hints }
 import from types { NoneType, UnionType }
 import from typing { Union }
 import from uuid { UUID }
+import from jaclang.runtimelib.typecache { get_field_types }
 import from jaclang.jac0core.archetype {
     Anchor,
     NodeAnchor,
@@ -81,14 +82,6 @@ obj Serializer {
     trying each variant in order.
     """
     static def coerce(val: object, target_type: object) -> tuple;
-
-    """Return a {field_name: resolved_annotation} map for a dataclass.
-
-    Uses typing.get_type_hints for forward-ref resolution, falling back to
-    raw __annotations__ if hints resolution fails (e.g. circular imports).
-    Non-dataclass classes return empty.
-    """
-    static def _get_field_types(cls: type) -> dict[str, object];
 
     """Convert object to JSON-compatible dict.
 

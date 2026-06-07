@@ -628,9 +628,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # and is required for proper type checking of overloaded functions.
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
-                            # Look up all symbols with the same name to find overloads
-                            all_syms = base_type.symbol_table.lookup_all(
-                                expr.right.value, deep=False
+                            # Overloads, including version-guarded ones.
+                            all_syms = type_utils.collect_member_syms(
+                                base_type.symbol_table, expr.right.value
                             );
                             for overload_symbol in all_syms {
                                 if overload_symbol == sym {
@@ -2032,7 +2032,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         # Check if there are overloads in the symbol's scope
                         if symbol_scope {
-                            all_syms = symbol_scope.lookup_all(expr.value, deep=False);
+                            all_syms = type_utils.collect_member_syms(
+                                symbol_scope, expr.value
+                            );
                             for overload_symbol in all_syms {
                                 if overload_symbol == symbol {
                                     continue;
@@ -2106,6 +2108,25 @@ impl TypeEvaluator._get_type_of_expression_core(
     }
     # TODO: More expressions.
     return types.UnknownType();
+}
+
+"""Widen literal types to their base class for an inferred declared type.
+
+`Literal["x"]` -> `str`, `Literal[1]` -> `int`, etc. Unions are widened
+member-wise; non-literal and non-class types pass through unchanged. Applied
+when freezing the declared type of an unannotated variable at its first
+binding, so the frozen type is the base class rather than the initial
+value's literal.
+"""
+impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
+    if isinstance(ty, types.ClassType) and ty.is_literal_type() {
+        return ty.clone_with_literal(None);
+    }
+    if isinstance(ty, types.UnionType) and ty.types is not None {
+        widened = [self._widen_literal_for_declaration(member) for member in ty.types];
+        return types.UnionType(types=widened);
+    }
+    return ty;
 }
 
 """Return the declared type of the symbol."""
@@ -2257,7 +2278,12 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
                     if node_.parent.value is not None {
-                        return self.get_type_of_expression(node_.parent.value);
+                        # The declared type is frozen at the first binding;
+                        # widen literals so it is the base class, not the
+                        # initial value's `Literal[...]`. Use sites stay narrow.
+                        return self._widen_literal_for_declaration(
+                            self.get_type_of_expression(node_.parent.value)
+                        );
                     }
                 }
             }
@@ -5499,6 +5525,14 @@ impl TypeEvaluator._resolve_py_ast_type_node(
             and base.symbol_table is not None
         ) {
             member = base.symbol_table.lookup(ast_node.attr);
+            if member is None
+            and (
+                inner := type_utils.collect_member_syms(
+                    base.symbol_table, ast_node.attr
+                )
+            ) {
+                member = inner[0];
+            }
             if member {
                 return self.get_type_of_symbol(member);
             }

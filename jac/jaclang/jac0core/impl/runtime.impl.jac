@@ -19,7 +19,7 @@ When the check fails for a write-class operation (anything other than
 `read`), build a typed PermissionDenied diagnostic, push it onto the
 request-scoped ExecutionContext.diagnostics list, and either raise
 PermissionError (strict mode) or log a warning. Read denials are part of
-normal traversal (you just don't see foreign nodes) and stay silent —
+normal traversal (you just don't see foreign nodes) and stay silent -
 emitting on every reachable foreign node would be noise.
 
 Strict-mode raise happens *after* the diagnostic is recorded, so a
@@ -39,7 +39,7 @@ impl JacAccessValidation._check_access(
         if operation != "read" {
             # `min_level` is the strict-greater-than threshold (e.g.
             # CONNECT for write_access). The user-facing "required"
-            # level is the next step up — the level they actually need
+            # level is the next step up - the level they actually need
             # to pass the check.
             required = AccessLevel(min_level.value + 1);
             diag = PermissionDenied(
@@ -607,7 +607,7 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     ctx.mem.commit(anchor);
 }
 
-"""Async commit — persists through the async Memory surface."""
+"""Async commit - persists through the async Memory surface."""
 impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     if isinstance(anchor, Archetype) {
         anchor = anchor.__jac__;
@@ -617,12 +617,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root_node: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = root.__jac__ if root else ctx.user_root;
+    ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
@@ -660,7 +660,7 @@ impl JacBasics.get_object(id: str) -> (Archetype | None) {
     return None;
 }
 
-"""Async mirror of get_object — resolves through the async Memory surface."""
+"""Async mirror of get_object - resolves through the async Memory surface."""
 impl JacBasics.aget_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
@@ -971,10 +971,24 @@ impl JacBasics.run_test(
     verbose: bool = False
 ) -> int {
     import from jaclang.runtimelib.test { JacTestCheck }
+    import from jaclang.runtimelib.cl_test_runner {
+        is_cl_test_file,
+        is_cl_test_file_for_discovery,
+        run_cl_test_file,
+        register_results_into_jactestcheck
+    }
     test_file = False;
     ret_count = 0;
     if filepath {
-        if filepath.endswith('.jac') {
+        if is_cl_test_file(filepath) {
+            JacTestCheck.reset();
+            results = run_cl_test_file(filepath, test_name=func_name);
+            register_results_into_jactestcheck(os.path.abspath(filepath), results);
+            JacTestCheck.run_test(
+                xit, maxfail, verbose, os.path.abspath(filepath), func_name
+            );
+            ret_count = JacTestCheck.failcount;
+        } elif filepath.endswith('.jac') {
             (base, mod_name) = os.path.split(filepath);
             base = base or './';
             mod_name = mod_name[:-4];
@@ -995,7 +1009,17 @@ impl JacBasics.run_test(
     }
     if (filter or directory) {
         current_dir = directory or os.getcwd();
-        for (root_dir, _, files) in os.walk(current_dir, topdown=True) {
+        for (root_dir, dirs, files) in os.walk(current_dir, topdown=True) {
+            # Prune hidden / build-cache / pycache directories in place so the
+            # walk never descends into them — e.g. the per-project ".jac" build
+            # cache, which holds generated artifacts that are not test sources.
+            # Mutating the list in place is required: os.walk in topdown mode
+            # only honors pruning of the same list object it yields.
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (d.startswith('.') or d == '__pycache__')
+            ];
             files = [
                 file
                 for file in files
@@ -1009,7 +1033,21 @@ impl JacBasics.run_test(
                 if not file.endswith(('.test.jac', '.impl.jac'))
             ];
             for file in files {
-                if file.endswith('.jac') {
+                if is_cl_test_file_for_discovery(file) {
+                    test_file = True;
+                    cl_path = os.path.join(root_dir, file);
+                    JacConsole.get_console().info(
+                        f"\n\n\t\t* Inside {root_dir}/{file} *"
+                    );
+                    JacTestCheck.reset();
+                    register_results_into_jactestcheck(
+                        os.path.abspath(cl_path),
+                        run_cl_test_file(cl_path, test_name=func_name)
+                    );
+                    JacTestCheck.run_test(
+                        xit, maxfail, verbose, os.path.abspath(file), func_name
+                    );
+                } elif file.endswith('.jac') {
                     test_file = True;
                     JacConsole.get_console().info(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
@@ -1402,10 +1440,17 @@ impl JacBasics.set_trigger(
     return deco;
 }
 
-"""Get the client bundle builder instance."""
+"""Get the client bundle builder instance.
+
+Builds via the single Vite/Bun pipeline in core. The package.json is generated
+on demand under `.jac/client/configs/`; bun is auto-installed into `.jac/bin/`
+by the bundler when needed.
+"""
 impl JacClientBundle.get_client_bundle_builder -> ClientBundleBuilder {
-    import from jaclang.runtimelib.client_bundle { ClientBundleBuilder }
-    return ClientBundleBuilder();
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+    return make_client_bundle_builder();
 }
 
 """Build a client bundle for the supplied module."""
@@ -1543,7 +1588,7 @@ Two response shapes are honoured:
     TransportResponse wire format. Decoded and unwrapped.
   - SSE stream (`Content-Type: text/event-stream`): the function on
     the other end returned an iterator. We hand back a Python
-    generator that yields parsed event dicts as they arrive — the
+    generator that yields parsed event dicts as they arrive - the
     caller's `for ev in sv_func(...)` loop sees live events instead
     of a str-ified generator object. See jac/jaclang/runtimelib/
     sv_sse.jac for the framing contract.
@@ -1564,7 +1609,7 @@ impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) 
         ct = resp.headers.get("content-type", "");
         if ct.startswith("text/event-stream") {
             # Hand off lifecycle to the wrapper. It will exhaust
-            # iter_lines() and call __exit__ on the cm in finally —
+            # iter_lines() and call __exit__ on the cm in finally -
             # we MUST NOT exit it here.
             return _wrap_sse_keepalive(stream_cm, resp, None, func_label);
         }
@@ -1688,7 +1733,7 @@ then `__exit__` the parent context manager (and `close()` the owning
 Client, if any) once the consumer is done iterating. Hoisted to module
 scope (Jac doesn't support nested defs).
 
-`client` may be None — the TestClient code path passes None because
+`client` may be None - the TestClient code path passes None because
 the TestClient instance is owned by sv_client._test_clients and lives
 beyond the call.
 """
@@ -1906,7 +1951,7 @@ impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> any {
     return random_value_for_type(return_type);
 }
 
-"""Base stub for acall_llm — returns random value. byllm overrides with native async dispatch.
+"""Base stub for acall_llm - returns random value. byllm overrides with native async dispatch.
 
 Uses await so this impl compiles to an async def, matching the static async def declaration
 and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
@@ -2459,7 +2504,7 @@ impl JacRuntime.get_full_target_path -> (str | None) {
 """Set the seed base path used to bootstrap new contexts.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
-    Already-constructed contexts are unaffected — they carry their own
+    Already-constructed contexts are unaffected - they carry their own
     `base_path_dir` captured at postinit time.
     """
 impl JacRuntime.set_base_path(base_path: (str | None)) -> None {

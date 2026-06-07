@@ -75,10 +75,26 @@ impl EsastGenPass.exit_test(nd: uni.Test) -> None {
     body_stmts = self._prepend_hoisted(nd, body_stmts);
     block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
     func_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
+    # Client tests are emitted async so bodies can `await` the cl->sv fetch
+    # bridge (full-stack tests). The runner's harness awaits every test; a
+    # synchronous body is unaffected by being declared async.
     func_decl = self.sync_loc(
-        es.FunctionDeclaration(id=func_id, params=params, body=block), jac_node=nd
+        es.FunctionDeclaration(id=func_id, params=params, body=block, async_=True),
+        jac_node=nd
     );
     nd.gen.es_ast = func_decl;
+    # Record this test in the client manifest so the cl test runner can
+    # enumerate and invoke it. The emitted JS function stays a plain
+    # top-level declaration; the runner appends a harness that calls it.
+    self.client_manifest.has_client = True;
+    self.client_manifest.tests.append(
+        {
+            'name': nd.name.sym_name,
+            'description': nd.description.lit_value
+                if nd.description
+                else nd.name.sym_name
+        }
+    );
 }
 
 """Process client block (cl { ... })."""
@@ -803,7 +819,7 @@ impl EsastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
 impl EsastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     params: list[es.Pattern] = [];
     if isinstance(nd.signature, uni.FuncSignature) {
-        for param in nd.signature.params {
+        for param in nd.signature.get_parameters() {
             if param.gen.es_ast {
                 params.append(cast(es.Pattern, param.gen.es_ast));
             }
@@ -969,6 +985,27 @@ impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) 
         return source_mod;
     }
     return None;
+}
+
+"""Record the backend module bound by an `sv import` into the client manifest.
+
+A full-stack cl test boots the module it `sv import`s rather than guessing the
+backend by filename, so we capture the resolved local `.jac` path here."""
+impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
+    import from pathlib { Path }
+    if not nd.from_loc {
+        return;
+    }
+    resolved_path = nd.from_loc.resolve_relative_path();
+    if not resolved_path {
+        return;
+    }
+    abs_path = str(Path(resolved_path).resolve());
+    if abs_path.endswith(".jac")
+    and Path(abs_path).exists()
+    and (abs_path not in self.client_manifest.server_imports) {
+        self.client_manifest.server_imports.append(abs_path);
+    }
 }
 
 """Return the ability node represented by a symbol definition."""
@@ -3990,7 +4027,14 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 impl EsastGenPass.exit_param_var(nd: uni.ParamVar) -> None {
     param_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
     self._register_declaration(param_id.name);
-    if nd.value and nd.value.gen.es_ast {
+    if nd.is_vararg or nd.is_kwargs {
+        # `*args` / `**kwargs` -> JS rest parameter `...args`. (JS has no keyword
+        # args, so `**kwargs` degrades to a trailing rest; positional `*args` is
+        # exact.) Without this the param is emitted as a bare identifier and then
+        # dropped during signature assembly, leaving the body referencing an
+        # undefined name.
+        nd.gen.es_ast = self.sync_loc(es.RestElement(argument=param_id), jac_node=nd);
+    } elif nd.value and nd.value.gen.es_ast {
         nd.gen.es_ast = self.sync_loc(
             es.AssignmentPattern(
                 left=param_id, right=cast(es.Expression, nd.value.gen.es_ast)
@@ -4066,7 +4110,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     params: list[es.Pattern] = [];
     destructure_stmts: list[es.Statement] = [];
     destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
-    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.params {
+    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.get_parameters() {
         if is_jsx_in_return
         and not (
             len(nd.signature.params) == 1
@@ -4131,7 +4175,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
                     component=nd.name_ref.sym_name
                 );
             }
-            for param in nd.signature.params {
+            for param in nd.signature.get_parameters() {
                 if param.gen.es_ast {
                     params.append(cast(es.Pattern, param.gen.es_ast));
                 }
@@ -5045,6 +5089,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     ) {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
+            self._record_sv_backend(nd);
         }
         return;
     }

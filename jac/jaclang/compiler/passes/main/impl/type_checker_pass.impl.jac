@@ -231,6 +231,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 and target.sym.decl.name_of.parent.type_tag is None
             ) {
                 is_unannotated_reassign = True;
+                # `node_.type` caches the narrow literal as the hover type, so
+                # widen it to the frozen declared type before the compat check.
+                # See `_widen_literal_for_declaration`.
+                left_type = self.evaluator._widen_literal_for_declaration(left_type);
             }
             # `target.type` is the hover cache — show the post-write type
             # for re-assignments, declared type otherwise. `left_type`
@@ -252,8 +256,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             # type (tuple/list) is not directly comparable to the RHS iterable.
             self._eval_unpacking_names(target);
             right_type = self.evaluator.get_type_of_expression(nd.value);
-            # Check that the RHS is iterable for destructuring
-            if not isinstance(right_type, types.UnknownType) {
+            # Check that the RHS is iterable for destructuring. `any` (the
+            # gradual-typing escape hatch) and an unresolved type are treated as
+            # unpackable — under gradual typing an `Any` value may be a tuple at
+            # runtime, so unpacking it is always allowed. This also keeps native
+            # codespace congruent with the server: there `list.pop()` on a bare
+            # `list` infers `any`, and rejecting that would be a portability
+            # asymmetry (see #6435).
+            if not isinstance(right_type, (types.UnknownType, types.AnyType)) {
                 iter_result = self.evaluator.get_type_of_magic_method_call(
                     right_type, "__iter__", [], nd.value
                 );
@@ -509,6 +519,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
 
 """Exit an import node."""
 impl TypeCheckPass.exit_import(self: TypeCheckPass, nd: uni.Import) -> None {
+    # A native C-FFI import (`import from foo { def ...; }`) names a shared
+    # library, not a managed module: its symbols come from `clib_decls`, and the
+    # from-path is resolved per-platform by the native backend. Resolving it as a
+    # managed module would (for a bare-name path like `raylib`) hit sys.path and
+    # spuriously emit W1100 "module not found". Treat it as fully inert here.
+    if nd.clib_decls {
+        return;
+    }
     if nd.from_loc {
         self.evaluator.get_type_of_module(nd.from_loc);
         for item in nd.items {

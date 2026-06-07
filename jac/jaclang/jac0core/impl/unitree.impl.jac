@@ -596,7 +596,7 @@ impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
 
 """Pretty print."""
 impl UniScopeNode.sym_pp(depth: (int | None) = None) -> str {
-    return print_symtab_tree(root=self, depth=depth);
+    return print_symtab_tree(root_node=self, depth=depth);
 }
 
 """Generate dot graph for sym table."""
