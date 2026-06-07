@@ -121,7 +121,7 @@ glob _DEFAULTS: dict = {
          "foreground",
          "background"
      ],
-     _UTILS_CONTENT: str = 'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(a: any=None, b: any=None, c: any=None, d: any=None, e: any=None, f: any=None, g: any=None, h: any=None, i: any=None, j: any=None, k: any=None, l: any=None) -> str {\n    return twMerge(clsx([a, b, c, d, e, f, g, h, i, j, k, l]));\n}\n';
+     _UTILS_CONTENT: str = 'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n';
 
 """Fill a raw [jac-shadcn] dict with the 7 default fields."""
 def normalize_shadcn_config(raw: (dict | None)) -> dict {
@@ -363,9 +363,11 @@ def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
 
 """Ensure the Tailwind v4 vite plugin is wired in jac.toml (no-op if already present).
 
-jac-client has no Tailwind auto-detection, so a generated `global.css` that
-`@import`s tailwindcss only compiles when the `@tailwindcss/vite` plugin is
-registered here."""
+The `[plugins.client.vite]` table also registers the `client` plugin, which is
+what unlocks jac-client's self-healing dependency injection (react/react-dom/
+vite/@vitejs/plugin-react/...). jac-client has no Tailwind auto-detection, so a
+generated `global.css` that `@import`s tailwindcss only compiles when the
+`@tailwindcss/vite` plugin is registered here."""
 def _ensure_vite_tailwind(toml_path: any) -> None {
     path = Path(str(toml_path));
     if not path.exists() {

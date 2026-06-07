@@ -257,7 +257,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
             f.write(
-                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(a: any=None, b: any=None, c: any=None, d: any=None, e: any=None, f: any=None, g: any=None, h: any=None, i: any=None, j: any=None, k: any=None, l: any=None) -> str {\n    return twMerge(clsx([a, b, c, d, e, f, g, h, i, j, k, l]));\n}\n'
+                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
             );
         }
         console.print("  + Created lib/utils.cl.jac", style="green");
