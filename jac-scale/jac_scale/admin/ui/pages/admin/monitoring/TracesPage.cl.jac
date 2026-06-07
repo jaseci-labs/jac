@@ -338,8 +338,7 @@ cl {
                                     >
                                         <span className="text-slate-500">
                                             {sp["service"]}
-                                        </span>
-                                        {" "}
+                                        </span>{" "}
                                         {sp["name"]}
                                     </div>
                                     <div

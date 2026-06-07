@@ -267,21 +267,16 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     file_handle = self.builder.call(
         fopen_fn, [path_val, mode_val], name="fopen.result"
     );
-    # Check for NULL (file open failure)
-    func = self.builder.function;
-    null_bb = func.append_basic_block(name="open.null");
-    ok_bb = func.append_basic_block(name="open.ok");
-    merge_bb = func.append_basic_block(name="open.merge");
+    # Check for NULL (file open failure). CPython raises FileNotFoundError
+    # rather than returning None, so to keep the `open` surface congruent
+    # across sv/na (issue #6404, congruence decision #4) we raise the same
+    # exception class here instead of returning a null File pointer. The
+    # exception is catchable as FileNotFoundError / OSError / Exception per
+    # the canonical hierarchy in type_registry.jac.
     null_ptr = ir.Constant(i8p, None);
     is_null = self.builder.icmp_signed("==", file_handle, null_ptr, name="fopen.null");
-    self.builder.cbranch(is_null, null_bb, ok_bb);
-    # NULL path: return null File pointer
-    self.builder.position_at_end(null_bb);
-    null_file = ir.Constant(file_ptr_type, None);
-    self.builder.branch(merge_bb);
-    null_bb_end = self.builder.block;
-    # OK path: allocate and initialize File struct
-    self.builder.position_at_end(ok_bb);
+    self._emit_runtime_raise(is_null, "FileNotFoundError", "No such file or directory");
+    # Past the raise check fopen succeeded: allocate and initialize File struct.
     # Compute sizeof(File) using GEP-from-null trick
     null_file_ptr = ir.Constant(file_ptr_type, None);
     size_gep = self.builder.gep(
@@ -314,12 +309,5 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="file.closed.ptr"
     );
     self.builder.store(ir.Constant(i1, 0), closed_ptr);
-    self.builder.branch(merge_bb);
-    ok_bb_end = self.builder.block;
-    # Merge with phi
-    self.builder.position_at_end(merge_bb);
-    phi = self.builder.phi(file_ptr_type, name="open.result");
-    phi.add_incoming(null_file, null_bb_end);
-    phi.add_incoming(file_obj, ok_bb_end);
-    return phi;
+    return file_obj;
 }

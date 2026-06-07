@@ -1,7 +1,8 @@
 """Configuration loader for jac-desktop.
 
-Loads from jac.toml under [plugins.desktop], inheriting PluginConfigBase
-like jac-scale and jac-client.
+Loads from jac.toml under [plugins.desktop], inheriting PluginConfigBase like
+jac-scale and jac-client. Provides the app identity + window geometry the native
+desktop target bakes into the generated host.
 """
 import from pathlib { Path }
 import from jaclang.project.plugin_config { PluginConfigBase }
@@ -37,42 +38,12 @@ obj WindowConfig {
     }
 }
 
-"""Sidecar Jac plugins enabled/disabled from [plugins.desktop.plugins]."""
-obj SidecarPluginsConfig {
-    has plugins: dict[str, bool] = {};
-
-    static def defaults -> SidecarPluginsConfig {
-        return SidecarPluginsConfig(
-            plugins={
-                'jac_scale': True,
-                'byllm': True,
-                'jac_coder': True,
-                'jac_mcp': True
-            }
-        );
-    }
-
-    static def from_dict(data: dict[str, any]) -> SidecarPluginsConfig {
-        out: dict[str, bool] = {};
-        for (k, v) in data.items() {
-            out[str(k)] = bool(v);
-        }
-        return SidecarPluginsConfig(plugins=out);
-    }
-
-    def to_dict -> dict[str, bool] {
-        return dict(self.plugins);
-    }
-}
-
 """Default [plugins.desktop] values before merging user jac.toml."""
 obj DesktopDefaultConfig {
     has name: str,
         identifier: str,
         version: str,
-        window: WindowConfig,
-        plugins: SidecarPluginsConfig,
-        client_only: bool = False;
+        window: WindowConfig;
 
     def to_dict -> dict[str, any] {
         return {
@@ -87,9 +58,7 @@ obj DesktopDefaultConfig {
                 'min_height': self.window.min_height,
                 'resizable': self.window.resizable,
                 'fullscreen': False
-            },
-            'client_only': self.client_only,
-            'plugins': self.plugins.to_dict()
+            }
         };
     }
 }
@@ -100,10 +69,6 @@ class JacDesktopConfig(PluginConfigBase) {
     override def get_default_config(self: JacDesktopConfig) -> dict[str, any];
     def get_identity(self: JacDesktopConfig) -> DesktopIdentity;
     def get_window_config(self: JacDesktopConfig) -> WindowConfig;
-    def get_sidecar_plugins_config(self: JacDesktopConfig) -> SidecarPluginsConfig;
-    def get_tauri_plugins_config(self: JacDesktopConfig) -> list[str];
-    def is_auto_tauri_plugin_npm_enabled(self: JacDesktopConfig) -> bool;
-    def is_client_only(self: JacDesktopConfig) -> bool;
     def validate(self: JacDesktopConfig) -> None;
 }
 

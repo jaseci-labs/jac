@@ -624,6 +624,22 @@ test "serve root endpoint" {
     }
 }
 
+test "serve root app inference follows intent not incidence" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    # Explicit config always wins, regardless of what the manifest exports.
+    cfg_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert cfg_intro.resolve_root_app("dashboard") == "dashboard";
+    # serve_api exports a single, non-conventionally-named cl page
+    # (`client_page`), reachable at /cl/client_page. That is an incidental page,
+    # not a declared entry point, so it must NOT be promoted to / -- the root
+    # path stays the JSON API index.
+    api_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert api_intro.resolve_root_app() == "";
+    # A conventionally-named entry page (`app`) signals intent and IS inferred.
+    app_intro = ModuleIntrospector("client_fullstack_app", FIXTURES);
+    assert app_intro.resolve_root_app() == "app";
+}
+
 test "serve update username" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);

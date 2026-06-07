@@ -168,6 +168,7 @@ obj ModuleIntrospector {
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def get_client_functions -> dict[str, Callable[(..., Any)]];
+    def resolve_root_app(configured: str = "") -> str;
     def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
     def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;

@@ -74,16 +74,11 @@ cl {
                 <UndefChildProbe/>
                 <h1>🍔 Router + Styling + Assets Demo</h1>
                 <p>
-                    This home page combines
-                    {" "}
-                    <strong>React Router,</strong>
-                    {" "}
-                    <strong>pure CSS styling,</strong>
-                    {" "}
-                    <strong>staticassets</strong>
-                    {" "}
-                    and
-                    {" "}
+                    This home page combines{" "}
+                    <strong>React Router,</strong>{" "}
+                    <strong>pure CSS styling,</strong>{" "}
+                    <strong>staticassets</strong>{" "}
+                    and{" "}
                     <strong>nested folder imports</strong>
                 </p>
                 <div className="container">
@@ -102,10 +97,8 @@ cl {
                             "textShadow": "1px 1px 3px rgba(0,0,0,0.7)"
                         }}
                     >
-                        This section uses the burger image as a background via CSS, just like the
-                        {" "}
-                        <code>asset-serving/css-with-image</code>
-                        {" "}
+                        This section uses the burger image as a background via CSS, just like the{" "}
+                        <code>asset-serving/css-with-image</code>{" "}
                         example.
                     </p>
                 </div>
@@ -126,26 +119,16 @@ cl {
                         className="burgerImage"
                     />
                     <p style={{"marginTop": "0.75rem", "color": "#555"}}>
-                        This image is served from the project
-                        {" "}
-                        <code>assets/</code>
-                        {" "}
-                        folder using the
-                        {" "}
-                        <code>/static/assets/</code>
-                        {" "}
+                        This image is served from the project{" "}
+                        <code>assets/</code>{" "}
+                        folder using the{" "}
+                        <code>/static/assets/</code>{" "}
                         path.
                     </p>
                 </div>
                 <div style={{"marginTop": "2rem"}}>
                     <h3>Counter with pure CSS classes</h3>
-                    <p>
-                        You've clicked the burger
-                        {" "}
-                        <strong>{count}</strong>
-                        {" "}
-                        times.
-                    </p>
+                    <p>You've clicked the burger <strong>{count}</strong> times.</p>
                     <button
                         onClick={lambda e: any { count = count + 1; }}
                         style={{
@@ -165,12 +148,9 @@ cl {
                 <div style={{"marginTop": "2rem"}}>
                     <h3>Backend Walkers</h3>
                     <p>
-                        Basic example walkers:
-                        {" "}
-                        <code>ping_server</code>
-                        {" "}
-                        and
-                        {" "}
+                        Basic example walkers:{" "}
+                        <code>ping_server</code>{" "}
+                        and{" "}
                         <code>get_server_message</code>
                     </p>
                     <button
@@ -203,16 +183,14 @@ cl {
                     {pingResult
                     and (
                         <span style={{"marginLeft": "0.5rem", "color": "#374151"}}>
-                            Result:
-                            {" "}
+                            Result:{" "}
                             <code>{pingResult}</code>
                         </span>
                     )}
                     {serverMessage
                     and (
                         <p style={{"marginTop": "0.75rem", "color": "#374151"}}>
-                            Message:
-                            {" "}
+                            Message:{" "}
                             <code>{serverMessage}</code>
                         </p>
                     )}
@@ -226,10 +204,8 @@ cl {
                 <div style={{"marginTop": "2rem"}}>
                     <h3>Web Worker</h3>
                     <p>
-                        This demonstrates how to communicate with a
-                        {" "}
-                        <strong>Python backend worker</strong>
-                        {" "}
+                        This demonstrates how to communicate with a{" "}
+                        <strong>Python backend worker</strong>{" "}
                         using Web Workers for asynchronous processing.
                     </p>
                     <p
@@ -239,10 +215,8 @@ cl {
                             "marginTop": "0.5rem"
                         }}
                     >
-                        File:
-                        {" "}
-                        <code>worker.py</code>
-                        {" "}
+                        File:{" "}
+                        <code>worker.py</code>{" "}
                         — Runs in a separate thread to avoid blocking the UI.
                     </p>
                     <button

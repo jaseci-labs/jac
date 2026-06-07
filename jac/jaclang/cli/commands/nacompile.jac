@@ -31,6 +31,19 @@ glob registry = get_registry();
             kind=ArgKind.FLAG,
             help="Scrub build: wipe cached IR and recompile everything from scratch"
         ),
+        Arg.create(
+            "target",
+            kind=ArgKind.OPTION,
+            short="t",
+            default="",
+            help="Code target: native host (default) or 'wasm32' for a browser .wasm module"
+        ),
+        Arg.create(
+            "shared",
+            kind=ArgKind.FLAG,
+            short="",  # suppress auto `-s` (taken by --scrub); long form only
+            help="Build a C-ABI shared library (.so/.dylib/.dll) exporting `:pub` symbols instead of an executable"
+        ),
 
     ],
     examples=[
@@ -38,8 +51,22 @@ glob registry = get_registry();
         ("jac nacompile program.jac", "Auto-promote and compile to ./program"),
         ("jac nacompile program.na.jac -o mybin", "Compile to ./mybin"),
         ("jac nacompile program.na.jac --scrub", "Clean rebuild (wipe IR cache)"),
+        (
+            "jac nacompile game.na.jac --target wasm32 -o game.wasm",
+            "Compile to a wasm module"
+        ),
+        (
+            "jac nacompile mathlib.na.jac --shared",
+            "Build ./libmathlib.so exporting its `:pub` functions over the C ABI"
+        ),
 
     ],
     group="transform"
 )
-def nacompile(filename: str, output: str = "", scrub: bool = False) -> int;
+def nacompile(
+    filename: str,
+    output: str = "",
+    scrub: bool = False,
+    target: str = "",
+    shared: bool = False
+) -> int;

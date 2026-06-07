@@ -1,12 +1,8 @@
 """Add runtime imports to compiled JS code."""
 
 impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    # Skip adding import if this file IS the runtime (defines __jacJsx itself)
-    if "function __jacJsx(" in js_code {
-        return js_code;
-    }
-    jac_jsx_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
-    return f"{jac_jsx_import}\n{js_code}";
+    import from jaclang.runtimelib.client_surface { with_runtime_globals }
+    return with_runtime_globals(js_code);
 }
 
 """Extract client globals from manifest and module."""

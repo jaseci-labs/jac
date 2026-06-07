@@ -420,6 +420,13 @@
         "@hugeicons/core-free-icons"
       ],
       "peerComponents": ["button", "input", "separator", "sheet", "skeleton", "tooltip"]
+    },
+    "sonner": {
+      "file": "sonner.cl.jac",
+      "npmDeps": [
+        "sonner"
+      ],
+      "peerComponents": []
     }
   },
   "sharedDeps": {

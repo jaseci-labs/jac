@@ -136,6 +136,9 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 
 """Generate code for a list literal [a, b, c, ...]."""
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
+    # Reset the boxed-tuple element-struct hint; set below if the first element
+    # is a boxed tuple so the enclosing assignment can seed var_list_elem_struct.
+    self._pending_list_elem_struct = None;
     if not nd.values {
         # Empty list: infer type from context
         elem_type_name = "i64";
@@ -194,6 +197,17 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         elem_type_name = "f64";
     } elif isinstance(elem_type, ir.PointerType) {
         elem_type_name = "ptr";
+    } elif self?.jacval_type and elem_type == self.jacval_type {
+        # A boxed `any` element (JacVal struct, by value) gets its own helper key
+        # so it never collides with a real `i64` list — they share neither slot
+        # type nor layout. Mirrors the dict `jacval` value-spec convention.
+        elem_type_name = "jacval";
+    }
+    # If the element is a boxed tuple (pointer-to-struct), remember its struct
+    # shape so a later `(a, b) = lst.pop()` on a bare `list` can recover it.
+    if isinstance(elem_type, ir.PointerType)
+    and isinstance(elem_type.pointee, ir.LiteralStructType) {
+        self._pending_list_elem_struct = elem_type;
     }
     # Ensure helpers exist
     self._emit_list_helpers(elem_type_name, elem_type);

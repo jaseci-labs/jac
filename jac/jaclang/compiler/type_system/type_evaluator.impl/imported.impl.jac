@@ -397,17 +397,25 @@ impl TypeEvaluator._import_module_from_path(
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
                         is_module_cache_valid,
-                        SEC_BYTECODE
+                        compute_module_key,
+                        SEC_BYTECODE,
+                        SEC_MODKEY
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
                     if not is_module_cache_valid(resolved_path, cache_path) {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
-                        sections: (dict[int, bytes] | None) = None;
+                        # Always stamp SEC_MODKEY so the entry self-validates on
+                        # the mtime-ambiguous slow path (matches Tier 3).
+                        sections: dict[int, bytes] = {
+                            SEC_MODKEY: compute_module_key(resolved_path).encode(
+                                'utf-8'
+                            )
+                        };
                         bc = mod.gen?.py_bytecode;
                         if bc is not None {
-                            sections = {SEC_BYTECODE: bc};
+                            sections[SEC_BYTECODE] = bc;
                         }
                         jir_bytes = writer.write_module(mod, sections=sections);
                         # Write to a process-unique temp then atomically rename.

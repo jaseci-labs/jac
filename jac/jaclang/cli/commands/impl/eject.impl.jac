@@ -412,25 +412,16 @@ def _has_pub_access(ast_item: any) -> bool {
 }
 
 
-"""Prepend the `@jac/runtime` import the Jac client compiler injects.
+"""Prepend the runtime-global import the client compiler relies on.
 
-The raw JS code emitted by `JacProgram.compile(...).gen.js` uses `__jacJsx`
-and `__jacSpawn` as free identifiers — the normal `jac-client` build path
-injects `import {__jacJsx, __jacSpawn} from "@jac/runtime";` at the top
-of every compiled module after codegen. Without that import the ejected
-frontend boots but throws `__jacJsx is not defined` the moment it tries
-to render any JSX, so eject replicates the same post-processing step.
-
-The runtime itself defines `__jacJsx` — we detect that case by the
-function definition signature and skip the injection to avoid a circular
-import.
+`gen.js` emits `__jacJsx` / `__jacSpawn` as free identifiers; without the
+covering import the ejected frontend throws `__jacJsx is not defined` on first
+render. Shares the one canonical prepend with the jac2js build, HMR, and the cl
+test harness -- see `with_runtime_globals`.
 """
 def _inject_runtime_imports(js_code: str) -> str {
-    import from jaclang.runtimelib.client_surface { prepended_runtime_import }
-    if "function __jacJsx(" in js_code {
-        return js_code;
-    }
-    return prepended_runtime_import() + '\n' + js_code;
+    import from jaclang.runtimelib.client_surface { with_runtime_globals }
+    return with_runtime_globals(js_code);
 }
 
 

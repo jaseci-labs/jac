@@ -761,7 +761,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     self._dict_val_type_hint = None;
     if nd.type_tag and nd.type_tag.tag {
         tag_node = nd.type_tag.tag;
-        tag_name = self._get_name(tag_node);
+        # `dict[K, V]` parses as an AtomTrailer whose base name lives on `.target`
+        # (e.g. Name("dict")); `_get_name` on the whole trailer is None. Read the
+        # base name so a local `d: dict[str, any] = {...}` gets the jacval value
+        # hint, not just the return-type path (see #6449).
+        tag_name = self._get_name(tag_node.target)
+            if isinstance(tag_node, uni.AtomTrailer)
+            else self._get_name(tag_node);
         if tag_name == "dict" and isinstance(tag_node, uni.AtomTrailer) {
             if tag_node?.right and tag_node.right?.slices {
                 slices = tag_node.right.slices or [];
@@ -1736,6 +1742,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         for (ename, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 self.var_list_elem_type[var_name] = ename;
+                # Seed the boxed-tuple element-struct shape from the literal that
+                # produced this value (if any), so `(a, b) = var.pop()` on a bare
+                # `list` can recover the tuple type later. See #6435.
+                if self._pending_list_elem_struct is not None {
+                    self.var_list_elem_struct[var_name] = self._pending_list_elem_struct;
+                }
                 break;
             }
         }
@@ -1960,35 +1972,47 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             }
         }
     }
+    # ── Evaluate the collection expression AT MOST ONCE ──
+    # Re-calling _codegen_expr(nd.collection) re-emits its side effects: for a
+    # call like `for x in obj.method()` each re-eval invokes the method again,
+    # doing the work N times AND leaking the unused results. We evaluate here a
+    # single time (with the list element-type hint set, so list literals are
+    # typed correctly) and reuse `_coll_memo` in the dict / string / set / list
+    # paths below. `_coll_memo_hint` carries the return-type node for a method
+    # call so the list path can recover the element type.
+    coll_name = self._get_name(nd.collection);
+    self._list_type_hint = None;
+    if coll_name is not None and coll_name in self.var_type_node {
+        _hint0 = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
+        if _hint0 is not None {
+            self._list_type_hint = _hint0;
+        }
+    }
+    self._last_type_node_hint = None;
+    _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
+    _coll_memo_hint = self._last_type_node_hint;
+    self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
     # Only use dict iteration if the collection variable is explicitly tracked as a dict
     # (This avoids premature code generation from type inference)
-    coll_name = self._get_name(nd.collection);
     dict_type_key: (str | None) = None;
     if coll_name is not None and coll_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[coll_name];
     }
     # Fallback: for field access (e.g. c.props) where coll_name is None or not
-    # tracked, evaluate the expression and infer the dict type from its LLVM type.
-    _ford_coll_val: (ir.Value | None) = None;
-    if dict_type_key is None {
-        _ford_coll_val = self._codegen_expr(nd.collection);
-        if _ford_coll_val is not None {
-            dict_info = self._infer_dict_type(_ford_coll_val);
-            if dict_info is not None {
-                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
-            }
+    # tracked, infer the dict type from the evaluated value's LLVM type.
+    _ford_coll_val: (ir.Value | None) = _coll_memo;
+    if dict_type_key is None and _ford_coll_val is not None {
+        dict_info = self._infer_dict_type(_ford_coll_val);
+        if dict_info is not None {
+            dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
         }
     }
     if dict_type_key is not None {
         # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
         if helpers is not None {
-            collection_val = (
-                _ford_coll_val
-                    if _ford_coll_val is not None
-                    else self._codegen_expr(nd.collection)
-            );
+            collection_val = _coll_memo;
             if collection_val is not None {
                 i64 = ir.IntType(64);
                 key_type = helpers["key_type"];
@@ -2069,6 +2093,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 self.builder.branch(cond_bb);
                 # Continue after loop
                 self.builder.position_at_end(end_bb);
+                # Release the collection if it was an owned temporary
+                # (e.g. `for k in make_dict()`); a named var is borrowed.
+                if isinstance(collection_val.type, ir.PointerType)
+                and self._is_owned(collection_val) {
+                    self._emit_rc_release_simple(
+                        collection_val, op="ford_coll", loc=_for_loc
+                    );
+                }
                 return;
             }
         }
@@ -2083,7 +2115,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     );
     is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
     if not is_list_coll and not is_dict_coll {
-        str_coll_val = self._codegen_expr(nd.collection);
+        str_coll_val = _coll_memo;
         i8p_s = ir.IntType(8).as_pointer();
         if str_coll_val is not None and str_coll_val.type == i8p_s {
             i64 = ir.IntType(64);
@@ -2130,25 +2162,22 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             self.builder.store(next_idx, idx_alloca);
             self.builder.branch(cond_bb);
             self.builder.position_at_end(end_bb);
+            # Release the collection if it was an owned temporary string.
+            if isinstance(str_coll_val.type, ir.PointerType)
+            and self._is_owned(str_coll_val) {
+                self._emit_rc_release_simple(
+                    str_coll_val, op="fors_coll", loc=_for_loc
+                );
+            }
             return;
         }
     }
     # ── List iteration: for x in items ──
-    # Set list type hint in case collection is a list literal
-    self._list_type_hint = None;
-    coll_name = self._get_name(nd.collection);
-    # Infer elem type hint from collection variable's type node
-    if coll_name is not None and coll_name in self.var_type_node {
-        coll_type_node = self.var_type_node[coll_name];
-        hint = self._get_list_elem_from_type_node(coll_type_node);
-        if hint is not None {
-            self._list_type_hint = hint;
-        }
-    }
-    self._last_type_node_hint = None;
-    collection_val = self._codegen_expr(nd.collection);
-    coll_type_hint = self._last_type_node_hint;
-    self._list_type_hint = None;
+    # Reuse the single evaluation captured at the top of this function
+    # (see `_coll_memo`); re-evaluating would re-run the collection
+    # expression's side effects and leak the extra results.
+    coll_type_hint = _coll_memo_hint;
+    collection_val = _coll_memo;
     if collection_val is None {
         return;
     }
@@ -2341,5 +2370,15 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     self.builder.branch(cond_bb);
     # Continue after loop
     self.builder.position_at_end(end_bb);
+    # If the collection was an owned temporary (e.g. a call result like
+    # `for x in obj.method()` or a literal), the loop consumed the only
+    # reference to it — release it now that iteration is done. A named
+    # variable / field load is borrowed (is_owned False) and must NOT be
+    # released here; its owner frees it. Mirrors the list-comprehension
+    # path in comprehensions.impl.jac.
+    if isinstance(collection_val.type, ir.PointerType)
+    and self._is_owned(collection_val) {
+        self._emit_rc_release_simple(collection_val, op="forl_coll", loc=_for_loc);
+    }
 }
 # ─── Phase 1: Ternary If-Else Expression ─────────────────────
