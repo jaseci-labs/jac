@@ -61,7 +61,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")
     and (not expr.params or len(expr.params) == 0) {
-        return (self.prefetch.int_class if self.prefetch else None) or types.UnknownType();
+        return (self.prefetch.int_class if self.prefetch else None)
+        or types.UnknownType();
     }
 
     if self._in_native_context() {
