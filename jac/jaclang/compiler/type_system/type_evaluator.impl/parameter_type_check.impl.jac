@@ -81,7 +81,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")
     and (not expr.params or len(expr.params) == 0) {
-        return self.prefetch.int_class if self.prefetch else types.UnknownType();
+        return (self.prefetch.int_class if self.prefetch else None) or types.UnknownType();
     }
 
     # Native (.na.jac) first-class iter()/next() element-type inference
@@ -169,7 +169,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             dotted = target_node.sym.sym_dotted_name;
             is_cast = dotted.endswith("typing.cast");
         }
-        if is_cast and len(expr.params) >= 1 {
+        if is_cast and expr.params and len(expr.params) >= 1 {
             first_arg = expr.params[0];
             first_arg_expr = first_arg.value
                 if isinstance(first_arg, uni.KWPair)
@@ -531,7 +531,7 @@ validation is left to the caller.
 This logic is based on PEP 3102: https://www.python.org/dev/peps/pep-3102/
 """
 impl TypeEvaluator.match_args_to_params(
-    arg_nodes: list[uni.Expr | uni.KWPair],
+    arg_nodes: Sequence[uni.Expr | uni.KWPair] | None,
     node_for_error: uni.Expr | None,
     func_type: types.FunctionType,
     checking_overload: bool = False,
@@ -575,7 +575,7 @@ impl TypeEvaluator.match_args_to_params(
         }
     }
     param_tracker = type_utils.ParamAssignmentTracker(params_to_match);
-    for arg in arg_nodes {
+    for arg in (arg_nodes or []) {
         try {
             if isinstance(arg, uni.KWPair) {
                 matching_param = param_tracker.match_named_argument(arg);
@@ -733,7 +733,7 @@ with the caller's class type. Returns an OverloadedType when multiple signatures
 exist, otherwise returns the base FunctionType.
 """
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: any, caller_type: types.ClassType
+    method_member: type_utils.ClassMember, caller_type: types.ClassType
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);
@@ -1044,7 +1044,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
 
 """Find overload matching argument count."""
 impl TypeEvaluator._find_overload_by_arg_count(
-    method_type: types.TypeBase, arg_count: int, overload_symbols: list
+    method_type: types.TypeBase, arg_count: int, overload_symbols: list[uni.Symbol]
 ) -> types.FunctionType | None {
     # Collect all overloads (base + additional)
     overloads: list[types.FunctionType] = [];
