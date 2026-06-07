@@ -485,6 +485,43 @@ test "run test with directory filter" {
     assert "circle_pure.impl" not in stdout;
 }
 
+test "discovery prunes hidden and pycache dirs" {
+    tmp_dir = tempfile.mkdtemp();
+    try {
+        os.makedirs(os.path.join(tmp_dir, ".jac"));
+        os.makedirs(os.path.join(tmp_dir, "__pycache__"));
+        # A real, top-level test that must be discovered and pass.
+        Path(os.path.join(tmp_dir, "good_test.jac")).write_text(
+            'test "good_one" {\n    assert True;\n}\n'
+        );
+        # Failing tests planted inside the build-cache (".jac") and pycache
+        # dirs. The discovery walk must prune these, so they never run.
+        Path(os.path.join(tmp_dir, ".jac", "skip_test.jac")).write_text(
+            'test "pruned_cache" {\n    assert False;\n}\n'
+        );
+        Path(os.path.join(tmp_dir, "__pycache__", "skip_test.jac")).write_text(
+            'test "pruned_pyc" {\n    assert False;\n}\n'
+        );
+        process = subprocess.Popen(
+            ["jac", "test", "-d", tmp_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+        # Top-level test is discovered and runs to a pass.
+        assert "good_test.jac" in combined;
+        assert "Passed successfully." in combined;
+        # Hidden / pycache dirs are pruned: their failing tests never run.
+        assert "skip_test.jac" not in combined;
+        assert "FAILED" not in combined;
+        assert process.returncode == 0;
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
 test "run test with filter maxfail" {
     process = subprocess.Popen(
         ["jac", "test", "-f", "*run_test.jac", "-m", "3"],

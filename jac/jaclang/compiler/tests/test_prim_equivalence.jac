@@ -71,6 +71,88 @@ test "list" {
     run_with_both("prim_list.jac", "list_py", "list_cl", "list_na");
 }
 
+# --- Native list/`any` codegen gaps (#6435), na required ---
+test "native list pop index" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "pop_index_py",
+        "pop_index_cl",
+        "pop_index_na",
+        require=["na"]
+    );
+}
+
+test "native list tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "tuple_roundtrip_py",
+        "tuple_roundtrip_cl",
+        "tuple_roundtrip_na",
+        require=["na"]
+    );
+}
+
+test "native list any literal" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_literal_py",
+        "any_literal_cl",
+        "any_literal_na",
+        require=["na"]
+    );
+}
+
+test "native list any unpack stack" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_stack_py",
+        "any_stack_cl",
+        "any_stack_na",
+        require=["na"]
+    );
+}
+
+test "native list container truthiness dfs" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "dfs_stack_py",
+        "dfs_stack_cl",
+        "dfs_stack_na",
+        require=["na"]
+    );
+}
+
+# --- #6449: scalar/boxed `any` values round-trip through the native JacVal, na required ---
+test "native any scalar box" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_scalar_box_py",
+        "any_scalar_box_cl",
+        "any_scalar_box_na",
+        require=["na"]
+    );
+}
+
+test "native any dict local read" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_dict_local_py",
+        "any_dict_local_cl",
+        "any_dict_local_na",
+        require=["na"]
+    );
+}
+
+test "native any tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_tuple_roundtrip_py",
+        "any_tuple_roundtrip_cl",
+        "any_tuple_roundtrip_na",
+        require=["na"]
+    );
+}
+
 # --- Collection Types (DictEmitter) ---
 test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");

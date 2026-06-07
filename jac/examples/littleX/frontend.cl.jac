@@ -6,7 +6,7 @@ for handler implementations.
 """
 
 import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
-sv import from .server {
+sv import from .social_graph {
     setup_profile,
     get_profile,
     get_all_profiles,
@@ -25,8 +25,15 @@ sv import from .server {
     get_channel_detail,
     create_channel_tweet
 }
-sv import from .server { UserView, TweetView, ChannelView, TrendingTag, ProfileView }
-import from "lucide-react" { Feather }
+sv import from .social_graph {
+    UserView,
+    TweetView,
+    ChannelView,
+    TrendingTag,
+    ProfileView
+}
+import from "lucide-react" { Feather, Sun, Moon, Pencil }
+import from .components.ui.button { Button }
 import from .components.AuthForm { AuthForm }
 import from .components.Sidebar { Sidebar }
 import from .components.RightSidebar { RightSidebar }
@@ -46,6 +53,7 @@ def:pub app -> JsxElement {
         authError: str = "",
         authLoading: bool = False,
         activeTab: str = "feed",
+        darkMode: bool = True,
         myProfile: ProfileView | None = None,
         tweets: list[TweetView] = [],
         feedLoading: bool = True,
@@ -65,6 +73,14 @@ def:pub app -> JsxElement {
     can with entry {
         isLoggedIn = jacIsLoggedIn();
         checkingAuth = False;
+    }
+
+    can with [darkMode] entry {
+        if darkMode {
+            document.documentElement.classList.add("dark");
+        } else {
+            document.documentElement.classList.remove("dark");
+        }
     }
 
     can with [isLoggedIn] entry {
@@ -98,8 +114,25 @@ def:pub app -> JsxElement {
     async def handleChannelPost(text: str) -> None;
     def handleBackToChannels -> None;
 
+    get_tab_name = lambda t: str { return (
+        "Home"
+            if t == "feed"
+            else (
+                "Explore"
+                    if t == "explore"
+                    else ("Channels" if t == "channels" else "Profile")
+            )
+    ); };
+
     if checkingAuth {
-        return <div className="lx-loading">Loading...</div>;
+        return
+            <div
+                className="flex min-h-screen items-center justify-center bg-background"
+            >
+                <div
+                    className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                />
+            </div>;
     }
 
     if not isLoggedIn {
@@ -143,7 +176,9 @@ def:pub app -> JsxElement {
     ];
 
     return
-        <div className="lx-root">
+        <div
+            className="mx-auto flex min-h-screen w-full max-w-7xl bg-background text-foreground"
+        >
             <Sidebar
                 {activeTab}
                 {displayUsername}
@@ -153,37 +188,49 @@ def:pub app -> JsxElement {
                 onNavigate={navigate}
                 onLogout={handleLogout}
             />
-            <main className="lx-main">
-                <div className="lx-feed-header">
-                    <span className="lx-feed-title">
-                        {(
-                            "Home"
-                                if activeTab == "feed"
-                                else (
-                                    "Explore"
-                                        if activeTab == "explore"
-                                        else (
-                                            "Channels"
-                                                if activeTab == "channels"
-                                                else "Profile"
-                                        )
-                                )
-                        )}
+            <main
+                className="min-h-screen min-w-0 flex-1 border-x border-border pb-20 md:pb-0"
+            >
+                <header
+                    className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-lg"
+                >
+                    <span className="font-display text-xl font-extrabold">
+                        {get_tab_name(activeTab)}
                     </span>
-                    {if activeTab == "profile" {
-                        <button
-                            className="lx-edit-profile-btn"
-                            onClick={lambda {
-                                editingBio = not editingBio;
-                                bioText = (
-                                    myProfile.bio if myProfile and myProfile.bio else ""
-                                );
-                            }}
+                    <div className="flex items-center gap-1">
+                        {if activeTab == "profile" {
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-full"
+                                onClick={lambda {
+                                    editingBio = not editingBio;
+                                    bioText = (
+                                        myProfile.bio
+                                            if myProfile and myProfile.bio
+                                            else ""
+                                    );
+                                }}
+                            >
+                                <Pencil size={14}/>
+                                {"Cancel" if editingBio else "Edit profile"}
+                            </Button>
+                        }}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-full text-muted-foreground"
+                            title="Toggle theme"
+                            onClick={lambda { darkMode = not darkMode; }}
                         >
-                            {"Cancel" if editingBio else "Edit profile"}
-                        </button>
-                    }}
-                </div>
+                            {if darkMode {
+                                <Sun size={18}/>
+                            } else {
+                                <Moon size={18}/>
+                            } }
+                        </Button>
+                    </div>
+                </header>
                 {if activeTab == "feed" {
                     <FeedTab
                         {showWelcome}
@@ -260,8 +307,11 @@ def:pub app -> JsxElement {
                 onShowMore={lambda { navigate("explore"); }}
             />
             <MobileNav {activeTab} {notifCount} onNavigate={navigate}/>
-            <button className="lx-mobile-fab" onClick={lambda { navigate("feed"); }}>
+            <Button
+                className="fixed bottom-20 right-4 z-40 size-14 rounded-full shadow-lg shadow-primary/30 md:hidden"
+                onClick={lambda { navigate("feed"); }}
+            >
                 <Feather size={22}/>
-            </button>
+            </Button>
         </div>;
 }

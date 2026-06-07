@@ -42,11 +42,12 @@ Native compilation is ideal for:
 | **Inline section** | `na { }` block (or `to na:` header / `na` prefix) in any `.jac` file |
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
-| **CLI command** | `jac nacompile <file> [-o output]` |
+| **CLI command** | `jac nacompile <file> [-o output] [--shared]` |
 | **Backend** | LLVM IR via llvmlite |
-| **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64) |
+| **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x86_64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
-| **C interop** | `import from libname` (logical) or `import from "path"` (explicit) |
+| **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
+| **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
 | **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
 | **Memory model** | Automatic reference counting |
 
@@ -229,6 +230,100 @@ graph LR
 2. **LLVM IR Generation** -- the `NaIRGenPass` walks the AST and emits LLVM IR using llvmlite's builder
 3. **Machine Code Emission** -- llvmlite's MCJIT compiles IR to a relocatable object for the host architecture
 4. **Binary Packaging** -- a built-in platform-aware linker produces the final executable (ELF on Linux, Mach-O on macOS), with no external tools required
+
+---
+
+## Shared Libraries (C ABI)
+
+Where `import from "lib.so" { ... }` lets native Jac *call into* C libraries, `jac nacompile --shared` does the inverse: it packages a `.na.jac` module as a **C-ABI shared library** that any C/C++/Python/Rust host can load and call. The same self-contained pipeline emits an ELF `.so`, a Mach-O `.dylib`, or a PE `.dll` -- no system linker required.
+
+```bash
+jac nacompile mathlib.na.jac --shared          # -> ./libmathlib.so   (host platform)
+jac nacompile mathlib.na.jac --shared --target macos     # -> ./libmathlib.dylib
+jac nacompile mathlib.na.jac --shared --target windows   # -> ./libmathlib.dll
+```
+
+### Choosing what to export
+
+A shared library has no `with entry {}` -- its surface is whatever you mark **`:pub`**. Only explicitly `:pub` functions and globals are placed in the library's export table; everything else stays internal (callable *within* the library, invisible to a host). This makes `:pub` a curated C-ABI surface rather than a dump of every symbol.
+
+```jac
+# mathlib.na.jac
+glob:pub counter: int = 7;          # exported global (read via dlsym/GetProcAddress)
+
+def:pub jadd(a: int, b: int) -> int {   # exported function
+    return a + b;
+}
+
+def helper(x: int) -> int {          # NOT exported -- internal only
+    return x * 2;
+}
+
+obj:pub Point {
+    has x: int = 0, y: int = 0;
+}
+
+def:pub make_point(x: int, y: int) -> Point {
+    return Point(x=x, y=y);          # returns an opaque handle (see below)
+}
+
+def:pub point_sum(p: Point) -> int {
+    return p.x + p.y;
+}
+```
+
+`:pub` symbols exported from imported native modules are re-exported too, so a library can be composed from several `.na.jac` files.
+
+### Calling it from C
+
+The exported names are plain C symbols. Scalars (`int`->`int64`, `float`->`double`, `bool`) pass by value; the library links and loads with the standard toolchain:
+
+```c
+// gcc app.c -L. -lmathlib -Wl,-rpath,. -o app
+extern long jadd(long, long);
+extern long get_counter(void);
+int main(void) { return (int)(jadd(2, 3) + get_counter()); }  // 12
+```
+
+…or via `dlopen`/`ctypes`:
+
+```python
+import ctypes
+lib = ctypes.CDLL("./libmathlib.so")
+lib.jadd.restype = ctypes.c_int64
+lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64]
+print(lib.jadd(2, 3))   # 5
+```
+
+### Opaque object handles and lifetimes
+
+Jac objects, strings, lists and dicts are reference-counted heap values. They cross the C ABI as **opaque handles** (`void*`): a host receives the pointer from one `:pub` function and passes it to another, but must not dereference it directly. Because the library manages those objects with reference counting, it also exports two helpers so a host can manage their lifetime:
+
+```c
+void  jac_retain(void *handle);    // take a reference
+void  jac_release(void *handle);   // drop a reference (frees at zero)
+```
+
+```python
+p = lib.make_point(3, 4)     # opaque Point*
+lib.point_sum(p)             # -> 7
+lib.jac_release(p)           # release when done
+```
+
+### Initialization
+
+Module globals are initialized automatically when the library is loaded -- there is no `jac_init()` to remember. The loader runs an injected `__jac_shared_init` via the platform's standard mechanism (ELF `DT_INIT_ARRAY`, Mach-O `__mod_init_func`, PE `DllMain` on `DLL_PROCESS_ATTACH`), which runs this module's and every imported native module's global initializers before any export is called.
+
+### Per-platform output
+
+| Target | Output | Format details |
+|--------|--------|----------------|
+| Linux (default/host) | `lib<name>.so` | `ET_DYN`, PIC, exported `.dynsym` + `.hash`, `R_*_RELATIVE` fixups, `DT_INIT_ARRAY`, section headers (so `ld -l`, `readelf`, `nm -D` all work) |
+| `--target macos` | `lib<name>.dylib` | `MH_DYLIB`, export trie, `__mod_init_func`, `LC_ID_DYLIB`; ad-hoc code-signed on arm64 |
+| `--target windows` | `lib<name>.dll` | `IMAGE_FILE_DLL`, export directory, `.reloc` base relocations, `DllMain` entry |
+
+!!! note "What can be exported"
+    A `:pub` export's parameters and return value must be C-ABI representable: scalars and pointers (Jac objects/strings/containers as opaque `void*` handles), plus the C struct types from `import from "lib"` interop. Methods are not exported (their symbol is class-qualified, not a valid C name) -- wrap them in a `:pub` free function.
 
 ---
 

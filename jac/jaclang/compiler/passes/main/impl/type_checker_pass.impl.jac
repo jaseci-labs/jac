@@ -256,8 +256,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             # type (tuple/list) is not directly comparable to the RHS iterable.
             self._eval_unpacking_names(target);
             right_type = self.evaluator.get_type_of_expression(nd.value);
-            # Check that the RHS is iterable for destructuring
-            if not isinstance(right_type, types.UnknownType) {
+            # Check that the RHS is iterable for destructuring. `any` (the
+            # gradual-typing escape hatch) and an unresolved type are treated as
+            # unpackable — under gradual typing an `Any` value may be a tuple at
+            # runtime, so unpacking it is always allowed. This also keeps native
+            # codespace congruent with the server: there `list.pop()` on a bare
+            # `list` infers `any`, and rejecting that would be a portability
+            # asymmetry (see #6435).
+            if not isinstance(right_type, (types.UnknownType, types.AnyType)) {
                 iter_result = self.evaluator.get_type_of_magic_method_call(
                     right_type, "__iter__", [], nd.value
                 );

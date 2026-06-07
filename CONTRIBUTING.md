@@ -161,11 +161,10 @@ Releasing new versions to PyPI is a two-step process using GitHub Actions.
 1. Go to **GitHub Actions** → **Create Release PR**
 2. Click **Run workflow**
 3. For each package, select the version bump type (`skip`, `patch`, `minor`, or `major`):
-   - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jaseci`
+   - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jac-desktop`, `jaseci`
 4. Click **Run workflow**
-5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
-6. **Current workaround (needs fix)**: Close and reopen the PR to trigger CI tests
-7. Wait for CI tests to pass, then **approve and merge** the PR to main
+5. The workflow validates versions against PyPI, bumps them, creates a PR from a `release/*` branch, and triggers the CI workflows on it
+6. Wait for CI tests to pass, then **approve and merge** the PR to main
 
 ### Step 2: Approve Publishing
 
@@ -178,23 +177,24 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
    - Click on the job, then click **Review deployments**
    - Select the `pypi` environment and click **Approve and deploy**
 3. The workflow then handles everything automatically:
-   - Precompiles bytecode (for packages that need it)
-   - Builds all packages
+   - Builds all packages once ([precompiling bytecode](https://docs.jaseci.org/reference/publishing/) for packages that need it)
    - Publishes in dependency order (tiered):
-     - **Tier 1**: `jaclang` (base package)
-     - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
-     - **Tier 3**: `jaseci` (meta-package)
+     - **Tier 1**: `jaclang` (base package; everything depends on it)
+     - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
+     - **Tier 3**: `jac-desktop` (depends on a tier-2 plugin, `jac-client`)
+     - **Tier 4**: `jaseci` (meta-package; depends on everything above)
    - Pushes git tags (`{package}-v{version}`, plus `v{version}` for jaseci)
    - Creates a GitHub Release with artifacts
    - Builds standalone binaries (if jaseci was released)
 
-> **Note**: The workflow waits for each tier to be available on PyPI before publishing the next tier.
+> **Note**: The workflow waits for each tier on PyPI before publishing the next, so a package never lands before a dependency it pins. Tiers are configured per package in `scripts/release_utils.jac`.
 
 ### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| CI tests not running on release PR | Close and reopen the PR to trigger CI |
+| CI tests not running on release PR | The `Create Release PR` workflow triggers them automatically; if they're missing, manually re-run `test-jaseci.yml` / `jac-check.yml` on the `release/*` branch |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
-| A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped |
+| A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped (`skip-existing`) |
+| Need to re-publish after the release PR is merged | Manually trigger **Publish Release** (`workflow_dispatch`) and check the packages to publish |
 | Version conflict on PyPI | The `Create Release PR` workflow validates this upfront - if you hit this, someone manually published |

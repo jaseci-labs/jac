@@ -26,8 +26,9 @@ import from typing { Iterator }
 glob _RESULT_SENTINEL: str = "__JAC_CL_TEST_RESULTS__",
      # Generated stub module that npm specifiers are redirected to (see below).
      _NPM_STUB_FILE: str = "__jac_npm_stub.js",
-     # Server entry filenames a full-stack cl test boots automatically (the sibling
-     # backend it exercises), in priority order. Overridable via JAC_CL_TEST_SERVER.
+     # Fallback backend filenames, in priority order, used only when a full-stack
+     # cl test declares no `sv import` backend and sets no JAC_CL_TEST_SERVER. The
+     # preferred path is an explicit `sv import` of the backend module.
      _SERVER_ENTRY_NAMES: tuple = ("server.jac", "main.jac"),
      # Matches top-level `import ... ;` / `import ... from "..."` statements that an
      # ES module requires at the top of the file. We hoist these above the prelude.
@@ -102,10 +103,13 @@ obj ClTestResult {
         error: (str | None) = None;
 }
 
-"""Compile a `.cl.jac` file and return `(js, tests, imports)`.
+"""Compile a `.cl.jac` file and return `(js, tests, imports, server_imports)`.
+
+`server_imports` are the absolute paths of the backend modules the file binds
+to via `sv import` -- a full-stack test boots these directly.
 
 Raises `RuntimeError` if compilation fails."""
-def compile_cl_module(filepath: str) -> tuple[str, list, dict];
+def compile_cl_module(filepath: str) -> tuple[str, list, dict, list];
 
 """Compile core's `client_runtime.cl.jac` (the `@jac/runtime` source) to JS.
 
@@ -137,10 +141,14 @@ def _build_harness(
 
 """Locate the backend a full-stack cl test should boot.
 
-Honors `JAC_CL_TEST_SERVER` (absolute or relative to the test dir); else looks
-for a sibling `server.jac` / `main.jac`. Returns `None` when no backend is
-found (the test is then run without a server)."""
-def find_server_entry(test_filepath: str) -> (str | None);
+Resolution order: `JAC_CL_TEST_SERVER` (absolute or relative to the test dir);
+then the module(s) the test binds via `sv import` (`server_imports`); then a
+sibling `server.jac` / `main.jac` by filename convention -- the last is a
+fallback and announces itself so a rename can't silently change the backend.
+Returns `None` when no backend is found (the test runs without a server)."""
+def find_server_entry(
+    test_filepath: str, server_imports: (list[str] | None) = None
+) -> (str | None);
 
 """Boot `server_entry` on an ephemeral port in a child process.
 
