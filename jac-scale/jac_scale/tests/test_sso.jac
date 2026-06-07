@@ -15,6 +15,7 @@ import from fastapi { Request }
 import from fastapi.responses { JSONResponse, RedirectResponse }
 
 import from jac_scale.config_loader { reset_scale_config }
+import from jac_scale.utils { is_safe_loopback_redirect }
 import from jac_scale.sso.google { GoogleSSOProvider }
 import from jac_scale.sso.apple { AppleSSOProvider }
 import from jac_scale.sso.github { GithubSSOProvider }
@@ -111,7 +112,7 @@ obj MockGoogleSSO {
     }
 
     """Mock initiate_auth method (SSOProvider interface)."""
-    async def _default_initiate_auth -> RedirectResponse {
+    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
     }
 
@@ -158,7 +159,7 @@ obj MockAppleSSO {
     }
 
     """Mock initiate_auth method (SSOProvider interface)."""
-    async def _default_initiate_auth -> RedirectResponse {
+    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://appleid.apple.com/auth/authorize");
     }
 
@@ -205,7 +206,7 @@ obj MockGithubSSO {
     }
 
     """Mock initiate_auth method (SSOProvider interface)."""
-    async def _default_initiate_auth -> RedirectResponse {
+    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://github.com/login/oauth/authorize");
     }
 
@@ -953,6 +954,161 @@ test "register sso endpoints" {
     post_callback_endpoint = calls[2][0][0];
     assert "/sso/{platform}/callback" == post_callback_endpoint.path;
     assert post_callback_endpoint.method.name == "POST";
+}
+
+# ============================================================================
+# Desktop / loopback SSO redirect (RFC 8252)
+#
+# A desktop "thin client" serves its UI from http://127.0.0.1:<random-port>.
+# The OAuth provider's redirect_uri is registered against the server origin, so
+# after the round-trip the server must send the token back to the *initiating
+# client's* own loopback origin — otherwise the token lands on a different
+# origin and the loopback app's localStorage never sees it (user stays logged
+# out). The client passes its loopback callback through the OAuth `state`
+# parameter; the callback wrapper honors it only when it is a safe loopback URL.
+# ============================================================================
+"""Build a JacAPIServer with mocked config + user manager for wrapper tests."""
+def _setup_callback_wrapper_server(sso_config: dict) -> tuple {
+    mock_user_manager = unittest.mock.Mock();
+    mock_config = MockScaleConfig(sso_config);
+    with unittest.mock.patch(
+        "jac_scale.serve.get_scale_config", return_value=mock_config
+    ) {
+        with unittest.mock.patch(
+            "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
+            return_value=mock_user_manager
+        ) {
+            server = JacAPIServer(module_name="test_module", port=8000);
+        }
+    }
+    return (server, mock_config);
+}
+
+"""Loopback callback in `state` is honored over the configured remote URL.
+
+This is the desktop-login fix: the token must be redirected to the 127.0.0.1
+origin the client initiated from, not the server-configured client_auth_callback_url.
+"""
+test "sso callback honors loopback client callback from state" {
+    sso_config = mock_sso_config_with_credentials();
+    sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
+    (server, mock_config) = _setup_callback_wrapper_server(sso_config);
+    server.user_manager.sso_callback = unittest.mock.AsyncMock(
+        return_value=TransportResponse.success(data={"token": "tok123"})
+    );
+    wrapper = server._create_sso_callback_wrapper();
+    mock_request = unittest.mock.Mock(spec=Request);
+    loopback = "http://127.0.0.1:43117/auth/callback";
+    mock_request.query_params = {"state": loopback};
+    with unittest.mock.patch(
+        "jac_scale.serve.get_scale_config", return_value=mock_config
+    ) {
+        result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
+    }
+    assert isinstance(result, RedirectResponse);
+    location = result.headers.get("location", "");
+    assert location.startswith(loopback);
+    assert "tok123" in location;
+    # The token must NOT have leaked to the configured remote origin.
+    assert "jaseci.org" not in location;
+}
+
+"""A non-loopback `state` (e.g. an attacker-controlled https URL) is ignored:
+the token falls back to the server-configured callback, never the malicious
+origin. Guards against `state` being abused as an open redirect to steal tokens."""
+test "sso callback rejects non-loopback client callback from state" {
+    sso_config = mock_sso_config_with_credentials();
+    sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
+    (server, mock_config) = _setup_callback_wrapper_server(sso_config);
+    server.user_manager.sso_callback = unittest.mock.AsyncMock(
+        return_value=TransportResponse.success(data={"token": "tok123"})
+    );
+    wrapper = server._create_sso_callback_wrapper();
+    mock_request = unittest.mock.Mock(spec=Request);
+    mock_request.query_params = {"state": "https://evil.com/steal"};
+    with unittest.mock.patch(
+        "jac_scale.serve.get_scale_config", return_value=mock_config
+    ) {
+        result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
+    }
+    assert isinstance(result, RedirectResponse);
+    location = result.headers.get("location", "");
+    assert location.startswith("https://app.jaseci.org/auth/callback");
+    assert "evil.com" not in location;
+}
+
+"""sso_initiate forwards a safe loopback client_callback to the provider as the
+OAuth `state`, so it round-trips back on the callback (the initiate half of the
+desktop fix)."""
+test "sso initiate forwards loopback client callback as state" {
+    (test_dir, user_manager) = _setup_user_manager();
+    try {
+        loopback = "http://127.0.0.1:43117/auth/callback";
+        mock_sso = MockGoogleSSO("id", "secret", "uri");
+        mock_sso.initiate_auth = unittest.mock.AsyncMock(
+            return_value=RedirectResponse(
+                url="https://accounts.google.com/oauth/authorize"
+            )
+        );
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
+            asyncio.run(
+                user_manager.sso_initiate(
+                    Platforms.GOOGLE.value, Operations.LOGIN.value, loopback
+                )
+            );
+            mock_sso.initiate_auth.assert_called_once_with(state=loopback);
+        }
+    } finally {
+        _teardown_user_manager(test_dir);
+    }
+}
+
+"""A non-loopback client_callback is dropped at initiate (state=None): an
+untrusted origin is never even sent to the provider."""
+test "sso initiate drops non-loopback client callback" {
+    (test_dir, user_manager) = _setup_user_manager();
+    try {
+        mock_sso = MockGoogleSSO("id", "secret", "uri");
+        mock_sso.initiate_auth = unittest.mock.AsyncMock(
+            return_value=RedirectResponse(
+                url="https://accounts.google.com/oauth/authorize"
+            )
+        );
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
+            asyncio.run(
+                user_manager.sso_initiate(
+                    Platforms.GOOGLE.value,
+                    Operations.LOGIN.value,
+                    "https://evil.com/steal"
+                )
+            );
+            mock_sso.initiate_auth.assert_called_once_with(state=None);
+        }
+    } finally {
+        _teardown_user_manager(test_dir);
+    }
+}
+
+"""Unit-test the loopback validator's truth table, including classic bypass
+attempts (userinfo, look-alike host, non-http schemes)."""
+test "is safe loopback redirect truth table" {
+    # Trusted: loopback hosts, with/without port, http or https, ipv6.
+    assert is_safe_loopback_redirect("http://127.0.0.1:43117/auth/callback");
+    assert is_safe_loopback_redirect("http://localhost:8000/cb");
+    assert is_safe_loopback_redirect("https://127.0.0.1/cb");
+    assert is_safe_loopback_redirect("http://[::1]:5000/cb");
+    # Rejected: remote hosts, look-alikes, userinfo tricks, bad schemes, junk.
+    assert not is_safe_loopback_redirect("https://evil.com/steal");
+    assert not is_safe_loopback_redirect("http://127.0.0.1.evil.com/cb");
+    assert not is_safe_loopback_redirect("http://127.0.0.1@evil.com/cb");
+    assert not is_safe_loopback_redirect("javascript:alert(1)");
+    assert not is_safe_loopback_redirect("file:///etc/passwd");
+    assert not is_safe_loopback_redirect("");
+    assert not is_safe_loopback_redirect(None);
 }
 
 # ============================================================================

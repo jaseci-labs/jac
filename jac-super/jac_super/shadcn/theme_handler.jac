@@ -121,7 +121,7 @@ glob _DEFAULTS: dict = {
          "foreground",
          "background"
      ],
-     _UTILS_CONTENT: str = 'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n';
+     _UTILS_CONTENT: str = 'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n';
 
 """Fill a raw [jac-shadcn] dict with the 7 default fields."""
 def normalize_shadcn_config(raw: (dict | None)) -> dict {
@@ -345,7 +345,10 @@ def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
     content = path.read_text();
     marker = "[dependencies.npm]";
     for key in npm_deps {
-        if _toml_key(key) in content {
+        # Line-anchored check so e.g. `shadcn` is not falsely matched by `[jac-shadcn]`.
+        if re.search(
+            r'(?m)^\s*' + _toml_key(key).replace('.', r'\.') + r'\s*=', content
+        ) {
             continue;
         }
         idx = content.find(marker);
@@ -358,13 +361,35 @@ def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
     path.write_text(content);
 }
 
+"""Ensure the Tailwind v4 vite plugin is wired in jac.toml (no-op if already present).
+
+The `[plugins.client.vite]` table also registers the `client` plugin, which is
+what unlocks jac-client's self-healing dependency injection (react/react-dom/
+vite/@vitejs/plugin-react/...). jac-client has no Tailwind auto-detection, so a
+generated `global.css` that `@import`s tailwindcss only compiles when the
+`@tailwindcss/vite` plugin is registered here."""
+def _ensure_vite_tailwind(toml_path: any) -> None {
+    path = Path(str(toml_path));
+    if not path.exists() {
+        return;
+    }
+    content = path.read_text();
+    if "[plugins.client.vite]" in content {
+        return;
+    }
+    block = '[plugins.client.vite]\nplugins = ["tailwindcss()"]\n' + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n';
+    path.write_text(content.rstrip() + "\n\n" + block);
+}
+
 """Resolve and write a single bundled component into <ui_dir>. Returns its npm deps."""
 def _install_component(ui_dir: any, name: str, style: str) -> list {
     comp = resolve_single_component(name, style);
     if not comp or "error" in comp {
         return [];
     }
-    out_path = Path(str(ui_dir)) / comp.get("file", name + ".cl.jac");
+    # Hyphenated filenames are unimportable via jac-client dot-paths; use underscores.
+    out_name = str(comp.get("file", name + ".cl.jac")).replace("-", "_");
+    out_path = Path(str(ui_dir)) / out_name;
     out_path.write_text(comp.get("content", ""));
     return comp.get("npmDeps", []);
 }
@@ -382,6 +407,8 @@ def materialize_themed_starter(
     ui_dir.mkdir(parents=True, exist_ok=True);
 
     npm_deps: dict = {
+        "tailwindcss": "^4.1.17",
+        "@tailwindcss/vite": "^4.1.17",
         "clsx": "^2.1.1",
         "tailwind-merge": "^3.5.0",
         "tw-animate-css": "^1.4.0",
@@ -412,10 +439,11 @@ def materialize_themed_starter(
         generate_starter_main_jac().replace("{{name}}", project_name)
     );
 
-    # jac.toml: persist chosen [jac-shadcn] + npm deps
+    # jac.toml: persist chosen [jac-shadcn] + npm deps + Tailwind vite plugin
     toml_path = pr / "jac.toml";
     set_shadcn_section(toml_path, shadcn_config);
     _patch_npm_deps(toml_path, npm_deps);
+    _ensure_vite_tailwind(toml_path);
 
     console.print("");
     console.print(
@@ -463,8 +491,14 @@ def retheme_project(config: any, overrides: dict) -> bool {
     );
     _patch_npm_deps(
         toml_path,
-        {FONT_DATA.get(merged.get("font", "figtree"), FONT_DATA["figtree"])["npm"]: "*"}
+        {
+            FONT_DATA.get(merged.get("font", "figtree"), FONT_DATA["figtree"])["npm"]: "*",
+            "tailwindcss": "^4.1.17",
+            "@tailwindcss/vite": "^4.1.17",
+            "shadcn": "^3.8.5"
+        }
     );
+    _ensure_vite_tailwind(toml_path);
 
     console.print(
         "  Retheme (base: " + merged.get("baseColor", "neutral") + ", theme: " + merged.get(

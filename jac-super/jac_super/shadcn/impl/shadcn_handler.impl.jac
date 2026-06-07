@@ -141,7 +141,10 @@ impl _update_npm_deps(config: any, npm_deps: dict) -> None {
         ver = npm_deps[key];
         # Scoped npm names (@scope/pkg) are not valid TOML bare keys -- quote them.
         toml_key = key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
-        if toml_key in content {
+        # Line-anchored check so e.g. `shadcn` is not falsely matched by `[jac-shadcn]`.
+        if re.search(
+            r'(?m)^\s*' + str(toml_key).replace('.', r'\.') + r'\s*=', content
+        ) {
             continue;
         }
         marker = "[dependencies.npm]";
@@ -184,7 +187,8 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
     if ui_dir.exists() {
         for f in ui_dir.iterdir() {
             if f.suffix == ".jac" and f.name.endswith(".cl.jac") {
-                existing.add(f.name.replace(".cl.jac", ""));
+                # Files are written with underscores; registry names are kebab-case.
+                existing.add(f.name.replace(".cl.jac", "").replace("_", "-"));
             }
         }
     }
@@ -225,8 +229,9 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
             continue;
         }
 
-        filename = comp_data.get("file", name + ".cl.jac");
-        content = comp_data.get("content", "");
+        # Hyphenated filenames are unimportable via jac-client dot-paths; use underscores.
+        filename = str(comp_data.get("file", name + ".cl.jac")).replace("-", "_");
+        content = str(comp_data.get("content", ""));
         out_path = ui_dir / filename;
         with open(out_path, "w") as f {
             f.write(content);
@@ -252,7 +257,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
             f.write(
-                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
+                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
             );
         }
         console.print("  + Created lib/utils.cl.jac", style="green");
@@ -288,7 +293,11 @@ impl remove_shadcn_components(config: any, component_names: list) -> bool {
     removed: list = [];
     for name in component_names {
         comp = components_meta.get(name);
-        filename = comp["file"] if comp and "file" in comp else (name + ".cl.jac");
+        filename = str(
+            comp["file"] if comp and "file" in comp else (name + ".cl.jac")
+        ).replace(
+            "-", "_"
+        );
         filepath = ui_dir / filename;
         if filepath.exists() {
             filepath.unlink();

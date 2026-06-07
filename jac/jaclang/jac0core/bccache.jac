@@ -5,29 +5,7 @@ variant files (.sv.jac, .cl.jac, .na.jac), and base files for a
 given Jac source path. Used by JIR cache invalidation and formatter.
 """
 import os;
-import sys;
 import from pathlib { Path }
-
-"""Get the platform-appropriate global cache directory for Jac bytecode.
-
-    Returns:
-        Path to the global cache directory:
-        - Linux:   ~/.cache/jac/bytecode/ (respects XDG_CACHE_HOME)
-        - macOS:   ~/Library/Caches/jac/bytecode/
-        - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
-    """
-def get_global_cache_dir -> Path {
-    if (sys.platform == 'win32') {
-        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'));
-        return (base / 'jac' / 'cache' / 'bytecode');
-    } elif (sys.platform == 'darwin') {
-        return Path.home() / 'Library' / 'Caches' / 'jac' / 'bytecode';
-    } else {
-        xdg_cache = os.environ.get('XDG_CACHE_HOME');
-        base = Path(xdg_cache) if xdg_cache else (Path.home() / '.cache');
-        return base / 'jac' / 'bytecode';
-    }
-}
 
 """Discover annex files (.impl.jac, .test.jac) for a source .jac or .cl.jac file.
 

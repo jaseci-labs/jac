@@ -69,3 +69,24 @@ def prepended_runtime_import -> str {
     ];
     return 'import {' + ", ".join(names) + '} from "@jac/runtime";';
 }
+
+"""Prepend the runtime-global import to a compiled-JS module.
+
+`JacProgram(...).gen.js` emits the `prepend` globals (`__jacJsx`, `__jacSpawn`)
+as bare free identifiers; every path that assembles runnable JS from that output
+-- the jac2js build, `eject`, HMR, and the cl test harness -- must add the one
+covering import. This is that single operation, so the rule cannot drift between
+them (e.g. emitting a `__jacSpawn` spawn without the import). Skips the runtime
+module itself, which defines the globals, and is idempotent.
+"""
+def with_runtime_globals(js_code: str) -> str {
+    # The runtime module defines these globals; importing them there is circular.
+    if "function __jacJsx(" in js_code {
+        return js_code;
+    }
+    line = prepended_runtime_import();
+    if line in js_code {
+        return js_code;
+    }
+    return line + '\n' + js_code;
+}

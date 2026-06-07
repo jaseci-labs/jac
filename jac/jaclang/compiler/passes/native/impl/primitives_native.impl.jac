@@ -2976,6 +2976,9 @@ impl NativeListEmitter.emit_remove(
 impl NativeListEmitter.emit_pop(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
+    # pop([index]): remove and return the element at `index` (default: last).
+    # The element at `index` is read (and returned, transferring its ref to the
+    # caller), then elements after it are shifted left and the length decreased.
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
     if helpers is None {
@@ -2989,9 +2992,54 @@ impl NativeListEmitter.emit_pop(
     );
     cur_len = b.load(len_ptr, name="pop.len");
     new_len = b.sub(cur_len, ir.Constant(i64, 1), name="pop.newlen");
-    last_val = b.call(helpers["get"], [target, new_len], name="pop.val");
+    # Resolve the pop index: default is the last element (new_len). An explicit
+    # arg is honored with Python semantics (a negative index counts from the
+    # end). Without an arg, no shift loop runs (pop_idx == new_len).
+    pop_idx = new_len;
+    if args {
+        raw_idx = p._coerce_type(args[0], i64);
+        is_neg = b.icmp_signed("<", raw_idx, ir.Constant(i64, 0), name="pop.idx.neg");
+        adj_idx = b.add(raw_idx, cur_len, name="pop.idx.adj");
+        pop_idx = b.select(is_neg, adj_idx, raw_idx, name="pop.idx");
+    }
+    popped = b.call(helpers["get"], [target, pop_idx], name="pop.val");
+    # Shift elements left: for si in (pop_idx, cur_len), data[si-1] = data[si].
+    is_ptr = isinstance(helpers["elem_type"], ir.PointerType);
+    func = b.basic_block.function;
+    shift_start = b.add(pop_idx, ir.Constant(i64, 1), name="pop.shstart");
+    shift_bb = func.append_basic_block(name="pop.shift");
+    shift_body = func.append_basic_block(name="pop.shift.body");
+    done_bb = func.append_basic_block(name="pop.shift.done");
+    entry_bb = b.basic_block;
+    b.branch(shift_bb);
+    b.position_at_start(shift_bb);
+    si = b.phi(i64, name="pop.si");
+    si.add_incoming(shift_start, entry_bb);
+    at_end = b.icmp_unsigned(">=", si, cur_len, name="pop.shend");
+    b.cbranch(at_end, done_bb, shift_body);
+    b.position_at_start(shift_body);
+    prev = b.sub(si, ir.Constant(i64, 1), name="pop.prev");
+    if is_ptr {
+        # Raw GEP+store for ptr lists: helpers["set"] would retain the incoming
+        # element and release the outgoing slot, both wrong when merely shifting.
+        _dpp = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="pop.dpp"
+        );
+        _da = b.load(_dpp, name="pop.da");
+        _src = b.gep(_da, [si], name="pop.src");
+        _val = b.load(_src, name="pop.shval");
+        _dst = b.gep(_da, [prev], name="pop.dst");
+        b.store(_val, _dst);
+    } else {
+        _v = b.call(helpers["get"], [target, si], name="pop.shval");
+        b.call(helpers["set"], [target, prev, _v]);
+    }
+    next_si = b.add(si, ir.Constant(i64, 1), name="pop.nextsi");
+    si.add_incoming(next_si, shift_body);
+    b.branch(shift_bb);
+    b.position_at_start(done_bb);
     b.store(new_len, len_ptr);
-    return last_val;
+    return popped;
 }
 
 impl NativeListEmitter.emit_clear(
@@ -4023,11 +4071,16 @@ impl NativeSetEmitter.emit_add(
     }
     val = p._coerce_type(args[0], helpers["elem_type"]);
     get_builder(p).call(helpers["add"], [target, val]);
-    # if the original arg was owned (function-call result), consume the owned ref.
-    if isinstance(args[0].type, ir.PointerType) and p._is_owned(args[0]) {
+    # __set_add retained the stored element; release our owned reference to it
+    # so its refcount is balanced. We check `val` (the coerced value actually
+    # stored), not the raw arg: a value-tuple arg `s.add((a, b))` is a
+    # LiteralStructType that _coerce_type boxes into a fresh owned heap tuple —
+    # that box, not the unboxed arg, is what add retained and what leaks if we
+    # never release it. (For an already-owned pointer arg, val is that arg.)
+    if isinstance(val.type, ir.PointerType) and p._is_owned(val) {
         _b_sa = get_builder(p);
         _i8p_sa = ir.IntType(8).as_pointer();
-        _rc_sa = _b_sa.bitcast(args[0], _i8p_sa, name="sadd_own_rel_cast");
+        _rc_sa = _b_sa.bitcast(val, _i8p_sa, name="sadd_own_rel_cast");
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
         }

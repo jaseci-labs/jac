@@ -753,6 +753,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    # The callee borrows its arguments (it RETAINs internally any it keeps);
+    # release any owned temporaries we passed so they don't leak (e.g.
+    # `f([(-1,-1), (1,1)])` — the list literal, and any value-tuple boxed by
+    # _coerce_type, are owned temporaries borrowed by the callee).
+    self._release_owned_args(coerced, op="call_arg");
     # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
     if func_name in self.clib_extern_names {
         # Check ABI integer return types first (small structs coerced to int)

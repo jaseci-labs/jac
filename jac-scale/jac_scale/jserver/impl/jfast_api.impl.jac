@@ -450,7 +450,7 @@ impl JFastApiServer._build_pydantic_model(
 impl PathParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
-    return f"{param.name}: {type_name} = Path(..., description='{description}')";
+    return f"{param.name}: {type_name} = Path(..., description={repr(description)})";
 }
 
 """Implementation of QUERY parameter handler."""
@@ -458,13 +458,17 @@ impl QueryParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Query(..., description='{description}')";
+        return f"{param.name}: {type_name} = Query(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Query(description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Query(description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Query({repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 
@@ -473,13 +477,17 @@ impl HeaderParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Header(..., description='{description}')";
+        return f"{param.name}: {type_name} = Header(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Header(default=None, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Header(default=None, description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Header({repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 
@@ -489,15 +497,23 @@ impl FileParameterHandler.generate_param_string(param: APIParameter) -> str {
     is_multiple = 'list' in param.data_type.lower();
     if is_multiple {
         if param.required {
-            return f"{param.name}: List[UploadFile] = File(..., description='{description}')";
+            return f"{param.name}: List[UploadFile] = File(..., description={repr(
+                description
+            )})";
         } else {
-            return f"{param.name}: Optional[List[UploadFile]] = File(default=None, description='{description}')";
+            return f"{param.name}: Optional[List[UploadFile]] = File(default=None, description={repr(
+                description
+            )})";
         }
     } else {
         if param.required {
-            return f"{param.name}: UploadFile = File(..., description='{description}')";
+            return f"{param.name}: UploadFile = File(..., description={repr(
+                description
+            )})";
         } else {
-            return f"{param.name}: Optional[UploadFile] = File(default=None, description='{description}')";
+            return f"{param.name}: Optional[UploadFile] = File(default=None, description={repr(
+                description
+            )})";
         }
     }
 }
@@ -507,13 +523,17 @@ impl FormBodyParameterHandler.generate_param_string(param: APIParameter) -> str 
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Form(..., description='{description}')";
+        return f"{param.name}: {type_name} = Form(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Form(default=None, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Form(default=None, description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Form(default={repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 

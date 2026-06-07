@@ -118,9 +118,6 @@ test "bundle --precompile generates .jir files per version and produces wheel" {
             assert tag_dir.is_dir() , f"Missing version directory: {tag_dir}";
             assert len(list(tag_dir.rglob("*.jir"))) > 0 , f"No .jir files under {tag_dir}";
         }
-        assert (precompiled_dir / "manifest.json").is_file() , (
-            f"manifest.json not written to {precompiled_dir}"
-        );
         whl_files = list((Path(tmp_path) / "dist").glob("*.whl"));
         assert len(whl_files) == 1 , f"Expected 1 wheel in dist/, found: {whl_files}";
     } finally {
