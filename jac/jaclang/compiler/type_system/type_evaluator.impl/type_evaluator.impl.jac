@@ -4343,7 +4343,6 @@ impl TypeEvaluator._symbols_assigned_in_loop(loop_node: uni.UniNode) -> set[str]
     relevant: list[uni.UniNode] = (
         loop_node.get_all_sub_nodes(uni.Assignment)
         + loop_node.get_all_sub_nodes(uni.InForStmt)
-        + loop_node.get_all_sub_nodes(uni.AssignCompr)
     );
     for sub in relevant {
         assigned.update(collect_assigned_symbols(sub));
