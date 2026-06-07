@@ -1086,7 +1086,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return types.AnyType();
                     }
                     if base_type.constraints {
-                        found_member: any = None;
+                        found_member: type_utils.ClassMember | None = None;
                         for constraint_type in base_type.constraints {
                             if isinstance(constraint_type, types.ClassType) {
                                 if member := self._lookup_object_member(
@@ -2542,7 +2542,7 @@ impl TypeEvaluator.is_sub_class(
 impl TypeEvaluator.get_type_of_magic_method_call(
     obj_type: TypeBase,
     method_name: str,
-    arg_nodes: list[uni.Expr],
+    arg_nodes: Sequence[uni.Expr | uni.KWPair] | None,
     node_for_error: uni.Expr | None = None,
 ) -> TypeBase | None {
     if isinstance(obj_type, types.UnionType) {

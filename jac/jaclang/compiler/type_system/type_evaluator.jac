@@ -2,6 +2,7 @@ import ast as py_ast;
 import os;
 import from pathlib { Path }
 import from typing { cast }
+import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.jac0core.constant { SymbolType, Tokens as Tok, EdgeDir }
@@ -314,7 +315,7 @@ obj TypeEvaluator {
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
         method_name: str,
-        arg_nodes: list[uni.Expr],
+        arg_nodes: Sequence[uni.Expr | uni.KWPair] | None,
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
@@ -342,8 +343,12 @@ obj TypeEvaluator {
     def _get_enum_member_type_for_decl(
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
-
-    def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
+    # gets member type and specializes it with class type_args
+    def get_type_of_member(
+        member: type_utils.ClassMember, class_type: types.ClassType
+    ) -> TypeBase;
+    # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
+    # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
         member_type: TypeBase, class_type: types.ClassType
     ) -> TypeBase;
@@ -432,7 +437,7 @@ obj TypeEvaluator {
     def _get_type_for_member_lookup(object_type: types.ClassType) -> types.ClassType;
     def _get_getattr_return_type(base_type: types.ClassType) -> TypeBase | None;
     def match_args_to_params(
-        arg_nodes: list[uni.Expr | uni.KWPair],
+        arg_nodes: Sequence[uni.Expr | uni.KWPair] | None,
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
         checking_overload: bool = False,
@@ -448,7 +453,7 @@ obj TypeEvaluator {
     def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
-    ) -> None;
+    ) -> bool;
 
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
@@ -488,7 +493,7 @@ obj TypeEvaluator {
 
     def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
-        method_member: any, caller_type: types.ClassType
+        method_member: type_utils.ClassMember, caller_type: types.ClassType
     ) -> TypeBase;
 
     def assign_type_to_type_var(
@@ -508,7 +513,7 @@ obj TypeEvaluator {
     ) -> types.FunctionType | None;
 
     def _find_overload_by_arg_count(
-        method_type: types.TypeBase, arg_count: int, overload_symbols: list
+        method_type: types.TypeBase, arg_count: int, overload_symbols: list[uni.Symbol]
     ) -> types.FunctionType | None;
 
     def _substitute_type_vars(
