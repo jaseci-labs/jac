@@ -259,10 +259,6 @@ obj TypeEvaluator {
         builtins_module: uni.Module | None = None,
         # Type narrowing (CFG-based only — no scope stack)
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
-        # Symbols assigned within a loop body, keyed by id(loop_node). Used by
-        # the loop-header join to widen variables mutated in the loop (their
-        # post-loop value is uncertain) while preserving pre-loop narrowing for
-        # variables only read in the loop.
         _loop_assign_cache: dict[int, set[str]] = {},
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,

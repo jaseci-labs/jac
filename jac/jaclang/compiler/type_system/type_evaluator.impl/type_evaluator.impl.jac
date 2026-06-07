@@ -4088,13 +4088,6 @@ impl TypeEvaluator._get_type_from_flow_node(
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
             if ancestor is flow_node {
-                # Back-edge from the loop body. If the body assigns the
-                # target, its value after the loop is uncertain, so widen to
-                # the declared type instead of keeping pre-loop-only narrowing
-                # (which would be unsound — e.g. a var set inside the loop
-                # would wrongly retain its pre-loop type). When the body never
-                # touches the target, skip the back-edge so pre-loop narrowing
-                # survives the join into the loop body.
                 if key in self._symbols_assigned_in_loop(flow_node) {
                     has_unnarrowed_pred = True;
                 }
@@ -4347,8 +4340,6 @@ impl TypeEvaluator._symbols_assigned_in_loop(loop_node: uni.UniNode) -> set[str]
         return cached;
     }
     assigned: set[str] = set(collect_assigned_symbols(loop_node));
-    # get_all_sub_nodes is keyed by concrete node type (no UniNode key), so
-    # query the specific node kinds collect_assigned_symbols recognizes.
     relevant: list[uni.UniNode] = (
         loop_node.get_all_sub_nodes(uni.Assignment)
         + loop_node.get_all_sub_nodes(uni.InForStmt)
