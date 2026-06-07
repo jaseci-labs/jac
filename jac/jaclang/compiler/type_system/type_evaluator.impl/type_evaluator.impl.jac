@@ -4088,6 +4088,16 @@ impl TypeEvaluator._get_type_from_flow_node(
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
             if ancestor is flow_node {
+                # Back-edge from the loop body. If the body assigns the
+                # target, its value after the loop is uncertain, so widen to
+                # the declared type instead of keeping pre-loop-only narrowing
+                # (which would be unsound — e.g. a var set inside the loop
+                # would wrongly retain its pre-loop type). When the body never
+                # touches the target, skip the back-edge so pre-loop narrowing
+                # survives the join into the loop body.
+                if key in self._symbols_assigned_in_loop(flow_node) {
+                    has_unnarrowed_pred = True;
+                }
                 continue;
             }
         }
@@ -4321,6 +4331,34 @@ impl TypeEvaluator._get_type_from_flow_node(
     self._flow_node_type_cache[cache_key] = result;
     visited.discard(flow_node_id);
     return result;
+}
+
+"""Symbols assigned anywhere inside a loop's body subtree (cached per loop node).
+
+A variable mutated inside a loop has an uncertain value after the loop, so the
+loop-header join must widen it to its declared type rather than letting pre-loop
+narrowing survive. Variables only read in the loop keep their pre-loop narrowing.
+"""
+impl TypeEvaluator._symbols_assigned_in_loop(loop_node: uni.UniNode) -> set[str] {
+    import from jaclang.compiler.symbol_utils { collect_assigned_symbols }
+    loop_id = id(loop_node);
+    cached = self._loop_assign_cache.get(loop_id);
+    if cached is not None {
+        return cached;
+    }
+    assigned: set[str] = set(collect_assigned_symbols(loop_node));
+    # get_all_sub_nodes is keyed by concrete node type (no UniNode key), so
+    # query the specific node kinds collect_assigned_symbols recognizes.
+    relevant: list[uni.UniNode] = (
+        loop_node.get_all_sub_nodes(uni.Assignment)
+        + loop_node.get_all_sub_nodes(uni.InForStmt)
+        + loop_node.get_all_sub_nodes(uni.AssignCompr)
+    );
+    for sub in relevant {
+        assigned.update(collect_assigned_symbols(sub));
+    }
+    self._loop_assign_cache[loop_id] = assigned;
+    return assigned;
 }
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
