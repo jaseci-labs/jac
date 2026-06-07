@@ -145,10 +145,9 @@ walker setup_profile {
         reports: list[ProfileView] = [];
 
     can run with Root entry {
-        existing = [-->[?:Profile]];
-        if existing {
-            visit existing;
-        } else {
+        # The `else` fires when `visit` enqueues nothing - i.e. no profile
+        # exists yet - so we create one and walk into it instead.
+        visit [-->[?:Profile]] else {
             fresh = here ++> Profile(created_at=_now());
             grant(fresh[0], level=ConnectPerm);
             visit fresh;
