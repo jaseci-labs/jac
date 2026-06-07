@@ -480,6 +480,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
         # globals referenced by imported functions (e.g. _TABLE) even though
         # the importing module never names those globals in its import list.
         dep_owned_symbols: list[str] = [];
+        # `:pub` symbols this dependency exports across the C ABI. Propagated to
+        # the top-level module so a `jac nacompile --shared` build re-exports the
+        # whole transitive public surface, not just the root module's exports.
+        dep_exported_symbols: list[str] = [];
+        dep_exported_cached: list = [];
 
         try {
             with open(real_path, "rb") as _sf {
@@ -503,6 +508,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 dep_transitive_cached = _meta.get("transitive_deps", []);
                 dep_imported_symbols = _meta.get("imported_symbols", []);
                 dep_owned_symbols = _meta.get("owned_symbols", []);
+                dep_exported_cached = _meta.get("exported_symbols", []);
                 _cache_hit = True;
             }
         } except Exception { }
@@ -511,6 +517,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # Use cached IR — skip full compilation
             # Still need to handle clib paths and transitive deps
             dep_clib_paths = dep_clib_paths_cached;
+            dep_exported_symbols = dep_exported_cached;
 
             # Enqueue transitive deps from cached metadata
             dep_base = os.path.dirname(full_path);
@@ -559,6 +566,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             }
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
             dep_clib_paths = imported_ir.gen._clib_paths or [];
+            dep_exported_symbols = imported_ir.gen._exported_symbols or [];
             # Collect transitive dep paths for cache metadata
             dep_transitive_paths: list = [];
             dep_manifest = imported_ir.gen.interop_manifest;
@@ -602,7 +610,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     "clib_paths": dep_clib_paths,
                     "transitive_deps": dep_transitive_paths,
                     "imported_symbols": dep_imported_symbols,
-                    "owned_symbols": dep_owned_symbols
+                    "owned_symbols": dep_owned_symbols,
+                    "exported_symbols": dep_exported_symbols
                 };
                 with open(_cache_meta_path, "w") as _wmf {
                     _wmf.write(json.dumps(_meta_obj));
@@ -633,6 +642,17 @@ impl NativeCompilePass._compile_and_link_native_imports(
                         }
                     }
                 } except Exception { }
+            }
+        }
+
+        # Propagate this dependency's `:pub` exports up to the top-level module
+        # so a `jac nacompile --shared` build re-exports the whole transitive
+        # public C-ABI surface, not just the root module's own `:pub` symbols.
+        if dep_exported_symbols {
+            for _exp_sym in dep_exported_symbols {
+                if _exp_sym not in module.gen._exported_symbols {
+                    module.gen._exported_symbols.append(_exp_sym);
+                }
             }
         }
 

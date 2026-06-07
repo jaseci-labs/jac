@@ -80,9 +80,77 @@ def _inject_entry_pe(llvm_ir_str: str) -> str {
 }
 
 
+"""Inject __jac_shared_init() and the public RC wrappers for a shared library.
+
+A .so/.dylib/.dll has no jac_entry; instead the platform loader runs
+__jac_shared_init via the init mechanism (ELF DT_INIT_ARRAY, Mach-O
+__mod_init_func, PE DllMain) on load. It calls this module's
+__jac_glob_init() and each imported module's __jac_glob_init_<safe>()
+(dependency order, mirroring jac_entry) so every global is initialised before
+any export is called. We also export jac_retain/jac_release as public wrappers
+over the private reference-counting primitives, so a C host can manage the
+lifetime of Jac object/string handles that cross the boundary.
+
+Returns (new_ir, extra_export_names).
+"""
+def _inject_shared_init(
+    llvm_ir_str: str, transitive_sources: list[str]
+) -> tuple[str, list[str]] {
+    import re;
+    init_calls: list[str] = [];
+    # This module's own glob-init (NaIRGenPass always emits it when present).
+    if ('@"__jac_glob_init"' in llvm_ir_str)
+    or ("@__jac_glob_init(" in llvm_ir_str)
+    or ("define void @__jac_glob_init(" in llvm_ir_str) {
+        init_calls.append("  call void @__jac_glob_init()");
+    }
+    _seen: set = set();
+    for _src in transitive_sources {
+        if _src is None or _src in _seen {
+            continue;
+        }
+        _seen.add(_src);
+        _safe = re.sub(r'[^a-zA-Z0-9_]', '_', _src);
+        _nm = f"__jac_glob_init_{_safe}";
+        if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
+            init_calls.append(f"  call void @{_nm}()");
+        }
+    }
+    parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
+    _body = "\n".join(init_calls);
+    if _body {
+        _body = _body + "\n";
+    }
+    parts.append(
+        "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
+    );
+    extra_exports: list[str] = [];
+    # Public retain/release over the private RC primitives, when RC is in use.
+    if "__rc_retain" in llvm_ir_str {
+        parts.append(
+            "define void @jac_retain(ptr %p) {\nentry:\n"
+            "  call void @__rc_retain(ptr %p)\n  ret void\n}"
+        );
+        extra_exports.append("jac_retain");
+    }
+    if "__rc_release_simple" in llvm_ir_str {
+        parts.append(
+            "define void @jac_release(ptr %p) {\nentry:\n"
+            "  call void @__rc_release_simple(ptr %p)\n  ret void\n}"
+        );
+        extra_exports.append("jac_release");
+    }
+    return (llvm_ir_str + "\n".join(parts) + "\n", extra_exports);
+}
+
+
 """Compile a .na.jac file to a standalone native binary."""
 impl nacompile(
-    filename: str, output: str = "", scrub: bool = False, target: str = ""
+    filename: str,
+    output: str = "",
+    scrub: bool = False,
+    target: str = "",
+    shared: bool = False
 ) -> int {
     # Validate input
     if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
@@ -115,6 +183,19 @@ impl nacompile(
         );
     }
 
+    # macos/darwin target: emit a Mach-O binary (and, with --shared, a .dylib)
+    # via the pure-Jac Mach-O linker. Lets a non-macOS host cross-build a dylib;
+    # on a macOS host the default path already routes through MachOLinker. A bare
+    # alias maps to arm64-apple-darwin; a full triple is used verbatim.
+    is_macos_target = (target in ["macos", "darwin", "osx", "macosx"])
+    or ("apple" in target)
+    or ("darwin" in target);
+    if is_macos_target {
+        os.environ["JAC_NATIVE_TARGET"] = (
+            target if "-" in target else "arm64-apple-darwin"
+        );
+    }
+
     # Scrub: wipe all .jac_ir/ cache directories under the source tree
     if scrub {
         import glob as _glob;
@@ -133,8 +214,8 @@ impl nacompile(
 
     auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
 
-    # Detect platform
-    is_macos = sys.platform == "darwin";
+    # Detect platform (host darwin, or an explicit macOS cross-target)
+    is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
@@ -144,7 +225,11 @@ impl nacompile(
         } elif output.endswith(".jac") {
             output = output[:-4];
         }
-        if is_wasm {
+        if shared {
+            # Conventional shared-library name: lib<stem>.<ext> per platform.
+            _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
+            output = "lib" + output + _so_ext;
+        } elif is_wasm {
             output = output + ".wasm";
         } elif is_windows {
             output = output + ".exe";
@@ -258,8 +343,10 @@ impl nacompile(
 
     llvm_ir_str = str(ir_module.gen.llvm_ir);
 
-    # Check that jac_entry exists (requires with entry {} block)
-    if "jac_entry" not in llvm_ir_str {
+    # Check that jac_entry exists (requires with entry {} block). A shared
+    # library has no entry point — it exports `:pub` symbols instead — so this
+    # requirement is skipped under --shared.
+    if not shared and "jac_entry" not in llvm_ir_str {
         console.error(
             "No entry point found. "
             "The .na.jac file must have a 'with entry { }' block."
@@ -277,8 +364,42 @@ impl nacompile(
     triple = os.environ.get("JAC_NATIVE_TARGET", "") or llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
-    # Step 4: Inject entry point (platform-specific)
-    if is_windows {
+    # Step 4: Inject entry point (executable) or the shared-library init.
+    export_symbols: list[str] = [];
+    init_funcs: list[str] = [];
+    if shared {
+        _transitive: list[str] = [];
+        _mf = ir_module.gen.interop_manifest;
+        if _mf {
+            _transitive = _mf.native_transitive_sources;
+        }
+        (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _transitive);
+        init_funcs = ["__jac_shared_init"];
+        # Export set: `:pub` symbols recorded during IR gen (root module +
+        # AOT-propagated imports) plus the injected runtime wrappers.
+        for _s in ir_module.gen._exported_symbols {
+            if _s not in export_symbols {
+                export_symbols.append(_s);
+            }
+        }
+        for _s in _extra_exports {
+            if _s not in export_symbols {
+                export_symbols.append(_s);
+            }
+        }
+        if not export_symbols {
+            console.error(
+                "Nothing to export from a shared library: no `:pub` functions "
+                "or globals found. Mark exports with `def:pub` / `glob:pub`."
+            );
+            return 1;
+        }
+        console.print(
+            f"  Exporting {len(export_symbols)} C-ABI symbol(s): " + ", ".join(
+                export_symbols
+            )
+        );
+    } elif is_windows {
         llvm_ir_str = _inject_entry_pe(llvm_ir_str);
     } elif is_macos {
         llvm_ir_str = _inject_entry_macho(llvm_ir_str);
@@ -365,7 +486,17 @@ impl nacompile(
     } else {
         target = llvm.Target.from_default_triple();
     }
-    target_machine = target.create_target_machine(opt=2);
+    # A shared library must be position-independent so the loader can map it at
+    # any base address; an executable keeps the default (fixed-base) model. The
+    # small code model keeps code/GOT references PC-relative (no .ltext /
+    # GOTPC64 large-model relocations), which the pure-Python linker resolves.
+    if shared {
+        target_machine = target.create_target_machine(
+            opt=2, reloc="pic", codemodel="small"
+        );
+    } else {
+        target_machine = target.create_target_machine(opt=2);
+    }
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)
     import from jaclang.project { get_config, NativeBuildConfig }
@@ -380,11 +511,15 @@ impl nacompile(
     # Run LLVM optimization pipeline before emitting object code.
     # Internalize pass marks non-entry functions as internal so LLVM
     # can aggressively inline them (jac_entry/main/_start are preserved).
+    # In --shared mode we must NOT internalize: the exported `:pub` symbols and
+    # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
         pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
         pb = llvm.create_pass_builder(target_machine, pto);
         opt_mpm = pb.getModulePassManager();
-        opt_mpm.add_internalize_pass();
+        if not shared {
+            opt_mpm.add_internalize_pass();
+        }
         opt_mpm.run(mod, pb);
     }
 
@@ -407,7 +542,11 @@ impl nacompile(
                 obj_bytes=obj_bytes,
                 output_path=output,
                 needed_libs=needed_libs,
-                symbol_lib_map=symbol_lib_map
+                symbol_lib_map=symbol_lib_map,
+                shared=shared,
+                export_symbols=export_symbols,
+                init_funcs=init_funcs,
+                soname=os.path.basename(output)
             );
         } except Exception as e {
             console.error(f"PE linking failed: {e}");
@@ -427,7 +566,11 @@ impl nacompile(
                 obj_bytes=obj_bytes,
                 output_path=output,
                 needed_libs=needed_libs,
-                symbol_lib_map=symbol_lib_map
+                symbol_lib_map=symbol_lib_map,
+                shared=shared,
+                export_symbols=export_symbols,
+                init_funcs=init_funcs,
+                soname=os.path.basename(output)
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -443,7 +586,13 @@ impl nacompile(
         import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
         try {
             success = ElfLinker.link(
-                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+                obj_bytes=obj_bytes,
+                output_path=output,
+                needed_libs=needed_libs,
+                shared=shared,
+                export_symbols=export_symbols,
+                init_funcs=init_funcs,
+                soname=os.path.basename(output)
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");
@@ -458,7 +607,15 @@ impl nacompile(
     }
 
     file_size = os.path.getsize(output);
-    console.print(f"  Binary written to {output} ({file_size} bytes).");
-    console.print(f"  Run with: ./{output}");
+    if shared {
+        console.print(f"  Shared library written to {output} ({file_size} bytes).");
+        console.print(
+            "  Load it from C/ctypes (dlopen + dlsym); the C ABI surface is the "
+            "exported `:pub` symbols plus jac_retain/jac_release."
+        );
+    } else {
+        console.print(f"  Binary written to {output} ({file_size} bytes).");
+        console.print(f"  Run with: ./{output}");
+    }
     return 0;
 }

@@ -249,7 +249,13 @@ obj CodeGenTarget {
         # Maps each clib function's C name to the library it was imported from
         # (e.g. "InitWindow" -> "libraylib.dylib"). Set by the same pass and
         # consumed by the nacompile CLI to drive Mach-O two-level dylib ordinals.
-        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict);
+        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),
+        # Names of `:pub` functions/globals to export across the C ABI when
+        # building a shared library (jac nacompile --shared). Recorded by
+        # NaIRGenPass, propagated across AOT-linked imports by NativeCompilePass,
+        # and consumed by the nacompile CLI + platform linkers to build the
+        # export table (ELF .dynsym / Mach-O export trie / PE export directory).
+        _exported_symbols: list[str] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
 }

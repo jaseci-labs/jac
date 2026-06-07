@@ -62,15 +62,28 @@ obj PeLinker {
         # Maps an undefined symbol's C name to the DLL that exports it, e.g.
         # "InitWindow" -> "raylib.dll". Drives per-DLL import descriptor
         # grouping; symbols absent from the map bind to the default DLL.
-        symbol_lib_map: dict[str, str] = {};
+        symbol_lib_map: dict[str, str] = {},
+        # Shared-object (.dll) build state. When `shared` is True, link() calls
+        # build_shared_object(): an IMAGE_FILE_DLL with an export directory for
+        # the `:pub` symbols, a .reloc base-relocation table (so the loader may
+        # rebase it), and a DllMain that runs the init functions on attach.
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = "";
 
     static def link(
         obj_bytes: bytes,
         output_path: str,
         needed_libs: list[str] = ["msvcrt.dll"],
-        symbol_lib_map: dict[str, str] = {}
+        symbol_lib_map: dict[str, str] = {},
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = ""
     ) -> bool;
 
     def parse_object -> bool;
     def build_executable -> bytes;
+    def build_shared_object -> bytes;
 }

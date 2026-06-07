@@ -379,6 +379,16 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         func.linkage = "internal";
     }
 
+    # Record `:pub` free functions as C-ABI shared-library exports, consumed by
+    # `jac nacompile --shared`. Methods are named "Class.method" (not a valid C
+    # identifier) and are filtered out, so only module-level functions qualify.
+    _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
+    if _is_pub and self.ir_in?.gen and func.name.isidentifier() {
+        if func.name not in self.ir_in.gen._exported_symbols {
+            self.ir_in.gen._exported_symbols.append(func.name);
+        }
+    }
+
     (nd).gen.llvm_ir = func;
     self.builder = None;
 }
