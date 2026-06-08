@@ -490,6 +490,41 @@ test "objects empty dict in struct ctor" {
     assert f() == 30;
 }
 
+# --- TestNativeSliceObjectField (issue #6473) ---
+test "slice object field roundtrip matches local" {
+    # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)
+    # because the slice was mis-lowered as a plain index. It must now behave
+    # identically to the same logic on a plain-list local.
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    fld = get_func(eng, "field_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    loc = get_func(eng, "local_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    for k in [-1, 0, 1, 2, 3, -2] {
+        assert fld(k) == 3 , f"field_roundtrip({k}) != 3";
+        assert fld(k) == loc(k) , f"field/local mismatch at k={k}";
+    }
+}
+
+test "slice object field takes correct elements" {
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "field_prefix_sum", ctypes.c_int64, ctypes.c_int64);
+    # items = [10, 20, 30, 40]
+    assert f(0) == 0;
+    assert f(1) == 10;
+    assert f(2) == 30;
+    assert f(3) == 60;
+    assert f(4) == 100;
+}
+
+test "slice object field osp insert shape" {
+    # The portable OSP-kernel osp_visit shape: scope.next[:pos] + filtered + scope.next[pos:]
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "osp_insert", ctypes.c_int64, ctypes.c_int64);
+    assert f(-1) == 4;  # insert before last
+    assert f(0) == 4;  # prepend
+    assert f(-100) == 4;  # clamp to 0
+    assert f(3) == 4;  # append
+}
+
 # --- TestNativeInheritance ---
 test "inheritance dog speak" {
     (eng, _) = compile_native("inheritance.na.jac");

@@ -1244,7 +1244,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             } else {
-                # String slicing
+                # Chained target (e.g. field access b.items[:n]) or string slicing.
+                # The target is not a simple list-typed name, so evaluate it and
+                # dispatch on the produced LLVM value: i8* → string slice,
+                # List.T* → list slice (mirrors the chained-index path below).
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
@@ -1252,6 +1255,17 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
+                        }
+                    } else {
+                        elem_type_name = self._infer_list_elem_type(target_val);
+                        if elem_type_name is not None {
+                            result = self._codegen_list_slice(
+                                target_val, s, elem_type_name
+                            );
+                            if result is not None {
+                                self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
+                                return result;
+                            }
                         }
                     }
                 }
