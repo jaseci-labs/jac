@@ -7,6 +7,7 @@ import from jaclang.cli.console { console }
 # ===============================================================================
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
+    import os;
     if self.config is None {
         self.config = get_config();
     }
@@ -18,6 +19,11 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
+    }
+    # JAC_NO_UV=1 provides a system-wide opt-out covering all commands
+    # (add, remove, update, watchdog) not just `jac install --no-uv`.
+    if os.environ.get("JAC_NO_UV") {
+        self.use_uv = False;
     }
 }
 
@@ -118,6 +124,15 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
         venv_python = str(self.venv_dir / "Scripts" / "python.exe");
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
+    }
+    # Warn once when --prefer-binary is requested but uv has no equivalent,
+    # so users know their flag was silently dropped rather than honoured.
+    if self.use_uv and "--prefer-binary" in args {
+        console.print(
+            "  note: --prefer-binary has no uv equivalent and will be ignored"
+            " (pass --no-uv or set JAC_NO_UV=1 to keep it)",
+            style="muted"
+        );
     }
     cmd = pip_command(venv_python, args, use_uv=self.use_uv);
     if self.verbose {
@@ -264,17 +279,19 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
         return False;
     }
     console.print(f"Uninstalling {name}...");
+    # Check presence first so we get consistent behaviour across backends:
+    # pip exits non-zero for a missing package, uv exits 0 with a warning.
+    if not self.is_installed(name) {
+        if self.verbose {
+            console.print(f"  {name} was not installed");
+        }
+        return False;
+    }
     (returncode, stdout, stderr) = self._run_pip(["uninstall", "-y", name]);
     if returncode == 0 {
         console.print(f"  {name} uninstalled successfully");
         return True;
     } else {
-        if "not installed" in stderr.lower() or "not installed" in stdout.lower() {
-            if self.verbose {
-                console.print(f"  {name} was not installed");
-            }
-            return False;
-        }
         console.error(f"  Failed to uninstall {name}: {stderr}");
         return False;
     }

@@ -1153,8 +1153,9 @@ def _run_precompile_in_venv(
             venv_python = str(venv_dir / "bin" / "python");
             venv_jac = str(venv_dir / "bin" / "jac");
         }
+        import from jaclang.project.dependencies { pip_command }
         jac_install = subprocess.run(
-            [venv_python, "-m", "pip", "install", jac_spec, "--quiet"],
+            pip_command(venv_python, ["install", jac_spec, "--quiet"]),
             capture_output=True
         );
         if jac_install.returncode != 0 {
@@ -1175,7 +1176,7 @@ def _run_precompile_in_venv(
         }
         if dep_specs {
             deps_install = subprocess.run(
-                [venv_python, "-m", "pip", "install"] + dep_specs + ["--quiet"],
+                pip_command(venv_python, ["install"] + dep_specs + ["--quiet"]),
                 capture_output=True
             );
             if deps_install.returncode != 0 {
