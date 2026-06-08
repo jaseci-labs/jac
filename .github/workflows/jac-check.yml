@@ -43,4 +43,8 @@ jobs:
 
       - name: Run jac check (using .jacignore)
         run: |
-          jac check . --ignore tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn
+          ignore_patterns=()
+          if [[ -f .jacignore ]]; then
+            mapfile -t ignore_patterns < <(grep -v '^[[:space:]]*#' .jacignore | grep -v '^[[:space:]]*$' || true)
+          fi
+          jac check . --ignore tests checker_*.jac *_err.jac "${ignore_patterns[@]}" --nowarn
