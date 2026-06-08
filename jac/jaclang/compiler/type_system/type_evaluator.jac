@@ -303,6 +303,9 @@ obj TypeEvaluator {
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
     # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Follow an imported symbol's re-export chain to its defining symbol, so
+    # overload collection happens at the definition scope, not a re-export one.
+    def resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol;
     # Widen literal types (e.g. Literal["x"] -> str) for the *declared* type
     # of an unannotated variable, inferred from its first binding.
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
