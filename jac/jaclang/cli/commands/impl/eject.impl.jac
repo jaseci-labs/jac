@@ -147,6 +147,39 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         console.error("Output directory cannot be the same as the source directory.");
         return 1;
     }
+
+    # Dispatch on the eject target declared in jac.toml BEFORE the default-path
+    # overwrite handling: absent (or "default") keeps the original
+    # jaclang-coupled Python+JS eject below; the standalone targets emit into a
+    # project-internal folder and manage their own (re-runnable) output.
+    eject_cfg = toml_data.get("eject", {});
+    target = eject_cfg.get("target", "default");
+    if target == "backend" {
+        if output {
+            b_out = Path(output).resolve();
+        } else {
+            b_out = (src / str(eject_cfg.get("output", "dist"))).resolve();
+        }
+        if b_out == src {
+            console.error(
+                "Eject output directory cannot be the same as the source directory."
+            );
+            return 1;
+        }
+        import from jaclang.cli.commands.eject_targets.backend { eject_backend }
+        return eject_backend(src, b_out, force, metadata);
+    } elif target in ("frontend", "fullstack") {
+        console.error(
+            f"eject target '{target}' is not supported yet (only 'backend')."
+        );
+        return 1;
+    } elif target != "default" {
+        console.error(
+            f"unknown eject target '{target}' (expected: default, backend)."
+        );
+        return 1;
+    }
+
     if out.exists() {
         if not force {
             console.error(f"Output directory already exists: {out}");
@@ -160,6 +193,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             return 1;
         }
     }
+
     out.mkdir(parents=True);
     backend_dir = out / "backend";
     frontend_src_dir = out / "frontend" / "src";

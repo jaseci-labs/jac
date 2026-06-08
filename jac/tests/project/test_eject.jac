@@ -61,6 +61,41 @@ def _list_jac_files(d: Path) -> list[str] {
 }
 
 
+"""Write jac.toml declaring the standalone FastAPI backend eject target."""
+def _write_backend_toml(src: Path, name: str = "test_app") {
+    src.mkdir(parents=True, exist_ok=True);
+    (src / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\nversion = "0.1.0"\nentry-point = "main.jac"\n'
+        + '[eject]\ntarget = "backend"\n[dependencies]\n'
+    );
+}
+
+
+"""Write a main.jac containing one reporting walker."""
+def _write_walker_jac(src: Path) {
+    (src / "main.jac").write_text(
+        'walker greeter {\n'
+        + '    has name: str;\n'
+        + '    can return_output with Root entry {\n'
+        + '        report f"Hello, {self.name}!";\n'
+        + '    }\n'
+        + '}\n'
+    );
+}
+
+
+"""Lines that import the jaclang runtime (the standalone-eject smell test)."""
+def _has_jaclang_import(py_text: str) -> bool {
+    for line in py_text.splitlines() {
+        stripped = line.strip();
+        if stripped.startswith("import jaclang") or stripped.startswith("from jaclang") {
+            return True;
+        }
+    }
+    return False;
+}
+
+
 # ==================== happy path ====================
 test "eject produces expected output layout" {
     with TemporaryDirectory() as td {
@@ -764,5 +799,116 @@ test "run.sh exports BACKEND_PORT to the vite subshell" {
         assert rc == 0;
         run = (src.parent / "myapp-ejected" / "run.sh").read_text();
         assert 'BACKEND_PORT="$PORT"' in run;
+    }
+}
+
+
+# ==================== backend target (standalone FastAPI) ====================
+test "backend target emits a flat FastAPI layout" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_backend_toml(src, "myapp");
+        _write_walker_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        out = src / "dist";
+        assert (out / "main.py").exists();
+        assert (out / "_osp.py").exists();
+        assert (out / "_jac_main.py").exists();
+        assert (out / "requirements.txt").exists();
+        # the default-target backend/ and frontend/ trees must NOT appear
+        assert not (out / "backend").exists();
+        assert not (out / "frontend").exists();
+    }
+}
+
+
+test "backend target output has zero .jac files and zero jaclang imports" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_backend_toml(src, "myapp");
+        _write_walker_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        out = src / "dist";
+        assert _list_jac_files(out) == [];
+        for py in out.rglob("*.py") {
+            assert not _has_jaclang_import(py.read_text());
+        }
+        assert "from _osp import" in (out / "_jac_main.py").read_text();
+    }
+}
+
+
+test "backend target main.py exposes the walker as a POST endpoint" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_backend_toml(src, "myapp");
+        _write_walker_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = (src / "dist" / "main.py").read_text();
+        # parses as valid Python
+        parsed = ast.parse(main_py);
+        assert parsed is not None;
+        assert "from _jac_main import greeter" in main_py;
+        assert '@app.post("/walker/greeter")' in main_py;
+        assert "class GreeterIn(BaseModel)" in main_py;
+        assert "name: str" in main_py;
+    }
+}
+
+
+test "backend target requirements.txt is fastapi + uvicorn only" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_backend_toml(src, "myapp");
+        _write_walker_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        reqs = (src / "dist" / "requirements.txt").read_text();
+        assert "fastapi" in reqs;
+        assert "uvicorn" in reqs;
+        assert "jaclang" not in reqs;
+    }
+}
+
+
+test "backend target _osp.py defines the runtime contract symbols" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_backend_toml(src, "myapp");
+        _write_walker_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        osp = (src / "dist" / "_osp.py").read_text();
+        tree = ast.parse(osp);
+        names = set();
+        for node in tree.body {
+            if isinstance(node, ast.ClassDef) {
+                names.add(node.name);
+            } elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) {
+                names.add(node.name);
+            }
+        }
+        for required in ["Root", "Walker", "on_entry", "set_trigger", "spawn", "root", "log_report"] {
+            assert required in names;
+        }
+        assert not _has_jaclang_import(osp);
+    }
+}
+
+
+test "unknown eject target is rejected" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "myapp"\nentry-point = "main.jac"\n'
+            + '[eject]\ntarget = "bogus"\n[dependencies]\n'
+        );
+        _write_main_jac(src);
+        rc = _silent_eject(str(src));
+        assert rc == 1;
     }
 }
