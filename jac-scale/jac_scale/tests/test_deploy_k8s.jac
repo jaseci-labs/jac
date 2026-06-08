@@ -288,6 +288,23 @@ test "deploy all in one" {
     assert deployment.metadata.name == app_name;
     assert deployment.spec.replicas == 1;
 
+    # Validate probe fields are applied to the deployed container spec
+    app_container = deployment.spec.template.spec.containers[0];
+    readiness_probe = app_container.readiness_probe;
+    liveness_probe = app_container.liveness_probe;
+    assert readiness_probe is not None , "readiness probe must be set on the container";
+    assert liveness_probe is not None , "liveness probe must be set on the container";
+    assert readiness_probe.timeout_seconds == 1 , f"Expected readiness timeoutSeconds=1, got {readiness_probe.timeout_seconds}";
+    assert readiness_probe.success_threshold == 1 , f"Expected readiness successThreshold=1, got {readiness_probe.success_threshold}";
+    assert readiness_probe.failure_threshold == 3 , f"Expected readiness failureThreshold=3, got {readiness_probe.failure_threshold}";
+    assert liveness_probe.timeout_seconds == 1 , f"Expected liveness timeoutSeconds=1, got {liveness_probe.timeout_seconds}";
+    assert liveness_probe.success_threshold == 1 , f"Expected liveness successThreshold=1, got {liveness_probe.success_threshold}";
+    print(
+        f"Probe fields verified: readiness(timeout={readiness_probe.timeout_seconds}, "
+        f"success={readiness_probe.success_threshold}, failure={readiness_probe.failure_threshold}), "
+        f"liveness(timeout={liveness_probe.timeout_seconds}, success={liveness_probe.success_threshold})"
+    );
+
     # Validate main service is ClusterIP (all traffic goes through NGINX ingress)
     service = core_v1.read_namespaced_service(
         name=f"{app_name}-service", namespace=namespace
@@ -2078,6 +2095,111 @@ test "kubernetes target security policy dicts" {
     } in redis_from;
     assert redis_policy['spec']['ingress'][0]['ports'][0]['port'] == 6379;
 }
+# ---------------------------------------------------------------------------
+# Probe configuration tests (no live cluster required)
+# ---------------------------------------------------------------------------
+
+# Verify default probe fields produced by _build_probe_config.
+test "probe config defaults include timeoutSeconds and successThreshold" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'probe-test-app';
+    target_config['namespace'] = 'test-ns';
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    probes = deployment_target._build_probe_config('/health');
+    readiness = probes['readiness'];
+    liveness = probes['liveness'];
+
+    # Readiness: all four new fields must be present with their defaults
+    assert readiness['timeoutSeconds'] == 1 , f"Expected readiness timeoutSeconds=1, got {readiness[
+        'timeoutSeconds'
+    ]}";
+    assert readiness['successThreshold'] == 1 , f"Expected readiness successThreshold=1, got {readiness[
+        'successThreshold'
+    ]}";
+    assert readiness['failureThreshold'] == 3 , f"Expected readiness failureThreshold=3, got {readiness[
+        'failureThreshold'
+    ]}";
+
+    # Liveness: timeoutSeconds must be present; successThreshold is hardcoded 1
+    assert liveness['timeoutSeconds'] == 1 , f"Expected liveness timeoutSeconds=1, got {liveness[
+        'timeoutSeconds'
+    ]}";
+    assert liveness['successThreshold'] == 1 , f"Expected liveness successThreshold=1, got {liveness[
+        'successThreshold'
+    ]}";
+}
+
+# Verify custom probe values flow through KubernetesConfig into _build_probe_config.
+test "probe config honours custom timeoutSeconds and successThreshold" {
+    k8s_config = KubernetesConfig(
+        readiness_timeout=5,
+        readiness_success_threshold=2,
+        readiness_failure_threshold=4,
+        liveness_timeout=3
+    );
+    assert k8s_config.readiness_timeout == 5;
+    assert k8s_config.readiness_success_threshold == 2;
+    assert k8s_config.readiness_failure_threshold == 4;
+    assert k8s_config.liveness_timeout == 3;
+
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'custom-probe-app';
+    target_config['namespace'] = 'test-ns';
+    target_config['readiness_timeout'] = 5;
+    target_config['readiness_success_threshold'] = 2;
+    target_config['readiness_failure_threshold'] = 4;
+    target_config['liveness_timeout'] = 3;
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    probes = deployment_target._build_probe_config('/health');
+    readiness = probes['readiness'];
+    liveness = probes['liveness'];
+
+    assert readiness['timeoutSeconds'] == 5 , f"Expected readiness timeoutSeconds=5, got {readiness[
+        'timeoutSeconds'
+    ]}";
+    assert readiness['successThreshold'] == 2 , f"Expected readiness successThreshold=2, got {readiness[
+        'successThreshold'
+    ]}";
+    assert readiness['failureThreshold'] == 4 , f"Expected readiness failureThreshold=4, got {readiness[
+        'failureThreshold'
+    ]}";
+    assert liveness['timeoutSeconds'] == 3 , f"Expected liveness timeoutSeconds=3, got {liveness[
+        'timeoutSeconds'
+    ]}";
+}
+
+# Verify KubernetesConfig.from_dict round-trips the new probe fields correctly.
+test "kubernetes config from_dict round-trips probe fields" {
+    config_dict = {
+        'readiness_timeout': 7,
+        'readiness_success_threshold': 3,
+        'readiness_failure_threshold': 5,
+        'liveness_timeout': 4
+    };
+    cfg = KubernetesConfig.from_dict(KubernetesConfig, config_dict);
+    assert cfg.readiness_timeout == 7 , f"Expected 7, got {cfg.readiness_timeout}";
+    assert cfg.readiness_success_threshold == 3 , f"Expected 3, got {cfg.readiness_success_threshold}";
+    assert cfg.readiness_failure_threshold == 5 , f"Expected 5, got {cfg.readiness_failure_threshold}";
+    assert cfg.liveness_timeout == 4 , f"Expected 4, got {cfg.liveness_timeout}";
+
+    # to_dict should preserve the same values
+    d = cfg.to_dict();
+    assert d['readiness_timeout'] == 7;
+    assert d['readiness_success_threshold'] == 3;
+    assert d['readiness_failure_threshold'] == 5;
+    assert d['liveness_timeout'] == 4;
+}
+
 # ---------------------------------------------------------------------------
 # Domain / TLS configuration tests (mocked - no live cluster required)
 # ---------------------------------------------------------------------------

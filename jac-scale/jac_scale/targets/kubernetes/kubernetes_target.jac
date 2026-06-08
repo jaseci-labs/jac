@@ -122,12 +122,17 @@ obj KubernetesTarget(DeploymentTarget) {
                 'scheme': 'HTTP'
             },
             'initialDelaySeconds': self.k8s_config.readiness_initial_delay,
-            'periodSeconds': self.k8s_config.readiness_period
+            'periodSeconds': self.k8s_config.readiness_period,
+            'timeoutSeconds': self.k8s_config.readiness_timeout,
+            'successThreshold': self.k8s_config.readiness_success_threshold,
+            'failureThreshold': self.k8s_config.readiness_failure_threshold
         };
 
         liveness_probe = dict(probe_config);
         liveness_probe['initialDelaySeconds'] = self.k8s_config.liveness_initial_delay;
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
+        liveness_probe['timeoutSeconds'] = self.k8s_config.liveness_timeout;
+        liveness_probe['successThreshold'] = 1;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
 
         startup_probe = {
