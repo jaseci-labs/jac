@@ -13,12 +13,21 @@ edge connector {
 }
 
 impl Creator.create{
-    end = here;
-    for i = 0 to i < 3 by i += 1 {
-        end ++> (end := node_a(val=i));
+    # Build a chain of node_a's hanging off the entry root: each step
+    # creates a new node, links from `end`, then advances `end` to it.
+    head = node_a(val=0);
+    here ++> head;
+    end = head;
+    for i = 1 to i < 3 by i += 1 {
+        next = node_a(val=i);
+        end ++> next;
+        end = next;
     }
-    end +>: connector : value=i :+> (end := node_a(val=i + 10));
-    root <+: connector : value=i :<+ (end := node_a(val=i + 10));
+    # Typed-edge fan-outs from the chain's tail and from root.
+    fwd_tail = node_a(val=i + 10);
+    end +>: connector(value=i) :+> fwd_tail;
+    bwd_tail = node_a(val=i + 10);
+    root <+: connector(value=i) :<+ bwd_tail;
     visit [-->];
 }
 
