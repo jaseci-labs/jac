@@ -103,3 +103,106 @@ na {
         return {"cur": cur, "phase": phase, "cur0": cur0, "phase0": phase0};
     }
 }
+
+# --- Issue 5: container truthiness drives loop termination (osp_kernel DFS).
+#     `while <list>` must test emptiness, not the (always non-null) pointer; the
+#     kernel's `while stack` / `while scope.next` otherwise loop forever and
+#     pop() runs past empty into garbage (the `tag_of` segfault). Mirrors the
+#     kernel's FIFO `scope.next.pop(0)` + `(loc, phase)` tuple-stack DFS. ---
+def dfs_stack_py() -> dict {
+    queue: list[int] = [100, 200, 300];
+    first_out: int = queue.pop(0);
+    second_out: int = queue.pop(0);
+    stack: list = [(first_out, 0)];
+    stack.append((second_out, 1));
+    n0: int = 0;
+    n1: int = 0;
+    visited: int = 0;
+    while stack {
+        (cur, phase) = stack.pop();
+        if phase == 0 { n0 = n0 + 1; } else { n1 = n1 + 1; }
+        visited = visited + 1;
+    }
+    return {"first_out": first_out, "second_out": second_out,
+            "n0": n0, "n1": n1, "visited": visited, "qn": len(queue),
+            "stack_empty": 0 if stack else 1};
+}
+
+na {
+    def dfs_stack_na() -> dict[str, any] {
+        queue: list[int] = [100, 200, 300];
+        first_out: int = queue.pop(0);
+        second_out: int = queue.pop(0);
+        stack: list = [(first_out, 0)];
+        stack.append((second_out, 1));
+        n0: int = 0;
+        n1: int = 0;
+        visited: int = 0;
+        while stack {
+            (cur, phase) = stack.pop();
+            if phase == 0 { n0 = n0 + 1; } else { n1 = n1 + 1; }
+            visited = visited + 1;
+        }
+        return {"first_out": first_out, "second_out": second_out,
+                "n0": n0, "n1": n1, "visited": visited, "qn": len(queue),
+                "stack_empty": 0 if stack else 1};
+    }
+}
+
+# --- #6449: scalar / boxed `any` values must round-trip through the native
+#     JacVal representation. Faithful gradual typing: anything sv does with
+#     `any`, na must do too. Covers (a) a scalar boxed into an `any` local,
+#     (b) reading scalar/str values out of a `dict[str, any]` *local*, and
+#     (c) a tuple whose element is `any` stored in a list, popped, unpacked
+#     (the titled bug; also exercises i64 -> `any` boxing at the call site). ---
+def any_scalar_box_py() -> dict {
+    x: any = 555;
+    y: any = 3.5;
+    z: any = "hi";
+    return {"x": x, "y": y, "z": z};
+}
+
+na {
+    def any_scalar_box_na() -> dict[str, any] {
+        x: any = 555;
+        y: any = 3.5;
+        z: any = "hi";
+        return {"x": x, "y": y, "z": z};
+    }
+}
+
+def any_dict_local_py() -> dict {
+    d: dict = {"l": 555, "s": "hi"};
+    li: int = d["l"];
+    return {"l": li, "s": d["s"]};
+}
+
+na {
+    def any_dict_local_na() -> dict[str, any] {
+        d: dict[str, any] = {"l": 555, "s": "hi"};
+        li: int = d["l"];
+        return {"l": li, "s": d["s"]};
+    }
+}
+
+def any_tuple_helper_py(loc: any) -> dict {
+    s: list = [(loc, 0)];
+    (cur, phase) = s.pop();
+    return {"cur": cur, "phase": phase};
+}
+
+def any_tuple_roundtrip_py() -> dict {
+    return any_tuple_helper_py(555);
+}
+
+na {
+    def any_tuple_helper_na(loc: any) -> dict[str, any] {
+        s: list = [(loc, 0)];
+        (cur, phase) = s.pop();
+        return {"cur": cur, "phase": phase};
+    }
+
+    def any_tuple_roundtrip_na() -> dict[str, any] {
+        return any_tuple_helper_na(555);
+    }
+}

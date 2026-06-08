@@ -45,6 +45,17 @@ test "str" {
     run_with_both("prim_str.jac", "str_py", "str_cl", "str_na");
 }
 
+# --- String literal escape sequences (#6476 item 1), cl required ---
+test "string escapes" {
+    run_with_both(
+        "cl_string_escapes.jac",
+        "escapes_py",
+        "escapes_cl",
+        "escapes_na",
+        require=["cl"]
+    );
+}
+
 # --- String Types (BytesEmitter) ---
 test "bytes search" {
     run_with_both(
@@ -108,6 +119,47 @@ test "native list any unpack stack" {
         "any_stack_py",
         "any_stack_cl",
         "any_stack_na",
+        require=["na"]
+    );
+}
+
+test "native list container truthiness dfs" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "dfs_stack_py",
+        "dfs_stack_cl",
+        "dfs_stack_na",
+        require=["na"]
+    );
+}
+
+# --- #6449: scalar/boxed `any` values round-trip through the native JacVal, na required ---
+test "native any scalar box" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_scalar_box_py",
+        "any_scalar_box_cl",
+        "any_scalar_box_na",
+        require=["na"]
+    );
+}
+
+test "native any dict local read" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_dict_local_py",
+        "any_dict_local_cl",
+        "any_dict_local_na",
+        require=["na"]
+    );
+}
+
+test "native any tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_tuple_roundtrip_py",
+        "any_tuple_roundtrip_cl",
+        "any_tuple_roundtrip_na",
         require=["na"]
     );
 }

@@ -1,0 +1,9 @@
+# Build artifacts - regenerate with build_libwebview.sh
+libwebview.so
+*.o
+.build/
+.jac_ir/
+.jac/
+__pycache__/
+.webkit_module
+.pytest_cache/

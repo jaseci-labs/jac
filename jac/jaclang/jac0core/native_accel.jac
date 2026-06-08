@@ -50,13 +50,22 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
     if module is None {
         return -1;
     }
+    # Native acceleration is a best-effort optimization: failures fall back to
+    # the Python module, so they are debug-logged rather than raised. That makes
+    # the native pass hard to debug (a codegen bug looks like "nothing happened").
+    # JAC_NATIVE_DEBUG=1 surfaces the compile errors / exception traceback to
+    # stderr so the failure is visible while developing the backend (see #6435
+    # item 6).
+    _na_debug = bool(os.environ.get("JAC_NATIVE_DEBUG"));
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=na_file);
         if prog.errors_had {
-            _logger.debug(
-                f"Native compilation errors for {mod_name}: {prog.errors_had}"
-            );
+            _msg = f"Native compilation errors for {mod_name}: {prog.errors_had}";
+            _logger.debug(_msg);
+            if _na_debug {
+                sys.stderr.write(_msg + "\n");
+            }
             return -1;
         }
         engine = ir.gen.native_engine;
@@ -79,6 +88,11 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
         return count;
     } except Exception as e {
         _logger.debug(f"Native acceleration failed for {mod_name}: {e}");
+        if _na_debug {
+            import traceback;
+            sys.stderr.write(f"Native acceleration failed for {mod_name}: {e}\n");
+            traceback.print_exc(file=sys.stderr);
+        }
         return -1;
     }
 }

@@ -4071,11 +4071,16 @@ impl NativeSetEmitter.emit_add(
     }
     val = p._coerce_type(args[0], helpers["elem_type"]);
     get_builder(p).call(helpers["add"], [target, val]);
-    # if the original arg was owned (function-call result), consume the owned ref.
-    if isinstance(args[0].type, ir.PointerType) and p._is_owned(args[0]) {
+    # __set_add retained the stored element; release our owned reference to it
+    # so its refcount is balanced. We check `val` (the coerced value actually
+    # stored), not the raw arg: a value-tuple arg `s.add((a, b))` is a
+    # LiteralStructType that _coerce_type boxes into a fresh owned heap tuple —
+    # that box, not the unboxed arg, is what add retained and what leaks if we
+    # never release it. (For an already-owned pointer arg, val is that arg.)
+    if isinstance(val.type, ir.PointerType) and p._is_owned(val) {
         _b_sa = get_builder(p);
         _i8p_sa = ir.IntType(8).as_pointer();
-        _rc_sa = _b_sa.bitcast(args[0], _i8p_sa, name="sadd_own_rel_cast");
+        _rc_sa = _b_sa.bitcast(val, _i8p_sa, name="sadd_own_rel_cast");
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
         }

@@ -1,6 +1,41 @@
 import random;
 import string;
+import from urllib.parse { urlparse }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
+
+# Hosts that resolve to the local machine. A redirect target is only trusted
+# for token delivery when its host is one of these — see is_safe_loopback_redirect.
+glob _LOOPBACK_HOSTS: set[str] = {'127.0.0.1', 'localhost', '::1'};
+
+"""Whether a URL is a safe loopback target for delivering an auth token.
+
+Desktop / "thin client" apps serve their UI from http://127.0.0.1:<port> and
+ask the SSO flow to redirect the token back to that loopback origin (RFC 8252,
+"OAuth 2.0 for Native Apps"). The requested URL arrives untrusted (it round-trips
+through the OAuth provider via the `state` parameter), so it must be validated
+before we redirect a token to it: an attacker who can influence `state` could
+otherwise turn the callback into an open redirect and exfiltrate the token.
+
+Trusted only when the scheme is http/https AND the host is a loopback address.
+Any parse failure or non-loopback host returns False.
+"""
+def is_safe_loopback_redirect(url: str | None) -> bool {
+    if not url {
+        return False;
+    }
+    try {
+        parsed = urlparse(url);
+    } except Exception {
+        return False;
+    }
+    if parsed.scheme not in ('http', 'https') {
+        return False;
+    }
+    # `hostname` strips the port and brackets (e.g. [::1]) and lowercases the
+    # host, so a crafted "127.0.0.1.evil.com" does not match a loopback host.
+    host = parsed.hostname;
+    return host in _LOOPBACK_HOSTS;
+}
 
 """Extract path parameter names from a URL path template."""
 def _extract_path_param_names(path: (str | None)) -> list[str] {

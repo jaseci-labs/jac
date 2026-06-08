@@ -131,18 +131,6 @@ def _desktop_config_schema -> PluginConfigSchema {
                 "com.myapp", "Reverse-domain identifier (com.example.myapp)"
             ),
             "version": schema_str_option("1.0.0", "Desktop app version"),
-            "client_only": schema_bool_option(
-                False, "If true, skip the bundled sidecar (use external API)."
-            ),
-            "tauri_plugins": schema_list_option(
-                [],
-                "Tauri plugin ids (manage with 'jac desktop plugin add/remove/sync')."
-            ),
-            "auto_tauri_plugin_npm": schema_bool_option(
-                True,
-                "Auto-sync matching @tauri-apps/plugin-* npm deps "
-                "when tauri_plugins changes."
-            ),
             "window": schema_dict_option(
                 "Window geometry: title, width, height, min_width, min_height, resizable.",
                 nested={
@@ -153,9 +141,6 @@ def _desktop_config_schema -> PluginConfigSchema {
                     "min_height": schema_int_option(600, ""),
                     "resizable": schema_bool_option(True, "")
                 }
-            ),
-            "plugins": schema_dict_option(
-                "Which Jac plugins to bundle into the sidecar."
             )
         }
     );
@@ -168,7 +153,7 @@ class JacDesktopPluginConfig {
         return PluginMetadata(
             name="desktop",
             version=pkg_version("jac-desktop"),
-            description="Native desktop target and plugin manager for Jac (PyTauri-based)."
+            description="Jac-native desktop target (webview + nacompile)."
         ).to_dict();
     }
 

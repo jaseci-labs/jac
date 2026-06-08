@@ -169,6 +169,21 @@ impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     return total if total > 0 else 8;
 }
 
+"""Exact ABI byte size of an LLVM type as a runtime i64.
+
+Uses the classic `getelementptr (T* null, i32 1)` then `ptrtoint` idiom, so the
+target data layout (alignment, padding, nested-struct sizes) decides the size
+rather than a hand-rolled per-field sum. Use this whenever a heap allocation
+must exactly fit a value of `ty` (e.g. boxing a tuple that contains a JacVal).
+"""
+impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    null_ptr = ir.Constant(ty.as_pointer(), None);
+    size_gep = self.builder.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof.gep");
+    return self.builder.ptrtoint(size_gep, i64, name="sizeof");
+}
+
 """Box a value tuple to a heap-allocated pointer (rc_alloc + store).
 
 Returns the value unchanged if it's already a pointer. Use this when
@@ -179,7 +194,11 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType) {
         return val;
     }
-    size = ir.Constant(ir.IntType(64), self._get_struct_size(val.type));
+    # Use LLVM's exact ABI sizeof (accounts for alignment and nested-struct
+    # members such as a 16-byte JacVal) instead of the flat per-field estimate,
+    # which undercounts a tuple holding an `any` element and would heap-overflow
+    # the box on store and corrupt it on reload. See #6449.
+    size = self._sizeof_llvm(val.type);
     # Prefer the jac_loc stamped on the value (set by _codegen_tuple_val) over
     # the caller-supplied loc so attribution is always as specific as possible.
     _box_loc = val?.jac_loc or loc;
