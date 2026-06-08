@@ -103,7 +103,10 @@ impl NaIRGenPass._codegen_virtual_call(
     # Devirtualization: if this method is never overridden, use direct call
     non_overridden = self._non_overridden_methods.get(obj_type_name);
     if non_overridden is not None and method_name in non_overridden {
-        return self.builder.call(func, coerced, name=f"call.{method_name}");
+        _dv_res = self.builder.call(func, coerced, name=f"call.{method_name}");
+        # callee borrows args (arg 0 is self) — release owned temporaries we passed
+        self._release_owned_args(coerced, op="mcall_arg");
+        return _dv_res;
     }
     # Full vtable dispatch for overridden methods
     method_idx = indices[method_name];
@@ -123,7 +126,10 @@ impl NaIRGenPass._codegen_virtual_call(
     typed_fn = self.builder.bitcast(
         method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"
     );
-    return self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
+    _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
+    # callee borrows args (arg 0 is self) — release owned temporaries we passed
+    self._release_owned_args(coerced, op="vcall_arg");
+    return _vt_res;
 }
 
 """Generate wrapper functions for inherited methods so they can be called by name."""

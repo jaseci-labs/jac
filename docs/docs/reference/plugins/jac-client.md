@@ -1634,7 +1634,6 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac build --client desktop` | Build desktop app (requires [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
-| `jac setup desktop` | One-time desktop setup; see [jac-desktop Reference](jac-desktop.md) |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
 | `jac add --npm --dev <pkg>` | Add npm dev dependency |
@@ -1667,7 +1666,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
 | `-p, --platform` | Platform for **mobile** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
 
-For desktop builds, the **client-only** variant (web bundle inside a Tauri shell, no bundled sidecar) is enabled by setting `client_only = true` under `[plugins.desktop]` in `jac.toml` rather than via a CLI flag; see [jac-desktop Reference → Client-only mode](jac-desktop.md#client-only-mode). In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
+For desktop builds, see the [jac-desktop Reference](jac-desktop.md): the desktop target compiles your `cl` UI into a single native binary that embeds the OS webview. In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
 
 **Examples:**
 
@@ -1710,9 +1709,6 @@ jac setup <target> [-p PLATFORM]
 **Examples:**
 
 ```bash
-# Setup desktop target (requires jac-desktop; see jac-desktop Reference)
-jac setup desktop
-
 # Setup PWA target (creates pwa_icons/ directory)
 jac setup pwa
 
@@ -1745,7 +1741,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 | Target | Command | Output | Setup Required |
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
-| **Desktop** (PyTauri) | `jac build --client desktop` | Staged app under `src-pytauri/dist/` | Yes (`jac-desktop`) |
+| **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No (`jac-desktop`) |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
@@ -1760,18 +1756,17 @@ jac start --dev              # Dev server with HMR
 
 **Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
 
-### Desktop Target (PyTauri)
+### Desktop Target (native webview)
 
-The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and adds a PyTauri native shell plus a PyInstaller-frozen Jac backend sidecar. No Rust toolchain is required.
+The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
 pip install jac-client jac-desktop
-jac setup desktop
-jac start --client desktop --dev
 jac build --client desktop
+jac start --client desktop
 ```
 
-See the **[jac-desktop Reference](jac-desktop.md)** for architecture, `[plugins.desktop]` configuration, sidecar bundling, native Tauri plugins, environment variables, and distribution status.
+See the **[jac-desktop Reference](jac-desktop.md)** for architecture and `[plugins.desktop]` configuration.
 
 Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 

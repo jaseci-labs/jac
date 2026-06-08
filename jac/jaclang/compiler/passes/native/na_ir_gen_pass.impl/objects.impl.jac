@@ -56,6 +56,9 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         self.struct_types[arch_name] = struct_type;
         self.has_native_code = True;
     }
+    # Pass 1.6: assign OSP type-tags (issue #6146) before struct bodies are
+    # laid out, so OSP archetypes reserve their `__type_tag` field.
+    self._register_osp_tags(archetypes);
     # Pass 1.5 + 1.7: Read class hierarchy and MRO from centralized LayoutRegistry
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
@@ -121,6 +124,10 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                         # Object-spatial ability (`can ... with T entry/exit`):
                         # lower as a two-arg method (self, here/visitor).
                         self._forward_declare_event_method(arch_name, stmt);
+                        # Emit its kernel dispatch thunk (issue #6146).
+                        if arch_name in self.osp_arch_kind {
+                            self._emit_osp_thunk(arch_name, stmt);
+                        }
                     } else {
                         _sig_kind = (
                             type(stmt.signature).__name__
@@ -252,6 +259,12 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 4.5: Forward-declare free functions (must happen before method bodies)
     self._forward_declare_functions(module);
+    # Pass 4.7: Register the portable OSP kernel + emit __osp_setup BEFORE method
+    # bodies, so `spawn` lowering inside an ability (e.g. a walker ability that
+    # spawns a nested walker) can reference __ospRT / __osp_ensure_init. OSP tags
+    # (Pass 1.6) and ability thunks (Pass 3) are already available (issue #6146).
+    self._register_osp_kernel_module();
+    self._emit_osp_setup();
     # Pass 5: Generate method bodies (own methods)
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
@@ -330,14 +343,22 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         return;
     }
     needs_vtable = arch_name in self.has_vtable;
+    is_osp = arch_name in self.osp_arch_kind;
     # Collect fields
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[(str, object)] = {};
-    # Add vtable pointer as field 0 if needed
-    if needs_vtable {
+    # Field 0 is the vtable slot. OSP archetypes always reserve it (null when
+    # the type has no vtable) so the i64 `__type_tag` lands at a uniform field
+    # index 1 across every OSP archetype -- letting the kernel's `tag_of` read
+    # an arbitrary `any` handle's tag at a fixed offset (issue #6146).
+    if needs_vtable or is_osp {
         field_types.append(ir.IntType(8).as_pointer().as_pointer());
+    }
+    if is_osp {
+        field_types.append(ir.IntType(64));  # __type_tag at field index 1
+        self.osp_type_tag_field[arch_name] = len(field_types) - 1;
     }
     # Flatten fields from all ancestors in MRO order (diamond dedup by name)
     mro = self.mro_order.get(arch_name, [arch_name]);
@@ -488,6 +509,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -496,6 +518,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -602,6 +625,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
@@ -625,6 +649,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -635,6 +660,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -684,6 +710,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
@@ -745,6 +772,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
@@ -755,6 +783,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_list_elem_struct = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
@@ -815,6 +844,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
@@ -883,6 +913,19 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             name="vtable.slot"
         );
         self.builder.store(vtable_base, vtable_slot);
+    }
+    # Store the OSP type-tag into the reserved __type_tag field (issue #6146)
+    # so the kernel's `tag_of` can recover this instance's type at runtime.
+    _tt_idx = self.osp_type_tag_field.get(type_name);
+    if _tt_idx is not None {
+        _tt_slot = self.builder.gep(
+            obj_ptr,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _tt_idx)],
+            name="type_tag.slot"
+        );
+        self.builder.store(
+            ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
+        );
     }
     # Initialize fields from keyword arguments
     field_indices = self.struct_field_indices.get(type_name, {});
@@ -1186,6 +1229,58 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             return self._emit_sys_exit(arg_vals);
         }
+    }
+    # --- Native stdlib math module calls: math.sqrt(x), math.pow(a, b), ... ---
+    if (
+        target_name == "math"
+        and self?._native_stdlib_modules
+        and "math" in self._native_stdlib_modules
+    ) {
+        _mres = self._emit_math_call(method_name, nd);
+        if _mres is not None {
+            return _mres;
+        }
+    }
+    # --- Native stdlib time module calls: time.time(), time.sleep(s), ... ---
+    # Gated on the known name set so a void result (time.sleep) is not mistaken
+    # for "unhandled" and routed to E5090.
+    if (
+        target_name == "time"
+        and self?._native_stdlib_modules
+        and "time" in self._native_stdlib_modules
+        and method_name in NATIVE_TIME_FUNCS
+    ) {
+        return self._emit_time_call(method_name, nd);
+    }
+    # --- Native stdlib os.path.X(...) (nested attribute: trailer.target is
+    # itself the AtomTrailer `os.path`). Checked before the flat os.* path. ---
+    if (
+        isinstance(trailer.target, uni.AtomTrailer)
+        and trailer.target.is_attr
+        and self._get_name(trailer.target.target) == "os"
+        and self._get_name(trailer.target.right) == "path"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+    ) {
+        return self._emit_ospath_call(method_name, nd);
+    }
+    # --- Native stdlib flat os.X(...) calls ---
+    if (
+        target_name == "os"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+        and method_name in NATIVE_OS_FUNCS
+    ) {
+        return self._emit_os_call(method_name, nd);
+    }
+    # --- Native stdlib random.X(...) calls (gated: random.seed is void) ---
+    if (
+        target_name == "random"
+        and self?._native_stdlib_modules
+        and "random" in self._native_stdlib_modules
+        and method_name in NATIVE_RANDOM_FUNCS
+    ) {
+        return self._emit_random_call(method_name, nd);
     }
     # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
     if target_name == "int" and method_name == "from_bytes" {
