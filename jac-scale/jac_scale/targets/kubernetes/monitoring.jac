@@ -6,7 +6,8 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
-    delete_k8s_secret
+    delete_k8s_secret,
+    resize_pvc_if_needed
 }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 
@@ -25,7 +26,11 @@ obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
 
-    """Deploy Prometheus ConfigMap with scrape config + Deployment + ClusterIP Service.
+    """Deploy Prometheus ConfigMap with scrape config + StatefulSet + ClusterIP Service.
+
+    Uses a StatefulSet with a PersistentVolumeClaim so TSDB data survives pod restarts.
+    persistentVolumeClaimRetentionPolicy (K8s 1.27+) is set to Delete on both whenDeleted
+    and whenScaled so all replica PVCs are cleaned up by Kubernetes on destroy or scale-down.
 
     Scrape targets include:
       - Jaseci application metrics at /metrics
@@ -42,6 +47,20 @@ obj MonitoringDeployer {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
+
+        # Migration: delete the legacy Deployment if it still exists from a pre-StatefulSet
+        # deploy. Both objects share the same name and app label so the Service would route
+        # to both pods, doubling scrapes. Must happen before the StatefulSet is created.
+        try {
+            apps_v1.delete_namespaced_deployment(
+                name=prometheus_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
         service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
 
         scrape_config = (
@@ -125,9 +144,39 @@ obj MonitoringDeployer {
             }
         }
 
-        prometheus_deployment = {
+        # Service must exist before the StatefulSet references it via serviceName.
+        # Prometheus is ClusterIP — Grafana scrapes it internally at prometheus-service:9090.
+        prometheus_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{prometheus_name}-service",
+                'namespace': namespace,
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': prometheus_name},
+                'ports': [{'protocol': 'TCP', 'port': 9090, 'targetPort': 9090}]
+            }
+        };
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{prometheus_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=prometheus_service
+                );
+            } else {
+                raise;
+            }
+        }
+
+        prometheus_statefulset = {
             'apiVersion': 'apps/v1',
-            'kind': 'Deployment',
+            'kind': 'StatefulSet',
             'metadata': {
                 'name': prometheus_name,
                 'namespace': namespace,
@@ -135,6 +184,11 @@ obj MonitoringDeployer {
             },
             'spec': {
                 'replicas': 1,
+                'serviceName': f"{prometheus_name}-service",
+                'persistentVolumeClaimRetentionPolicy': {
+                    'whenDeleted': 'Delete',
+                    'whenScaled': 'Delete'
+                },
                 'selector': {'matchLabels': {'app': prometheus_name}},
                 'template': {
                     'metadata': {
@@ -187,57 +241,56 @@ obj MonitoringDeployer {
                                 'name': 'prometheus-config-vol',
                                 'configMap': {'name': f"{prometheus_name}-config"}
                             },
-                            {'name': 'prometheus-data', 'emptyDir': {}},
                             {'name': 'tmp', 'emptyDir': {}}
                         ]
                     }
-                }
+                },
+                'volumeClaimTemplates': [
+                    {
+                        'metadata': {'name': 'prometheus-data'},
+                        'spec': {
+                            'accessModes': ['ReadWriteOnce'],
+                            'resources': {
+                                'requests': {
+                                    'storage': self.k8s_config.prometheus_storage_size
+                                }
+                            }
+                        }
+                    }
+                ]
             }
         };
-        # Always patch so the config-hash annotation propagates and triggers a rollout
-        # when the scrape config changes. Fall back to create on first deploy.
-        try {
-            apps_v1.patch_namespaced_deployment(
-                name=prometheus_name, namespace=namespace, body=prometheus_deployment
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                apps_v1.create_namespaced_deployment(
-                    namespace=namespace, body=prometheus_deployment
-                );
-            } else {
-                raise;
-            }
-        }
-
-        # Prometheus is ClusterIP  Grafana scrapes it internally at prometheus-service:9090
-        prometheus_service = {
-            'apiVersion': 'v1',
-            'kind': 'Service',
-            'metadata': {
-                'name': f"{prometheus_name}-service",
-                'namespace': namespace,
-                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
-            },
+        # On redeploy, patch only mutable fields so the config-hash annotation propagates
+        # and triggers a rollout when the scrape config changes.
+        # volumeClaimTemplates and serviceName are immutable — sending them in a patch
+        # causes K8s to reject it with 422. Use the full body only for the initial create.
+        prometheus_patch = {
+            'metadata': prometheus_statefulset['metadata'],
             'spec': {
-                'type': 'ClusterIP',
-                'selector': {'app': prometheus_name},
-                'ports': [{'protocol': 'TCP', 'port': 9090, 'targetPort': 9090}]
+                'replicas': prometheus_statefulset['spec']['replicas'],
+                'selector': prometheus_statefulset['spec']['selector'],
+                'template': prometheus_statefulset['spec']['template']
             }
         };
         try {
-            core_v1.read_namespaced_service(
-                name=f"{prometheus_name}-service", namespace=namespace
+            apps_v1.patch_namespaced_stateful_set(
+                name=prometheus_name, namespace=namespace, body=prometheus_patch
             );
         } except ApiException as e {
             if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=prometheus_service
+                apps_v1.create_namespaced_stateful_set(
+                    namespace=namespace, body=prometheus_statefulset
                 );
             } else {
                 raise;
             }
         }
+        resize_pvc_if_needed(
+            core_v1,
+            namespace,
+            f"prometheus-data-{prometheus_name}-0",
+            self.k8s_config.prometheus_storage_size
+        );
 
         if self.logger {
             self.logger.info(f"Prometheus deployed for '{app_name}'");
@@ -2161,10 +2214,10 @@ obj MonitoringDeployer {
 
         # Prometheus resources
         delete_if_exists(
-            apps_v1.delete_namespaced_deployment,
+            apps_v1.delete_namespaced_stateful_set,
             prometheus_name,
             namespace,
-            'Deployment'
+            'StatefulSet'
         );
         delete_if_exists(
             core_v1.delete_namespaced_service,

@@ -39,6 +39,7 @@ obj KubernetesConfig(BaseConfig) {
         # Storage configuration
         pvc_size: str = '5Gi',
         mongodb_storage_size: str = '1Gi',
+        prometheus_storage_size: str = '2Gi',
         # Timing configuration
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
@@ -138,6 +139,7 @@ obj KubernetesConfig(BaseConfig) {
                 # Storage configuration
                 'pvc_size': self.pvc_size,
                 'mongodb_storage_size': self.mongodb_storage_size,
+                'prometheus_storage_size': self.prometheus_storage_size,
                 # Timing configuration
                 'resource_deletion_wait': self.resource_deletion_wait,
                 'aws_nlb_wait': self.aws_nlb_wait,
@@ -217,6 +219,7 @@ obj KubernetesConfig(BaseConfig) {
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),
             mongodb_storage_size=config.get('mongodb_storage_size', '1Gi'),
+            prometheus_storage_size=config.get('prometheus_storage_size', '2Gi'),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
             aws_nlb_wait=config.get('aws_nlb_wait', 60),
             app_mount_path=config.get('app_mount_path', '/app'),

@@ -255,7 +255,20 @@ test "deploy all in one" {
     assert result.success is True;
     assert len(details) == 14;
 
-    full_status = deployment_target.get_full_status(app_name);
+    # Poll until all components are running. Prometheus (StatefulSet) takes longer
+    # than the app itself because its PVC must be provisioned before the pod starts.
+    full_status = None;
+    for _ in range(60) {
+        full_status = deployment_target.get_full_status(app_name);
+        if full_status
+        and all(
+            c.get("status") == "running" and c.get("ready") == c.get("total")
+            for c in full_status.get("components", [])
+        ) {
+            break;
+        }
+        time.sleep(5);
+    }
     assert full_status is not None;
     assert full_status["app_name"] == app_name;
     assert full_status["namespace"] == namespace;
@@ -271,7 +284,9 @@ test "deploy all in one" {
         assert "status" in component;
         assert "ready" in component;
         assert "total" in component;
-        assert component["status"] == "running";
+        assert component["status"] == "running" , f"Component '{component[
+            'name'
+        ]}' not running: {component}";
         assert component["ready"] == component["total"];
     }
     assert "urls" in full_status;
@@ -493,16 +508,23 @@ test "deploy all in one" {
     assert express_service.spec.type == "ClusterIP";
     print(f"mongo-express Service '{express_name}-service' (ClusterIP) exists");
 
-    # Validate Prometheus Deployment, Service, and ConfigMap
+    # Validate Prometheus StatefulSet, Service, and ConfigMap
     prometheus_name = f"{app_name}-prometheus";
-    prometheus_deploy = apps_v1.read_namespaced_deployment(
+    prometheus_sts = apps_v1.read_namespaced_stateful_set(
         name=prometheus_name, namespace=namespace
     );
-    assert prometheus_deploy.metadata.name == prometheus_name;
-    assert prometheus_deploy.spec.replicas == 1;
-    prometheus_container = prometheus_deploy.spec.template.spec.containers[0];
+    assert prometheus_sts.metadata.name == prometheus_name;
+    assert prometheus_sts.spec.replicas == 1;
+    prometheus_container = prometheus_sts.spec.template.spec.containers[0];
     assert prometheus_container.image == "prom/prometheus:latest";
-    print(f"Prometheus Deployment '{prometheus_name}' exists");
+    assert prometheus_sts.spec.volume_claim_templates is not None;
+    assert len(prometheus_sts.spec.volume_claim_templates) == 1;
+    pvc_tpl = prometheus_sts.spec.volume_claim_templates[0];
+    assert pvc_tpl.metadata.name == "prometheus-data";
+    assert "ReadWriteOnce" in pvc_tpl.spec.access_modes;
+    print(
+        f"Prometheus StatefulSet '{prometheus_name}' exists with persistent volume claim"
+    );
 
     prometheus_service = core_v1.read_namespaced_service(
         name=f"{prometheus_name}-service", namespace=namespace
@@ -1430,11 +1452,27 @@ test "deploy all in one" {
     # Verify monitoring stack cleanup
     prometheus_name = f"{app_name}-prometheus";
     try {
-        apps_v1.read_namespaced_deployment(prometheus_name, namespace=namespace);
-        raise AssertionError("Prometheus Deployment should have been deleted");
+        apps_v1.read_namespaced_stateful_set(prometheus_name, namespace=namespace);
+        raise AssertionError("Prometheus StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    # persistentVolumeClaimRetentionPolicy(whenDeleted=Delete) triggers async GC; poll until gone.
+    pvc_deleted = False;
+    for _ in range(30) {
+        try {
+            core_v1.read_namespaced_persistent_volume_claim(
+                name=f"prometheus-data-{prometheus_name}-0", namespace=namespace
+            );
+            time.sleep(2);
+        } except ApiException as e {
+            assert e.status == 404 , f"Expected 404, got {e.status}";
+            pvc_deleted = True;
+            break;
+        }
+    }
+    assert pvc_deleted , "prometheus-data PVC should have been deleted within 60s of destroy";
 
     try {
         core_v1.read_namespaced_service(
