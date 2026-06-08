@@ -34,13 +34,13 @@ obj AppleSSOProvider(SSOProvider) {
     Returns:
         RedirectResponse to Apple's OAuth authorization page
     """
-    async def initiate_auth -> Response {
+    async def initiate_auth(state: str | None = None) -> Response {
         if not self._apple_sso {
             raise RuntimeError("AppleSSO not initialized");
         }
 
         with self._apple_sso {
-            return await self._apple_sso.get_login_redirect();
+            return await self._apple_sso.get_login_redirect(state=state);
         }
     }
 

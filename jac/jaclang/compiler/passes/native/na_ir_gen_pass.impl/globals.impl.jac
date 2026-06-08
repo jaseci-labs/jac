@@ -62,6 +62,14 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             } else {
                 global_var.linkage = "";
             }
+            # Record `:pub` globals as C-ABI shared-library exports, consumed by
+            # `jac nacompile --shared` (a C host reads them via dlsym).
+            _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
+            if _is_pub and self.ir_in?.gen and var_name.isidentifier() {
+                if var_name not in self.ir_in.gen._exported_symbols {
+                    self.ir_in.gen._exported_symbols.append(var_name);
+                }
+            }
             # Try compile-time constant initialization for simple values
             const_init = self._codegen_const_expr(assign.value, var_type)
                 if assign.value is not None

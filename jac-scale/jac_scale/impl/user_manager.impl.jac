@@ -303,7 +303,7 @@ impl JacScaleUserManager.get_sso(platform: str) -> SSOProvider | None {
 }
 
 impl JacScaleUserManager.sso_initiate(
-    platform: str, operation: str
+    platform: str, operation: str, client_callback: str | None = None
 ) -> Response | TransportResponse {
     if platform not in [p.value for p in Platforms] {
         return TransportResponse.fail(
@@ -336,7 +336,12 @@ impl JacScaleUserManager.sso_initiate(
             meta=Meta(extra={'http_status': 500})
         );
     }
-    return await sso.initiate_auth();
+    # Carry a native/desktop client's loopback callback through the OAuth `state`
+    # so the callback can redirect the token to the origin that started the flow
+    # (RFC 8252). Only forward it when it is a safe loopback URL — an untrusted
+    # value is dropped here and re-validated on the callback side.
+    state = client_callback if is_safe_loopback_redirect(client_callback) else None;
+    return await sso.initiate_auth(state=state);
 }
 
 impl JacScaleUserManager.sso_callback(

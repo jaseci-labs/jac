@@ -299,12 +299,20 @@ Tag 2 = str (i8* ptrtoint to i64)
 Tag 3 = list pointer (any List.T* ptrtoint to i64)
 Tag 4 = dict pointer (any Dict.K:V* ptrtoint to i64)
 Tag 5 = set pointer  (any Set.T* ptrtoint to i64)
+Tag 6 = archetype/struct pointer (any %Arch* ptrtoint to i64)
 """
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     b = self.builder;
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
+    # Idempotent: an already-boxed JacVal (e.g. an `any` local, a value read out
+    # of a dict[*, any], or a tuple element unpacked as `any`) passes through
+    # unchanged. Without this it would fall into the `else` arm below and be
+    # zeroed, silently dropping the value to 0 (see #6449).
+    if self?.jacval_type and value.type == self.jacval_type {
+        return value;
+    }
     jv_alloca = self._entry_alloca(self.jacval_type, "jacval");
     tag_ptr = b.gep(
         jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="jv.tag.ptr"
@@ -355,6 +363,16 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
                 }
             }
         }
+        if ptr_tag == 2 {
+            # Archetype / struct pointer (node / walker / edge / obj instance)
+            # → tag 6, so a struct handle can round-trip through `any`.
+            for (_, structt) in self.struct_types.items() {
+                if value.type == structt.as_pointer() {
+                    ptr_tag = 6;
+                    break;
+                }
+            }
+        }
         b.store(ir.Constant(i8, ptr_tag), tag_ptr);
         payload = b.ptrtoint(value, i64, name="jv.p2i");
         b.store(payload, payload_ptr);
@@ -364,6 +382,42 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         b.store(ir.Constant(i64, 0), payload_ptr);
     }
     return b.load(jv_alloca, name="jacval");
+}
+
+"""Unbox a JacVal tagged union back to a concrete LLVM value of target_type.
+
+Inverse of _box_to_jacval: the payload (field 1) is reinterpreted per the
+requested type -- truncated/compared for narrower ints, bit-reinterpreted for
+floats, and inttoptr'd for pointers. The tag is not re-checked here; the type
+system guarantees the target shape, so this is a representation reinterpretation
+(mirroring how gradual `any` unboxes on the server). See #6449.
+"""
+impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value {
+    b = self.builder;
+    i64 = ir.IntType(64);
+    payload = b.extract_value(jv, 1, name="jv.unbox.payload");
+    if isinstance(target_type, ir.IntType) {
+        if target_type.width == 64 {
+            return payload;
+        }
+        if target_type.width == 1 {
+            return b.icmp_unsigned(
+                "!=", payload, ir.Constant(i64, 0), name="jv.unbox.bool"
+            );
+        }
+        return b.trunc(payload, target_type, name="jv.unbox.itrunc");
+    }
+    if isinstance(target_type, ir.DoubleType) {
+        return b.bitcast(payload, target_type, name="jv.unbox.f");
+    }
+    if isinstance(target_type, ir.FloatType) {
+        _d = b.bitcast(payload, ir.DoubleType(), name="jv.unbox.f64");
+        return b.fptrunc(_d, target_type, name="jv.unbox.f32");
+    }
+    if isinstance(target_type, ir.PointerType) {
+        return b.inttoptr(payload, target_type, name="jv.unbox.p");
+    }
+    return payload;
 }
 
 """Generate code for a dict literal {k1: v1, k2: v2, ...}."""

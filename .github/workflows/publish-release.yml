@@ -7,7 +7,7 @@ on:
   # Manual re-publish: if the auto-trigger run failed partway (e.g. a build
   # error after the release/* PR was already merged), re-fire publishing for
   # selected packages. Versions are read from each package's manifest on the
-  # current ref — no need to re-merge a release/* PR. Tier ordering and the
+  # current ref - no need to re-merge a release/* PR. Tier ordering and the
   # "already on PyPI" skip still apply, so re-running is safe.
   workflow_dispatch:
     inputs:
@@ -152,11 +152,8 @@ jobs:
         with:
           python-version: "3.13"
 
-      # Python 3.14 is set up for precompile EXCEPT for jac-desktop, whose
-      # pytauri-wheel dependency has no cp314 wheel yet; precompiling for 3.14
-      # there forces a from-source Rust build of the Tauri runtime that fails.
       - name: Set up Python 3.14 (for precompile)
-        if: matrix.precompile == true && matrix.name != 'jac-desktop'
+        if: matrix.precompile == true
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
@@ -230,6 +227,9 @@ jobs:
         working-directory: ${{ matrix.dir }}
         env:
           JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
+          # Precompile a sibling plugin (e.g. jac-desktop's jac-client) from local
+          # source so its not-yet-published version pin resolves without PyPI.
+          JAC_PRECOMPILE_LOCAL_DEPS: ${{ matrix.extra_build_deps != '' && format('{0}/{1}', github.workspace, matrix.extra_build_deps) || '' }}
         run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
       - name: Upload package artifacts
@@ -239,7 +239,7 @@ jobs:
           path: ${{ matrix.dir }}/dist/*
 
   # ============================================================================
-  # Publish npm packages (npmjs.org) — independent of the PyPI tiers.
+  # Publish npm packages (npmjs.org) - independent of the PyPI tiers.
   # A package opts in with an [npm] section in its jac.toml; the Jac client
   # runtime (@jaseci/runtime) is published alongside jaclang so JSX/component
   # packages have a runtime dependency to resolve against.
@@ -431,7 +431,7 @@ jobs:
         run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 2
 
   # ============================================================================
-  # Publish Tier 3: jaseci meta-package
+  # Publish Tier 3: plugins that depend on a tier-2 plugin (e.g. jac-desktop -> jac-client)
   # ============================================================================
   publish-tier3:
     needs: [parse-release, build, wait-tier2]
@@ -492,14 +492,75 @@ jobs:
         run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 3
 
   # ============================================================================
+  # Publish Tier 4: jaseci meta-package (depends on everything above)
+  # ============================================================================
+  publish-tier4:
+    needs: [parse-release, build, wait-tier3]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Check if tier 4
+        id: check
+        run: |
+          if [[ "${{ matrix.tier }}" != "4" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download package
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: Packages-${{ matrix.pypi }}
+          path: dist
+
+      - name: Publish to PyPI
+        if: steps.check.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent re-runs: a manual re-publish (or rerun after a partial
+          # failure) skips versions already on PyPI instead of erroring.
+          skip-existing: true
+
+  wait-tier4:
+    needs: [parse-release, publish-tier4]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install jaclang
+        run: pip install -e ./jac
+
+      - name: Wait for tier 4 on PyPI
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+        run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 4
+
+  # ============================================================================
   # Push tags after successful publish
   # ============================================================================
   push-tags:
-    needs: [parse-release, publish-tier1, publish-tier2, publish-tier3]
+    needs: [parse-release, publish-tier1, publish-tier2, publish-tier3, publish-tier4]
     if: |
       always() &&
       needs.parse-release.outputs.has_releases == 'true' &&
-      (needs.publish-tier1.result == 'success' || needs.publish-tier2.result == 'success' || needs.publish-tier3.result == 'success')
+      (needs.publish-tier1.result == 'success' || needs.publish-tier2.result == 'success' || needs.publish-tier3.result == 'success' || needs.publish-tier4.result == 'success')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
@@ -526,6 +587,7 @@ jobs:
           TIER1_RESULT: ${{ needs.publish-tier1.result }}
           TIER2_RESULT: ${{ needs.publish-tier2.result }}
           TIER3_RESULT: ${{ needs.publish-tier3.result }}
+          TIER4_RESULT: ${{ needs.publish-tier4.result }}
         run: |
           echo "$MATRIX" | jq -c '.include[]' | while read -r pkg; do
             pypi_name=$(echo "$pkg" | jq -r '.pypi')
@@ -536,6 +598,7 @@ jobs:
               1) result="$TIER1_RESULT" ;;
               2) result="$TIER2_RESULT" ;;
               3) result="$TIER3_RESULT" ;;
+              4) result="$TIER4_RESULT" ;;
             esac
 
             if [[ "$result" == "success" ]]; then
@@ -614,10 +677,10 @@ jobs:
   # Build standalone binaries (triggered when jaseci is released)
   # ============================================================================
   build-standalone-binaries:
-    needs: [parse-release, wait-tier3, push-tags, create-github-release]
+    needs: [parse-release, wait-tier4, push-tags, create-github-release]
     if: |
       always() &&
-      needs.wait-tier3.result == 'success' &&
+      needs.wait-tier4.result == 'success' &&
       needs.push-tags.result == 'success' &&
       needs.push-tags.outputs.jaseci_version != ''
     uses: ./.github/workflows/build-standalone.yml
@@ -631,7 +694,7 @@ jobs:
   # Summary
   # ============================================================================
   summary:
-    needs: [parse-release, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
+    needs: [parse-release, build, publish-tier1, publish-tier2, publish-tier3, publish-tier4, wait-tier3, wait-tier4, push-tags, create-github-release, build-standalone-binaries]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
