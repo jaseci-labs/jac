@@ -559,6 +559,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_float(nd: uni.Float) -> None;
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_string(nd: uni.String) -> None;
+    def _str_literal(nd: uni.String) -> es.Literal;
     def exit_formatted_value(nd: uni.FormattedValue) -> None;
     def exit_f_string(nd: uni.FString) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
