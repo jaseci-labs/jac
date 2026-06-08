@@ -1,8 +1,4 @@
-"""Regression test: type narrowing inside a list comprehension in a ternary true branch.
-
-A comprehension inside `[...] if cond else default` should narrow the
-condition variable to its non-None type, the same way a plain expression does.
-"""
+"""Regression test: type narrowing inside a list comprehension in a ternary true branch."""
 
 obj Items {
     has data: list[str] = [];
