@@ -342,20 +342,32 @@ impl EsastGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
     nd.gen.es_ast = expr;
 }
 
+"""Build a JS string literal from a Jac String node, decoding escapes.
+
+`nd.lit_value` interprets escape sequences (\n, \t, \xNN, ...) and honors raw/
+byte prefixes exactly like the Python/sv target and `_literal_value`, so every
+backend agrees on what the same source token *means* (#6476 item 1). json.dumps
+then re-encodes that decoded value as a JS string literal -- JSON string syntax
+is a subset of ECMAScript string syntax, so the emitted `raw` is always valid JS
+and round-trips control characters, quotes, and backslashes correctly.
+"""
+impl EsastGenPass._str_literal(nd: uni.String) -> es.Literal {
+    decoded = nd.lit_value;
+    if isinstance(decoded, str) {
+        return self.sync_loc(
+            es.Literal(value=decoded, raw=json.dumps(decoded)), jac_node=nd
+        );
+    }
+    # Byte-string literals (b"...") have no JS string equivalent; fall back to
+    # the raw source token (out-of-scope, pre-existing behavior unchanged).
+    raw_token = nd.value;
+    fallback_raw = json.dumps(raw_token) if isinstance(raw_token, str) else None;
+    return self.sync_loc(es.Literal(value=raw_token, raw=fallback_raw), jac_node=nd);
+}
+
 """Process string literal."""
 impl EsastGenPass.exit_string(nd: uni.String) -> None {
-    value = nd.value;
-    if value.startswith(('"""', "'''")) {
-        value = value[3:-3];
-    } elif value.startswith(('"', "'")) {
-        value = value[1:-1];
-    }
-    raw_value = nd.value;
-    if isinstance(value, str) {
-        raw_value = json.dumps(value);
-    }
-    str_lit = self.sync_loc(es.Literal(value=value, raw=raw_value), jac_node=nd);
-    nd.gen.es_ast = str_lit;
+    nd.gen.es_ast = self._str_literal(nd);
 }
 
 """Process multi-string literal."""
@@ -370,16 +382,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             nd.gen.es_ast = string_node.gen.es_ast;
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=string_node.value), jac_node=string_node
-            );
-            nd.gen.es_ast = str_lit;
+            nd.gen.es_ast = self._str_literal(string_node);
         } else {
             nd.gen.es_ast = self.sync_loc(es.Literal(value=''), jac_node=nd);
         }
@@ -390,19 +393,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             parts.append(string_node.gen.es_ast);
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            raw_val = json.dumps(value)
-                if isinstance(value, str)
-                else string_node.value;
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=raw_val), jac_node=string_node
-            );
-            parts.append(str_lit);
+            parts.append(self._str_literal(string_node));
         }
     }
     if not parts {
