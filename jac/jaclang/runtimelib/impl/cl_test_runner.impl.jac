@@ -12,6 +12,7 @@ import time;
 import from contextlib { suppress }
 import from pathlib { Path }
 import from collections.abc { Callable }
+import from jaclang.cli.console { console }
 
 impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
     import from jaclang.jac0core.program { JacProgram }
@@ -24,7 +25,8 @@ impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
     manifest = mod.gen.client_manifest;
     tests = list(getattr(manifest, "tests", []) or []);
     imports = dict(getattr(manifest, "imports", {}) or {});
-    return (mod.gen.js, tests, imports);
+    server_imports = list(getattr(manifest, "server_imports", []) or []);
+    return (mod.gen.js, tests, imports, server_imports);
 }
 
 impl _compile_runtime_js -> str {
@@ -36,7 +38,7 @@ impl _compile_runtime_js -> str {
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
-    (js, _tests, _imports) = compile_cl_module(runtime_src);
+    (js, _tests, _imports, _server_imports) = compile_cl_module(runtime_src);
     return js;
 }
 
@@ -117,7 +119,9 @@ impl _build_harness(
     return imports + "\n" + prelude + "\n" + body + "\n" + epilogue;
 }
 
-impl find_server_entry(test_filepath: str) -> (str | None) {
+impl find_server_entry(
+    test_filepath: str, server_imports: (list[str] | None) = None
+) -> (str | None) {
     test_dir = Path(test_filepath).resolve().parent;
     override = os.environ.get("JAC_CL_TEST_SERVER");
     if override {
@@ -127,9 +131,31 @@ impl find_server_entry(test_filepath: str) -> (str | None) {
         }
         return str(cand) if cand.exists() else None;
     }
+    # Explicit, in-code declaration wins: boot the backend the test `sv import`s.
+    # Resolved by import path, so the test stays correct wherever it lives.
+    existing = [
+        p
+        for p in (server_imports or [])
+        if Path(p).exists()
+    ];
+    if existing {
+        if len(set(existing)) > 1 {
+            console.warning(
+                f"{Path(test_filepath).name} sv-imports multiple backends; "
+                f"booting {existing[0]} (ignoring {sorted(set(existing[1:]))})"
+            );
+        }
+        return existing[0];
+    }
+    # Fallback: filename convention in the test's own directory. Announce it so a
+    # rename can't silently swap which backend boots.
     for name in _SERVER_ENTRY_NAMES {
         cand = test_dir / name;
         if cand.exists() {
+            console.warning(
+                f"{Path(test_filepath).name} declares no `sv import` backend; "
+                f"falling back to sibling {name}"
+            );
             return str(cand);
         }
     }
@@ -236,7 +262,7 @@ impl run_cl_test_file(
     serve: bool = True,
     timeout: float = 120.0
 ) -> list[ClTestResult] {
-    (module_js, tests, imports) = compile_cl_module(filepath);
+    (module_js, tests, imports, server_imports) = compile_cl_module(filepath);
     if test_name {
         tests = [
             t
@@ -250,7 +276,7 @@ impl run_cl_test_file(
 
     needs_server = serve and (api_base_url is None) and ("@jac/runtime" in imports);
     if needs_server {
-        server_entry = find_server_entry(filepath);
+        server_entry = find_server_entry(filepath, server_imports);
         if server_entry is not None {
             server_base = tempfile.mkdtemp(prefix="jac_cl_test_srv_");
             try {
@@ -302,7 +328,13 @@ impl _run_harness(
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
         if "@jac/runtime" in imports {
+            import from jaclang.runtimelib.client_surface { with_runtime_globals }
             runtime_js = _compile_runtime_js();
+            # Add the runtime-global import the compiler relies on, the same way
+            # every bundle path does -- so `root spawn` / JSX resolve here too.
+            module_js = with_runtime_globals(module_js);
+            # Point the `@jac/runtime` specifier at the runtime we just compiled
+            # alongside the harness (both quote styles the codegen may emit).
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
             module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
             # Redirect React/etc. npm imports (unused by the fetch/auth path) to

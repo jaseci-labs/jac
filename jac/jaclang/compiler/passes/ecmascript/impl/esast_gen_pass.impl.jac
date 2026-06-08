@@ -342,20 +342,32 @@ impl EsastGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
     nd.gen.es_ast = expr;
 }
 
+"""Build a JS string literal from a Jac String node, decoding escapes.
+
+`nd.lit_value` interprets escape sequences (\n, \t, \xNN, ...) and honors raw/
+byte prefixes exactly like the Python/sv target and `_literal_value`, so every
+backend agrees on what the same source token *means* (#6476 item 1). json.dumps
+then re-encodes that decoded value as a JS string literal -- JSON string syntax
+is a subset of ECMAScript string syntax, so the emitted `raw` is always valid JS
+and round-trips control characters, quotes, and backslashes correctly.
+"""
+impl EsastGenPass._str_literal(nd: uni.String) -> es.Literal {
+    decoded = nd.lit_value;
+    if isinstance(decoded, str) {
+        return self.sync_loc(
+            es.Literal(value=decoded, raw=json.dumps(decoded)), jac_node=nd
+        );
+    }
+    # Byte-string literals (b"...") have no JS string equivalent; fall back to
+    # the raw source token (out-of-scope, pre-existing behavior unchanged).
+    raw_token = nd.value;
+    fallback_raw = json.dumps(raw_token) if isinstance(raw_token, str) else None;
+    return self.sync_loc(es.Literal(value=raw_token, raw=fallback_raw), jac_node=nd);
+}
+
 """Process string literal."""
 impl EsastGenPass.exit_string(nd: uni.String) -> None {
-    value = nd.value;
-    if value.startswith(('"""', "'''")) {
-        value = value[3:-3];
-    } elif value.startswith(('"', "'")) {
-        value = value[1:-1];
-    }
-    raw_value = nd.value;
-    if isinstance(value, str) {
-        raw_value = json.dumps(value);
-    }
-    str_lit = self.sync_loc(es.Literal(value=value, raw=raw_value), jac_node=nd);
-    nd.gen.es_ast = str_lit;
+    nd.gen.es_ast = self._str_literal(nd);
 }
 
 """Process multi-string literal."""
@@ -370,16 +382,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             nd.gen.es_ast = string_node.gen.es_ast;
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=string_node.value), jac_node=string_node
-            );
-            nd.gen.es_ast = str_lit;
+            nd.gen.es_ast = self._str_literal(string_node);
         } else {
             nd.gen.es_ast = self.sync_loc(es.Literal(value=''), jac_node=nd);
         }
@@ -390,19 +393,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             parts.append(string_node.gen.es_ast);
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            raw_val = json.dumps(value)
-                if isinstance(value, str)
-                else string_node.value;
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=raw_val), jac_node=string_node
-            );
-            parts.append(str_lit);
+            parts.append(self._str_literal(string_node));
         }
     }
     if not parts {
@@ -819,7 +810,7 @@ impl EsastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
 impl EsastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     params: list[es.Pattern] = [];
     if isinstance(nd.signature, uni.FuncSignature) {
-        for param in nd.signature.params {
+        for param in nd.signature.get_parameters() {
             if param.gen.es_ast {
                 params.append(cast(es.Pattern, param.gen.es_ast));
             }
@@ -985,6 +976,27 @@ impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) 
         return source_mod;
     }
     return None;
+}
+
+"""Record the backend module bound by an `sv import` into the client manifest.
+
+A full-stack cl test boots the module it `sv import`s rather than guessing the
+backend by filename, so we capture the resolved local `.jac` path here."""
+impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
+    import from pathlib { Path }
+    if not nd.from_loc {
+        return;
+    }
+    resolved_path = nd.from_loc.resolve_relative_path();
+    if not resolved_path {
+        return;
+    }
+    abs_path = str(Path(resolved_path).resolve());
+    if abs_path.endswith(".jac")
+    and Path(abs_path).exists()
+    and (abs_path not in self.client_manifest.server_imports) {
+        self.client_manifest.server_imports.append(abs_path);
+    }
 }
 
 """Return the ability node represented by a symbol definition."""
@@ -4006,7 +4018,14 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 impl EsastGenPass.exit_param_var(nd: uni.ParamVar) -> None {
     param_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
     self._register_declaration(param_id.name);
-    if nd.value and nd.value.gen.es_ast {
+    if nd.is_vararg or nd.is_kwargs {
+        # `*args` / `**kwargs` -> JS rest parameter `...args`. (JS has no keyword
+        # args, so `**kwargs` degrades to a trailing rest; positional `*args` is
+        # exact.) Without this the param is emitted as a bare identifier and then
+        # dropped during signature assembly, leaving the body referencing an
+        # undefined name.
+        nd.gen.es_ast = self.sync_loc(es.RestElement(argument=param_id), jac_node=nd);
+    } elif nd.value and nd.value.gen.es_ast {
         nd.gen.es_ast = self.sync_loc(
             es.AssignmentPattern(
                 left=param_id, right=cast(es.Expression, nd.value.gen.es_ast)
@@ -4082,7 +4101,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     params: list[es.Pattern] = [];
     destructure_stmts: list[es.Statement] = [];
     destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
-    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.params {
+    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.get_parameters() {
         if is_jsx_in_return
         and not (
             len(nd.signature.params) == 1
@@ -4147,7 +4166,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
                     component=nd.name_ref.sym_name
                 );
             }
-            for param in nd.signature.params {
+            for param in nd.signature.get_parameters() {
                 if param.gen.es_ast {
                     params.append(cast(es.Pattern, param.gen.es_ast));
                 }
@@ -5061,6 +5080,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     ) {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
+            self._record_sv_backend(nd);
         }
         return;
     }

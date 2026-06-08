@@ -306,6 +306,13 @@ impl JacAPIServerAuth.register_update_me_endpoint -> None {
 # ============================================================================
 # SSO
 # ============================================================================
+impl _resolve_sso_client_redirect(requested: str | None, configured: str) -> str {
+    if requested and is_safe_loopback_redirect(requested) {
+        return requested;
+    }
+    return configured;
+}
+
 impl JacAPIServerAuth._create_sso_callback_wrapper -> Callable[
     ...,
     (Response | TransportResponse)
@@ -315,7 +322,14 @@ impl JacAPIServerAuth._create_sso_callback_wrapper -> Callable[
     ) -> (Response | TransportResponse) {
         result = await self.user_manager.sso_callback(request, platform);
         sso_config = get_scale_config().get_sso_config();
-        frontend_url = sso_config.get('client_auth_callback_url', '');
+        configured_url = str(sso_config.get('client_auth_callback_url', ''));
+        # A desktop / loopback client passes its own 127.0.0.1 callback through
+        # the OAuth `state` parameter (RFC 8252) so the token lands on its own
+        # origin. Honor it only when it is a safe loopback URL; otherwise fall
+        # back to the server-configured remote callback. This guards against an
+        # attacker using `state` as an open redirect to steal the token.
+        requested_url = request.query_params.get('state') or '';
+        frontend_url = _resolve_sso_client_redirect(requested_url, configured_url);
         if not frontend_url {
             return result;
         }
@@ -355,6 +369,14 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
                     default=None,
                     description='Operation: "login" or "register"',
                     type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='client_callback',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Optional loopback URL (e.g. http://127.0.0.1:<port>/...) for native/desktop clients. The token is redirected here after auth so it lands on the client\'s own origin; ignored unless it is a safe loopback address.',
+                    type=ParameterType.QUERY
                 )
             ],
             response_model=None,
