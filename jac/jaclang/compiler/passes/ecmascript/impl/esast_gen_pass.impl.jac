@@ -3524,18 +3524,32 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     jac_node=except_node
                 );
             } else {
-                # No type or unknown type = catch-all (bare "except:" or
-                # "except Exception:")
-                if_chain = self.sync_loc(
-                    es.IfStatement(
-                        test=self.sync_loc(
-                            es.Literal(value=True, raw='true'), jac_node=except_node
+                # No type or unknown type = catch-all (bare "except:" or "except Exception:")
+                if if_chain is None {
+                    # This is the only/last handler — use its body directly
+                    if_chain = self.sync_loc(
+                        es.IfStatement(
+                            test=self.sync_loc(
+                                es.Literal(value=True, raw='true'), jac_node=except_node
+                            ),
+                            consequent=handler_body,
+                            alternate=None
                         ),
-                        consequent=handler_body,
-                        alternate=None
-                    ),
-                    jac_node=except_node
-                );
+                        jac_node=except_node
+                    );
+                } else {
+                    # Catch-all wraps the existing chain as its else
+                    if_chain = self.sync_loc(
+                        es.IfStatement(
+                            test=self.sync_loc(
+                                es.Literal(value=True, raw='true'), jac_node=except_node
+                            ),
+                            consequent=handler_body,
+                            alternate=None
+                        ),
+                        jac_node=except_node
+                    );
+                }
             }
         }
         # If no catch-all handler was found, add a re-throw as the final else
