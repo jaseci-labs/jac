@@ -241,6 +241,20 @@ test "from_import" {
     );
 }
 
+"""Calling an @overload-ed function imported through a re-export chain matches
+the later overload. Overloads must be gathered at the definition scope, not the
+single-symbol re-export scope (regression: SQLAlchemy `create_engine`)."""
+test "imported_overloaded_function_call_resolves" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_imported_overload.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert program.errors_had == [] , (
+        "make(\"a\") matches the no-strict overload; expected no errors, got: " + str(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
 test "call_expr" {
     path = os.path.join(CHECKER_FIXTURES, "checker_expr_call.jac");
     program = JacProgram();

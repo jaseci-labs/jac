@@ -145,7 +145,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         # 1. Check the type hint set by assignment/field context
         if self._list_type_hint is not None {
             elem_type_name = self._list_type_hint;
-        } elif self.builder and self.builder.function {
+        } elif self._builder and self._builder.function {
             # 2. Fallback: infer from function return type
             ret_type = self.builder.function.return_value.type;
             if isinstance(ret_type, ir.PointerType) {

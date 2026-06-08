@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.12 (Latest Release)
+## byllm 0.6.14 (Latest Release)
+
+### New Features
+
+- **Feat: Multimodal tool results are provider-portable**: Tool-result images are now rerouted into a trailing user message at request time, unblocking providers that reject  images in `role: "tool"` (e.g. OpenAI) while Anthropic continues to work.
+
+## byllm 0.6.12
 
 ### New Features
 

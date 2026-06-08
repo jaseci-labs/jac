@@ -15,6 +15,8 @@ UX choices that distinguish this from raw Grafana:
 - Service dropdown auto-populated from microservices.routes config
 """
 
+cl import from "lucide-react" { ScrollText, RefreshCw, AlertTriangle, X }
+
 cl {
     import from react { useEffect }
     import from ....components.common.Button { Button }
@@ -205,7 +207,7 @@ cl {
         # gets the same Tailwind text class so users build muscle memory.
         def serviceColor(name: str) -> str {
             if not name {
-                return "text-slate-400";
+                return "text-muted";
             }
             palette = [
                 "text-sky-400",
@@ -214,7 +216,7 @@ cl {
                 "text-purple-400",
                 "text-pink-400",
                 "text-cyan-400",
-                "text-orange-400",
+                "text-accent",
                 "text-lime-400",
                 "text-rose-400",
                 "text-indigo-400"
@@ -229,18 +231,18 @@ cl {
         }
 
         def levelBadge(level: str) -> str {
-            base = "px-1.5 py-0.5 rounded text-xs font-bold border ";
+            base = "px-1.5 py-0.5 rounded text-[10px] font-semibold border border-line ";
             lvl = (level or "INFO").toUpperCase();
             if lvl == "ERROR" or lvl == "CRITICAL" {
-                return base + "bg-red-500/20 text-red-300 border-red-500/40";
+                return base + "bg-danger-weak text-danger";
             }
             if lvl == "WARNING" or lvl == "WARN" {
-                return base + "bg-amber-500/20 text-amber-300 border-amber-500/40";
+                return base + "bg-warning-weak text-warning";
             }
             if lvl == "DEBUG" {
-                return base + "bg-slate-700/40 text-slate-400 border-slate-600";
+                return base + "bg-surface-2 text-faint";
             }
-            return base + "bg-sky-500/20 text-sky-300 border-sky-500/40";
+            return base + "bg-surface-2 text-muted";
         }
 
         def shortTime(ts: str) -> str {
@@ -269,11 +271,15 @@ cl {
         # ---- render: main logs view ------------------------------------
         return
             <div className="space-y-4">
+                <div className="flex items-center gap-2.5">
+                    <ScrollText className="w-5 h-5 text-accent"/>
+                    <h1 className="text-lg font-semibold text-fg">Logs</h1>
+                </div>
                 <div className="flex items-end gap-3 flex-wrap">
                     <div>
-                        <div className="text-xs text-slate-500 mb-1">Service</div>
+                        <div className="text-xs text-faint mb-1">Service</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-bg border border-line rounded-lg px-3 py-1.5 text-fg text-sm focus:outline-none focus:border-accent-line transition-colors"
                             value={filterService}
                             onChange={lambda (e: any) { filterService = e.target.value; }}
                         >
@@ -282,9 +288,9 @@ cl {
                         </select>
                     </div>
                     <div>
-                        <div className="text-xs text-slate-500 mb-1">Level</div>
+                        <div className="text-xs text-faint mb-1">Level</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-bg border border-line rounded-lg px-3 py-1.5 text-fg text-sm focus:outline-none focus:border-accent-line transition-colors"
                             value={filterLevel}
                             onChange={lambda (e: any) { filterLevel = e.target.value; }}
                         >
@@ -296,9 +302,9 @@ cl {
                         </select>
                     </div>
                     <div>
-                        <div className="text-xs text-slate-500 mb-1">Time</div>
+                        <div className="text-xs text-faint mb-1">Time</div>
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="bg-bg border border-line rounded-lg px-3 py-1.5 text-fg text-sm focus:outline-none focus:border-accent-line transition-colors"
                             value={filterSince}
                             onChange={lambda (e: any) { filterSince = e.target.value; }}
                         >
@@ -310,10 +316,10 @@ cl {
                         </select>
                     </div>
                     <div className="flex-1 min-w-48">
-                        <div className="text-xs text-slate-500 mb-1">Search</div>
+                        <div className="text-xs text-faint mb-1">Search</div>
                         <input
                             type="text"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-sm"
+                            className="w-full bg-bg border border-line rounded-lg px-3 py-1.5 text-fg text-sm focus:outline-none focus:border-accent-line transition-colors"
                             placeholder="grep text..."
                             value={filterSearch}
                             onChange={lambda (e: any) { filterSearch = e.target.value; }}
@@ -322,10 +328,11 @@ cl {
                             }}}
                         />
                     </div>
-                    <Button onClick={lambda { loadLogs(); }} variant="primary">
+                    <Button onClick={lambda { loadLogs(); }} variant="secondary">
+                        <RefreshCw className="w-3.5 h-3.5"/>
                         Refresh
                     </Button>
-                    <label className="flex items-center gap-2 text-sm text-slate-400">
+                    <label className="flex items-center gap-2 text-sm text-muted">
                         <input
                             type="checkbox"
                             checked={autoRefresh}
@@ -336,57 +343,59 @@ cl {
                 </div>
                 {backendOffline
                 and <div
-                    className="bg-amber-500/10 border border-amber-500/40 rounded p-3 text-sm text-amber-300"
+                    className="flex items-start gap-2 bg-warning-weak border border-line rounded-lg p-3 text-sm text-muted"
                 >
-                    Log backend unreachable. Make sure
-                    <code className="mx-1 font-mono">
-                        [plugins.scale.microservices.logs].enabled
-                    </code>
-                    is true and the Loki + Alloy stack is running in the deployment namespace. (M-14.a observability stack.)
+                    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5"/>
+                    <span>
+                        Log backend unreachable. Make sure
+                        <code className="mx-1 font-mono text-fg">
+                            [plugins.scale.microservices.logs].enabled
+                        </code>
+                        is true and the Loki + Alloy stack is running in the deployment namespace.
+                    </span>
                 </div>}
                 {errorMsg
                 and not backendOffline
                 and <div
-                    className="bg-red-500/10 border border-red-500/40 rounded p-3 text-sm text-red-300"
+                    className="flex items-start gap-2 bg-danger-weak border border-line rounded-lg p-3 text-sm text-danger"
                 >
-                    {errorMsg}
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
+                    <span>{errorMsg}</span>
                 </div>}
                 {isLoading
                 and <div className="flex items-center justify-center h-32">
-                    <div className="text-sky-400">Loading logs...</div>
+                    <div className="text-accent">Loading logs...</div>
                 </div>}
                 {not isLoading
                 and lines.length == 0
                 and not errorMsg
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded p-8 text-slate-500 text-center"
+                    className="bg-surface border border-line rounded-lg p-8 text-faint text-center"
                 >
                     No logs in the selected window. Try a longer time range or hit your gateway to generate some traffic.
                 </div>}
                 {not isLoading
                 and lines.length > 0
-                and <div className="text-xs text-slate-500">
+                and <div className="text-xs text-faint">
                     {lines.length} log {lines.length == 1 and "line" or "lines"}
                 </div>}
                 {not isLoading
                 and lines.length > 0
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded font-mono text-sm overflow-x-auto max-h-[70vh] overflow-y-auto"
+                    className="bg-surface border border-line rounded-lg font-mono text-sm overflow-x-auto max-h-[70vh] overflow-y-auto shadow-sm"
                 >
                     {lines.map(
                         lambda (line: dict, idx: int) { return
                             <div
                                 key={idx}
-                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer " + (
+                                className={"flex items-start gap-3 px-3 py-1.5 border-b border-line hover:bg-surface-2 cursor-pointer transition-colors " + (
                                     panelIdx == idx
-                                    and "bg-sky-500/10 border-l-2 border-l-sky-400"
+                                    and "bg-accent-weak border-l-2 border-l-accent"
                                     or ""
                                 )}
                                 onClick={lambda { openPanel(idx, line); }}
                             >
-                                <span
-                                    className="text-slate-500 text-xs whitespace-nowrap"
-                                >
+                                <span className="text-faint text-xs whitespace-nowrap">
                                     {shortTime(line["ts"] or "")}
                                 </span>
                                 <span
@@ -399,12 +408,12 @@ cl {
                                 <span className={levelBadge(line["level"] or "INFO")}>
                                     {(line["level"] or "INFO").toUpperCase()}
                                 </span>
-                                <span className="text-slate-200 break-all flex-1">
+                                <span className="text-fg break-all flex-1">
                                     {line["msg"] or ""}
                                 </span>
                                 {line["trace_id"]
                                 and <span
-                                    className="text-xs font-mono text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30 whitespace-nowrap"
+                                    className="text-xs font-mono text-accent px-1.5 py-0.5 rounded border border-accent-line whitespace-nowrap"
                                     title="Click row to view full trace"
                                 >
                                     trace:{shortTrace(String(line["trace_id"]))}
@@ -426,10 +435,10 @@ cl {
                 </div>}
                 {panelIdx >= 0
                 and <div
-                    className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col z-50"
+                    className="fixed inset-y-0 right-0 w-full sm:w-[480px] md:w-[560px] lg:w-[640px] bg-surface border-l border-line shadow-sm flex flex-col z-50"
                 >
                     <div
-                        className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
+                        className="flex items-center justify-between px-4 py-3 border-b border-line"
                     >
                         <div className="flex items-center gap-2">
                             <span
@@ -442,70 +451,69 @@ cl {
                             <span className={levelBadge(panelLine["level"] or "INFO")}>
                                 {(panelLine["level"] or "INFO").toUpperCase()}
                             </span>
-                            <span className="text-xs text-slate-500 font-mono">
+                            <span className="text-xs text-faint font-mono">
                                 {shortTime(panelLine["ts"] or "")}
                             </span>
                         </div>
                         <button
-                            className="text-slate-400 hover:text-white text-xl leading-none"
+                            className="text-muted hover:text-fg"
                             onClick={lambda { closePanel(); }}
                             title="Close"
                         >
-                            ×
+                            <X className="w-4 h-4"/>
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto px-4 py-3 text-xs space-y-3">
                         <div>
                             <div
-                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
+                                className="text-faint text-[10px] uppercase tracking-wide mb-1"
                             >
                                 Message
                             </div>
                             <div
-                                className="text-slate-100 font-mono break-all whitespace-pre-wrap bg-slate-900 border border-slate-800 rounded p-2"
+                                className="text-fg font-mono break-all whitespace-pre-wrap bg-surface border border-line rounded p-2"
                             >
                                 {panelLine["msg"] or ""}
                             </div>
                         </div>
                         <div className="grid grid-cols-[7rem_1fr] gap-y-1">
-                            <div className="text-slate-500">Timestamp</div>
-                            <div className="text-slate-200 font-mono break-all">
+                            <div className="text-faint">Timestamp</div>
+                            <div className="text-fg font-mono break-all">
                                 {panelLine["ts"] or "-"}
                             </div>
+                            {panelLine["pod"] and <div className="text-faint">Pod</div>}
                             {panelLine["pod"]
-                            and <div className="text-slate-500">Pod</div>}
-                            {panelLine["pod"]
-                            and <div className="text-slate-200 font-mono break-all">
+                            and <div className="text-fg font-mono break-all">
                                 {panelLine["pod"]}
                             </div>}
                             {panelLine["trace_id"]
-                            and <div className="text-slate-500">Trace ID</div>}
+                            and <div className="text-faint">Trace ID</div>}
                             {panelLine["trace_id"]
-                            and <div className="text-purple-300 font-mono break-all">
+                            and <div className="text-accent font-mono break-all">
                                 {panelLine["trace_id"]}
                             </div>}
                         </div>
                         {panelLine["extras"]
                         and <div>
                             <div
-                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-1"
+                                className="text-faint text-[10px] uppercase tracking-wide mb-1"
                             >
                                 Extras
                             </div>
                             <pre
-                                className="bg-slate-900 border border-slate-800 rounded p-2 text-slate-200 overflow-x-auto"
+                                className="bg-surface border border-line rounded p-2 text-fg overflow-x-auto"
                             >
                                 {JSON.stringify(panelLine["extras"], None, 2)}
                             </pre>
                         </div>}
                         {panelLine["trace_id"]
-                        and <div className="pt-2 border-t border-slate-800">
+                        and <div className="pt-2 border-t border-line">
                             <div
-                                className="text-slate-500 text-[10px] uppercase tracking-wide mb-2 flex items-center gap-2"
+                                className="text-faint text-[10px] uppercase tracking-wide mb-2 flex items-center gap-2"
                             >
                                 <span>Trace journey</span>
                                 {traceServices.length > 0
-                                and <span className="text-slate-600">·</span>}
+                                and <span className="text-faint">·</span>}
                                 {traceServices.length > 0
                                 and [
                                     <span
@@ -517,27 +525,27 @@ cl {
                                 ]}
                             </div>
                             {traceLoading
-                            and <div className="text-sky-400 text-center py-3">
+                            and <div className="text-muted text-center py-3">
                                 Loading trace lines...
                             </div>}
                             {not traceLoading
                             and traceLines.length == 0
-                            and <div className="text-slate-500 text-center py-3">
+                            and <div className="text-faint text-center py-3">
                                 No other log lines found for this trace.
                             </div>}
                             {not traceLoading
                             and traceLines.length > 0
                             and <div
-                                className="bg-slate-900 border border-slate-800 rounded font-mono overflow-x-auto"
+                                className="bg-surface border border-line rounded font-mono overflow-x-auto"
                             >
                                 {traceLines.map(
                                     lambda (tl: dict, ti: int) { return
                                         <div
                                             key={ti}
-                                            className="flex items-start gap-2 px-2 py-1 border-b border-slate-800/40 last:border-b-0"
+                                            className="flex items-start gap-2 px-2 py-1 border-b border-line last:border-b-0"
                                         >
                                             <span
-                                                className="text-slate-500 text-[10px] whitespace-nowrap"
+                                                className="text-faint text-[10px] whitespace-nowrap"
                                             >
                                                 {shortTime(tl["ts"] or "")}
                                             </span>
@@ -548,7 +556,7 @@ cl {
                                             >
                                                 {tl["service"] or "?"}
                                             </span>
-                                            <span className="text-slate-200 break-all">
+                                            <span className="text-fg break-all">
                                                 {tl["msg"] or ""}
                                             </span>
                                         </div>; }

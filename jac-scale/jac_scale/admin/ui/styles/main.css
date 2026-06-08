@@ -1,1 +1,116 @@
 @import "tailwindcss";
+
+/* Semantic token system. Every surface/border/text/accent color is a CSS
+   variable, so components use bg-surface / border-line / text-fg /
+   text-muted / bg-accent and adapt to both themes with no per-utility
+   dark: variants. Dark is the default (:root); the theme toggle adds a
+   `.light` class on <html> to flip the ramp - dark-default avoids a
+   first-paint flash since that is the historical look. */
+:root {
+    --bg: #0a0b0d;
+    --surface: #121417;
+    --surface-2: #181b20;
+    --line: #24272e;
+    --line-strong: #31353d;
+    --fg: #e7e9ec;
+    --muted: #9aa0a8;
+    --faint: #6b717a;
+    --accent: #f97316;
+    --accent-hover: #fb8a3c;
+    --accent-fg: #ffffff;
+    --accent-weak: rgba(249, 115, 22, 0.13);
+    --accent-line: rgba(249, 115, 22, 0.30);
+    --success: #22c55e;
+    --success-weak: rgba(34, 197, 94, 0.13);
+    --warning: #f59e0b;
+    --warning-weak: rgba(245, 158, 11, 0.13);
+    --danger: #ef4444;
+    --danger-weak: rgba(239, 68, 68, 0.13);
+    --ring: rgba(249, 115, 22, 0.40);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);
+}
+
+.light {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f1f3f5;
+    --line: #e6e8ec;
+    --line-strong: #d4d7dd;
+    --fg: #14161a;
+    --muted: #5b616e;
+    --faint: #888e99;
+    --accent: #ea580c;
+    --accent-hover: #c2410c;
+    --accent-fg: #ffffff;
+    --accent-weak: rgba(234, 88, 12, 0.10);
+    --accent-line: rgba(234, 88, 12, 0.28);
+    --success: #16a34a;
+    --success-weak: rgba(22, 163, 74, 0.11);
+    --warning: #d97706;
+    --warning-weak: rgba(217, 119, 6, 0.11);
+    --danger: #dc2626;
+    --danger-weak: rgba(220, 38, 38, 0.09);
+    --ring: rgba(234, 88, 12, 0.35);
+    --shadow-sm: 0 1px 2px rgba(16, 18, 22, 0.06), 0 1px 2px rgba(16, 18, 22, 0.04);
+    --shadow-md: 0 4px 14px rgba(16, 18, 22, 0.08);
+}
+
+/* Register tokens as Tailwind colors (inline = utilities reference the
+   var() so they re-resolve when `.light` flips the ramp at runtime). */
+@theme inline {
+    --color-bg: var(--bg);
+    --color-surface: var(--surface);
+    --color-surface-2: var(--surface-2);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-fg: var(--fg);
+    --color-muted: var(--muted);
+    --color-faint: var(--faint);
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-accent-fg: var(--accent-fg);
+    --color-accent-weak: var(--accent-weak);
+    --color-accent-line: var(--accent-line);
+    --color-success: var(--success);
+    --color-success-weak: var(--success-weak);
+    --color-warning: var(--warning);
+    --color-warning-weak: var(--warning-weak);
+    --color-danger: var(--danger);
+    --color-danger-weak: var(--danger-weak);
+}
+
+html,
+body {
+    background-color: var(--bg);
+    color: var(--fg);
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--faint);
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
