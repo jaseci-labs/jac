@@ -44,6 +44,7 @@ import from jaclang.jac0core.diagnostics {
     E5010,
     E5011,
     E5012,
+    E5016,
     W5013,
     W5014,
     W5015,
@@ -567,6 +568,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_name(nd: uni.Name) -> None;
+    def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;

@@ -1043,6 +1043,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5012 = _err(
          "E5012", Category.CODEGEN, "Expected main module to be a Module node."
      ),
+     E5016 = _err(
+         "E5016",
+         Category.CODEGEN,
+         "Could not generate JavaScript for builtin '{name}': {error}"
+     ),
      W5013 = _warn(
          "W5013",
          Category.CODEGEN,
