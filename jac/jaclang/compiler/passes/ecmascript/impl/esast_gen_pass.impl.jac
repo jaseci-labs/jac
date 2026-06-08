@@ -1073,6 +1073,50 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
+"""Check whether *ability_node* was compiled with the single-``props`` wrapping
+pattern used by JSX-returning components.
+
+When ``is_jsx_in_return`` is true and the signature does not have a single
+param named ``props``, ``exit_ability`` collapses all parameters into one
+``props`` identifier and emits ``const { a, b, ... } = props;`` as the
+function body preamble.  Direct call sites that pass positional or keyword
+arguments must therefore wrap them into ``{ paramName: value }`` instead of
+passing them positionally.  This helper lets ``exit_func_call`` detect that
+situation and apply the wrapping automatically.
+
+Mirrors the condition in ``exit_ability`` (around line 4105) so the two stay
+in lockstep."""
+impl EsastGenPass._is_props_wrapped_component(ability_node: uni.Ability) -> bool {
+    if not isinstance(ability_node.signature, uni.FuncSignature) {
+        return False;
+    }
+    sig = ability_node.signature;
+    if not sig.get_parameters() {
+        return False;
+    }
+    # Single-param named `props` is the JS-idiomatic pass-through shape;
+    # it is NOT wrapped (params are emitted verbatim).
+    if (
+        sig.params and len(sig.params) == 1 and sig.params[0].name.sym_name == 'props'
+    ) {
+        return False;
+    }
+    # Check if body contains a return statement with a JSX element —
+    # the same check that ``exit_ability`` uses to set ``is_jsx_in_return``.
+    if isinstance(ability_node.body, list) {
+        for stmt in ability_node.body {
+            if isinstance(stmt, uni.ReturnStmt) {
+                for kid in stmt.kid {
+                    if isinstance(kid, uni.JsxElement) {
+                        return True;
+                    }
+                }
+            }
+        }
+    }
+    return False;
+}
+
 """Extract normal positional parameter names from an ability."""
 impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[str] {
     if not isinstance(ability_node.signature, uni.FuncSignature) {
@@ -1874,8 +1918,10 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     call_args: list[(es.Expression | es.SpreadElement)] = args;
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, nd);
     use_kwargs_temp = spread_read_source is not None;
+    ability_node_resolved: (uni.Ability | None) = None;
     if props {
         ability_node = self._resolve_call_ability(nd);
+        ability_node_resolved = ability_node;
         if ability_node {
             ordered_args = self._call_args_from_slots(
                 self._resolve_call_arg_slots(
@@ -1892,7 +1938,51 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
+    # --- Props-wrapped component call lowering ---
+    # When the callee was compiled with the single-``props`` destructuring
+    # pattern (JSX-returning function with multi-param), positional arguments
+    # must be wrapped into ``{ paramName: value }`` so the callee's
+    # ``const { a, b } = props`` destructuring works correctly.
+    if not ability_node_resolved {
+        ability_node_resolved = self._resolve_call_ability(nd);
+    }
+    if (
+        ability_node_resolved
+        and self._is_props_wrapped_component(ability_node_resolved)
+    ) {
+        wrap_props: list[es.Property] = [];
+        param_names = self._param_names_from_ability(ability_node_resolved);
+        for (i, arg) in enumerate(call_args) {
+            if i < len(param_names) {
+                key = self.sync_loc(es.Identifier(name=param_names[i]), jac_node=nd);
+                if isinstance(arg, es.SpreadElement) {
+                    wrap_props.append(
+                        self.sync_loc(
+                            es.SpreadElement(argument=arg.argument), jac_node=nd
+                        )
+                    );
+                } else {
+                    wrap_props.append(
+                        self.sync_loc(
+                            es.Property(
+                                key=key,
+                                value=cast(es.Expression, arg),
+                                kind='init',
+                                method=False,
+                                shorthand=False,
+                                computed=False
+                            ),
+                            jac_node=nd
+                        )
+                    );
+                }
+            }
+        }
+        call_args = [
+            self.sync_loc(es.ObjectExpression(properties=wrap_props), jac_node=nd)
+        ];
+    }
+    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
