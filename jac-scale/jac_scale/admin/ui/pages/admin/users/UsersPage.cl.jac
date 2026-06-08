@@ -147,7 +147,7 @@ cl {
                         {[
                             <TableRow key={u["username"]}>
                                 <TableCell>
-                                    <span className="text-sm text-white">
+                                    <span className="text-sm text-fg">
                                         {u["username"]}
                                     </span>
                                 </TableCell>

@@ -228,11 +228,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Emit the lambda body ---
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_func_symtab = dict(self.func_symtab);
     entry_bb = anon_fn.append_basic_block("entry");
-    self.builder = ir.IRBuilder(entry_bb);
+    self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     # Allocate ALL parameters (explicit + captured) as local variables
     for (i, arg) in enumerate(anon_fn.args) {
@@ -264,7 +264,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Restore parent context ---
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.func_symtab = saved_func_symtab;
     # --- Record pending captures for the assignment to associate with a var name ---

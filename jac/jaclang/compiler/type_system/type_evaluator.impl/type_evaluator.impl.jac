@@ -2019,24 +2019,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if isinstance(symbol_type, types.FunctionType) {
                         overloaded_ty: types.OverloadedType | None = None;
                         overloaded_fns: list[types.FunctionType] = [symbol_type];
-                        # Find the scope where the symbol is defined to check for overloads
-                        symbol_scope: uni.UniScopeNode | None = symbol.parent_tab;
-                        if symbol_scope is None {
-                            # If parent_tab is None, try to find the scope from the declaration
-                            if symbol.decl
-                            and symbol.decl.find_parent_of_type(uni.UniScopeNode) {
-                                symbol_scope = symbol.decl.find_parent_of_type(
-                                    uni.UniScopeNode
-                                );
-                            }
+                        # Collect sibling overloads at the symbol's definition
+                        # scope. Follow re-export chains (e.g. an `@overload`-ed
+                        # function imported through several `__init__` layers, as
+                        # SQLAlchemy's `create_engine`) so the overloads at the
+                        # `def` site are found, not the lone re-export.
+                        def_sym = self.resolve_to_definition_symbol(symbol);
+                        symbol_scope: uni.UniScopeNode | None = def_sym.parent_tab;
+                        if symbol_scope is None and def_sym.decl {
+                            symbol_scope = def_sym.decl.find_parent_of_type(
+                                uni.UniScopeNode
+                            );
                         }
-                        # Check if there are overloads in the symbol's scope
                         if symbol_scope {
                             all_syms = type_utils.collect_member_syms(
-                                symbol_scope, expr.value
+                                symbol_scope, def_sym.sym_name
                             );
                             for overload_symbol in all_syms {
-                                if overload_symbol == symbol {
+                                if overload_symbol == def_sym {
                                     continue;
                                 }
                                 overload_type = self.get_type_of_symbol(

@@ -9,14 +9,12 @@ cl {
         placeholder: str = "",
         className: str = ""
     ) -> JsxElement {
-        inputClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm placeholder-slate-600 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition";
+        inputClass = "w-full px-3 py-2 bg-surface-2 border border-line rounded-md text-fg text-sm placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent transition-colors";
 
         return
             <div className={className}>
                 {label
-                and <label
-                    className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider"
-                >
+                and <label className="block text-xs font-medium text-muted mb-1.5">
                     {label}
                 </label>}
                 <input
@@ -37,14 +35,12 @@ cl {
         rows: int = 4,
         className: str = ""
     ) -> JsxElement {
-        textareaClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm font-mono placeholder-slate-600 focus:outline-none focus:border-orange-500 transition";
+        textareaClass = "w-full px-3 py-2 bg-surface-2 border border-line rounded-md text-fg text-sm font-mono placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent transition-colors";
 
         return
             <div className={className}>
                 {label
-                and <label
-                    className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider"
-                >
+                and <label className="block text-xs font-medium text-muted mb-1.5">
                     {label}
                 </label>}
                 <textarea

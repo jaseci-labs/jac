@@ -1,4 +1,17 @@
-"""Metrics monitoring page - Cyber-Grid futuristic dashboard."""
+"""Metrics monitoring page - process + HTTP observability."""
+
+cl import from "lucide-react" {
+    Activity,
+    RefreshCw,
+    Globe,
+    Cpu,
+    MemoryStick,
+    Recycle,
+    FileText,
+    Clock,
+    CheckCircle2,
+    AlertTriangle
+}
 
 cl {
     import from react { useEffect }
@@ -158,59 +171,57 @@ cl {
             return 0.0;
         }
 
+        # Semantic status color: 2xx ok, 4xx warn, 5xx error.
         def getStatusColor(status: str) -> str {
             if status.startswith("2") {
-                return "text-teal-400";
-            }
-            if status.startswith("3") {
-                return "text-cyan-400";
+                return "text-success";
             }
             if status.startswith("4") {
-                return "text-orange-400";
+                return "text-warning";
             }
             if status.startswith("5") {
-                return "text-red-400";
+                return "text-danger";
             }
-            return "text-slate-400";
+            return "text-muted";
         }
 
+        # Method chip: subtle weak-tinted token backgrounds, one per verb.
         def getMethodBadge(method: str) -> str {
+            base = "px-1.5 py-0.5 rounded text-[10px] font-semibold border border-line ";
             if method == "GET" {
-                return "px-2 py-0.5 rounded text-xs font-bold bg-teal-500/30 text-teal-300 border border-teal-500/50";
+                return base + "bg-success-weak text-success";
             }
             if method == "POST" {
-                return "px-2 py-0.5 rounded text-xs font-bold bg-lime-500/30 text-lime-300 border border-lime-500/50";
+                return base + "bg-accent-weak text-accent";
             }
             if method == "PUT" {
-                return "px-2 py-0.5 rounded text-xs font-bold bg-orange-500/30 text-orange-300 border border-orange-500/50";
+                return base + "bg-warning-weak text-warning";
             }
             if method == "DELETE" {
-                return "px-2 py-0.5 rounded text-xs font-bold bg-red-500/30 text-red-300 border border-red-500/50";
+                return base + "bg-danger-weak text-danger";
             }
-            return "px-2 py-0.5 rounded text-xs font-bold bg-slate-500/30 text-slate-300 border border-slate-500/50";
+            return base + "bg-surface-2 text-muted";
         }
 
         if not metricsEnabled and not isLoading {
             return
                 <div
-                    className="relative bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-teal-500/30 rounded-2xl p-8 text-center shadow-2xl shadow-teal-500/10"
+                    className="bg-surface border border-line rounded-lg p-10 text-center shadow-sm"
                 >
                     <div
-                        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(20,184,166,0.1),transparent_70%)] rounded-2xl"
-                    ></div>
-                    <div className="relative">
-                        <div
-                            className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 border-2 border-orange-500/50 flex items-center justify-center"
-                        >
-                            <span className="text-2xl text-orange-400">!</span>
-                        </div>
-                        <h2 className="text-xl font-bold text-white mb-2 tracking-wide">
-                            METRICS OFFLINE
-                        </h2>
-                        <p className="text-sm text-slate-400 font-mono">
-                            Enable in jac.toml: [plugins.scale.monitoring] enabled = true
-                        </p>
+                        className="w-12 h-12 mx-auto mb-4 rounded-full bg-surface-2 border border-line flex items-center justify-center"
+                    >
+                        <Activity className="w-5 h-5 text-faint"/>
                     </div>
+                    <h2 className="text-base font-semibold text-fg mb-1">
+                        Metrics are off
+                    </h2>
+                    <p className="text-sm text-muted">
+                        Enable in jac.toml:
+                        <span className="font-mono text-fg ml-1">
+                            [plugins.scale.monitoring] enabled = true
+                        </span>
+                    </p>
                 </div>;
         }
 
@@ -281,467 +292,390 @@ cl {
         }
 
         return
-            <div
-                className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 space-y-6"
-            >
-                <div
-                    className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22%20fill%3D%22%2314b8a6%22%20fill-opacity%3D%220.05%22/%3E%3C/g%3E%3C/svg%3E')] opacity-50 pointer-events-none"
-                ></div>
-                <div className="relative">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-4">
-                            <div
-                                className="w-3 h-3 rounded-full bg-teal-400 animate-pulse shadow-lg shadow-teal-400/50"
-                            ></div>
-                            <h1
-                                className="text-2xl font-bold text-white tracking-wider"
-                            >
-                                OBSERVABILITY DASHBOARD
-                            </h1>
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                        <Activity className="w-5 h-5 text-accent"/>
+                        <h1 className="text-lg font-semibold text-fg">Metrics</h1>
+                        <span
+                            className="ml-1 inline-flex items-center gap-1.5 text-xs text-success"
+                        >
+                            <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
+                            Live
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-xs text-muted">
+                            <input
+                                type="checkbox"
+                                checked={autoRefresh}
+                                onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                                className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
+                            />
+                            Auto-refresh
+                        </label>
+                        <Button variant="secondary" onClick={lambda { loadMetrics(); }}>
+                            <RefreshCw className="w-3.5 h-3.5"/>
+                            Refresh
+                        </Button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div
+                        className="bg-surface border border-line rounded-lg p-4 shadow-sm"
+                    >
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-faint">Total requests</span>
+                            <Globe className="w-4 h-4 text-faint"/>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <label
-                                className="flex items-center gap-2 text-xs text-slate-400 font-mono"
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={autoRefresh}
-                                    onChange={lambda e: any { autoRefresh = e.target.checked; }}
-                                    className="rounded border-teal-500/50 bg-slate-800 text-teal-500 focus:ring-teal-500/50"
-                                />
-                                LIVE SYNC
-                            </label>
-                            <Button
-                                variant="secondary"
-                                onClick={lambda { loadMetrics(); }}
-                            >
-                                REFRESH
-                            </Button>
+                        <div
+                            className="text-2xl font-semibold text-fg mt-2 tabular-nums"
+                        >
+                            {totalReqs}
                         </div>
                     </div>
                     <div
-                        className="relative bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-6 mb-6 shadow-2xl shadow-teal-500/5"
+                        className="bg-surface border border-line rounded-lg p-4 shadow-sm"
                     >
-                        <div
-                            className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-teal-500 to-transparent"
-                        ></div>
-                        <div className="flex items-center justify-center gap-8 mb-6">
-                            <div
-                                className="w-20 h-20 rounded-full bg-gradient-to-br from-teal-500/20 to-lime-500/20 border-2 border-lime-400 flex items-center justify-center shadow-lg shadow-lime-500/20"
-                            >
-                                <span className="text-4xl text-lime-400">✓</span>
-                            </div>
-                            <div className="text-center">
-                                <div
-                                    className="text-xs text-slate-500 font-mono tracking-widest mb-1"
-                                >
-                                    SYSTEM STATUS
-                                </div>
-                                <div
-                                    className="text-2xl font-bold text-lime-400 tracking-wide"
-                                >
-                                    ENABLED
-                                </div>
-                            </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-faint">Active now</span>
+                            <Activity className="w-4 h-4 text-faint"/>
                         </div>
-                        <div className="grid grid-cols-4 gap-6">
-                            <div className="text-center">
-                                <div
-                                    className="text-4xl font-bold text-teal-400 font-mono"
-                                >
-                                    {totalReqs}
+                        <div
+                            className="text-2xl font-semibold text-fg mt-2 tabular-nums"
+                        >
+                            {activeReqs}
+                        </div>
+                    </div>
+                    <div
+                        className="bg-surface border border-line rounded-lg p-4 shadow-sm"
+                    >
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-faint">Avg latency</span>
+                            <Clock className="w-4 h-4 text-faint"/>
+                        </div>
+                        <div
+                            className="text-2xl font-semibold text-fg mt-2 tabular-nums"
+                        >
+                            {avgLatencyDisplay}
+                            <span className="text-base text-faint">ms</span>
+                        </div>
+                    </div>
+                    <div
+                        className="bg-surface border border-line rounded-lg p-4 shadow-sm"
+                    >
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-faint">Runtime</span>
+                            <Cpu className="w-4 h-4 text-faint"/>
+                        </div>
+                        <div className="text-base font-semibold text-fg mt-3 font-mono">
+                            Python {pythonVersion}
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 space-y-6">
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Globe className="w-4 h-4 text-muted"/>
+                                    <span className="text-sm font-medium text-fg">
+                                        HTTP traffic
+                                    </span>
                                 </div>
-                                <div className="text-xs text-slate-500 font-mono mt-1">
-                                    TOTAL REQUESTS
+                                <span className="text-xs text-faint">Last 60s</span>
+                            </div>
+                            <div className="h-24 flex items-end gap-1 mb-4">
+                                {[
+                                    <div
+                                        key={str(h["time"])}
+                                        className="flex-1 bg-accent rounded-t opacity-80 hover:opacity-100 transition-opacity"
+                                        style={{
+                                            "height": getBarHeight(
+                                                h["requests"], maxReqs
+                                            )
+                                        }}
+                                        title={str(h["requests"]) + " requests"}
+                                    ></div> for h in history
+                                ]}
+                            </div>
+                            <div className="border-t border-line pt-4">
+                                <div className="text-xs text-muted mb-3">
+                                    All endpoints ({len(httpRequests)})
+                                </div>
+                                <div
+                                    className="space-y-2 max-h-64 overflow-y-auto pr-2"
+                                >
+                                    {[
+                                        <div
+                                            key={req["path"] + req["status"]}
+                                            className="flex items-center gap-3 text-xs"
+                                        >
+                                            <span
+                                                className={getMethodBadge(
+                                                    req["method"]
+                                                )}
+                                            >
+                                                {req["method"]}
+                                            </span>
+                                            <span
+                                                className="font-mono text-muted flex-1 truncate"
+                                            >
+                                                {req["path"]}
+                                            </span>
+                                            <span
+                                                className={getStatusColor(
+                                                    req["status"]
+                                                )}
+                                            >
+                                                {req["status"]}
+                                            </span>
+                                            <span
+                                                className="text-fg font-semibold w-12 text-right tabular-nums"
+                                            >
+                                                {req["count"]}
+                                            </span>
+                                            <div
+                                                className="w-20 bg-surface-2 rounded-full h-1"
+                                            >
+                                                <div
+                                                    className="bg-accent h-1 rounded-full"
+                                                    style={{
+                                                        "width": getBarHeight(
+                                                            req["count"], maxReqCount
+                                                        )
+                                                    }}
+                                                ></div>
+                                            </div>
+                                        </div> for req in httpRequests
+                                    ]}
                                 </div>
                             </div>
-                            <div className="text-center">
-                                <div
-                                    className="text-4xl font-bold text-cyan-400 font-mono"
-                                >
-                                    {activeReqs}
+                            {slowestLatency > 1000
+                            and <div
+                                className="mt-4 p-3 bg-warning-weak border border-line rounded-lg"
+                            >
+                                <div className="flex items-center gap-2 text-xs">
+                                    <AlertTriangle
+                                        className="w-3.5 h-3.5 text-warning shrink-0"
+                                    />
+                                    <span className="text-warning font-medium">
+                                        Slowest path
+                                    </span>
+                                    <span
+                                        className="text-muted font-mono flex-1 truncate"
+                                    >
+                                        {slowestPath}
+                                    </span>
+                                    <span className="text-fg font-semibold">
+                                        {int(slowestLatency / 100) / 10}s
+                                    </span>
                                 </div>
-                                <div className="text-xs text-slate-500 font-mono mt-1">
-                                    ACTIVE NOW
+                            </div>}
+                        </div>
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center gap-2 mb-4">
+                                <Recycle className="w-4 h-4 text-muted"/>
+                                <span className="text-sm font-medium text-fg">
+                                    Garbage collection
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-6">
+                                <div className="text-center">
+                                    <div
+                                        className="h-32 flex items-end justify-center mb-2"
+                                    >
+                                        <div
+                                            className="w-12 bg-accent rounded-t"
+                                            style={{
+                                                "height": getBarHeight(gcGen0, maxGc)
+                                            }}
+                                        ></div>
+                                    </div>
+                                    <div
+                                        className="text-lg font-semibold text-fg font-mono tabular-nums"
+                                    >
+                                        {gcGen0}
+                                    </div>
+                                    <div className="text-xs text-faint">
+                                        Gen 0 (young)
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <div
+                                        className="h-32 flex items-end justify-center mb-2"
+                                    >
+                                        <div
+                                            className="w-12 bg-accent rounded-t"
+                                            style={{
+                                                "height": getBarHeight(gcGen1, maxGc)
+                                            }}
+                                        ></div>
+                                    </div>
+                                    <div
+                                        className="text-lg font-semibold text-fg font-mono tabular-nums"
+                                    >
+                                        {gcGen1}
+                                    </div>
+                                    <div className="text-xs text-faint">
+                                        Gen 1 (mid)
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <div
+                                        className="h-32 flex items-end justify-center mb-2"
+                                    >
+                                        <div
+                                            className="w-12 bg-accent rounded-t"
+                                            style={{
+                                                "height": getBarHeight(gcGen2, maxGc)
+                                            }}
+                                        ></div>
+                                    </div>
+                                    <div
+                                        className="text-lg font-semibold text-fg font-mono tabular-nums"
+                                    >
+                                        {gcGen2}
+                                    </div>
+                                    <div className="text-xs text-faint">
+                                        Gen 2 (old)
+                                    </div>
                                 </div>
                             </div>
-                            <div className="text-center">
-                                <div
-                                    className="text-4xl font-bold text-teal-400 font-mono"
-                                >
-                                    {avgLatencyDisplay}ms
-                                </div>
-                                <div className="text-xs text-slate-500 font-mono mt-1">
-                                    AVG LATENCY
-                                </div>
-                            </div>
-                            <div className="text-center">
-                                <div
-                                    className="text-lg font-bold text-slate-300 font-mono"
-                                >
-                                    Python{pythonVersion}
-                                </div>
-                                <div className="text-xs text-slate-500 font-mono mt-1">
-                                    BUILD INFO
+                            <div
+                                className="mt-4 p-3 bg-surface-2 border border-line rounded-lg"
+                            >
+                                <div className="flex items-center gap-2 text-xs">
+                                    <CheckCircle2
+                                        className="w-3.5 h-3.5 text-success shrink-0"
+                                    />
+                                    <span className="text-muted">
+                                        Gen 2 is doing the heavy lifting - no memory leaks detected.
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-6">
-                        <div className="col-span-2 space-y-6">
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div
-                                            className="w-2 h-2 rounded-full bg-teal-400"
-                                        ></div>
-                                        <span
-                                            className="text-sm font-bold text-white tracking-wide"
-                                        >
-                                            HTTP TRAFFIC
-                                        </span>
-                                    </div>
-                                    <span className="text-xs text-slate-500 font-mono">
-                                        LAST 60s
-                                    </span>
-                                </div>
-                                <div className="h-24 flex items-end gap-1 mb-4">
-                                    {[
-                                        <div
-                                            key={str(h["time"])}
-                                            className="flex-1 bg-gradient-to-t from-teal-600 to-cyan-400 rounded-t opacity-80 hover:opacity-100 transition-all"
-                                            style={{
-                                                "height": getBarHeight(
-                                                    h["requests"], maxReqs
-                                                )
-                                            }}
-                                            title={str(h["requests"]) + " requests"}
-                                        ></div> for h in history
-                                    ]}
-                                </div>
-                                <div className="border-t border-slate-700/50 pt-4">
-                                    <div
-                                        className="flex items-center justify-between mb-3"
-                                    >
-                                        <div
-                                            className="text-xs text-slate-400 font-mono"
-                                        >
-                                            ALL ENDPOINTS ({len(httpRequests)})
-                                        </div>
-                                    </div>
-                                    <div
-                                        className="space-y-2 max-h-64 overflow-y-auto pr-2"
-                                    >
-                                        {[
-                                            <div
-                                                key={req["path"] + req["status"]}
-                                                className="flex items-center gap-3 text-xs"
-                                            >
-                                                <span
-                                                    className={getMethodBadge(
-                                                        req["method"]
-                                                    )}
-                                                >
-                                                    {req["method"]}
-                                                </span>
-                                                <span
-                                                    className="font-mono text-slate-300 flex-1 truncate"
-                                                >
-                                                    {req["path"]}
-                                                </span>
-                                                <span
-                                                    className={getStatusColor(
-                                                        req["status"]
-                                                    )}
-                                                >
-                                                    {req["status"]}
-                                                </span>
-                                                <span
-                                                    className="text-teal-400 font-bold w-12 text-right"
-                                                >
-                                                    {req["count"]}
-                                                </span>
-                                                <div
-                                                    className="w-20 bg-slate-700/50 rounded-full h-1"
-                                                >
-                                                    <div
-                                                        className="bg-teal-400 h-1 rounded-full"
-                                                        style={{
-                                                            "width": getBarHeight(
-                                                                req["count"],
-                                                                maxReqCount
-                                                            )
-                                                        }}
-                                                    ></div>
-                                                </div>
-                                            </div> for req in httpRequests
-                                        ]}
-                                    </div>
-                                </div>
-                                {slowestLatency > 1000
-                                and <div
-                                    className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg"
-                                >
-                                    <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-orange-400">⚠</span>
-                                        <span className="text-orange-300 font-mono">
-                                            SLOWEST PATH:
-                                        </span>
-                                        <span
-                                            className="text-slate-300 font-mono flex-1 truncate"
-                                        >
-                                            {slowestPath}
-                                        </span>
-                                        <span className="text-orange-400 font-bold">
-                                            {int(slowestLatency / 100) / 10}s
-                                        </span>
-                                    </div>
-                                </div>}
+                    <div className="space-y-6">
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center gap-2 mb-4">
+                                <MemoryStick className="w-4 h-4 text-muted"/>
+                                <span className="text-sm font-medium text-fg">
+                                    Memory
+                                </span>
                             </div>
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                            <div className="relative w-32 h-32 mx-auto mb-4">
+                                <svg
+                                    className="w-full h-full -rotate-90"
+                                    viewBox="0 0 100 100"
+                                >
+                                    <circle
+                                        cx="50"
+                                        cy="50"
+                                        r="40"
+                                        fill="none"
+                                        className="stroke-line"
+                                        strokeWidth="8"
+                                    ></circle>
+                                    <circle
+                                        cx="50"
+                                        cy="50"
+                                        r="40"
+                                        fill="none"
+                                        className="stroke-accent"
+                                        strokeWidth="8"
+                                        strokeLinecap="round"
+                                        strokeDasharray={str(memUsagePercent * 2.51) + " 251"}
+                                    ></circle>
+                                </svg>
+                                <div
+                                    className="absolute inset-0 flex items-center justify-center"
+                                >
                                     <span
-                                        className="text-sm font-bold text-white tracking-wide"
+                                        className="text-xl font-semibold text-fg tabular-nums"
                                     >
-                                        PYTHON GARBAGE COLLECTION
+                                        {memUsagePercent}%
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-3 gap-6">
-                                    <div className="text-center">
-                                        <div
-                                            className="h-32 flex items-end justify-center mb-2"
-                                        >
-                                            <div
-                                                className="w-16 bg-gradient-to-t from-teal-600 to-teal-400 rounded-t"
-                                                style={{
-                                                    "height": getBarHeight(
-                                                        gcGen0, maxGc
-                                                    )
-                                                }}
-                                            ></div>
-                                        </div>
-                                        <div
-                                            className="text-lg font-bold text-teal-400 font-mono"
-                                        >
-                                            {gcGen0}
-                                        </div>
-                                        <div
-                                            className="text-xs text-slate-500 font-mono"
-                                        >
-                                            GEN 0 (YOUNG)
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div
-                                            className="h-32 flex items-end justify-center mb-2"
-                                        >
-                                            <div
-                                                className="w-16 bg-gradient-to-t from-teal-600 to-cyan-400 rounded-t"
-                                                style={{
-                                                    "height": getBarHeight(
-                                                        gcGen1, maxGc
-                                                    )
-                                                }}
-                                            ></div>
-                                        </div>
-                                        <div
-                                            className="text-lg font-bold text-cyan-400 font-mono"
-                                        >
-                                            {gcGen1}
-                                        </div>
-                                        <div
-                                            className="text-xs text-slate-500 font-mono"
-                                        >
-                                            GEN 1 (MID)
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div
-                                            className="h-32 flex items-end justify-center mb-2"
-                                        >
-                                            <div
-                                                className="w-16 bg-gradient-to-t from-orange-600 to-orange-400 rounded-t"
-                                                style={{
-                                                    "height": getBarHeight(
-                                                        gcGen2, maxGc
-                                                    )
-                                                }}
-                                            ></div>
-                                        </div>
-                                        <div
-                                            className="text-lg font-bold text-orange-400 font-mono"
-                                        >
-                                            {gcGen2}
-                                        </div>
-                                        <div
-                                            className="text-xs text-slate-500 font-mono"
-                                        >
-                                            GEN 2 (OLD)
-                                        </div>
-                                    </div>
+                            </div>
+                            <div className="space-y-2 text-xs">
+                                <div className="flex justify-between">
+                                    <span className="text-muted">Virtual</span>
+                                    <span className="text-fg font-mono">
+                                        {formatBytes(virtualMem)}
+                                    </span>
                                 </div>
-                                <div
-                                    className="mt-4 p-3 bg-teal-500/10 border border-teal-500/30 rounded-lg"
-                                >
-                                    <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-teal-400">💡</span>
-                                        <span className="text-teal-300">
-                                            Gen 2 is doing the heavy lifting — no memory leaks detected.
-                                        </span>
-                                    </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted">Resident</span>
+                                    <span className="text-fg font-mono">
+                                        {formatBytes(residentMem)}
+                                    </span>
                                 </div>
                             </div>
                         </div>
-                        <div className="space-y-6">
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
-                                    <span
-                                        className="text-sm font-bold text-white tracking-wide"
-                                    >
-                                        MEMORY
-                                    </span>
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center gap-2 mb-4">
+                                <Cpu className="w-4 h-4 text-muted"/>
+                                <span className="text-sm font-medium text-fg">
+                                    CPU time
+                                </span>
+                            </div>
+                            <div className="text-center">
+                                <div
+                                    className="text-3xl font-semibold text-fg font-mono tabular-nums"
+                                >
+                                    {str(int(cpuSeconds * 100) / 100)}s
                                 </div>
-                                <div className="relative w-32 h-32 mx-auto mb-4">
-                                    <svg
-                                        className="w-full h-full -rotate-90"
-                                        viewBox="0 0 100 100"
-                                    >
-                                        <circle
-                                            cx="50"
-                                            cy="50"
-                                            r="40"
-                                            fill="none"
-                                            stroke="#1e293b"
-                                            strokeWidth="8"
-                                        ></circle>
-                                        <circle
-                                            cx="50"
-                                            cy="50"
-                                            r="40"
-                                            fill="none"
-                                            stroke="url(#memGradient)"
-                                            strokeWidth="8"
-                                            strokeLinecap="round"
-                                            strokeDasharray={str(
-                                                memUsagePercent * 2.51
-                                            ) + " 251"}
-                                        ></circle>
-                                        <defs>
-                                            <linearGradient
-                                                id="memGradient"
-                                                x1="0%"
-                                                y1="0%"
-                                                x2="100%"
-                                                y2="0%"
-                                            >
-                                                <stop offset="0%" stopColor="#14b8a6"></stop>
-                                                <stop offset="100%" stopColor="#22d3ee"></stop>
-                                            </linearGradient>
-                                        </defs>
-                                    </svg>
-                                    <div
-                                        className="absolute inset-0 flex items-center justify-center"
-                                    >
-                                        <span className="text-xl font-bold text-white">
-                                            {memUsagePercent}%
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400 font-mono">
-                                            VIRTUAL
-                                        </span>
-                                        <span className="text-cyan-400 font-mono">
-                                            {formatBytes(virtualMem)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400 font-mono">
-                                            RESIDENT
-                                        </span>
-                                        <span className="text-teal-400 font-mono">
-                                            {formatBytes(residentMem)}
-                                        </span>
-                                    </div>
+                                <div className="text-xs text-faint mt-2">
+                                    Total CPU seconds
                                 </div>
                             </div>
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-2 h-2 rounded-full bg-lime-400"></div>
-                                    <span
-                                        className="text-sm font-bold text-white tracking-wide"
-                                    >
-                                        CPU TIME
+                        </div>
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center gap-2 mb-4">
+                                <FileText className="w-4 h-4 text-muted"/>
+                                <span className="text-sm font-medium text-fg">
+                                    File descriptors
+                                </span>
+                            </div>
+                            <div className="text-center">
+                                <div
+                                    className="text-2xl font-semibold text-fg font-mono tabular-nums"
+                                >
+                                    {int(openFds)}
+                                    <span className="text-faint text-lg">
+                                        /{int(maxFds)}
                                     </span>
                                 </div>
-                                <div className="text-center">
-                                    <div
-                                        className="text-4xl font-bold text-lime-400 font-mono"
-                                    >
-                                        {str(int(cpuSeconds * 100) / 100)}s
-                                    </div>
-                                    <div
-                                        className="text-xs text-slate-500 font-mono mt-2"
-                                    >
-                                        TOTAL CPU SECONDS
-                                    </div>
+                                <div className="text-xs text-faint mt-2">
+                                    Open / max
                                 </div>
                             </div>
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                                    <span
-                                        className="text-sm font-bold text-white tracking-wide"
-                                    >
-                                        FILE DESCRIPTORS
-                                    </span>
-                                </div>
-                                <div className="text-center">
-                                    <div
-                                        className="text-2xl font-bold text-purple-400 font-mono"
-                                    >
-                                        {int(openFds)}
-                                        <span className="text-slate-500 text-lg">
-                                            /{int(maxFds)}
-                                        </span>
-                                    </div>
-                                    <div
-                                        className="text-xs text-slate-500 font-mono mt-2"
-                                    >
-                                        OPEN / MAX
-                                    </div>
-                                </div>
+                        </div>
+                        <div
+                            className="bg-surface border border-line rounded-lg p-5 shadow-sm"
+                        >
+                            <div className="flex items-center gap-2 mb-3">
+                                <Clock className="w-4 h-4 text-muted"/>
+                                <span className="text-sm font-medium text-fg">
+                                    Uptime
+                                </span>
                             </div>
-                            <div
-                                className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
-                            >
-                                <div className="flex items-center gap-2 mb-3">
-                                    <div className="w-2 h-2 rounded-full bg-slate-400"></div>
-                                    <span
-                                        className="text-sm font-bold text-white tracking-wide"
-                                    >
-                                        UPTIME
-                                    </span>
-                                </div>
-                                <div className="text-center">
-                                    <div
-                                        className="text-xl font-bold text-slate-300 font-mono"
-                                    >
-                                        {formatUptime(startTime)}
-                                    </div>
+                            <div className="text-center">
+                                <div
+                                    className="text-xl font-semibold text-fg font-mono"
+                                >
+                                    {formatUptime(startTime)}
                                 </div>
                             </div>
                         </div>

@@ -146,7 +146,7 @@ cl {
                         >
                             Back to Traces
                         </Button>
-                        <h2 className="text-xl font-bold text-white">Trace Detail</h2>
+                        <h2 className="text-xl font-bold text-fg">Trace Detail</h2>
                     </div>
                     {detailLoading
                     and <div className="flex items-center justify-center h-32">
@@ -155,27 +155,25 @@ cl {
                     {not detailLoading
                     and selectedTrace["invocation_id"]
                     and <div className="space-y-4">
-                        <div
-                            className="bg-slate-900 border border-slate-800 rounded-lg p-5"
-                        >
-                            <h3 className="text-lg font-semibold text-white mb-3">
+                        <div className="bg-surface border border-line rounded-lg p-5">
+                            <h3 className="text-lg font-semibold text-fg mb-3">
                                 Agent Invocation
                             </h3>
                             <div className="grid grid-cols-3 gap-4 text-sm">
                                 <div>
-                                    <div className="text-slate-500 mb-1">Caller</div>
+                                    <div className="text-faint mb-1">Caller</div>
                                     <div className="text-purple-300 font-mono">
                                         {selectedTrace["caller_name"] or "N/A"}
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-slate-500 mb-1">Model</div>
+                                    <div className="text-faint mb-1">Model</div>
                                     <div className="text-teal-300 font-mono text-sm">
                                         {selectedTrace["model"] or "N/A"}
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-slate-500 mb-1">Status</div>
+                                    <div className="text-faint mb-1">Status</div>
                                     <span
                                         className={getStatusBadge(
                                             selectedTrace["status"] or "unknown"
@@ -185,17 +183,15 @@ cl {
                                     </span>
                                 </div>
                                 <div>
-                                    <div className="text-slate-500 mb-1">Tokens</div>
-                                    <div className="text-white">
+                                    <div className="text-faint mb-1">Tokens</div>
+                                    <div className="text-fg">
                                         {formatTokens(
                                             selectedTrace["total_tokens"] or 0
                                         )}{(
                                             selectedTrace["aggregated_total_tokens"]
                                             or 0
                                         ) > (selectedTrace["total_tokens"] or 0)
-                                        and <span
-                                            className="text-slate-500 text-xs ml-1"
-                                        >
+                                        and <span className="text-faint text-xs ml-1">
                                             {"(tree: " + formatTokens(
                                                 selectedTrace["aggregated_total_tokens"]
                                                 or 0
@@ -204,14 +200,12 @@ cl {
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-slate-500 mb-1">Cost</div>
+                                    <div className="text-faint mb-1">Cost</div>
                                     <div className="text-yellow-400">
                                         {formatCost(selectedTrace["total_cost"] or 0)}{(
                                             selectedTrace["aggregated_total_cost"] or 0
                                         ) > (selectedTrace["total_cost"] or 0)
-                                        and <span
-                                            className="text-slate-500 text-xs ml-1"
-                                        >
+                                        and <span className="text-faint text-xs ml-1">
                                             {"(tree: " + formatCost(
                                                 selectedTrace["aggregated_total_cost"]
                                                 or 0
@@ -220,8 +214,8 @@ cl {
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-slate-500 mb-1">Latency</div>
-                                    <div className="text-white">
+                                    <div className="text-faint mb-1">Latency</div>
+                                    <div className="text-fg">
                                         {formatLatency(
                                             selectedTrace["total_latency_ms"] or 0
                                         )}
@@ -229,9 +223,7 @@ cl {
                                 </div>
                                 {selectedTrace["parent_invocation_id"]
                                 and <div className="col-span-2">
-                                    <div className="text-slate-500 mb-1">
-                                        Parent Trace
-                                    </div>
+                                    <div className="text-faint mb-1">Parent Trace</div>
                                     <div
                                         className="text-teal-400 font-mono text-xs cursor-pointer hover:underline"
                                         onClick={lambda { loadTraceDetail(
@@ -242,10 +234,8 @@ cl {
                                     </div>
                                 </div>}
                                 <div className="col-span-3">
-                                    <div className="text-slate-500 mb-1">
-                                        Invocation ID
-                                    </div>
-                                    <div className="text-white font-mono text-xs">
+                                    <div className="text-faint mb-1">Invocation ID</div>
+                                    <div className="text-fg font-mono text-xs">
                                         {selectedTrace["invocation_id"]}
                                     </div>
                                 </div>
@@ -253,38 +243,36 @@ cl {
                         </div>
                         {selectedTrace["user_prompt"]
                         and <div
-                            className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                            className="bg-surface border border-line rounded-lg p-5"
                         >
-                            <h3 className="text-sm font-semibold text-slate-400 mb-2">
+                            <h3 className="text-sm font-semibold text-muted mb-2">
                                 User Prompt
                             </h3>
                             <pre
-                                className="text-white text-sm whitespace-pre-wrap font-mono bg-slate-800 p-3 rounded max-h-48 overflow-y-auto"
+                                className="text-fg text-sm whitespace-pre-wrap font-mono bg-surface-2 p-3 rounded max-h-48 overflow-y-auto"
                             >
                                 {selectedTrace["user_prompt"]}
                             </pre>
                         </div>}
                         {selectedTrace["agent_response"]
                         and <div
-                            className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                            className="bg-surface border border-line rounded-lg p-5"
                         >
-                            <h3 className="text-sm font-semibold text-slate-400 mb-2">
+                            <h3 className="text-sm font-semibold text-muted mb-2">
                                 Agent Response
                             </h3>
                             <pre
-                                className="text-white text-sm whitespace-pre-wrap font-mono bg-slate-800 p-3 rounded max-h-48 overflow-y-auto"
+                                className="text-fg text-sm whitespace-pre-wrap font-mono bg-surface-2 p-3 rounded max-h-48 overflow-y-auto"
                             >
                                 {selectedTrace["agent_response"]}
                             </pre>
                         </div>}
-                        <div
-                            className="bg-slate-900 border border-slate-800 rounded-lg p-5"
-                        >
-                            <h3 className="text-lg font-semibold text-white mb-3">
+                        <div className="bg-surface border border-line rounded-lg p-5">
+                            <h3 className="text-lg font-semibold text-fg mb-3">
                                 LLM Calls ({str(len(selectedTrace["llm_calls"] or []))})
                             </h3>
                             {len(selectedTrace["llm_calls"] or []) == 0
-                            and <div className="text-slate-500 text-sm">
+                            and <div className="text-faint text-sm">
                                 No LLM calls recorded for this trace
                             </div>}
                             {len(selectedTrace["llm_calls"] or []) > 0
@@ -294,7 +282,7 @@ cl {
                                         key={str(call["timestamp"]) + str(
                                             call["model"]
                                         )}
-                                        className="bg-slate-800 border border-slate-700 rounded-lg p-4"
+                                        className="bg-surface-2 border border-line rounded-lg p-4"
                                     >
                                         <div
                                             className="flex items-center justify-between mb-2"
@@ -314,7 +302,7 @@ cl {
                                                 </span>
                                             </div>
                                             <span
-                                                className="text-slate-400 text-xs font-mono"
+                                                className="text-muted text-xs font-mono"
                                             >
                                                 {formatTimestamp(
                                                     call["timestamp"] or ""
@@ -323,40 +311,36 @@ cl {
                                         </div>
                                         <div className="grid grid-cols-4 gap-3 text-xs">
                                             <div>
-                                                <div className="text-slate-500">
-                                                    Tokens
-                                                </div>
-                                                <div className="text-white">
+                                                <div className="text-faint">Tokens</div>
+                                                <div className="text-fg">
                                                     {formatTokens(
                                                         call["total_tokens"] or 0
                                                     )}
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="text-slate-500">
-                                                    Prompt
-                                                </div>
-                                                <div className="text-white">
+                                                <div className="text-faint">Prompt</div>
+                                                <div className="text-fg">
                                                     {formatTokens(
                                                         call["prompt_tokens"] or 0
                                                     )}
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="text-slate-500">
+                                                <div className="text-faint">
                                                     Completion
                                                 </div>
-                                                <div className="text-white">
+                                                <div className="text-fg">
                                                     {formatTokens(
                                                         call["completion_tokens"] or 0
                                                     )}
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="text-slate-500">
+                                                <div className="text-faint">
                                                     Latency
                                                 </div>
-                                                <div className="text-white">
+                                                <div className="text-fg">
                                                     {formatLatency(
                                                         call["latency_ms"] or 0
                                                     )}
@@ -376,9 +360,9 @@ cl {
                         </div>
                         {len(selectedTrace["child_traces"] or []) > 0
                         and <div
-                            className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                            className="bg-surface border border-line rounded-lg p-5"
                         >
-                            <h3 className="text-lg font-semibold text-white mb-3">
+                            <h3 className="text-lg font-semibold text-fg mb-3">
                                 Nested Traces ({str(
                                     len(selectedTrace["child_traces"] or [])
                                 )})
@@ -387,7 +371,7 @@ cl {
                                 {[
                                     <div
                                         key={child["invocation_id"]}
-                                        className="bg-slate-800 border border-slate-700 rounded-lg p-4 cursor-pointer hover:border-teal-500/50 transition-colors"
+                                        className="bg-surface-2 border border-line rounded-lg p-4 cursor-pointer hover:border-teal-500/50 transition-colors"
                                         onClick={lambda { loadTraceDetail(
                                             child["invocation_id"]
                                         ); }}
@@ -423,7 +407,7 @@ cl {
                                                 </span>}
                                             </div>
                                             <div
-                                                className="flex items-center gap-4 text-xs text-slate-400"
+                                                className="flex items-center gap-4 text-xs text-muted"
                                             >
                                                 <span>
                                                     {String(
@@ -486,16 +470,16 @@ cl {
         return
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-white">LLM Traces</h2>
+                    <h2 className="text-xl font-bold text-fg">LLM Traces</h2>
                     <div className="flex items-center gap-3">
                         <label
-                            className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer"
+                            className="flex items-center gap-2 text-sm text-muted cursor-pointer"
                         >
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
                                 onChange={lambda e: any { autoRefresh = e.target.checked; }}
-                                className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
+                                className="rounded border-line bg-surface-2 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh
                         </label>
@@ -512,19 +496,19 @@ cl {
                 </div>
                 {len(traces) == 0
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded-lg p-8 text-center"
+                    className="bg-surface border border-line rounded-lg p-8 text-center"
                 >
-                    <div className="text-slate-500 text-lg mb-2">No traces yet</div>
-                    <div className="text-slate-600 text-sm">
+                    <div className="text-faint text-lg mb-2">No traces yet</div>
+                    <div className="text-faint text-sm">
                         Make some LLM calls to see traces here
                     </div>
                 </div>}
                 {len(traces) > 0
                 and <div
-                    className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden"
+                    className="bg-surface border border-line rounded-lg overflow-hidden"
                 >
                     <div
-                        className="flex items-center px-4 py-2.5 border-b border-slate-700 text-xs text-slate-500 font-semibold uppercase tracking-wider"
+                        className="flex items-center px-4 py-2.5 border-b border-line text-xs text-faint font-semibold uppercase tracking-wider"
                     >
                         <div className="flex-1">Trace</div>
                         <div className="w-14 text-right">Calls</div>
@@ -536,7 +520,7 @@ cl {
                     {[
                         <div
                             key={item["trace"]["invocation_id"]}
-                            className="flex items-center px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/40 transition-colors cursor-pointer"
+                            className="flex items-center px-4 py-3 border-b border-line hover:bg-surface-2 transition-colors cursor-pointer"
                         >
                             <div
                                 className="flex-1 flex items-center gap-2 min-w-0"
@@ -549,7 +533,7 @@ cl {
                             >
                                 {(item["trace"]["child_count"] or 0) > 0
                                 and <button
-                                    className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-teal-400 rounded hover:bg-slate-700/50"
+                                    className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-muted hover:text-teal-400 rounded hover:bg-surface-2"
                                     onClick={lambda e: any {
                                         e.stopPropagation();
                                         toggleExpand(item["trace"]["invocation_id"]);
@@ -566,9 +550,7 @@ cl {
                                 {(item["trace"]["child_count"] or 0) == 0
                                 and <span className="flex-shrink-0 w-5"/>}
                                 {item["depth"] > 0
-                                and <span className="text-slate-600 text-xs mr-1">
-                                    └
-                                </span>}
+                                and <span className="text-faint text-xs mr-1">└</span>}
                                 <span
                                     className={getStatusBadge(
                                         item["trace"]["status"] or "unknown"
@@ -591,14 +573,14 @@ cl {
                                     loading...
                                 </span>}
                             </div>
-                            <div className="w-14 text-right text-sm text-slate-300">
+                            <div className="w-14 text-right text-sm text-muted">
                                 {String(
                                     item["trace"]["aggregated_llm_call_count"]
                                     or item["trace"]["llm_call_count"]
                                     or 0
                                 )}
                             </div>
-                            <div className="w-20 text-right text-sm text-slate-300">
+                            <div className="w-20 text-right text-sm text-muted">
                                 {formatTokens(
                                     item["trace"]["aggregated_total_tokens"]
                                     or item["trace"]["total_tokens"]
@@ -612,10 +594,10 @@ cl {
                                     or 0
                                 )}
                             </div>
-                            <div className="w-16 text-right text-sm text-slate-300">
+                            <div className="w-16 text-right text-sm text-muted">
                                 {formatLatency(item["trace"]["total_latency_ms"] or 0)}
                             </div>
-                            <div className="w-16 text-right text-sm text-slate-500">
+                            <div className="w-16 text-right text-sm text-faint">
                                 {formatTimestamp(item["trace"]["timestamp"] or "")}
                             </div>
                         </div> for item in getDisplayItems()

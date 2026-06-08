@@ -562,3 +562,26 @@ impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     }
     return types.UnknownType();
 }
+
+"""Follow an imported symbol's re-export chain to its defining symbol.
+
+A `from pkg import f` symbol's decl is the imported `Name`, whose own `.sym`
+points at the next re-export hop (e.g. `pkg/__init__` → `pkg/sub` → the
+`def`). Walk that chain until a non-import decl (the definition) so callers
+collect overloads in the definition scope rather than a re-export scope."""
+impl TypeEvaluator.resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol {
+    visited: set[int] = set();
+    cur = symbol;
+    while id(cur) not in visited {
+        visited.add(id(cur));
+        if not (cur.imported and cur.decl) {
+            break;
+        }
+        node_ = cur.decl.name_of;
+        if not (isinstance(node_, uni.Name) and node_.sym and node_.sym is not cur) {
+            break;
+        }
+        cur = node_.sym;
+    }
+    return cur;
+}
