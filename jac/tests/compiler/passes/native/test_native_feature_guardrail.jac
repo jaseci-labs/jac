@@ -131,6 +131,27 @@ test "guardrail: report statement is rejected" {
     )}";
 }
 
+# A tuple/union trigger lowers field access on `here` through one shared member
+# layout (issue #6470). When the members place a common field at *different*
+# offsets, that single-layout lowering would misread it, so the native pass
+# must surface E5091 rather than silently emit a wrong body.
+test "guardrail: union trigger with mismatched field layout is rejected" {
+    prog = compile_na_inline(
+        "union_layout_conflict",
+        "node Sub { has pad: int; has val: int; }\n"  # val at index 3
+        "node Other { has val: int; }\n"  # val at index 2
+        "walker W {\n"
+        "    has either: int = 0;\n"
+        "    can on_either with (Sub, Other) entry {\n"
+        "        self.either = self.either + here.val;\n"
+        "    }\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5091") , f"Expected E5091 for divergent union member layout, got: {fmt_errors(
+        prog
+    )}";
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Expression-level gaps
 # ─────────────────────────────────────────────────────────────────────

@@ -1129,6 +1129,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Native pathway does not yet support {kind} '{name}'",
          help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the .na.jac native compiler yet. Move the code to a non-native context, or extend NaIRGenPass to handle this node type."
      ),
+     E5091 = _err(
+         "E5091",
+         Category.CODEGEN,
+         "Native union trigger members {members} disagree on the layout of field '{field}'",
+         help="A tuple/union trigger like `with (A, B) entry` lowers field access on `here`/`visitor` through a single shared layout, so every member must place the common field at the same offset and type. Reorder the `has` declarations so the shared fields line up, or split the trigger into separate abilities per archetype."
+     ),
      # Language server
      E5070 = _err("E5070", Category.CODEGEN, "Error during type check: {error}"),
      E5071 = _err("E5071", Category.CODEGEN, "Error during formatting: {error}"),

@@ -3833,3 +3833,37 @@ test "parameterless no-return function (def foo {}) is not dropped" {
     );
     assert run_ticks_parens(5) == run_ticks(5);
 }
+
+# --- Union / tuple-trigger field access (issue #6470) ---
+test "field access on a `|` union parameter lowers the field load" {
+    # `get_val(x: A | B) -> int { return x.val; }` -- both members carry `val`
+    # at the same offset, so the access resolves via either member's layout.
+    (eng, _) = compile_native("union_field_access.na.jac");
+    get_val = get_func(eng, "get_val", ctypes.c_int64, ctypes.c_void_p);
+    # A is `{ val: int }` -> a single-i64 struct at offset 0.
+    a = (ctypes.c_int64 * 1)(5);
+    assert get_val(ctypes.cast(a, ctypes.c_void_p)) == 5;
+    b = (ctypes.c_int64 * 1)(42);
+    assert get_val(ctypes.cast(b, ctypes.c_void_p)) == 42;
+}
+
+test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
+    # `can on_either with (Sub, Other) entry { self.either += here.val; }`.
+    # The tuple trigger types `here` as a union of node members; the body must
+    # not truncate at `here.val` (the original bug emitted an empty body and no
+    # `field.val` load, so `either` silently stayed 0).
+    (eng, _) = compile_native("union_field_access.na.jac");
+    addr = eng.get_function_address("W.on_either");
+    assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
+    fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
+    # Both node structs lower to `{ header_ptr, header_i64, value_i64 }`, so the
+    # user field (`either` / `val`) sits at index 2 (byte offset 16).
+    self_buf = (ctypes.c_int64 * 3)(0, 0, 0);
+    here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
+    assert self_buf[2] == 5 , "here.val was not read through the union member layout";
+    # A second member instance must accumulate the same way.
+    here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
+    assert self_buf[2] == 12;
+}

@@ -1899,6 +1899,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if (method := self._get_enclosing_method(expr)) {
                         if isinstance(method.signature, uni.EventSignature) {
                             if arch := method.signature.arch_tag_info {
+                                # A tuple trigger `with (A, B) entry` fires on
+                                # any listed archetype, so the implicit `here`/
+                                # `visitor` is the *union* of the member instance
+                                # types -- not a tuple of them. Typing it as the
+                                # union lets `here.attr` resolve against the
+                                # common members (matching py/sv) instead of
+                                # failing on `tuple` having no such attribute.
+                                if isinstance(arch, uni.TupleVal) {
+                                    member_insts: list[types.TypeBase] = [];
+                                    for member in (arch.values or []) {
+                                        member_insts.append(
+                                            self._convert_to_instance(
+                                                self.get_type_of_expression(member)
+                                            )
+                                        );
+                                    }
+                                    if len(member_insts) == 1 {
+                                        return member_insts[0];
+                                    }
+                                    if member_insts {
+                                        return types.UnionType(types=member_insts);
+                                    }
+                                }
                                 type_arch_cls = self.get_type_of_expression(arch);
                                 type_arch_inst = self._convert_to_instance(
                                     type_arch_cls

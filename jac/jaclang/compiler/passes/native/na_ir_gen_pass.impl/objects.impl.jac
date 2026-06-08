@@ -718,6 +718,77 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self._param_promoted = saved_param_promoted;
 }
 
+"""Collect the member struct names a trigger tag denotes.
+
+A trigger may be a single `Name` (`with Base entry`), a `|` union, or a
+`(A, B)` tuple trigger -- each fires the ability on any listed archetype, so
+the implicit `here`/`visitor` is the union of those members. Returns the
+known-struct member names in source order (deduped), skipping `None`/unknown.
+"""
+impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str] {
+    out: list[str] = [];
+    if tag is None {
+        return out;
+    }
+    parts: list[uni.UniNode] = [];
+    if isinstance(tag, uni.TupleVal) {
+        parts = list(tag.values or []);
+    } elif isinstance(tag, uni.BinaryExpr) and getattr(tag.op, "value", "") == "|" {
+        parts = [tag.left, tag.right];
+    } else {
+        parts = [tag];
+    }
+    for part in parts {
+        # Recurse so nested forms (e.g. `(A, B | C)`) flatten uniformly.
+        if isinstance(part, uni.TupleVal)
+        or (
+            isinstance(part, uni.BinaryExpr) and getattr(part.op, "value", "") == "|"
+        ) {
+            for nm in self._trigger_member_structs(part) {
+                if nm not in out {
+                    out.append(nm);
+                }
+            }
+            continue;
+        }
+        name = self._get_name(part);
+        if name is not None and name in self.struct_types and name not in out {
+            out.append(name);
+        }
+    }
+    return out;
+}
+
+"""Find a field whose layout diverges across union trigger members.
+
+Field access on `here`/`visitor` lowers through a single member's layout, so
+this is only sound when every field common to all members sits at the same
+index and LLVM type. Returns the first divergent field name (for E5091), or
+None when the shared layout is consistent (so any member's layout is usable).
+"""
+impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
+    if len(members) <= 1 {
+        return None;
+    }
+    base = members[0];
+    base_idx = self.struct_field_indices.get(base, {});
+    base_types = self.struct_field_types.get(base, {});
+    for fname in base_idx {
+        for other in members[1:] {
+            other_idx = self.struct_field_indices.get(other, {});
+            if fname not in other_idx {
+                continue;  # not a common field -- union attr access rejects it
+            }
+            other_types = self.struct_field_types.get(other, {});
+            if other_idx[fname] != base_idx[fname]
+            or base_types.get(fname) != other_types.get(fname) {
+                return fname;
+            }
+        }
+    }
+    return None;
+}
+
 """Forward-declare an Object-Spatial ability (`can ... with T entry/exit`).
 
 An ability with an EventSignature is lowered like a two-parameter method:
@@ -741,7 +812,17 @@ impl NaIRGenPass._forward_declare_event_method(
     }
     loc_type: ir.Type = ir.IntType(8).as_pointer();
     if sig.arch_tag_info is not None {
-        loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        # A tuple/union trigger has no single struct type; lower the implicit
+        # location parameter to a representative member's pointer so field
+        # access on `here`/`visitor` has a usable layout (issue #6470). A plain
+        # single-type trigger yields exactly the one member, matching the prior
+        # `_resolve_jac_type` result.
+        _members = self._trigger_member_structs(sig.arch_tag_info);
+        if _members {
+            loc_type = self.struct_types[_members[0]].as_pointer();
+        } else {
+            loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        }
     }
     fnty = ir.FunctionType(ir.VoidType(), [struct_type.as_pointer(), loc_type]);
     func = ir.Function(self.llvm_module, fnty, name=full_name);
@@ -815,13 +896,29 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.param_vars.add(loc_name);
     if sig.arch_tag_info is not None {
         self.var_type_node[loc_name] = sig.arch_tag_info;
-        loc_tname = self._get_name(sig.arch_tag_info);
-        if loc_tname is not None and loc_tname in self.struct_types {
-            self.type_var_map[loc_name] = loc_tname;
+        # For a tuple/union trigger (`with (A, B) entry`), `here`/`visitor`
+        # binds to a representative member so `here.field` resolves against a
+        # real struct layout instead of silently dropping (issue #6470).
+        _members = self._trigger_member_structs(sig.arch_tag_info);
+        _conflict = self._union_layout_conflict(_members);
+        if _conflict is not None {
+            # Members disagree on a shared field's offset: the single-layout
+            # lowering would misread it, so surface a diagnostic rather than
+            # emit a quietly-wrong body.
+            self.emit(
+                E5091,
+                node_override=sig.arch_tag_info,
+                members=", ".join(_members),
+                field=_conflict
+            );
         }
-        if loc_tname is not None and loc_tname in self.field_type_node {
-            for (fname, ftn) in self.field_type_node[loc_tname].items() {
-                self.var_type_node[f"{loc_name}.{fname}"] = ftn;
+        loc_tname = _members[0] if _members else None;
+        if loc_tname is not None {
+            self.type_var_map[loc_name] = loc_tname;
+            if loc_tname in self.field_type_node {
+                for (fname, ftn) in self.field_type_node[loc_tname].items() {
+                    self.var_type_node[f"{loc_name}.{fname}"] = ftn;
+                }
             }
         }
     }

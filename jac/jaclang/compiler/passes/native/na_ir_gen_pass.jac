@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091 }
 
 # ── Python stdlib modules the native backend can lower ────────────────────
 # Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
@@ -444,6 +444,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    # Resolve the member struct names a trigger tag denotes -- a single `Name`,
+    # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
+    def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    # Validate that every field common to all union members lives at the same
+    # index and type; returns the first divergent field name, or None if the
+    # members share a consistent layout (so any member's layout is usable).
+    def _union_layout_conflict(members: list[str]) -> (str | None);
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str, walker_val: ir.Value, loc_val: ir.Value
