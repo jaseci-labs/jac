@@ -1,6 +1,27 @@
 # jac-desktop Release Notes
 
-## jac-desktop 0.1.1 (Latest Release)
+## jac-desktop 0.2.0 (Latest Release)
+
+### Breaking: PyTauri/PyInstaller replaced by a Jac-native desktop host
+
+The desktop target is now **Jac-native**: `jac build --client desktop` builds your
+`cl` bundle and compiles a single native host (`jac nacompile`) that embeds the OS
+webview to render it - no Rust toolchain, no PyInstaller sidecar, no separate
+process. Output is one self-contained binary under `.jac/client/desktop/`.
+
+- **Removed**: the PyTauri shell, the PyInstaller sidecar, the `jac desktop plugin`
+  CLI (Tauri plugin catalog), and the `pytauri-wheel`/`anyio`/`pyinstaller`
+  dependencies. There is no longer a `jac setup desktop` step or `src-pytauri/`
+  scaffold.
+- **Added**: the native webview binding + build tooling under
+  `jac_desktop/native/webview/`, with a dependency-free test suite. The host
+  embeds CPython to serve the bundle on loopback (and to host `sv` in-process).
+- **Config**: `[plugins.desktop]` keeps app identity + `[plugins.desktop.window]`
+  geometry; the Tauri-plugin / sidecar config fields are gone.
+
+See [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).
+
+## jac-desktop 0.1.1
 
 ### New Features
 

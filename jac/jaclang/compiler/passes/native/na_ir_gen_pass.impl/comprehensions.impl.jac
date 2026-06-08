@@ -536,6 +536,12 @@ impl NaIRGenPass._codegen_dict_compr_loops(
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);
     self.builder.position_at_end(end_bb);
+    # if collection was a temporary (e.g. a call result), release it now
+    # that the loop has finished iterating over it.
+    if isinstance(coll_val.type, ir.PointerType) and self._is_owned(coll_val) {
+        _dcoll_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+        self._emit_rc_release_simple(coll_val, op="dcompr_coll", loc=_dcoll_loc);
+    }
 }
 
 """Handle range-based dict comprehension loop."""
@@ -899,6 +905,12 @@ impl NaIRGenPass._codegen_set_compr_loops(
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);
     self.builder.position_at_end(end_bb);
+    # if collection was a temporary (e.g. a call result), release it now
+    # that the loop has finished iterating over it.
+    if isinstance(coll_val.type, ir.PointerType) and self._is_owned(coll_val) {
+        _scoll_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+        self._emit_rc_release_simple(coll_val, op="scompr_coll", loc=_scoll_loc);
+    }
 }
 
 """Handle range-based set comprehension loop."""

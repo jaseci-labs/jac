@@ -244,6 +244,28 @@ test "strings greet" {
     assert f() == b"hello";
 }
 
+# Regression for #6442: native must decode numeric/codepoint escapes
+# (\xNN, \uXXXX, \U00XXXXXX) identically to the sv pathway (ast.literal_eval),
+# per the na ⊆ sv guarantee. Native returns the string as a UTF-8 byte buffer
+# (c_char_p), so the expected value is the Python-decoded string, utf-8 encoded.
+test "strings numeric escapes decode (na subseteq sv)" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_numeric", ctypes.c_char_p);
+    assert f() == "aAbéc😀d".encode("utf-8");
+}
+
+test "strings unicode escape decode (na subseteq sv)" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_u", ctypes.c_char_p);
+    assert f() == "X—Y".encode("utf-8");
+}
+
+test "strings simple escapes still decode" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_simple", ctypes.c_char_p);
+    assert f() == b"p\tq\nr";
+}
+
 test "strings str equal" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "str_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);

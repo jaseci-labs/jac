@@ -94,17 +94,6 @@ jobs:
         pip install pytest
         pip install pytest-xdist
         pip install playwright
-        pip install pyinstaller
-
-    - name: Install desktop runtime libraries
-      run: |
-        # jac-desktop's pytauri shell loads a native extension that links
-        # libwebkit2gtk-4.1.so.0; install the WebKitGTK runtime so the
-        # "desktop dev mode" test can launch the pytauri process. xvfb gives
-        # the GTK window a virtual display so it initializes on the headless
-        # runner instead of panicking in gtk::rt::init.
-        sudo apt-get update
-        sudo apt-get install -y xvfb libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libsoup-3.0-0
 
     - name: Install Playwright browsers
       run: playwright install chromium --with-deps
@@ -114,9 +103,10 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      # xvfb-run provides a virtual X display so the desktop dev-mode test can
-      # launch the pytauri GTK window; -a auto-picks a free server number.
-      run: xvfb-run -a pytest -x jac-client jac-desktop -n auto
+      # The dependency-free binding test runs in its own lean job
+      # (test-desktop-native), so it is excluded here along with the native
+      # binding sources; the remaining jac-desktop tests are plain unit tests.
+      run: pytest -x jac-client jac-desktop --ignore=jac-desktop/jac_desktop/native --ignore=jac-desktop/jac_desktop/tests/test_binding.jac -n auto
 
     - name: Re-run auth roundtrip e2e against jac-scale backend
       run: |
@@ -168,6 +158,34 @@ jobs:
 
     - name: Run E2E code block tests
       run: pytest docs/tests/e2e/test_code_blocks.jac -v
+
+  test-desktop-native:
+    # Jac-native desktop tests (issue #6436). Dependency-free by design: they
+    # only need the jac toolchain to compile the example hosts and inspect the
+    # linked artifacts (DT_NEEDED / $ORIGIN) and run handler logic through the sv
+    # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
+    # embedded-Python *runtime* behavior is covered by a separate, gated tier.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.12
+
+    - name: Install the jac toolchain only
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run dependency-free desktop tests
+      run: pytest -x jac-desktop/jac_desktop/tests/test_binding.jac -n auto
 
   test-mcp:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -579,7 +597,7 @@ jobs:
     # Structural / codegen correctness of `jac eject` is covered by
     # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
     # The steps below are deliberately end-to-end: they exist to validate
-    # what the unit tests cannot — that `jac eject` works against the real
+    # what the unit tests cannot - that `jac eject` works against the real
     # fullstack template and that the ejected backend imports cleanly
     # against the wheel-installed jaclang runtime and actually serves HTTP.
     # The live `jac start` path is exercised separately by the test-client

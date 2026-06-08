@@ -1,6 +1,6 @@
 # What You Can Build
 
-Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`, which also compiles to in-browser WebAssembly) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, a desktop/mobile build, or native compute that runs in the browser. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
+Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`, which also compiles to in-browser WebAssembly) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, a desktop/mobile build, native compute that runs in the browser, or a C-callable shared library. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
 
 Every example below was run against the current toolchain. Install once and follow along:
 
@@ -22,9 +22,10 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Microservices](#microservices) | ● ×N | | | ● | | | -- |
 | [Python package (PyPI)](#python-package-pypi) | ● | | | | wheel | | twine¹ |
 | [npm package (npmjs.com)](#npm-package) | | ● | | | npm | | npm³ |
+| [Shared library (C ABI)](#shared-library-c-abi) | | | ● | | .so/.dll | | -- |
 | [Full-stack app](#full-stack-app) | ● | ● | | ● | | | -- |
 | [In-browser native (wasm)](#in-browser-native-wasm) | | ● | ● | ● | | | -- |
-| [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | Tauri² |
+| [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | WebKit² |
 | [Mobile app (webview)](#mobile-app-webview) | ◐ | ● | | | | mobile | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
@@ -266,6 +267,46 @@ The generated `package.json` wires in `@jaseci/runtime` automatically for JSX/re
 
 :octicons-arrow-right-24: Reference: [Publishing to npm](../reference/publishing.md#publishing-to-npm-npmjsorg)
 
+### Shared library (C ABI)
+
+The native counterpart to the [Python](#python-package-pypi) and [npm](#npm-package) packages: an `na` module compiled to a **C-ABI shared library** (`.so` / `.dylib` / `.dll`) that *any* language with a C FFI -- C, C++, Rust, Go (`cgo`), Python (`ctypes`) -- can link or `dlopen`. It's the mirror image of `import from "lib.so"` (calling C *from* Jac): here you expose Jac *to* C. Like the other packages it has no entry point; the public surface is whatever you mark `:pub`.
+
+```jac
+# mathlib.na.jac
+glob:pub counter: int = 7;                  # exported global
+
+def:pub jadd(a: int, b: int) -> int {       # exported function
+    return a + b;
+}
+
+obj:pub Point {
+    has x: int = 0, y: int = 0;
+}
+
+def:pub make_point(x: int, y: int) -> Point { return Point(x=x, y=y); }
+def:pub point_sum(p: Point) -> int { return p.x + p.y; }
+```
+
+```bash
+jac nacompile mathlib.na.jac --shared                    # → ./libmathlib.so
+jac nacompile mathlib.na.jac --shared --target macos     # → ./libmathlib.dylib
+jac nacompile mathlib.na.jac --shared --target windows   # → ./libmathlib.dll
+```
+
+Load it like any other shared library -- here from Python via `ctypes`:
+
+```python
+import ctypes
+lib = ctypes.CDLL("./libmathlib.so")
+lib.jadd.restype = ctypes.c_int64
+lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64]
+print(lib.jadd(2, 3))   # 5
+```
+
+Scalars pass by value; Jac objects and strings cross as opaque handles (a `void*` you hand back to the library), with exported `jac_retain`/`jac_release` to manage their reference-counted lifetime, and module globals initialize automatically on load. Same batteries-included story as the rest -- Jac's own linker emits the ELF/Mach-O/PE file, so there's no `gcc`, `ld`, or `lld` in the loop (and the `--target` cross-builds need no extra toolchain either).
+
+:octicons-arrow-right-24: Reference: [Native pathway -- Shared libraries](../reference/language/native-pathway.md#shared-libraries-c-abi)
+
 ---
 
 ## Full-stack & apps
@@ -407,17 +448,18 @@ primes below 20000 (computed in wasm): 2262
 
 ### Desktop app
 
-Wrap the *same* full-stack app in a native desktop window. Jac uses **PyTauri** (Python, no Rust toolchain): your client bundle renders in the webview and your server runs as a frozen sidecar binary.
+Wrap the *same* full-stack app in a native desktop window. Jac compiles your `cl`
+UI into **one `jac nacompile`d binary that embeds the OS webview** (WebKitGTK /
+WKWebView / WebView2) - no Rust toolchain, no PyInstaller, no separate process.
 
 ```bash
-pip install jac-desktop      # adds the "desktop" client target
-jac setup desktop            # one-time scaffold (src-pytauri/)
+pip install jac-desktop      # adds the "desktop" client target (no setup step)
 
-jac start --client desktop --dev      # develop with live reload
-jac build --client desktop            # build the app
+jac build --client desktop            # -> .jac/client/desktop/<app>  (single binary)
+jac start --client desktop            # build + launch the native window
 ```
 
-Window title, size, and bundled plugins are configured under `[plugins.desktop]` in `jac.toml`. Builds are per-OS (`--platform windows|macos|linux`).
+Window title and size are configured under `[plugins.desktop]` in `jac.toml`.
 
 :octicons-arrow-right-24: Full tutorial: [Desktop App](../tutorials/fullstack/desktop.md)
 

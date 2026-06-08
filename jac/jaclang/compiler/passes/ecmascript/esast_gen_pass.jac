@@ -345,6 +345,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
@@ -558,6 +559,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_float(nd: uni.Float) -> None;
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_string(nd: uni.String) -> None;
+    def _str_literal(nd: uni.String) -> es.Literal;
     def exit_formatted_value(nd: uni.FormattedValue) -> None;
     def exit_f_string(nd: uni.FString) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
