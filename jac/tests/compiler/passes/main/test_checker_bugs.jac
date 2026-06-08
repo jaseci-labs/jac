@@ -31,6 +31,7 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #6446   - Chained imported TypeAlias targets collapsed to Unknown, allowing bytes + str
 """
 
 import os;
@@ -892,6 +893,24 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
     assert program.errors_had == [] , (
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #6446: `bytes.__add__` takes ReadableBuffer, which is a chained alias
+# through `_typeshed -> typing_extensions -> collections.abc`. The import
+# resolver stopped at the intermediate imported Buffer symbol, so the parameter
+# became Unknown and accepted `bytes + str`.
+test "bug_6446_bytes_str_add_rejected" {
+    program = compile_and_check("checker_bug_bytes_str_add.jac");
+    e1055 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1055"
+    ];
+    assert len(e1055) == 2 and len(program.errors_had) == 2 , (
+        "Bug #6446: bytes + str and str + bytes must both reject with E1055, "
+        "while bytes + bytes remains valid. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
