@@ -1069,6 +1069,12 @@ class JacScalePlugin {
         if trace {
             headers["X-Trace-Id"] = trace;
         }
+        # O-02: forward traceparent so the downstream span links as our child.
+        import from jac_scale.microservices.runtime.tracing { current_traceparent }
+        tp = current_traceparent(trace);
+        if tp {
+            headers["traceparent"] = tp;
+        }
 
         max_attempts: int = 3;
         backoff: float = 0.1;  # doubles each attempt: 0.1, 0.2, 0.4
@@ -1188,6 +1194,12 @@ class JacScalePlugin {
         trace = get_current_trace();
         if trace {
             headers["X-Trace-Id"] = trace;
+        }
+        # O-02: forward traceparent so the downstream span links as our child.
+        import from jac_scale.microservices.runtime.tracing { current_traceparent }
+        tp = current_traceparent(trace);
+        if tp {
+            headers["traceparent"] = tp;
         }
 
         max_attempts: int = 3;

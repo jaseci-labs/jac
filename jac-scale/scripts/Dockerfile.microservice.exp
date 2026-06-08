@@ -30,7 +30,7 @@ COPY jac-scale /build/jac-scale
 COPY jac-client /build/jac-client
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -e /build/jac \
-    && jac install -e /build/jac-scale --extras deploy data \
+    && jac install -e /build/jac-scale --extras deploy data tracing \
     && jac install -e /build/jac-client
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e

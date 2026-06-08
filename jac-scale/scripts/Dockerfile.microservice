@@ -26,7 +26,7 @@ RUN git config --system --add safe.directory '*'
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
         jaclang \
-        "jac-scale[deploy,data]" \
+        "jac-scale[deploy,data,tracing]" \
         jac-client
 
 WORKDIR /app

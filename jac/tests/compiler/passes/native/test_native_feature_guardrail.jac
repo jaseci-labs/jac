@@ -148,13 +148,16 @@ test "guardrail: yield expression is rejected" {
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────
 # Native compilation cannot import arbitrary Python modules: the import is
-# dropped, then `math.pi` lowers to nothing and the binary prints empty
+# dropped, then `json.dumps(...)` lowers to nothing and the binary prints empty
 # output. That silent-wrong result is the worst failure mode -- reject it.
+# (`math`/`time`/`sys`/`os`/`random` are now lowered; `json` is still
+# unsupported per the #6404 roadmap, so it stays a valid rejection example.)
 test "guardrail: Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_math", "import math;\n" "with entry { print(f\"pi: {math.pi}\"); }\n"
+        "py_import_json",
+        "import json;\n" "with entry { print(json.dumps({\"a\": 1})); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'math', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'json', got: {fmt_errors(
         prog
     )}";
 }

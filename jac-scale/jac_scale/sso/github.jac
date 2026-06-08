@@ -34,13 +34,13 @@ obj GithubSSOProvider(SSOProvider) {
     Returns:
         RedirectResponse to GitHub's OAuth authorization page
     """
-    async def initiate_auth -> Response {
+    async def initiate_auth(state: str | None = None) -> Response {
         if not self._github_sso {
             raise RuntimeError("GithubSSO not initialized");
         }
 
         with self._github_sso {
-            return await self._github_sso.get_login_redirect();
+            return await self._github_sso.get_login_redirect(state=state);
         }
     }
 

@@ -65,6 +65,14 @@ obj DocIRGenPass(UniPass) {
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
+    """Prettier's jsxWhitespace: a literal space when flat, a `{" "}` marker
+    plus a line break when broken, so a significant space survives a break."""
+    def jsx_whitespace -> doc.DocType;
+
+    """Lay out JSX children that mix text with inline elements, preserving
+    JSX-significant whitespace at text<->element boundaries."""
+    def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
+
     """Emit 'to cl:/sv:/na:' section-header form for an implicit context block."""
     def emit_section_header_block(nd: uni.UniNode) -> None;
 

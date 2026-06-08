@@ -22,7 +22,6 @@ import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
-import from jaclang.jac0core.helpers { evaluate_version_condition }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
@@ -65,7 +64,6 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt;
     def proc_while(nd: py_ast.While) -> uni.WhileStmt;
     def proc_if(nd: py_ast.If) -> uni.IfStmt;
-    def _flatten_version_conditionals(body: list[uni.UniNode]) -> list[uni.UniNode];
     def proc_with(nd: py_ast.With) -> uni.WithStmt;
     def proc_async_with(nd: py_ast.AsyncWith) -> uni.WithStmt;
     def proc_raise(nd: py_ast.Raise) -> uni.RaiseStmt;
