@@ -158,7 +158,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         if output {
             b_out = Path(output).resolve();
         } else {
-            b_out = (src / str(eject_cfg.get("output", "dist"))).resolve();
+            b_out = (src / str(eject_cfg.get("output", "ejected"))).resolve();
         }
         if b_out == src {
             console.error(

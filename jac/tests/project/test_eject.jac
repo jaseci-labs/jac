@@ -811,7 +811,7 @@ test "backend target emits a flat FastAPI layout" {
         _write_walker_jac(src);
         rc = _silent_eject(str(src));
         assert rc == 0;
-        out = src / "dist";
+        out = src / "ejected";
         assert (out / "main.py").exists();
         assert (out / "_osp.py").exists();
         assert (out / "_jac_main.py").exists();
@@ -830,7 +830,7 @@ test "backend target output has zero .jac files and zero jaclang imports" {
         _write_walker_jac(src);
         rc = _silent_eject(str(src));
         assert rc == 0;
-        out = src / "dist";
+        out = src / "ejected";
         assert _list_jac_files(out) == [];
         for py in out.rglob("*.py") {
             assert not _has_jaclang_import(py.read_text());
@@ -847,7 +847,7 @@ test "backend target main.py exposes the walker as a POST endpoint" {
         _write_walker_jac(src);
         rc = _silent_eject(str(src));
         assert rc == 0;
-        main_py = (src / "dist" / "main.py").read_text();
+        main_py = (src / "ejected" / "main.py").read_text();
         # parses as valid Python
         parsed = ast.parse(main_py);
         assert parsed is not None;
@@ -866,7 +866,7 @@ test "backend target requirements.txt is fastapi + uvicorn only" {
         _write_walker_jac(src);
         rc = _silent_eject(str(src));
         assert rc == 0;
-        reqs = (src / "dist" / "requirements.txt").read_text();
+        reqs = (src / "ejected" / "requirements.txt").read_text();
         assert "fastapi" in reqs;
         assert "uvicorn" in reqs;
         assert "jaclang" not in reqs;
@@ -881,7 +881,7 @@ test "backend target _osp.py defines the runtime contract symbols" {
         _write_walker_jac(src);
         rc = _silent_eject(str(src));
         assert rc == 0;
-        osp = (src / "dist" / "_osp.py").read_text();
+        osp = (src / "ejected" / "_osp.py").read_text();
         tree = ast.parse(osp);
         names = set();
         for node in tree.body {
