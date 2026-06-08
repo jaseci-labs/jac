@@ -401,11 +401,12 @@ impl install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    no_uv: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dependencies { DependencyInstaller, pip_command }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
     # force_discover bypasses the module-level cache, which may already hold
@@ -439,7 +440,7 @@ impl install(
         if enabled
     ];
     installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
+        config=config, verbose=verbose, install_flags=install_flags, use_uv=not no_uv
     );
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
@@ -469,8 +470,15 @@ impl install(
             console.print(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
+            use_uv: bool = not no_uv;
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
+                pip_command(
+                    sys.executable,
+                    ["install", "--upgrade"] + (
+                        installer.install_flags or []
+                    ) + dep_specs,
+                    use_uv
+                ),
                 capture_output=not verbose,
                 text=True,
             );

@@ -128,6 +128,13 @@ def create(
             help="Prefer wheel files over source distributions",
             short=""
         ),
+        Arg.create(
+            "no-uv",
+            typ=bool,
+            default=False,
+            help="Use pip directly even if uv is available",
+            short=""
+        ),
 
     ],
     examples=[
@@ -143,6 +150,7 @@ def create(
         ("jac install --dry-run", "Preview what would be installed without doing it"),
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
+        ("jac install --no-uv", "Use pip directly even if uv is available"),
 
     ],
     group="project"
@@ -158,7 +166,8 @@ def install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    no_uv: bool = False
 ) -> int;
 
 """Add dependencies to the project."""

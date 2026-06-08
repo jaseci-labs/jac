@@ -72,6 +72,44 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
+"""Translate pip-only flags to their `uv pip` equivalents, dropping any without a counterpart."""
+def _pip_flags_for_uv(args: list[str]) -> list[str] {
+    rename: dict[str, str | None] = {
+        "-y": None,
+        "--force-reinstall": "--reinstall",
+        "--no-cache-dir": "--no-cache",
+        "--pre": "--prerelease=allow",
+        "--prefer-binary": None,
+
+    };
+    translated: list[str] = [];
+    for arg in args {
+        if arg in rename {
+            mapped = rename[arg];
+            if mapped is not None {
+                translated.append(mapped);
+            }
+        } else {
+            translated.append(arg);
+        }
+    }
+    return translated;
+}
+
+impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str] {
+    import shutil;
+    # Prefer uv's pip-compatible interface (much faster resolver/installer);
+    # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
+    uv_path = shutil.which("uv") if use_uv else None;
+    if uv_path and args {
+        subcommand = args[0];
+        return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
+            args[1:]
+        );
+    }
+    return [python, "-m", "pip"] + args;
+}
+
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     import subprocess;
     import sys;
@@ -81,7 +119,7 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    cmd = [venv_python, "-m", "pip"] + args;
+    cmd = pip_command(venv_python, args, use_uv=self.use_uv);
     if self.verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }
