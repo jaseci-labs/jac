@@ -776,7 +776,20 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
             if imported {
                 return getattr(imported[0], name, None);
             }
-        } except Exception {
+        } except Exception as e {
+            # Fail loud: a cross-boundary endpoint whose provider module fails
+            # to import would otherwise vanish from the API with no trace (the
+            # #6507 debugging trap). Surface it on the server log so a broken
+            # module is visible instead of silently dropping its endpoints.
+            import logging;
+            logging.getLogger("jaclang.serve").warning(
+                "cross-boundary endpoint '%s' unavailable: server module %r "
+                "failed to import (%s: %s)",
+                name,
+                src_path,
+                type(e).__name__,
+                e
+            );
             return None;
         }
         return None;
