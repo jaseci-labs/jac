@@ -257,6 +257,40 @@ test "advanced fixture emits expected constructs" {
     assert len(js_code) > 150;
 }
 
+test "props-destructured JSX components wrap direct call arguments" {
+    fixture = "component_direct_call_props_wrap.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    assert "function Greeting(props) {" in js_code;
+    assert 'const {name, title: title = "!"} = props;' in js_code , (
+        "multi-param JSX component should still destructure from `props`"
+    );
+    assert "return Greeting({name: \"World\"});" in js_code , (
+        "direct positional component call should wrap into a props object"
+    );
+    assert "return Greeting({name: \"World\", title: \"?\"});" in js_code , (
+        "direct kwargs call should wrap into a named props object"
+    );
+    assert "return SingleKeyStyle({payload: payload});" in js_code , (
+        "single non-`props` object param must still be wrapped by its param name"
+    );
+    assert "{...vals}" not in js_code;
+    assert "([...vals], {})" in js_code , (
+        "starred positional args for props-destructured components should pack as an array, not object-spread"
+    );
+    assert "([\"Hi\", ...vals], {})" in js_code , (
+        "mixed positional + spread component call should preserve argument order in the packer"
+    );
+    assert "return PropsPassthrough(bundle);" in js_code , (
+        "single-`props` component should remain pass-through"
+    );
+    assert "return plain(...vals);" in js_code , (
+        "ordinary function calls should still use JS spread syntax"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "client fixture generates client bundle" {
     client_fixture = "client_jsx.jac";
     js_code = compile_fixture_to_js(client_fixture, FIXTURES);
