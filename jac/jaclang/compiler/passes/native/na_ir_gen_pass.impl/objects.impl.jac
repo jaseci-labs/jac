@@ -503,7 +503,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
     # Create entry block
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_type_map = dict(self.type_var_map);
@@ -513,7 +513,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_type_node = {};
@@ -619,7 +619,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     # DWARF post-pass: tag untagged instructions with fallback line
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_map;
@@ -643,7 +643,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     }
     # Create entry block
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_type_map = dict(self.type_var_map);
@@ -655,7 +655,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_tuple_type = dict(self.var_tuple_type);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_type_node = {};
@@ -704,7 +704,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     # DWARF post-pass: tag untagged instructions with fallback line
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_map;
@@ -766,7 +766,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
         return;
     }
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_type_map = dict(self.type_var_map);
@@ -778,7 +778,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     saved_tuple_type = dict(self.var_tuple_type);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_type_node = {};
@@ -838,7 +838,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     }
     method.gen.llvm_ir = func;
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_map;

@@ -152,6 +152,23 @@ test "recursion fibonacci" {
     assert fib(15) == 610;
 }
 
+test "nested functions helper recursion and module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    use_helper = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(n) + double(n + 1) == 4n + 2
+    assert use_helper(0) == 2;
+    assert use_helper(5) == 22;
+    nested_recursion = get_func(
+        eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64
+    );
+    assert nested_recursion(1) == 1;
+    assert nested_recursion(5) == 120;
+    uses_global = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    # x + BASE, BASE == 100
+    assert uses_global(0) == 100;
+    assert uses_global(7) == 107;
+}
+
 # --- TestNativeContextIsolation ---
 test "context isolation native excluded from python" {
     prog = JacProgram();
