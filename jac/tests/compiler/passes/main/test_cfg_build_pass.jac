@@ -143,3 +143,13 @@ test "cfg boolean short circuit" {
     );
     assert dot == expected_dot;
 }
+
+test "cfg comprehension in ternary branch" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_compr_in_ternary.jac")
+    );
+    expected_dot = (
+        "digraph G {\n" + '  0 [label="BB0\\nobj Items\\nhas data : list [ str ] = [ ] ;", shape=box];\n' + '  1 [label="BB1\\nobj Container\\nhas items : Items | None = None ;", shape=box];\n' + '  2 [label="BB2\\ndef comprehension_in_true_branch( c : Container ) -> list [ str ]", shape=box];\n' + '  3 [label="BB3\\nreturn [ x for x in c . items . data ]", shape=box];\n' + '  4 [label="BB4\\nc . items", shape=box];\n' + '  5 [label="BB5\\nreturn [ ]", shape=box];\n' + "  2 -> 4;\n" + '  4 -> 3 [label="T"];\n' + '  4 -> 5 [label="F"];\n' + "}\n"
+    );
+    assert dot == expected_dot;
+}
