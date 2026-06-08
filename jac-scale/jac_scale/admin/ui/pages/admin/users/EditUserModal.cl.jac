@@ -52,9 +52,9 @@ cl {
                                 type="checkbox"
                                 checked={editResetPassword}
                                 onChange={lambda e: any { editResetPassword = e.target.checked; }}
-                                className="w-4 h-4 rounded border-slate-600 bg-slate-950 text-orange-500 focus:ring-orange-500 focus:ring-offset-0"
+                                className="w-4 h-4 rounded border-line bg-bg text-accent focus:ring-accent focus:ring-offset-0"
                             />
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted">
                                 Require password reset
                             </span>
                         </label>
