@@ -89,6 +89,85 @@ test "user manager token validation" {
     }
 }
 
+test "user manager shares the same db path as runtime memory" {
+    import from jaclang.jac0core.runtime { JacRuntime }
+    import from jaclang.runtimelib.context { ExecutionContext }
+
+    with TemporaryDirectory() as tmpdir {
+        target = str(Path(tmpdir) / "main.jac");
+        orig_target = JacRuntime.get_full_target_path();
+        orig_ctx = JacRuntime.exec_ctx;
+        user_mgr = None;
+        ctx = None;
+        try {
+            JacRuntime.set_full_target_path(target);
+            ctx = ExecutionContext(base_path_dir=tmpdir, full_target_path=target);
+            JacRuntime.exec_ctx = ctx;
+            user_mgr = Jac.get_user_manager(tmpdir);
+            assert user_mgr._db_path == ctx.mem.l3.path , (
+                f"UserManager opened {user_mgr._db_path}, expected {ctx.mem.l3.path}"
+            );
+        } finally {
+            if user_mgr {
+                user_mgr.close();
+            }
+            if ctx {
+                ctx.close();
+            }
+            JacRuntime.set_full_target_path(orig_target);
+            JacRuntime.exec_ctx = orig_ctx;
+        }
+    }
+}
+
+test "guest root auto-recovers when stored anchor is missing" {
+    import asyncio;
+    import from uuid { UUID, uuid4 }
+    import from jaclang.jac0core.runtime { JacRuntime }
+    import from jaclang.runtimelib.context { ExecutionContext }
+    import from jaclang.runtimelib.server { UserManager }
+
+    with TemporaryDirectory() as tmpdir {
+        target = str(Path(tmpdir) / "main.jac");
+        orig_base = JacRuntime.get_base_path_dir();
+        orig_target = JacRuntime.get_full_target_path();
+        orig_ctx = JacRuntime.exec_ctx;
+        user_mgr = None;
+        ctx = None;
+        try {
+            ctx = ExecutionContext(base_path_dir=tmpdir, full_target_path=target);
+            JacRuntime.exec_ctx = ctx;
+            user_mgr = UserManager(base_path=tmpdir);
+            result = user_mgr.create_user("__guest__", "__no_password__");
+            original_root_id = result["root_id"];
+            missing_root_id = uuid4().hex;
+            user_mgr._conn.execute(
+                "UPDATE users SET root_id = ? WHERE username = ?",
+                (missing_root_id, "__guest__")
+            );
+            user_mgr._conn.commit();
+
+            repaired_root_id = asyncio.run(user_mgr.aensure_root_id("__guest__"));
+
+            assert repaired_root_id is not None;
+            assert repaired_root_id != missing_root_id;
+            assert repaired_root_id != original_root_id;
+            assert user_mgr.get_root_id("__guest__") == repaired_root_id;
+            assert ctx.mem.get(UUID(repaired_root_id)) is not None;
+        } finally {
+            if user_mgr {
+                user_mgr.close();
+            }
+            if ctx {
+                ctx.close();
+            }
+            JacRuntime.set_base_path(orig_base);
+            JacRuntime.set_full_target_path(orig_target);
+            JacRuntime.exec_ctx = orig_ctx;
+        }
+    }
+}
+
 # --- Faux Mode Tests ---
 test "faux flag prints endpoint docs" {
     with TemporaryDirectory() as tmpdir {

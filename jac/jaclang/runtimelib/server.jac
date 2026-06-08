@@ -75,10 +75,13 @@ obj UserManager {
 
     def postinit -> None;
     def _ensure_connection -> None;
+    def _create_root_id -> str;
+    def _root_anchor_exists(root_id: str) -> bool;
     def create_user(username: str, password: str) -> dict[str, str];
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def validate_token(token: str) -> (str | None);
     def get_root_id(username: str) -> (str | None);
+    def ensure_root_id(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);
     def user_exists(username: str) -> bool;
     def update_username(current_username: str, new_username: str) -> dict[str, str];
@@ -87,9 +90,9 @@ obj UserManager {
     ) -> dict[str, str];
 
     def close -> None;
-    # Async hot-path mirror: `get_root_id` touches a blocking SQLite read
-    # on every request and runs under async handlers, so offload it.
+    # Async hot-path mirrors: reads/guest-root repair touch blocking SQLite.
     async def aget_root_id(username: str) -> (str | None);
+    async def aensure_root_id(username: str) -> (str | None);
 }
 
 """Manages execution contexts for user operations.

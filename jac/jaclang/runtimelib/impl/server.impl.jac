@@ -11,16 +11,35 @@ import from jaclang.runtimelib.auth_models {
 impl UserManager.postinit -> None {
     import sqlite3;
     import threading;
-    # Check for data path override (JAC_DATA_PATH env var for read-only deployments like AppImage)
-    data_path_override = os.environ.get('JAC_DATA_PATH');
-    effective_data_path = data_path_override or self.base_path;
-    data_dir = os.path.join(effective_data_path, ".jac", "data");
-    os.makedirs(data_dir, exist_ok=True);
-    self._db_path = os.path.join(data_dir, "main.db");
+    import from jaclang.runtimelib.utils { get_db_path }
+    self._db_path = get_db_path(self.base_path, target_path=Jac.get_full_target_path())
+    or os.path.join(self.base_path, ".jac", "data", "main.db");
+    os.makedirs(os.path.dirname(self._db_path), exist_ok=True);
     self._conn = None;
     # RLock lets a caller that already holds the lock re-enter it (e.g.
     # create_user holding the lock while calling helpers that also lock).
     self._lock = threading.RLock();
+}
+
+"""Create and persist a fresh root anchor for a user."""
+impl UserManager._create_root_id -> str {
+    import from jaclang.jac0core.constructs { Root }
+    user_root = Root();
+    root_anchor = user_root.__jac__;
+    Jac.save(root_anchor);
+    Jac.commit(root_anchor);
+    return root_anchor.id.hex;
+}
+
+"""Return True when a stored root_id resolves in the current Memory backend."""
+impl UserManager._root_anchor_exists(root_id: str) -> bool {
+    import from uuid { UUID }
+    try {
+        anchor = Jac.get_context().mem.get(UUID(root_id));
+    } except Exception {
+        return False;
+    }
+    return anchor is not None;
 }
 
 """Lazily initialize SQLite connection when first needed."""
@@ -52,7 +71,6 @@ impl UserManager._ensure_connection -> None {
 
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
-    import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
     assert self._conn is not None;
     with self._lock {
@@ -64,12 +82,7 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
             return {'error': 'User already exists'};
         }
         # Use existing context instead of creating new one (avoids shelf locking issues)
-        ctx = Jac.get_context();
-        user_root = Root();
-        root_anchor = user_root.__jac__;
-        Jac.save(root_anchor);
-        Jac.commit(root_anchor);
-        root_id = root_anchor.id.hex;
+        root_id = self._create_root_id();
         token = secrets.token_urlsafe(32);
         password_hash = hashlib.sha256(password.encode()).hexdigest();
         self._conn.execute(
@@ -127,9 +140,38 @@ impl UserManager.get_root_id(username: str) -> (str | None) {
     return row[0] if row else None;
 }
 
+"""Return a user's root_id, repairing the guest root if its anchor is gone."""
+impl UserManager.ensure_root_id(username: str) -> (str | None) {
+    self._ensure_connection();
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT root_id FROM users WHERE username = ?", (username, )
+        );
+        row = cursor.fetchone();
+        if not row {
+            return None;
+        }
+        root_id = row[0];
+        if username != Con.GUEST.value or self._root_anchor_exists(root_id) {
+            return root_id;
+        }
+        new_root_id = self._create_root_id();
+        self._conn.execute(
+            "UPDATE users SET root_id = ? WHERE username = ?", (new_root_id, username)
+        );
+        self._conn.commit();
+        return new_root_id;
+    }
+}
+
 """Async mirror of get_root_id — offloads the SQLite read to a thread."""
 impl UserManager.aget_root_id(username: str) -> (str | None) {
     return await asyncio.to_thread(self.get_root_id, username);
+}
+
+"""Async mirror of ensure_root_id — offloads guest-root repair to a thread."""
+impl UserManager.aensure_root_id(username: str) -> (str | None) {
+    return await asyncio.to_thread(self.ensure_root_id, username);
 }
 
 """Get user data by username."""
@@ -375,7 +417,7 @@ context setup, report collection, and commit stay on the event loop.
 impl ExecutionManager.execute_function_sync(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    root_id = await self.user_manager.aget_root_id(username);
+    root_id = await self.user_manager.aensure_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
     }
@@ -412,7 +454,7 @@ User coroutine is awaited directly on the event loop.
 impl ExecutionManager.execute_function_async(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    root_id = await self.user_manager.aget_root_id(username);
+    root_id = await self.user_manager.aensure_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
     }
@@ -460,7 +502,7 @@ impl ExecutionManager.spawn_walker_sync(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     import from jaclang.jac0core.constructs { NodeArchetype }
-    root_id = await self.user_manager.aget_root_id(username);
+    root_id = await self.user_manager.aensure_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
     }
@@ -508,7 +550,7 @@ impl ExecutionManager.spawn_walker_async(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     import from jaclang.jac0core.constructs { NodeArchetype }
-    root_id = await self.user_manager.aget_root_id(username);
+    root_id = await self.user_manager.aensure_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
     }
