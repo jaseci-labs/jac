@@ -45,6 +45,17 @@ test "str" {
     run_with_both("prim_str.jac", "str_py", "str_cl", "str_na");
 }
 
+# --- String literal escape sequences (#6476 item 1), cl required ---
+test "string escapes" {
+    run_with_both(
+        "cl_string_escapes.jac",
+        "escapes_py",
+        "escapes_cl",
+        "escapes_na",
+        require=["cl"]
+    );
+}
+
 # --- String Types (BytesEmitter) ---
 test "bytes search" {
     run_with_both(
