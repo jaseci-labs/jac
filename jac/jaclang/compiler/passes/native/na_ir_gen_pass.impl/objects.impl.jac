@@ -1437,6 +1437,27 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     arg_vals.append(v);
                 }
             }
+            # A tuple appended/inserted into a list whose boxed element-struct is
+            # tracked (a bare `list` seeded with an `any`-containing tuple) must
+            # be stored in that exact layout, otherwise the unpack side reads the
+            # wrong field types. Box any concrete scalar that lands in an
+            # `any`/`JacVal` slot so producer and consumer agree. See #6511.
+            _elem_struct = self.var_list_elem_struct.get(target_name);
+            if _elem_struct is not None
+            and isinstance(_elem_struct, ir.PointerType)
+            and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
+                _tidx = -1;
+                if method_name == "append" and arg_vals {
+                    _tidx = 0;
+                } elif method_name == "insert" and len(arg_vals) > 1 {
+                    _tidx = 1;
+                }
+                if _tidx >= 0 {
+                    arg_vals[_tidx] = self._coerce_tuple_to_struct(
+                        arg_vals[_tidx], _elem_struct.pointee
+                    );
+                }
+            }
             if method_name == "append" {
                 self._set_rc_ctx(
                     "append",
@@ -1906,31 +1927,41 @@ impl NaIRGenPass._codegen_field_aug_assign(
 impl NaIRGenPass._codegen_field_assign(
     target: uni.AtomTrailer, value: ir.Value
 ) -> None {
+    # A field store whose receiver type / field can't be resolved used to
+    # vanish silently (the #6470 write-side analog). Surface it as E5090,
+    # unless a deeper diagnostic already pinpointed the cause.
+    _fa_errs = len(self.errors_had);
     target_name = self._get_name(target.target);
     field_name = self._get_name(target.right);
-    if field_name is None {
-        return;
-    }
-    # Resolve the type: try simple name first, then infer from expression
+    obj_val = self._codegen_expr(target.target);
     type_name: (str | None) = None;
     if target_name is not None {
         type_name = self.type_var_map.get(target_name);
     }
-    obj_val = self._codegen_expr(target.target);
-    if obj_val is None {
-        return;
-    }
-    if type_name is None {
+    if type_name is None and obj_val is not None {
         type_name = self._infer_type_name(obj_val);
     }
-    if type_name is None {
+    field_indices = self.struct_field_indices.get(type_name)
+        if type_name is not None
+        else None;
+    if (
+        field_name is None
+        or obj_val is None
+        or type_name is None
+        or field_indices is None
+        or field_name not in field_indices
+    ) {
+        if len(self.errors_had) == _fa_errs {
+            self.emit(
+                E5090,
+                node_override=target,
+                kind="field assignment",
+                name=(field_name or "<field>")
+            );
+        }
         return;
     }
-    field_indices = self.struct_field_indices.get(type_name);
     field_types = self.struct_field_types.get(type_name);
-    if field_indices is None or field_name not in field_indices {
-        return;
-    }
     idx = field_indices[field_name];
     ftype = field_types[field_name];
     value = self._coerce_type(value, ftype);

@@ -240,6 +240,18 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            # The first element fixed this list's boxed-tuple layout; coerce later
+            # tuple elements to match so a concrete scalar landing in an `any`
+            # slot is boxed (e.g. `[(seed, 0), (7, 0)]` with `seed: any`). #6511.
+            if self._pending_list_elem_struct is not None
+            and isinstance(self._pending_list_elem_struct, ir.PointerType)
+            and isinstance(
+                self._pending_list_elem_struct.pointee, ir.LiteralStructType
+            ) {
+                val = self._coerce_tuple_to_struct(
+                    val, self._pending_list_elem_struct.pointee
+                );
+            }
             _orig_val = val;
             val = self._box_value_tuple(val, loc=_linit_loc);
             _boxed_val = val;  # Save post-box, pre-bitcast for check

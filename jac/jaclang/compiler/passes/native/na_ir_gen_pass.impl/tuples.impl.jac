@@ -216,6 +216,41 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     return ptr;
 }
 
+"""Coerce a value tuple to a target struct layout, boxing/unboxing each field
+as needed (e.g. a concrete `int` field into an `any`/`JacVal` slot).
+
+A bare `list` erases its elements to `any`, so a tuple stored in it has a fixed
+physical layout (recovered by the unpack side from the list's element-struct).
+A tuple literal built from concrete values (`(7, 0)` -> `{i64, i64}`) does not
+match a layout whose slot is `any` (`{JacVal, i64}`) unless its scalar fields
+are boxed first. This reconciles the two so producer and consumer agree on the
+in-list layout.
+
+Returns the value unchanged when it is not a struct, the target is not a struct,
+the layouts already match, or the arities differ. See #6511."""
+impl NaIRGenPass._coerce_tuple_to_struct(
+    val: ir.Value, target_struct: ir.Type
+) -> ir.Value {
+    if not isinstance(val.type, ir.LiteralStructType)
+    or not isinstance(target_struct, ir.LiteralStructType) {
+        return val;
+    }
+    if val.type == target_struct
+    or len(val.type.elements) != len(target_struct.elements) {
+        return val;
+    }
+    out = ir.Constant(target_struct, ir.Undefined);
+    for i in range(len(target_struct.elements)) {
+        fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
+        tgt_ty = target_struct.elements[i];
+        if fld.type != tgt_ty {
+            fld = self._coerce_type(fld, tgt_ty);
+        }
+        out = self.builder.insert_value(out, fld, i, name=f"tcoerce.ins.{i}");
+    }
+    return out;
+}
+
 """Index into a tuple: tuple[i] -> element value. Handles both value and pointer tuples."""
 impl NaIRGenPass._codegen_tuple_index(
     tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType

@@ -525,6 +525,41 @@ test "slice object field osp insert shape" {
     assert f(3) == 4;  # append
 }
 
+# --- TestNativeBoxAnyTupleSlot (issue #6511) ---
+test "box int into any tuple slot via append" {
+    # A concrete int appended in a tuple to a bare list whose slot is `any`
+    # (the OSP-kernel work-stack shape) used to be stored unboxed and read back
+    # as 0. It must now round-trip through the `any` seam.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "osp_append_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box int into any tuple slot multiple appends" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "many_append_entry", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "box int into any tuple slot via list literal" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "lit_mix_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box float into any tuple slot" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "flt_append_entry", ctypes.c_double);
+    assert f() == 3.5;
+}
+
+test "box any tuple slot via param still works" {
+    # The already-working control: an `any` value entering the slot stays boxed.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "via_param_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
 # --- TestNativeInheritance ---
 test "inheritance dog speak" {
     (eng, _) = compile_native("inheritance.na.jac");

@@ -99,7 +99,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_with(nd);
     } elif isinstance(nd, uni.AssertStmt) {
         # AssertionError: evaluate condition, raise if false
-        cond = self._codegen_expr(nd.condition);
+        cond = self._codegen_required(nd.condition);
         if cond is not None {
             cond_bool = self._to_bool(cond);
             # assert fires when condition is FALSE
@@ -227,7 +227,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
         # as they are packed (the tuple box does not own its elements, and the
         # owning local is torn down at scope exit below).
         self._return_tuple_ctx = isinstance(nd.expr, uni.TupleVal);
-        val = self._codegen_expr(nd.expr);
+        val = self._codegen_required(nd.expr);
         self._return_tuple_ctx = False;
         self._list_type_hint = None;
         self._dict_val_type_hint = None;
@@ -330,7 +330,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
 """Generate if/else/elif statement with proper basic blocks."""
 impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
-    cond = self._codegen_expr(nd.condition);
+    cond = self._codegen_required(nd.condition);
     if cond is None {
         return;
     }
@@ -446,7 +446,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.builder.branch(cond_bb);
     # Condition block
     self.builder.position_at_end(cond_bb);
-    cond = self._codegen_expr(nd.condition);
+    cond = self._codegen_required(nd.condition);
     if cond is not None {
         cond = self._to_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
@@ -507,7 +507,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     self.builder.branch(cond_bb);
     # Condition block.
     self.builder.position_at_end(cond_bb);
-    cond = self._codegen_expr(nd.condition);
+    cond = self._codegen_required(nd.condition);
     if cond is not None {
         cond = self._to_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
@@ -794,6 +794,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
         }
     }
+    _rhs_errs_before = len(self.errors_had);
     value = self._codegen_expr(nd.value) if nd.value else None;
     self._list_type_hint = None;
     self._dict_val_type_hint = None;
@@ -900,6 +901,18 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
     }
     if value is None {
+        # An RHS that lowered to no value silently dropped the whole assignment
+        # (the #6470 class). Make it loud -- unless this is a bare typed
+        # declaration (`x: T;`, no initializer) or a deeper diagnostic already
+        # pinpointed the cause.
+        if nd.value is not None and len(self.errors_had) == _rhs_errs_before {
+            self.emit(
+                E5090,
+                node_override=nd.value,
+                kind="expression",
+                name=type(nd.value).__name__
+            );
+        }
         return;
     }
     targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
@@ -914,11 +927,20 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             if nd.aug_op is not None {
                 # Augmented assignment on field: self.field += val
                 # Load current field value, apply op, then store result
+                _faug_errs = len(self.errors_had);
                 field_val = self._codegen_field_aug_assign(
                     target_expr, value, nd.aug_op.value
                 );
                 if field_val is not None {
                     self._codegen_field_assign(target_expr, field_val);
+                } elif len(self.errors_had) == _faug_errs {
+                    # Field read / op could not be lowered: don't drop it silently.
+                    self.emit(
+                        E5090,
+                        node_override=target_expr,
+                        kind="augmented field assignment",
+                        name=(self._get_name(target_expr.right) or "<field>")
+                    );
                 }
             } else {
                 self._codegen_field_assign(target_expr, value);
@@ -927,6 +949,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
         # Handle index assignment: items[i] = val or expr[i] = val (lists or dicts)
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
+            _idx_errs_before = len(self.errors_had);
+            _idx_stored = False;
             idx_target_name = self._get_name(target_expr.target);
             target_val = self._codegen_expr(target_expr.target);
             if target_val is not None and target_expr.right?.slices {
@@ -957,6 +981,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 self._codegen_dict_set(
                                     target_val, idx_val, value, parts[0], parts[1]
                                 );
+                                _idx_stored = True;
                             }
                         } else {
                             # List assignment: list[idx] = value
@@ -974,10 +999,21 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 self._codegen_index_set(
                                     target_val, idx_val, value, elem_type_name
                                 );
+                                _idx_stored = True;
                             }
                         }
                     }
                 }
+            }
+            if not _idx_stored and len(self.errors_had) == _idx_errs_before {
+                # Subscript store dropped: container expr, index, or element/dict
+                # type could not be resolved natively. Surface it (#6470 class).
+                self.emit(
+                    E5090,
+                    node_override=target_expr,
+                    kind="subscript assignment",
+                    name=(idx_target_name or "<expr>")
+                );
             }
             continue;
         }
@@ -1820,9 +1856,22 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if self._try_iter_protocol_for(nd) {
         return;
     }
+    # Baseline for the silent-drop guards below: a `for` whose loop var,
+    # collection, or element type can't be lowered natively used to drop the
+    # entire loop body without a word (the #6470 class). Emit E5090 at each
+    # dead-end unless a deeper diagnostic already fired.
+    _for_errs0 = len(self.errors_had);
     # Extract loop variable name
     loop_var_name = self._get_name(nd.target);
     if loop_var_name is None {
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="for-loop target",
+                name=type(nd.target).__name__
+            );
+        }
         return;
     }
     _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -2179,6 +2228,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     coll_type_hint = _coll_memo_hint;
     collection_val = _coll_memo;
     if collection_val is None {
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd.collection,
+                kind="for-loop iterable",
+                name=type(nd.collection).__name__ if nd.collection else "<expr>"
+            );
+        }
         return;
     }
     # Determine element type of the list
@@ -2209,13 +2266,20 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             elem_type_name = "ptr";
         }
     }
-    if elem_type_name is None {
+    if elem_type_name is None or self.list_helpers.get(elem_type_name) is None {
+        # Iterating a value whose native element type / list helpers couldn't be
+        # resolved: don't drop the loop body silently (#6470 class).
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd.collection or nd,
+                kind="for-loop iterable element type",
+                name=(coll_name or "<expr>")
+            );
+        }
         return;
     }
     helpers = self.list_helpers.get(elem_type_name);
-    if helpers is None {
-        return;
-    }
     i64 = ir.IntType(64);
     # Get list length
     len_val = self.builder.call(helpers["len"], [collection_val], name="forl.len");
