@@ -8,6 +8,7 @@ import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
+import from jac_scale.abstractions.autoscalers.keda_autoscaler { KEDAAutoscaler }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
@@ -285,6 +286,42 @@ test "hpa autoscaler build manifests produces correct dict" {
         }
     };
     assert result == expected;
+}
+
+test "autoscaler factory creates keda autoscaler for engine=keda" {
+    # Ensures "keda" is a registered built-in engine — not just a custom override.
+    # This test will fail until KEDAAutoscaler and its factory registration exist.
+    autoscaler = AutoscalerFactory.create("keda", {});
+    assert isinstance(autoscaler, KEDAAutoscaler);
+}
+
+test "autoscaler factory error message lists both hpa and keda as valid engines" {
+    # When an operator typos the engine name they need to see valid options in the
+    # error.  A message that only says "hpa" after Phase 2 is shipped is misleading.
+    raised = False;
+    try {
+        AutoscalerFactory.create("unknown-engine", {});
+    } except ValueError as e {
+        raised = True;
+        assert "hpa" in str(e);
+        assert "keda" in str(e);
+    }
+    assert raised , "Expected ValueError for unknown engine";
+}
+
+test "hpa resource_name_for returns target name with hpa suffix" {
+    # Callers that formerly hardcoded f'{name}-hpa' must switch to this method.
+    # The test pins the exact contract so a rename doesn't silently break destroy.
+    hpa = AutoscalerFactory.create("hpa", {});
+    assert hpa.resource_name_for("my-app") == "my-app-hpa";
+}
+
+test "keda resource_name_for returns target name with scaledobject suffix" {
+    # destroy() on the Kubernetes target looks up the ScaledObject by name.
+    # A suffix mismatch means destroy() tries to delete a non-existent resource
+    # and the ScaledObject stays alive, continuing to scale the workload.
+    keda = AutoscalerFactory.create("keda", {});
+    assert keda.resource_name_for("my-app") == "my-app-scaledobject";
 }
 
 test "image registry factory register and create custom registry" {
