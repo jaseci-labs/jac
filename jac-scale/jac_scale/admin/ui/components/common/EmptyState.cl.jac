@@ -14,9 +14,7 @@ cl {
         title: str, message: str = "Coming soon", action: any = None
     ) -> JsxElement {
         return
-            <div
-                className="bg-surface border border-line rounded-lg overflow-hidden"
-            >
+            <div className="bg-surface border border-line rounded-lg overflow-hidden">
                 <div
                     className="flex items-center justify-between px-4 py-3 border-b border-line"
                 >

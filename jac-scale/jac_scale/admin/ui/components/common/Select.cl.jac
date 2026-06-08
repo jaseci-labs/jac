@@ -9,9 +9,7 @@ cl {
         return
             <div className={className}>
                 {label
-                and <label
-                    className="block text-xs font-medium text-muted mb-1.5"
-                >
+                and <label className="block text-xs font-medium text-muted mb-1.5">
                     {label}
                 </label>}
                 <select value={value} onChange={onChange} className={selectClass}>

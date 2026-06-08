@@ -42,7 +42,9 @@ cl {
 
         return
             <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
-                <p className="text-[11px] text-faint uppercase tracking-wider font-medium">
+                <p
+                    className="text-[11px] text-faint uppercase tracking-wider font-medium"
+                >
                     {label}
                 </p>
                 <p className={valueClass}>{value}</p>

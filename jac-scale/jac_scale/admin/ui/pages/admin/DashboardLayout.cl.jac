@@ -52,8 +52,8 @@ cl {
          };
 
     def:pub DashboardLayout -> JsxElement {
-        has activeTab: str = "metrics";
-        has isLight: bool = False;
+        has activeTab: str = "metrics",
+            isLight: bool = False;
 
         auth = useAuth();
         alert = useAlert();
@@ -63,7 +63,7 @@ cl {
         }
 
         # Flip the `.light` class on <html>; tokens in main.css do the rest.
-        def applyThemeClass(light: bool) -> None {
+        def applyThemeClass(light: bool) {
             htmlEl = globalThis.document.documentElement;
             if htmlEl {
                 if light {
@@ -74,7 +74,7 @@ cl {
             }
         }
 
-        def toggleTheme(e: any) -> None {
+        def toggleTheme(e: any) {
             newLight = not isLight;
             isLight = newLight;
             applyThemeClass(newLight);
@@ -83,12 +83,10 @@ cl {
 
         # Restore the persisted theme once on mount.
         useEffect(
-            lambda {
-                if getStorage("jac-admin-theme") == "light" {
-                    isLight = True;
-                    applyThemeClass(True);
-                }
-            },
+            lambda { if getStorage("jac-admin-theme") == "light" {
+                isLight = True;
+                applyThemeClass(True);
+            }},
             []
         );
 
@@ -107,14 +105,14 @@ cl {
         # nav item rendered the same icon. A dict lookup has no such trap.
         iconCls = "w-[17px] h-[17px] shrink-0";
         navIcons = {
-                 "users": <Users className={iconCls}/>,
-                 "sso": <ShieldCheck className={iconCls}/>,
-                 "metrics": <BarChart3 className={iconCls}/>,
-                 "llm_metrics": <BrainCircuit className={iconCls}/>,
-                 "llm_traces": <Bot className={iconCls}/>,
-                 "traces": <Workflow className={iconCls}/>,
-                 "logs": <ScrollText className={iconCls}/>
-             };
+            "users": <Users className={iconCls}/>,
+            "sso": <ShieldCheck className={iconCls}/>,
+            "metrics": <BarChart3 className={iconCls}/>,
+            "llm_metrics": <BrainCircuit className={iconCls}/>,
+            "llm_traces": <Bot className={iconCls}/>,
+            "traces": <Workflow className={iconCls}/>,
+            "logs": <ScrollText className={iconCls}/>
+        };
 
         uname = String(auth["currentUsername"] or "");
 
@@ -123,7 +121,9 @@ cl {
                 <aside
                     className="w-60 shrink-0 flex flex-col border-r border-line bg-surface"
                 >
-                    <div className="h-14 px-4 flex items-center gap-3 border-b border-line">
+                    <div
+                        className="h-14 px-4 flex items-center gap-3 border-b border-line"
+                    >
                         <div
                             className="w-8 h-8 rounded-md bg-accent flex items-center justify-center text-accent-fg"
                         >
@@ -136,7 +136,6 @@ cl {
                             <div className="text-[11px] text-faint">Administrator</div>
                         </div>
                     </div>
-
                     <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-5">
                         {[
                             <div key={group["label"]}>
@@ -156,7 +155,8 @@ cl {
                                                 or "text-muted hover:text-fg hover:bg-surface-2"
                                             )}
                                         >
-                                            {navIcons[item["id"]] or <Workflow className={iconCls}/>}
+                                            {navIcons[item["id"]]
+                                            or <Workflow className={iconCls}/>}
                                             <span>{item["label"]}</span>
                                         </button> for item in group["items"]
                                     ]}
@@ -164,15 +164,14 @@ cl {
                             </div> for group in navGroups
                         ]}
                     </nav>
-
                     <div className="px-2 py-2 border-t border-line space-y-0.5">
                         <button
                             onClick={toggleTheme}
                             className="w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-md text-muted hover:text-fg hover:bg-surface-2 transition-colors"
                         >
                             {isLight
-                                and <Moon className="w-[17px] h-[17px] shrink-0"/>
-                                or <Sun className="w-[17px] h-[17px] shrink-0"/>}
+                            and <Moon className="w-[17px] h-[17px] shrink-0"/>
+                            or <Sun className="w-[17px] h-[17px] shrink-0"/>}
                             <span>{isLight and "Dark mode" or "Light mode"}</span>
                         </button>
                         <button
@@ -184,7 +183,6 @@ cl {
                         </button>
                     </div>
                 </aside>
-
                 <main className="flex-1 min-w-0 flex flex-col bg-bg">
                     <Alert message={alert["message"]} type={alert["alertType"]}/>
                     <div className="flex-1 overflow-y-auto p-6">{renderContent()}</div>

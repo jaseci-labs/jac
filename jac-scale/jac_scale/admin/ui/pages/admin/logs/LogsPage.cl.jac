@@ -15,12 +15,7 @@ UX choices that distinguish this from raw Grafana:
 - Service dropdown auto-populated from microservices.routes config
 """
 
-cl import from "lucide-react" {
-    ScrollText,
-    RefreshCw,
-    AlertTriangle,
-    X
-}
+cl import from "lucide-react" { ScrollText, RefreshCw, AlertTriangle, X }
 
 cl {
     import from react { useEffect }
@@ -400,9 +395,7 @@ cl {
                                 )}
                                 onClick={lambda { openPanel(idx, line); }}
                             >
-                                <span
-                                    className="text-faint text-xs whitespace-nowrap"
-                                >
+                                <span className="text-faint text-xs whitespace-nowrap">
                                     {shortTime(line["ts"] or "")}
                                 </span>
                                 <span
@@ -488,8 +481,7 @@ cl {
                             <div className="text-fg font-mono break-all">
                                 {panelLine["ts"] or "-"}
                             </div>
-                            {panelLine["pod"]
-                            and <div className="text-faint">Pod</div>}
+                            {panelLine["pod"] and <div className="text-faint">Pod</div>}
                             {panelLine["pod"]
                             and <div className="text-fg font-mono break-all">
                                 {panelLine["pod"]}

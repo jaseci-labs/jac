@@ -26,9 +26,7 @@ cl {
 
     def:pub TableRow(children: any, className: str = "") -> JsxElement {
         return
-            <tr
-                className={"border-b border-line hover:bg-surface-2 " + className}
-            >
+            <tr className={"border-b border-line hover:bg-surface-2 " + className}>
                 {children}
             </tr>;
     }

@@ -155,9 +155,7 @@ cl {
                     {not detailLoading
                     and selectedTrace["invocation_id"]
                     and <div className="space-y-4">
-                        <div
-                            className="bg-surface border border-line rounded-lg p-5"
-                        >
+                        <div className="bg-surface border border-line rounded-lg p-5">
                             <h3 className="text-lg font-semibold text-fg mb-3">
                                 Agent Invocation
                             </h3>
@@ -193,9 +191,7 @@ cl {
                                             selectedTrace["aggregated_total_tokens"]
                                             or 0
                                         ) > (selectedTrace["total_tokens"] or 0)
-                                        and <span
-                                            className="text-faint text-xs ml-1"
-                                        >
+                                        and <span className="text-faint text-xs ml-1">
                                             {"(tree: " + formatTokens(
                                                 selectedTrace["aggregated_total_tokens"]
                                                 or 0
@@ -209,9 +205,7 @@ cl {
                                         {formatCost(selectedTrace["total_cost"] or 0)}{(
                                             selectedTrace["aggregated_total_cost"] or 0
                                         ) > (selectedTrace["total_cost"] or 0)
-                                        and <span
-                                            className="text-faint text-xs ml-1"
-                                        >
+                                        and <span className="text-faint text-xs ml-1">
                                             {"(tree: " + formatCost(
                                                 selectedTrace["aggregated_total_cost"]
                                                 or 0
@@ -229,9 +223,7 @@ cl {
                                 </div>
                                 {selectedTrace["parent_invocation_id"]
                                 and <div className="col-span-2">
-                                    <div className="text-faint mb-1">
-                                        Parent Trace
-                                    </div>
+                                    <div className="text-faint mb-1">Parent Trace</div>
                                     <div
                                         className="text-teal-400 font-mono text-xs cursor-pointer hover:underline"
                                         onClick={lambda { loadTraceDetail(
@@ -242,9 +234,7 @@ cl {
                                     </div>
                                 </div>}
                                 <div className="col-span-3">
-                                    <div className="text-faint mb-1">
-                                        Invocation ID
-                                    </div>
+                                    <div className="text-faint mb-1">Invocation ID</div>
                                     <div className="text-fg font-mono text-xs">
                                         {selectedTrace["invocation_id"]}
                                     </div>
@@ -277,9 +267,7 @@ cl {
                                 {selectedTrace["agent_response"]}
                             </pre>
                         </div>}
-                        <div
-                            className="bg-surface border border-line rounded-lg p-5"
-                        >
+                        <div className="bg-surface border border-line rounded-lg p-5">
                             <h3 className="text-lg font-semibold text-fg mb-3">
                                 LLM Calls ({str(len(selectedTrace["llm_calls"] or []))})
                             </h3>
@@ -323,9 +311,7 @@ cl {
                                         </div>
                                         <div className="grid grid-cols-4 gap-3 text-xs">
                                             <div>
-                                                <div className="text-faint">
-                                                    Tokens
-                                                </div>
+                                                <div className="text-faint">Tokens</div>
                                                 <div className="text-fg">
                                                     {formatTokens(
                                                         call["total_tokens"] or 0
@@ -333,9 +319,7 @@ cl {
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="text-faint">
-                                                    Prompt
-                                                </div>
+                                                <div className="text-faint">Prompt</div>
                                                 <div className="text-fg">
                                                     {formatTokens(
                                                         call["prompt_tokens"] or 0
@@ -566,9 +550,7 @@ cl {
                                 {(item["trace"]["child_count"] or 0) == 0
                                 and <span className="flex-shrink-0 w-5"/>}
                                 {item["depth"] > 0
-                                and <span className="text-faint text-xs mr-1">
-                                    └
-                                </span>}
+                                and <span className="text-faint text-xs mr-1">└</span>}
                                 <span
                                     className={getStatusBadge(
                                         item["trace"]["status"] or "unknown"

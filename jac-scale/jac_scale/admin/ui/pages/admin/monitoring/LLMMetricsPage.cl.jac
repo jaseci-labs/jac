@@ -112,12 +112,8 @@ cl {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
-                        <div className="text-sm text-faint mb-1">
-                            Total Invocations
-                        </div>
+                    <div className="bg-surface border border-line rounded-lg p-5">
+                        <div className="text-sm text-faint mb-1">Total Invocations</div>
                         <div className="text-3xl font-bold text-fg">
                             {summary["total_invocations"] or 0}
                         </div>
@@ -125,25 +121,19 @@ cl {
                             {str(summary["total_llm_calls"] or 0) + " LLM calls"}
                         </div>
                     </div>
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
+                    <div className="bg-surface border border-line rounded-lg p-5">
                         <div className="text-sm text-faint mb-1">Total Tokens</div>
                         <div className="text-3xl font-bold text-teal-400">
                             {formatTokens(summary["total_tokens"] or 0)}
                         </div>
                     </div>
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
+                    <div className="bg-surface border border-line rounded-lg p-5">
                         <div className="text-sm text-faint mb-1">Total Cost</div>
                         <div className="text-3xl font-bold text-amber-400">
                             {formatCost(summary["total_cost"] or 0)}
                         </div>
                     </div>
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
+                    <div className="bg-surface border border-line rounded-lg p-5">
                         <div className="text-sm text-faint mb-1">Avg Latency</div>
                         <div className="text-3xl font-bold text-purple-400">
                             {formatLatency(summary["avg_latency_ms"] or 0)}
@@ -154,23 +144,17 @@ cl {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
+                    <div className="bg-surface border border-line rounded-lg p-5">
                         <h3 className="text-lg font-semibold text-fg mb-4">
                             Per Model
                         </h3>
                         {modelKeys.length == 0
-                        and <div className="text-faint text-sm">
-                            No model data yet
-                        </div>}
+                        and <div className="text-faint text-sm">No model data yet</div>}
                         {modelKeys.length > 0
                         and <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr
-                                        className="text-muted border-b border-line"
-                                    >
+                                    <tr className="text-muted border-b border-line">
                                         <th className="text-left py-2 pr-4">Model</th>
                                         <th className="text-right py-2 px-2">Calls</th>
                                         <th className="text-right py-2 px-2">Tokens</th>
@@ -209,9 +193,7 @@ cl {
                             </table>
                         </div>}
                     </div>
-                    <div
-                        className="bg-surface border border-line rounded-lg p-5"
-                    >
+                    <div className="bg-surface border border-line rounded-lg p-5">
                         <h3 className="text-lg font-semibold text-fg mb-4">
                             Per Caller
                         </h3>
@@ -223,9 +205,7 @@ cl {
                         and <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr
-                                        className="text-muted border-b border-line"
-                                    >
+                                    <tr className="text-muted border-b border-line">
                                         <th className="text-left py-2 pr-4">Caller</th>
                                         <th className="text-right py-2 px-2">Calls</th>
                                         <th className="text-right py-2 px-2">Tokens</th>
