@@ -7,13 +7,13 @@ cl {
         }
 
         typeClasses = {
-            "success": "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
-            "error": "bg-red-500/20 text-red-400 border border-red-500/30",
-            "warning": "bg-amber-500/20 text-amber-400 border border-amber-500/30",
-            "info": "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+            "success": "bg-success-weak text-success border border-line",
+            "error": "bg-danger-weak text-danger border border-line",
+            "warning": "bg-warning-weak text-warning border border-line",
+            "info": "bg-surface-2 text-fg border border-line"
         };
 
-        classes = "fixed top-4 right-4 z-50 px-4 py-2 rounded text-sm font-medium " + (
+        classes = "fixed top-4 right-4 z-50 px-4 py-2 rounded-md text-sm font-medium shadow-md " + (
             typeClasses[type] or typeClasses["success"]
         );
 
@@ -26,12 +26,12 @@ cl {
         }
 
         typeClasses = {
-            "success": "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400",
-            "error": "bg-red-500/10 border border-red-500/20 text-red-400",
-            "warning": "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+            "success": "bg-success-weak border border-line text-success",
+            "error": "bg-danger-weak border border-line text-danger",
+            "warning": "bg-warning-weak border border-line text-warning"
         };
 
-        classes = "px-3 py-2 rounded text-sm mb-4 " + (
+        classes = "px-3 py-2 rounded-md text-sm mb-4 " + (
             typeClasses[type] or typeClasses["error"]
         );
 

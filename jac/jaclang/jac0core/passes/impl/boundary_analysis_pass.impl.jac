@@ -119,10 +119,15 @@ impl BoundaryAnalysisPass.enter_import(
                 else None;
             has_sv_prefix = sv_token is not None and sv_token.name == Tok.KW_SERVER;
             if (has_sv_prefix and not native_path and nd.items) {
+                # Key the binding on the bare module name (no leading relative
+                # dots) so it matches what PyastGen / the runtime use to find
+                # the provider; `.analytics` and `analytics` must register
+                # identically (#6507).
+                sv_module_name = nd.from_loc.base_module_name;
                 if in_server_module {
-                    self._register_sv_import(nd, module_name, InteropContext.SERVER);
+                    self._register_sv_import(nd, sv_module_name, InteropContext.SERVER);
                 } elif in_client_module {
-                    self._register_sv_import(nd, module_name, InteropContext.CLIENT);
+                    self._register_sv_import(nd, sv_module_name, InteropContext.CLIENT);
                 }
             }
             if (native_path and nd.items) {

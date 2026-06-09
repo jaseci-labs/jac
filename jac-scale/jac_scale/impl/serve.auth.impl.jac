@@ -79,6 +79,15 @@ impl JacAPIServerAuth.register_login_endpoint -> None {
             );
         }
         user_id = result.get('user_id', '');
+        # System-role accounts are not loginable over HTTP — return the same
+        # error as bad credentials to avoid account enumeration.
+        if self.user_manager.get_user_role(user_id) == 'system' {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Invalid credentials',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
         result['token'] = self.user_manager.create_jwt_token(user_id);
         return TransportResponse.success(
             data=dict[(str, JsonValue)](result), meta=Meta(extra={'http_status': 200})
@@ -112,6 +121,15 @@ impl JacAPIServerAuth.register_refresh_token_endpoint -> None {
         }
         if token.startswith('Bearer ') {
             token = token[7:];
+        }
+        # System-role tokens are not refreshable — they are issued only internally.
+        claims = self.user_manager.get_jwt_claims(token);
+        if claims and claims.get('role') == 'system' {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Invalid or expired token',
+                meta=Meta(extra={'http_status': 401})
+            );
         }
         new_token = self.user_manager.refresh_jwt_token(token);
         if not new_token {

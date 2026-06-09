@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 jobs:
@@ -44,3 +45,24 @@ jobs:
       - name: Run jac check (using .jacignore)
         run: |
           jac check . --ignore tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn
+
+      - name: Error-code breakdown (label "type-error-report")
+        if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
+        run: |
+          set +e
+          echo "Scanning the whole codebase (no ignores) for an error-code breakdown..."
+          jac check . --nowarn > jac-check-full.log 2>&1
+
+          {
+            echo "## jac check error-code breakdown (whole codebase, no ignores)"
+            echo ""
+            echo "| Error code | Count |"
+            echo "| --- | ---: |"
+            grep -oE 'error\[E[0-9]+\]' jac-check-full.log \
+              | grep -oE 'E[0-9]+' \
+              | sort | uniq -c | sort -rn \
+              | awk '{ printf "| %s | %d |\n", $2, $1; total += $1 }
+                     END { printf "| **TOTAL** | **%d** |\n", total }'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 0

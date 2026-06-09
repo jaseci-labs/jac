@@ -5,11 +5,11 @@ cl {
         return
             <table className="w-full">
                 <thead>
-                    <tr className="border-b border-slate-800">
+                    <tr className="border-b border-line">
                         {[
                             <th
                                 key={col["key"]}
-                                className={"px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider " + (
+                                className={"px-4 py-2 text-xs font-medium text-faint uppercase tracking-wider " + (
                                     col["align"] == "right"
                                     and "text-right"
                                     or "text-left"
@@ -26,9 +26,7 @@ cl {
 
     def:pub TableRow(children: any, className: str = "") -> JsxElement {
         return
-            <tr
-                className={"border-b border-slate-800/50 hover:bg-slate-800/30 " + className}
-            >
+            <tr className={"border-b border-line hover:bg-surface-2 " + className}>
                 {children}
             </tr>;
     }

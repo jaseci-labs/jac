@@ -240,8 +240,9 @@ test "execution: run produces output" {
         page.wait_for_selector(
             "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
         );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
         page.wait_for_function(
-            "document.querySelector('#block-plain .code-output')?.textContent?.trim().length > 0",
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
             timeout=PYODIDE_TIMEOUT
         );
         output = page.text_content("#block-plain .code-output");
@@ -267,7 +268,7 @@ test "execution: syntax error shows error" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-error");
         page.wait_for_function(
-            "document.querySelector('#block-error .code-output')?.textContent?.trim().length > 0",
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
             timeout=PYODIDE_TIMEOUT
         );
         output = page.text_content("#block-error .code-output");

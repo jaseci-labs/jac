@@ -46,10 +46,10 @@ test "topology_index_data survives Serializer round-trip" {
         r = root;
 
         for i in range(5) {
-            r +>: Knows :+> Person(name=f"person_{i}", age=20 + i);
+            r +>:Knows:+> Person(name=f"person_{i}", age=20 + i);
         }
         for i in range(3) {
-            r +>: LivesIn :+> City(name=f"city_{i}");
+            r +>:LivesIn:+> City(name=f"city_{i}");
         }
 
         # Verify index was built
@@ -105,10 +105,10 @@ test "topology index resolve_chain works after Serializer round-trip" {
         r = root;
 
         for i in range(10) {
-            r +>: Knows :+> Person(name=f"p{i}", age=i);
+            r +>:Knows:+> Person(name=f"p{i}", age=i);
         }
         for i in range(5) {
-            r +>: LivesIn :+> City(name=f"c{i}");
+            r +>:LivesIn:+> City(name=f"c{i}");
         }
 
         root_id = r.__jac__.id;
@@ -156,10 +156,10 @@ test "topology index survives sqlite persistence round-trip" {
         r = root;
 
         for i in range(5) {
-            r +>: Knows :+> Person(name=f"person_{i}", age=20 + i);
+            r +>:Knows:+> Person(name=f"person_{i}", age=20 + i);
         }
         for i in range(3) {
-            r +>: LivesIn :+> City(name=f"city_{i}");
+            r +>:LivesIn:+> City(name=f"city_{i}");
         }
 
         # Verify queries work before persistence
@@ -252,9 +252,9 @@ test "topology-only change is detected by _compute_hash dirty gate" {
 
         # Build an initial graph so the root carries a populated topology index.
         p0 = Person(name="p0", age=20);
-        r +>: Knows :+> p0;
+        r +>:Knows:+> p0;
         for i in range(1, 4) {
-            r +>: Knows :+> Person(name=f"p{i}", age=20 + i);
+            r +>:Knows:+> Person(name=f"p{i}", age=20 + i);
         }
 
         root_anchor = r.__jac__;
@@ -269,7 +269,7 @@ test "topology-only change is detected by _compute_hash dirty gate" {
         # A topology-only mutation: connect an edge *deeper* in the subtree
         # (p0 -> Person). on_edge_created updates the root's topology index, but
         # the root's own edge list and archetype fields are untouched.
-        p0 +>: Knows :+> Person(name="deep", age=99);
+        p0 +>:Knows:+> Person(name="deep", age=99);
 
         topo_after = root_anchor.topology_index_data;
         root_edges_after = [e.id for e in root_anchor.edges];
