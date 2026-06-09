@@ -725,44 +725,50 @@ impl MongoBackend.sync -> set {
         if not anchor.persistent {
             continue;
         }
-        # Check hash first — skip unchanged anchors without access check
-        current_hash = Serializer._compute_hash(anchor);
-        if current_hash == anchor.hash {
-            continue;
-        }
-        if not Jac.check_write_access(anchor) {
-            continue;
-        }
-        if isinstance(anchor, NodeAnchor) {
-            delta = anchor.edge_delta();
-            if delta is not None {
-                added = [str(eid) for eid in delta[0]];
-                removed = [str(eid) for eid in delta[1]];
-                if added or removed {
-                    atomic_updates.append((anchor, added, removed));
+        try {
+            # Check hash first: skip unchanged anchors without access check
+            current_hash = Serializer._compute_hash(anchor);
+            if current_hash == anchor.hash {
+                continue;
+            }
+            if not Jac.check_write_access(anchor) {
+                continue;
+            }
+            if isinstance(anchor, NodeAnchor) {
+                delta = anchor.edge_delta();
+                if delta is not None {
+                    added = [str(eid) for eid in delta[0]];
+                    removed = [str(eid) for eid in delta[1]];
+                    if added or removed {
+                        atomic_updates.append((anchor, added, removed));
+                        continue;
+                    }
+                }
+            }
+            if anchor.hash != 0 {
+                arch = anchor.archetype if anchor.is_populated() else None;
+                setattr_dirty: set[str] = (
+                    arch.__dict__.get('__jac_dirty_fields__') or set()
+                ).copy()
+                    if arch is not None
+                    else set();
+                derived = _derive_dirty_from_field_hashes(anchor);
+                dirty = setattr_dirty | derived;
+                if dirty {
+                    partial_updates.append((anchor, dirty));
                     continue;
                 }
             }
-        }
-        if anchor.hash != 0 {
-            arch = anchor.archetype if anchor.is_populated() else None;
-            setattr_dirty: set[str] = (
-                arch.__dict__.get('__jac_dirty_fields__') or set()
-            ).copy()
-                if arch is not None
-                else set();
-            derived = _derive_dirty_from_field_hashes(anchor);
-            dirty = setattr_dirty | derived;
-            if dirty {
-                partial_updates.append((anchor, dirty));
-                continue;
+            # First insert (hash == 0) or no field changes found: full upsert.
+            if isinstance(anchor, NodeAnchor) {
+                node_inserts.append(anchor);
+            } else {
+                edge_inserts.append(cast(EdgeAnchor, anchor));
             }
-        }
-        # First insert (hash == 0) or no field changes found: full upsert.
-        if isinstance(anchor, NodeAnchor) {
-            node_inserts.append(anchor);
-        } else {
-            edge_inserts.append(cast(EdgeAnchor, anchor));
+        } except Exception as e {
+            logger.warning(
+                f"MongoDB sync categorization failed for anchor {anchor.id}: {e}"
+            );
         }
     }
 
