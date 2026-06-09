@@ -702,9 +702,14 @@ obj MicroserviceManifestBuilder {
         # JAC_IMAGE_REF (B-01): the fully-resolved image ref, including the
         # K-29 content-id suffix (`app:dev-<id12>`). Surfaced into the pod so
         # an in-pod self-check (V-01) can report "running build X" and answer
-        # "did my deploy actually update?" with zero RBAC. Appended last so it
-        # wins over any user-supplied env of the same name.
-        env_list = self._build_env(svc_name, svc_cfg);
+        # "did my deploy actually update?" with zero RBAC. Any user-supplied
+        # entry of the same name is stripped first (rather than appending a
+        # duplicate and leaning on kubelet's last-wins) so the rendered YAML
+        # has a single, system-owned JAC_IMAGE_REF.
+        env_list = [
+            e for e in self._build_env(svc_name, svc_cfg)
+            if e["name"] != "JAC_IMAGE_REF"
+        ];
         env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.

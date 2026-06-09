@@ -62,6 +62,45 @@ test "_compute_build_sha returns 'unknown' when git is unavailable" {
 }
 
 
+test "_compute_build_sha returns the bare SHA when the tree is clean" {
+    # subprocess.run is called in order: rev-parse, then status --porcelain.
+    with mock.patch.object(
+        helpers_mod.shutil, "which", return_value="/usr/bin/git"
+    ) {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=0, stdout="")
+            ]
+        ) {
+            assert helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456";
+        }
+    }
+}
+
+
+test "_compute_build_sha appends -dirty when the tree has uncommitted changes" {
+    with mock.patch.object(
+        helpers_mod.shutil, "which", return_value="/usr/bin/git"
+    ) {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=0, stdout=" M app.jac\n")
+            ]
+        ) {
+            assert (
+                helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456-dirty"
+            );
+        }
+    }
+}
+
+
 test "ensure_dockerignore writes template + preserves FE dist; never overwrites" {
     with tempfile.TemporaryDirectory() as tmp {
         ctx = Path(tmp);

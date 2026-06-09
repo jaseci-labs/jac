@@ -9,6 +9,7 @@ and the entry point in `auto_build.jac` call into here.
 import os;
 import shutil;
 import subprocess;
+import sys;
 import from pathlib { Path }
 
 
@@ -171,13 +172,49 @@ def ensure_dockerignore(context_dir: Path) -> bool {
 }
 
 
-"""Best-effort short build identifier for stamping into the image as
-JAC_BUILD_SHA (B-01). Uses the git short SHA of the build context when
-available, "unknown" otherwise. Stable per commit, so rebuilds of the
-same commit reuse the cached ENV layer; an in-pod self-check can read
+"""One-line stderr notice when build identity can't be derived, so a
+non-git deploy doesn't silently ship JAC_BUILD_SHA=unknown."""
+def _warn_build_sha_unavailable(reason: str) {
+    print(
+        f"[jac-scale] JAC_BUILD_SHA unavailable ({reason}); stamping "
+        "'unknown'. Deploy from a git checkout for build identity.",
+        file=sys.stderr
+    );
+}
+
+
+"""True if the git tree at `context_dir` has staged, unstaged, or
+untracked changes. Untracked counts: `COPY . /app` pulls them into the
+image, so the build doesn't match HEAD. Best-effort - False on error."""
+def _git_tree_dirty(context_dir: Path) -> bool {
+    try {
+        result = subprocess.run(
+            ["git", "-C", str(context_dir), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_PROBE_TIMEOUT_S
+        );
+    } except Exception {
+        return False;
+    }
+    if result.returncode != 0 {
+        return False;
+    }
+    return bool(result.stdout.strip());
+}
+
+
+"""Best-effort build identifier for stamping into the image as
+JAC_BUILD_SHA (B-01): the 12-char git commit SHA of the build context,
+suffixed `-dirty` when the tree has uncommitted/untracked changes so the
+stamp never claims a clean commit that doesn't match what was COPY'd in.
+Falls back to "unknown" (with a warning) when the context isn't a git
+repo or git is absent. Stable per clean commit, so rebuilds of the same
+commit reuse the cached ENV layer; an in-pod self-check can read
 JAC_BUILD_SHA to report "running build X" with zero RBAC."""
 def _compute_build_sha(context_dir: Path) -> str {
     if shutil.which("git") is None {
+        _warn_build_sha_unavailable("git CLI not found");
         return "unknown";
     }
     try {
@@ -188,13 +225,22 @@ def _compute_build_sha(context_dir: Path) -> str {
             timeout=_DOCKER_PROBE_TIMEOUT_S
         );
     } except Exception {
+        _warn_build_sha_unavailable(f"git rev-parse failed in {context_dir}");
         return "unknown";
     }
     if result.returncode != 0 {
+        _warn_build_sha_unavailable(f"{context_dir} is not a git repository");
         return "unknown";
     }
     sha = result.stdout.strip();
-    return sha if sha else "unknown";
+    if not sha {
+        _warn_build_sha_unavailable(f"empty git SHA for {context_dir}");
+        return "unknown";
+    }
+    if _git_tree_dirty(context_dir) {
+        return f"{sha}-dirty";
+    }
+    return sha;
 }
 
 
@@ -246,6 +292,14 @@ def run_docker_build(
         cmd.append(f"{key}={value}");
     }
     # Stamp build identity (B-01) unless the caller already supplied one.
+    # NOTE: this ENV layer feeds the image config digest that K-29's
+    # content-addressed tag is derived from, so a new commit changes the tag
+    # and forces a rollout even when code/deps are byte-identical. This
+    # (re)couples rollouts to commit identity, not just content - intended,
+    # since a new commit is a new build identity, but it does soften K-29's
+    # "no churn unless content changed" to "no churn unless the commit
+    # changed". (The "stamped last" Dockerfile note is about build-time layer
+    # caching, a separate concern from rollout churn.)
     if "JAC_BUILD_SHA" not in build_args {
         cmd.append("--build-arg");
         cmd.append(f"JAC_BUILD_SHA={_compute_build_sha(context_dir)}");
