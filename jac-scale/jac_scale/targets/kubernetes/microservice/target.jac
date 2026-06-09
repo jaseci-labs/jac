@@ -32,6 +32,7 @@ import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
 import from jac_scale.abstractions.autoscaler {
     AutoscalerSpec,
     Trigger,
+    TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET
 }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
@@ -522,14 +523,33 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 )
             ];
-            for t in self.k8s_config.extra_triggers {
-                triggers.append(
-                    Trigger(
-                        type=t["type"],
-                        metadata=t.get("metadata", {}),
-                        name=t.get("name")
-                    )
+            for raw in cfg.get("triggers", []) {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
                 );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            for raw in self.k8s_config.extra_triggers {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
             }
             autoscaler_name = autoscaler.resource_name_for(k8s_name);
             autoscaler.apply(
