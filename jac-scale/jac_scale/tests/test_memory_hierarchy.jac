@@ -1758,14 +1758,18 @@ test "L1 invalidation: GC reclaims the registry and clears stale marks" {
     import gc;
     import from uuid { uuid4 }
     import from jac_scale.l1_invalidation {
-        register_l1, evict_local_l1, new_l1_id, _l1_registry, _stale_marks
+        register_l1,
+        evict_local_l1,
+        new_l1_id,
+        _l1_registry,
+        _stale_marks
     }
 
     aid = uuid4();
     lid = new_l1_id();
     mem = _FakeL1(__mem__={aid: "x"});
     register_l1(lid, mem);
-    evict_local_l1(str(aid), new_l1_id());   # leave a mark under lid
+    evict_local_l1(str(aid), new_l1_id());  # leave a mark under lid
     assert lid in _l1_registry , "registered id must be present";
     assert lid in _stale_marks , "mark must be present";
     del mem;
