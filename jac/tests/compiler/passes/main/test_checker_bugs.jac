@@ -32,6 +32,7 @@ Bug index:
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
+  #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
@@ -923,6 +924,15 @@ test "bug_starguard_1_single_segment_reexport_resolves" {
         "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
         "`from M import *` must resolve. Marker was Unknown "
         f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_byte_literal_typed_as_bytes" {
+    program = compile_and_check("checker_bytes_literal.jac");
+    assert program.errors_had == [] , (
+        "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
+        "so it assigns to bytes and concatenates with other bytes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
 
