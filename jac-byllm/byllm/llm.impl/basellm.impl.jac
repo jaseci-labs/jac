@@ -404,10 +404,131 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream {
         return self._invoke_react_loop_streaming(mt_run);
     }
+    return self._invoke_typed_retry(mt_run);
+}
+
+
+"""Invoke the non-streaming path, regenerating empty/malformed typed output.
+
+A weak model may emit empty content or unparseable JSON for a structured return;
+retry up to `max_output_retries` (default 3), resetting to the original prompt
+between attempts. See _typed_retry_feedback for the corrective message.
+"""
+impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
+    # Resolve via call_params > self.call_params > jac.toml > 3. Explicit None
+    # checks (not `or`) keep an intentional 1; clamp to >=1 (always one attempt).
+    max_attempts = mt_run.call_params.get("max_output_retries");
+    if max_attempts is None {
+        max_attempts = self.call_params.get("max_output_retries");
+    }
+    if max_attempts is None {
+        max_attempts = _call_params_config.get("max_output_retries");
+    }
+    if max_attempts is None {
+        max_attempts = 3;
+    }
+    max_attempts = max(1, int(max_attempts));
+    base_msgs = list(mt_run.messages);
+    attempt = 0;
+    last_err: object = None;
+    last_reason = "";
     try {
-        return self._invoke_react_loop(mt_run);
+        while True {
+            attempt += 1;
+            if attempt > 1 {
+                # Reset to the original prompt, then re-state the contract.
+                mt_run.messages = list(base_msgs);
+                mt_run._has_final_output = False;
+                mt_run._final_output = None;
+                mt_run.add_scaffolding_message(
+                    self._typed_retry_feedback(mt_run, last_reason)
+                );
+            }
+            try {
+                result = self._invoke_react_loop(mt_run);
+            } except OutputConversionError as e {
+                last_err = e;
+                last_reason = f"The output parser reported: {e}.";
+                self.log_info(
+                    f"[byllm] typed-output attempt {attempt}/{max_attempts} "
+                    + f"failed to parse: {e}"
+                );
+                if attempt >= max_attempts {
+                    raise;
+                }
+                continue;
+            }
+            if self._structured_output_ok(mt_run, result) {
+                return result;
+            }
+            last_reason = (
+                "The previous response was empty or did not contain a JSON "
+                + "object (it could not be converted to the required type)."
+            );
+            last_err = OutputConversionError(
+                f"LLM returned a non-conforming value for return type "
+                + f"'{mt_run.resp_type}' (got '{type(result).__name__}'); the "
+                + "response was likely empty or not valid JSON"
+            );
+            self.log_info(
+                f"[byllm] typed-output attempt {attempt}/{max_attempts} "
+                + "returned a non-conforming value; retrying"
+            );
+            if attempt >= max_attempts {
+                raise last_err;
+            }
+        }
     } finally {
         mt_run.write_back_conversation();
+    }
+}
+
+
+"""Build the corrective USER message injected before a typed-output retry.
+
+Re-states the failure and the JSON schema, demanding a raw JSON object only.
+"""
+impl BaseLLM._typed_retry_feedback(mt_run: MTRuntime, reason: str) -> Message {
+    rt = mt_run.resp_type;
+    type_name = rt.__name__ if (rt is not None and hasattr(rt, "__name__")) else str(rt);
+    # get_typed_output_schema, not get_output_schema (None when tools present),
+    # so the contract still shows when output arrives via finish_tool.
+    schema = mt_run.get_typed_output_schema();
+    schema_txt = (
+        json.dumps(schema, ensure_ascii=False) if schema else "(schema unavailable)"
+    );
+    return Message(
+        role=MessageRole.USER,
+        content=(
+            f"Your previous response could not be used. {reason} "
+            + f"You MUST reply with ONLY a single JSON object that validates "
+            + f"against this JSON schema for `{type_name}`:\n{schema_txt}\n"
+            + "Output the raw JSON object only, with no explanation, no reasoning "
+            + "text, no markdown code fences, nothing before or after the JSON."
+        )
+    );
+}
+
+
+"""True when `value` is an acceptable result for the runtime's return type.
+
+None/str accept anything. For a structured type only a blank string is rejected
+(parse_response returns the raw response when empty, the failure this targets);
+a non-empty string means a subclass like MockLLM bypassed parsing, so accept it.
+Otherwise a best-effort isinstance check (uncheckable generics pass).
+"""
+impl BaseLLM._structured_output_ok(mt_run: MTRuntime, value: object) -> bool {
+    rt = mt_run.resp_type;
+    if rt is None or rt is str {
+        return True;
+    }
+    if isinstance(value, str) {
+        return value.strip() != "";
+    }
+    try {
+        return isinstance(value, rt);
+    } except Exception {
+        return True;
     }
 }
 

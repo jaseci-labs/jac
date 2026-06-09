@@ -86,6 +86,9 @@ obj BaseLLM {
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
     async def ainvoke(mt_run: MTRuntime) -> object;
+    def _invoke_typed_retry(mt_run: MTRuntime) -> object;
+    def _structured_output_ok(mt_run: MTRuntime, value: object) -> bool;
+    def _typed_retry_feedback(mt_run: MTRuntime, reason: str) -> Message;
     def _invoke_react_loop(mt_run: MTRuntime) -> object;
     def _invoke_react_loop_streaming(
         mt_run: MTRuntime
