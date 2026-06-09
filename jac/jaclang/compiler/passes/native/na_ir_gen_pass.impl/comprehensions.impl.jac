@@ -754,20 +754,15 @@ impl NaIRGenPass._codegen_set_compr_loops(
         }
     }
     # List iteration
-    self._last_type_node_hint = None;
     coll_val = self._codegen_expr(collection);
-    coll_type_hint = self._last_type_node_hint;
     if coll_val is None {
         return;
     }
     coll_elem_type_name = self._infer_list_elem_type(coll_val);
     # Fallback: if coll_val is a generic ptr (e.g., from vtable dispatch),
-    # use the _last_type_node_hint (method return type AST) to infer list elem type.
-    if coll_elem_type_name is None and coll_type_hint is not None {
-        (_, inner_llvm_type, inner_elem_name) = self._peel_list_type(coll_type_hint);
-        if inner_elem_name is not None {
-            coll_elem_type_name = inner_elem_name;
-        }
+    # use the checked element type of the collection expression.
+    if coll_elem_type_name is None {
+        coll_elem_type_name = self._elem_spec_of(collection);
     }
     # Fallback: if still None, treat unknown ptr results as ptr-element lists
     if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
@@ -790,10 +785,10 @@ impl NaIRGenPass._codegen_set_compr_loops(
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     actual_elem_type = coll_helpers["elem_type"];
     # Resolve inner element type for ptr lists (e.g., list[Move] -> Move*)
-    if coll_elem_type_name == "ptr" and coll_type_hint is not None {
-        (_, inner_llvm_type, _) = self._peel_list_type(coll_type_hint);
-        if inner_llvm_type is not None {
-            actual_elem_type = inner_llvm_type;
+    if coll_elem_type_name == "ptr" {
+        _scompr_inner = self._list_elem_llvm_of(collection);
+        if _scompr_inner is not None and isinstance(_scompr_inner, ir.PointerType) {
+            actual_elem_type = _scompr_inner;
         }
     }
     loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);

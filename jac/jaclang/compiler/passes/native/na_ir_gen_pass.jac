@@ -162,7 +162,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         field_type_node: dict[str, dict] = {},
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
-        _last_type_node_hint: (object | None) = None,
         # True while codegen'ing the TupleVal of a `return (...)`. In that
         # context borrowed (field-load / element-read) pointer elements must be
         # retained so they outlive the owning local's scope-exit teardown — the
@@ -575,7 +574,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         coll_name: (str | None), coll_node: (object | None)
     ) -> (ir.Type | None);
 
-    def _resolve_ptr_elem_cast_type(type_node: (object | None)) -> (ir.Type | None);
     def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     # Phase 7: String Methods and Builtins
     def _codegen_string_index(

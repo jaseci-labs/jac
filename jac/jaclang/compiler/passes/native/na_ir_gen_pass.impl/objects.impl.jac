@@ -1623,14 +1623,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
-    # Save return type hint — will be set AFTER args evaluation to avoid overwrite
-    method_ret_type_hint: (object | None) = None;
-    if full_name in self.method_ast_sigs {
-        method_sig = self.method_ast_sigs[full_name];
-        if method_sig?.return_type and method_sig.return_type is not None {
-            method_ret_type_hint = method_sig.return_type;
-        }
-    }
     # Get the object pointer (reuse if already computed in chained path)
     if obj_val is None {
         obj_val = self._codegen_expr(trailer.target);
@@ -1684,10 +1676,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if type_name in self.has_vtable {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
-            # Set return type hint AFTER call (args eval may have overwritten it)
-            if method_ret_type_hint is not None {
-                self._last_type_node_hint = method_ret_type_hint;
-            }
             if isinstance(func.return_value.type, ir.VoidType) {
                 return ir.Constant(ir.IntType(64), 0);
             }
@@ -1708,10 +1696,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
-    # Set return type hint AFTER call (args eval may have overwritten it)
-    if method_ret_type_hint is not None {
-        self._last_type_node_hint = method_ret_type_hint;
-    }
     # Return void calls as None
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);

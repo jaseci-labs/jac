@@ -310,10 +310,6 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
-        # Set type node hint for subsequent chained access
-        if var_name in self.var_type_node {
-            self._last_type_node_hint = self.var_type_node[var_name];
-        }
         return self.builder.load(alloca, name=var_name);
     }
     if var_name in self.func_symtab {
@@ -1179,14 +1175,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = _fa_type_name;
                 obj_val = self._codegen_expr(nd.target);
                 if obj_val is not None {
-                    result = self._codegen_field_access(obj_val, right_name, type_name);
-                    # Set type node hint for chained access
-                    if type_name in self.field_type_node {
-                        self._last_type_node_hint = self.field_type_node[type_name].get(
-                            right_name
-                        );
-                    }
-                    return result;
+                    return self._codegen_field_access(obj_val, right_name, type_name);
                 }
             }
         }
@@ -1196,13 +1185,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if obj_val is not None {
                 type_name = self._infer_type_name(obj_val);
                 if type_name is not None {
-                    result = self._codegen_field_access(obj_val, right_name, type_name);
-                    if type_name in self.field_type_node {
-                        self._last_type_node_hint = self.field_type_node[type_name].get(
-                            right_name
-                        );
-                    }
-                    return result;
+                    return self._codegen_field_access(obj_val, right_name, type_name);
                 }
             }
         }
@@ -1295,21 +1278,16 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         result = self._codegen_index(
                             target_val, idx_val, elem_type_name
                         );
-                        # Bitcast ptr list elements to correct inner type
+                        # Bitcast ptr list elements to the checked inner type
                         if result is not None and elem_type_name == "ptr" {
-                            var_tn = self.var_type_node.get(target_name);
-                            cast_type = self._resolve_ptr_elem_cast_type(var_tn);
-                            if cast_type is not None and result.type != cast_type {
+                            cast_type = self._list_elem_llvm_of(nd.target);
+                            if (
+                                isinstance(cast_type, ir.PointerType)
+                                and result.type != cast_type
+                            ) {
                                 result = self.builder.bitcast(
                                     result, cast_type, name="idx.cast"
                                 );
-                            }
-                            # Propagate inner type node for further chaining
-                            if var_tn is not None {
-                                (inner_node, inner_llvm, inner_elem) = self._peel_list_type(
-                                    var_tn
-                                );
-                                self._last_type_node_hint = inner_node;
                             }
                         }
                         return result;
@@ -1318,28 +1296,14 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         } else {
             # Chained index: evaluate target expression, infer list type or string
-            # Capture the type node hint before evaluating (set by field access in chain)
-            pre_type_hint = self._last_type_node_hint;
-            self._last_type_node_hint = None;
             target_val = self._codegen_expr(nd.target);
-            # Grab the hint set during target evaluation (e.g. field access sets it)
-            chain_type_hint = self._last_type_node_hint;
-            if chain_type_hint is None {
-                chain_type_hint = pre_type_hint;
-            }
             if target_val is not None {
                 # Check for string indexing: s[i] (only real i8* strings, not list ptrs)
                 i8p = ir.IntType(8).as_pointer();
                 if target_val.type == i8p {
-                    # If chain type hint indicates this is a list, don't string-index
-                    is_list_from_hint = (
-                        chain_type_hint is not None
-                        and self._get_list_elem_from_type_node(
-                            chain_type_hint
-                        ) is not None
-                    );
+                    # If the checked type says this is a list, don't string-index
                     is_known_list = self._list_spec_of(nd.target) is not None;
-                    if not is_known_list and not is_list_from_hint {
+                    if not is_known_list {
                         slices = nd.right.slices or [];
                         if slices {
                             idx_node = slices[0];
@@ -1367,23 +1331,18 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             result = self._codegen_index(
                                 target_val, idx_val, elem_type_name
                             );
-                            # Bitcast ptr list elements using chain type hint
-                            if result is not None
-                            and elem_type_name == "ptr"
-                            and chain_type_hint is not None {
-                                cast_type = self._resolve_ptr_elem_cast_type(
-                                    chain_type_hint
-                                );
-                                if cast_type is not None and result.type != cast_type {
+                            # Bitcast ptr list elements using the checked
+                            # element type of the target list expression.
+                            if result is not None and elem_type_name == "ptr" {
+                                cast_type = self._list_elem_llvm_of(nd.target);
+                                if (
+                                    isinstance(cast_type, ir.PointerType)
+                                    and result.type != cast_type
+                                ) {
                                     result = self.builder.bitcast(
                                         result, cast_type, name="chain.idx.cast"
                                     );
                                 }
-                                # Propagate inner type node for further chaining
-                                (inner_node, inner_llvm, inner_elem) = self._peel_list_type(
-                                    chain_type_hint
-                                );
-                                self._last_type_node_hint = inner_node;
                             }
                             return result;
                         }

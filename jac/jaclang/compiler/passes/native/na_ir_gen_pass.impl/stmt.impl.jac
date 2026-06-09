@@ -1939,17 +1939,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # doing the work N times AND leaking the unused results. We evaluate here a
     # single time (with the list element-type hint set, so list literals are
     # typed correctly) and reuse `_coll_memo` in the dict / string / set / list
-    # paths below. `_coll_memo_hint` carries the return-type node for a method
-    # call so the list path can recover the element type.
+    # paths below.
     coll_name = self._get_name(nd.collection);
     self._list_type_hint = None;
     _hint0 = self._elem_spec_of(nd.collection);
     if _hint0 is not None {
         self._list_type_hint = _hint0;
     }
-    self._last_type_node_hint = None;
     _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
-    _coll_memo_hint = self._last_type_node_hint;
     self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
     # Dict-ness comes from the checked type of the collection expression.
@@ -2128,7 +2125,6 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Reuse the single evaluation captured at the top of this function
     # (see `_coll_memo`); re-evaluating would re-run the collection
     # expression's side effects and leak the extra results.
-    coll_type_hint = _coll_memo_hint;
     collection_val = _coll_memo;
     if collection_val is None {
         if len(self.errors_had) == _for_errs0 {
@@ -2143,12 +2139,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     # Determine element type of the list from the value's LLVM shape
     elem_type_name: (str | None) = self._infer_list_elem_type(collection_val);
-    # Fallback: use _last_type_node_hint from method call return type
-    if elem_type_name is None and coll_type_hint is not None {
-        hint_elem = self._get_list_elem_from_type_node(coll_type_hint);
-        if hint_elem is not None {
-            elem_type_name = hint_elem;
-        }
+    # Fallback: the checked element type of the collection expression
+    if elem_type_name is None {
+        elem_type_name = self._elem_spec_of(nd.collection);
     }
     # Fallback: if still None and collection is a list ptr, assume ptr elements.
     # Skip if collection is a set type (sets use different helpers).
@@ -2185,33 +2178,16 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     idx_alloca = self._entry_alloca(i64, "forl.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     # Resolve actual element type for ptr lists (before allocating loop var)
+    # from the checked type of the collection expression.
     actual_elem_type = helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
-    # Get the type node for the collection (from variable or from field access hint)
-    coll_type_node: (object | None) = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        coll_type_node = self.var_type_node[coll_name];
-    } elif coll_type_hint is not None {
-        coll_type_node = coll_type_hint;
-    }
     if elem_type_name == "ptr" {
         inner_type = self._resolve_for_loop_elem_type(coll_name, nd.collection);
-        # Fallback: use coll_type_hint from field access
-        if inner_type is None and coll_type_node is not None {
-            (_, inner_type_from_hint, _) = self._peel_list_type(coll_type_node);
-            if inner_type_from_hint is not None {
-                inner_type = inner_type_from_hint;
-            }
+        if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
+            inner_type = None;
         }
         if inner_type is not None {
             actual_elem_type = inner_type;
-            # Propagate inner type node for nested access
-            if coll_type_node is not None {
-                (inner_node, _, _) = self._peel_list_type(coll_type_node);
-                if inner_node is not None {
-                    self.var_type_node[loop_var_name] = inner_node;
-                }
-            }
         }
     }
     # Allocate loop variable with resolved element type.

@@ -2071,21 +2071,4 @@ impl NaIRGenPass._resolve_for_loop_elem_type(
     # Element type comes from the checked type of the collection expression.
     return self._list_elem_llvm_of(coll_node);
 }
-
-"""Resolve the LLVM type that ptr list elements should be bitcast to,
-given a Jac type AST node for the list variable/field.
-For list[list[int]], returns List.i64* (the type of each element).
-For list[Piece|None], returns Piece* (the type of each element)."""
-impl NaIRGenPass._resolve_ptr_elem_cast_type(
-    type_node: (object | None)
-) -> (ir.Type | None) {
-    if type_node is None {
-        return None;
-    }
-    (inner, inner_type, inner_elem) = self._peel_list_type(type_node);
-    if inner_type is not None and isinstance(inner_type, ir.PointerType) {
-        return inner_type;
-    }
-    return None;
-}
 # ─── Phase 7: String Methods and Builtins ─────────────────────
