@@ -17,9 +17,19 @@ with only known usage keys - this avoids colliding with real tuple return types.
 """
 impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
+    # Record the prompt this call saw (joined message contents) before adding
+    # the mock's own assistant turn, so tests can inspect retry feedback.
+    self.seen_prompts.append(
+        "\n".join([str(getattr(m, "content", m)) for m in mt_run.messages])
+    );
     message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
     mt_run.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
+    # Error response: raise the wrapped exception (used to verify that non
+    # OutputConversionError failures propagate without triggering a retry).
+    if isinstance(output, MockError) {
+        raise output.error;
+    }
     # Unpack (payload, usage) tuple when tests need to inject usage metadata.
     # Both conditions must hold to avoid colliding with real tuple return types:
     #   1. first element is a MockToolCall or list[MockToolCall] (never a real LLM output type)
@@ -43,6 +53,14 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             output = first;
             usage = second;
         }
+    }
+    # Raw text response: route through parse_response exactly like the real
+    # dispatch, so structured types convert and malformed JSON raises
+    # OutputConversionError (which drives the typed-output retry loop).
+    if isinstance(output, MockRawResponse) {
+        return CompletionResult(
+            output=mt_run.parse_response(output.content), tool_calls=[], usage=usage
+        );
     }
     # Support batch tool calls: list[MockToolCall] -> multiple ToolCalls in one response.
     if isinstance(output, list)

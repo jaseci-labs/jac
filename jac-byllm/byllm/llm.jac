@@ -30,6 +30,8 @@ import from byllm.types {
     CompletionResult,
     LiteLLMMessage,
     MockToolCall,
+    MockRawResponse,
+    MockError,
     StreamEvent,
     Tool,
     ToolCall,
@@ -132,6 +134,11 @@ Useful for unit testing and development without making real API calls.
 Configure outputs via the 'outputs' kwarg to control mock responses.
 """
 obj MockLLM(BaseLLM) {
+    # Text of the prompt (joined message contents) seen on each dispatch, in
+    # order. Lets tests assert how many times the model was called and what the
+    # retry loop fed back between attempts.
+    has seen_prompts: list = [];
+
     def postinit -> None;
     override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
