@@ -18,7 +18,9 @@ from jac_super.ink_compile.bundle_patch import (
 )
 from jac_super.ink_compile.compile import (
     _FETCH_TRANSPORT_HELPER,
+    _STR_POLY_JOIN_MARKER,
     _apply_ai_tui_module_patches,
+    _apply_ai_tui_runtime_poly_str_join,
     _finalize_esm_exports,
     _inject_runtime_imports,
     _remove_register_client_module,
@@ -446,6 +448,54 @@ class TestInjectRuntimeImports:
         code = 'import { useState } from "./jac_runtime_shim.mjs";\nfunction app() {}'
         result = _inject_runtime_imports(code, with_jac_builtin=False)
         assert result.count("./runtime_shim.mjs") == 1
+
+
+# ---------------------------------------------------------------------------
+# _apply_ai_tui_runtime_poly_str_join
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAiTuiRuntimePolyStrJoin:
+    def test_injects_str_join_polyfill(self):
+        runtime = (
+            "export const _jac = {\n"
+            "  poly: {\n"
+            "    _str: {\n"
+            "      rstrip: (s, chars) => {\n"
+            "        let j = s.length;\n"
+            "        while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;\n"
+            "        return s.slice(0, j);\n"
+            "      }\n"
+            "    },\n"
+            "    _list: {}\n"
+            "  }\n"
+            "};\n"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".mjs", delete=False, encoding="utf-8"
+        ) as tmp:
+            path = Path(tmp.name)
+            path.write_text(runtime, encoding="utf-8")
+        try:
+            _apply_ai_tui_runtime_poly_str_join(path)
+            result = path.read_text(encoding="utf-8")
+            assert _STR_POLY_JOIN_MARKER in result
+            assert result.count(_STR_POLY_JOIN_MARKER) == 1
+        finally:
+            path.unlink()
+
+    def test_skips_when_already_present(self):
+        runtime = _STR_POLY_JOIN_MARKER + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".mjs", delete=False, encoding="utf-8"
+        ) as tmp:
+            path = Path(tmp.name)
+            path.write_text(runtime, encoding="utf-8")
+        try:
+            _apply_ai_tui_runtime_poly_str_join(path)
+            assert path.read_text(encoding="utf-8") == runtime
+        finally:
+            path.unlink()
 
 
 # ---------------------------------------------------------------------------

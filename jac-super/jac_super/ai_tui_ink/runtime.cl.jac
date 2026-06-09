@@ -26,14 +26,9 @@ glob TUI_CWD: str = str(environ.get("JAC_TUI_CWD") or ""),
      TUI_COMMANDS: list[str] = [
          "/help",
          "/model",
-         "/mode",
          "/context-max",
-         "/mcp",
          "/stats",
-         "/verbose",
-         "/feedback",
          "/usage",
-         "/guides",
          "/stop",
          "/reset",
          "/clear",
@@ -126,28 +121,8 @@ cl {
         );
     }
 
-    async def applyMode(mode: str) -> any {
-        return await agent_fetch("agent_apply_mode", {"mode": mode});
-    }
-
-    async def toggleVerbose -> any {
-        return await agent_fetch("agent_toggle_verbose");
-    }
-
-    async def toggleFeedback -> any {
-        return await agent_fetch("agent_toggle_feedback");
-    }
-
     async def toggleStatsServer -> any {
         return await agent_fetch("agent_toggle_stats");
-    }
-
-    async def fetchGuides -> any {
-        return await agent_fetch("agent_guides");
-    }
-
-    async def fetchMcpStatus -> any {
-        return await agent_fetch("agent_mcp_status");
     }
 
     def resetFeedState {
@@ -759,39 +734,6 @@ cl {
                     [str(appliedCtx.get("error", "context update failed"))]
                 );
             }
-            return;
-        }
-        if cmd == "/guides" {
-            setInfo(
-                actions,
-                "Guides",
-                [
-                    "Guide listing is not exposed by the sidecar yet.",
-                    "This command still needs a server endpoint in the migration."
-                ]
-            );
-            return;
-        }
-        if cmd == "/mcp" {
-            setInfo(
-                actions,
-                "MCP",
-                [
-                    "MCP state is not exposed by the sidecar yet.",
-                    "The legacy in-process TUI had direct access to this state."
-                ]
-            );
-            return;
-        }
-        if cmd == "/mode" or cmd == "/verbose" or cmd == "/feedback" {
-            setInfo(
-                actions,
-                "Not Yet Wired",
-                [
-                    cmd + " still needs sidecar endpoints.",
-                    "The new Ink path cannot mutate those in-process flags yet."
-                ]
-            );
             return;
         }
         if cmd == "/exit" or cmd == "/quit" {
