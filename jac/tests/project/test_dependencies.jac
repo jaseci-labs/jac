@@ -16,7 +16,8 @@ import from jaclang.project.dependencies {
     add_venv_to_path,
     get_venv_site_packages,
     is_venv_in_path,
-    remove_venv_from_path
+    remove_venv_from_path,
+    pip_command
 }
 
 """Reset global config singleton."""
@@ -1685,6 +1686,77 @@ test "DependencyInstaller install_flags passed to pip" {
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "--no-cache-dir" in call_args;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+# ===== uv backend tests =====
+test "pip_command uses uv when uv is on PATH" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = "/usr/bin/uv";
+        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=True);
+        assert cmd[0] == "/usr/bin/uv";
+        assert cmd[1] == "pip";
+        assert cmd[2] == "install";
+        assert "--python" in cmd;
+        assert "/path/to/python" in cmd;
+        assert "requests" in cmd;
+    }
+}
+
+test "pip_command falls back to pip when uv is not on PATH" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = None;
+        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=True);
+        assert cmd[0] == "/path/to/python";
+        assert cmd[1] == "-m";
+        assert cmd[2] == "pip";
+        assert "requests" in cmd;
+    }
+}
+
+test "pip_command uses pip when use_uv is False even if uv is on PATH" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = "/usr/bin/uv";
+        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=False);
+        assert cmd[0] == "/path/to/python";
+        assert cmd[1] == "-m";
+        assert cmd[2] == "pip";
+        assert "uv" not in cmd[0];
+    }
+}
+
+test "DependencyInstaller JAC_NO_UV env var disables uv" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        with patch.dict(os.environ, {"JAC_NO_UV": "1"}) {
+            installer = DependencyInstaller(config=config);
+            assert installer.use_uv is False;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "DependencyInstaller JAC_NO_UV unset leaves use_uv True" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        env_without_no_uv = {
+            k: v
+            for (k, v) in os.environ.items()
+            if k != "JAC_NO_UV"
+        };
+        with patch.dict(os.environ, env_without_no_uv, clear=True) {
+            installer = DependencyInstaller(config=config);
+            assert installer.use_uv is True;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
