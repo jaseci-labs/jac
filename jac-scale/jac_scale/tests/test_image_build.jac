@@ -81,6 +81,26 @@ test "_compute_build_sha returns the bare SHA when the tree is clean" {
 }
 
 
+test "_compute_build_sha omits -dirty when the tree state cannot be checked" {
+    # git status failing must degrade to the bare SHA, never silently to a
+    # clean stamp over a possibly-dirty build (a warning is emitted instead).
+    with mock.patch.object(
+        helpers_mod.shutil, "which", return_value="/usr/bin/git"
+    ) {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=1, stdout="")
+            ]
+        ) {
+            assert helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456";
+        }
+    }
+}
+
+
 test "_compute_build_sha appends -dirty when the tree has uncommitted changes" {
     with mock.patch.object(
         helpers_mod.shutil, "which", return_value="/usr/bin/git"

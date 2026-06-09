@@ -183,9 +183,22 @@ def _warn_build_sha_unavailable(reason: str) {
 }
 
 
+"""One-line stderr notice when the tree's dirty state can't be checked,
+so a silent fall-through doesn't stamp a clean SHA over a dirty build -
+the exact failure the `-dirty` suffix exists to prevent."""
+def _warn_dirty_check_failed(context_dir: Path) {
+    print(
+        f"[jac-scale] could not verify git tree state in {context_dir}; "
+        "JAC_BUILD_SHA may omit its '-dirty' suffix.",
+        file=sys.stderr
+    );
+}
+
+
 """True if the git tree at `context_dir` has staged, unstaged, or
 untracked changes. Untracked counts: `COPY . /app` pulls them into the
-image, so the build doesn't match HEAD. Best-effort - False on error."""
+image, so the build doesn't match HEAD. Best-effort - warns and returns
+False on error (can't prove dirty, so don't claim it)."""
 def _git_tree_dirty(context_dir: Path) -> bool {
     try {
         result = subprocess.run(
@@ -195,9 +208,11 @@ def _git_tree_dirty(context_dir: Path) -> bool {
             timeout=_DOCKER_PROBE_TIMEOUT_S
         );
     } except Exception {
+        _warn_dirty_check_failed(context_dir);
         return False;
     }
     if result.returncode != 0 {
+        _warn_dirty_check_failed(context_dir);
         return False;
     }
     return bool(result.stdout.strip());
