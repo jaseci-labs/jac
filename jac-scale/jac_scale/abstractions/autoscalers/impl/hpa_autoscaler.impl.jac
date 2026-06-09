@@ -89,3 +89,8 @@ impl HPAAutoscaler.destroy_collection{
         namespace=namespace, label_selector=label_selector
     );
 }
+
+"""Return the HPA resource name for a scale target."""
+impl HPAAutoscaler.resource_name_for{
+    return f"{target}-hpa";
+}
