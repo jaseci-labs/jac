@@ -109,10 +109,9 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         console.error(str(e));
         return 1;
     }
-    project_name: str = metadata["project_name"];
-    entry_point: str = metadata["entry_point"];
-    entry_module: str = metadata["entry_module"];
-    toml_data: dict = metadata["toml_data"];
+    project_name = str(metadata["project_name"]);
+    entry_module = str(metadata["entry_module"]);
+    toml_data = dict(metadata["toml_data"]);
 
     # Output lives inside the project (default `ejected/`, overridable via
     # `[eject].output` in jac.toml or the -o flag).
@@ -345,13 +344,9 @@ def _strip_jac_suffix(name: str) -> str {
 }
 
 
-
-
 def _to_js_rel_path(rel: Path) -> Path {
     return rel.parent / (_strip_jac_suffix(rel.name) + ".js");
 }
-
-
 
 
 def _inject_runtime_imports(js_code: str) -> str {
@@ -392,8 +387,6 @@ def _is_meaningful_python(py_code: str) -> bool {
     }
     return False;
 }
-
-
 
 
 def _emit_package_json(frontend_dir: Path, project_name: str, toml_data: dict) {
@@ -490,8 +483,6 @@ def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
     lines: list[str] = header + resolve_block + server_block;
     (frontend_dir / "vite.config.js").write_text("\n".join(lines), encoding="utf-8");
 }
-
-
 
 
 def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
