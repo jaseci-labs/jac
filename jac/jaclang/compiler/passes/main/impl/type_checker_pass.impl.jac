@@ -731,8 +731,8 @@ impl TypeCheckPass._check_event_trigger_archetype(
     if not isinstance(owner, uni.Archetype) {
         return;
     }
-    owner_kind = owner.arch_type.value;
-    if owner_kind not in ("walker", "node", "edge") {
+    owner_kind = owner.arch_kind;
+    if owner_kind is None {
         return;
     }
     walker_owner = owner_kind == "walker";
@@ -775,8 +775,10 @@ impl TypeCheckPass._check_event_trigger_archetype(
             else collect_union_leaves(sig.arch_tag_info)
     );
     err = E1116 if walker_owner else E1117;
+    resolved: list[types.TypeBase] = [];
     for arg in targets {
         ty = self.evaluator.get_type_of_expression(arg);
+        resolved.append(ty);
         if isinstance(ty, types.ClassType) and ty.is_instance() {
             # Only name leaves carry `.value`; other exprs (e.g. `N()`) fall back to the type name.
             label = arg.value if isinstance(arg, uni.Name) else str(ty);
@@ -787,6 +789,9 @@ impl TypeCheckPass._check_event_trigger_archetype(
             self.emit(err, node_override=arg, type=str(ty));
         }
     }
+    # Record the resolved trigger types on the Ability so backends can
+    # consume them without re-walking the trigger expression AST.
+    nd.event_triggers = resolved;
 }
 
 """Check if a code block always returns a value on all paths.

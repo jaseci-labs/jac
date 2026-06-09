@@ -671,6 +671,52 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     return out;
 }
 
+"""Trigger type names from the checker's `Ability.event_triggers`.
+
+Each resolved TypeBase is mangled to its canonical key; class-object forms
+(`type[X]`) are unwrapped to `X` and union keys are split on `|`. Returns
+None when the checker recorded no resolution for this ability, signalling
+callers to fall back to flattening the trigger AST.
+"""
+impl NaIRGenPass._event_trigger_type_names(method: uni.Ability) -> (list[str] | None) {
+    if method.event_triggers is None {
+        return None;
+    }
+    names: list[str] = [];
+    for t in method.event_triggers {
+        for part in t.mangle().split("|") {
+            name = part.strip();
+            if name.startswith("type[") and name.endswith("]") {
+                name = name[5:-1];
+            }
+            if name and name not in names {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
+"""Member struct names an event ability fires on.
+
+Prefers the checker-resolved `Ability.event_triggers` filtered to known
+structs; falls back to flattening the trigger AST (`_trigger_member_structs`)
+when the checker left no resolution.
+"""
+impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
+    names = self._event_trigger_type_names(method);
+    if names is None {
+        sig = method.signature;
+        tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
+        return self._trigger_member_structs(tag);
+    }
+    return [
+        nm
+        for nm in names
+        if nm in self.struct_types
+    ];
+}
+
 """Find a field whose layout diverges across union trigger members.
 
 Field access on `here`/`visitor` lowers through a single member's layout, so
@@ -729,7 +775,7 @@ impl NaIRGenPass._forward_declare_event_method(
         # access on `here`/`visitor` has a usable layout (issue #6470). A plain
         # single-type trigger yields exactly the one member, matching the prior
         # `_resolve_jac_type` result.
-        _members = self._trigger_member_structs(sig.arch_tag_info);
+        _members = self._trigger_struct_names(method);
         if _members {
             loc_type = self.struct_types[_members[0]].as_pointer();
         } else {
@@ -790,7 +836,7 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
         # For a tuple/union trigger (`with (A, B) entry`), members must agree
         # on shared field offsets or `here.field` reads would be quietly wrong
         # under the single-layout lowering (issue #6470).
-        _members = self._trigger_member_structs(sig.arch_tag_info);
+        _members = self._trigger_struct_names(method);
         _conflict = self._union_layout_conflict(_members);
         if _conflict is not None {
             self.emit(

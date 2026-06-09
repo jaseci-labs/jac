@@ -455,6 +455,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Resolve the member struct names a trigger tag denotes -- a single `Name`,
     # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
     def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    # Checker-resolved trigger type names from `Ability.event_triggers`
+    # (mangled keys; `type[X]` unwrapped, unions split). None when the
+    # checker recorded no resolution (fall back to the trigger AST).
+    def _event_trigger_type_names(method: uni.Ability) -> (list[str] | None);
+    # Member struct names an event ability fires on: checker-resolved
+    # triggers filtered to known structs, with AST-flattening fallback.
+    def _trigger_struct_names(method: uni.Ability) -> list[str];
     # Validate that every field common to all union members lives at the same
     # index and type; returns the first divergent field name, or None if the
     # members share a consistent layout (so any member's layout is usable).
