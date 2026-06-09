@@ -173,19 +173,10 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.Semi) {
         # Bare `;` — no codegen needed.
     } elif isinstance(nd, uni.GlobalStmt) {
-        # `global`/`nonlocal` are declarations consumed by the symbol
-        # table; the corresponding Name/Assignment nodes do the actual
-        # codegen. We still record the declared names so a later
-        # `x = ...` in this function rebinds the module global instead of
-        # allocating a function-local (see _codegen_assignment). Without an
-        # explicit `global x;`, a function-scope assignment is a local —
-        # matching CPython and the sv pathway.
-        for _g_target in nd.target {
-            _g_name = self._get_name(_g_target);
-            if _g_name is not None {
-                self._declared_globals.add(_g_name);
-            }
-        }
+        # `global`/`nonlocal` are declarations fully consumed by the symbol
+        # table (bind_global_stmt rebinds the function-scope name to the
+        # module symbol); the corresponding Name/Assignment nodes do the
+        # actual codegen via Symbol.storage. No backend bookkeeping needed.
     } elif isinstance(nd, uni.PyInlineCode) {
         # ::py:: blocks are intentionally stripped from native output —
         # they target the Python pathway only.
@@ -1453,13 +1444,17 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
-        and (self._in_module_scope or var_name in self._declared_globals) {
-            # Store to a module global. Only reached for module-level code
-            # (_in_module_scope) or after an explicit `global var;` declared
-            # the name in this function (_declared_globals). A bare
-            # function-scope assignment to a glob-named variable does NOT land
-            # here — it falls through to the `else` branch and allocates a
-            # function-local, matching CPython and the sv pathway.
+        and isinstance(target_expr, uni.NameAtom)
+        and target_expr.sym is not None
+        and target_expr.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
+            # Store to a module global. The symbol table is the single owner
+            # of this fact: module-level code binds names to module symbols,
+            # and an explicit `global var;` rebinds the function-scope name to
+            # the module symbol (sym_tab_build_pass.bind_global_stmt). A bare
+            # function-scope assignment to a glob-named variable binds a
+            # shadow LOCAL symbol, so it does NOT land here — it falls through
+            # to the `else` branch and allocates a function-local, matching
+            # CPython and the sv pathway.
             global_var = self.global_vars[var_name];
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
