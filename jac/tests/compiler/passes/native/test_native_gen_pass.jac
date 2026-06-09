@@ -152,6 +152,23 @@ test "recursion fibonacci" {
     assert fib(15) == 610;
 }
 
+test "nested functions helper recursion and module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    use_helper = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(n) + double(n + 1) == 4n + 2
+    assert use_helper(0) == 2;
+    assert use_helper(5) == 22;
+    nested_recursion = get_func(
+        eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64
+    );
+    assert nested_recursion(1) == 1;
+    assert nested_recursion(5) == 120;
+    uses_global = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    # x + BASE, BASE == 100
+    assert uses_global(0) == 100;
+    assert uses_global(7) == 107;
+}
+
 # --- TestNativeContextIsolation ---
 test "context isolation native excluded from python" {
     prog = JacProgram();
@@ -471,6 +488,76 @@ test "objects empty dict in struct ctor" {
     (eng, _) = compile_native("objects.na.jac");
     f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
     assert f() == 30;
+}
+
+# --- TestNativeSliceObjectField (issue #6473) ---
+test "slice object field roundtrip matches local" {
+    # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)
+    # because the slice was mis-lowered as a plain index. It must now behave
+    # identically to the same logic on a plain-list local.
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    fld = get_func(eng, "field_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    loc = get_func(eng, "local_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    for k in [-1, 0, 1, 2, 3, -2] {
+        assert fld(k) == 3 , f"field_roundtrip({k}) != 3";
+        assert fld(k) == loc(k) , f"field/local mismatch at k={k}";
+    }
+}
+
+test "slice object field takes correct elements" {
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "field_prefix_sum", ctypes.c_int64, ctypes.c_int64);
+    # items = [10, 20, 30, 40]
+    assert f(0) == 0;
+    assert f(1) == 10;
+    assert f(2) == 30;
+    assert f(3) == 60;
+    assert f(4) == 100;
+}
+
+test "slice object field osp insert shape" {
+    # The portable OSP-kernel osp_visit shape: scope.next[:pos] + filtered + scope.next[pos:]
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "osp_insert", ctypes.c_int64, ctypes.c_int64);
+    assert f(-1) == 4;  # insert before last
+    assert f(0) == 4;  # prepend
+    assert f(-100) == 4;  # clamp to 0
+    assert f(3) == 4;  # append
+}
+
+# --- TestNativeBoxAnyTupleSlot (issue #6511) ---
+test "box int into any tuple slot via append" {
+    # A concrete int appended in a tuple to a bare list whose slot is `any`
+    # (the OSP-kernel work-stack shape) used to be stored unboxed and read back
+    # as 0. It must now round-trip through the `any` seam.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "osp_append_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box int into any tuple slot multiple appends" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "many_append_entry", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "box int into any tuple slot via list literal" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "lit_mix_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box float into any tuple slot" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "flt_append_entry", ctypes.c_double);
+    assert f() == 3.5;
+}
+
+test "box any tuple slot via param still works" {
+    # The already-working control: an `any` value entering the slot stays boxed.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "via_param_entry", ctypes.c_int64);
+    assert f() == 7;
 }
 
 # --- TestNativeInheritance ---
@@ -3815,4 +3902,38 @@ test "parameterless no-return function (def foo {}) is not dropped" {
         eng, "run_ticks_parens", ctypes.c_int64, ctypes.c_int64
     );
     assert run_ticks_parens(5) == run_ticks(5);
+}
+
+# --- Union / tuple-trigger field access (issue #6470) ---
+test "field access on a `|` union parameter lowers the field load" {
+    # `get_val(x: A | B) -> int { return x.val; }` -- both members carry `val`
+    # at the same offset, so the access resolves via either member's layout.
+    (eng, _) = compile_native("union_field_access.na.jac");
+    get_val = get_func(eng, "get_val", ctypes.c_int64, ctypes.c_void_p);
+    # A is `{ val: int }` -> a single-i64 struct at offset 0.
+    a = (ctypes.c_int64 * 1)(5);
+    assert get_val(ctypes.cast(a, ctypes.c_void_p)) == 5;
+    b = (ctypes.c_int64 * 1)(42);
+    assert get_val(ctypes.cast(b, ctypes.c_void_p)) == 42;
+}
+
+test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
+    # `can on_either with (Sub, Other) entry { self.either += here.val; }`.
+    # The tuple trigger types `here` as a union of node members; the body must
+    # not truncate at `here.val` (the original bug emitted an empty body and no
+    # `field.val` load, so `either` silently stayed 0).
+    (eng, _) = compile_native("union_field_access.na.jac");
+    addr = eng.get_function_address("W.on_either");
+    assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
+    fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
+    # Both node structs lower to `{ header_ptr, header_i64, value_i64 }`, so the
+    # user field (`either` / `val`) sits at index 2 (byte offset 16).
+    self_buf = (ctypes.c_int64 * 3)(0, 0, 0);
+    here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
+    assert self_buf[2] == 5 , "here.val was not read through the union member layout";
+    # A second member instance must accumulate the same way.
+    here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
+    assert self_buf[2] == 12;
 }

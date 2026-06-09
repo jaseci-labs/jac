@@ -391,7 +391,7 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 
 """Install all dependencies from jac.toml."""
 impl install(
-    editable: str = "",
+    editable: list = [],
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,
@@ -408,21 +408,6 @@ impl install(
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
-    # force_discover bypasses the module-level cache, which may already hold
-    # the calling project's config when invoked from outside the target dir.
-    if editable {
-        src_dir: Path = Path(editable).resolve();
-        config = get_config(start_path=src_dir, force_discover=True);
-    } else {
-        config = get_config();
-    }
-    if config is None {
-        hint = "Clone the library repo and run 'jac install -e .' inside it."
-            if editable
-            else "Run 'jac create' to create a project first.";
-        console.error("No jac.toml found", hint=hint);
-        return 1;
-    }
     flag_defs: list = [
         (force_reinstall, "--force-reinstall"),
         (no_cache_dir, "--no-cache-dir"),
@@ -438,39 +423,67 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
-    );
     # ── Editable install ──────────────────────────────────────────────────────
+    # Flatten nested lists produced by action="append" with nargs="+":
+    #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
+    editable = [p for group in (editable or []) for p in group];
     if editable {
         import sys;
         import site;
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
-        console.print(
-            f"\n📦 Editable install: {config.project.name} " f"from {src_dir}",
-            style="bold"
-        );
 
-        dep_specs = installer.get_pip_package_specs(include_dev=dev);
-        if extras {
-            try {
-                extra_specs = installer.get_extra_package_specs(extras);
-            } except ValueError as e {
-                console.error(str(e));
+        # Phase 1 — collect all dep specs for a single unified pip call.
+        editable_targets: list = [];
+        all_dep_specs: list[str] = [];
+        for editable_path in editable {
+            src_dir: Path = Path(editable_path).resolve();
+            config = get_config(start_path=src_dir, force_discover=True);
+            if config is None {
+                console.error(
+                    "No jac.toml found",
+                    hint=f"Make sure {src_dir} contains a jac.toml."
+                );
                 return 1;
             }
-            if extra_specs {
-                console.print(f"  Extras: {', '.join(extras)}", style="muted");
+            installer = DependencyInstaller(
+                config=config, verbose=verbose, install_flags=install_flags
+            );
+            dep_specs = installer.get_pip_package_specs(include_dev=dev);
+            if extras {
+                try {
+                    extra_specs = installer.get_extra_package_specs(extras);
+                    if extra_specs {
+                        dep_specs.extend(extra_specs);
+                    }
+                } except ValueError as e {
+                    # Extras group absent in this package — warn and skip rather
+                    # than aborting the whole multi-package install.
+                    console.warning(
+                        f"  Skipping extras for {config.project.name}: {e}"
+                    );
+                }
             }
-            dep_specs.extend(extra_specs);
-        }
-        if dep_specs {
+            all_dep_specs.extend(dep_specs);
+            editable_targets.append((config, src_dir));
             console.print(
-                f"  Installing {len(dep_specs)} dependencies...", style="muted"
+                f"\n📦 Editable: {config.project.name} ({src_dir})", style="bold"
+            );
+        }
+
+        # Phase 2 — single pip call for all combined deps (unified resolver)
+        if all_dep_specs {
+            console.print(
+                f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade"
+                ] + install_flags + all_dep_specs,
                 capture_output=not verbose,
                 text=True,
             );
@@ -486,12 +499,27 @@ impl install(
             console.print("  ✔ Dry run complete (nothing installed).", style="success");
             return 0;
         }
+
+        # Phase 3 — link each package as editable
         site_pkgs = Path(site.getsitepackages()[0]);
-        WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
-        console.print(f"  ✔ Linked {src_dir}", style="success");
+        for (config, src_dir) in editable_targets {
+            WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
+            console.print(f"  ✔ Linked {src_dir}", style="success");
+        }
         console.print("  ✔ Editable install complete.", style="success");
         return 0;
     }
+    # ── Normal (non-editable) install ─────────────────────────────────────────
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=install_flags
+    );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
     );

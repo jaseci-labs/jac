@@ -19,7 +19,7 @@ node Profile {
 
     can follow with follow_request entry {
         current_profile = [root-->[?:Profile]];
-        current_profile[0] +>: Follow() :+> self;
+        current_profile[0] +>:Follow():+> self;
         report self;
     }
 
@@ -57,7 +57,7 @@ node Tweet {
 
     can like_tweet with like_tweet entry {
         current_profile = [root-->[?:Profile]];
-        self +>: Like() :+> current_profile[0];
+        self +>:Like():+> current_profile[0];
         report self;
     }
 
@@ -70,9 +70,7 @@ node Tweet {
 
     can comment with comment_tweet entry {
         current_profile = [root-->[?:Profile]];
-        comment_node = current_profile[0] +>: Post() :+> Comment(
-            content=visitor.content
-        );
+        comment_node = current_profile[0] +>:Post():+> Comment(content=visitor.content);
         grant(comment_node[0], level=ConnectPerm);
         self ++> comment_node[0];
         report comment_node[0];
@@ -159,7 +157,7 @@ walker create_tweet(visit_profile) {
     has content: str;
 
     can tweet with Profile entry {
-        tweet_node = here +>: Post() :+> Tweet(content=self.content, embedding=[]);
+        tweet_node = here +>:Post():+> Tweet(content=self.content, embedding=[]);
         grant(tweet_node[0], level=ConnectPerm);
         report tweet_node;
     }

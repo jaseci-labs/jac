@@ -1,4 +1,16 @@
 """Function/ability declaration and codegen for native compilation."""
+
+"""Non-Optional accessor for the active IRBuilder."""
+impl NaIRGenPass.builder.getter -> ir.IRBuilder {
+    if self._builder is None {
+        raise RuntimeError(
+            "NaIRGenPass.builder read with no active IRBuilder "
+            "(outside a function body)"
+        );
+    }
+    return self._builder;
+}
+
 """Walk the module and declare all native functions."""
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
     for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
@@ -272,7 +284,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
     # Create entry block
     block = func.append_basic_block(name="entry");
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
@@ -390,7 +402,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 
     (nd).gen.llvm_ir = func;
-    self.builder = None;
+    self._builder = None;
 }
 
 """Generate a nested function definition (a `def` inside another function).
@@ -452,7 +464,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self.func_symtab[name] = fn;
     # Save and reset the per-scope codegen context, then switch into the
     # inner function with a fresh local scope.
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_type_var_map = self.type_var_map;
@@ -462,7 +474,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_var_dict = self.var_dict_type;
     saved_var_set = self.var_set_elem_type;
     saved_var_enum = self.var_enum_type;
-    self.builder = ir.IRBuilder(fn.append_basic_block("entry"));
+    self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.param_vars = set();
     self.type_var_map = {};
@@ -503,7 +515,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
     }
     # Restore the enclosing scope (func_symtab keeps the new name).
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_var_map;
@@ -527,14 +539,14 @@ exists) and from post_transform (when no `with entry` is present).
 """
 impl NaIRGenPass._emit_glob_init_func -> None {
     # Save outer builder context (may be None when called from post_transform)
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars if self?.local_vars else {};
     saved_di_sp = self._di_current_sp;
     # Emit void __jac_glob_init()
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = ir.Function(self.llvm_module, fnty, name="__jac_glob_init");
     block = func.append_basic_block(name="entry");
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(func, "__jac_glob_init", 0);
@@ -586,7 +598,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self._finalize_di_locations(func, 0);
     self.func_symtab["__jac_glob_init"] = func;
     # Restore outer builder context
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self._di_current_sp = saved_di_sp;
 }
@@ -601,7 +613,7 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self.func_symtab["jac_entry"] = func;
     # Create entry block
     block = func.append_basic_block(name="entry");
-    self.builder = ir.IRBuilder(block);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
@@ -642,7 +654,7 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     }
     b_nogc.call(self.rc_gc_disable_fn, []);
     b_nogc.branch(_nogc_cont);
-    self.builder = ir.IRBuilder(_nogc_cont);
+    self._builder = ir.IRBuilder(_nogc_cont);
     if glob_init_fn is not None {
         self.builder.call(glob_init_fn, []);
     }
@@ -740,5 +752,5 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     # DWARF post-pass: tag untagged instructions with fallback line
     self._finalize_di_locations(func, entry_line);
     self.has_native_code = True;
-    self.builder = None;
+    self._builder = None;
 }

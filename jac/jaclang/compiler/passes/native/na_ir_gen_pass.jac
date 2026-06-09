@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091 }
 
 # ── Python stdlib modules the native backend can lower ────────────────────
 # Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
@@ -109,7 +109,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         slice_struct_type: object by postinit,
         jacval_type: object by postinit,
         # Simple defaults
-        builder: (ir.IRBuilder | None) = None,
+        _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
@@ -303,6 +303,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {};
 
+    has builder: ir.IRBuilder { getter; }
+
     def postinit -> None;
     # Main pass logic
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -322,6 +324,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_assignment(nd: uni.Assignment) -> None;
     # Expression codegen
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    # Lower a sub-expression a statement requires; emit E5090 (once, deepest)
+    # when it lowers to no value instead of silently dropping the statement.
+    def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -442,6 +447,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    # Resolve the member struct names a trigger tag denotes -- a single `Name`,
+    # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
+    def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    # Validate that every field common to all union members lives at the same
+    # index and type; returns the first divergent field name, or None if the
+    # members share a consistent layout (so any member's layout is usable).
+    def _union_layout_conflict(members: list[str]) -> (str | None);
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str, walker_val: ir.Value, loc_val: ir.Value
@@ -601,6 +613,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
+    def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     # Phase 10: Comprehensions
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
     def _codegen_compr_loops(

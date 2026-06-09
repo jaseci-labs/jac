@@ -100,6 +100,13 @@ test "tagbreak" {
     compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
 }
 
+test "connect op compact fmt" {
+    # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
+    # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
+    # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
+    compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
+}
+
 test "has fmt" {
     compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
 }

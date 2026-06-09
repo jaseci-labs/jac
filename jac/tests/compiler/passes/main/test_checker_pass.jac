@@ -5169,6 +5169,16 @@ test "duplicate_archetype_decl_is_hard_error" {
     ].pretty_print()}";
 }
 
+test "comprehension_in_ternary_narrowing" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_comprehension_in_ternary.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 test "spread_with_explicit_kwarg_no_false_positive" {
     # Regression: a call that mixes a `*`/`**` spread with an explicit keyword
     # argument must not emit E1057 "Parameter 'X' already matched". The spread

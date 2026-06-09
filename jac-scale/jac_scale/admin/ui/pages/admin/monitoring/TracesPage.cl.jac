@@ -1,6 +1,8 @@
-"""Distributed Traces page for the admin dashboard.
+"""Distributed Traces page for the admin dashboard (O-02).
 
-Queries Tempo via /admin/traces/* and renders:
+The generic-span sibling of the LogsPage (A-05a, Loki) and a
+counterpart to the LLMTracesPage (A-05b, byLLM telemetry). Queries
+Tempo via /admin/traces/* and renders:
 
 - a TraceQL search bar (service / errors-only / min-duration / window),
 - a list of matching traces (root service + name, duration), and
@@ -8,9 +10,11 @@ Queries Tempo via /admin/traces/* and renders:
   span, positioned by start offset and sized by duration, nested by
   parent_span_id, colored by service.
 
-The trace_id here is the same id the logs page surfaces, so the two
-views cross-link directly.
+The trace_id here is the same id the logs page surfaces (the K-12
+UUID's 128 bits), so the two views cross-link directly.
 """
+
+cl import from "lucide-react" { Workflow, RefreshCw, AlertTriangle, X }
 
 cl {
     import from react { useEffect }
@@ -129,13 +133,13 @@ cl {
                 "bg-purple-500",
                 "bg-pink-500",
                 "bg-cyan-500",
-                "bg-orange-500",
+                "bg-accent",
                 "bg-lime-500",
                 "bg-rose-500",
                 "bg-indigo-500"
             ];
             if not name {
-                return "bg-slate-500";
+                return "bg-faint";
             }
             hash: int = 0;
             i: int = 0;
@@ -207,13 +211,17 @@ cl {
         return
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-slate-100">
-                        Distributed Traces
-                    </h2>
+                    <div className="flex items-center gap-2.5">
+                        <Workflow className="w-5 h-5 text-accent"/>
+                        <h1 className="text-lg font-semibold text-fg">
+                            Distributed Traces
+                        </h1>
+                    </div>
                     <button
-                        className="px-3 py-1.5 text-sm rounded bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors"
                         onClick={lambda { loadTraces(); }}
                     >
+                        <RefreshCw className="w-3.5 h-3.5"/>
                         Refresh
                     </button>
                 </div>
@@ -221,7 +229,7 @@ cl {
                     <select
                         value={filterService}
                         onChange={lambda e: any { filterService = e.target.value; }}
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200"
+                        className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                     >
                         <option value="">All services</option>
                         {[<option key={s} value={s}>{s}</option> for s in services]}
@@ -229,7 +237,7 @@ cl {
                     <select
                         value={filterStatus}
                         onChange={lambda e: any { filterStatus = e.target.value; }}
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200"
+                        className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                     >
                         <option value="">All statuses</option>
                         <option value="error">Errors only</option>
@@ -239,7 +247,7 @@ cl {
                         onChange={lambda e: any { filterMinDuration = Number(
                             e.target.value
                         ); }}
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200"
+                        className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                     >
                         <option value="0">Any duration</option>
                         <option value="100">{">"} 100ms</option>
@@ -249,7 +257,7 @@ cl {
                     <select
                         value={filterSince}
                         onChange={lambda e: any { filterSince = e.target.value; }}
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200"
+                        className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                     >
                         <option value="15m">Last 15 min</option>
                         <option value="1h">Last 1 hour</option>
@@ -258,69 +266,69 @@ cl {
                     </select>
                 </div>
                 {<div
-                    className="text-amber-300 text-sm bg-amber-500/10 border border-amber-500/30 rounded p-3"
+                    className="flex items-start gap-2 text-warning text-sm bg-warning-weak border border-line rounded-md p-3"
                 >
-                    Trace backend unavailable. Enable tracing with [plugins.scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
+                    <span className="text-muted">
+                        Trace backend unavailable. Enable tracing with [plugins.scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
+                    </span>
                 </div>
                     if backendOffline
                     else None}
-                {<div className="text-red-300 text-sm">{errorMsg}</div>
+                {<div className="text-danger text-sm">{errorMsg}</div>
                     if (errorMsg and not backendOffline)
                     else None}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-1 space-y-2">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">
+                        <div className="text-xs uppercase tracking-wide text-faint">
                             Traces ({len(traces)})
                         </div>
-                        {<div className="text-slate-500 text-sm">Loading...</div>
+                        {<div className="text-faint text-sm">Loading...</div>
                             if isLoading
                             else None}
                         {[
                             <div
                                 key={t["trace_id"]}
                                 className={"p-2 rounded border cursor-pointer " + (
-                                    "border-sky-500 bg-sky-500/10"
+                                    "border-accent-line bg-accent-weak"
                                         if (t["trace_id"] == selectedTraceId)
-                                        else "border-slate-800 bg-slate-900 hover:bg-slate-800"
+                                        else "border-line bg-surface hover:bg-surface-2"
                                 )}
                                 onClick={lambda { openTrace(t["trace_id"]); }}
                             >
                                 <div className="flex items-center justify-between">
-                                    <span
-                                        className="text-sm font-medium text-slate-200"
-                                    >
+                                    <span className="text-sm font-medium text-fg">
                                         {t["root_service"] or "unknown"}
                                     </span>
-                                    <span className="text-xs text-slate-400">
+                                    <span className="text-xs text-muted">
                                         {fmtMs(t["duration_ms"])}
                                     </span>
                                 </div>
-                                <div className="text-xs text-slate-500 truncate">
+                                <div className="text-xs text-faint truncate">
                                     {t["root_name"] or t["trace_id"]}
                                 </div>
                             </div> for t in traces
                         ]}
-                        {<div className="text-slate-500 text-sm">
+                        {<div className="text-faint text-sm">
                             No traces in this window.
                         </div>
                             if (not isLoading and len(traces) == 0)
                             else None}
                     </div>
                     <div className="lg:col-span-2">
-                        {<div className="text-slate-500 text-sm">Loading trace...</div>
+                        {<div className="text-faint text-sm">Loading trace...</div>
                             if isLoadingTrace
                             else None}{<div className="space-y-1">
                             <div className="flex items-center justify-between mb-2">
-                                <span
-                                    className="text-xs font-mono text-slate-400 truncate"
-                                >
+                                <span className="text-xs font-mono text-muted truncate">
                                     {selectedTraceId}
                                 </span>
                                 <button
-                                    className="text-xs text-slate-400 hover:text-slate-200"
+                                    className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
                                     onClick={closeTrace}
                                 >
-                                    close
+                                    <X className="w-3.5 h-3.5"/>
+                                    Close
                                 </button>
                             </div>
                             {[
@@ -329,26 +337,26 @@ cl {
                                     className="flex items-center gap-2 text-xs"
                                 >
                                     <div
-                                        className="w-1/3 truncate text-slate-300"
+                                        className="w-1/3 truncate text-muted"
                                         style={{
                                             "paddingLeft": String(
                                                 spanDepth(sp, byIdMap) * 12
                                             ) + "px"
                                         }}
                                     >
-                                        <span className="text-slate-500">
+                                        <span className="text-faint">
                                             {sp["service"]}
                                         </span>{" "}
                                         {sp["name"]}
                                     </div>
                                     <div
-                                        className="flex-1 relative h-4 bg-slate-900 rounded"
+                                        className="flex-1 relative h-4 bg-surface rounded"
                                     >
                                         <div
                                             className={"absolute h-4 rounded " + (
                                                 serviceColorBar(sp["service"])
                                             ) + (
-                                                " ring-1 ring-red-400"
+                                                " ring-1 ring-danger"
                                                     if (
                                                         sp["status"] == "STATUS_CODE_ERROR"
                                                         or sp["status"] == "2"
@@ -364,19 +372,19 @@ cl {
                                             )}
                                         ></div>
                                     </div>
-                                    <div className="w-16 text-right text-slate-400">
+                                    <div className="w-16 text-right text-muted">
                                         {fmtMs(sp["duration_ms"])}
                                     </div>
                                 </div> for sp in spans
                             ]}
-                            {<div className="text-slate-500 text-sm">
+                            {<div className="text-faint text-sm">
                                 No spans for this trace.
                             </div>
                                 if (not isLoadingTrace and len(spans) == 0)
                                 else None}
                         </div>
                             if selectedTraceId
-                            else <div className="text-slate-500 text-sm">
+                            else <div className="text-faint text-sm">
                                 Select a trace to view its flame graph.
                             </div>}
                     </div>

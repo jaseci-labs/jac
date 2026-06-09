@@ -32,6 +32,7 @@ Bug index:
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
+  #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
 import os;
@@ -922,5 +923,17 @@ test "bug_starguard_1_single_segment_reexport_resolves" {
         "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
         "`from M import *` must resolve. Marker was Unknown "
         f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+        );
+}
+
+# Bug #EVOLVING-NONE: `x = None` then reassigning inside an `if` branch
+# was not picked up post-branch — CFG narrowing rejected the new type as
+# not assignable to NoneType, producing false E1002 on `return x`.
+test "bug_evolving_none_narrowing" {
+    program = compile_and_check("checker_bug_evolving_locals_narrowing.jac");
+    assert program.errors_had == [] , (
+        "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
+        "must narrow to the assigned type post-branch (Pyright evolving-locals). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
