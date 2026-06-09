@@ -286,7 +286,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
     # Reset per-function borrowed-param promotion state (see _codegen_assignment).
     self._param_store_instr = {};
     self._param_promoted = set();
@@ -310,13 +309,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             for (ename, ltype) in self.list_types.items() {
                 if arg_val.type == ltype.as_pointer() {
                     self.var_list_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Track dict type for dict parameters
-            for (dkey, dtype) in self.dict_types.items() {
-                if arg_val.type == dtype.as_pointer() {
-                    self.var_dict_type[param_name] = dkey;
                     break;
                 }
             }
@@ -454,7 +446,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_var_type_node = self.var_type_node;
     saved_var_list = self.var_list_elem_type;
     saved_var_list_struct = self.var_list_elem_struct;
-    saved_var_dict = self.var_dict_type;
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.param_vars = set();
@@ -462,7 +453,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
     for (i, arg) in enumerate(fn.args) {
         alloca = self._entry_alloca(arg.type, param_names[i]);
         self.builder.store(arg, alloca);
@@ -501,7 +491,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self.var_type_node = saved_var_type_node;
     self.var_list_elem_type = saved_var_list;
     self.var_list_elem_struct = saved_var_list_struct;
-    self.var_dict_type = saved_var_dict;
     nd.gen.llvm_ir = fn;
 }
 
@@ -592,7 +581,6 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     entry_line = nd.loc.first_line if nd.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);

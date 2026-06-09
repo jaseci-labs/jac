@@ -131,16 +131,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
-                    # Check for dict type first
-                    if arg_name is not None and arg_name in self.var_dict_type {
-                        dict_key = self.var_dict_type[arg_name];
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="dict.len"
-                            );
-                        }
-                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {

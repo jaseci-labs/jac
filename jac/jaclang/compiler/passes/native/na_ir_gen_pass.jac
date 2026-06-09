@@ -212,7 +212,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Dictionary support (Phase 12)
         dict_types: dict[str, object] = {},
         dict_helpers: dict[str, dict] = {},
-        var_dict_type: dict[str, str] = {},
         _dict_val_type_hint: (str | None) = None,
         # Set support (Phase 13)
         set_types: dict[str, object] = {},
@@ -362,6 +361,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native set spec key ("i64"/"f64"/"ptr"/...) from a checked set type.
     def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native dict registry key ("k:v" spec) from a checked dict type.
+    def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;

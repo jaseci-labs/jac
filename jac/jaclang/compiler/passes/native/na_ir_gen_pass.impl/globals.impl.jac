@@ -94,15 +94,6 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                     }
                 }
             }
-            # Track dict types for global dicts
-            if isinstance(var_type, ir.PointerType) {
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if var_type == dtype.as_pointer() {
-                        self.var_dict_type[var_name] = dict_key;
-                        break;
-                    }
-                }
-            }
             self.has_native_code = True;
             # Save assignment node for runtime initialization
             # (skip if already initialized with a compile-time constant)

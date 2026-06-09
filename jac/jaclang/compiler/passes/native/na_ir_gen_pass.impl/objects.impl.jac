@@ -510,14 +510,12 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
     saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_dict_type = dict(self.var_dict_type);
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
     # Reset per-function borrowed-param promotion state.
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
@@ -618,7 +616,6 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self.var_dict_type = saved_dict_type;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
 }
@@ -640,7 +637,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
     saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_dict_type = dict(self.var_dict_type);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
     self._builder = ir.IRBuilder(block);
@@ -649,7 +645,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
     self._param_store_instr = {};
     self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
@@ -697,7 +692,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self.var_dict_type = saved_dict_type;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
 }
@@ -838,7 +832,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
     saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_dict_type = dict(self.var_dict_type);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
     self._builder = ir.IRBuilder(block);
@@ -847,7 +840,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
     self._param_store_instr = {};
     self._param_promoted = set();
     self._attach_di_subprogram(
@@ -922,7 +914,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self.var_dict_type = saved_dict_type;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
 }
@@ -1498,13 +1489,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Dict methods (simple name target or global dict)
-    dict_type_key: (str | None) = None;
-    if target_name is not None and target_name in self.var_dict_type {
-        dict_type_key = self.var_dict_type[target_name];
-    }
+    # Dict methods — dict-ness comes from the checked type of the target
+    dict_type_key: (str | None) = self._dict_key_of(trailer.target);
     if dict_type_key is None and target_name is not None {
-        # Fallback: infer dict type from LLVM type (handles globals after var_dict_type reset)
+        # Fallback: infer dict type from LLVM type (handles untyped targets)
         probe_val = self._codegen_expr(trailer.target);
         if probe_val is not None {
             dict_type_info = self._infer_dict_type(probe_val);

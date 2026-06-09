@@ -116,13 +116,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         ) {
             slices = target_expr.right.slices or [];
             if slices {
-                idx_target_name = self._get_name(target_expr.target);
-                # Only handle known dict variables
-                dict_type_key: (str | None) = None;
-                if idx_target_name is not None
-                and idx_target_name in self.var_dict_type {
-                    dict_type_key = self.var_dict_type[idx_target_name];
-                }
+                # Only handle dict-typed targets (checked type, then LLVM shape)
+                dict_type_key = self._dict_key_of(target_expr.target);
                 if dict_type_key is None {
                     dict_val_tmp = self._codegen_expr(target_expr.target);
                     if dict_val_tmp is not None {
@@ -953,12 +948,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         idx_val = self._codegen_expr(idx_node.start);
                     }
                     if idx_val is not None {
-                        # Check if this is a dict assignment
-                        dict_type_key: (str | None) = None;
-                        if idx_target_name is not None
-                        and idx_target_name in self.var_dict_type {
-                            dict_type_key = self.var_dict_type[idx_target_name];
-                        }
+                        # Check if this is a dict assignment (checked type first)
+                        dict_type_key = self._dict_key_of(target_expr.target);
                         if dict_type_key is None {
                             dict_info = self._infer_dict_type(target_val);
                             if dict_info is not None {
@@ -1206,9 +1197,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"{var_name}.or"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        # Dict |= (update) via emitter
-                        if var_name in self.var_dict_type {
-                            dict_type_key = self.var_dict_type[var_name];
+                        # Dict |= (update) via emitter (checked type, then shape)
+                        dict_type_key = self._dict_key_of(target_expr);
+                        if dict_type_key is None {
+                            dict_info = self._infer_dict_type(current);
+                            if dict_info is not None {
+                                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                            }
+                        }
+                        if dict_type_key is not None {
                             self._ensure_emitters();
                             _de = self._native_emitters.get("dict");
                             if _de is not None {
@@ -1778,13 +1775,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 break;
             }
         }
-        # Track dict type for dict variables
-        for (dkey, dtype) in self.dict_types.items() {
-            if value.type == dtype.as_pointer() {
-                self.var_dict_type[var_name] = dkey;
-                break;
-            }
-        }
     }
 }
 
@@ -1893,13 +1883,13 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         coll_call = nd.collection;
         if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
             items_method = self._get_name(coll_call.target.right);
-            items_base = self._get_name(coll_call.target.target);
-            if (
-                items_method == "items"
-                and items_base is not None
-                and items_base in self.var_dict_type
-            ) {
-                dict_type_key = self.var_dict_type[items_base];
+            items_dict_key = (
+                self._dict_key_of(coll_call.target.target)
+                    if items_method == "items"
+                    else None
+            );
+            if items_dict_key is not None {
+                dict_type_key = items_dict_key;
                 helpers = self.dict_helpers.get(dict_type_key);
                 unpack_targets = nd.target.values or [];
                 if helpers is not None and len(unpack_targets) == 2 {
@@ -1998,12 +1988,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     _coll_memo_hint = self._last_type_node_hint;
     self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
-    # Only use dict iteration if the collection variable is explicitly tracked as a dict
-    # (This avoids premature code generation from type inference)
-    dict_type_key: (str | None) = None;
-    if coll_name is not None and coll_name in self.var_dict_type {
-        dict_type_key = self.var_dict_type[coll_name];
-    }
+    # Dict-ness comes from the checked type of the collection expression.
+    dict_type_key: (str | None) = self._dict_key_of(nd.collection);
     # Fallback: for field access (e.g. c.props) where coll_name is None or not
     # tracked, infer the dict type from the evaluated value's LLVM type.
     _ford_coll_val: (ir.Value | None) = _coll_memo;
@@ -2118,7 +2104,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     is_list_coll = (
         coll_name_str is not None and coll_name_str in self.var_list_elem_type
     );
-    is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
+    is_dict_coll = self._dict_key_of(nd.collection) is not None;
     if not is_list_coll and not is_dict_coll {
         str_coll_val = _coll_memo;
         i8p_s = ir.IntType(8).as_pointer();

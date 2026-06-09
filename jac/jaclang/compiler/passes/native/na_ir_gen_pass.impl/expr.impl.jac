@@ -1437,9 +1437,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
-        # Check for named dict access: d[key] where d is a known dict variable
-        if target_name is not None and target_name in self.var_dict_type {
-            dict_type_key = self.var_dict_type[target_name];
+        # Check for typed dict access: d[key] where d's checked type is a dict
+        dict_type_key = self._dict_key_of(nd.target);
+        if dict_type_key is not None {
             parts = dict_type_key.split(":");
             if len(parts) == 2 {
                 (key_type_name, val_type_name) = (parts[0], parts[1]);

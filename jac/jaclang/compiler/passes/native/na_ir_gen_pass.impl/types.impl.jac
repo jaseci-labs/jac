@@ -144,6 +144,30 @@ impl NaIRGenPass._set_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Return the native dict registry key ("k:v" spec) for an expression's
+checked dict type, or None when the expression is not dict-typed. Lowering
+the type registers the dict struct + helpers as a side effect, so the
+returned key is always present in `dict_types`/`dict_helpers`."""
+impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not (tk == "dict" or tk.startswith("dict[")) {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None {
+        return None;
+    }
+    for (dkey, dt) in self.dict_types.items() {
+        if lowered == dt.as_pointer() {
+            return dkey;
+        }
+    }
+    return None;
+}
+
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
 
 Handles primitives (registry-backed), enums, user structs, and the builtin
