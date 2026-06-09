@@ -45,9 +45,8 @@ glob _TP_VERSION: str = "00",
 # forward to downstream hops. Request-scoped; empty when no active span.
 glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
 
-# The live SERVER span for the active request, so memory/DB child spans
-# (`start_memory_span`) can parent to it. The SERVER span is NOT set as the
-# OTel current-context span, so without this children would become new roots.
+# Live SERVER span for the active request. It is not the OTel
+# current-context span, so memory child spans parent to it via this.
 glob _current_span: ContextVar[any] = ContextVar(
          "_jac_current_span", default=None
      );
@@ -334,11 +333,9 @@ def end_span(span: any) {
     _current_span.set(None);
 }
 
-"""Start a CLIENT child span for a memory-hierarchy / DB op (Redis L2,
-Mongo L3), parented to the active SERVER span so it nests in the request
-waterfall. No-op (returns None) when tracing is inactive or there is no
-active request span, so memory ops outside a traced request add nothing.
-The caller MUST pass the result to `end_memory_span`."""
+"""Start a CLIENT child span for a memory/DB op, parented to the active
+SERVER span. No-op (returns None) when tracing is inactive or no request
+span is active. Caller MUST pass the result to `end_memory_span`."""
 def start_memory_span(name: str, attributes: dict | None = None) -> any {
     if not _tracing_active or _tracer is None or not HAS_OTEL {
         return None;
