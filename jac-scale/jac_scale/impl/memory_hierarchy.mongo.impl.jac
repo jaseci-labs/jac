@@ -126,7 +126,7 @@ def _snapshot_field_hashes(anchor: Anchor) -> None {
         return;
     }
     arch = anchor.archetype;
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     _seen: tuple[set, set] = (set(), set());
     hashes: dict[str, int] = {};
     for name in known {
@@ -144,7 +144,7 @@ def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
     }
     arch = anchor.archetype;
     stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     dirty: set[str] = set();
     _seen: tuple[set, set] = (set(), set());
     for name in known {

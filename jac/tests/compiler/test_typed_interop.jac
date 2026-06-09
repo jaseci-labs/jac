@@ -97,6 +97,37 @@ test "existing fixtures still compile" {
     assert mod.gen.js.strip();
 }
 
+# A *relative* `sv import from .provider` must lower to the same HTTP client
+# stubs an absolute import does, instead of falling through to a plain Python
+# `from .provider import ...` (#6507). The bug was a module-name key mismatch:
+# BoundaryAnalysisPass keyed the binding on the dotted name (`.sv_relative_provider`)
+# while PyastGen looked it up bare (`sv_relative_provider`), so no stub was
+# generated and the consumer module failed to import — silently dropping every
+# one of its own endpoints.
+test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
+    py = compile_fixture("sv_relative_consumer.jac").gen.py;
+    # The provider must NOT be a plain Python import (that is the broken
+    # fallthrough that crashes the module at load time).
+    assert "from .sv_relative_provider import" not in py , (
+        "relative sv import must not lower to a plain Python import"
+    );
+    # It must instead emit the sv-to-sv client machinery, keyed on the BARE
+    # module name (no leading dot) so the runtime can resolve the provider.
+    assert "import sv_client as __jac_sv_client" in py;
+    assert "_declare_consumer_provider(__name__, 'sv_relative_provider')" in py;
+    assert "'.sv_relative_provider'" not in py , (
+        "stubs must key the provider on the bare module name, not the dotted form"
+    );
+    # def-stub, walker-stub, and boundary-type-stub forms all route remotely.
+    assert "__jac_sv_client.call('sv_relative_provider', 'analyze'" in py;
+    assert "spawn_walker('sv_relative_provider', 'Analyze'" in py;
+    # The module's own endpoints survive: the consumer compiles to importable
+    # Python (the plain-import crash is gone).
+    py_mod = compile_fixture("sv_relative_consumer.jac").gen.py_ast[0];
+    compiled = compile(py_mod, filename="<sv_relative_consumer>", mode="exec");
+    assert compiled is not None;
+}
+
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
     code = '"""Test."""\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_data("World");\n        return <div>{data}</div>;\n    }\n}\n';

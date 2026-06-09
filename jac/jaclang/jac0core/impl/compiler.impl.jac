@@ -132,10 +132,12 @@ impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
+    (rebuild, no_precompile) = cache_mode();
 
     # Tier 1: in-memory hub
     if (
-        (full_target in actual_program.mod.hub)
+        (not rebuild)
+        and (full_target in actual_program.mod.hub)
         and actual_program.mod.hub[full_target].gen.py_bytecode
     ) {
         codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
@@ -144,7 +146,7 @@ impl JacCompiler.get_bytecode(
 
     # Tier 2: JIR cache fast path
     cache_path = get_module_cache_path(full_target);
-    if is_module_cache_valid(full_target, cache_path) {
+    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -163,19 +165,29 @@ impl JacCompiler.get_bytecode(
     }
 
     # Tier 2.5: precompiled JIR bundle shipped with the package
-    precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
-    if precompiled_bc is not None {
-        try {
-            import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-            jir_bytes = write_precompiled_jir(precompiled_bc, 0, FLAG_PRECOMPILED);
-            cache_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp_path = cache_path.with_suffix('.tmp');
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
-        } except Exception {
-            ;
+    if (not rebuild) and (not no_precompile) {
+        precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
+        if precompiled_bc is not None {
+            try {
+                # Launder into the module cache, stamped with the real key so
+                # the next load hits the Tier 2 mtime fast-path and the entry
+                # still re-validates correctly when mtime is ambiguous.
+                import from jaclang.jac0core.jir {
+                    write_precompiled_jir,
+                    FLAG_PRECOMPILED
+                }
+                jir_bytes = write_precompiled_jir(
+                    precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
+                );
+                cache_path.parent.mkdir(parents=True, exist_ok=True);
+                tmp_path = cache_path.with_suffix('.tmp');
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } except Exception {
+                ;
+            }
+            return marshal.loads(precompiled_bc);
         }
-        return marshal.loads(precompiled_bc);
     }
 
     # Tier 3: full compile + JIR write
@@ -211,6 +223,7 @@ impl JacCompiler.get_bytecode(
             import zlib;
             sections: dict[int, bytes] = {};
             sections[SEC_BYTECODE] = result.gen.py_bytecode;
+            sections[SEC_MODKEY] = compute_module_key(full_target).encode('utf-8');
             if actual_program.mtir_map {
                 sections[SEC_MTIR] = pickle.dumps(
                     actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
@@ -355,7 +368,7 @@ impl JacCompiler._load_native_from_bitcode(
     target = llvm.Target.from_default_triple();
     target_machine = target.create_target_machine();
     engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-    import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+    import from jaclang.jac0core.codeinfo { CodeGenTarget }
     gen = CodeGenTarget();
     gen.native_engine = engine;
     py_func_table: dict = {};
@@ -363,21 +376,8 @@ impl JacCompiler._load_native_from_bitcode(
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
-        import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
         import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-        manifest = InteropManifest();
-        for (name, data) in cached_interop.get('bindings', {}).items() {
-            binding = InteropBinding(
-                name=name,
-                source_context=InteropContext(data['source_context']),
-                callers={InteropContext(c) for c in data.get('callers', [])},
-                ret_type=data.get('ret_type', 'int'),
-                param_types=data.get('param_types', []),
-                param_names=data.get('param_names', []),
-                source_module=data.get('source_module')
-            );
-            manifest.bindings[name] = binding;
-        }
+        manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
             register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -439,68 +439,41 @@ impl JacCompiler._restore_sections(
     }
 }
 
-"""Walk up from a .jac file looking for a _precompiled/ JIR bundle."""
+"""Walk up from a .jac file for a self-validating _precompiled/ JIR bundle.
+
+The shipped .jir carries its own SEC_MODKEY, so validation is the same
+`jir_matches_source` key-compare the module cache uses — no manifest, no
+per-file hash table. co_filenames are patched from the build-time sentinel
+back to the install directory.
+"""
 impl JacCompiler._get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
-    import hashlib;
-    import json;
     import from pathlib { Path as _Path }
+    import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
     while True {
-        manifest_path = os.path.join(d, '_precompiled', 'manifest.json');
-        if os.path.isfile(manifest_path) {
-            try {
-                with open(manifest_path, encoding='utf-8') as f {
-                    manifest = json.load(f);
-                }
-                norm_root = os.path.normpath(d);
-                if not norm_file.startswith(norm_root + os.sep) {
-                    break;
-                }
-                rel_path = norm_file[len(norm_root) + 1:];
-                rel_key = rel_path.replace(os.sep, '/');
-                entries = manifest.get('entries', {});
-                entry = entries.get(rel_key);
-                if not isinstance(entry, dict) {
-                    break;
-                }
-                expected = entry.get('source_hash');
-                if expected {
-                    with open(norm_file, 'rb') as f2 {
-                        actual = hashlib.sha256(f2.read()).hexdigest();
-                    }
-                    if actual != expected {
-                        break;
-                    }
-                }
-                sentinel = manifest.get('filename_sentinel', '__PKG_ROOT__');
-                # Try .jir bundle first
-                jir_rel = os.path.splitext(rel_path)[0] + '.jir';
-                jir_path = os.path.join(d, '_precompiled', pyver, jir_rel);
-                if os.path.isfile(jir_path) {
+        bundle_dir = os.path.join(d, '_precompiled');
+        if os.path.isdir(bundle_dir) {
+            norm_root = os.path.normpath(d);
+            if not norm_file.startswith(norm_root + os.sep) {
+                break;
+            }
+            rel_path = norm_file[len(norm_root) + 1:];
+            jir_rel = os.path.splitext(rel_path)[0] + '.jir';
+            jir_path = os.path.join(bundle_dir, pyver, jir_rel);
+            if os.path.isfile(jir_path) {
+                try {
                     jir_data = _Path(jir_path).read_bytes();
-                    if len(jir_data) >= 32 {
-                        import struct;
-                        (flags_val, ) = struct.unpack_from('<I', jir_data, 28);
-                        if flags_val & FLAG_PRECOMPILED {
-                            bc = read_bytecode_only(jir_data);
-                            if bc is not None {
-                                return patch_co_filenames_bytes(bc, sentinel, d);
-                            }
+                    if jir_matches_source(jir_data, norm_file) {
+                        bc = read_bytecode_only(jir_data);
+                        if bc is not None {
+                            return patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d);
                         }
                     }
+                } except Exception {
+                    ;
                 }
-                # Fallback: legacy .jbc bundle
-                jbc_rel = os.path.splitext(rel_path)[0] + '.jbc';
-                jbc_path = os.path.join(d, '_precompiled', pyver, jbc_rel);
-                if os.path.isfile(jbc_path) {
-                    return patch_co_filenames_bytes(
-                        _Path(jbc_path).read_bytes(), sentinel, d
-                    );
-                }
-            } except Exception {
-                ;
             }
             break;
         }
@@ -530,6 +503,10 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'source_module': binding.source_module
         };
     }
+    # Carried so a warm-cache load keeps the serve access table populated.
+    interop_data['func_access'] = dict(manifest.func_access);
+    interop_data['walker_access'] = dict(manifest.walker_access);
+    interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
     return interop_data;
 }
 
@@ -560,6 +537,9 @@ impl JacCompiler._deserialize_interop_table(
         );
         manifest.bindings[name] = binding;
     }
+    manifest.func_access.update(cached_interop.get('func_access', {}));
+    manifest.walker_access.update(cached_interop.get('walker_access', {}));
+    manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
     return manifest;
 }
 

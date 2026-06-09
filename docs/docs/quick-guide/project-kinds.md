@@ -1,6 +1,6 @@
 # What You Can Build
 
-Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, or a desktop/mobile build. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
+Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), JavaScript (client, `cl`), and native machine code (`na`, which also compiles to in-browser WebAssembly) -- so the *same* skills produce a CLI tool, a REST API, a full-stack app, a desktop/mobile build, native compute that runs in the browser, or a C-callable shared library. This page is a cookbook: a **small, working example of each common thing you can build** with Jac today, plus the verbs that build and run it. Each one is a *combination* of a few building blocks, not a separate mode.
 
 Every example below was run against the current toolchain. Install once and follow along:
 
@@ -22,17 +22,19 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Microservices](#microservices) | ● ×N | | | ● | | | -- |
 | [Python package (PyPI)](#python-package-pypi) | ● | | | | wheel | | twine¹ |
 | [npm package (npmjs.com)](#npm-package) | | ● | | | npm | | npm³ |
+| [Shared library (C ABI)](#shared-library-c-abi) | | | ● | | .so/.dll | | -- |
 | [Full-stack app](#full-stack-app) | ● | ● | | ● | | | -- |
-| [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | Tauri² |
+| [In-browser native (wasm)](#in-browser-native-wasm) | | ● | ● | ● | | | -- |
+| [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | WebKit² |
 | [Mobile app (webview)](#mobile-app-webview) | ◐ | ● | | | | mobile | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
-**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile · **served** = exposes a REST API via `jac start` · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding Jac plugins (jac-scale, jac-client, jac-desktop), which install through the Jac ecosystem.
+**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding Jac plugins (jac-scale, jac-client, jac-desktop), which install through the Jac ecosystem.
 
 <small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² Pulled in by the `jac-desktop` plugin via pip (no Rust); uses the OS webview. &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
 
-Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; a desktop app is that plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
+Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
 ---
 
@@ -265,6 +267,46 @@ The generated `package.json` wires in `@jaseci/runtime` automatically for JSX/re
 
 :octicons-arrow-right-24: Reference: [Publishing to npm](../reference/publishing.md#publishing-to-npm-npmjsorg)
 
+### Shared library (C ABI)
+
+The native counterpart to the [Python](#python-package-pypi) and [npm](#npm-package) packages: an `na` module compiled to a **C-ABI shared library** (`.so` / `.dylib` / `.dll`) that *any* language with a C FFI -- C, C++, Rust, Go (`cgo`), Python (`ctypes`) -- can link or `dlopen`. It's the mirror image of `import from "lib.so"` (calling C *from* Jac): here you expose Jac *to* C. Like the other packages it has no entry point; the public surface is whatever you mark `:pub`.
+
+```jac
+# mathlib.na.jac
+glob:pub counter: int = 7;                  # exported global
+
+def:pub jadd(a: int, b: int) -> int {       # exported function
+    return a + b;
+}
+
+obj:pub Point {
+    has x: int = 0, y: int = 0;
+}
+
+def:pub make_point(x: int, y: int) -> Point { return Point(x=x, y=y); }
+def:pub point_sum(p: Point) -> int { return p.x + p.y; }
+```
+
+```bash
+jac nacompile mathlib.na.jac --shared                    # → ./libmathlib.so
+jac nacompile mathlib.na.jac --shared --target macos     # → ./libmathlib.dylib
+jac nacompile mathlib.na.jac --shared --target windows   # → ./libmathlib.dll
+```
+
+Load it like any other shared library -- here from Python via `ctypes`:
+
+```python
+import ctypes
+lib = ctypes.CDLL("./libmathlib.so")
+lib.jadd.restype = ctypes.c_int64
+lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64]
+print(lib.jadd(2, 3))   # 5
+```
+
+Scalars pass by value; Jac objects and strings cross as opaque handles (a `void*` you hand back to the library), with exported `jac_retain`/`jac_release` to manage their reference-counted lifetime, and module globals initialize automatically on load. Same batteries-included story as the rest -- Jac's own linker emits the ELF/Mach-O/PE file, so there's no `gcc`, `ld`, or `lld` in the loop (and the `--target` cross-builds need no extra toolchain either).
+
+:octicons-arrow-right-24: Reference: [Native pathway -- Shared libraries](../reference/language/native-pathway.md#shared-libraries-c-abi)
+
 ---
 
 ## Full-stack & apps
@@ -339,19 +381,85 @@ Open [http://localhost:8000](http://localhost:8000). No database, no separate fr
 
 :octicons-arrow-right-24: Full tutorial: [Full-Stack Project Setup](../tutorials/fullstack/setup.md)
 
-### Desktop app
+### In-browser native (wasm)
 
-Wrap the *same* full-stack app in a native desktop window. Jac uses **PyTauri** (Python, no Rust toolchain): your client bundle renders in the webview and your server runs as a frozen sidecar binary.
+The `na` runtime's other target: rather than a host binary, an `na {}` block compiles to **WebAssembly** and runs *in the browser*, driven by a `cl` page -- native-speed compute (a game loop, a simulation, a hot inner loop) executing client-side with no server round-trip. It's the mirror image of a [full-stack app](#full-stack-app): there the heavy lifting runs on the server (`sv`); here it runs in the browser (`na` -> wasm). The block's `import from ...` externs become the wasm module's *imports*, satisfied from JavaScript -- the same native source contract as a [native binary](#native-binary), fulfilled by a different host.
 
-```bash
-pip install jac-desktop      # adds the "desktop" client target
-jac setup desktop            # one-time scaffold (src-pytauri/)
+One module holds both halves:
 
-jac start --client desktop --dev      # develop with live reload
-jac build --client desktop            # build the app
+```jac
+# main.jac
+na {
+    """Count primes below n -- a tight integer loop, compiled to WebAssembly."""
+    def count_primes(n: int) -> int {
+        count = 0;
+        i = 2;
+        while i < n {
+            is_prime = True;
+            j = 2;
+            while j < i {
+                if i % j == 0 { is_prime = False; break; }
+                j += 1;
+            }
+            if is_prime { count += 1; }
+            i += 1;
+        }
+        return count;
+    }
+}
+
+cl {
+    def:pub app -> JsxElement {
+        has answer: str = "computing...";
+        async can with entry {
+            res: any = await WebAssembly.instantiateStreaming(
+                fetch("/static/main.wasm"), {"env": {"puts": lambda { return 0; }}}
+            );
+            wasm: any = res.instance.exports;
+            wasm.__jac_glob_init();
+            # an i64 crosses the JS boundary as a BigInt; format it straight to text
+            answer = f"{wasm.count_primes(BigInt(20000))}";
+        }
+        return <div>
+            <h1>Native compute in the browser</h1>
+            <p>{"primes below 20000 (computed in wasm): "}<b>{answer}</b></p>
+        </div>;
+    }
+}
 ```
 
-Window title, size, and bundled plugins are configured under `[plugins.desktop]` in `jac.toml`. Builds are per-OS (`--platform windows|macos|linux`).
+It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[plugins.client]`).
+
+```bash
+jac start          # builds the cl bundle + na->wasm, serves on http://localhost:8000
+jac start --dev    # same, with hot reload
+```
+
+`jac start` compiles the `na` block to `/static/main.wasm` as part of the client build -- no emscripten and no `wasm-ld`; Jac's own WebAssembly linker turns the object into an instantiable module -- and the page fetches it on mount. Open [http://localhost:8000](http://localhost:8000):
+
+```text
+primes below 20000 (computed in wasm): 2262
+```
+
+!!! note "The boundary is the raw wasm ABI"
+    A `cl` page drives the module through the WebAssembly interface directly -- `instantiateStreaming`, `exports`, and C-ABI value marshalling (an `int` / `i64` arrives in JavaScript as a `BigInt`). Wrapping that glue in a reusable `.cl.jac` keeps the page clean: the full example below does exactly this with a WebGL shim that fulfills a graphics module's `import from raylib` externs in the browser.
+
+:octicons-arrow-right-24: Full example: [raylib cube shooter (web)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/raylib_shooter/web) · Reference: [Native pathway](../reference/language/native-pathway.md)
+
+### Desktop app
+
+Wrap the *same* full-stack app in a native desktop window. Jac compiles your `cl`
+UI into **one `jac nacompile`d binary that embeds the OS webview** (WebKitGTK /
+WKWebView / WebView2) - no Rust toolchain, no PyInstaller, no separate process.
+
+```bash
+pip install jac-desktop      # adds the "desktop" client target (no setup step)
+
+jac build --client desktop            # -> .jac/client/desktop/<app>  (single binary)
+jac start --client desktop            # build + launch the native window
+```
+
+Window title and size are configured under `[plugins.desktop]` in `jac.toml`.
 
 :octicons-arrow-right-24: Full tutorial: [Desktop App](../tutorials/fullstack/desktop.md)
 

@@ -56,6 +56,36 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     return val;
 }
 
+"""Infer the pointer-to-struct LLVM type of a boxed tuple read from a list.
+
+`nd` is the RHS of a tuple-unpack assignment — typically `lst.pop()`,
+`lst.pop(i)`, or `lst[i]`. Returns the element pointer type (e.g. `{i64,i64}*`)
+recovered from the source list's declared annotation (`list[tuple[...]]`) or,
+for a bare `list`, from the element-struct shape tracked at literal/append time.
+Returns None when the source isn't an identifiable list. See #6435.
+"""
+impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
+    list_name: (str | None) = None;
+    if isinstance(nd, uni.FuncCall) {
+        tgt = nd.target;
+        if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+            list_name = self._get_name(tgt.target);
+        }
+    } elif isinstance(nd, uni.AtomTrailer) and not nd.is_attr and nd.right?.slices {
+        list_name = self._get_name(nd.target);
+    }
+    if list_name is None {
+        return None;
+    }
+    # 1. Typed `list[tuple[...]]` — recover from the declared annotation.
+    cast = self._resolve_ptr_elem_cast_type(self.var_type_node.get(list_name));
+    if cast is not None {
+        return cast;
+    }
+    # 2. Bare `list` — recover the boxed-tuple struct tracked at literal time.
+    return self.var_list_elem_struct.get(list_name);
+}
+
 """Unpack a tuple into multiple variables. Handles both value and pointer tuples."""
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
@@ -69,6 +99,22 @@ impl NaIRGenPass._codegen_tuple_unpack(
     } elif isinstance(tuple_val.type, ir.PointerType)
     and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
         struct_type = tuple_val.type.pointee;
+    }
+    # A boxed tuple read from a list (`(a, b) = lst.pop()` / `lst[i]`) arrives as
+    # an opaque `i8*` — recover its struct shape from the source list and bitcast
+    # so the pointer-extract path below can destructure it (see #6435).
+    if struct_type is None
+    and isinstance(tuple_val.type, ir.PointerType)
+    and tuple_node is not None {
+        cast_ptr_type = self._infer_unpack_struct_ptr(tuple_node);
+        if cast_ptr_type is not None
+        and isinstance(cast_ptr_type, ir.PointerType)
+        and isinstance(cast_ptr_type.pointee, ir.LiteralStructType) {
+            tuple_val = self.builder.bitcast(
+                tuple_val, cast_ptr_type, name="unpack.cast"
+            );
+            struct_type = cast_ptr_type.pointee;
+        }
     }
     if struct_type is None {
         return;
@@ -123,6 +169,21 @@ impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     return total if total > 0 else 8;
 }
 
+"""Exact ABI byte size of an LLVM type as a runtime i64.
+
+Uses the classic `getelementptr (T* null, i32 1)` then `ptrtoint` idiom, so the
+target data layout (alignment, padding, nested-struct sizes) decides the size
+rather than a hand-rolled per-field sum. Use this whenever a heap allocation
+must exactly fit a value of `ty` (e.g. boxing a tuple that contains a JacVal).
+"""
+impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    null_ptr = ir.Constant(ty.as_pointer(), None);
+    size_gep = self.builder.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof.gep");
+    return self.builder.ptrtoint(size_gep, i64, name="sizeof");
+}
+
 """Box a value tuple to a heap-allocated pointer (rc_alloc + store).
 
 Returns the value unchanged if it's already a pointer. Use this when
@@ -133,7 +194,11 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType) {
         return val;
     }
-    size = ir.Constant(ir.IntType(64), self._get_struct_size(val.type));
+    # Use LLVM's exact ABI sizeof (accounts for alignment and nested-struct
+    # members such as a 16-byte JacVal) instead of the flat per-field estimate,
+    # which undercounts a tuple holding an `any` element and would heap-overflow
+    # the box on store and corrupt it on reload. See #6449.
+    size = self._sizeof_llvm(val.type);
     # Prefer the jac_loc stamped on the value (set by _codegen_tuple_val) over
     # the caller-supplied loc so attribution is always as specific as possible.
     _box_loc = val?.jac_loc or loc;
@@ -149,6 +214,41 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     # Set type tag so RC debug log shows "tuple" instead of "raw".
     self._emit_set_type_tag(self.builder, raw, "tuple");
     return ptr;
+}
+
+"""Coerce a value tuple to a target struct layout, boxing/unboxing each field
+as needed (e.g. a concrete `int` field into an `any`/`JacVal` slot).
+
+A bare `list` erases its elements to `any`, so a tuple stored in it has a fixed
+physical layout (recovered by the unpack side from the list's element-struct).
+A tuple literal built from concrete values (`(7, 0)` -> `{i64, i64}`) does not
+match a layout whose slot is `any` (`{JacVal, i64}`) unless its scalar fields
+are boxed first. This reconciles the two so producer and consumer agree on the
+in-list layout.
+
+Returns the value unchanged when it is not a struct, the target is not a struct,
+the layouts already match, or the arities differ. See #6511."""
+impl NaIRGenPass._coerce_tuple_to_struct(
+    val: ir.Value, target_struct: ir.Type
+) -> ir.Value {
+    if not isinstance(val.type, ir.LiteralStructType)
+    or not isinstance(target_struct, ir.LiteralStructType) {
+        return val;
+    }
+    if val.type == target_struct
+    or len(val.type.elements) != len(target_struct.elements) {
+        return val;
+    }
+    out = ir.Constant(target_struct, ir.Undefined);
+    for i in range(len(target_struct.elements)) {
+        fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
+        tgt_ty = target_struct.elements[i];
+        if fld.type != tgt_ty {
+            fld = self._coerce_type(fld, tgt_ty);
+        }
+        out = self.builder.insert_value(out, fld, i, name=f"tcoerce.ins.{i}");
+    }
+    return out;
 }
 
 """Index into a tuple: tuple[i] -> element value. Handles both value and pointer tuples."""

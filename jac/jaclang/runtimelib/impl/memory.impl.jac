@@ -932,7 +932,7 @@ def _sqlite_snapshot_field_hashes(anchor: Anchor) -> None {
         return;
     }
     arch = anchor.archetype;
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     _seen: tuple[set, set] = (set(), set());
     hashes: dict[str, int] = {};
     for name in known {
@@ -953,7 +953,7 @@ def _sqlite_derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
     if not stored {
         return set();
     }
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     dirty: set[str] = set();
     _seen: tuple[set, set] = (set(), set());
     for name in known {

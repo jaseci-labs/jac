@@ -317,6 +317,42 @@ test "reactive state scoping across functions" {
     assert "let cart = useCart()" in js_code;
 }
 
+test "reactive writes transform inside nested and deferred closures" {
+    # Regression for #6459: a reactive `has` write must lower to its setter at
+    # any closure depth, not only in the direct handler scope.
+    es_ast = compile_to_esast(fixture_path("reactive_state_closures.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Direct handler scope.
+    assert "setSeen(true)" in js_code , "direct handler write should use setter";
+    # Inside a setTimeout(...) callback (deferred closure). If the write had not
+    # transformed it would emit `armed = true` and `setArmed` would be absent.
+    assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
+    assert "setArmed(true)" in js_code , (
+        "write inside setTimeout closure should use setter"
+    );
+    # Inside an immediately-invoked nested lambda.
+    assert "setFired(true)" in js_code , (
+        "write inside nested closure should use setter"
+    );
+    # The raw reactive assignment form must never leak through.
+    assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
+}
+
+test "varargs parameter lowers to JS rest parameter" {
+    # Regression: `*args` was dropped from the emitted signature, leaving the
+    # body referencing an undefined name (broke the shadcn `cn(*inputs)` helper).
+    es_ast = compile_to_esast(fixture_path("vararg_params.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "function collect(...items)" in js_code , (
+        "vararg-only function should emit a rest parameter"
+    );
+    assert "function mixed(first, ...rest)" in js_code , (
+        "regular param followed by vararg should emit `first, ...rest`"
+    );
+}
+
 # SKIP: Jac-in-Jac compilation produces different import output (e.g.
 # `import "lodash"` instead of `import { debounce } from "lodash"`).
 # test "equivalent context patterns" { ... }

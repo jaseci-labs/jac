@@ -124,6 +124,9 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Register struct types from imported .na.jac modules (must be after local forward-declares)
     self._register_imported_struct_types();
     self._register_globals(self.ir_in);
+    # _register_archetypes also registers the OSP kernel + emits __osp_setup
+    # internally (before archetype method bodies are codegen'd), so spawn
+    # lowering inside abilities can reference the runtime (issue #6146).
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
     for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {

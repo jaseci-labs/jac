@@ -44,6 +44,7 @@ import from jaclang.jac0core.diagnostics {
     E5010,
     E5011,
     E5012,
+    E5016,
     W5013,
     W5014,
     W5015,
@@ -345,6 +346,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
@@ -364,6 +366,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
+    def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_runtime_import -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
@@ -558,6 +561,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_float(nd: uni.Float) -> None;
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_string(nd: uni.String) -> None;
+    def _str_literal(nd: uni.String) -> es.Literal;
     def exit_formatted_value(nd: uni.FormattedValue) -> None;
     def exit_f_string(nd: uni.FString) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -565,6 +569,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_name(nd: uni.Name) -> None;
+    def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;

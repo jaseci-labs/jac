@@ -10,8 +10,7 @@ glob DEFAULT_INCLUDE_PATTERNS: list[str] = [
          "**/*.pyi",  # type stubs
          "**/*.lark",  # Lark grammar files, may be vendored
          "**/py.typed",  # PEP 561 type marker
-         "**/*.jir",  # pre-compiled JIR bytecode
-         "_precompiled/manifest.json",  # JIR manifest
+         "**/*.jir",  # pre-compiled JIR bytecode (self-validating via SEC_MODKEY)
 
      ],
      # Directories excluded from the wheel — matched against any path component.

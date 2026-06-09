@@ -116,6 +116,55 @@ def make_crossboundary_client(tmp_path: str) -> JacTestClient {
     );
 }
 
+"""Create a client for the cl->sv *dual-role* app (#6507).
+
+`dualrole_guestbook.jac` is reached only through the client's `sv import` (the
+cl->sv load path), AND it is itself a server->server consumer: it does its own
+relative `sv import from .dualrole_analytics`. Before the fix that outgoing
+relative import crashed the guestbook module at load time, silently dropping its
+own `sign_guestbook` / `get_guestbook` endpoints. Copied into an isolated dir so
+the relative imports resolve.
+"""
+def make_dualrole_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"dualrole_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "dualrole_app.jac", dest / f"{module_name}.jac");
+    for name in [
+        "dualrole_frontend.cl.jac",
+        "dualrole_guestbook.jac",
+        "dualrole_analytics.jac"
+    ] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
+"""Create a client whose cl->sv endpoint provider crashes at import (#6507).
+
+The server module behind `do_thing` raises while executing its module body, so
+the serve-side collector cannot resolve the symbol. It must log the failure
+rather than silently drop the endpoint. Copied into an isolated dir.
+"""
+def make_failload_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"failload_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "failload_app.jac", dest / f"{module_name}.jac");
+    for name in ["failload_frontend.cl.jac", "failload_server.jac"] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
 """Create a cross-boundary client whose app lives UNDER the jaclang package root.
 
 Same fixtures as `make_crossboundary_client`, but the entry/server/client files
@@ -1235,6 +1284,55 @@ test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
         response = client.post("/function/cross_orphan", json={});
         assert not response.ok , "uncalled cross_orphan should not be registered";
         client.close();
+    }
+}
+
+test "issue 6507: cl->sv endpoint module keeps its endpoints when it is also an sv consumer" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_dualrole_client(tmpdir);
+        # `dualrole_guestbook` is reached only through the client's `sv import`
+        # and ALSO does its own `sv import from .dualrole_analytics`. That single
+        # outgoing relative import used to crash the module at load time, so its
+        # walkers vanished (POST -> 405). Both must register and run.
+        listing = client.get("/walkers");
+        assert listing.ok , f"/walkers should respond: {listing.data}";
+        names = listing.data["walkers"];
+        assert "get_guestbook" in names , f"get_guestbook missing from {names}";
+        assert "sign_guestbook" in names , f"sign_guestbook missing from {names}";
+        signed = client.post("/walker/sign_guestbook", json={"name": "ada"});
+        assert signed.ok , f"sign_guestbook should be callable: {signed.data}";
+        got = client.post("/walker/get_guestbook", json={});
+        assert got.ok , f"get_guestbook should be callable: {got.data}";
+        client.close();
+    }
+}
+
+test "issue 6507: a cross-boundary endpoint module that fails to import is logged, not silently dropped" {
+    with TemporaryDirectory() as tmpdir {
+        # Capture before building the client: the failing import happens during
+        # endpoint collection at load time (inside from_file).
+        logger = logging.getLogger("jaclang.serve");
+        cap = capture_log_start(logger, logging.WARNING);
+        buf = cap[0];
+        handler = cap[1];
+        old_level = cap[2];
+        try {
+            client = make_failload_client(tmpdir);
+            # The provider module raises at import, so do_thing cannot resolve;
+            # it must not be served...
+            resp = client.post("/function/do_thing", json={});
+            assert not resp.ok , "endpoint from a crashing module must not be callable";
+            # ...and the failure must be surfaced on the log (the #6507 trap was
+            # that it vanished with no error at all).
+            log_text = buf.getvalue();
+            assert "failload_server" in log_text , (
+                f"module-load failure should be logged, got: {log_text!r}"
+            );
+            assert "RuntimeError" in log_text;
+            client.close();
+        } finally {
+            capture_log_stop(logger, handler, old_level);
+        }
     }
 }
 

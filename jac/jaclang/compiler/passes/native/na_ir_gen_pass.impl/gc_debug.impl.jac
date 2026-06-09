@@ -377,24 +377,28 @@ impl NaIRGenPass._emit_raw_free_bbs(
     log_raw_bb = func.append_basic_block("log_raw");
     live_rm_bb = func.append_basic_block("live_rm");
     actual_free_bb = func.append_basic_block("actual_free");
-    # log_free_raw: call the platform malloc-size intrinsic, check debug flag.
-    # glibc exports malloc_usable_size; macOS libSystem only has malloc_size
-    # (same i64(i8*) signature). Picking the wrong one fails at dyld load with
-    # "Symbol not found: _malloc_usable_size".
+    # log_free_raw: check the debug flag only. The malloc-size intrinsic is
+    # computed on the log path below, NOT here: calling it before the flag
+    # check ran it on every free even in non-debug builds (its result is used
+    # only by the printf), and on the wasm target that meant invoking an
+    # i64-returning runtime import in the hot free path.
     b = ir.IRBuilder(log_free_bb);
-    import platform;
-    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
-    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
-    _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
-    _msz = b.call(_msz_fn, [_raw_msz], name="msz");
     dbg_flag3 = b.load(self.rc_debug_gv, name="rc.dbg3");
     b.cbranch(
         b.icmp_unsigned("!=", dbg_flag3, ir.Constant(i8, 0), name="dbg.on3"),
         log_raw_bb,
         live_rm_bb
     );
-    # log_raw: printf RC FREE → live_rm
+    # log_raw: compute alloc size, then printf RC FREE → live_rm.
+    # glibc exports malloc_usable_size; macOS libSystem only has malloc_size
+    # (same i64(i8*) signature). Picking the wrong one fails at dyld load with
+    # "Symbol not found: _malloc_usable_size".
     b = ir.IRBuilder(log_raw_bb);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
+    _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
+    _msz = b.call(_msz_fn, [_raw_msz], name="msz");
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="fr.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="fr.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="fr.aid.raw");
@@ -449,21 +453,23 @@ impl NaIRGenPass._emit_struct_free_log(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     log_struct_line_bb = func.append_basic_block("log_struct_line");
-    # log_free_struct: compute msz, check debug flag.
-    # macOS libSystem has malloc_size, not glibc's malloc_usable_size.
+    # log_free_struct: check the debug flag only. The malloc-size intrinsic is
+    # computed on the log path below (see _emit_raw_free_bbs) so a non-debug
+    # struct free does not call it on every release.
     b = ir.IRBuilder(log_free_struct_bb);
-    import platform;
-    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
-    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
-    _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
     dbg_flag_s = b.load(self.rc_debug_gv, name="rc.dbg.s");
     b.cbranch(
         b.icmp_unsigned("!=", dbg_flag_s, ir.Constant(i8, 0), name="dbg.on.s"),
         log_struct_line_bb,
         actual_free_struct_bb
     );
-    # log_struct_line: printf RC FREE
+    # log_struct_line: compute alloc size, then printf RC FREE.
+    # macOS libSystem has malloc_size, not glibc's malloc_usable_size.
     b = ir.IRBuilder(log_struct_line_bb);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
+    _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
     (_op, _loc) = self._emit_ctx_load(b);
     _fmt_sf = self._get_fmt_string(
         "RC FREE    id=%-4lld ptr=%p  bytes=%lld  type=%-12s  op=%-12s  at=%s"
@@ -671,5 +677,5 @@ impl NaIRGenPass._emit_rc_live_dump -> None {
     cur.add_incoming(nxt, next_bb);
     b.branch(check_bb);
     b = ir.IRBuilder(after_bb);
-    self.builder = b;
+    self._builder = b;
 }

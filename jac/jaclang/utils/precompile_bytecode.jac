@@ -14,21 +14,19 @@ Examples:
     jac run utils/precompile_bytecode.jac./jac-super
 """
 
-import hashlib;
-import json;
 import marshal;
 import os;
 import sys;
-import types;
 
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.bccache { discover_annex_files }
 import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
-import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-
-# Sentinel string embedded in co_filename at build time.
-glob SENTINEL = "__PKG_ROOT__";
+import from jaclang.jac0core.jir {
+    write_precompiled_jir,
+    FLAG_PRECOMPILED,
+    compute_module_key,
+    PRECOMPILE_SENTINEL
+}
 
 """Discover the Python package directory inside a source tree.
 
@@ -118,44 +116,6 @@ def find_jac_files(package_dir: str) -> list[str] {
     return result;
 }
 
-"""Compute SHA-256 hash of a file's contents."""
-def file_hash(path: str) -> str {
-    h = hashlib.sha256();
-    with open(path, "rb") as f {
-        h.update(f.read());
-    }
-    return h.hexdigest();
-}
-
-"""Build the manifest entries for all .jac files in a package."""
-def build_manifest(package_dir: str, jac_files: list[str]) -> dict {
-    entries: dict[str, dict] = {};
-    pkg = Path(package_dir);
-
-    for jac_path in jac_files {
-        rel = str(Path(jac_path).relative_to(pkg));
-        rel_key = rel.replace(os.sep, "/");
-
-        entry: dict[str, object] = {"source_hash": file_hash(jac_path)};
-
-        # Discover and hash impl files
-        impl_files = discover_annex_files(jac_path);
-        if impl_files {
-            impl_hashes: dict[str, str] = {};
-            for impl_path in impl_files {
-                impl_rel = str(Path(impl_path).relative_to(pkg));
-                impl_rel_key = impl_rel.replace(os.sep, "/");
-                impl_hashes[impl_rel_key] = file_hash(impl_path);
-            }
-            entry["impl_hashes"] = impl_hashes;
-        }
-
-        entries[rel_key] = entry;
-    }
-
-    return {"version": 1, "filename_sentinel": SENTINEL, "entries": entries};
-}
-
 """Compile a single .jac file and extract its bytecode.
 
 Triggers the full Jac compilation pipeline (or uses cached bytecode).
@@ -230,9 +190,14 @@ def main {
                 continue;
             }
 
-            # Patch filenames to use sentinel and wrap in JIR with FLAG_PRECOMPILED
-            patched = patch_co_filenames_bytes(bytecode, package_dir, SENTINEL);
-            jir_bytes = write_precompiled_jir(patched, 0, FLAG_PRECOMPILED);
+            # Patch filenames to the build-time sentinel, then wrap in a JIR
+            # stamped with the module key so it self-validates on load.
+            patched = patch_co_filenames_bytes(
+                bytecode, package_dir, PRECOMPILE_SENTINEL
+            );
+            jir_bytes = write_precompiled_jir(
+                patched, compute_module_key(jac_path), FLAG_PRECOMPILED
+            );
 
             # Write .jir file
             jir_path.parent.mkdir(parents=True, exist_ok=True);
@@ -244,18 +209,10 @@ def main {
         }
     }
 
-    # Generate manifest
-    manifest = build_manifest(package_dir, jac_files);
-    manifest_path = precompiled_dir / "manifest.json";
-    with open(manifest_path, "w", encoding="utf-8") as f {
-        json.dump(manifest, f, indent=2, sort_keys=True);
-    }
-
     console.print(
         f"\nDone! Compiled {compiled}/{len(jac_files)} modules ({failed} failed)"
     );
     console.print(f"  Output: {precompiled_dir}");
-    console.print(f"  Manifest: {manifest_path}");
     console.print(f"  Python version: {pyver}");
 }
 

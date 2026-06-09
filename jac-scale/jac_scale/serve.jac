@@ -45,7 +45,7 @@ import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
 import from urllib.parse { quote }
-import from jac_scale.utils { authenticate_or_fail }
+import from jac_scale.utils { authenticate_or_fail, is_safe_loopback_redirect }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
@@ -78,6 +78,16 @@ def _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -
 
 """Get local network IP addresses (non-localhost)."""
 def _get_network_ips -> list[str];
+
+"""Pick where the SSO callback should redirect the token.
+
+`requested` is the client-supplied loopback callback that round-tripped through
+the OAuth `state` parameter (a desktop app's own 127.0.0.1 origin). It is only
+honored when it passes is_safe_loopback_redirect; otherwise we fall back to the
+server-configured `client_auth_callback_url`. Returns '' when neither is usable,
+signalling the caller to return the raw API response instead of redirecting.
+"""
+def _resolve_sso_client_redirect(requested: str | None, configured: str) -> str;
 
 """Auth endpoints: register, login, token refresh, update password, SSO, API keys."""
 obj JacAPIServerAuth {

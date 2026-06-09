@@ -535,6 +535,7 @@ obj ModulePath(UniNode) {
 
     has is_import_from: bool { getter; }
     has dot_path_str: str { getter; }
+    has base_module_name: str { getter; }
 
     def resolve_relative_path(target_item: (str | None) = None) -> str;
     def resolve_relative_path_list -> list[str];

@@ -187,12 +187,10 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
     if (not nd.from_loc or not nd.from_loc.path) {
         return False;
     }
-    module_name_parts = [
-        p.value
-        for p in nd.from_loc.path
-        if p?.value
-    ];
-    module_name = '.'.join(module_name_parts) if module_name_parts else None;
+    # The bare module name (no leading relative dots) is the shared key that
+    # BoundaryAnalysisPass recorded `source_module` under; reading it from the
+    # same getter keeps the two passes from drifting (#6507).
+    module_name = nd.from_loc.base_module_name;
     if not module_name {
         return False;
     }

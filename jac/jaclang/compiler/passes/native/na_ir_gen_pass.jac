@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091 }
 
 # ── Python stdlib modules the native backend can lower ────────────────────
 # Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
@@ -109,7 +109,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         slice_struct_type: object by postinit,
         jacval_type: object by postinit,
         # Simple defaults
-        builder: (ir.IRBuilder | None) = None,
+        _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
@@ -149,6 +149,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
         var_list_elem_type: dict[str, str] = {},
+        # For ptr-element lists holding boxed tuples, the pointer-to-struct
+        # LLVM type of an element (e.g. `{i64, i64}*`). Lets `(a, b) = lst.pop()`
+        # recover the tuple shape for a bare `list` whose annotation carries no
+        # element type. Populated from list literals / appends (see #6435).
+        var_list_elem_struct: dict[str, object] = {},
+        # Transient: pointer-to-struct LLVM type of the element a list literal
+        # just boxed, read by the enclosing assignment to seed
+        # var_list_elem_struct. Reset at the start of each list-literal codegen.
+        _pending_list_elem_struct: (object | None) = None,
         field_type_node: dict[str, dict] = {},
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
@@ -169,6 +178,33 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
+        # Object-Spatial kernel lowering (Phase 4 / issue #6146).
+        # osp_tags: stable per-archetype int type-tag (walker/node/edge),
+        #   shared by the instance __type_tag field, the is_a table, and the
+        #   descriptor table.
+        # osp_arch_kind: archetype name -> "walker" | "node" | "edge".
+        # osp_type_tag_field: archetype name -> struct field index holding the
+        #   i64 __type_tag (fixed at 1: vtable slot is field 0).
+        # osp_thunk_funcs: f"{Arch}.{ability}" -> the (JacVal,JacVal)->JacVal
+        #   dispatch thunk that adapts the raw ability to a kernel Slot.fn.
+        osp_tags: dict[str, int] = {},
+        osp_arch_kind: dict[str, str] = {},
+        osp_type_tag_field: dict[str, int] = {},
+        osp_thunk_funcs: dict[str, ir.Function] = {},
+        # The native-context osp_kernel module AST registered into this program
+        # (None until _register_osp_kernel_module runs); NativeCompilePass links
+        # its IR + glob-init.
+        _osp_kernel_mod: (object | None) = None,
+        # __osp_setup() globals: __ospDESC (i8* array of per-tag descriptors),
+        # __ospRT (OspRuntime*), and the generated runtime function (built once
+        # by _emit_osp_setup, called from the program's glob-init).
+        _osp_desc_global: (object | None) = None,
+        _osp_rt_global: (object | None) = None,
+        _osp_setup_fn: (object | None) = None,
+        # __osp_ensure_init(): lazy idempotent init (kernel glob-init + setup)
+        # that spawn lowering calls, so descriptors/_walk_stack exist regardless
+        # of whether the program ran through a `with entry`.
+        _osp_ensure_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         var_tuple_type: dict[str, str] = {},
@@ -267,6 +303,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {};
 
+    has builder: ir.IRBuilder { getter; }
+
     def postinit -> None;
     # Main pass logic
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -286,6 +324,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_assignment(nd: uni.Assignment) -> None;
     # Expression codegen
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    # Lower a sub-expression a statement requires; emit E5090 (once, deepest)
+    # when it lowers to no value instead of silently dropping the statement.
+    def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -382,22 +423,44 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
+    # Object-Spatial kernel lowering (Phase 4 / issue #6146)
+    def _arch_kind(nd: uni.Archetype) -> (str | None);
+    def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
+    def _register_osp_kernel_module -> None;
+    def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
+    def _osp_trigger_names(nd: (uni.UniNode | None)) -> list[str];
+    def _emit_osp_setup -> None;
+    def _osp_rc_new(struct_name: str) -> (ir.Value | None);
+    def _osp_make_immortal(ptr: ir.Value) -> None;
+    def _osp_build_slot(trig_tag: int, thunk: ir.Function) -> (ir.Value | None);
+    def _osp_build_descriptor(
+        struct_name: str, type_tag: int, entry_slots: list, exit_slots: list
+    ) -> (ir.Value | None);
+
+    def _osp_build_slot_list(pairs: list) -> ir.Value;
+    def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
+    def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    # Resolve the member struct names a trigger tag denotes -- a single `Name`,
+    # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
+    def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    # Validate that every field common to all union members lives at the same
+    # index and type; returns the first divergent field name, or None if the
+    # members share a consistent layout (so any member's layout is usable).
+    def _union_layout_conflict(members: list[str]) -> (str | None);
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_kernel_spawn(
+        walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+    ) -> (ir.Value | None);
+
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _emit_spawn_entry_dispatch(
-        walker_name: str,
-        walker_val: ir.Value,
-        loc_name: (str | None),
-        loc_val: ir.Value
-    ) -> None;
-
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
@@ -505,6 +568,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Type | None);
 
     def _resolve_ptr_elem_cast_type(type_node: (object | None)) -> (ir.Type | None);
+    def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     # Phase 7: String Methods and Builtins
     def _codegen_string_index(
         target_val: ir.Value, index_val: ir.Value
@@ -547,7 +611,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
+    def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
+    def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     # Phase 10: Comprehensions
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
     def _codegen_compr_loops(
@@ -624,6 +690,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
+    def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
         target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
@@ -771,6 +838,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # propagated through _coerce_type so bitcasts/inttoptr keep the marker.
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _release_owned_operands(
+        left_orig: ir.Value, right_orig: ir.Value, op: str = ""
+    ) -> None;
+
+    def _release_owned_args(call_args: list, op: str = "call_arg") -> None;
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
