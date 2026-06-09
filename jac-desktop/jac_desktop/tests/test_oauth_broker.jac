@@ -14,6 +14,7 @@ import threading;
 import tempfile;
 import from urllib.request { Request, urlopen }
 import from urllib.error { HTTPError }
+import from urllib.parse { parse_qs, unquote, urlparse }
 import from jac_desktop.native.oauth_broker {
     SessionStore,
     build_sso_login_url,
@@ -41,10 +42,19 @@ def _start_server -> tuple {
 }
 
 """HTTP request helper that also returns the status on 4xx/5xx (no raise)."""
-def _req(port: int, path: str, method: str = "GET", body: dict | None = None) -> tuple {
+def _req(
+    port: int,
+    path: str,
+    method: str = "GET",
+    body: dict | None = None,
+    extra_headers: dict | None = None
+) -> tuple {
     url = f"http://127.0.0.1:{port}{path}";
     data = json.dumps(body).encode() if body is not None else None;
     headers = {"Content-Type": "application/json"} if data is not None else {};
+    if extra_headers {
+        headers.update(extra_headers);
+    }
     req = Request(url, data=data, method=method, headers=headers);
     try {
         with urlopen(req) as r {
@@ -53,6 +63,20 @@ def _req(port: int, path: str, method: str = "GET", body: dict | None = None) ->
     } except HTTPError as e {
         return (e.code, e.read().decode());
     }
+}
+
+"""Run /oauth/start and return the broker callback path (carrying its nonce).
+
+The single-use `state` nonce is broker-internal; tests recover it the same way
+the real flow does -- from the `client_callback` the broker hands the browser.
+"""
+def _start_flow(port: int, opened: list, platform: str = "github") -> str {
+    (s, _b) = _req(
+        port, f"/__jac/oauth/start?platform={platform}&api_base=http://localhost:8000"
+    );
+    assert s == 200;
+    cb_enc = parse_qs(urlparse(opened[-1]).query)["client_callback"][0];
+    return urlparse(unquote(cb_enc)).path;
 }
 
 # ============================================================================
@@ -74,6 +98,25 @@ test "broker builds sso login url with encoded callback" {
         raised = True;
     }
     assert raised , "unknown platform must raise ValueError";
+}
+
+"""operation selects the SSO path (login|register) and rejects anything else."""
+test "broker builds sso url for register and rejects bad operation" {
+    cb = "http://127.0.0.1:5123/__jac/oauth/callback";
+    url = build_sso_login_url("http://localhost:8000", "google", cb, "register");
+    assert url.startswith("http://localhost:8000/sso/google/register?client_callback=");
+
+    # Default stays login, so existing callers that omit operation are unchanged.
+    url2 = build_sso_login_url("http://localhost:8000", "google", cb);
+    assert "/sso/google/login?" in url2;
+
+    raised = False;
+    try {
+        build_sso_login_url("http://localhost:8000", "google", cb, "delete_account");
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "unknown operation must raise ValueError";
 }
 
 # ============================================================================
@@ -131,6 +174,31 @@ test "broker oauth start opens browser with loopback callback" {
     }
 }
 
+"""/oauth/start?operation=register opens the register URL; a bad op -> 400."""
+test "broker oauth start honors operation register" {
+    (srv, port, _store, opened, _web) = _start_server();
+    try {
+        (s, _b) = _req(
+            port,
+            "/__jac/oauth/start?platform=github&api_base=http://localhost:8000&operation=register"
+        );
+        assert s == 200;
+        assert opened[0].startswith(
+            "http://localhost:8000/sso/github/register?client_callback="
+        );
+
+        (s2, _b2) = _req(
+            port,
+            "/__jac/oauth/start?platform=github&api_base=http://localhost:8000&operation=evil"
+        );
+        assert s2 == 400;
+        assert len(opened) == 1 , "a bad operation must not open a browser";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
 """An unknown platform is rejected with 400 and never opens a browser."""
 test "broker oauth start rejects unknown platform" {
     (srv, port, _store, opened, _web) = _start_server();
@@ -149,18 +217,98 @@ test "broker oauth start rejects unknown platform" {
 # ============================================================================
 # OAuth callback -> stores the token the provider round-tripped back
 # ============================================================================
-"""/oauth/callback?token=... stores the token; the UI then reads it via /session."""
-test "broker oauth callback stores token" {
-    (srv, port, store, _opened, _web) = _start_server();
+"""A callback carrying a valid state nonce stores the token; replay is rejected."""
+test "broker oauth callback stores token for a valid state nonce" {
+    (srv, port, store, opened, _web) = _start_server();
     try {
-        (s, b) = _req(port, "/__jac/oauth/callback?token=tok-xyz");
+        cb_path = _start_flow(port, opened);
+        (s, b) = _req(port, f"{cb_path}?token=tok-xyz");
         assert s == 200;
         assert "Signed in" in b;
         assert store.read() == "tok-xyz";
 
-        (se, be) = _req(port, "/__jac/oauth/callback?error=access_denied");
+        # The nonce is single-use: replaying the same callback URL is rejected
+        # and cannot overwrite the stored token.
+        store.clear();
+        (s2, _b2) = _req(port, f"{cb_path}?token=tok-replay");
+        assert s2 == 400;
+        assert store.read() == "" , "a replayed nonce must not store a token";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A callback with no/unknown state nonce cannot inject a token (#6485 review)."""
+test "broker oauth callback rejects an unknown or missing state nonce" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        # No flow started -> no nonce is valid; an attacker-supplied token is
+        # dropped on the floor.
+        (s, _b) = _req(port, "/__jac/oauth/callback/deadbeef?token=tok-evil");
+        assert s == 400;
+        assert store.read() == "";
+
+        # The bare callback (no nonce segment) is rejected the same way.
+        (s2, _b2) = _req(port, "/__jac/oauth/callback?token=tok-evil");
+        assert s2 == 400;
+        assert store.read() == "";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A provider error on a valid nonce surfaces the error and stores nothing."""
+test "broker oauth callback surfaces provider error for a valid nonce" {
+    (srv, port, store, opened, _web) = _start_server();
+    try {
+        cb_path = _start_flow(port, opened);
+        (se, be) = _req(port, f"{cb_path}?error=access_denied");
         assert se == 400;
         assert "access_denied" in be;
+        assert store.read() == "";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+# ============================================================================
+# Freshness + Host pinning (#6485 review)
+# ============================================================================
+"""Starting a new flow drops any stale token so the poller can't read it."""
+test "broker oauth start clears any stale session token" {
+    (srv, port, store, opened, _web) = _start_server();
+    try {
+        store.write("stale-token");
+        assert store.read() == "stale-token";
+        _start_flow(port, opened);
+        assert store.read() == "" , "oauth/start must clear a stale token";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A non-loopback Host header is rejected (DNS-rebinding defense)."""
+test "broker rejects requests with a non-loopback Host header" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        store.write("secret-token");
+        # A DNS-rebinding page reaches us with its own hostname in `Host`; pinning
+        # to loopback rejects it before it can read the token.
+        (s, _b) = _req(
+            port, "/__jac/session", "GET", None, {"Host": "evil.example.com"}
+        );
+        assert s == 403 , "a non-loopback Host must be rejected";
+
+        # A normal loopback Host still works.
+        (s2, b2) = _req(
+            port, "/__jac/session", "GET", None, {"Host": f"127.0.0.1:{port}"}
+        );
+        assert s2 == 200;
+        assert json.loads(b2)["token"] == "secret-token";
     } finally {
         srv.shutdown();
         srv.server_close();
