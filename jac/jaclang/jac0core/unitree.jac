@@ -575,6 +575,9 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
     def _get_impl_resolved_body -> list;
 
     has is_abstract: bool { getter; }
+    # OSP kind ("node" | "edge" | "walker") from sym_category; None for
+    # obj/class archetypes. The single API for archetype-kind queries.
+    has arch_kind: (str | None) { getter; }
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];

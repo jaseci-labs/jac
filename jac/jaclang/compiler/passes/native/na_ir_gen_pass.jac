@@ -430,7 +430,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
-    def _arch_kind(nd: uni.Archetype) -> (str | None);
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;

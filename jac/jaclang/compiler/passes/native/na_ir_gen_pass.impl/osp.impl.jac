@@ -90,18 +90,6 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
     }
 }
 
-"""Archetype kind for OSP purposes: "walker" / "node" / "edge", else None."""
-impl NaIRGenPass._arch_kind(nd: uni.Archetype) -> (str | None) {
-    if nd.arch_type is None {
-        return None;
-    }
-    kind = nd.arch_type.value;
-    if kind in ("walker", "node", "edge") {
-        return kind;
-    }
-    return None;
-}
-
 """Assign a stable int type-tag to every walker/node/edge archetype, but only
 when the program actually participates in OSP (some walker/node/edge declares an
 event ability `can ... with T entry/exit`). Edges referenced only in
@@ -112,7 +100,7 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
     osp_arches: list[uni.Archetype] = [];
     has_osp = False;
     for arch in archetypes {
-        kind = self._arch_kind(arch);
+        kind = arch.arch_kind;
         if kind is None {
             continue;
         }
@@ -132,7 +120,7 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
     for arch in osp_arches {
         name = arch.name.value if arch.name else None;
         if (name is not None) and (name not in self.osp_tags) {
-            self.osp_arch_kind[name] = self._arch_kind(arch);
+            self.osp_arch_kind[name] = arch.arch_kind;
             self.osp_tags[name] = len(self.osp_tags);
         }
     }

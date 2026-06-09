@@ -554,15 +554,9 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
     return None;
 }
 
-"""True if `name` is a walker archetype."""
+"""True if `name` is a walker archetype (kind registered at OSP-tag time)."""
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    arch = self.arch_ast_map.get(name);
-    return (
-        arch is not None
-        and isinstance(arch, uni.Archetype)
-        and arch.arch_type is not None
-        and arch.arch_type.name == Tok.KW_WALKER
-    );
+    return self.osp_arch_kind.get(name) == "walker";
 }
 
 """Generate comparison expression."""

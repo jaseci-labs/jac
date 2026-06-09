@@ -1336,6 +1336,16 @@ impl Archetype.is_abstract.getter -> bool {
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
 }
 
+impl Archetype.arch_kind.getter -> (str | None) {
+    return {
+        SymbolType.NODE_ARCH: "node",
+        SymbolType.EDGE_ARCH: "edge",
+        SymbolType.WALKER_ARCH: "walker"
+    }.get(
+        self.sym_category
+    );
+}
+
 impl Archetype.get_has_vars -> list[HasVar] {
     body = self._get_impl_resolved_body();
     has_vars: list[HasVar] = [];
