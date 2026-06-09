@@ -1178,12 +1178,13 @@ def _run_precompile_in_venv(
             venv_jac = str(venv_dir / "bin" / "jac");
         }
         import from jaclang.project.dependencies { pip_command }
+        use_uv: bool = not bool(os.environ.get("JAC_NO_UV"));
         jac_install = subprocess.run(
-            pip_command(venv_python, ["install", jac_spec, "--quiet"]),
+            pip_command(venv_python, ["install", jac_spec, "--quiet"], use_uv),
             capture_output=True
         );
         if jac_install.returncode != 0 {
-            return f"pip install {jac_spec} failed:\n{jac_install.stderr.decode(
+            return f"install {jac_spec} failed:\n{jac_install.stderr.decode(
                 errors='replace'
             )}";
         }
@@ -1200,11 +1201,11 @@ def _run_precompile_in_venv(
         }
         if dep_specs {
             deps_install = subprocess.run(
-                pip_command(venv_python, ["install"] + dep_specs + ["--quiet"]),
+                pip_command(venv_python, ["install"] + dep_specs + ["--quiet"], use_uv),
                 capture_output=True
             );
             if deps_install.returncode != 0 {
-                return f"pip install project deps failed:\n{deps_install.stderr.decode(
+                return f"install project deps failed:\n{deps_install.stderr.decode(
                     errors='replace'
                 )}";
             }
