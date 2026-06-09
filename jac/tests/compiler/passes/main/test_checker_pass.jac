@@ -241,6 +241,20 @@ test "from_import" {
     );
 }
 
+"""Calling an @overload-ed function imported through a re-export chain matches
+the later overload. Overloads must be gathered at the definition scope, not the
+single-symbol re-export scope (regression: SQLAlchemy `create_engine`)."""
+test "imported_overloaded_function_call_resolves" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_imported_overload.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert program.errors_had == [] , (
+        "make(\"a\") matches the no-strict overload; expected no errors, got: " + str(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
 test "call_expr" {
     path = os.path.join(CHECKER_FIXTURES, "checker_expr_call.jac");
     program = JacProgram();
@@ -5153,6 +5167,16 @@ test "duplicate_archetype_decl_is_hard_error" {
     assert "Animal" in e0077[1].pretty_print() , f"second E0077 should name 'Animal': {e0077[
         1
     ].pretty_print()}";
+}
+
+test "comprehension_in_ternary_narrowing" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_comprehension_in_ternary.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "spread_with_explicit_kwarg_no_false_positive" {

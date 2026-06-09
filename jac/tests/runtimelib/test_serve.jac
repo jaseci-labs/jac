@@ -295,3 +295,25 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
     assert result is True;
     mock_installer.install_package.assert_called_once_with(["watchdog>=3.0.0"]);
 }
+
+test "dev banner headlines vite port not api port" {
+    with TemporaryDirectory() as tmpdir {
+        captured_output = io.StringIO();
+        with patch(
+            "jaclang.cli.commands.execution._get_network_ips", return_value=[]
+        ) {
+            with redirect_stdout(captured_output) {
+                execution._print_startup_message(
+                    dev=True,
+                    no_client=False,
+                    primary_port=8000,
+                    api_port=8001,
+                    base_path=tmpdir
+                );
+            }
+        }
+        output = captured_output.getvalue();
+        assert "Local:     http://localhost:8000/" in output;
+        assert "API:   http://localhost:8001/" in output;
+    }
+}
