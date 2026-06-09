@@ -64,9 +64,7 @@ test "_compute_build_sha returns 'unknown' when git is unavailable" {
 
 test "_compute_build_sha returns the bare SHA when the tree is clean" {
     # subprocess.run is called in order: rev-parse, then status --porcelain.
-    with mock.patch.object(
-        helpers_mod.shutil, "which", return_value="/usr/bin/git"
-    ) {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
         with mock.patch.object(
             helpers_mod.subprocess,
             "run",
@@ -84,9 +82,7 @@ test "_compute_build_sha returns the bare SHA when the tree is clean" {
 test "_compute_build_sha omits -dirty when the tree state cannot be checked" {
     # git status failing must degrade to the bare SHA, never silently to a
     # clean stamp over a possibly-dirty build (a warning is emitted instead).
-    with mock.patch.object(
-        helpers_mod.shutil, "which", return_value="/usr/bin/git"
-    ) {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
         with mock.patch.object(
             helpers_mod.subprocess,
             "run",
@@ -102,9 +98,7 @@ test "_compute_build_sha omits -dirty when the tree state cannot be checked" {
 
 
 test "_compute_build_sha appends -dirty when the tree has uncommitted changes" {
-    with mock.patch.object(
-        helpers_mod.shutil, "which", return_value="/usr/bin/git"
-    ) {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
         with mock.patch.object(
             helpers_mod.subprocess,
             "run",

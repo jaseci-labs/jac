@@ -704,7 +704,8 @@ obj MicroserviceManifestBuilder {
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
         # has a single, system-owned entry (no duplicate-env reliance).
         env_list = [
-            e for e in self._build_env(svc_name, svc_cfg)
+            e
+            for e in self._build_env(svc_name, svc_cfg)
             if e["name"] != "JAC_IMAGE_REF"
         ];
         env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});

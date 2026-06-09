@@ -68,15 +68,15 @@ test "pod spec strips a user-set JAC_IMAGE_REF, leaving one system value" {
     # A user env table that tries to shadow JAC_IMAGE_REF must not produce a
     # duplicate env entry in the rendered pod spec.
     with mock.patch.object(
-        builder,
-        "_service_config",
-        return_value={"env": {"JAC_IMAGE_REF": "spoofed"}}
+        builder, "_service_config", return_value={"env": {"JAC_IMAGE_REF": "spoofed"}}
     ) {
         spec = builder._build_service_pod_spec("orders", "jac-shop:dev-abc123def456");
     }
     container = spec["containers"][0];
     refs = [
-        e["value"] for e in container["env"] if e["name"] == "JAC_IMAGE_REF"
+        e["value"]
+        for e in container["env"]
+        if e["name"] == "JAC_IMAGE_REF"
     ];
     assert refs == ["jac-shop:dev-abc123def456"];
 }

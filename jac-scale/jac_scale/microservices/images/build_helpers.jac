@@ -6,12 +6,14 @@ client-bundle preparation. The Strategy distributors in `distributors.jac`
 and the entry point in `auto_build.jac` call into here.
 """
 
+import logging;
 import os;
 import shutil;
 import subprocess;
-import sys;
 import from pathlib { Path }
 
+
+glob _logger = logging.getLogger(__name__);
 
 # Subprocess timeouts (seconds). Largest is docker build because first
 # minikube builds download apt + pip from scratch.
@@ -172,25 +174,23 @@ def ensure_dockerignore(context_dir: Path) -> bool {
 }
 
 
-"""One-line stderr notice when build identity can't be derived, so a
-non-git deploy doesn't silently ship JAC_BUILD_SHA=unknown."""
+"""Warn when build identity can't be derived, so a non-git deploy doesn't
+silently ship JAC_BUILD_SHA=unknown."""
 def _warn_build_sha_unavailable(reason: str) {
-    print(
-        f"[jac-scale] JAC_BUILD_SHA unavailable ({reason}); stamping "
-        "'unknown'. Deploy from a git checkout for build identity.",
-        file=sys.stderr
+    _logger.warning(
+        f"JAC_BUILD_SHA unavailable ({reason}); stamping 'unknown'. "
+        "Deploy from a git checkout for build identity."
     );
 }
 
 
-"""One-line stderr notice when the tree's dirty state can't be checked,
-so a silent fall-through doesn't stamp a clean SHA over a dirty build -
-the exact failure the `-dirty` suffix exists to prevent."""
+"""Warn when the tree's dirty state can't be checked, so a silent
+fall-through doesn't stamp a clean SHA over a dirty build - the exact
+failure the `-dirty` suffix exists to prevent."""
 def _warn_dirty_check_failed(context_dir: Path) {
-    print(
-        f"[jac-scale] could not verify git tree state in {context_dir}; "
-        "JAC_BUILD_SHA may omit its '-dirty' suffix.",
-        file=sys.stderr
+    _logger.warning(
+        f"Could not verify git tree state in {context_dir}; "
+        "JAC_BUILD_SHA may omit its '-dirty' suffix."
     );
 }
 
