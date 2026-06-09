@@ -634,6 +634,18 @@ test "E1042: missing await on sv-imported call (issue #6236)" {
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 
+test "E1042: sv->sv import call is synchronous, not an awaitable coroutine" {
+    # An sv->sv import (a server consuming another server) lowers to a
+    # synchronous `def` stub, so binding its result to a concrete type
+    # without `await` is correct and must NOT raise E1042. Uses the SAME
+    # provider as the cl->sv fixture above, which still must raise it --
+    # the check is sensitive to the importing module's context, not just
+    # the `sv import` keyword.
+    (prog, _) = compile_and_check("type_E1042_sv_sync_call_server.jac");
+    assert count_diagnostic_code(prog, "E1042") == 0 , f"sv->sv call must not be flagged as a missing-await coroutine; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
 # --- Collections ---
 test "E1180: tuple index out of range" {
     pytest.skip("E1180 not yet implemented");

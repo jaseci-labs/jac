@@ -992,7 +992,11 @@ impl DocIRGenPass.exit_disconnect_op(nd: uni.DisconnectOp) -> None {
 
 """Generate DocIR for connect operator."""
 impl DocIRGenPass.exit_connect_op(nd: uni.ConnectOp) -> None {
-    self._assign_space_group(nd);
+    # Format the operator body compactly (no inner spaces) so a typed
+    # connect reads `+>:Edge:+>` / `+>:Edge:weight=5:+>`, matching the
+    # traversal edge-op ref (`->:Edge:->`) and disconnect (`del ->:Edge:->`)
+    # forms. Spacing around the operands is added by the enclosing BinaryExpr.
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for visit statements."""

@@ -2134,3 +2134,76 @@ cl def probe(resp: any, xs: any) -> dict {
         os.unlink(temp_path);
     }
 }
+
+
+test "isinstance/issubclass against builtin types, user class, and tuples (#6458)" {
+    import json;
+    # Regression for jaseci-labs/jaseci#6458. `isinstance(x, str)` (and any
+    # other builtin-type check, as used by the shadcn `sidebar` component)
+    # crashed ES codegen with a bare `IndexError: list index out of range`:
+    # the ES pass had no `exit_builtin_type` handler, so the builtin-type
+    # argument was dropped and `emit_isinstance` indexed past the end of its
+    # arg list.
+    js_code = compile_fixture_to_js("isinstance_builtin.cl.jac", FIXTURES);
+
+    # The Python builtin-type name must never leak into the emitted JS as a
+    # bare reference to an undefined global (e.g. `value instanceof str`),
+    # which would be a ReferenceError at runtime.
+    assert "instanceof str" not in js_code , (
+        f"builtin type `str` must not lower to a JS `instanceof str`:\n{js_code}"
+    );
+
+    # Drive the emitted JS through Node to confirm correct Python semantics
+    # (including bool-as-subclass-of-int, tuple-of-types, and issubclass).
+    wrapper = (
+        js_code + "\nconst cases = [['hi'], [true], [5], [3.14], [[1, 2]], " + "[new Widget({name: 'w'})]];" + "\nconsole.log(JSON.stringify({" + "  classify: cases.map(c => classify(c[0]))," + "  scalar: [is_scalar(5), is_scalar(3.14), is_scalar('x'), " + "is_scalar(true), is_scalar([1])]," + "  subclass: subclass_probe()" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "isinstance codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["classify"] == ["str:hi", "bool", "int", "float", "list", "widget:w"] , (
+        f"classify mismatch: {got['classify']}\njs:\n{js_code}"
+    );
+    assert got["scalar"] == [True, True, True, True, False] , (
+        f"is_scalar (tuple-of-types) mismatch: {got['scalar']}\njs:\n{js_code}"
+    );
+    assert got["subclass"] == [True, True, False, False] , (
+        f"issubclass (builtin-tag) mismatch: {got['subclass']}\njs:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
+}
+
+test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {
+    # Same root cause as the isinstance crash: a Python builtin used as a
+    # *value* (here the `type` key of an object literal) produced no es_ast,
+    # so `exit_dict_val` fell back to the literal string `'key'` -- silently
+    # turning `{type: "email"}` into `{key: "email"}`. JacForm's field
+    # renderer read that accidental `config.key`, so once the builtin-type
+    # handler started lowering `type` correctly the form input types broke
+    # (native `type="email"` validation stopped working). Lock the key down.
+    jac_code = "cl def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "\"type\": \"email\"" in js_code or "type: \"email\"" in js_code , (
+            f"builtin `type` key must lower to `type`, not the `key` fallback:\n{js_code}"
+        );
+        assert "key: \"email\"" not in js_code
+        and "\"key\": \"email\"" not in js_code , (
+            f"builtin `type` key must not collapse to the literal `key`:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}

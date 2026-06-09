@@ -20,7 +20,14 @@ sessionStorage) live in dom_types.pyi; this file is disjoint from it.
 """
 
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+if TYPE_CHECKING:
+    # HTMLElement lives in dom_types.pyi, whose names the TypeEvaluator merges
+    # into builtins, so `_Document`'s element members below resolve it
+    # ambiently at check time. This guarded import is for static analysers
+    # (e.g. Pylance) only -- it is never executed by the stub loader.
+    from dom_types import HTMLElement
 
 _T = TypeVar("_T")
 
@@ -490,9 +497,15 @@ class _Document:
     title: str
     cookie: str
     readyState: str
-    body: object
-    head: object
-    documentElement: object
+    # Always-present root elements. Typed as the real HTMLElement (from
+    # dom_types.pyi, merged into builtins) rather than the bare `object`
+    # placeholder so member access like `.classList`/`.style` resolves.
+    # The query methods below stay `object`: they can return null and their
+    # callers want element-subtype members (e.g. `.value`), so a single
+    # HTMLElement type would neither type-check correctly nor stay null-safe.
+    body: HTMLElement
+    head: HTMLElement
+    documentElement: HTMLElement
     activeElement: object
     def getElementById(self, element_id: str) -> object: ...
     def querySelector(self, selectors: str) -> object: ...

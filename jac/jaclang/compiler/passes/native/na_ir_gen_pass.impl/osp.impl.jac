@@ -164,8 +164,8 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
     );
     thunk.args[0].name = "a";
     thunk.args[1].name = "b";
-    _saved = self.builder;
-    self.builder = ir.IRBuilder(thunk.append_basic_block("entry"));
+    _saved = self._builder;
+    self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
     _fn_args = fn.function_type.args;
     _call_args: list[ir.Value] = [];
     if len(_fn_args) >= 1 {
@@ -176,7 +176,7 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
     }
     self.builder.call(fn, _call_args);
     self.builder.ret(ir.Constant(jv, None));
-    self.builder = _saved;
+    self._builder = _saved;
     self.osp_thunk_funcs[full] = thunk;
 }
 
@@ -402,12 +402,12 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     i64 = ir.IntType(64);
     i8p = i8.as_pointer();
     _fields = self.struct_field_types.get("OspRuntime", {});
-    _saved = self.builder;
+    _saved = self._builder;
     out: dict = {};
     # tag_of(JacVal h) -> i64: read the instance __type_tag at byte offset 8
     # (field 0 is the reserved vtable slot, field 1 is the i64 __type_tag).
     _tf = ir.Function(self.llvm_module, _fields["tag_of"].pointee, name="__osp_tag_of");
-    self.builder = ir.IRBuilder(_tf.append_basic_block("entry"));
+    self._builder = ir.IRBuilder(_tf.append_basic_block("entry"));
     _pl = self.builder.extract_value(_tf.args[0], 1, name="h.payload");
     _hp = self.builder.inttoptr(_pl, i8p, name="h.ptr");
     _tp = self.builder.bitcast(
@@ -419,7 +419,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     out["tag_of"] = _tf;
     # is_a(i64 t, i64 b) -> i1: lookup isa_global[t*n + b] != 0
     _iaf = ir.Function(self.llvm_module, _fields["is_a"].pointee, name="__osp_is_a");
-    self.builder = ir.IRBuilder(_iaf.append_basic_block("entry"));
+    self._builder = ir.IRBuilder(_iaf.append_basic_block("entry"));
     _ix = self.builder.add(
         self.builder.mul(_iaf.args[0], ir.Constant(i64, n), name="isa.row"),
         _iaf.args[1],
@@ -437,7 +437,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     _ndf = ir.Function(
         self.llvm_module, _fields["node_desc"].pointee, name="__osp_node_desc"
     );
-    self.builder = ir.IRBuilder(_ndf.append_basic_block("entry"));
+    self._builder = ir.IRBuilder(_ndf.append_basic_block("entry"));
     _dp = self.builder.load(
         self.builder.gep(
             self._osp_desc_global, [ir.Constant(i32, 0), _ndf.args[0]], name="nd.slot"
@@ -453,10 +453,10 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     _ocf = ir.Function(
         self.llvm_module, _fields["on_complete"].pointee, name="__osp_on_complete"
     );
-    self.builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
+    self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
     self.builder.ret_void();
     out["on_complete"] = _ocf;
-    self.builder = _saved;
+    self._builder = _saved;
     return out;
 }
 
@@ -516,8 +516,8 @@ impl NaIRGenPass._emit_osp_setup -> None {
         self.llvm_module, ir.FunctionType(ir.VoidType(), []), name="__osp_setup"
     );
     self._osp_setup_fn = _setup;
-    _saved = self.builder;
-    self.builder = ir.IRBuilder(_setup.append_basic_block("entry"));
+    _saved = self._builder;
+    self._builder = ir.IRBuilder(_setup.append_basic_block("entry"));
     for (_name, _tag) in self.osp_tags.items() {
         _sn = "WalkerDesc"
             if (self.osp_arch_kind.get(_name) == "walker")
@@ -594,5 +594,5 @@ impl NaIRGenPass._emit_osp_setup -> None {
     _rb.call(_setup, []);
     _rb.branch(_e_done);
     ir.IRBuilder(_e_done).ret_void();
-    self.builder = _saved;
+    self._builder = _saved;
 }

@@ -139,6 +139,30 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     return _result;
 }
 
+"""Lower a sub-expression that a statement *requires*, making failure loud.
+
+Statement consumers (return value, assignment RHS, loop/if conditions, store
+targets) must not silently drop a sub-expression that lowers to no value --
+that is the #6470 silent-no-code class, where valid Jac compiles clean and
+then misbehaves at runtime (empty body, dropped statement, default return).
+
+Evaluate `nd`; if it yields no value AND no deeper diagnostic already fired
+for it (e.g. `_codegen_atom_trailer` or `_codegen_call` reported the real
+root), raise E5090 so the gap surfaces at compile time. The errors_had-delta
+guard keeps a single, deepest diagnostic instead of one per enclosing layer.
+"""
+impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None) {
+    if nd is None {
+        return None;
+    }
+    _errs_before = len(self.errors_had);
+    val = self._codegen_expr(nd);
+    if val is None and len(self.errors_had) == _errs_before {
+        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+    }
+    return val;
+}
+
 """Collect free variable names referenced in a lambda body that are not
 in the lambda's own parameter list. Walks the AST looking for Name nodes.
 """
@@ -228,11 +252,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Emit the lambda body ---
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_func_symtab = dict(self.func_symtab);
     entry_bb = anon_fn.append_basic_block("entry");
-    self.builder = ir.IRBuilder(entry_bb);
+    self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     # Allocate ALL parameters (explicit + captured) as local variables
     for (i, arg) in enumerate(anon_fn.args) {
@@ -264,7 +288,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Restore parent context ---
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.func_symtab = saved_func_symtab;
     # --- Record pending captures for the assignment to associate with a var name ---
@@ -1244,7 +1268,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             } else {
-                # String slicing
+                # Chained target (e.g. field access b.items[:n]) or string slicing.
+                # The target is not a simple list-typed name, so evaluate it and
+                # dispatch on the produced LLVM value: i8* → string slice,
+                # List.T* → list slice (mirrors the chained-index path below).
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
@@ -1252,6 +1279,17 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
+                        }
+                    } else {
+                        elem_type_name = self._infer_list_elem_type(target_val);
+                        if elem_type_name is not None {
+                            result = self._codegen_list_slice(
+                                target_val, s, elem_type_name
+                            );
+                            if result is not None {
+                                self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
+                                return result;
+                            }
                         }
                     }
                 }
@@ -1445,6 +1483,19 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
     }
+    # Dead-end: a recognized attribute/index/slice form we could not resolve to
+    # any load/gep. Returning None here used to let the caller silently drop the
+    # enclosing statement (the #6470 silent-no-code class), so make it loud --
+    # the receiver's type did not resolve to a native struct/container layout.
+    self.emit(
+        E5090,
+        node_override=nd,
+        kind="attribute access" if nd.is_attr else "subscript/index access",
+        name=(self._get_name(nd.right) or "<expr>")
+            if nd.is_attr
+            else (self._get_name(nd.target) or "<expr>"),
+        help_text="The receiver's type could not be resolved to a native struct/container layout, so the access lowered to no code. Give the value a concrete native type, or move this code to a @sv/Python context."
+    );
     return None;
 }
 
