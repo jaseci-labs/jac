@@ -923,7 +923,7 @@ test "bug_starguard_1_single_segment_reexport_resolves" {
         "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
         "`from M import *` must resolve. Marker was Unknown "
         f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
-        );
+    );
 }
 
 # Bug #EVOLVING-NONE: `x = None` then reassigning inside an `if` branch
