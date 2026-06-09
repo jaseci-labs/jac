@@ -40,12 +40,9 @@ RUN if [ -f jac.toml ]; then jac install || true; fi
 # on first import anyway, so no pre-compile needed).
 RUN jac --version
 
-# Build identity (B-01): the auto-build pipeline passes
-# --build-arg JAC_BUILD_SHA=<12-char git commit SHA, +`-dirty` if the tree
-# has uncommitted changes>; in-pod code reads the env to report
-# "running build X" with zero RBAC. Kept LAST so a changing SHA only
-# rebuilds this tiny build-time layer (note: a changing SHA still forces a
-# rollout, since K-29's content tag is derived from the image digest).
+# Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
+# (12-char git SHA, +`-dirty` on uncommitted changes); in-pod code reads it
+# to report "running build X" with zero RBAC. Kept LAST for layer caching.
 ARG JAC_BUILD_SHA=unknown
 ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}
 

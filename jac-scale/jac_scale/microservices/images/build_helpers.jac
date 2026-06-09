@@ -307,14 +307,9 @@ def run_docker_build(
         cmd.append(f"{key}={value}");
     }
     # Stamp build identity (B-01) unless the caller already supplied one.
-    # NOTE: this ENV layer feeds the image config digest that K-29's
-    # content-addressed tag is derived from, so a new commit changes the tag
-    # and forces a rollout even when code/deps are byte-identical. This
-    # (re)couples rollouts to commit identity, not just content - intended,
-    # since a new commit is a new build identity, but it does soften K-29's
-    # "no churn unless content changed" to "no churn unless the commit
-    # changed". (The "stamped last" Dockerfile note is about build-time layer
-    # caching, a separate concern from rollout churn.)
+    # This ENV feeds the image digest K-29's content tag derives from, so a
+    # new commit forces a rollout even on byte-identical content (intended:
+    # rollouts couple to commit identity, not just content).
     if "JAC_BUILD_SHA" not in build_args {
         cmd.append("--build-arg");
         cmd.append(f"JAC_BUILD_SHA={_compute_build_sha(context_dir)}");

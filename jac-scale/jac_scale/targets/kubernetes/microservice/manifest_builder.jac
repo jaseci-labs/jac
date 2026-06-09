@@ -699,13 +699,10 @@ obj MicroserviceManifestBuilder {
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
         resolved_image: str = self._resolve_image(image, svc_cfg);
-        # JAC_IMAGE_REF (B-01): the fully-resolved image ref, including the
-        # K-29 content-id suffix (`app:dev-<id12>`). Surfaced into the pod so
-        # an in-pod self-check (V-01) can report "running build X" and answer
-        # "did my deploy actually update?" with zero RBAC. Any user-supplied
-        # entry of the same name is stripped first (rather than appending a
-        # duplicate and leaning on kubelet's last-wins) so the rendered YAML
-        # has a single, system-owned JAC_IMAGE_REF.
+        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
+        # suffix, surfaced so an in-pod self-check can report "running build X"
+        # with zero RBAC. Strip any user-set copy first so the rendered YAML
+        # has a single, system-owned entry (no duplicate-env reliance).
         env_list = [
             e for e in self._build_env(svc_name, svc_cfg)
             if e["name"] != "JAC_IMAGE_REF"
