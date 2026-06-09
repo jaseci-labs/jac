@@ -300,7 +300,7 @@ walker create_tweet {
     }
 
     can make with Profile entry {
-        new = here +>: Post() :+> Tweet(
+        new = here +>:Post():+> Tweet(
             content=self.content, author_username=here.username, created_at=_now()
         );
         grant(new[0], level=WritePerm);
@@ -317,7 +317,7 @@ walker create_channel {
     }
 
     can make with Profile entry {
-        new = here +>: Member() :+> Channel(
+        new = here +>:Member():+> Channel(
             name=self.name,
             description=self.description,
             creator_username=here.username,
@@ -347,7 +347,7 @@ walker follow_user(find_profile) {
     can act with Profile entry {
         if jid(here) == self.target_id {
             me = [root-->[?:Profile]][0];
-            me +>: Follow() :+> here;
+            me +>:Follow():+> here;
             report {"success": True};
             disengage;
         }
@@ -451,7 +451,7 @@ walker join_channel(find_channel) {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
             if not [edge me->:Member:->here] {
-                me +>: Member() :+> here;
+                me +>:Member():+> here;
             }
             report {"success": True};
             disengage;
@@ -491,7 +491,7 @@ walker create_channel_tweet(find_channel) {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
             if [edge me->:Member:->here] {
-                new = here +>: ChannelPost() :+> Tweet(
+                new = here +>:ChannelPost():+> Tweet(
                     content=self.content, author_username=me.username, created_at=_now()
                 );
                 grant(new[0], level=WritePerm);

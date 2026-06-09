@@ -11,8 +11,9 @@ enum ArgKind {
     POSITIONAL = 1,  # jac run <filename>
     OPTION = 2,  # jac run --session foo
     FLAG = 3,  # jac run --verbose (bool, no value)
-    MULTI = 4,  # jac check file1.jac file2.jac
+    MULTI = 4,  # jac check file1.jac file2.jac (nargs="*", space-separated)
     REMAINDER = 5,  # jac enter main args...
+    APPEND = 6,  # jac install -e ./a -e ./b (action="append", repeatable flag)
 }
 
 """Priority levels for command registration."""

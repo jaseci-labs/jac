@@ -1116,6 +1116,26 @@ impl ModulePath.dot_path_str.getter -> str {
     );
 }
 
+"""Bare dotted module name with no leading relative-level dots.
+
+`dot_path_str` keeps the `.`-prefix that encodes the relative import level
+(e.g. `.analytics`, `..pkg.mod`). This getter drops that prefix, yielding the
+canonical module name (`analytics`, `pkg.mod`) used as the cross-module /
+cross-service key: sv-to-sv `InteropBinding.source_module`, the runtime
+`JAC_SV_<MOD>_URL` env var, `sv_client.call(module_name, ...)`, and the
+provider-spawn lookup. Both `BoundaryAnalysisPass._register_sv_import` (which
+records the binding) and `PyastGenPass._generate_sv_to_sv_stubs` (which matches
+it) MUST agree on this key, so they both read it from here -- a relative
+`sv import from .X` previously keyed the binding as `.X` while stub-gen looked
+for `X`, silently dropping every endpoint of the importing module (#6507).
+"""
+impl ModulePath.base_module_name.getter -> str {
+    if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
+        return self.path[0].lit_value;
+    }
+    return '.'.join([p.value for p in self.path] if self.path else []);
+}
+
 """Convert an import target string into a relative file path."""
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     target = self.dot_path_str + (f".{target_item}" if target_item else '');

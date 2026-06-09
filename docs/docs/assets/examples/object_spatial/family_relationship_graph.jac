@@ -15,9 +15,9 @@ glob parent = root ++> Person(name="John", age=45),
 
 # Now, let's create the relationships between them
 with entry {
-    parent +>: FamilyRelation(relationship_type="parent") :+> child1;
-    parent +>: FamilyRelation(relationship_type="parent") :+> child2;
-    child1 +>: FamilyRelation(relationship_type="sibling") :+> child2;
+    parent +>:FamilyRelation(relationship_type="parent"):+> child1;
+    parent +>:FamilyRelation(relationship_type="parent"):+> child2;
+    child1 +>:FamilyRelation(relationship_type="sibling"):+> child2;
 }
 
 # You can now ask questions about these relationships
