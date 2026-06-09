@@ -250,6 +250,29 @@ def _extract_brace_block(code: str, start: int) -> tuple[str, int]:
         if ch in "'\"":
             i = _skip_string(code, i)
             continue
+        if ch == "/" and i + 1 < len(code) and code[i + 1] == "/":
+            # Skip // comment to end of line
+            i = code.find("\n", i)
+            if i == -1:
+                i = len(code)
+            continue
+        if ch == "/" and i + 1 < len(code) and code[i + 1] == "*":
+            # Skip /* ... */ block comment
+            end = code.find("*/", i + 2)
+            i = end + 2 if end != -1 else len(code)
+            continue
+        if ch == "`":
+            # Skip template literal (simplified — no ${} tracking)
+            i += 1
+            while i < len(code):
+                if code[i] == "\\":
+                    i += 2
+                    continue
+                if code[i] == "`":
+                    i += 1
+                    break
+                i += 1
+            continue
         if ch == "{":
             depth += 1
         elif ch == "}":

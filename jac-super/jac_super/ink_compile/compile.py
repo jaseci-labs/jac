@@ -395,15 +395,20 @@ def _apply_ai_tui_module_patches(module_path: Path) -> None:
         if idx != -1:
             text = text[:idx] + _FETCH_TRANSPORT_HELPER + text[idx:]
 
-    narrow_catch = """      if ((__jac_e instanceof _jac.exc.Exception)) {} else {
-        throw __jac_e;
-      }"""
-    tolerant_catch = """      if ((__jac_e instanceof _jac.exc.Exception) || isFetchTransportError(__jac_e)) {} else {
-        throw __jac_e;
-      }"""
-    if narrow_catch in text:
-        text = text.replace(narrow_catch, tolerant_catch)
+    # Use regex to widen ALL Jac-only catch guards.  The Jac compiler
+    # lowers ``except Exception`` to ``instanceof _jac.exc.Exception``, which
+    # never matches native JS errors (DOMException, TypeError, etc.).
+    # Previous exact-string matching missed catch blocks with non-empty
+    # bodies (e.g. agent_fetch's ``return {ok: false, ...}``), causing
+    # uncaught TimeoutError crashes after idle periods.
+    text = re.sub(
+        r"(__jac_e instanceof _jac\.exc\.Exception)\)\)(?!.*isFetchTransportError)",
+        r"\1) || isFetchTransportError(__jac_e))",
+        text,
+    )
 
+    # Additionally allow the streamLoop catch to tolerate errors when the
+    # component is unmounting (abort-on-unmount is expected, not an error).
     stream_narrow = """    } catch (__jac_e) {
       if ((__jac_e instanceof _jac.exc.Exception) || isFetchTransportError(__jac_e)) {} else {
         throw __jac_e;
