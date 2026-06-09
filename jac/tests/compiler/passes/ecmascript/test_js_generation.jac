@@ -2181,3 +2181,29 @@ test "isinstance/issubclass against builtin types, user class, and tuples (#6458
 
     assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
 }
+
+test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {
+    # Same root cause as the isinstance crash: a Python builtin used as a
+    # *value* (here the `type` key of an object literal) produced no es_ast,
+    # so `exit_dict_val` fell back to the literal string `'key'` -- silently
+    # turning `{type: "email"}` into `{key: "email"}`. JacForm's field
+    # renderer read that accidental `config.key`, so once the builtin-type
+    # handler started lowering `type` correctly the form input types broke
+    # (native `type="email"` validation stopped working). Lock the key down.
+    jac_code = "cl def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "\"type\": \"email\"" in js_code or "type: \"email\"" in js_code , (
+            f"builtin `type` key must lower to `type`, not the `key` fallback:\n{js_code}"
+        );
+        assert "key: \"email\"" not in js_code
+        and "\"key\": \"email\"" not in js_code , (
+            f"builtin `type` key must not collapse to the literal `key`:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}

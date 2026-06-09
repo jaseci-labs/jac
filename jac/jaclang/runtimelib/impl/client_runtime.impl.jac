@@ -963,8 +963,9 @@ impl JacForm(props: dict) -> JsxElement {
         fieldSchema = schemaShape[fieldName];
         config = field_config[fieldName] if field_config[fieldName] else {};
 
-        # Note: "type" gets compiled to "key" in JavaScript to avoid conflicts with React's type prop
-        fieldType = config.key or "text";
+        # field_config entries carry the input kind under a "type" key
+        # (e.g. {type: "email"}); read it straight through.
+        fieldType = config.type or "text";
         label = config.label or fieldName;
         fieldClassName = config.className or "";
         labelClassName = config.labelClassName or "";
