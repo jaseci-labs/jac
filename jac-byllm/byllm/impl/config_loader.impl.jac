@@ -68,8 +68,8 @@ impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, an
     max_tokens = call_params.get('max_tokens', 0);
     result: dict[str, any] = {
         'temperature': temperature,
-        # Number of attempts to coax a valid typed/structured output before
-        # erroring (1 = no retry). See BaseLLM._invoke_typed_retry.
+        # Retries after the first attempt to coax a valid typed/structured
+        # output (0 disables). See BaseLLM._invoke_typed_retry.
         'max_output_retries': int(call_params.get('max_output_retries', 3))
     };
     # Only include max_tokens if it's set (non-zero)
