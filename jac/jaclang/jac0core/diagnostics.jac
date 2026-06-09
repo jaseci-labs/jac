@@ -1184,4 +1184,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Internal compiler errors (E9xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-     E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}");
+     E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
+     E9002 = _err(
+         "E9002",
+         Category.ICE,
+         "ICE: missing semantic annotation -- {details}",
+         help="Codegen required a fact the central analysis pipeline never recorded on the unitree. This is a compiler bug, not an error in your program."
+     );

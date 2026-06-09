@@ -935,9 +935,149 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
 """Initialize the checker pass."""
 impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
+    # Nested compiles (TypeEvaluator import resolution, boundary walks) run
+    # their own TypeCheckPass on the shared evaluator. Save the previous
+    # reporter so after_pass can restore it — otherwise an inner inference
+    # run would leave itself installed and the OUTER pass's remaining
+    # evaluator diagnostics would be misattributed (and mode-gated wrong).
+    self._prev_eval_pass = self.evaluator._pass;
     self.evaluator._pass = self;
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
+    # Typed-tree contract diagnostic mode: inference itself is unconditional
+    # (every full compile runs this pass so Expr.type is populated for all
+    # backends), but when scheduled as the inference entry (TypeInferencePass,
+    # inference_only=True) TYPE diagnostics are only *surfaced* when (a) the
+    # compile explicitly asked for type checking (`jac check` /
+    # options.type_check), or (b) the module is native-context — a .na.jac
+    # file, a .jac with a `na {}` block, or an auto-promoted module —
+    # preserving native type discipline (#6049) without leaking checker
+    # false positives into plain sv/cl builds (#6262). Direct TypeCheckPass
+    # invocations (tests, tooling) always emit in full.
+    emit_full = (not self.inference_only)
+    or bool(self.prog?._compile_options and self.prog._compile_options.type_check);
+    if not emit_full {
+        mod = self.ir_in;
+        mp = mod.loc.mod_path if mod?.loc else '';
+        is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        if not is_native_mod and mod?.body {
+            for _stmt in mod.body {
+                if isinstance(_stmt, uni.NativeBlock) {
+                    is_native_mod = True;
+                    break;
+                }
+            }
+        }
+        if (
+            not is_native_mod
+            and self.prog._auto_promote_native
+            and mod?.gen
+            and mod.gen.native_compat
+        ) {
+            is_native_mod = True;
+        }
+        emit_full = is_native_mod;
+    }
+    self._emit_diagnostics = emit_full;
+    # A full-diagnostic run over a tree already typed by a suppressed
+    # inference run would cache-hit Expr.type everywhere, never re-deriving
+    # the diagnostics that run deferred (and emitting the rest out of
+    # traversal order). Reset the module's type memoization so this run
+    # re-derives — and re-emits — everything in natural order; emit() evicts
+    # each stash entry as its live twin lands, and after_pass replays only
+    # cross-module leftovers.
+    if emit_full and self.ir_in?._deferred_type_diags {
+        stack = [self.ir_in];
+        while stack {
+            cur = stack.pop();
+            if isinstance(cur, uni.Expr) {
+                cur.type = None;
+            }
+            stack.extend(cur.kid);
+        }
+        # Flow-narrowing caches from the suppressed run were computed against
+        # the now-cleared Expr.type results; stale entries would skew the
+        # re-derivation. Clear them so narrowing re-runs from scratch too.
+        self.evaluator._flow_node_type_cache.clear();
+        self.evaluator._and_narrowing_overrides.clear();
+    }
+}
+
+impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
+    # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
+    # inference runs on this module: evaluator memoization (Expr.type cache)
+    # means this run could not re-derive them live. Live re-emissions during
+    # this run already evicted their stash entries in emit(), so whatever
+    # remains here is exactly the cache-swallowed remainder.
+    if getattr(self, '_emit_diagnostics', True) {
+        stash = self.ir_in?._deferred_type_diags;
+        if stash {
+            for (diag, node_override, related, help_text, kwargs) in list(
+                stash.values()
+            ) {
+                super.emit(
+                    diag,
+                    node_override=node_override,
+                    related=related,
+                    help_text=help_text,
+                    **kwargs
+                );
+            }
+            stash.clear();
+        }
+    }
+    # Restore the evaluator's previous diagnostic reporter (see before_pass)
+    # for nested runs only. Top-level runs (no previous reporter) stay
+    # installed, matching the historical contract: evaluator queries during
+    # later codegen passes still have a diagnostic sink (deferred or live
+    # per this pass's mode) instead of dropping on the floor.
+    if self._prev_eval_pass is not None and self.evaluator._pass is self {
+        self.evaluator._pass = self._prev_eval_pass;
+    }
+}
+
+impl TypeCheckPass.emit(
+    self: TypeCheckPass,
+    diag: DiagnosticInfo,
+    node_override: (uni.UniNode | None) = None,
+    related: (list[tuple[str, uni.UniNode]] | None) = None,
+    help_text: (str | None) = None,
+    **kwargs: any
+) -> bool {
+    import from jaclang.jac0core.diagnostics { Category }
+    if diag.category != Category.ICE {
+        stash = self.ir_in?._deferred_type_diags;
+        key = (
+            diag.code,
+            id(node_override) if node_override is not None else 0,
+            str(kwargs)
+        );
+        if not getattr(self, '_emit_diagnostics', True) {
+            # Defer instead of drop: the evaluator memoizes on Expr.type, so
+            # a later full-diagnostic run (direct TypeCheckPass / `jac
+            # check`) cache-hits and can never re-derive what this run
+            # found. after_pass of that run replays the stash.
+            if stash is None {
+                stash = {};
+                self.ir_in._deferred_type_diags = stash;
+            }
+            if key not in stash {
+                stash[key] = (diag, node_override, related, help_text, kwargs);
+            }
+            return False;
+        }
+        # Full-emit mode: a live emission supersedes its deferred copy.
+        if stash is not None and key in stash {
+            del stash[key];
+        }
+    }
+    return super.emit(
+        diag,
+        node_override=node_override,
+        related=related,
+        help_text=help_text,
+        **kwargs
+    );
 }
 
 
