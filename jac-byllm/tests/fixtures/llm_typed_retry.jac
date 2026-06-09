@@ -3,7 +3,7 @@
 MockRawResponse routes text through parse_response (so malformed JSON raises
 OutputConversionError and drives the retry like a real model); MockError raises a
 non-conversion error; each MockLLM records the prompt it saw per attempt in
-seen_prompts. Functions are not called here -- tests drive them and inspect each
+seen_prompts. Functions are not called here; tests drive them and inspect each
 llm to assert attempt counts and the corrective feedback.
 """
 

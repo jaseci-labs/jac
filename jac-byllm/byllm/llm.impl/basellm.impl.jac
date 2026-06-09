@@ -454,8 +454,7 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
                 last_output = str(getattr(e, "raw_output", "") or "");
                 last_reason = f"The output parser reported: {e}.";
                 self.log_info(
-                    f"[byllm] typed-output attempt {attempt}/{max_attempts} "
-                    + f"failed to parse: {e}"
+                    f"[byllm] typed-output attempt {attempt}/{max_attempts} " + f"failed to parse: {e}"
                 );
                 if attempt >= max_attempts {
                     raise self._typed_retry_exhausted(attempt, last_err, last_output);
@@ -467,17 +466,15 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
             }
             last_output = str(result);
             last_reason = (
-                "The previous response was empty or did not contain a JSON "
-                + "object (it could not be converted to the required type)."
+                "The previous response was empty or did not contain a JSON " + "object (it could not be converted to the required type)."
             );
             last_err = OutputConversionError(
-                f"LLM returned a non-conforming value for return type "
-                + f"'{mt_run.resp_type}' (got '{type(result).__name__}'); the "
-                + "response was likely empty or not valid JSON"
+                f"LLM returned a non-conforming value for return type " + f"'{mt_run.resp_type}' (got '{type(
+                    result
+                ).__name__}'); the " + "response was likely empty or not valid JSON"
             );
             self.log_info(
-                f"[byllm] typed-output attempt {attempt}/{max_attempts} "
-                + "returned a non-conforming value; retrying"
+                f"[byllm] typed-output attempt {attempt}/{max_attempts} " + "returned a non-conforming value; retrying"
             );
             if attempt >= max_attempts {
                 raise self._typed_retry_exhausted(attempt, last_err, last_output);
@@ -498,8 +495,7 @@ impl BaseLLM._typed_retry_exhausted(
     attempts: int, cause: object, raw: str
 ) -> OutputConversionError {
     err = OutputConversionError(
-        f"typed-output generation failed after {attempts} attempt(s) "
-        + f"({attempts - 1} retries); last error: {cause}"
+        f"typed-output generation failed after {attempts} attempt(s) " + f"({attempts - 1} retries); last error: {cause}"
     );
     err.raw_output = raw;
     return err;
@@ -515,7 +511,9 @@ impl BaseLLM._typed_retry_feedback(
     mt_run: MTRuntime, reason: str, prev_output: str
 ) -> Message {
     rt = mt_run.resp_type;
-    type_name = rt.__name__ if (rt is not None and hasattr(rt, "__name__")) else str(rt);
+    type_name = rt.__name__
+        if (rt is not None and hasattr(rt, "__name__"))
+        else str(rt);
     # get_typed_output_schema, not get_output_schema (None when tools present),
     # so the contract still shows when output arrives via finish_tool.
     schema = mt_run.get_typed_output_schema();
@@ -526,12 +524,7 @@ impl BaseLLM._typed_retry_feedback(
     return Message(
         role=MessageRole.USER,
         content=(
-            f"Your previous response could not be used. {reason}\n"
-            + prev_block
-            + f"You MUST reply with ONLY a single JSON object that validates "
-            + f"against this JSON schema for `{type_name}`:\n{schema_txt}\n"
-            + "Output the raw JSON object only, with no explanation, no reasoning "
-            + "text, no markdown code fences, nothing before or after the JSON."
+            f"Your previous response could not be used. {reason}\n" + prev_block + f"You MUST reply with ONLY a single JSON object that validates " + f"against this JSON schema for `{type_name}`:\n{schema_txt}\n" + "Output the raw JSON object only, with no explanation, no reasoning " + "text, no markdown code fences, nothing before or after the JSON."
         )
     );
 }

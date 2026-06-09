@@ -1652,7 +1652,6 @@ test "gemma models default to the text tool protocol" {
 # (not reloaded, so exception classes stay identical to the test's) and every
 # fixture function is invoked by exactly one test, so the mock outputs are
 # consumed exactly once.
-
 def _load_retry_fixture -> object {
     return jac_import("llm_typed_retry", base_path=FIXTURE_DIR + "/")[0];
 }
@@ -1660,14 +1659,13 @@ def _load_retry_fixture -> object {
 test "typed retry regenerates after broken json and echoes it" {
     mod = _load_retry_fixture();
     person = mod.get_person_recovering();
-    assert person.name == "Ada" and person.age == 36 ,
-        f"malformed-then-valid JSON should retry and recover the typed value, got {person}";
-    assert len(mod.recover_llm.seen_prompts) == 2 ,
-        f"expected one retry (2 attempts), got {len(mod.recover_llm.seen_prompts)}";
+    assert person.name == "Ada" and person.age == 36 , f"malformed-then-valid JSON should retry and recover the typed value, got {person}";
+    assert len(mod.recover_llm.seen_prompts) == 2 , f"expected one retry (2 attempts), got {len(
+        mod.recover_llm.seen_prompts
+    )}";
     # seen_prompts[1] is the retry attempt: original prompt + injected feedback.
     retry_prompt = mod.recover_llm.seen_prompts[1];
-    assert "{\"name\": \"Ada\", \"age\":" in retry_prompt ,
-        f"retry prompt missing the broken output:\n{retry_prompt}";
+    assert "{\"name\": \"Ada\", \"age\":" in retry_prompt , f"retry prompt missing the broken output:\n{retry_prompt}";
     assert "age" in retry_prompt , "retry prompt should re-show the schema (fields)";
 }
 
@@ -1684,11 +1682,11 @@ test "typed retry raises after exhausting attempts" {
         err_name = type(e).__name__;
         err_msg = str(e);
     }
-    assert err_name == "OutputConversionError" ,
-        f"expected OutputConversionError once retries are exhausted, got {err_name}";
+    assert err_name == "OutputConversionError" , f"expected OutputConversionError once retries are exhausted, got {err_name}";
     # Default 3 retries = 4 attempts, all malformed.
-    assert len(mod.exhaust_llm.seen_prompts) == 4 ,
-        f"expected exactly 4 attempts, got {len(mod.exhaust_llm.seen_prompts)}";
+    assert len(mod.exhaust_llm.seen_prompts) == 4 , f"expected exactly 4 attempts, got {len(
+        mod.exhaust_llm.seen_prompts
+    )}";
     assert "4 attempt" in err_msg , f"final error should report the attempt count, got: {err_msg}";
     assert "3 retries" in err_msg , f"final error should report the retry count, got: {err_msg}";
 }
@@ -1696,15 +1694,17 @@ test "typed retry raises after exhausting attempts" {
 test "typed retry limit honors the config flow" {
     mod = _load_retry_fixture();
     # Instance call_params on the MockLLM caps retries at 1 -> 2 attempts.
-    try { mod.get_person_limited(); } except Exception {}
-    assert len(mod.limited_llm.seen_prompts) == 2 ,
-        f"instance retries=1 should give 2 attempts, got {len(mod.limited_llm.seen_prompts)}";
+    try {
+        mod.get_person_limited();
+    } except Exception { }
+    assert len(mod.limited_llm.seen_prompts) == 2 , f"instance retries=1 should give 2 attempts, got {len(
+        mod.limited_llm.seen_prompts
+    )}";
 
     # jac.toml/default config surfaces the knob through get_call_params_config.
     reset_byllm_config();
     cfg = get_byllm_config(Path(FIXTURE_DIR));
-    assert cfg.get_call_params_config().get("max_output_retries") == 3 ,
-        "default config flow should expose max_output_retries=3";
+    assert cfg.get_call_params_config().get("max_output_retries") == 3 , "default config flow should expose max_output_retries=3";
     reset_byllm_config();
 }
 
@@ -1712,8 +1712,7 @@ test "typed retry only fires for structured output failures" {
     mod = _load_retry_fixture();
     # (a) a non-empty string for a structured type (MockLLM passthrough) is
     # accepted, not treated as a failure.
-    assert mod.get_person_passthrough() == "Average: 86.75" ,
-        "a non-empty string should pass through for a structured type";
+    assert mod.get_person_passthrough() == "Average: 86.75" , "a non-empty string should pass through for a structured type";
     assert len(mod.passthrough_llm.seen_prompts) == 1 , "passthrough must not retry";
 
     # (b) a str return type passes an empty response through unchanged.
@@ -1728,6 +1727,7 @@ test "typed retry only fires for structured output failures" {
         raised = True;
     }
     assert raised , "a ValueError must propagate, not be retried";
-    assert len(mod.error_llm.seen_prompts) == 1 ,
-        f"non-conversion error must not retry, got {len(mod.error_llm.seen_prompts)}";
+    assert len(mod.error_llm.seen_prompts) == 1 , f"non-conversion error must not retry, got {len(
+        mod.error_llm.seen_prompts
+    )}";
 }
