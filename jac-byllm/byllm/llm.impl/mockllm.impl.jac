@@ -22,14 +22,15 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     self.seen_prompts.append(
         "\n".join([str(getattr(m, "content", m)) for m in mt_run.messages])
     );
-    message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
-    mt_run.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
-    # Error response: raise the wrapped exception (used to verify that non
-    # OutputConversionError failures propagate without triggering a retry).
+    # Error response: raise before recording an assistant turn, mirroring a real
+    # pre-response dispatch failure (no assistant message is added). Used to
+    # verify that non-OutputConversionError failures propagate without a retry.
     if isinstance(output, MockError) {
         raise output.error;
     }
+    message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
+    mt_run.add_message(message);
     # Unpack (payload, usage) tuple when tests need to inject usage metadata.
     # Both conditions must hold to avoid colliding with real tuple return types:
     #   1. first element is a MockToolCall or list[MockToolCall] (never a real LLM output type)

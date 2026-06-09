@@ -91,6 +91,19 @@ obj BaseLLM {
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
     async def _ainvoke_typed_retry(mt_run: MTRuntime) -> object;
+    def _typed_retry_reset(
+        mt_run: MTRuntime,
+        base_msgs: list,
+        base_scaffolding: list,
+        reason: str,
+        output: str
+    ) -> None;
+
+    def _parse_failure_feedback(attempt: int, max_attempts: int, err: object) -> tuple;
+    def _nonconforming_feedback(
+        attempt: int, max_attempts: int, mt_run: MTRuntime, result: object
+    ) -> tuple;
+
     def _typed_retry_exhausted(
         attempts: int, cause: object, raw: str
     ) -> OutputConversionError;
