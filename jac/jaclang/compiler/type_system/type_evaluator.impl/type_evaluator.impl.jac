@@ -4293,7 +4293,12 @@ impl TypeEvaluator._get_type_from_flow_node(
                     and not isinstance(assigned_type, types.UnknownType)
                 ) {
                     declared_type = target.declared_type;
-                    if (
+                    # Evolving-locals: declared type NoneType (from `x = None`
+                    # without annotation) accepts any later assignment as the
+                    # new type. Matches `is_evolving_reassign` in type_checker_pass.
+                    if self.is_none_type(declared_type) {
+                        narrowed_from_assignment = assigned_type;
+                    } elif (
                         self.assign_type(assigned_type, declared_type)
                         and not self.assign_type(declared_type, assigned_type)
                     ) {
