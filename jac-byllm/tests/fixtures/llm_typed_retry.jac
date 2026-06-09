@@ -68,3 +68,13 @@ def get_person_passthrough -> Person by passthrough_llm();
 # A str return type passes an empty response through without retrying.
 glob str_llm = MockLLM(model_name="mockllm", config={"outputs": [""]});
 def get_text -> str by str_llm();
+
+# Async structured call: malformed then valid, the async path must also retry.
+glob arecover_llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [
+        MockRawResponse(content="{\"name\": \"Zoe\", \"age\":"),
+        MockRawResponse(content="{\"name\": \"Zoe\", \"age\": 27}")
+    ]}
+);
+async def aget_person_recovering -> Person by arecover_llm();

@@ -1669,6 +1669,16 @@ test "typed retry regenerates after broken json and echoes it" {
     assert "age" in retry_prompt , "retry prompt should re-show the schema (fields)";
 }
 
+test "async typed retry regenerates after broken json" {
+    # The async no-tools path (ainvoke fast path) must retry too, not just sync.
+    mod = _load_retry_fixture();
+    person = asyncio.run(mod.aget_person_recovering());
+    assert person.name == "Zoe" and person.age == 27 , f"async malformed-then-valid JSON should retry and recover, got {person}";
+    assert len(mod.arecover_llm.seen_prompts) == 2 , f"async path expected one retry (2 attempts), got {len(
+        mod.arecover_llm.seen_prompts
+    )}";
+}
+
 test "typed retry raises after exhausting attempts" {
     mod = _load_retry_fixture();
     # Catch broadly and check the type by name: a fixture loaded via jac_import

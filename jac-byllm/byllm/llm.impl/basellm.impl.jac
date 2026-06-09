@@ -354,12 +354,7 @@ impl BaseLLM.ainvoke(mt_run: MTRuntime) -> object {
     logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
     no_tools = len(mt_run.tools) == 0;
     if not mt_run.stream and no_tools and not logging_stream {
-        try {
-            resp = await self.adispatch_no_streaming(mt_run);
-        } finally {
-            mt_run.write_back_conversation();
-        }
-        return resp.output;
+        return await self._ainvoke_typed_retry(mt_run);
     }
     if mt_run.stream and no_tools and not logging_stream {
         return self.adispatch_streaming(mt_run);
@@ -408,17 +403,13 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
 }
 
 
-"""Invoke the non-streaming path, regenerating empty/malformed typed output.
+"""Resolve the typed-output attempt budget (1 + max_output_retries).
 
-A weak model may emit empty content or unparseable JSON for a structured return;
-retry up to `max_output_retries` (default 3, 0 disables) after the first attempt,
-resetting to the original prompt between tries. See _typed_retry_feedback for the
-corrective message.
+max_output_retries counts retries AFTER the first attempt (0 disables). Resolves
+via call_params > self.call_params > jac.toml > 3. Explicit None checks (not
+`or`) so an intentional 0 is honored, not skipped as falsy.
 """
-impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
-    # max_output_retries = retries AFTER the first attempt (0 disables retrying).
-    # Resolve via call_params > self.call_params > jac.toml > 3. Explicit None
-    # checks (not `or`) so an intentional 0 is honored, not skipped as falsy.
+impl BaseLLM._resolve_output_attempts(mt_run: MTRuntime) -> int {
     max_retries = mt_run.call_params.get("max_output_retries");
     if max_retries is None {
         max_retries = self.call_params.get("max_output_retries");
@@ -429,8 +420,24 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
     if max_retries is None {
         max_retries = 3;
     }
-    max_attempts = 1 + max(0, int(max_retries));
+    return 1 + max(0, int(max_retries));
+}
+
+
+"""Invoke the non-streaming path, regenerating empty/malformed typed output.
+
+A weak model may emit empty content or unparseable JSON for a structured return;
+retry up to `max_output_retries` (default 3, 0 disables) after the first attempt,
+resetting to the original prompt between tries. See _typed_retry_feedback for the
+corrective message. The async equivalent is _ainvoke_typed_retry.
+"""
+impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
+    max_attempts = self._resolve_output_attempts(mt_run);
     base_msgs = list(mt_run.messages);
+    # Snapshot scaffolding ids too: resetting `messages` without this leaves stale
+    # ids behind, and a later real message reusing a freed id() would be wrongly
+    # dropped from the persisted conversation.
+    base_scaffolding = list(mt_run._scaffolding_ids);
     attempt = 0;
     last_err: object = None;
     last_reason = "";
@@ -441,6 +448,7 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
             if attempt > 1 {
                 # Reset to the original prompt, then re-state the contract.
                 mt_run.messages = list(base_msgs);
+                mt_run._scaffolding_ids = list(base_scaffolding);
                 mt_run._has_final_output = False;
                 mt_run._final_output = None;
                 mt_run.add_scaffolding_message(
@@ -454,10 +462,12 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
                 last_output = str(getattr(e, "raw_output", "") or "");
                 last_reason = f"The output parser reported: {e}.";
                 self.log_info(
-                    f"[byllm] typed-output attempt {attempt}/{max_attempts} " + f"failed to parse: {e}"
+                    f"[byllm] typed-output attempt {attempt}/{max_attempts} failed to parse: {e}"
                 );
                 if attempt >= max_attempts {
-                    raise self._typed_retry_exhausted(attempt, last_err, last_output);
+                    raise self._typed_retry_exhausted(
+                        attempt, last_err, last_output
+                    ) from e;
                 }
                 continue;
             }
@@ -477,7 +487,78 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
                 f"[byllm] typed-output attempt {attempt}/{max_attempts} " + "returned a non-conforming value; retrying"
             );
             if attempt >= max_attempts {
-                raise self._typed_retry_exhausted(attempt, last_err, last_output);
+                raise self._typed_retry_exhausted(
+                    attempt, last_err, last_output
+                ) from last_err;
+            }
+        }
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+"""Async equivalent of _invoke_typed_retry for the no-tools, non-streaming path.
+
+Mirrors the sync retry loop but awaits `adispatch_no_streaming` (which parses the
+response, so malformed JSON raises OutputConversionError and an empty response
+yields a non-conforming value) instead of the sync ReAct loop.
+"""
+impl BaseLLM._ainvoke_typed_retry(mt_run: MTRuntime) -> object {
+    max_attempts = self._resolve_output_attempts(mt_run);
+    base_msgs = list(mt_run.messages);
+    base_scaffolding = list(mt_run._scaffolding_ids);
+    attempt = 0;
+    last_err: object = None;
+    last_reason = "";
+    last_output = "";
+    try {
+        while True {
+            attempt += 1;
+            if attempt > 1 {
+                mt_run.messages = list(base_msgs);
+                mt_run._scaffolding_ids = list(base_scaffolding);
+                mt_run._has_final_output = False;
+                mt_run._final_output = None;
+                mt_run.add_scaffolding_message(
+                    self._typed_retry_feedback(mt_run, last_reason, last_output)
+                );
+            }
+            try {
+                result = (await self.adispatch_no_streaming(mt_run)).output;
+            } except OutputConversionError as e {
+                last_err = e;
+                last_output = str(getattr(e, "raw_output", "") or "");
+                last_reason = f"The output parser reported: {e}.";
+                self.log_info(
+                    f"[byllm] typed-output attempt {attempt}/{max_attempts} failed to parse: {e}"
+                );
+                if attempt >= max_attempts {
+                    raise self._typed_retry_exhausted(
+                        attempt, last_err, last_output
+                    ) from e;
+                }
+                continue;
+            }
+            if self._structured_output_ok(mt_run, result) {
+                return result;
+            }
+            last_output = str(result);
+            last_reason = (
+                "The previous response was empty or did not contain a JSON " + "object (it could not be converted to the required type)."
+            );
+            last_err = OutputConversionError(
+                f"LLM returned a non-conforming value for return type " + f"'{mt_run.resp_type}' (got '{type(
+                    result
+                ).__name__}'); the " + "response was likely empty or not valid JSON"
+            );
+            self.log_info(
+                f"[byllm] typed-output attempt {attempt}/{max_attempts} " + "returned a non-conforming value; retrying"
+            );
+            if attempt >= max_attempts {
+                raise self._typed_retry_exhausted(
+                    attempt, last_err, last_output
+                ) from last_err;
             }
         }
     } finally {

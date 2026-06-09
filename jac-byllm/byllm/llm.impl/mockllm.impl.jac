@@ -92,6 +92,15 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     return CompletionResult(output=output, tool_calls=[], usage=usage);
 }
 
+"""Async dispatch for the mock LLM: reuse the sync mock (no real I/O).
+
+Lets `async def ... by llm()` exercise the mock outputs and the async typed-output
+retry path without hitting a real provider.
+"""
+impl MockLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
+    return self.dispatch_no_streaming(mt_run);
+}
+
 """Dispatch the mock LLM call with streaming.
 
 Simulates streaming by yielding random-sized chunks with artificial delays.

@@ -88,7 +88,9 @@ obj BaseLLM {
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
     async def ainvoke(mt_run: MTRuntime) -> object;
+    def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
+    async def _ainvoke_typed_retry(mt_run: MTRuntime) -> object;
     def _typed_retry_exhausted(
         attempts: int, cause: object, raw: str
     ) -> OutputConversionError;
@@ -147,6 +149,7 @@ obj MockLLM(BaseLLM) {
 
     def postinit -> None;
     override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
+    override async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
