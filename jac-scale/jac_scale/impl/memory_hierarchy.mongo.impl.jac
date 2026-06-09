@@ -354,7 +354,8 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     self.fetch_count += 1;
     _id = to_uuid(id);
     span = start_memory_span(
-        "memory.get mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
     );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
@@ -727,7 +728,8 @@ impl MongoBackend.sync -> set {
     }
     self._atomic_written = set();
     span = start_memory_span(
-        "memory.sync mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+        "memory.sync mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
     );
     # Count all write paths for an accurate mem.count; try/finally so the
     # span closes even if a pre-loop check raises.
@@ -1344,7 +1346,8 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
     span = start_memory_span(
-        "memory.get mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
     );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
