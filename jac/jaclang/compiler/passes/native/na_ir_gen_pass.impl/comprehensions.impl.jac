@@ -10,15 +10,12 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     if self._list_type_hint is not None {
         elem_type_name = self._list_type_hint;
     } else {
-        # 2. Try to infer from first collection's element type
+        # 2. Try to infer from first collection's checked element type
         # For [m for m in items], infer from items' element type
         first_compr = nd.compr[0];
-        coll_name = self._get_name(first_compr.collection);
-        if coll_name is not None and coll_name in self.var_type_node {
-            hint = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
-            if hint is not None {
-                elem_type_name = hint;
-            }
+        hint = self._elem_spec_of(first_compr.collection);
+        if hint is not None {
+            elem_type_name = hint;
         }
         # 3. If output is a TupleVal, assume ptr type
         if elem_type_name == "i64" and isinstance(nd.out_expr, uni.TupleVal) {
@@ -51,14 +48,9 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
                 target_name = self._get_name(compr.target);
                 if target_name == out_name {
                     # The output is the loop variable itself, infer from collection
-                    coll_name = self._get_name(compr.collection);
-                    if coll_name is not None and coll_name in self.var_type_node {
-                        hint = self._get_list_elem_from_type_node(
-                            self.var_type_node[coll_name]
-                        );
-                        if hint is not None {
-                            elem_type_name = hint;
-                        }
+                    hint = self._elem_spec_of(compr.collection);
+                    if hint is not None {
+                        elem_type_name = hint;
                     }
                     break;
                 }
@@ -164,7 +156,6 @@ impl NaIRGenPass._codegen_compr_loops(
     # Save original list type hint (for the output list)
     saved_hint = self._list_type_hint;
     # Evaluate collection (may need its own hint for nested lists)
-    coll_name = self._get_name(collection);
     coll_val = self._codegen_expr(collection);
     # Restore the output list type hint
     self._list_type_hint = saved_hint;
@@ -190,17 +181,16 @@ impl NaIRGenPass._codegen_compr_loops(
     # Allocate loop index
     idx_alloca = self._entry_alloca(i64, "compr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
-    # Resolve element type for ptr lists
+    # Resolve element type for ptr lists from the checked collection type
     actual_elem_type = coll_helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
     if coll_elem_type_name == "ptr" {
-        coll_type_node = self.var_type_node.get(coll_name) if coll_name else None;
-        if coll_type_node is not None {
-            (_, inner_type_resolved, _) = self._peel_list_type(coll_type_node);
-            if inner_type_resolved is not None {
-                inner_type = inner_type_resolved;
-                actual_elem_type = inner_type;
-            }
+        inner_type = self._list_elem_llvm_of(collection);
+        if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
+            inner_type = None;
+        }
+        if inner_type is not None {
+            actual_elem_type = inner_type;
         }
     }
     # Allocate loop variable

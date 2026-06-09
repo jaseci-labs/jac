@@ -369,6 +369,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native struct name from a checked instance type (handles T | None).
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Lowered LLVM type of a checked list type's element.
+    def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
+    def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;

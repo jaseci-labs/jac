@@ -222,6 +222,42 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Return the lowered LLVM type of a checked list type's element, or None.
+For `list[Piece | None]` returns `Piece*`; for `list[list[int]]` returns
+`List.i64*`. Lowering registers any needed collection helpers."""
+impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    if not expr.type.mangle().startswith("list[") {
+        return None;
+    }
+    args = expr.type.private.type_args or [];
+    if not args {
+        return None;
+    }
+    return self._lower_type(args[0]);
+}
+
+"""Return the native element spec of a checked list type's element
+("i64"/"f64"/"ptr"/"jacval"), or None when the expression isn't a typed list."""
+impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    et = self._list_elem_llvm_of(expr);
+    if et is None {
+        return None;
+    }
+    if isinstance(et, ir.DoubleType) {
+        return "f64";
+    }
+    if isinstance(et, ir.PointerType) {
+        return "ptr";
+    }
+    if self?.jacval_type and et == self.jacval_type {
+        return "jacval";
+    }
+    return "i64";
+}
+
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
 
 Handles primitives (registry-backed), enums, user structs, and the builtin
@@ -1968,29 +2004,19 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
         }
     }
     if target_name is None or method_name is None {
-        # Fallback: if collection is a simple variable (Name node), try to
-        # resolve its list element type from the variable's type annotation
-        coll_name = self._get_name(collection);
-        if coll_name is not None {
-            # Check var_type_node for type annotation like list[Move]
-            type_node = self.var_type_node.get(coll_name);
-            if type_node is not None {
-                (inner, _, _) = self._peel_list_type(type_node);
-                if inner is not None {
-                    inner_name = self._get_name(inner);
-                    if inner_name is not None and inner_name in self.struct_types {
-                        return inner_name;
-                    }
-                }
+        # Fallback: checked type list[Struct] → struct element name
+        # (handles `list[T | None]` by resolving to the struct member).
+        _coll_tk = self._type_key_of(collection);
+        if _coll_tk is not None
+        and _coll_tk.startswith("list[")
+        and _coll_tk.endswith("]") {
+            _inner_tk = _coll_tk[5:-1];
+            if _inner_tk in self.struct_types {
+                return _inner_tk;
             }
-            # Checked type list[Struct] → struct element name
-            _coll_tk = self._type_key_of(collection);
-            if _coll_tk is not None
-            and _coll_tk.startswith("list[")
-            and _coll_tk.endswith("]") {
-                _inner_tk = _coll_tk[5:-1];
-                if _inner_tk in self.struct_types {
-                    return _inner_tk;
+            for part in _inner_tk.split("|") {
+                if part in self.struct_types {
+                    return part;
                 }
             }
         }
@@ -2037,23 +2063,13 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
 }
 
 """Resolve the LLVM type of elements in a ptr list for a for-loop variable.
-Uses Jac type annotations (var_type_node or field_type_node) to determine
-what i8* elements should be bitcast to."""
+Uses the checked type of the collection expression to determine what i8*
+elements should be bitcast to."""
 impl NaIRGenPass._resolve_for_loop_elem_type(
     coll_name: (str | None), coll_node: (object | None)
 ) -> (ir.Type | None) {
-    # Check variable type annotation first
-    type_node: (object | None) = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        type_node = self.var_type_node[coll_name];
-    }
-    if type_node is not None {
-        (inner, inner_type, inner_elem) = self._peel_list_type(type_node);
-        if inner_type is not None {
-            return inner_type;
-        }
-    }
-    return None;
+    # Element type comes from the checked type of the collection expression.
+    return self._list_elem_llvm_of(coll_node);
 }
 
 """Resolve the LLVM type that ptr list elements should be bitcast to,

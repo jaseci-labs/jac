@@ -66,20 +66,23 @@ Returns None when the source isn't an identifiable list. See #6435.
 """
 impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
     list_name: (str | None) = None;
+    list_expr: (object | None) = None;
     if isinstance(nd, uni.FuncCall) {
         tgt = nd.target;
         if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
             list_name = self._get_name(tgt.target);
+            list_expr = tgt.target;
         }
     } elif isinstance(nd, uni.AtomTrailer) and not nd.is_attr and nd.right?.slices {
         list_name = self._get_name(nd.target);
+        list_expr = nd.target;
     }
     if list_name is None {
         return None;
     }
-    # 1. Typed `list[tuple[...]]` — recover from the declared annotation.
-    cast = self._resolve_ptr_elem_cast_type(self.var_type_node.get(list_name));
-    if cast is not None {
+    # 1. Typed `list[tuple[...]]` — recover from the checked list type.
+    cast = self._list_elem_llvm_of(list_expr);
+    if cast is not None and isinstance(cast, ir.PointerType) {
         return cast;
     }
     # 2. Bare `list` — recover the boxed-tuple struct tracked at literal time.

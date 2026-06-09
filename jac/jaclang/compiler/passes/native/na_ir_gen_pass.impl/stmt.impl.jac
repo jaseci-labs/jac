@@ -1943,11 +1943,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # call so the list path can recover the element type.
     coll_name = self._get_name(nd.collection);
     self._list_type_hint = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        _hint0 = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
-        if _hint0 is not None {
-            self._list_type_hint = _hint0;
-        }
+    _hint0 = self._elem_spec_of(nd.collection);
+    if _hint0 is not None {
+        self._list_type_hint = _hint0;
     }
     self._last_type_node_hint = None;
     _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
