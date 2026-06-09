@@ -32,7 +32,11 @@ glob CLIENT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
          RuntimeSymbol(name="__jacSpawn", prepend=True),
          # `useRef` is imported straight from `react`, so it never resolves
          # through the runtime: `Ref[T]` fields take it directly from React.
-         RuntimeSymbol(name="useRef", source="react")
+         RuntimeSymbol(name="useRef", source="react"),
+         # `forwardRef` is likewise taken straight from `react`: a component that
+         # declares a trailing `ref: Ref` param lowers to
+         # `forwardRef(function C(props, ref) {...})` so it can *be* a ref target.
+         RuntimeSymbol(name="forwardRef", source="react")
      ];
 
 """The declared symbol for `name`, or `None` if it needs no special handling."""

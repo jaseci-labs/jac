@@ -210,7 +210,7 @@ impl NativeDesktopTarget.build(
     (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
 
     # 5. Generate + compile the native host into the output dir.
-    libpy = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
+    libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
     host_src = _generate_host_source(
         libpy, win.title or app_name, win.width, win.height, str(app_name)
     );
