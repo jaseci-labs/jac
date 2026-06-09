@@ -365,6 +365,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
+    def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_runtime_import -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
