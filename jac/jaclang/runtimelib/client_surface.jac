@@ -50,9 +50,7 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
 When `backend` is provided, delegates to the backend's `import_source`. Otherwise
 falls back to the hard-coded React surface for backward compatibility.
 """
-def runtime_import_source(
-    name: str, backend: (object | None) = None
-) -> str {
+def runtime_import_source(name: str, backend: (object | None) = None) -> str {
     if backend is not None {
         return backend.import_source(name);
     }
@@ -68,9 +66,7 @@ def runtime_import_source(
 When `backend` is provided, uses the backend's `required_globals` and
 `runtime_module`. Otherwise falls back to React defaults.
 """
-def prepended_runtime_import(
-    backend: (object | None) = None
-) -> str {
+def prepended_runtime_import(backend: (object | None) = None) -> str {
     if backend is not None {
         names = backend.required_globals;
         src = backend.runtime_module;
@@ -90,9 +86,7 @@ When `backend` is provided, uses the backend's requirements. Otherwise falls
 back to React defaults. Skips the runtime module itself, which defines the
 globals, and is idempotent.
 """
-def with_runtime_globals(
-    js_code: str, backend: (object | None) = None
-) -> str {
+def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
     # The runtime module defines these globals; importing them there is circular.
     if "function __jacJsx(" in js_code {
         return js_code;

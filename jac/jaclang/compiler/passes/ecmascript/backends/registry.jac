@@ -19,5 +19,5 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
         _BACKENDS["react"] = backend;
         return backend;
     }
-    raise E5081.format_message(framework=framework);
+    raise ValueError(E5081.format_message(framework=framework));
 }

@@ -969,9 +969,7 @@ impl _parse_toml_data(
     }
     if "client" in data {
         client_data = data["client"];
-        config.client = ClientConfig(
-            framework=client_data.get("framework", "react")
-        );
+        config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
     if "plugins" in data {
         plugins_data = data["plugins"];

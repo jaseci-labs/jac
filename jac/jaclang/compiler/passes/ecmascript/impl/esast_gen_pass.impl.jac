@@ -14,7 +14,9 @@ it itself is being compiled)."""
 impl EsastGenPass._ensure_backend -> None {
     if self.backend is None {
         import from jaclang.project.config { get_config }
-        import from jaclang.compiler.passes.ecmascript.backends.registry { resolve_framework_backend }
+        import from jaclang.compiler.passes.ecmascript.backends.registry {
+            resolve_framework_backend
+        }
         cfg = get_config();
         fw = cfg.client.framework if (cfg and cfg.client) else "react";
         self.backend = resolve_framework_backend(fw);
@@ -3407,9 +3409,7 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
             ];
         }
         async_boundary = AsyncBoundary(
-            try_expr=try_iife,
-            awaiting_expr=awaiting_iife,
-            except_exprs=except_iifes
+            try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
         );
         self._ensure_backend();
         wrapper = self.sync_loc(
@@ -4094,10 +4094,7 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
         }
     }
     effect = Effect(
-        body=body_stmts,
-        deps=deps_elements,
-        is_entry=is_entry,
-        is_async=is_async
+        body=body_stmts, deps=deps_elements, is_entry=is_entry, is_async=is_async
     );
     self._ensure_backend();
     lowered = self.backend.lower_effect(effect);

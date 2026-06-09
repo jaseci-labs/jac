@@ -46,9 +46,7 @@ impl ReactBackend._get_setter_name(var_name: str) -> str {
 }
 
 """Build `<>{children...}</>` — a fragment `__jacJsx(null, {}, [children])`."""
-impl ReactBackend._jsx_fragment(
-    children: list[es.Expression]
-) -> es.CallExpression {
+impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpression {
     return es.CallExpression(
         callee=es.Identifier(name='__jacJsx'),
         arguments=[
@@ -69,9 +67,7 @@ impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
         callee=es.Identifier(name='useState'), arguments=[s.init_expr]
     );
     declarator = es.VariableDeclarator(id=array_pattern, init=use_state_call);
-    decl_stmt = es.VariableDeclaration(
-        declarations=[declarator], kind='const'
-    );
+    decl_stmt = es.VariableDeclaration(declarations=[declarator], kind='const');
     return [decl_stmt];
 }
 
@@ -91,9 +87,7 @@ impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_name = self._get_setter_name(u.name);
     if u.aug_op {
         setter_arg = es.BinaryExpression(
-            operator=u.aug_op,
-            left=es.Identifier(name=u.name),
-            right=u.value
+            operator=u.aug_op, left=es.Identifier(name=u.name), right=u.value
         );
     } else {
         setter_arg = u.value;
@@ -136,8 +130,7 @@ impl ReactBackend.lower_effect(e: Effect) -> list[es.Statement] {
     );
     deps_array = es.ArrayExpression(elements=e.deps);
     use_effect_call = es.CallExpression(
-        callee=es.Identifier(name='useEffect'),
-        arguments=[effect_callback, deps_array]
+        callee=es.Identifier(name='useEffect'), arguments=[effect_callback, deps_array]
     );
     return [es.ExpressionStatement(expression=use_effect_call)];
 }

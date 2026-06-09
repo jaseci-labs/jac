@@ -334,7 +334,9 @@ impl _run_harness(
         if "@jac/runtime" in imports {
             import from jaclang.runtimelib.client_surface { with_runtime_globals }
             import from jaclang.project.config { get_config }
-            import from jaclang.compiler.passes.ecmascript.backends.registry { resolve_framework_backend }
+            import from jaclang.compiler.passes.ecmascript.backends.registry {
+                resolve_framework_backend
+            }
             cfg = get_config();
             fw = cfg.client.framework if (cfg and cfg.client) else "react";
             backend = resolve_framework_backend(fw);
