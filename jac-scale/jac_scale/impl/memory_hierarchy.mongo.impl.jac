@@ -716,13 +716,8 @@ impl MongoBackend.sync -> set {
         return set();
     }
     self._atomic_written = set();
-
-    # Flush in dependency order — nodes, then edges, then the references that
-    # cite them — so a process killed mid-sync can never leave an edge whose
-    # endpoint node was never written (a dangling edge that breaks traversal).
-    # See issue #6488.
     node_inserts: list[NodeAnchor] = [];
-    edge_inserts: list[Anchor] = [];
+    edge_inserts: list[EdgeAnchor] = [];
     atomic_updates: list[tuple[NodeAnchor, list[str], list[str]]] = [];
     partial_updates: list[tuple[Anchor, set[str]]] = [];
 
@@ -749,10 +744,6 @@ impl MongoBackend.sync -> set {
                 }
             }
         }
-        # Union __setattr__-tracked fields (direct assignments) with
-        # field-hash-derived fields (in-place mutations) to get the complete
-        # dirty set. Both must be combined — running only one silently drops
-        # the other category (e.g. direct + in-place in the same request).
         if anchor.hash != 0 {
             arch = anchor.archetype if anchor.is_populated() else None;
             setattr_dirty: set[str] = (
@@ -771,7 +762,7 @@ impl MongoBackend.sync -> set {
         if isinstance(anchor, NodeAnchor) {
             node_inserts.append(anchor);
         } else {
-            edge_inserts.append(anchor);
+            edge_inserts.append(cast(EdgeAnchor, anchor));
         }
     }
 
