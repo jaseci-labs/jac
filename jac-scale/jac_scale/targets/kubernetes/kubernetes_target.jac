@@ -1522,6 +1522,25 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
+            triggers = [
+                Trigger(
+                    type="cpu",
+                    metadata={
+                        "averageUtilization": str(
+                            self.k8s_config.cpu_utilization_target
+                        )
+                    }
+                )
+            ];
+            for t in self.k8s_config.extra_triggers {
+                triggers.append(
+                    Trigger(
+                        type=t["type"],
+                        metadata=t.get("metadata", {}),
+                        name=t.get("name")
+                    )
+                );
+            }
             AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),
@@ -1532,16 +1551,11 @@ obj KubernetesTarget(DeploymentTarget) {
                     namespace=namespace,
                     min_replicas=self.k8s_config.min_replicas,
                     max_replicas=self.k8s_config.max_replicas,
-                    triggers=[
-                        Trigger(
-                            type="cpu",
-                            metadata={
-                                "averageUtilization": str(
-                                    self.k8s_config.cpu_utilization_target
-                                )
-                            }
-                        )
-                    ]
+                    idle_replicas=self.k8s_config.idle_replicas,
+                    polling_interval=self.k8s_config.autoscaler_polling_interval,
+                    cooldown_period=self.k8s_config.autoscaler_cooldown,
+                    initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    triggers=triggers
                 )
             );
             details["create_horizontal_auto_scaler"] = "Successful";
@@ -1831,11 +1845,10 @@ obj KubernetesTarget(DeploymentTarget) {
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
-        AutoscalerFactory.create(
+        autoscaler = AutoscalerFactory.create(
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
-        ).destroy(
-            f"{app_name}-hpa", namespace
         );
+        autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
