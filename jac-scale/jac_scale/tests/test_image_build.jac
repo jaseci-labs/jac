@@ -168,7 +168,7 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
                         with mock.patch.object(
                             dist_mod,
                             "_retag_with_content_id",
-                            side_effect=lambda tag , envNone : f"{tag}-abc123"
+                            side_effect=lambda tag : f"{tag}-abc123"
                         ) {
                             with mock.patch.object(
                                 dist_mod, "run_docker_push"
