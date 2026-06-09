@@ -1932,13 +1932,16 @@ impl JacAPIServer.create_server(
     for _ in range(max_retries) {
         try {
             server = HTTPServer((host, current_port), handler_class);
-            if current_port != port {
+            actual_port = server.server_address[1];
+            if actual_port != port {
                 import from jaclang.cli.console { console }
-                console.print(
-                    f"  Port {port} is in use, using port {current_port} instead",
-                    style="warning"
-                );
-                jac_server.port = current_port;  # Update the server's port
+                if port != 0 {
+                    console.print(
+                        f"  Port {port} is in use, using port {actual_port} instead",
+                        style="warning"
+                    );
+                }
+                jac_server.port = actual_port;  # Update the server's port
             }
             return server;
         } except OSError as e {
