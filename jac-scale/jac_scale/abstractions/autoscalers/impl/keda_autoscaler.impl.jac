@@ -148,6 +148,13 @@ impl KEDAAutoscaler._apply_trigger_auth{
     auth_name = f"{trigger.name or trigger.type}-trigger-auth";
     secret_target_refs: list[dict[str, any]] = [];
     for (param, ref) in trigger.auth.secret_refs.items() {
+        if not isinstance(ref, dict) {
+            raise ValueError(
+                f"auth.secret_refs['{param}'] must be a table {{name = '...', key = '...'}}, got {type(
+                    ref
+                ).__name__}"
+            );
+        }
         secret_target_refs.append(
             {"parameter": param, "name": ref.get("name", ""), "key": ref.get("key", "")}
         );
