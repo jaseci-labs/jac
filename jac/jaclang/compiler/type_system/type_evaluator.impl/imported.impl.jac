@@ -214,7 +214,7 @@ impl TypeEvaluator._resolve_star_import_symbol(
                 }
             }
         } else {
-            submod_path = star_mod_path.resolve_relative_path();
+            submod_path = resolved[-1] if resolved else star_mod_path.resolve_relative_path();
             if submod_path and Path(submod_path).exists() {
                 submod = self._import_module_from_path(
                     submod_path, importer_path=self._resolve_importer_path(mod)
