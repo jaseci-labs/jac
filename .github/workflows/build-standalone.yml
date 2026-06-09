@@ -92,6 +92,28 @@ jobs:
       - name: Install pex
         run: pip install pex
 
+      # PyPI's upload API and its index CDN propagate independently: a just-
+      # published version (and its freshly-published dependencies) can be
+      # invisible to a resolver for seconds-to-minutes after upload succeeds.
+      # The tier-publish `wait_for_pypi` gate confirms uploads via the JSON
+      # API, but pex resolves the *full dependency tree* off the index, so it
+      # can still 404 on a transitive dep (e.g. jac-client). Poll the real pip
+      # resolver until the whole tree resolves before building.
+      - name: Wait for jaclang to be installable from PyPI
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.jaclang_version }}"
+          for i in $(seq 1 30); do
+            if pip download --no-deps --dest /tmp/_wait_probe "jaclang==${VERSION}" >/dev/null 2>&1 \
+               && pip install --dry-run --ignore-installed "jaclang==${VERSION}" >/dev/null 2>&1; then
+              echo "jaclang==${VERSION} resolvable on attempt ${i}"
+              exit 0
+            fi
+            echo "jaclang==${VERSION} not yet resolvable (attempt ${i}/30); retrying in 20s..."
+            sleep 20
+          done
+          echo "::error::jaclang==${VERSION} did not become resolvable on PyPI in time"
+          exit 1
+
       - name: Build standalone binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -186,6 +208,27 @@ jobs:
 
       - name: Install pex
         run: pip install pex
+
+      # See the jaclang job for why this gate exists. jaseci pulls the entire
+      # plugin set (jac-client, jac-scale, jac-super, ...), so a single not-yet-
+      # propagated transitive dep makes the pex resolve fail with "No matching
+      # distribution found". `pip install --dry-run` exercises the full resolver
+      # over the whole tree — the same path pex takes — so it only passes once
+      # every dependency is actually visible on the index.
+      - name: Wait for jaseci (and all deps) to be installable from PyPI
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.jaseci_version }}"
+          for i in $(seq 1 30); do
+            if pip install --dry-run --ignore-installed "jaseci==${VERSION}" >/dev/null 2>&1; then
+              echo "jaseci==${VERSION} (full dependency tree) resolvable on attempt ${i}"
+              exit 0
+            fi
+            echo "jaseci==${VERSION} deps not yet fully resolvable (attempt ${i}/30); retrying in 20s..."
+            sleep 20
+          done
+          echo "::error::jaseci==${VERSION} dependency tree did not become resolvable on PyPI in time"
+          pip install --dry-run --ignore-installed "jaseci==${VERSION}" || true
+          exit 1
 
       - name: Build standalone binary
         env:
