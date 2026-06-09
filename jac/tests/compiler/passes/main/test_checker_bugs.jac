@@ -910,3 +910,17 @@ test "bug_starguard_1_guarded_star_reexport_resolves" {
         f"bytes.__add__ rejects str. Expected 1 E1055, got {e1055}."
     );
 }
+
+test "bug_starguard_1_single_segment_reexport_resolves" {
+    program = compile_and_check(os.path.join("star_reexport_guard", "consumer.jac"));
+    e1032 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    );
+    assert len(program.errors_had) == 0 , (
+        "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
+        "`from M import *` must resolve. Marker was Unknown "
+        f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
