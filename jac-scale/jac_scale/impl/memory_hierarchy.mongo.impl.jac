@@ -1,5 +1,7 @@
 """MongoDB PersistenceBackend Implementation."""
 
+import from jac_scale.microservices.runtime.tracing { start_memory_span, end_memory_span }
+
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
 On connect we also ensure the companion collections exist as logical
@@ -348,11 +350,16 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     }
     self.fetch_count += 1;
     _id = to_uuid(id);
+    span = start_memory_span(
+        "memory.get", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
     } except Exception as e {
         logger.debug(f"MongoDB get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
     if not db_obj {
         return None;
@@ -716,6 +723,9 @@ impl MongoBackend.sync -> set {
         return set();
     }
     self._atomic_written = set();
+    span = start_memory_span(
+        "memory.sync", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+    );
     for (_, anchor) in list(self._mem_ref.items()) {
         if not anchor.persistent {
             continue;
@@ -764,6 +774,10 @@ impl MongoBackend.sync -> set {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
     }
+    if span {
+        span.set_attribute("mem.count", len(self._atomic_written));
+    }
+    end_memory_span(span);
     return self._atomic_written;
 }
 
@@ -915,6 +929,10 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
+    span = start_memory_span(
+        "memory.batch_get",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "batch_get", "mem.count": len(ids)}
+    );
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
             if (anchor := self._load_anchor(doc)) {
@@ -924,6 +942,8 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     } except Exception as e {
         logger.debug(f"MongoDB batch_get failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
     return result;
 }
@@ -1306,6 +1326,9 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
         _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    span = start_memory_span(
+        "memory.get", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
         if not db_obj {
@@ -1315,6 +1338,8 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Async aget failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -1348,10 +1373,16 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
             UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
             for a in dirty
         ];
+        span = start_memory_span(
+            "memory.commit",
+            {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "commit", "mem.count": len(dirty)}
+        );
         try {
             await coll.bulk_write(ops, ordered=False);
         } except Exception as e {
             logger.warning(f"Async acommit bulk_write failed: {e}");
+        } finally {
+            end_memory_span(span);
         }
     }
 }
