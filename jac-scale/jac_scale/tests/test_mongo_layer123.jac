@@ -904,7 +904,7 @@ test "sync writes endpoint nodes before the edges that reference them" {
     source.edges = [eanch];
     target.edges = [eanch];
 
-    # Adversarial insertion order — eanch sits before its target node.
+    # Adversarial insertion order: eanch sits before its target node.
     backend._mem_ref = {source.id: source, eanch.id: eanch, target.id: target};
 
     # Record the order in which documents are physically written.
@@ -931,11 +931,11 @@ test "sync writes endpoint nodes before the edges that reference them" {
     for anchor in written {
         if isinstance(anchor, EdgeAnchor) {
             assert str(anchor.source.id) in live , (
-                "eanch written before its source node — a crash here would "
+                "eanch written before its source node: a crash here would "
                 "orphan the eanch (issue #6488)"
             );
             assert str(anchor.target.id) in live , (
-                "eanch written before its target node — a crash here would "
+                "eanch written before its target node: a crash here would "
                 "orphan the eanch (issue #6488)"
             );
         }

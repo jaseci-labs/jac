@@ -758,7 +758,7 @@ impl MongoBackend.sync -> set {
                 continue;
             }
         }
-        # First insert (hash == 0) or no field changes found — full upsert.
+        # First insert (hash == 0) or no field changes found: full upsert.
         if isinstance(anchor, NodeAnchor) {
             node_inserts.append(anchor);
         } else {
