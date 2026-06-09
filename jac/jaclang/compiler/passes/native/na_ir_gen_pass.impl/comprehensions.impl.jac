@@ -213,15 +213,6 @@ impl NaIRGenPass._codegen_compr_loops(
         self.builder.position_at_end(_compr_saved_block);
     }
     self.local_vars[loop_var_name] = loop_alloca;
-    # Track type info for loop variable
-    if inner_type is not None {
-        for (sname, stype) in self.struct_types.items() {
-            if inner_type == stype.as_pointer() {
-                self.type_var_map[loop_var_name] = sname;
-                break;
-            }
-        }
-    }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.cond");
     body_bb = func.append_basic_block(name="compr.body");
@@ -356,9 +347,11 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type_name = "ptr";
         val_type = ir.IntType(8).as_pointer();
     } elif isinstance(val_expr, uni.Name) {
-        # Check if it's a known pointer variable
-        var_name = val_expr.value;
-        if var_name in self.type_var_map or self._list_spec_of(val_expr) is not None {
+        # Check if it's a known pointer variable (struct or list typed)
+        if (
+            self._struct_name_of(val_expr) is not None
+            or self._list_spec_of(val_expr) is not None
+        ) {
             val_type_name = "ptr";
             val_type = ir.IntType(8).as_pointer();
         }
@@ -822,15 +815,6 @@ impl NaIRGenPass._codegen_set_compr_loops(
         self.builder.position_at_end(_scompr_saved_block);
     }
     self.local_vars[loop_var_name] = loop_alloca;
-    # Track struct type for the loop variable so field accesses work
-    if coll_elem_type_name == "ptr" and actual_elem_type != coll_helpers["elem_type"] {
-        for (sname, stype) in self.struct_types.items() {
-            if actual_elem_type == stype.as_pointer() {
-                self.type_var_map[loop_var_name] = sname;
-                break;
-            }
-        }
-    }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="scompr.cond");
     body_bb = func.append_basic_block(name="scompr.body");

@@ -306,18 +306,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         # Track type annotations for parameters
         if p.type_tag and p.type_tag.tag {
             self.var_type_node[param_name] = p.type_tag.tag;
-            # Track struct types (including union T | None)
-            tag_name = self._get_name(p.type_tag.tag);
-            tag_node = p.type_tag.tag;
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_name] = tag_name;
-            }
         }
     }
     # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
@@ -436,13 +424,11 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_var_map = self.type_var_map;
     saved_var_type_node = self.var_type_node;
     saved_var_list_struct = self.var_list_elem_struct;
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.param_vars = set();
-    self.type_var_map = {};
     self.var_type_node = {};
     self.var_list_elem_struct = {};
     for (i, arg) in enumerate(fn.args) {
@@ -453,10 +439,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         sigp = sig_params[i];
         if sigp?.type_tag and sigp.type_tag and sigp.type_tag?.tag {
             self.var_type_node[param_names[i]] = sigp.type_tag.tag;
-            tag_name = self._get_name(sigp.type_tag.tag);
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_names[i]] = tag_name;
-            }
         }
     }
     if body is not None {
@@ -479,7 +461,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_var_map;
     self.var_type_node = saved_var_type_node;
     self.var_list_elem_struct = saved_var_list_struct;
     nd.gen.llvm_ir = fn;

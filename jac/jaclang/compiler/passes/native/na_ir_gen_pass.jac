@@ -143,7 +143,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_defaults: dict[str, object] = {},
         method_funcs: dict[str, ir.Function] = {},
         method_ast_sigs: dict[str, object] = {},
-        type_var_map: dict[str, str] = {},
         # List support (Phase 4)
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
@@ -156,6 +155,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # just boxed, read by the enclosing assignment to seed
         # var_list_elem_struct. Reset at the start of each list-literal codegen.
         _pending_list_elem_struct: (object | None) = None,
+        # Archetype whose method body is being codegen'd. Inherited methods are
+        # re-emitted per subclass, so `self` must resolve to the *current*
+        # (flattened) layout, not the declaring parent the checker reports.
+        _self_arch: (str | None) = None,
         field_type_node: dict[str, dict] = {},
         var_type_node: dict[str, object] = {},
         _list_type_hint: (str | None) = None,
@@ -364,6 +367,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native list spec key ("i64"/"f64"/"ptr"/...) from a checked list type.
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native struct name from a checked instance type (handles T | None).
+    def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;

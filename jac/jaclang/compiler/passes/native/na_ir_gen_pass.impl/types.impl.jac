@@ -192,6 +192,36 @@ impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Return the native struct name for an expression whose checked type is a
+known struct instance, or None otherwise. Unions like `T | None` resolve to
+the struct member. `self` resolves to the archetype currently being
+codegen'd: inherited methods are re-emitted per subclass with a flattened
+layout, so the declaring parent the checker reports would be wrong."""
+impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if (
+        isinstance(expr, uni.Name)
+        and expr.value == "self"
+        and self._self_arch is not None
+    ) {
+        return self._self_arch;
+    }
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if tk in self.struct_types {
+        return tk;
+    }
+    if "|" in tk {
+        for part in tk.split("|") {
+            if part in self.struct_types {
+                return part;
+            }
+        }
+    }
+    return None;
+}
+
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
 
 Handles primitives (registry-backed), enums, user structs, and the builtin
@@ -1920,14 +1950,17 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
     #   2. AtomTrailer(target=obj, right=FuncCall(target=method, ...), is_attr=False)
     target_name: (str | None) = None;
     method_name: (str | None) = None;
+    recv_expr: (uni.UniNode | None) = None;
     if isinstance(collection, uni.FuncCall) {
         if isinstance(collection.target, uni.AtomTrailer)
         and collection.target.is_attr {
             target_name = self._get_name(collection.target.target);
             method_name = self._get_name(collection.target.right);
+            recv_expr = collection.target.target;
         }
     } elif isinstance(collection, uni.AtomTrailer) and not collection.is_attr {
         target_name = self._get_name(collection.target);
+        recv_expr = collection.target;
         if isinstance(collection.right, uni.FuncCall) {
             method_name = self._get_name(collection.right.target);
         } else {
@@ -1963,8 +1996,8 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
         }
         return None;
     }
-    # Look up the struct type for target variable
-    type_name = self.type_var_map.get(target_name);
+    # Look up the struct type of the receiver from its checked type
+    type_name = self._struct_name_of(recv_expr);
     if type_name is None {
         if target_name in self.local_vars {
             lv = self.local_vars[target_name];

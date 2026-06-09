@@ -553,7 +553,7 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
         return self._get_name(nd.target);
     }
     if isinstance(nd, uni.Name) {
-        return self.type_var_map.get(nd.value);
+        return self._struct_name_of(nd);
     }
     return None;
 }
@@ -1172,9 +1172,11 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             }
-            # Check field access on a known-type variable: self.x, p.x
-            if target_name in self.type_var_map {
-                type_name = self.type_var_map[target_name];
+            # Check field access on a struct-typed target: self.x, p.x —
+            # struct-ness comes from the checked type of the target expression.
+            _fa_type_name = self._struct_name_of(nd.target);
+            if _fa_type_name is not None {
+                type_name = _fa_type_name;
                 obj_val = self._codegen_expr(nd.target);
                 if obj_val is not None {
                     result = self._codegen_field_access(obj_val, right_name, type_name);

@@ -712,10 +712,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             else [(nd.target)];
         for ct in check_targets {
             if isinstance(ct, uni.AtomTrailer) and ct.is_attr {
-                ct_target_name = self._get_name(ct.target);
                 ct_field_name = self._get_name(ct.right);
-                if ct_target_name is not None and ct_field_name is not None {
-                    ct_type_name = self.type_var_map.get(ct_target_name);
+                if ct_field_name is not None {
+                    ct_type_name = self._struct_name_of(ct.target);
                     if ct_type_name is not None
                     and ct_type_name in self.field_type_node {
                         ftn = self.field_type_node[ct_type_name].get(ct_field_name);
@@ -798,10 +797,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     else [(nd.target)];
                 for _ct in _check_targets {
                     if isinstance(_ct, uni.AtomTrailer) and _ct.is_attr {
-                        _ct_target_name = self._get_name(_ct.target);
                         _ct_field_name = self._get_name(_ct.right);
-                        if _ct_target_name is not None and _ct_field_name is not None {
-                            _ct_type_name = self.type_var_map.get(_ct_target_name);
+                        if _ct_field_name is not None {
+                            _ct_type_name = self._struct_name_of(_ct.target);
                             if _ct_type_name is not None
                             and _ct_type_name in self.field_type_node {
                                 _ftn = self.field_type_node[_ct_type_name].get(
@@ -1728,32 +1726,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             self.lambda_captures[var_name] = self._pending_lambda_captures;
             self._pending_lambda_captures = None;
         }
-        # Track type info for variables pointing to structs
-        if isinstance(value.type, ir.PointerType) {
-            # Check if it's a known struct pointer type
-            for (sname, stype) in self.struct_types.items() {
-                if value.type == stype.as_pointer() {
-                    self.type_var_map[var_name] = sname;
-                    break;
-                }
-            }
-        }
-        # Track from type_tag annotation (supports T and T | None union types)
+        # Store the full type AST node for nested type resolution
         if nd.type_tag and nd.type_tag.tag {
-            tag_node = nd.type_tag.tag;
-            tag_name = self._get_name(tag_node);
-            # Handle union type: T | None → extract T
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[var_name] = tag_name;
-            }
-            # Store the full type AST node for nested type resolution
-            self.var_type_node[var_name] = tag_node;
+            self.var_type_node[var_name] = nd.type_tag.tag;
         }
         # Seed the boxed-tuple element-struct shape from the literal that
         # produced this value (if any), so `(a, b) = var.pop()` on a bare
@@ -2232,13 +2207,6 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         if inner_type is not None {
             actual_elem_type = inner_type;
-            # Track inner type info on loop var
-            for (sname, stype) in self.struct_types.items() {
-                if inner_type == stype.as_pointer() {
-                    self.type_var_map[loop_var_name] = sname;
-                    break;
-                }
-            }
             # Propagate inner type node for nested access
             if coll_type_node is not None {
                 (inner_node, _, _) = self._peel_list_type(coll_type_node);
