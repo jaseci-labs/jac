@@ -304,9 +304,7 @@ cl {
                             key={c["label"]}
                             className="bg-surface border border-line rounded-lg p-4 shadow-sm"
                         >
-                            <p
-                                className="text-xs text-faint uppercase tracking-wider"
-                            >
+                            <p className="text-xs text-faint uppercase tracking-wider">
                                 {c["label"]}
                             </p>
                             <p
@@ -317,9 +315,7 @@ cl {
                                 {c["value"]}
                             </p>
                             {c["sub"]
-                            and <p className="text-xs text-faint mt-1">
-                                {c["sub"]}
-                            </p>}
+                            and <p className="text-xs text-faint mt-1">{c["sub"]}</p>}
                         </div> for c in primaryCards
                     ]}
                 </div>
@@ -329,9 +325,7 @@ cl {
                             key={c["label"]}
                             className="bg-surface border border-line rounded-lg p-4 shadow-sm"
                         >
-                            <p
-                                className="text-xs text-faint uppercase tracking-wider"
-                            >
+                            <p className="text-xs text-faint uppercase tracking-wider">
                                 {c["label"]}
                             </p>
                             <p
@@ -342,9 +336,7 @@ cl {
                                 {c["value"]}
                             </p>
                             {c["sub"]
-                            and <p className="text-xs text-faint mt-1">
-                                {c["sub"]}
-                            </p>}
+                            and <p className="text-xs text-faint mt-1">{c["sub"]}</p>}
                         </div> for c in secondaryCards
                     ]}
                 </div>
@@ -443,21 +435,31 @@ cl {
                                                 {w["status"]}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {w["replicas_ready"]}{" / "}{w[
                                                 "replicas_desired"
                                             ]}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {w["cpu_cores"]}{" cores"}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {formatBytes(w["memory_bytes"])}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {w["restarts_last_hour"]}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {formatAge(w["created"])}
                                         </td>
                                     </tr> for w in filteredWorkloads
@@ -542,16 +544,24 @@ cl {
                                         <td className="px-4 py-2 text-muted">
                                             {p["node"]}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {p["cpu_cores"]}{" cores"}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {formatBytes(p["memory_bytes"])}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {p["restarts_last_hour"]}
                                         </td>
-                                        <td className="px-4 py-2 text-muted tabular-nums">
+                                        <td
+                                            className="px-4 py-2 text-muted tabular-nums"
+                                        >
                                             {formatAge(p["created"])}
                                         </td>
                                     </tr> for p in pods
