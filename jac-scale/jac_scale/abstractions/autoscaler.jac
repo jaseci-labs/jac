@@ -3,6 +3,9 @@
 """Single authoritative CPU utilization default for all autoscaler paths."""
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50;
 
+"""Single authoritative memory utilization default for all autoscaler paths."""
+glob DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
+
 """Secret references for a KEDA TriggerAuthentication resource."""
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};
