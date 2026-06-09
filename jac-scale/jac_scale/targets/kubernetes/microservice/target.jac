@@ -512,30 +512,43 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.k8s_config.to_dict(),
                 self.logger
             );
+            triggers = [
+                Trigger(
+                    type="cpu",
+                    metadata={
+                        "averageUtilization": str(
+                            cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                        )
+                    }
+                )
+            ];
+            for t in self.k8s_config.extra_triggers {
+                triggers.append(
+                    Trigger(
+                        type=t["type"],
+                        metadata=t.get("metadata", {}),
+                        name=t.get("name")
+                    )
+                );
+            }
+            autoscaler_name = autoscaler.resource_name_for(k8s_name);
             autoscaler.apply(
                 AutoscalerSpec(
                     scale_target_name=f"{k8s_name}-deployment",
-                    autoscaler_name=f"{k8s_name}-hpa",
+                    autoscaler_name=autoscaler_name,
                     namespace=namespace,
                     min_replicas=int(cfg.get("min", 1)),
                     max_replicas=int(cfg.get("max", 3)),
-                    triggers=[
-                        Trigger(
-                            type="cpu",
-                            metadata={
-                                "averageUtilization": str(
-                                    cfg.get(
-                                        "cpu_target", DEFAULT_CPU_UTILIZATION_TARGET
-                                    )
-                                )
-                            }
-                        )
-                    ]
+                    idle_replicas=self.k8s_config.idle_replicas,
+                    polling_interval=self.k8s_config.autoscaler_polling_interval,
+                    cooldown_period=self.k8s_config.autoscaler_cooldown,
+                    initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    triggers=triggers
                 )
             );
             if self.logger {
                 self.logger.info(
-                    f"Applied HPA for '{svc_name}'", {"name": f"{k8s_name}-hpa"}
+                    f"Applied autoscaler for '{svc_name}'", {"name": autoscaler_name}
                 );
             }
         }
