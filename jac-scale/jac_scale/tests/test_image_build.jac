@@ -48,6 +48,16 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         assert "FROM python:3.12-slim" in contents;
         assert "jac-scale[deploy,data]" in contents;
         assert "jac install" in contents;
+        # Build identity (B-01) is stamped into the image.
+        assert "ARG JAC_BUILD_SHA" in contents;
+        assert "ENV JAC_BUILD_SHA" in contents;
+    }
+}
+
+
+test "_compute_build_sha returns 'unknown' when git is unavailable" {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value=None) {
+        assert helpers_mod._compute_build_sha(Path("/tmp")) == "unknown";
     }
 }
 

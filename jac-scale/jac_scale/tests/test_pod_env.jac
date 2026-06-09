@@ -43,3 +43,18 @@ test "build_env keeps per-service overrides but never shadows the K8S_* vars" {
     );
     assert first_app_name == "jac-shop";
 }
+
+
+test "pod spec surfaces JAC_IMAGE_REF with the resolved content-addressed image" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    builder = MicroserviceManifestBuilder(k8s_config=cfg);
+
+    # B-01: the resolved ref (incl. K-29 content-id suffix) is mirrored into
+    # the pod env so an in-pod self-check can read it with zero RBAC.
+    spec = builder._build_service_pod_spec("orders", "jac-shop:dev-abc123def456");
+    container = spec["containers"][0];
+
+    assert container["image"] == "jac-shop:dev-abc123def456";
+    pairs = {entry["name"]: entry["value"] for entry in container["env"]};
+    assert pairs.get("JAC_IMAGE_REF") == "jac-shop:dev-abc123def456";
+}

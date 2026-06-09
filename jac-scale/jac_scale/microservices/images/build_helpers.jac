@@ -35,6 +35,10 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "COPY . /app\n\n"
      "RUN if [ -f jac.toml ]; then jac install || true; fi\n\n"
      "RUN jac --version\n\n"
+     # Build identity (B-01). Stamped LAST so a changing SHA only rebuilds
+     # this tiny layer, never the expensive install/COPY layers above.
+     "ARG JAC_BUILD_SHA=unknown\n"
+     "ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}\n\n"
      "EXPOSE 8000\n",
      # Embedded .dockerignore. Without one, docker build sends GB of
      # .git + caches to the daemon and times out.
@@ -167,6 +171,33 @@ def ensure_dockerignore(context_dir: Path) -> bool {
 }
 
 
+"""Best-effort short build identifier for stamping into the image as
+JAC_BUILD_SHA (B-01). Uses the git short SHA of the build context when
+available, "unknown" otherwise. Stable per commit, so rebuilds of the
+same commit reuse the cached ENV layer; an in-pod self-check can read
+JAC_BUILD_SHA to report "running build X" with zero RBAC."""
+def _compute_build_sha(context_dir: Path) -> str {
+    if shutil.which("git") is None {
+        return "unknown";
+    }
+    try {
+        result = subprocess.run(
+            ["git", "-C", str(context_dir), "rev-parse", "--short=12", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_PROBE_TIMEOUT_S
+        );
+    } except Exception {
+        return "unknown";
+    }
+    if result.returncode != 0 {
+        return "unknown";
+    }
+    sha = result.stdout.strip();
+    return sha if sha else "unknown";
+}
+
+
 """Run `docker build` with optional env override (e.g. minikube's daemon).
 Streams output. Raises RuntimeError on failure."""
 def run_docker_build(
@@ -213,6 +244,11 @@ def run_docker_build(
     for (key, value) in build_args.items() {
         cmd.append("--build-arg");
         cmd.append(f"{key}={value}");
+    }
+    # Stamp build identity (B-01) unless the caller already supplied one.
+    if "JAC_BUILD_SHA" not in build_args {
+        cmd.append("--build-arg");
+        cmd.append(f"JAC_BUILD_SHA={_compute_build_sha(context_dir)}");
     }
     cmd.append(str(context_dir));
 

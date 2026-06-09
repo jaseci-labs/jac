@@ -698,14 +698,22 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # JAC_IMAGE_REF (B-01): the fully-resolved image ref, including the
+        # K-29 content-id suffix (`app:dev-<id12>`). Surfaced into the pod so
+        # an in-pod self-check (V-01) can report "running build X" and answer
+        # "did my deploy actually update?" with zero RBAC. Appended last so it
+        # wins over any user-supplied env of the same name.
+        env_list = self._build_env(svc_name, svc_cfg);
+        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
-            "image": self._resolve_image(image, svc_cfg),
+            "image": resolved_image,
             "command": entry["command"],
             "args": entry["args"],
-            "env": self._build_env(svc_name, svc_cfg),
+            "env": env_list,
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_readiness_probe(),
             "livenessProbe": self._build_liveness_probe(),
