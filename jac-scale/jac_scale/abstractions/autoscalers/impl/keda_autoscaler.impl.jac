@@ -134,11 +134,11 @@ impl KEDAAutoscaler._build_manifests{
 
 """Create or patch the TriggerAuthentication for a trigger that carries secret references."""
 impl KEDAAutoscaler._apply_trigger_auth{
-    # TODO(#<issue>): Three known naming gaps deferred to follow-up:
+    # TODO(#6535): Three known naming gaps deferred to follow-up:
     # 1. Per-service isolation: two services sharing the same trigger name share one TriggerAuthentication.
     # 2. Within-spec collision: two unnamed triggers of the same type in one spec overwrite each other's auth.
     # 3. destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
-    # All three are tracked in <follow-up issue URL>.
+    # All three are tracked in https://github.com/jaseci-labs/jaseci/issues/6535.
     if not trigger.auth {
         return;
     }
