@@ -1161,7 +1161,7 @@ Sync the project environment to `jac.toml`. Installs all Python (pip), git, and 
 ```bash
 jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary]
+            [--no-deps] [--quiet] [--prefer-binary] [--no-uv]
 ```
 
 | Option | Description | Default |
@@ -1177,6 +1177,7 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 | `--no-deps` | Don't install package dependencies | `False` |
 | `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
+| `--no-uv` | Use pip directly, even if `uv` is available on `PATH` | `False` |
 
 **Examples:**
 
@@ -1213,11 +1214,22 @@ jac install --dry-run
 
 # Install without using pip's download cache
 jac install --no-cache-dir
+
+# Force pip (skip uv) for this install
+jac install --no-uv
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
+> **uv backend:** When [`uv`](https://github.com/astral-sh/uv) is installed and on `PATH`, `jac install` (and `jac add`, `jac remove`, `jac update`) automatically route pip operations through `uv pip` for significantly faster dependency resolution and downloads. No configuration needed - it activates on detection.
+>
+> To opt out for a single `jac install` run: `jac install --no-uv`
+>
+> To opt out system-wide (all commands, all sessions): `export JAC_NO_UV=1`
+>
+> The `--prefer-binary` flag has no `uv` equivalent and is silently dropped when uv is active. Pass `--no-uv` to preserve it.
+>
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are translated to their `uv pip` equivalents automatically when the uv backend is active. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
