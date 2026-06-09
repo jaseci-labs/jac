@@ -424,9 +424,6 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags, use_uv=not no_uv
-    );
     # ── Editable install ──────────────────────────────────────────────────────
     # Flatten nested lists produced by action="append" with nargs="+":
     #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
@@ -451,7 +448,10 @@ impl install(
                 return 1;
             }
             installer = DependencyInstaller(
-                config=config, verbose=verbose, install_flags=install_flags
+                config=config,
+                verbose=verbose,
+                install_flags=install_flags,
+                use_uv=not no_uv
             );
             dep_specs = installer.get_pip_package_specs(include_dev=dev);
             if extras {
@@ -523,7 +523,7 @@ impl install(
         return 1;
     }
     installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
+        config=config, verbose=verbose, install_flags=install_flags, use_uv=not no_uv
     );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
