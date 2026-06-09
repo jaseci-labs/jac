@@ -480,14 +480,13 @@ impl install(
             console.print(
                 f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
             );
-            use_uv: bool = not no_uv;
             result = subprocess.run(
                 pip_command(
                     sys.executable,
                     ["install", "--upgrade"] + (
                         installer.install_flags or []
                     ) + all_dep_specs,
-                    use_uv
+                    installer.use_uv
                 ),
                 capture_output=not verbose,
                 text=True,
