@@ -19,6 +19,46 @@ system in **self-contained phases**: each phase moves one whole
 responsibility, deletes the duplicate in the same change, and leaves exactly
 one owner - **no fallbacks, no transition shims that outlive the phase**.
 
+## Execution status (this branch)
+
+Work executed so far on `docs/analysis-centralization-plan` (validated per
+slice against the full native suite, 398 passed / 1 skipped):
+
+- **Phase 1 (type authority) - largely done.** `TypeBase.mangle()` is the
+  canonical type key; checked-type helper seams (`_type_key_of`,
+  `_enum_name_of`, `_tuple_key_of`, `_set_spec_of`, `_dict_key_of`,
+  `_list_spec_of`, `_struct_name_of`, `_elem_spec_of`) replace AST sniffing in
+  native codegen. Deleted shadow dicts: `var_list_elem_type`, `var_dict_type`,
+  `var_set_elem_type`, `var_tuple_type`, `var_enum_type`, `var_complex`,
+  `var_range`, `var_slice`, `type_var_map`, `_last_type_node_hint`,
+  `var_type_node`. Deliberately kept: `_list_type_hint` /
+  `_dict_val_type_hint` (blocked: the checker does not bidirectionally type
+  empty collection literals - `x: list[str] = []` leaves the ListVal typed as
+  bare `list`), `var_list_elem_struct` (Phase 7 ownership), `field_type_node`
+  (remaining readers are clib foreign-ABI lowerings, Phase 8).
+- **Phase 2 (symbol/scope authority) - native consumers migrated** to
+  `Symbol.storage`.
+- **Phase 3 (layout) - partially done (pre-existing + this branch).**
+  `LayoutPass`/`LayoutRegistry` own hierarchy, C3 MRO, topo order, vtable
+  need, and primary-ancestor queries; native consumes them. Still native-local:
+  LLVM field index/type maps (`struct_field_indices`/`struct_field_types`,
+  prefix slots for vtable/`__type_tag`), vtable slot ordering. Migrating field
+  flattening to `ArchetypeLayout.fields` needs care in mixed
+  native/non-native hierarchies (native currently skips non-native ancestors'
+  fields; the registry flattens all).
+- **Phase 5 (OSP semantics) - in progress.** New unitree API:
+  `Archetype.arch_kind` getter ("node"/"edge"/"walker", from `sym_category`) -
+  all 1:1 kind checks across checker/static/semantic/boundary/layout/ES passes
+  migrated. New `Ability.event_triggers` (list of checker-resolved trigger
+  `TypeBase`s) populated by `TypeCheckPass._check_event_trigger_archetype`;
+  native prefers it (mangled keys, `type[X]` unwrapped, unions split) for
+  event-method location typing, E5091 union-layout validation, and OSP slot
+  collection, with trigger-AST fallback when unresolved. Follow-up: ES
+  `_osp_trigger_names` should consume `event_triggers` too (needs care:
+  checker names like `Root` vs AST head names like `root`).
+
+Remaining phases (0, 4, 6-10) are untouched.
+
 ## Architectural principles (the contract every phase enforces)
 
 1. **Single owner.** For every analysis there is one pass/module that computes
