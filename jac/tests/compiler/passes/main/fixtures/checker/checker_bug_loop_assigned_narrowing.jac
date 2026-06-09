@@ -6,9 +6,9 @@ def first_or_zero(items: list[int]) -> int {
         fb = it;
     }
     if fb is not None {
-        return fb;
+        return fb;          # error (before)
     }
-    return 0;
+    return 0;               # ok
 }
 
 def last_or_zero(items: list[int]) -> int {
@@ -19,17 +19,17 @@ def last_or_zero(items: list[int]) -> int {
         i += 1;
     }
     if fb is not None {
-        return fb;
+        return fb;          # error (before)
     }
-    return 0;
+    return 0;               # ok
 }
 
 def sum_with(x: int | None, items: list[int]) -> int {
     total = 0;
     if x is not None {
         for it in items {
-            total = total + x;
+            total = total + x;  # ok
         }
     }
-    return total;
+    return total;               # ok
 }
