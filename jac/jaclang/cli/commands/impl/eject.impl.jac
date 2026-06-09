@@ -408,7 +408,12 @@ def _js_exports_app(js_code: str) -> bool {
 
 def _inject_runtime_imports(js_code: str) -> str {
     import from jaclang.runtimelib.client_surface { with_runtime_globals }
-    return with_runtime_globals(js_code);
+    import from jaclang.project.config { get_config }
+    import from jaclang.compiler.passes.ecmascript.backends.registry { resolve_framework_backend }
+    cfg = get_config();
+    fw = cfg.client.framework if (cfg and cfg.client) else "react";
+    backend = resolve_framework_backend(fw);
+    return with_runtime_globals(js_code, backend);
 }
 
 

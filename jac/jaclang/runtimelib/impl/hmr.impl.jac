@@ -275,7 +275,12 @@ impl HotReloader._recompile_client_code(
         # Prepend the runtime-global import the compiler relies on (shared with
         # the jac2js build, eject, and the cl test harness).
         import from jaclang.runtimelib.client_surface { with_runtime_globals }
-        js_code = with_runtime_globals(js_code);
+        import from jaclang.project.config { get_config }
+        import from jaclang.compiler.passes.ecmascript.backends.registry { resolve_framework_backend }
+        cfg = get_config();
+        fw = cfg.client.framework if (cfg and cfg.client) else "react";
+        backend = resolve_framework_backend(fw);
+        js_code = with_runtime_globals(js_code, backend);
 
         # Recursively compile missing dependencies BEFORE writing this file's JS to ensure all dependencies are up to date
         manifest = mod.gen.client_manifest if mod else None;
