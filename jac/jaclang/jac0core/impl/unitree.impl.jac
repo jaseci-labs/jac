@@ -339,6 +339,66 @@ impl Symbol.symbol_table.getter -> (UniScopeNode | None) {
     return None;
 }
 
+"""Storage class of this symbol, derived from its owning scope.
+
+Fully derived from `parent_tab`/`defn`/`uses` (all JIR-serialized), so it
+needs no serialization and is always consistent after cache loads. Backends
+must consume this instead of re-deriving scoping facts.
+"""
+impl Symbol.storage.getter -> SymbolStorage {
+    owner = self.parent_tab;
+    while (
+        owner is not None
+        and not isinstance(owner, UniScopeNode.get_python_scoping_nodes())
+    ) {
+        owner = owner.parent_scope;
+    }
+    if (owner is None) or isinstance(owner, Module) {
+        return SymbolStorage.MODULE_GLOBAL;
+    }
+    if isinstance(owner, (Archetype, Enum)) {
+        return SymbolStorage.CLASS_FIELD;
+    }
+    # Function-like scope (Ability, ImplDef, Test).
+    if isinstance(self.decl.name_of, ParamVar) {
+        return SymbolStorage.PARAM;
+    }
+    # Captured: any use whose nearest runtime scope (function-like node or
+    # lambda -- lambdas share the symbol table but capture at runtime)
+    # differs from the declaration's runtime scope.
+    barriers = UniScopeNode.get_python_scoping_nodes();
+    def_scope: (UniNode | None) = self.decl.parent;
+    while (
+        def_scope is not None
+        and not isinstance(def_scope, barriers)
+        and not isinstance(def_scope, LambdaExpr)
+    ) {
+        def_scope = def_scope.parent;
+    }
+    for use in self.uses {
+        cur = use.parent;
+        while (
+            cur is not None
+            and not isinstance(cur, barriers)
+            and not isinstance(cur, LambdaExpr)
+        ) {
+            cur = cur.parent;
+        }
+        if (cur is None) or (cur is def_scope) {
+            continue;
+        }
+        # An ImplDef body shares its declaration's scope (see lookup()).
+        if isinstance(cur, ImplDef) and (cur.decl_link is def_scope) {
+            continue;
+        }
+        if isinstance(def_scope, ImplDef) and (def_scope.decl_link is cur) {
+            continue;
+        }
+        return SymbolStorage.CAPTURED;
+    }
+    return SymbolStorage.LOCAL;
+}
+
 """Add defn."""
 impl Symbol.add_defn(nd: NameAtom) -> None {
     self.defn.append(nd);
@@ -790,6 +850,16 @@ impl NameAtom.sym_name.getter -> str {
 
 impl NameAtom.sym_category.getter -> SymbolType {
     return self._sym_category;
+}
+
+"""True when this name is the first binding of its symbol in scope.
+
+Derived from `Symbol.defn` ordering (JIR-serialized), so it survives cache
+loads without recomputation. Note: this is the Python-function-scope answer;
+ES block-scope `let` placement still needs the active-scope stack (#5930).
+"""
+impl NameAtom.binds_new_var.getter -> bool {
+    return (self.sym is not None) and (self.sym.decl is self);
 }
 
 """Create symbol."""
@@ -2304,7 +2374,6 @@ impl Name.init(
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
     self._py_ctx_func = ast3.Load;
-    self.js_decl_kind = None;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR

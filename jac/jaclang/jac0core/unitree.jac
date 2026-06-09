@@ -15,6 +15,7 @@ import from jaclang.jac0core.constant {
     CodeContext,
     EdgeDir,
     SymbolAccess,
+    SymbolStorage,
     SymbolType
 }
 import from jaclang.jac0core.constant { Constants as Con }
@@ -99,6 +100,7 @@ obj Symbol {
     has sym_type: SymbolType { getter; }
     has sym_dotted_name: str { getter; }
     has symbol_table: (UniScopeNode | None) { getter; }
+    has storage: SymbolStorage { getter; }
 
     def add_defn(nd: NameAtom) -> None;
     def add_use(nd: NameAtom) -> None;
@@ -337,6 +339,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     has sym: (Symbol | None) { getter; setter(sym: Symbol); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
+    has binds_new_var: bool { getter; }
 
     def create_symbol(
         access: SymbolAccess,
@@ -1435,8 +1438,6 @@ obj Token(UniNode) {
 
 """Name node type for Jac Ast."""
 obj Name(Token, NameAtom) {
-    has js_decl_kind: (str | None) by postinit;
-
     def init(
         orig_src: Source,
         name: str,
