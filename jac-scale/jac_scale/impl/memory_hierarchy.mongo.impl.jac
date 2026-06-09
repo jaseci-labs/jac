@@ -1,6 +1,9 @@
 """MongoDB PersistenceBackend Implementation."""
 
-import from jac_scale.microservices.runtime.tracing { start_memory_span, end_memory_span }
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
 
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
@@ -931,7 +934,12 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     str_ids = [str(to_uuid(id)) for id in ids];
     span = start_memory_span(
         "memory.batch_get",
-        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "batch_get", "mem.count": len(ids)}
+        {
+            "db.system": "mongodb",
+            "mem.tier": "L3",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
     );
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
@@ -1375,7 +1383,12 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
         ];
         span = start_memory_span(
             "memory.commit",
-            {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "commit", "mem.count": len(dirty)}
+            {
+                "db.system": "mongodb",
+                "mem.tier": "L3",
+                "mem.op": "commit",
+                "mem.count": len(dirty)
+            }
         );
         try {
             await coll.bulk_write(ops, ordered=False);

@@ -1,6 +1,9 @@
 """Redis CacheBackend Implementation."""
 
-import from jac_scale.microservices.runtime.tracing { start_memory_span, end_memory_span }
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
 
 """Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
@@ -185,7 +188,12 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     self.fetch_count += len(ids);
     span = start_memory_span(
         "memory.batch_get",
-        {"db.system": "redis", "mem.tier": "L2", "mem.op": "batch_get", "mem.count": len(ids)}
+        {
+            "db.system": "redis",
+            "mem.tier": "L2",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
     );
     try {
         keys = [storage_key(to_uuid(id)) for id in ids];

@@ -48,7 +48,9 @@ glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
 # The live SERVER span for the active request, so memory/DB child spans
 # (`start_memory_span`) can parent to it. The SERVER span is NOT set as the
 # OTel current-context span, so without this children would become new roots.
-glob _current_span: ContextVar[any] = ContextVar("_jac_current_span", default=None);
+glob _current_span: ContextVar[any] = ContextVar(
+         "_jac_current_span", default=None
+     );
 
 # Trace id to force on the next ROOT span (read by `_JacIdGenerator`), so
 # a parentless root gets trace_id == the UUID and Tempo treats it as the
