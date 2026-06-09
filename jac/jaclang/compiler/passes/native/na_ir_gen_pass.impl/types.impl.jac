@@ -94,6 +94,28 @@ impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Return the native tuple registry key for an expression's checked type, or
+None when the expression is not tuple-typed (or its element types cannot be
+lowered). Lowering the type registers the tuple struct as a side effect, so
+the returned key is always present in `tuple_types`."""
+impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not tk.startswith("tuple[") {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None
+    or not isinstance(lowered, ir.PointerType)
+    or not isinstance(lowered.pointee, ir.LiteralStructType) {
+        return None;
+    }
+    elems = lowered.pointee.elements;
+    return f"Tuple.{len(elems)}." + ".".join([str(x) for x in elems]);
+}
+
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
 
 Handles primitives (registry-backed), enums, user structs, and the builtin

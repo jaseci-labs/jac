@@ -206,7 +206,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _osp_ensure_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
-        var_tuple_type: dict[str, str] = {},
         # Global variable support (Phase 11)
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -360,6 +359,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     # Enum class name of an expression's checked type (instance or member).
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native tuple registry key derived from an expression's checked type.
+    def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
