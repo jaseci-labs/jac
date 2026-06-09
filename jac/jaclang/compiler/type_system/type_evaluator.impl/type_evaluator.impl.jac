@@ -2741,53 +2741,58 @@ impl TypeEvaluator._assign_class(
     }
     # Check if dest_type is a protocol and src_type implements it.
     # Protocol detection: A class is a protocol if:
-    # 1. It has the prefetched Protocol class as a base class (exact match)
-    # 2. OR it has a BUILTIN base class named 'Protocol' or '_SpecialForm'
-    # 3. OR it's from stdlib stubs with protocol naming convention (Supports*, _Supports*)
-    # 4. OR its MRO contains a BUILTIN Protocol/_SpecialForm class
+    # 1. It's marked as is_protocol_class (Protocol base detected during construction)
+    # 2. OR it has the prefetched Protocol class as a base class (exact match)
+    # 3. OR it has a BUILTIN base class named 'Protocol' or '_SpecialForm'
+    # 4. OR it's from stdlib stubs with protocol naming convention (Supports*, _Supports*)
+    # 5. OR its MRO contains a BUILTIN Protocol/_SpecialForm class
     is_protocol = False;
-    # Check 1: Direct Protocol/_SpecialForm base class from builtins
-    for base_cls in dest_type.shared.base_classes {
-        if not isinstance(base_cls, types.ClassType) or base_cls._shared is None {
-            continue;
-        }
-        # Exact match with prefetched Protocol class
-        if base_cls.shared == self.prefetch.protocol_class.shared {
-            is_protocol = True;
-            break;
-        }
-        # Check for BUILTIN Protocol/_SpecialForm base class only
-        if base_cls.shared.is_builtin_class
-        and base_cls.shared.class_name in ('Protocol', '_SpecialForm') {
-            is_protocol = True;
-            break;
-        }
+    # Check 1: Direct protocol flag from construction
+    if dest_type.shared.is_protocol_class {
+        is_protocol = True;
     }
-    # Check 2: Protocol naming convention for STDLIB classes only
+    # Check 2: Direct Protocol/_SpecialForm base class from builtins
+    elif any(
+        isinstance(base_cls, types.ClassType)
+        and base_cls._shared is not None
+        and (
+            (
+                self.prefetch
+                and self.prefetch.protocol_class
+                and base_cls.shared == self.prefetch.protocol_class.shared
+            )
+            or (
+                base_cls.shared.is_builtin_class
+                and base_cls.shared.class_name in ('Protocol', '_SpecialForm')
+            )
+        )
+        for base_cls in dest_type.shared.base_classes or []
+    ) {
+        is_protocol = True;
+    }
+    # Check 3: Protocol naming convention for STDLIB classes only
     # Classes like _SupportsFloor, _SupportsTrunc, SupportsFloat from stdlib stubs.
     # User-defined classes with these names are NOT treated as protocols.
     # Uses is_from_stdlib_stub flag set when class was created (production-grade approach).
-    if not is_protocol {
-        class_name = dest_type.shared.class_name;
-        if (dest_type.shared.is_from_stdlib_stub or dest_type.shared.is_builtin_class)
-        and (class_name.startswith('Supports') or class_name.startswith('_Supports')) {
-            is_protocol = True;
-        }
+    elif (
+        (dest_type.shared.is_from_stdlib_stub or dest_type.shared.is_builtin_class)
+        and (
+            dest_type.shared.class_name.startswith('Supports')
+            or dest_type.shared.class_name.startswith('_Supports')
+        )
+    ) {
+        is_protocol = True;
     }
-    # Check 3: Check MRO for Protocol/_SpecialForm from stdlib (handles inheritance)
-    if not is_protocol {
-        for mro_cls in dest_type.shared.mro {
-            if isinstance(mro_cls, types.ClassType) {
-                if (
-                    mro_cls.shared.is_builtin_class
-                    or mro_cls.shared.is_from_stdlib_stub
-                )
-                and mro_cls.shared.class_name in ('Protocol', '_SpecialForm') {
-                    is_protocol = True;
-                    break;
-                }
-            }
-        }
+    # Check 4: Check MRO for Protocol/_SpecialForm from stdlib (handles inheritance)
+    elif any(
+        isinstance(mro_cls, types.ClassType)
+        and (
+            mro_cls.shared.is_builtin_class or mro_cls.shared.is_from_stdlib_stub
+        )
+        and mro_cls.shared.class_name in ('Protocol', '_SpecialForm')
+        for mro_cls in dest_type.shared.mro
+    ) {
+        is_protocol = True;
     }
 
     if is_protocol {

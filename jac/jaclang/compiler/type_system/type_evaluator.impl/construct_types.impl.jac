@@ -462,6 +462,47 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         for base in base_classes
     )
     or self._has_typeddict_special_form_base(node_);
+    # TypedDict-ness is inherited, and the direct `TypedDict` base resolves to
+    # a `_SpecialForm` (its alias_name is not attached in base position), so
+    # match either an already-TypedDict base or one written as `TypedDict`.
+    is_typeddict = any(
+        isinstance(base, types.ClassType) and base.shared.is_typeddict
+        for base in base_classes
+    )
+    or self._has_typeddict_special_form_base(node_);
+    
+    # Detect Protocol classes: either directly from Protocol base or @Protocol decorator
+    is_protocol_class = any(
+        isinstance(base, types.ClassType) and (
+            base.shared.is_protocol_class or (
+                base.shared.is_builtin_class
+                and base.shared.class_name == "Protocol"
+            )
+        )
+        for base in base_classes
+    );
+    
+    # Check for @runtime_checkable decorator on Protocol classes
+    is_runtime_checkable = False;
+    if is_protocol_class or (self.prefetch and self.prefetch.protocol_class
+        and any(
+            isinstance(b, types.ClassType) and b.shared == self.prefetch.protocol_class.shared
+            for b in base_classes
+        )
+    ) {
+        if node_.decorators {
+            for decorator in node_.decorators {
+                decorator_type = self.get_type_of_expression(decorator);
+                if isinstance(decorator_type, types.ClassType)
+                and decorator_type.shared.class_name == "runtime_checkable"
+                and (decorator_type.shared.is_builtin_class or decorator_type.shared.is_from_stdlib_stub) {
+                    is_runtime_checkable = True;
+                    break;
+                }
+            }
+        }
+    }
+    
     enum_members: dict[str, types.EnumMemberInfo] | None = None;
     enum_value_type: types.TypeBase | None = None;
     if is_enum_class {
@@ -484,6 +525,8 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             is_enum_class=is_enum_class,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
+            is_protocol_class=is_protocol_class,
+            is_runtime_checkable_protocol=is_runtime_checkable,
         ),
         flags=types.TypeFlags.Instantiable,
     );
@@ -550,6 +593,8 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
             is_enum_class=True,
             enum_value_type=enum_value_type,
             enum_members=enum_members,
+            is_protocol_class=False,
+            is_runtime_checkable_protocol=False,
         ),
         flags=types.TypeFlags.Instantiable,
     );
