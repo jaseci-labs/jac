@@ -95,6 +95,7 @@ impl KEDAAutoscaler._build_manifests{
     }
     scaled_obj_spec: dict[str, any] = {
         "scaleTargetRef": {
+            # apps/v1 covers Deployment/StatefulSet/ReplicaSet/DaemonSet; add target_api_version to AutoscalerSpec for CRD-backed workloads
             "apiVersion": "apps/v1",
             "kind": spec.target_kind,
             "name": spec.scale_target_name
@@ -133,10 +134,15 @@ impl KEDAAutoscaler._build_manifests{
 
 """Create or patch the TriggerAuthentication for a trigger that carries secret references."""
 impl KEDAAutoscaler._apply_trigger_auth{
-    # TODO(#<issue>): TriggerAuthentication resources are per-trigger-name, not per-service.
-    # Two services with the same trigger name share one TriggerAuthentication resource.
-    # Per-service namespacing is tracked in <follow-up issue URL>.
+    # TODO(#<issue>): Three known naming gaps deferred to follow-up:
+    # 1. Per-service isolation: two services sharing the same trigger name share one TriggerAuthentication.
+    # 2. Within-spec collision: two unnamed triggers of the same type in one spec overwrite each other's auth.
+    # 3. destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
+    # All three are tracked in <follow-up issue URL>.
     if not trigger.auth {
+        return;
+    }
+    if not trigger.auth.secret_refs {
         return;
     }
     auth_name = f"{trigger.name or trigger.type}-trigger-auth";
