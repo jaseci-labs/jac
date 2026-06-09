@@ -354,7 +354,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     self.fetch_count += 1;
     _id = to_uuid(id);
     span = start_memory_span(
-        "memory.get", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+        "memory.get mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
     );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
@@ -727,7 +727,7 @@ impl MongoBackend.sync -> set {
     }
     self._atomic_written = set();
     span = start_memory_span(
-        "memory.sync", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+        "memory.sync mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
     );
     for (_, anchor) in list(self._mem_ref.items()) {
         if not anchor.persistent {
@@ -933,7 +933,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
     span = start_memory_span(
-        "memory.batch_get",
+        "memory.batch_get mongodb",
         {
             "db.system": "mongodb",
             "mem.tier": "L3",
@@ -1335,7 +1335,7 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
     span = start_memory_span(
-        "memory.get", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+        "memory.get mongodb", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
     );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
@@ -1382,7 +1382,7 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
             for a in dirty
         ];
         span = start_memory_span(
-            "memory.commit",
+            "memory.commit mongodb",
             {
                 "db.system": "mongodb",
                 "mem.tier": "L3",

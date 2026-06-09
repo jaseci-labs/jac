@@ -53,7 +53,7 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     self.fetch_count += 1;
     key = storage_key(to_uuid(id));
     span = start_memory_span(
-        "memory.get", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
+        "memory.get redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
     );
     try {
         raw = self.redis_client.get(key);
@@ -83,7 +83,7 @@ impl RedisBackend.put(anchor: Anchor) -> None {
     }
     self.put_count += 1;
     span = start_memory_span(
-        "memory.put", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
+        "memory.put redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
     );
     try {
         data = Serializer.serialize(anchor, include_type=True);
@@ -187,7 +187,7 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     self.fetch_count += len(ids);
     span = start_memory_span(
-        "memory.batch_get",
+        "memory.batch_get redis",
         {
             "db.system": "redis",
             "mem.tier": "L2",
@@ -271,7 +271,7 @@ impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     }
     key = storage_key(to_uuid(id));
     span = start_memory_span(
-        "memory.get", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
+        "memory.get redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
     );
     try {
         raw = await self._async_redis.get(key);
@@ -303,7 +303,7 @@ impl RedisBackend.aput(anchor: Anchor) -> None {
         self._async_redis = AsyncRedis.from_url(self.redis_url);
     }
     span = start_memory_span(
-        "memory.put", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
+        "memory.put redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
     );
     try {
         data = Serializer.serialize(anchor, include_type=True);
