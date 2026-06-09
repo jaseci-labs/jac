@@ -1899,6 +1899,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if (method := self._get_enclosing_method(expr)) {
                         if isinstance(method.signature, uni.EventSignature) {
                             if arch := method.signature.arch_tag_info {
+                                # A tuple trigger `with (A, B) entry` fires on
+                                # any listed archetype, so the implicit `here`/
+                                # `visitor` is the *union* of the member instance
+                                # types -- not a tuple of them. Typing it as the
+                                # union lets `here.attr` resolve against the
+                                # common members (matching py/sv) instead of
+                                # failing on `tuple` having no such attribute.
+                                if isinstance(arch, uni.TupleVal) {
+                                    member_insts: list[types.TypeBase] = [];
+                                    for member in (arch.values or []) {
+                                        member_insts.append(
+                                            self._convert_to_instance(
+                                                self.get_type_of_expression(member)
+                                            )
+                                        );
+                                    }
+                                    if len(member_insts) == 1 {
+                                        return member_insts[0];
+                                    }
+                                    if member_insts {
+                                        return types.UnionType(types=member_insts);
+                                    }
+                                }
                                 type_arch_cls = self.get_type_of_expression(arch);
                                 type_arch_inst = self._convert_to_instance(
                                     type_arch_cls
@@ -2019,24 +2042,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if isinstance(symbol_type, types.FunctionType) {
                         overloaded_ty: types.OverloadedType | None = None;
                         overloaded_fns: list[types.FunctionType] = [symbol_type];
-                        # Find the scope where the symbol is defined to check for overloads
-                        symbol_scope: uni.UniScopeNode | None = symbol.parent_tab;
-                        if symbol_scope is None {
-                            # If parent_tab is None, try to find the scope from the declaration
-                            if symbol.decl
-                            and symbol.decl.find_parent_of_type(uni.UniScopeNode) {
-                                symbol_scope = symbol.decl.find_parent_of_type(
-                                    uni.UniScopeNode
-                                );
-                            }
+                        # Collect sibling overloads at the symbol's definition
+                        # scope. Follow re-export chains (e.g. an `@overload`-ed
+                        # function imported through several `__init__` layers, as
+                        # SQLAlchemy's `create_engine`) so the overloads at the
+                        # `def` site are found, not the lone re-export.
+                        def_sym = self.resolve_to_definition_symbol(symbol);
+                        symbol_scope: uni.UniScopeNode | None = def_sym.parent_tab;
+                        if symbol_scope is None and def_sym.decl {
+                            symbol_scope = def_sym.decl.find_parent_of_type(
+                                uni.UniScopeNode
+                            );
                         }
-                        # Check if there are overloads in the symbol's scope
                         if symbol_scope {
                             all_syms = type_utils.collect_member_syms(
-                                symbol_scope, expr.value
+                                symbol_scope, def_sym.sym_name
                             );
                             for overload_symbol in all_syms {
-                                if overload_symbol == symbol {
+                                if overload_symbol == def_sym {
                                     continue;
                                 }
                                 overload_type = self.get_type_of_symbol(
@@ -3588,10 +3611,17 @@ impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> Ty
     return t;
 }
 
-"""True if `expr` calls a function bound by `sv import` in the enclosing
-module. Such functions lower to async RPC stubs on the client, so their
-calls return coroutines even though the server declaration is synchronous.
-Mirrors the codegen signal (`KW_SERVER` source-context token).
+"""True if `expr` calls a function bound by a CLIENT-context `sv import` in
+the enclosing module. Only the cl->sv edge lowers to an async RPC stub, so
+only there do the calls return coroutines that must be `await`ed even though
+the server declaration is synchronous.
+
+An sv->sv import (a server module consuming another server) lowers instead
+to a *synchronous* `def` stub (see `PyastGenPass._gen_py_sv_func_stub`): the
+runtime spawns the provider as its own process and routes the call, so the
+call returns the bare value and must NOT be treated as awaitable. We mirror
+`BoundaryAnalysisPass`'s client/server split exactly — a `.cl.jac` module, or
+any `sv import` nested in a `cl { ... }` block, is the client edge.
 
 Scoped per module (keyed by `id(module)`) so a server function called from
 server code — the same shared symbol — is not affected.
@@ -3608,10 +3638,20 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     mod_key = id(mod);
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
+        # A whole `.cl.jac` module is client code; a `cl { ... }` block makes
+        # an individual import client code even inside a server module.
+        mod_is_client_file = (
+            mod.loc is not None and mod.loc.mod_path.endswith(".cl.jac")
+        );
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
             tok = imp._source_context_token();
             if tok is None or tok.name != Tok.KW_SERVER {
+                continue;
+            }
+            # Only the cl->sv edge becomes an async stub; an sv->sv import
+            # stays synchronous, so its calls are not coroutines.
+            if not (mod_is_client_file or imp.in_client_context()) {
                 continue;
             }
             for item in imp.items {
@@ -4253,7 +4293,12 @@ impl TypeEvaluator._get_type_from_flow_node(
                     and not isinstance(assigned_type, types.UnknownType)
                 ) {
                     declared_type = target.declared_type;
-                    if (
+                    # Evolving-locals: declared type NoneType (from `x = None`
+                    # without annotation) accepts any later assignment as the
+                    # new type. Matches `is_evolving_reassign` in type_checker_pass.
+                    if self.is_none_type(declared_type) {
+                        narrowed_from_assignment = assigned_type;
+                    } elif (
                         self.assign_type(assigned_type, declared_type)
                         and not self.assign_type(declared_type, assigned_type)
                     ) {

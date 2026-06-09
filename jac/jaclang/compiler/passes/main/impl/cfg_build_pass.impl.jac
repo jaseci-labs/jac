@@ -880,7 +880,7 @@ impl CFGBuildPass._wire_compr_filters(
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }

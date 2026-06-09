@@ -368,7 +368,7 @@ impl JacCompiler._load_native_from_bitcode(
     target = llvm.Target.from_default_triple();
     target_machine = target.create_target_machine();
     engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-    import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+    import from jaclang.jac0core.codeinfo { CodeGenTarget }
     gen = CodeGenTarget();
     gen.native_engine = engine;
     py_func_table: dict = {};
@@ -376,21 +376,8 @@ impl JacCompiler._load_native_from_bitcode(
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
-        import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
         import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-        manifest = InteropManifest();
-        for (name, data) in cached_interop.get('bindings', {}).items() {
-            binding = InteropBinding(
-                name=name,
-                source_context=InteropContext(data['source_context']),
-                callers={InteropContext(c) for c in data.get('callers', [])},
-                ret_type=data.get('ret_type', 'int'),
-                param_types=data.get('param_types', []),
-                param_names=data.get('param_names', []),
-                source_module=data.get('source_module')
-            );
-            manifest.bindings[name] = binding;
-        }
+        manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
             register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -516,6 +503,10 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'source_module': binding.source_module
         };
     }
+    # Carried so a warm-cache load keeps the serve access table populated.
+    interop_data['func_access'] = dict(manifest.func_access);
+    interop_data['walker_access'] = dict(manifest.walker_access);
+    interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
     return interop_data;
 }
 
@@ -546,6 +537,9 @@ impl JacCompiler._deserialize_interop_table(
         );
         manifest.bindings[name] = binding;
     }
+    manifest.func_access.update(cached_interop.get('func_access', {}));
+    manifest.walker_access.update(cached_interop.get('walker_access', {}));
+    manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
     return manifest;
 }
 

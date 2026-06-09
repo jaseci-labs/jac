@@ -1,8 +1,9 @@
-"""Distributed-trace query service for the admin TracesPage.
+"""Distributed-trace query service for the admin TracesPage (O-02).
 
-Wraps the three /admin/traces/* endpoints (which proxy Tempo's HTTP
-API) and returns the standard `{ok, data, error}` envelope from
-`api.get`.
+Wraps the three /admin/traces/* endpoints in `admin/impl/traces.impl.jac`,
+which proxy Tempo's HTTP API. Returns the standard `{ok, data, error}`
+envelope from `api.get`. Counterpart to `logsService` (Loki) and the
+LLM-trace service; this one surfaces the generic span waterfall.
 """
 
 cl {
