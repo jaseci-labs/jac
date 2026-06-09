@@ -513,16 +513,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.k8s_config.to_dict(),
                 self.logger
             );
-            triggers = [
-                Trigger(
-                    type="cpu",
-                    metadata={
-                        "averageUtilization": str(
-                            cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
-                        )
-                    }
-                )
-            ];
+            triggers = [];
+            if not cfg.get("triggers", []) and not self.k8s_config.extra_triggers {
+                triggers = [
+                    Trigger(
+                        type="cpu",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                            )
+                        }
+                    )
+                ];
+            }
             for raw in cfg.get("triggers", []) {
                 t = Trigger(
                     type=str(raw.get("type", "")),

@@ -69,7 +69,7 @@ impl KEDAAutoscaler._build_trigger{
     if trigger.name {
         keda_trigger["name"] = trigger.name;
     }
-    if trigger.auth {
+    if trigger.auth and trigger.auth.secret_refs {
         auth_name = f"{trigger.name or trigger.type}-trigger-auth";
         keda_trigger["authenticationRef"] = {"name": auth_name};
     }

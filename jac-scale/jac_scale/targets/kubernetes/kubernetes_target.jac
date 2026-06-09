@@ -1522,16 +1522,19 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
-            triggers = [
-                Trigger(
-                    type="cpu",
-                    metadata={
-                        "averageUtilization": str(
-                            self.k8s_config.cpu_utilization_target
-                        )
-                    }
-                )
-            ];
+            triggers = [];
+            if not self.k8s_config.extra_triggers {
+                triggers = [
+                    Trigger(
+                        type="cpu",
+                        metadata={
+                            "averageUtilization": str(
+                                self.k8s_config.cpu_utilization_target
+                            )
+                        }
+                    )
+                ];
+            }
             for raw in self.k8s_config.extra_triggers {
                 t = Trigger(
                     type=str(raw.get("type", "")),
