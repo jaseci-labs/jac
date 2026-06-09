@@ -470,7 +470,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         for base in base_classes
     )
     or self._has_typeddict_special_form_base(node_);
-    
+
     # Detect Protocol classes: either directly from Protocol base or @Protocol decorator
     is_protocol_class = any(
         isinstance(base, types.ClassType) and (
@@ -481,7 +481,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         )
         for base in base_classes
     );
-    
+
     # Check for @runtime_checkable decorator on Protocol classes
     is_runtime_checkable = False;
     if is_protocol_class or (self.prefetch and self.prefetch.protocol_class
@@ -502,7 +502,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             }
         }
     }
-    
+
     enum_members: dict[str, types.EnumMemberInfo] | None = None;
     enum_value_type: types.TypeBase | None = None;
     if is_enum_class {

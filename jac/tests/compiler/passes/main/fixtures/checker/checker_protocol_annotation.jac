@@ -120,7 +120,7 @@ def bad_incomplete_implementation() -> None {
         # Missing draw() method - violates Drawable protocol
         def other_method() -> None { return; }
     }
-    
+
     b = BadDrawable();
     draw_shape(b);  # Should fail: doesn't implement Drawable
     return;
@@ -133,7 +133,7 @@ def bad_wrong_signature() -> None {
             return;
         }
     }
-    
+
     w = WrongDrawable();
     draw_shape(w);  # Should fail: draw() signature doesn't match
     return;
