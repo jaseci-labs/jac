@@ -13,6 +13,7 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
+    check_pods_restarted,
     create_k8s_secret,
     delete_k8s_secret,
     delete_if_exists,
@@ -1198,9 +1199,18 @@ obj KubernetesTarget(DeploymentTarget) {
                         f"'{self.k8s_config.domain}' (DNS is pointed post-deploy)."
                     );
                 }
+                # Skip only the external DNS/HTTP probe (the user points DNS
+                # post-deploy), NOT pod readiness: still fail a crash-looping /
+                # OOMKilled / bad-image deploy rather than reporting success.
+                if check_pods_restarted(namespace, app_name) {
+                    raise Exception(
+                        "Deployment failed: application pods are restarting "
+                        "(crash loop / bad image); not marking the deploy ready."
+                    );
+                }
                 return (
-                    "Shared ingress: reachability probe skipped; point DNS at the "
-                    "shared controller to finish DNS/TLS."
+                    "Shared ingress: reachability probe skipped (pods healthy); "
+                    "point DNS at the shared controller to finish DNS/TLS."
                 );
             }
             domain_url = f"http://{self.k8s_config.domain}";

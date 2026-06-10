@@ -568,6 +568,13 @@ obj IngressDeployer {
             main_spec['tls'] = [
                 {'hosts': [self.k8s_config.domain], 'secretName': f"{app_name}-tls"}
             ];
+        } else {
+            # patch_namespaced_ingress is a strategic-merge patch, which leaves
+            # fields absent from the body untouched. Explicitly null tls so a
+            # redeploy that no longer wants cert-manager TLS (shared_ingress_tls
+            # off, or a non-cert-manager class) removes any stale spec.tls block
+            # instead of leaving the old cert advertised for the domain.
+            main_spec['tls'] = None;
         }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
