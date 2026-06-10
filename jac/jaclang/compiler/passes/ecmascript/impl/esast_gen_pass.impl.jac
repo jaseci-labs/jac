@@ -3951,8 +3951,17 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
-    # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
-    if not nd.in_client_context() {
+    # Reactive lowering is for COMPONENT state: `has` declared in a client
+    # def (function component). Archetype fields are plain class fields -
+    # exit_archetype consumes the vars directly - and must not trigger this
+    # handler's side effects (useState/useRef runtime imports, reactive_vars
+    # setter registration). Walk to the nearest owner: an Archetype before
+    # any Ability means a data field, whatever the client context.
+    owner: (uni.UniNode | None) = nd.parent;
+    while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
+        owner = owner.parent;
+    }
+    if isinstance(owner, uni.Archetype) or not nd.in_client_context() {
         nd.gen.es_ast = None;
         return;
     }

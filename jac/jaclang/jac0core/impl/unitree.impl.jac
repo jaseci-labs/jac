@@ -187,8 +187,11 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
 """Check if this node is in a client-side context.
 
         This covers:
+        - Any node in a `.cl.jac` module - the file suffix IS the client
+          marker, so bare top-level constructs (globs, imports, calls) are
+          client context without a redundant `cl` prefix
         - Nodes inside an explicit cl {} block in a .jac file
-        - Nodes inside a function marked with CLIENT context in .cl.jac files
+        - Nodes inside a function marked with CLIENT context
         - Overridden by sv {} blocks (server takes precedence)
 
         Uses single traversal for efficiency since this is called frequently.
@@ -207,6 +210,9 @@ impl UniNode.in_client_context -> bool {
             if (context == CodeContext.CLIENT) {
                 return True;
             }
+        }
+        if isinstance(nd, Module) {
+            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
         }
         nd = nd.parent;
     }

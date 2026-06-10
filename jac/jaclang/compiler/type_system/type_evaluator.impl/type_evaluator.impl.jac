@@ -3638,11 +3638,6 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     mod_key = id(mod);
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
-        # A whole `.cl.jac` module is client code; a `cl { ... }` block makes
-        # an individual import client code even inside a server module.
-        mod_is_client_file = (
-            mod.loc is not None and mod.loc.mod_path.endswith(".cl.jac")
-        );
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
             tok = imp._source_context_token();
@@ -3651,7 +3646,9 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
             }
             # Only the cl->sv edge becomes an async stub; an sv->sv import
             # stays synchronous, so its calls are not coroutines.
-            if not (mod_is_client_file or imp.in_client_context()) {
+            # (`in_client_context` covers both a `.cl.jac` module and a
+            # `cl { ... }` block inside a server module.)
+            if not imp.in_client_context() {
                 continue;
             }
             for item in imp.items {
