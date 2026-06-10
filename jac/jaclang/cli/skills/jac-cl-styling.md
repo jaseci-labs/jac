@@ -5,6 +5,14 @@ description: Styling patterns in Jac - Tailwind conditional classes, cn() utilit
 
 ## Scoped CSS (`.style.css` annex)
 
+> **jac-shadcn projects: `.style.css` is an anti-pattern.**
+> jac-shadcn components resolve styles through `cn()` + Tailwind utilities. Adding a
+> `.style.css` annex fights that system and creates specificity conflicts.
+> Use `cn()` with Tailwind utility classes (see below) instead.
+> `cn()`, semantic tokens (`text-muted-foreground`, `bg-card`, `border`), and conditional
+> Tailwind classes from this skill ARE correct in shadcn projects - only the separate
+> scoped CSS file approach is wrong.
+
 For plain (non-Tailwind) component CSS, write a `.style.css` file with the
 **same base name** as the component. Its classes are auto-scoped to that
 module -- no import, no global collisions. The compiler hashes each declared

@@ -132,3 +132,68 @@ async def handle_login(email: str, password: str) -> str {
     return "success";
 }
 ```
+
+## jac-shadcn form pattern
+
+For jac-shadcn projects, use `Input`, `Label`, `Button`, and `Alert` instead of raw HTML
+form elements. Run `jac add --shadcn input label alert` first (button is usually already
+installed).
+
+```jac
+import from "@jac/runtime" { jacLogin }
+import from ".components.ui.input" { Input }
+import from ".components.ui.button" { Button }
+import from ".components.ui.label" { Label }
+import from ".components.ui.alert" { Alert, AlertDescription }
+
+def:pub LoginForm() -> JsxElement {
+    has email: str = "";
+    has password: str = "";
+    has loading: bool = False;
+    has error: str = "";
+
+    async def handle_login() {
+        loading = True;
+        error = "";
+        ok: bool = False;
+        ok = await jacLogin(email, password);
+        loading = False;
+        if not ok {
+            error = "Invalid email or password.";
+        }
+    }
+
+    return <div className="flex flex-col gap-4">
+        {if error {
+            <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+            </Alert>
+        }}
+        <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onInput={lambda e: Any { email = e.target.value }}
+            />
+        </div>
+        <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+                id="password"
+                type="password"
+                value={password}
+                onInput={lambda e: Any { password = e.target.value }}
+            />
+        </div>
+        <Button onClick={handle_login} disabled={loading} className="w-full">
+            {if loading { "Signing in…" } else { "Sign in" }}
+        </Button>
+    </div>;
+}
+```
+
+The `jacLogin`, `jacSignup`, and 3-step auth flow patterns above this section are
+unchanged - the auth API is identical regardless of UI stack.

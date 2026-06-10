@@ -75,16 +75,17 @@ When the project has `components/ui/` (jac-shadcn primitives are pre-installed):
 ```
 my-app/
 ├── components/
-│   ├── ui/                        # ← primitives - import only, never edit
+│   ├── ui/                        # primitives - import only, never edit
 │   │   ├── button.cl.jac
 │   │   ├── card.cl.jac
-│   │   └── ...                    # 50+ components
-│   ├── EventCard.cl.jac           # ← your composite components using primitives
-│   ├── EventList.cl.jac
+│   │   └── ...
+│   ├── EventCard.cl.jac           # your composite components
 │   └── pages/
 │       └── EventsPage.cl.jac
 ├── hooks/
 │   └── useEvents.cl.jac
+├── styles/                        # jac-shadcn managed - do NOT edit global.css by hand
+│   └── global.css
 └── lib/
     └── utils.cl.jac               # cn() - always import from here
 ```
