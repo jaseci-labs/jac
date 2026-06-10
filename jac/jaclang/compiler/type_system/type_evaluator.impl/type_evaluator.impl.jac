@@ -66,6 +66,14 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                for s in expr.strings {
+                    if isinstance(s, uni.String) and isinstance(s.lit_value, bytes) {
+                        if self.prefetch.bytes_class {
+                            return self._convert_to_instance(self.prefetch.bytes_class);
+                        }
+                        return types.UnknownType();
+                    }
+                }
                 # Forward-reference resolution for single-string type annotations.
                 # When 'Path' is used as a type annotation, the parser wraps
                 # the String in a MultiString. Check if this is in a type context.
@@ -4293,7 +4301,12 @@ impl TypeEvaluator._get_type_from_flow_node(
                     and not isinstance(assigned_type, types.UnknownType)
                 ) {
                     declared_type = target.declared_type;
-                    if (
+                    # Evolving-locals: declared type NoneType (from `x = None`
+                    # without annotation) accepts any later assignment as the
+                    # new type. Matches `is_evolving_reassign` in type_checker_pass.
+                    if self.is_none_type(declared_type) {
+                        narrowed_from_assignment = assigned_type;
+                    } elif (
                         self.assign_type(assigned_type, declared_type)
                         and not self.assign_type(declared_type, assigned_type)
                     ) {

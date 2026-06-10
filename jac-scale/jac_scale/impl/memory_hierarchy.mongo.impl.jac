@@ -731,39 +731,37 @@ impl MongoBackend.sync -> set {
         "memory.sync mongodb",
         {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
     );
-    # Count all write paths for an accurate mem.count; try/finally so the
-    # span closes even if a pre-loop check raises.
-    written: int = 0;
+    # try/finally so the span always closes; categorize, then batch-write.
     try {
+        node_inserts: list[NodeAnchor] = [];
+        edge_inserts: list[EdgeAnchor] = [];
+        atomic_updates: list[tuple[NodeAnchor, list[str], list[str]]] = [];
+        partial_updates: list[tuple[Anchor, set[str]]] = [];
+
         for (_, anchor) in list(self._mem_ref.items()) {
             if not anchor.persistent {
                 continue;
             }
-            # Check hash first - skip unchanged anchors without access check
-            current_hash = Serializer._compute_hash(anchor);
-            if current_hash == anchor.hash {
-                continue;
-            }
-            if not Jac.check_write_access(anchor) {
-                continue;
-            }
             try {
+                # Check hash first: skip unchanged anchors without access check
+                current_hash = Serializer._compute_hash(anchor);
+                if current_hash == anchor.hash {
+                    continue;
+                }
+                if not Jac.check_write_access(anchor) {
+                    continue;
+                }
                 if isinstance(anchor, NodeAnchor) {
                     delta = anchor.edge_delta();
                     if delta is not None {
                         added = [str(eid) for eid in delta[0]];
                         removed = [str(eid) for eid in delta[1]];
                         if added or removed {
-                            self._put_node_atomic(anchor, added, removed);
-                            written += 1;
+                            atomic_updates.append((anchor, added, removed));
                             continue;
                         }
                     }
                 }
-                # Union __setattr__-tracked fields (direct assignments) with
-                # field-hash-derived fields (in-place mutations) to get the complete
-                # dirty set. Both must be combined - running only one silently drops
-                # the other category (e.g. direct + in-place in the same request).
                 if anchor.hash != 0 {
                     arch = anchor.archetype if anchor.is_populated() else None;
                     setattr_dirty: set[str] = (
@@ -774,25 +772,66 @@ impl MongoBackend.sync -> set {
                     derived = _derive_dirty_from_field_hashes(anchor);
                     dirty = setattr_dirty | derived;
                     if dirty {
-                        self.put_partial(anchor, dirty);
-                        written += 1;
+                        partial_updates.append((anchor, dirty));
                         continue;
                     }
                 }
-                # First insert (hash == 0) or no field changes found - full upsert.
+                # First insert (hash == 0) or no field changes found: full upsert.
+                if isinstance(anchor, NodeAnchor) {
+                    node_inserts.append(anchor);
+                } else {
+                    edge_inserts.append(cast(EdgeAnchor, anchor));
+                }
+            } except Exception as e {
+                logger.warning(
+                    f"MongoDB sync categorization failed for anchor {anchor.id}: {e}"
+                );
+            }
+        }
+
+        # mem.count = total anchors to write across all paths.
+        if span {
+            span.set_attribute(
+                "mem.count",
+                len(node_inserts)
+                + len(edge_inserts)
+                + len(atomic_updates)
+                + len(partial_updates)
+            );
+        }
+
+        for anchor in node_inserts {
+            try {
                 self._write_to_db(anchor);
-                written += 1;
             } except Exception as e {
                 logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
             }
         }
-    } finally {
-        if span {
-            span.set_attribute("mem.count", written);
+        for anchor in edge_inserts {
+            try {
+                self._write_to_db(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
         }
+        for (anchor, added, removed) in atomic_updates {
+            try {
+                self._put_node_atomic(anchor, added, removed);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for (anchor, dirty) in partial_updates {
+            try {
+                self.put_partial(anchor, dirty);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        return self._atomic_written;
+    } finally {
         end_memory_span(span);
     }
-    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and

@@ -300,9 +300,12 @@ cl {
 This lowers to `const FancyInput = forwardRef(function FancyInput(props, ref) { ... })`, so a parent can point its own ref at the component and reach the underlying `<input>`:
 
 ```jac
-has inputRef: Ref[HTMLInputElement] = Ref();
-# ...
-<FancyInput ref={inputRef} placeholder="Type here" />
+cl {
+    def:pub ParentForm() -> JsxElement {
+        has inputRef: Ref[HTMLInputElement] = Ref();
+        return <FancyInput ref={inputRef} placeholder="Type here" />;
+    }
+}
 ```
 
 - Only the **last** parameter qualifies, and it must be typed `Ref` (or `Ref[T]`). Named props before it destructure as usual; `ref` stays the trailing positional argument and is never folded into the props bundle.

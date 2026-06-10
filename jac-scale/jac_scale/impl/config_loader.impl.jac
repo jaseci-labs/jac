@@ -79,7 +79,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
+            'timestamp_header': 'X-Webhook-Timestamp',
             'verify_signature': True,
+            'replay_tolerance_seconds': 300,
+            'max_body_bytes': 1048576,
+            'rate_limit_per_minute': 0,
             'api_key_expiry_days': 365
         },
         'monitoring': {
@@ -114,8 +118,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'require_password_reset': True
         },
         'scheduler': {
-            'system_user_password': 'system_secret',
-            'collection': 'scheduled_jobs'
+            'collection': 'scheduled_jobs',
+            'thread_pool_size': 10,
+            'misfire_grace_time': 60,
+            'shutdown_timeout': 10,
+            'system_user_password': '__no_login__',
+            'user_exists_ttl': 30.0
         },
         'telemetry': {'max_traces': 1000},
         'emailer': {
@@ -245,7 +253,15 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
         'signature_header': webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         ),
+        'timestamp_header': webhook_config.get(
+            'timestamp_header', 'X-Webhook-Timestamp'
+        ),
         'verify_signature': webhook_config.get('verify_signature', True),
+        'replay_tolerance_seconds': int(
+            webhook_config.get('replay_tolerance_seconds', 300)
+        ),
+        'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
+        'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
 }
@@ -381,9 +397,14 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     return {
-        'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
-        or scheduler_config.get('system_user_password', 'system_secret'),
-        'collection': scheduler_config.get('collection', 'scheduled_jobs')
+        'collection': scheduler_config.get('collection', 'scheduled_jobs'),
+        'thread_pool_size': int(scheduler_config.get('thread_pool_size', 10)),
+        'misfire_grace_time': int(scheduler_config.get('misfire_grace_time', 60)),
+        'shutdown_timeout': int(scheduler_config.get('shutdown_timeout', 10)),
+        'system_user_password': scheduler_config.get(
+            'system_user_password', '__no_login__'
+        ),
+        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0))
     };
 }
 

@@ -18,7 +18,14 @@ import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
 
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root, NodeArchetype }
+import from jaclang.jac0core.archetype {
+    Anchor,
+    EdgeAnchor,
+    GenericEdge,
+    NodeAnchor,
+    Root,
+    NodeArchetype
+}
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.memory_hierarchy {
     _process_cache,
@@ -870,4 +877,83 @@ test "cascade quarantine invalidates Redis L2 cache for connected live nodes" {
         os.environ.pop("MONGODB_URI", None);
         os.environ.pop("REDIS_URL", None);
     }
+}
+
+test "sync writes endpoint nodes before the edges that reference them" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    # A source node that already exists in the DB (loaded at request start).
+    source = cast(NodeAnchor, _MongoLayer123Person(name="src").__jac__);
+    source.persistent = True;
+    backend._write_to_db(source);
+    # hash=0 keeps write-access checks context-free; _initial_edge_ids=∅ makes
+    # the new eanch show up as an add in edge_delta() so source takes the atomic
+    # ($setUnion) path, exactly like a real connect.
+    source.hash = 0;
+    source.__dict__['_initial_edge_ids'] = frozenset();
+
+    # A brand-new target node connected via a brand-new eanch: source ++> target.
+    target = cast(NodeAnchor, _MongoLayer123Person(name="tgt").__jac__);
+    target.persistent = True;
+    eanch = EdgeAnchor(
+        archetype=GenericEdge(), source=source, target=target, is_undirected=False
+    );
+    eanch.persistent = True;
+    source.edges = [eanch];
+    target.edges = [eanch];
+
+    # Adversarial insertion order: eanch sits before its target node.
+    backend._mem_ref = {source.id: source, eanch.id: eanch, target.id: target};
+
+    # Record the order in which documents are physically written.
+    written: list = [];
+    orig_write = backend._write_to_db;
+    orig_atomic = backend._put_node_atomic;
+    def _rec_write(anchor: Anchor) {
+        written.append(anchor);
+        orig_write(anchor);
+    }
+    def _rec_atomic(anchor: NodeAnchor, added: list, removed: list) {
+        written.append(anchor);
+        orig_atomic(anchor, added, removed);
+    }
+    backend._write_to_db = _rec_write;
+    backend._put_node_atomic = _rec_atomic;
+
+    backend.sync();
+
+    # Core invariant: replaying the writes in order, every eanch's endpoints are
+    # already live when the eanch is written. `source` seeds the set because it
+    # was persisted before this sync began.
+    live: set = {str(source.id)};
+    for anchor in written {
+        if isinstance(anchor, EdgeAnchor) {
+            assert str(anchor.source.id) in live , (
+                "eanch written before its source node: a crash here would "
+                "orphan the eanch (issue #6488)"
+            );
+            assert str(anchor.target.id) in live , (
+                "eanch written before its target node: a crash here would "
+                "orphan the eanch (issue #6488)"
+            );
+        }
+        live.add(str(anchor.id));
+    }
+
+    # Sanity: the target node really was written before the eanch this cycle.
+    types = [type(a).__name__ for a in written];
+    assert 'NodeAnchor' in types and 'EdgeAnchor' in types;
+    assert types.index('NodeAnchor') < types.index('EdgeAnchor') , (
+        f"target node must be written before the eanch; got order {types}"
+    );
+
+    # And the final DB state is consistent: eanch present, both endpoints present.
+    anchors_col = client["jac_test_l123"]["_anchors"];
+    assert anchors_col.find_one({'_id': str(eanch.id)}) is not None;
+    assert anchors_col.find_one({'_id': str(target.id)}) is not None;
+    assert anchors_col.find_one({'_id': str(source.id)}) is not None;
+
+    backend.close();
 }

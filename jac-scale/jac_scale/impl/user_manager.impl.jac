@@ -243,6 +243,9 @@ to confirm user existence on every request is unnecessary and costly.
 impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
     try {
         decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
+        if decoded.get('type') == 'api_key' {
+            return None;
+        }
         return decoded.get('user_id') or None;
     } except Exception as e {
         logger.debug(f"Failed to validate JWT token: {str(e)}");
