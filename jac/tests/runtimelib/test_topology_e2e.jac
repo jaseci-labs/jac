@@ -45,10 +45,10 @@ test "index type-filtered query returns correct results" {
         r = root;
 
         for i in range(10) {
-            r +>: EdgeX :+> TypeA(val=i);
+            r +>:EdgeX:+> TypeA(val=i);
         }
         for i in range(90) {
-            r +>: EdgeX :+> TypeB(val=i);
+            r +>:EdgeX:+> TypeB(val=i);
         }
 
         # Type-filtered: only TypeA via EdgeX
@@ -74,10 +74,10 @@ test "index results match non-indexed results in same context" {
     try {
         r = root;
         for i in range(20) {
-            r +>: EdgeX :+> TypeA(val=i);
+            r +>:EdgeX:+> TypeA(val=i);
         }
         for i in range(80) {
-            r +>: EdgeX :+> TypeB(val=i);
+            r +>:EdgeX:+> TypeB(val=i);
         }
 
         # With index (default): type-filtered
@@ -105,7 +105,7 @@ test "index returns empty for non-matching edge type" {
     try {
         r = root;
         for i in range(10) {
-            r +>: EdgeX :+> TypeA(val=i);
+            r +>:EdgeX:+> TypeA(val=i);
         }
 
         # EdgeY not in graph — should be empty
@@ -126,10 +126,10 @@ test "post-hoc filter fused with edge-op produces same results" {
     try {
         r = root;
         for i in range(10) {
-            r +>: EdgeX :+> TypeA(val=i);
+            r +>:EdgeX:+> TypeA(val=i);
         }
         for i in range(90) {
-            r +>: EdgeX :+> TypeB(val=i);
+            r +>:EdgeX:+> TypeB(val=i);
         }
 
         # Inline filter (already optimized)
@@ -157,12 +157,12 @@ test "nested post-hoc filter as origin of outer edge-op" {
         # root -> TypeA via EdgeX, TypeA -> TypeB via EdgeY
         for i in range(5) {
             a = TypeA(val=i);
-            r +>: EdgeX :+> a;
-            a +>: EdgeY :+> TypeB(val=i * 10);
+            r +>:EdgeX:+> a;
+            a +>:EdgeY:+> TypeB(val=i * 10);
         }
         # root -> TypeB via EdgeX (decoys)
         for i in range(20) {
-            r +>: EdgeX :+> TypeB(val=100 + i);
+            r +>:EdgeX:+> TypeB(val=100 + i);
         }
 
         # Inline multi-hop: get TypeB behind TypeA
@@ -196,7 +196,7 @@ test "planner bypasses index when no hop is filtered" {
     try {
         r = root;
         for i in range(10) {
-            r +>: EdgeX :+> TypeA(val=i);
+            r +>:EdgeX:+> TypeA(val=i);
         }
 
         # Fully unfiltered single-hop chain → planner must return None so
@@ -279,8 +279,8 @@ test "planner bails when a hop has predicates beyond type" {
         r = root;
         for i in range(10) {
             a = TypeA(val=i);
-            r +>: EdgeX :+> a;
-            a +>: EdgeY :+> TypeB(val=i * 10);
+            r +>:EdgeX:+> a;
+            a +>:EdgeY:+> TypeB(val=i * 10);
         }
 
         # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — the planner's
@@ -336,10 +336,10 @@ test "parent-type filter returns all subtype instances" {
     try {
         r = root;
         for i in range(5) {
-            r +>: EdgeX :+> PostNode(val=i);
+            r +>:EdgeX:+> PostNode(val=i);
         }
         for i in range(5) {
-            r +>: EdgeX :+> ArticleNode(val=100 + i);
+            r +>:EdgeX:+> ArticleNode(val=100 + i);
         }
 
         # Parent-type filter: must return ALL 10 (5 PostNode + 5 ArticleNode).
@@ -380,7 +380,7 @@ test "index built on root with null root field" {
     JacRuntime.set_context(ctx);
     try {
         r = root;
-        r +>: EdgeX :+> TypeA(val=42);
+        r +>:EdgeX:+> TypeA(val=42);
 
         idx = r.__jac__.get_topology_index();
         assert len(idx) > 0 , "Index should have edges";
@@ -412,9 +412,9 @@ test "typed-edge filter compares against edge attributes apply at runtime" {
         r = root;
         # Three nodes connected via Weighted edges with weights 1, 5, 10.
         # Predicate `weight>=5` should keep weights 5 and 10 (vals 20, 30).
-        r +>: Weighted(weight=1) :+> TypeA(val=10);
-        r +>: Weighted(weight=5) :+> TypeA(val=20);
-        r +>: Weighted(weight=10) :+> TypeA(val=30);
+        r +>:Weighted(weight=1):+> TypeA(val=10);
+        r +>:Weighted(weight=5):+> TypeA(val=20);
+        r +>:Weighted(weight=10):+> TypeA(val=30);
 
         heavy = sorted([n.val for n in [r->:Weighted:weight>=5:->]]);
         assert heavy == [20, 30] , (
@@ -450,8 +450,8 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
         # `[r->:EdgeX:->[?:TypeA, val>=5]->:EdgeY:->[?:TypeB]]` should
         # only follow the v>=5 chains, yielding TypeB vals [50, 100].
         for v in [1, 5, 10] {
-            mid = r +>: EdgeX :+> TypeA(val=v);
-            mid[0] +>: EdgeY :+> TypeB(val=v * 10);
+            mid = r +>:EdgeX:+> TypeA(val=v);
+            mid[0] +>:EdgeY:+> TypeB(val=v * 10);
         }
 
         leaves = sorted(

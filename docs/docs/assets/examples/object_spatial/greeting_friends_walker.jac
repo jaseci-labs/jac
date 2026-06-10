@@ -24,8 +24,8 @@ glob alice = root ++> Person(name="Alice"),
 
 # Connect friends
 with entry {
-    alice +>: FriendsWith :+> bob +>: FriendsWith :+> charlie;
-    alice +>: FriendsWith :+> charlie;  # Alice also friends with Charlie
+    alice +>:FriendsWith:+> bob +>:FriendsWith:+> charlie;
+    alice +>:FriendsWith:+> charlie;  # Alice also friends with Charlie
 
     # Start the walker on the 'alice' node to greet everyone
     alice[0] spawn GreetFriends();

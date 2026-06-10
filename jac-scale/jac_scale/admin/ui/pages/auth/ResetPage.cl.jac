@@ -36,20 +36,18 @@ cl {
         }
 
         return
-            <div
-                className="min-h-screen bg-slate-950 flex items-center justify-center p-4"
-            >
+            <div className="min-h-screen bg-bg flex items-center justify-center p-4">
                 <div className="w-full max-w-sm">
                     <div className="text-center mb-8">
-                        <h1 className="text-xl font-semibold text-white tracking-tight">
+                        <h1 className="text-xl font-semibold text-fg tracking-tight">
                             Reset Password
                         </h1>
-                        <p className="text-slate-500 text-sm mt-1">
+                        <p className="text-muted text-sm mt-1">
                             Create a new password to continue
                         </p>
                     </div>
                     <div
-                        className="bg-slate-900 border border-slate-800 rounded-lg p-6"
+                        className="bg-surface border border-line rounded-lg p-6 shadow-sm"
                     >
                         <InlineAlert message={resetError} type="error"/>
                         <form onSubmit={handleResetPassword}>

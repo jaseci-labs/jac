@@ -29,11 +29,11 @@ impl CoalesceBBPass.printgraph_cfg -> str {
         bb_out = bb['bb_out'];
         cfg_labels[key] = [self._node_label(s) for s in bb['bb_stmts']];
         if bb_out {
-            out_ids: list[int] = [0 for _ in range(len(bb_out))];
+            out_ids: list[int] = [];
             for out_obj in bb_out {
                 for (k, v) in self.basic_blocks.items() {
                     if (out_obj == v['bb_stmts'][0]) {
-                        out_ids[bb_out.index(out_obj)] = k;
+                        out_ids.append(k);
                         break;
                     }
                 }
@@ -880,7 +880,7 @@ impl CFGBuildPass._wire_compr_filters(
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }

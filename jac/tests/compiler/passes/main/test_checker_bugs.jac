@@ -31,6 +31,8 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
+  #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
 import os;
@@ -892,6 +894,27 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
     assert program.errors_had == [] , (
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_byte_literal_typed_as_bytes" {
+    program = compile_and_check("checker_bytes_literal.jac");
+    assert program.errors_had == [] , (
+        "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
+        "so it assigns to bytes and concatenates with other bytes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #EVOLVING-NONE: `x = None` then reassigning inside an `if` branch
+# was not picked up post-branch — CFG narrowing rejected the new type as
+# not assignable to NoneType, producing false E1002 on `return x`.
+test "bug_evolving_none_narrowing" {
+    program = compile_and_check("checker_bug_evolving_locals_narrowing.jac");
+    assert program.errors_had == [] , (
+        "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
+        "must narrow to the assigned type post-branch (Pyright evolving-locals). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

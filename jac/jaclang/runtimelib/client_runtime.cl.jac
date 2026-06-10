@@ -56,6 +56,34 @@ async def:pub jacLogin(
 
 def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
+
+# SSO login. On the web, navigates to the server's `/sso/<platform>/<operation>`
+# endpoint (the server redirects back to the SPA callback with the token). In the
+# Jac-native desktop shell, hands the flow to the *system* browser via the
+# loopback broker (RFC 8252) and polls the broker session store until the token
+# lands -- returns True on success, False on timeout/failure.
+async def:pub jacSsoLogin(
+    platform: str, api_base: str = "", operation: str = "login"
+) -> bool;
+
+# Persist an auth token under the canonical `jac_token` key, clearing any cached
+# pre-auth responses (same invariant as jacLogin). Used by SSO callback pages.
+def:pub jacSetToken(token: str) -> None;
+
+# Drop every cached walker/function response (called on any auth change).
+def:pub __jacClearCache -> None;
+
+# The loopback broker URL prefix when running inside the Jac-native desktop
+# shell (set by the host's document-start bootstrap), else "".
+def:pub __jacDesktopBroker -> str;
+
+# Poll `GET <broker>/session` until a non-empty token appears or the timeout
+# elapses; returns the token, or "" on timeout.
+async def:pub __jacPollBrokerSession(
+    broker: str, timeout_ms: int, interval_ms: int
+) -> str;
+
+async def:pub __jacSleep(ms: int) -> None;
 def:pub __getApiBaseUrl -> str;
 def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;

@@ -40,7 +40,7 @@ import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
 import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.scheduler { JacScaleScheduler }
+import from jac_scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
@@ -59,6 +59,7 @@ import from jac_scale.auth_models {
     UpdateProfileResponse,
     MeResponse
 }
+import from jac_scale.scheduler.scheduler_models { CreateJobRequest, UpdateJobRequest }
 import from jac_scale.abstractions.emailer { Emailer }
 
 # Load configuration from jac.toml with env var overrides
@@ -115,7 +116,10 @@ obj JacAPIServerAuth {
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
-        name: str, expiry_days: int | None = None, Authorization: str | None = None
+        name: str,
+        expiry_days: int | None = None,
+        Authorization: str | None = None,
+        allowed_walkers: list[str] | None = None
     ) -> TransportResponse;
 
     def list_api_keys(Authorization: str | None = None) -> TransportResponse;
