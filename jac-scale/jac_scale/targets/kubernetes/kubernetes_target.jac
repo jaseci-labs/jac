@@ -1187,6 +1187,22 @@ obj KubernetesTarget(DeploymentTarget) {
         # Failure is a warning, not an error — the CNAME record may not have
         # propagated yet or DNS may not be configured yet.
         if self.k8s_config.shared_ingress {
+            # For a user's custom domain (pointed at the shared controller only
+            # after the deploy), the reachability probe can never pass at deploy
+            # time, so skip it and let the deploy complete on app readiness; DNS
+            # and the cert resolve asynchronously once the user points DNS.
+            if self.k8s_config.shared_ingress_skip_reachability {
+                if self.logger {
+                    self.logger.info(
+                        f"Shared ingress mode: skipping reachability probe for "
+                        f"'{self.k8s_config.domain}' (DNS is pointed post-deploy)."
+                    );
+                }
+                return (
+                    "Shared ingress: reachability probe skipped; point DNS at the "
+                    "shared controller to finish DNS/TLS."
+                );
+            }
             domain_url = f"http://{self.k8s_config.domain}";
             if self.logger {
                 self.logger.info(
