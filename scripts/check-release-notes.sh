@@ -14,6 +14,7 @@ declare -A FOLDER_TO_FRAGMENTS=(
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
     ["jac-super/jac_super/"]="docs/docs/community/release_notes/unreleased/jac-super/"
     ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"
+    ["jac-desktop/jac_desktop/"]="docs/docs/community/release_notes/unreleased/jac-desktop/"
 )
 
 # Determine changed files based on context
@@ -51,6 +52,7 @@ PROTECTED_FILES=(
     "docs/docs/community/release_notes/jac-scale.md"
     "docs/docs/community/release_notes/jac-super.md"
     "docs/docs/community/release_notes/jac-mcp.md"
+    "docs/docs/community/release_notes/jac-desktop.md"
 )
 
 DIRECTLY_MODIFIED=()

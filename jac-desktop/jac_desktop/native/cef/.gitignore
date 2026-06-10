@@ -1,0 +1,15 @@
+# CEF binary distribution + SDK headers - regenerate with fetch_libcef.sh
+cef_dist/
+cef_headers/
+libcef_shim.so
+# Local dev spike binaries (not shipped)
+test_sizes
+test_shim
+test_null_args
+.build/
+.cef_tarball.tar.bz2
+.cef_index.json
+.jac_ir/
+.jac/
+__pycache__/
+.pytest_cache/

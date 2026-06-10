@@ -13,6 +13,49 @@ import sysconfig;
 import tempfile;
 import from pathlib { Path }
 
+"""Locate the shipped CEF binding (sibling of native/webview)."""
+def _cef_dir -> Path {
+    here = Path(os.path.abspath(__file__)).parent;
+    probe = here;
+    for _ in range(6) {
+        cand = probe / "native" / "cef";
+        if (cand / "cef.na.jac").exists() {
+            return cand;
+        }
+        probe = probe.parent;
+    }
+    raise RuntimeError("native/cef/cef.na.jac not found from " + str(here));
+}
+
+"""Compile a CEF host with the binding staged beside it."""
+def _compile_cef_host(host_src: str) -> tuple {
+    jac = shutil.which("jac") or "jac";
+    tmp = tempfile.mkdtemp();
+    try {
+        shutil.copy2(str(_cef_dir() / "cef.na.jac"), os.path.join(tmp, "cef.na.jac"));
+        with open(os.path.join(tmp, "host.na.jac"), "w") as f {
+            f.write(host_src);
+        }
+        result = subprocess.run(
+            [jac, "nacompile", "host.na.jac", "-o", "out"],
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        out = os.path.join(tmp, "out");
+        data = b"";
+        if os.path.exists(out) {
+            with open(out, "rb") as bf {
+                data = bf.read();
+            }
+        }
+        return (result.returncode, result.stderr, data);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 """Locate the shipped webview binding (this file is tests/<x> beside it)."""
 def _webview_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
@@ -98,4 +141,63 @@ test "embedded-python host compiles and links libpython" {
     assert rc == 0 , f"embedded-python host failed to compile:\n{err}";
     assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
     assert stem in data , "binary must link the libpython soname";
+}
+
+"""The embedded-CPython CEF host (desktop-cef runtime model) links both libs."""
+test "cef embedded-python host compiles and links libcef_shim and libpython" {
+    soname = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
+    stem = soname.split(".so")[0].encode();
+    src = (
+        "import sys;\n"
+        "import from cef_shim {\n"
+        "    def jac_cef_execute_process() -> i32;\n"
+        "    def jac_cef_initialize(cache_path: str, no_sandbox: i32) -> i32;\n"
+        "    def jac_cef_shutdown -> None;\n"
+        "    def jac_cef_run_message_loop -> None;\n"
+        "    def jac_cef_create_browser(\n"
+        "        url: str, title: str, width: i32, height: i32\n"
+        "    ) -> int;\n"
+        "}\n"
+        f'import from "{soname}" {{\n'
+        "    def Py_Initialize() -> None;\n"
+        "    def Py_Finalize() -> None;\n"
+        "    def PyRun_SimpleString(cmd: str) -> i32;\n"
+        "}\n"
+        "with entry {\n"
+        "    code: i32 = jac_cef_execute_process();\n"
+        "    if code >= 0 { sys.exit(code); }\n"
+        "    Py_Initialize();\n"
+        "    PyRun_SimpleString(\"pass\");\n"
+        "    jac_cef_create_browser(\"about:blank\", \"t\", 640, 480);\n"
+        '    rc: i32 = jac_cef_initialize("", 1);\n'
+        "    if rc != 1 { sys.exit(1); }\n"
+        "    Py_Finalize();\n"
+        "    jac_cef_shutdown();\n"
+        "}\n"
+    );
+    (rc, err, data) = _compile_cef_host(src);
+    assert rc == 0 , f"cef embedded-python host failed to compile:\n{err}";
+    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
+    assert b"libcef_shim.so" in data , "binary must link libcef_shim.so";
+    assert stem in data , "binary must link the libpython soname";
+    assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
+}
+
+"""A host that uses the CefBrowser API links libcef_shim.so via $ORIGIN."""
+test "cef binding host compiles and links libcef_shim.so" {
+    src = (
+        "import from cef { CefBrowser, new_cef_browser, cef_cleanup }\n"
+        "with entry {\n"
+        "    browser = new_cef_browser(\"about:blank\", \"t\", 640, 480);\n"
+        "    if browser.browser_handle != 0 {\n"
+        "        browser.run();\n"
+        "        cef_cleanup();\n"
+        "    }\n"
+        "}\n"
+    );
+    (rc, err, data) = _compile_cef_host(src);
+    assert rc == 0 , f"cef binding host failed to compile:\n{err}";
+    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
+    assert b"libcef_shim.so" in data , "binary must link libcef_shim.so";
+    assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
 }

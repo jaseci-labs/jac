@@ -20,14 +20,46 @@ The native webview binding + build tooling live under
 [`jac_desktop/native/webview/`](jac_desktop/native/webview/) (see its README for
 the phase-by-phase design and the dependency-free test suite).
 
+### CEF target (`desktop-cef`)
+
+Set `engine = "cef"` under `[plugins.desktop]` in `jac.toml`, then:
+
+```sh
+jac build --client desktop-cef   # -> .jac/client/desktop-cef/
+```
+
+This uses Chromium Embedded Framework instead of the OS web engine. The loopback
+server and OAuth broker are **identical** to the native target; only the renderer
+differs. See [`jac_desktop/native/cef/README.md`](jac_desktop/native/cef/README.md)
+for the full CEF design.
+
+### FFI: two libraries, two jobs
+
+Every desktop host (native or CEF) embeds **libpython** to run the loopback HTTP
+server (`dist/` + `/__jac/*` OAuth broker). That is separate from the **renderer**
+FFI that paints the window:
+
+| Target | Renderer FFI | libpython FFI |
+|--------|--------------|---------------|
+| `desktop` (native) | Jac `na` → `libwebview.so` | Jac `na` `import from "libpython..."` |
+| `desktop-cef` | Jac `na` → `libcef_shim.so` → `libcef.so` | Jac `na` `import from "libpython..."` |
+
+libpython is **not** used for CEF/Chromium calls; it only starts the embedded
+Python TCP server. CEF integration goes exclusively through `cef_shim.c`.
+
 ## Install
 
 ```sh
 pip install jac-client jac-desktop
 ```
 
-Building a desktop app needs the OS web engine + a C toolchain so the native host
-can link `libwebview.so` (built on first use). On Debian/Ubuntu:
+Building a **native** desktop app needs the OS web engine + a C toolchain so the
+host can link `libwebview.so` (built on first use). The **CEF** target instead
+downloads a pinned CEF binary dist (~1 GB) on first build; no WebKitGTK required.
+Both need a system libpython (AOT-linked in the `na` host). `gcc` is only required
+to build `libcef_shim.so` / `libwebview.so` on first use.
+
+On Debian/Ubuntu (native target):
 
 ```sh
 sudo ./jac_desktop/native/webview/install_webkit_deps.sh
