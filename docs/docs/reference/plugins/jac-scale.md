@@ -2844,7 +2844,7 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 
 **Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
 
-**KEDA-specific configuration:**
+**KEDA-specific configuration (`[plugins.scale.kubernetes]`):**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
@@ -2852,7 +2852,16 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 | `autoscaler_polling_interval` | `30` | Seconds between trigger evaluations. |
 | `autoscaler_cooldown` | `300` | Seconds of continuous inactivity before scaling down to `idle_replicas`. |
 | `autoscaler_initial_cooldown` | `0` | Seconds after a fresh deploy before scale-to-zero becomes eligible. Prevents cold-start thrash on slow-booting apps. |
-| `extra_triggers` | `[]` | Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict), optional `name` (str), optional `auth.secret_refs` (dict). |
+| `extra_triggers` | `[]` | Array of additional KEDA trigger tables applied to every service. See trigger entry keys below. |
+
+**Trigger entry keys (`[[plugins.scale.kubernetes.extra_triggers]]`):**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `type` | (required) | KEDA trigger type (e.g. `"prometheus"`, `"redis"`, `"rabbitmq"`, `"kafka"`, `"http"`). See the [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/). |
+| `metadata` | `{}` | Dict of trigger-specific key/value pairs. All values are coerced to strings before being sent to KEDA. |
+| `name` | `null` | Name for this trigger. Required when using `auth.secret_refs`; used as the `TriggerAuthentication` resource name. |
+| `auth.secret_refs` | `{}` | KEDA `TriggerAuthentication` bindings. Each key is a KEDA parameter name; the value is a table with `name` (Kubernetes Secret name) and `key` (key within that Secret). |
 
 **To configure in `jac.toml`:**
 
@@ -2861,6 +2870,7 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 autoscaler_engine = "keda"
 min_replicas = 1
 max_replicas = 10
+cpu_utilization_target = 50       # Seeds the automatic CPU trigger
 idle_replicas = 0                 # Scale to zero when all triggers are inactive
 autoscaler_polling_interval = 15
 autoscaler_cooldown = 120
@@ -2871,18 +2881,14 @@ autoscaler_initial_cooldown = 30  # Wait 30s after deploy before allowing scale-
 type = "prometheus"
 name = "queue-depth"
 metadata = { serverAddress = "http://prometheus:9090", metricName = "job_queue_depth", threshold = "100", query = "sum(job_queue_depth)" }
-```
 
-**Authenticated triggers** use a KEDA `TriggerAuthentication` resource backed by a Kubernetes Secret. Add an `auth.secret_refs` sub-table to any trigger entry; jac-scale creates the `TriggerAuthentication` CR before the `ScaledObject` is applied:
-
-```toml
+# Trigger with authentication: credential pulled from a Kubernetes Secret
 [[plugins.scale.kubernetes.extra_triggers]]
 type = "rabbitmq"
 name = "orders-queue"
 metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol = "amqp" }
 
 [plugins.scale.kubernetes.extra_triggers.auth.secret_refs]
-# Each key is a KEDA parameter name; the value points to a Kubernetes Secret field.
 host = { name = "rabbitmq-secret", key = "host" }
 ```
 

@@ -322,7 +322,7 @@ code changes from local mode.
 | `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
 | `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
-| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`); each entry: `type`, `metadata`, optional `name`, optional `auth.secret_refs` |
+| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[plugins.scale.kubernetes.extra_triggers]]`. |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
 ```toml
