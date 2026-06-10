@@ -1112,12 +1112,13 @@ with entry {
         JacRuntimeInterface
     );
     plugin_manager.add_hookspecs(JacRuntimeSpec);
-    # Phase 2: seal now (no impls yet -> all stay Phase-1). As plugins
-    # register during load, reseal-on-register devirtualizes single-impl
-    # hooks and keeps multi-impl hooks on the dynamic dispatcher.
-    plugin_manager.seal(JacRuntimeInterface);
 }
-
+# NOTE: Phase-2 devirtualization (plugin_manager.seal) is intentionally
+# NOT called here. Sealing at import is unsafe: external plugins (byllm,
+# scale) have not registered yet, and the compiler's `without_plugins`
+# churn would transiently devirtualize their hooks to core stubs. Seal
+# is instead triggered explicitly from the `run` and `start` CLI commands,
+# once the plugin set is fully loaded and stable.
 """Jac Machine State.
 
 App identity (`base_path_dir`, `full_target_path`) lives on

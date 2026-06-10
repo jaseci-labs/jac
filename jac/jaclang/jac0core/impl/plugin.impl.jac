@@ -79,6 +79,9 @@ impl HookCaller.__repr__ -> str {
 facade methods with direct-call specializations. Safe to call before plugins
 load -- register/unregister re-specialize affected hooks afterward."""
 impl PluginManager.seal(facade: type) -> None {
+    if self._sealed {
+        return;
+    }
     self._facade = facade;
     for hook_name in `list(vars(self.hook).keys()) {
         m = getattr(facade, hook_name, None);
@@ -199,25 +202,16 @@ impl PluginManager.unregister(
     if name is not None and name != plugin_name {
         self._name2plugin.pop(name, None);
     }
-    touched: list[str] = [];
+    # NOTE: we deliberately do NOT re-specialize on unregister. Devirtualized
+    # hooks are core-only (single-impl); `without_plugins` only unregisters
+    # *external* plugins, so it never touches them. Multi-impl hooks stay on
+    # the dynamic Phase-1 dispatcher, which correctly follows the live impl
+    # set as plugins drop out. Re-specializing here would transiently
+    # devirtualize a multi-impl hook down to its core stub mid-`without_plugins`.
     for attr_name in `list(vars(self.hook)) {
         hook = getattr(self.hook, attr_name, None);
         if isinstance(hook, HookCaller) {
-            had = False;
-            for h in hook.get_hookimpls() {
-                if h.plugin is plugin {
-                    had = True;
-                }
-            }
             hook._remove_plugin(plugin);
-            if had {
-                touched.append(attr_name);
-            }
-        }
-    }
-    if self._sealed {
-        for an in touched {
-            self._specialize_hook(an);
         }
     }
     return plugin;
