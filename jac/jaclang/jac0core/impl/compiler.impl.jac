@@ -583,7 +583,8 @@ impl JacCompiler.parse_str(
         target_program.mod = uni.ProgramModule(main_mod=mod);
         target_program.mod.hub.update(old_hub);
     }
-    target_program.mod.hub[mod.loc.mod_path] = mod;
+    import from pathlib { Path as _HubPath }
+    target_program.mod.hub[str(_HubPath(mod.loc.mod_path).resolve())] = mod;
     JacAnnexPass(ir_in=mod, prog=target_program);
     return mod;
 }

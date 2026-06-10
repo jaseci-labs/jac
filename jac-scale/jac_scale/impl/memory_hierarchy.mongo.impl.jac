@@ -1,5 +1,10 @@
 """MongoDB PersistenceBackend Implementation."""
 
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
+
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
 On connect we also ensure the companion collections exist as logical
@@ -348,11 +353,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     }
     self.fetch_count += 1;
     _id = to_uuid(id);
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
     } except Exception as e {
         logger.debug(f"MongoDB get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
     if not db_obj {
         return None;
@@ -716,55 +727,110 @@ impl MongoBackend.sync -> set {
         return set();
     }
     self._atomic_written = set();
-    for (_, anchor) in list(self._mem_ref.items()) {
-        if not anchor.persistent {
-            continue;
-        }
-        # Check hash first — skip unchanged anchors without access check
-        current_hash = Serializer._compute_hash(anchor);
-        if current_hash == anchor.hash {
-            continue;
-        }
-        if not Jac.check_write_access(anchor) {
-            continue;
-        }
-        try {
-            if isinstance(anchor, NodeAnchor) {
-                delta = anchor.edge_delta();
-                if delta is not None {
-                    added = [str(eid) for eid in delta[0]];
-                    removed = [str(eid) for eid in delta[1]];
-                    if added or removed {
-                        self._put_node_atomic(anchor, added, removed);
+    span = start_memory_span(
+        "memory.sync mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+    );
+    # try/finally so the span always closes; categorize, then batch-write.
+    try {
+        node_inserts: list[NodeAnchor] = [];
+        edge_inserts: list[EdgeAnchor] = [];
+        atomic_updates: list[tuple[NodeAnchor, list[str], list[str]]] = [];
+        partial_updates: list[tuple[Anchor, set[str]]] = [];
+
+        for (_, anchor) in list(self._mem_ref.items()) {
+            if not anchor.persistent {
+                continue;
+            }
+            try {
+                # Check hash first: skip unchanged anchors without access check
+                current_hash = Serializer._compute_hash(anchor);
+                if current_hash == anchor.hash {
+                    continue;
+                }
+                if not Jac.check_write_access(anchor) {
+                    continue;
+                }
+                if isinstance(anchor, NodeAnchor) {
+                    delta = anchor.edge_delta();
+                    if delta is not None {
+                        added = [str(eid) for eid in delta[0]];
+                        removed = [str(eid) for eid in delta[1]];
+                        if added or removed {
+                            atomic_updates.append((anchor, added, removed));
+                            continue;
+                        }
+                    }
+                }
+                if anchor.hash != 0 {
+                    arch = anchor.archetype if anchor.is_populated() else None;
+                    setattr_dirty: set[str] = (
+                        arch.__dict__.get('__jac_dirty_fields__') or set()
+                    ).copy()
+                        if arch is not None
+                        else set();
+                    derived = _derive_dirty_from_field_hashes(anchor);
+                    dirty = setattr_dirty | derived;
+                    if dirty {
+                        partial_updates.append((anchor, dirty));
                         continue;
                     }
                 }
-            }
-            # Union __setattr__-tracked fields (direct assignments) with
-            # field-hash-derived fields (in-place mutations) to get the complete
-            # dirty set. Both must be combined — running only one silently drops
-            # the other category (e.g. direct + in-place in the same request).
-            if anchor.hash != 0 {
-                arch = anchor.archetype if anchor.is_populated() else None;
-                setattr_dirty: set[str] = (
-                    arch.__dict__.get('__jac_dirty_fields__') or set()
-                ).copy()
-                    if arch is not None
-                    else set();
-                derived = _derive_dirty_from_field_hashes(anchor);
-                dirty = setattr_dirty | derived;
-                if dirty {
-                    self.put_partial(anchor, dirty);
-                    continue;
+                # First insert (hash == 0) or no field changes found: full upsert.
+                if isinstance(anchor, NodeAnchor) {
+                    node_inserts.append(anchor);
+                } else {
+                    edge_inserts.append(cast(EdgeAnchor, anchor));
                 }
+            } except Exception as e {
+                logger.warning(
+                    f"MongoDB sync categorization failed for anchor {anchor.id}: {e}"
+                );
             }
-            # First insert (hash == 0) or no field changes found — full upsert.
-            self._write_to_db(anchor);
-        } except Exception as e {
-            logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+
+        # mem.count = total anchors to write across all paths.
+        if span {
+            span.set_attribute(
+                "mem.count",
+                len(node_inserts) + len(edge_inserts) + len(atomic_updates) + len(
+                    partial_updates
+                )
+            );
+        }
+
+        for anchor in node_inserts {
+            try {
+                self._write_to_db(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for anchor in edge_inserts {
+            try {
+                self._write_to_db(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for (anchor, added, removed) in atomic_updates {
+            try {
+                self._put_node_atomic(anchor, added, removed);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for (anchor, dirty) in partial_updates {
+            try {
+                self.put_partial(anchor, dirty);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        return self._atomic_written;
+    } finally {
+        end_memory_span(span);
     }
-    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
@@ -915,6 +981,15 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
+    span = start_memory_span(
+        "memory.batch_get mongodb",
+        {
+            "db.system": "mongodb",
+            "mem.tier": "L3",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
+    );
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
             if (anchor := self._load_anchor(doc)) {
@@ -924,6 +999,8 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     } except Exception as e {
         logger.debug(f"MongoDB batch_get failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
     return result;
 }
@@ -1306,6 +1383,10 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
         _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
         if not db_obj {
@@ -1315,6 +1396,8 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Async aget failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -1348,10 +1431,21 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
             UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
             for a in dirty
         ];
+        span = start_memory_span(
+            "memory.commit mongodb",
+            {
+                "db.system": "mongodb",
+                "mem.tier": "L3",
+                "mem.op": "commit",
+                "mem.count": len(dirty)
+            }
+        );
         try {
             await coll.bulk_write(ops, ordered=False);
         } except Exception as e {
             logger.warning(f"Async acommit bulk_write failed: {e}");
+        } finally {
+            end_memory_span(span);
         }
     }
 }

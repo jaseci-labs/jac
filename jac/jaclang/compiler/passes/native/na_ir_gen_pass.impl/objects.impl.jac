@@ -363,6 +363,23 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     # Flatten fields from all ancestors in MRO order (diamond dedup by name)
     mro = self.mro_order.get(arch_name, [arch_name]);
     seen_fields: set[str] = set();
+    # Built-in walker `reports` list at a uniform field index 2 (vtable@0,
+    # __type_tag@1). The kernel's on_complete delivers `scope.reports` here at
+    # the spawn boundary, so `w.reports` reads back like a normal field. Added
+    # before MRO/own fields and marked seen so it sits at a fixed offset and a
+    # user-declared `reports` cannot shadow it (issue #6146).
+    if is_osp and (self.osp_arch_kind.get(arch_name) == "walker") {
+        self._emit_list_helpers("i64", ir.IntType(64));
+        _rep_lt = self.list_types.get("i64");
+        if _rep_lt is not None {
+            _rep_idx = len(field_types);
+            field_types.append(_rep_lt.as_pointer());
+            field_index_map["reports"] = _rep_idx;
+            field_type_map["reports"] = _rep_lt.as_pointer();
+            self.osp_reports_field[arch_name] = _rep_idx;
+            seen_fields.add("reports");
+        }
+    }
     for ancestor_name in mro[1:] {
         if ancestor_name not in self.struct_field_indices {
             continue;
@@ -1023,6 +1040,37 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.store(
             ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
         );
+        # Graph-arena lifetime: an OSP instance is a graph location, referenced
+        # by the walk as a borrowed `any` handle (boxed pointer) inside the
+        # kernel's work-stack / scope lists. Those lists retain/release the boxed
+        # pointer, which over-releases the location and frees it mid-walk (the
+        # edge<->node refcount issue, #6146). Pin every node/walker/edge to the
+        # immortal sentinel so the graph persists for the program -- matching the
+        # immortal descriptor singletons. A scoped arena teardown is future work.
+        self._osp_make_immortal(obj_ptr);
+    }
+    # Initialize the built-in walker `reports` list to empty so `w.reports` is a
+    # valid (empty) list before any spawn; the kernel's on_complete replaces it
+    # with the walk's collected reports at the spawn boundary (issue #6146).
+    _rep_idx = self.osp_reports_field.get(type_name);
+    if _rep_idx is not None {
+        _rep_h = self.list_helpers.get("i64");
+        if _rep_h is not None {
+            _rep_list = self._rc_call_with_ctx(
+                _rep_h["new"], [], op="new", loc="", name="reports.init"
+            );
+            self.builder.store(
+                _rep_list,
+                self.builder.gep(
+                    obj_ptr,
+                    [
+                        ir.Constant(ir.IntType(32), 0),
+                        ir.Constant(ir.IntType(32), _rep_idx)
+                    ],
+                    name="reports.slot"
+                )
+            );
+        }
     }
     # Initialize fields from keyword arguments
     field_indices = self.struct_field_indices.get(type_name, {});

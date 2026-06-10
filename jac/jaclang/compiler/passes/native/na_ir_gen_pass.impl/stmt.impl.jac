@@ -189,6 +189,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.PyInlineCode) {
         # ::py:: blocks are intentionally stripped from native output —
         # they target the Python pathway only.
+    } elif isinstance(nd, uni.VisitStmt) {
+        self._codegen_visit(nd);
+    } elif isinstance(nd, uni.DisengageStmt) {
+        self._codegen_disengage(nd);
+    } elif isinstance(nd, uni.ReportStmt) {
+        self._codegen_report(nd);
     } else {
         # Catch-all: any statement node we didn't recognize is a real
         # gap, not a no-op. Emit a structured error so the failure is

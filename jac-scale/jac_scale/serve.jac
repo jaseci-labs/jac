@@ -116,7 +116,10 @@ obj JacAPIServerAuth {
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
-        name: str, expiry_days: int | None = None, Authorization: str | None = None
+        name: str,
+        expiry_days: int | None = None,
+        Authorization: str | None = None,
+        allowed_walkers: list[str] | None = None
     ) -> TransportResponse;
 
     def list_api_keys(Authorization: str | None = None) -> TransportResponse;

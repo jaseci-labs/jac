@@ -3926,14 +3926,16 @@ test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
     addr = eng.get_function_address("W.on_either");
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
-    # Both node structs lower to `{ header_ptr, header_i64, value_i64 }`, so the
-    # user field (`either` / `val`) sits at index 2 (byte offset 16).
-    self_buf = (ctypes.c_int64 * 3)(0, 0, 0);
+    # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
+    # walkers carry the built-in `reports` list at index 2, so the user field
+    # `either` sits at index 3. `here` is a node: { vtable@0, __type_tag@1,
+    # val@2 } (nodes have no reports field), so `val` sits at index 2.
+    self_buf = (ctypes.c_int64 * 4)(0, 0, 0, 0);
     here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
-    assert self_buf[2] == 5 , "here.val was not read through the union member layout";
+    assert self_buf[3] == 5 , "here.val was not read through the union member layout";
     # A second member instance must accumulate the same way.
     here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
-    assert self_buf[2] == 12;
+    assert self_buf[3] == 12;
 }

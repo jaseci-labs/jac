@@ -18,7 +18,7 @@ import from typing { Any, cast }
 import from uuid { UUID }
 import from jac_scale._optdeps.redis { redis_module as redis }
 import from jac_scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,
     PersistentMemory,
