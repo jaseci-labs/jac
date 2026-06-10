@@ -1478,6 +1478,13 @@ test "gateway inherits admin + logs + llm-telemetry endpoint registrars" {
     # the SPA catchall and return index.html, breaking the client's .json().
     assert hasattr(gw, "register_traces_endpoints");
     assert hasattr(gw, "register_ops_endpoints");
+    # V-track Ops Console (V-02..V-06 + V-10) - same catchall hazard.
+    assert hasattr(gw, "register_deploy_health_endpoints");
+    assert hasattr(gw, "register_network_endpoints");
+    assert hasattr(gw, "register_images_endpoints");
+    assert hasattr(gw, "register_events_endpoints");
+    assert hasattr(gw, "register_podenv_endpoints");
+    assert hasattr(gw, "register_actions_endpoints");
 }
 
 # =============================================================================

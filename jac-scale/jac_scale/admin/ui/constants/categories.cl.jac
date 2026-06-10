@@ -27,7 +27,15 @@ cl {
              },
              {
                  "label": "Operations",
-                 "items": [{"id": "ops", "label": "Self-Check"}]
+                 "items": [
+                     {"id": "ops", "label": "Self-Check"},
+                     {"id": "deploy", "label": "Deploy Health"},
+                     {"id": "network", "label": "Endpoints & Storage"},
+                     {"id": "images", "label": "Image Freshness"},
+                     {"id": "events", "label": "Events"},
+                     {"id": "podenv", "label": "Pod Env"},
+                     {"id": "actions", "label": "Actions"}
+                 ]
              }
          ];
 }

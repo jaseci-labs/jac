@@ -18,6 +18,12 @@ cl import from "lucide-react" {
     Workflow,
     ScrollText,
     Stethoscope,
+    Boxes,
+    Network,
+    Container,
+    Activity,
+    KeyRound,
+    Wrench,
     LogOut,
     CircleUserRound,
     Sun,
@@ -41,6 +47,12 @@ cl {
     import from .monitoring.TracesPage { TracesPage }
     import from .logs.LogsPage { LogsPage }
     import from .ops.OpsPage { OpsPage }
+    import from .ops.DeployPage { DeployPage }
+    import from .ops.NetworkPage { NetworkPage }
+    import from .ops.ImagesPage { ImagesPage }
+    import from .ops.EventsPage { EventsPage }
+    import from .ops.PodEnvPage { PodEnvPage }
+    import from .ops.ActionsPage { ActionsPage }
 
     # Nav item id -> page component. Keep in sync with navGroups.
     glob PAGE_ROUTES = {
@@ -51,7 +63,13 @@ cl {
              "llm_traces": LLMTracesPage,
              "traces": TracesPage,
              "logs": LogsPage,
-             "ops": OpsPage
+             "ops": OpsPage,
+             "deploy": DeployPage,
+             "network": NetworkPage,
+             "images": ImagesPage,
+             "events": EventsPage,
+             "podenv": PodEnvPage,
+             "actions": ActionsPage
          };
 
     def:pub DashboardLayout -> JsxElement {
@@ -115,7 +133,13 @@ cl {
             "llm_traces": <Bot className={iconCls}/>,
             "traces": <Workflow className={iconCls}/>,
             "logs": <ScrollText className={iconCls}/>,
-            "ops": <Stethoscope className={iconCls}/>
+            "ops": <Stethoscope className={iconCls}/>,
+            "deploy": <Boxes className={iconCls}/>,
+            "network": <Network className={iconCls}/>,
+            "images": <Container className={iconCls}/>,
+            "events": <Activity className={iconCls}/>,
+            "podenv": <KeyRound className={iconCls}/>,
+            "actions": <Wrench className={iconCls}/>
         };
 
         uname = String(auth["currentUsername"] or "");
