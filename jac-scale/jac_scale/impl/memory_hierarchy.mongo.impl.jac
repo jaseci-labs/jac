@@ -793,10 +793,9 @@ impl MongoBackend.sync -> set {
         if span {
             span.set_attribute(
                 "mem.count",
-                len(node_inserts)
-                + len(edge_inserts)
-                + len(atomic_updates)
-                + len(partial_updates)
+                len(node_inserts) + len(edge_inserts) + len(atomic_updates) + len(
+                    partial_updates
+                )
             );
         }
 
