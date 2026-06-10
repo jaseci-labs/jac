@@ -193,11 +193,8 @@ cl {
             "node": str(ev.get("node", "") or "")
         };
         if kind == "call" {
-            node_name = str(ev.get("node", "") or "phase");
-            tin = int(ev.get("tokens_in", 0) or 0);
-            tout = int(ev.get("tokens_out", 0) or 0);
             model_name = str(ev.get("model", "") or "");
-            msg = "Call > " + node_name + "  in/out=" + str(tin) + "/" + str(tout);
+            msg = "Call > " + formatCallEventText(ev);
             if model_name {
                 msg += "  model=" + model_name;
             }
@@ -315,6 +312,13 @@ cl {
         return "info";
     }
 
+    def formatCallEventText(ev: any) -> str {
+        node_name: str = str(ev.get("node", "") or "phase");
+        tokens_in: int = int(ev.get("tokens_in", 0) or 0);
+        tokens_out: int = int(ev.get("tokens_out", 0) or 0);
+        return node_name + " in/out=" + str(tokens_in) + "/" + str(tokens_out);
+    }
+
     def eventText(ev: any) -> str {
         kind = str(ev.get("kind", "") or "");
         text = str(ev.get("text", "") or "");
@@ -322,10 +326,7 @@ cl {
             return text;
         }
         if kind == "call" {
-            node_name: str = str(ev.get("node", "") or "phase");
-            tokens_in: int = int(ev.get("tokens_in", 0) or 0);
-            tokens_out: int = int(ev.get("tokens_out", 0) or 0);
-            return node_name + " in/out=" + str(tokens_in) + "/" + str(tokens_out);
+            return formatCallEventText(ev);
         }
         if kind == "phase" {
             return str(ev.get("node", "") or "phase");
@@ -688,24 +689,17 @@ cl {
             );
             return;
         }
-        if cmd == "/verbose" {
-            result = await toggleVerboseServer();
-            setInfo(
-                actions, "Verbose", [actionResultMessage(result, "verbose toggled")]
-            );
-            return;
-        }
-        if cmd == "/feedback" {
-            result = await toggleFeedbackServer();
-            setInfo(
-                actions, "Feedback", [actionResultMessage(result, "feedback toggled")]
-            );
-            return;
-        }
-        if cmd == "/stats" {
-            result = await toggleStatsServer();
-            setInfo(actions, "Stats", [actionResultMessage(result, "stats toggled")]);
-            return;
+        for (c, fn, title, fallback) in [
+            ("/verbose", toggleVerboseServer, "Verbose", "verbose toggled"),
+            ("/feedback", toggleFeedbackServer, "Feedback", "feedback toggled"),
+            ("/stats", toggleStatsServer, "Stats", "stats toggled"),
+
+        ] {
+            if cmd == c {
+                result = await fn();
+                setInfo(actions, title, [actionResultMessage(result, fallback)]);
+                return;
+            }
         }
         if cmd == "/guides" {
             guides = list(await fetchGuides() or []);
@@ -904,13 +898,23 @@ cl {
             appCtl.exit();
         }
 
+        def setStatus(value: str) {
+            status = value;
+        }
+        def setModel(value: str) {
+            model = value;
+        }
+        def setStats(value: any) {
+            stats = value or {"has_run": False};
+        }
+
         actions = {
             "toggleHelp": toggleHelp,
             "toggleUsage": toggleUsage,
             "toggleStats": toggleStats,
             "clear": clearView,
-            "setStatus": lambda (value: str) { status = value; },
-            "setModel": lambda (value: str) { model = value; },
+            "setStatus": setStatus,
+            "setModel": setModel,
             "setSettings": lambda (value: any) { settingsData = value or {}; },
             "setInfoTitle": lambda (value: str) { infoTitle = value; },
             "setInfoLines": lambda (value: any) { infoLines = list(value or []); },
@@ -921,15 +925,14 @@ cl {
         useEffect(
             lambda {
                 stream_setters = {
-                    "setStatus": lambda (value: str) { status = value; },
+                    "setStatus": setStatus,
                     "setActive": lambda (value: str) { active = value; },
-                    "setModel": lambda (value: str) { model = value; },
+                    "setModel": setModel,
                     "setPhase": lambda (value: str) { phase = value; },
                     "setEvents": lambda (value: any) { events = list(value or []); },
                     "setNeedsKey": lambda (value: bool) { needsKey = value; },
                     "setKeyEnv": lambda (value: str) { keyEnv = value; },
-                    "setStats": lambda (value: any) { stats = value
-                    or {"has_run": False}; },
+                    "setStats": setStats,
                     "setPath": lambda (value: any) { path = list(value or []); }
                 };
                 streamLoop(stream_setters);

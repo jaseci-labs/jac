@@ -59,13 +59,20 @@ impl run_tui_session(req: object) -> int {
         ]
     );
 
-    ready_fd = -1;
-    ready_path = "";
-    try {
-        (ready_fd, ready_path) = tempfile.mkstemp(prefix="jac-ai-tui-port-", text=True);
-        os.close(ready_fd);
-    } except Exception as e {
-        console.error(f"Failed to create server ready file: {e}");
+    def make_temp(prefix: str, suffix: str = "") -> tuple[int, str] {
+        fd = -1;
+        path = "";
+        try {
+            (fd, path) = tempfile.mkstemp(prefix=prefix, suffix=suffix, text=True);
+            os.close(fd);
+        } except Exception as e {
+            console.error(f"Failed to create temp file ({prefix}): {e}");
+        }
+        return (fd, path);
+    }
+
+    (ready_fd, ready_path) = make_temp("jac-ai-tui-port-");
+    if not ready_path {
         return 1;
     }
 
@@ -76,7 +83,6 @@ impl run_tui_session(req: object) -> int {
     api_url = "";
     try {
         console.print("");
-        console.print("  Jac AI -- Ink TUI", style="bold");
         console.print(f"  project: {env['JAC_AI_UI_PROJECT']}", style="muted");
         console.print("  starting agent server…", style="muted");
 
@@ -93,13 +99,8 @@ impl run_tui_session(req: object) -> int {
         );
         # Write server output to a log file, not an unread PIPE — a full pipe
         # blocks console.print in the child and stalls SSE heartbeats.
-        server_log_fd = -1;
-        try {
-            (server_log_fd, server_log_path) = tempfile.mkstemp(
-                prefix="jac-ai-tui-server-", suffix=".log", text=True
-            );
-        } except Exception as e {
-            console.error(f"Failed to create server log file: {e}");
+        (server_log_fd, server_log_path) = make_temp("jac-ai-tui-server-", ".log");
+        if not server_log_path {
             return 1;
         }
         server_log_f = open(server_log_path, "w", encoding="utf-8");
@@ -169,23 +170,16 @@ impl run_tui_session(req: object) -> int {
         ink_compile = super_pkg / "ink_compile";
         compile_py = ink_compile / "compile.py";
         bundle_patch_py = ink_compile / "bundle_patch.py";
-        need_compile = (
-            not runner_mjs.is_file()
-            or ink_source.stat().st_mtime > runner_mjs.stat().st_mtime
-        );
-        if (
-            not need_compile
-            and compile_py.is_file()
-            and compile_py.stat().st_mtime > runner_mjs.stat().st_mtime
-        ) {
-            need_compile = True;
-        }
-        if (
-            not need_compile
-            and bundle_patch_py.is_file()
-            and bundle_patch_py.stat().st_mtime > runner_mjs.stat().st_mtime
-        ) {
-            need_compile = True;
+        sources = [ink_source, compile_py, bundle_patch_py];
+        need_compile = not runner_mjs.is_file();
+        if not need_compile {
+            runner_mtime = runner_mjs.stat().st_mtime;
+            for src in sources {
+                if src.is_file() and src.stat().st_mtime > runner_mtime {
+                    need_compile = True;
+                    break;
+                }
+            }
         }
         if need_compile {
             console.print("  compiling Ink TUI…", style="muted");
