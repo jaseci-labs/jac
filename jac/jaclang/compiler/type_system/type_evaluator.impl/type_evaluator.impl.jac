@@ -478,10 +478,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                 }
-                elem_type = self.get_type_of_expression(expr.out_expr);
-                if isinstance(list_inst, types.ClassType)
-                and not isinstance(elem_type, types.UnknownType) {
-                    list_inst.private.type_args = [elem_type];
+                # Bidirectional: flow the expected element type into the
+                # output expression (so nested comprehensions and literals
+                # adopt it too) and adopt it as this comprehension's element
+                # type when the inferred output is assignable. This types
+                # `[[None for _ in range(n)] for _ in range(n)]` under a
+                # `list[list[T | None]]` annotation as nested `T | None`
+                # lists instead of `list[None]`.
+                expected_elem_lc = self._get_expected_element_type(
+                    expected_type, self.prefetch.list_class
+                );
+                elem_type = self.get_type_of_expression(
+                    expr.out_expr, expected_elem_lc
+                );
+                if isinstance(list_inst, types.ClassType) {
+                    if expected_elem_lc is not None
+                    and (
+                        isinstance(elem_type, types.UnknownType)
+                        or self.assign_type(elem_type, expected_elem_lc)
+                    ) {
+                        list_inst.private.type_args = [expected_elem_lc];
+                    } elif not isinstance(elem_type, types.UnknownType) {
+                        list_inst.private.type_args = [elem_type];
+                    }
                 }
                 return list_inst;
             }
@@ -3507,11 +3526,13 @@ impl TypeEvaluator.get_type_of_expression(
         return self.get_type_of_ability(node_);
     }
     # Use cached result if available, UNLESS expected_type is provided
-    # for a container literal that could benefit from bidirectional inference.
+    # for a container literal or comprehension that could benefit from
+    # bidirectional inference (ListCompr also covers Set/Gen comprehensions
+    # by inheritance).
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
-            node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal)
+            node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal, uni.ListCompr)
         ) {
             # Whole-expression CFG narrowing: chained subscripts like
             # `self.squares[r][c]` aren't narrowed by the AtomTrailer

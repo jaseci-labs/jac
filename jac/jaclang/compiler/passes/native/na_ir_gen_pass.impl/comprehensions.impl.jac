@@ -9,6 +9,12 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     # bidirectionally from the assignment/return context).
     elem_type_name = "i64";
     _own_spec = self._elem_spec_of(nd);
+    if _own_spec == "i64" and isinstance(nd.out_expr, uni.Null) {
+        # `[None for ...]` with no expected type stamps `list[None]`, whose
+        # element lowers to the scalar i64 None-sentinel - but a bare-None
+        # element is a null pointer, not a scalar payload.
+        _own_spec = "ptr";
+    }
     if _own_spec is not None {
         elem_type_name = _own_spec;
     } else {
