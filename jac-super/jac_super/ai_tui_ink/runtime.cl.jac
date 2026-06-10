@@ -898,13 +898,13 @@ cl {
             appCtl.exit();
         }
 
-        def setStatus(value: str) {
+        def updateStatus(value: str) {
             status = value;
         }
-        def setModel(value: str) {
+        def updateModel(value: str) {
             model = value;
         }
-        def setStats(value: any) {
+        def updateStats(value: any) {
             stats = value or {"has_run": False};
         }
 
@@ -913,8 +913,8 @@ cl {
             "toggleUsage": toggleUsage,
             "toggleStats": toggleStats,
             "clear": clearView,
-            "setStatus": setStatus,
-            "setModel": setModel,
+            "setStatus": updateStatus,
+            "setModel": updateModel,
             "setSettings": lambda (value: any) { settingsData = value or {}; },
             "setInfoTitle": lambda (value: str) { infoTitle = value; },
             "setInfoLines": lambda (value: any) { infoLines = list(value or []); },
@@ -925,14 +925,14 @@ cl {
         useEffect(
             lambda {
                 stream_setters = {
-                    "setStatus": setStatus,
+                    "setStatus": updateStatus,
                     "setActive": lambda (value: str) { active = value; },
-                    "setModel": setModel,
+                    "setModel": updateModel,
                     "setPhase": lambda (value: str) { phase = value; },
                     "setEvents": lambda (value: any) { events = list(value or []); },
                     "setNeedsKey": lambda (value: bool) { needsKey = value; },
                     "setKeyEnv": lambda (value: str) { keyEnv = value; },
-                    "setStats": setStats,
+                    "setStats": updateStats,
                     "setPath": lambda (value: any) { path = list(value or []); }
                 };
                 streamLoop(stream_setters);

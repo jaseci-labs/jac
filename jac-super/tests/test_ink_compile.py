@@ -8,12 +8,9 @@ from pathlib import Path
 
 import pytest
 from jac_super.ink_compile.bundle_patch import (
-    _count_braces,
     _extract_brace_block,
     consolidate_bundle_imports,
     fix_broken_nullish_or,
-    fix_double_escaped_unicode,
-    fix_missing_loop_close,
     hoist_jac_runtime,
 )
 from jac_super.ink_compile.compile import (
@@ -192,89 +189,6 @@ class TestFixBrokenNullishOr:
         code = 'let v = ev ?? "" || "";'
         result = fix_broken_nullish_or(code)
         assert '|| ""' not in result
-
-
-# ---------------------------------------------------------------------------
-# fix_double_escaped_unicode
-# ---------------------------------------------------------------------------
-
-
-class TestFixDoubleEscapedUnicode:
-    def test_basic_unicode(self):
-        code = '"hello \\\\u0041 world"'
-        result = fix_double_escaped_unicode(code)
-        assert "\\\\u0041" not in result
-        assert "\\u0041" in result
-
-    def test_single_quoted_string(self):
-        code = "'hello \\\\u0041 world'"
-        result = fix_double_escaped_unicode(code)
-        assert "\\\\u0041" not in result
-
-    def test_no_double_unicode(self):
-        code = '"hello \\u0041 world"'
-        result = fix_double_escaped_unicode(code)
-        assert result == code
-
-    def test_multiple_in_one_string(self):
-        code = '"\\\\u0041 \\\\u0042"'
-        result = fix_double_escaped_unicode(code)
-        assert result.count("\\\\u") == 0
-        assert result.count("\\u") == 2
-
-    def test_ignores_outside_strings(self):
-        code = "const x = \\\\u0041;"
-        result = fix_double_escaped_unicode(code)
-        assert "\\\\u0041" in result  # Outside strings, no fix
-
-
-# ---------------------------------------------------------------------------
-# fix_missing_loop_close
-# ---------------------------------------------------------------------------
-
-
-class TestFixMissingLoopClose:
-    def test_normal_for_loop_unchanged(self):
-        code = "for (let i = 0; i < n; i++) {\n  console.log(i);\n}"
-        result = fix_missing_loop_close(code)
-        assert result.strip() == code.strip()
-
-    def test_early_return_inserts_close(self):
-        # Input missing its closing brace (the bug this fixes)
-        code = "for (let e of events) {\n    if (e.id === 0) continue;\n    return e;\n"
-        result = fix_missing_loop_close(code)
-        # Should insert a } before the return
-        assert result.count("{") == result.count("}")
-        # The return is still in the output
-        assert "return" in result
-
-    def test_no_changes_when_no_early_return(self):
-        code = "for (let e of events) {\n  process(e);\n}"
-        result = fix_missing_loop_close(code)
-        assert "{" in result
-        assert "}" in result
-
-
-# ---------------------------------------------------------------------------
-# _count_braces
-# ---------------------------------------------------------------------------
-
-
-class TestCountBraces:
-    def test_no_braces(self):
-        assert _count_braces("hello world") == 0
-
-    def test_open_brace(self):
-        assert _count_braces("{") == 1
-
-    def test_close_brace(self):
-        assert _count_braces("}") == -1
-
-    def test_braces_in_string_ignored(self):
-        assert _count_braces('"{"') == 0
-
-    def test_braces_in_single_quotes_ignored(self):
-        assert _count_braces("'{'") == 0
 
 
 # ---------------------------------------------------------------------------

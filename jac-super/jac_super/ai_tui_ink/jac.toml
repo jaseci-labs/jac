@@ -1,16 +1,18 @@
-[project]
-name = "jac-ai-tui"
-version = "0.1.0"
-description = "Ink-based TUI for Jac AI"
-entry-point = "runtime.cl.jac"
+{
+  [project]
+  name = "jac-ai-tui"
+  version = "0.1.0"
+  description = "Ink-based TUI for Jac AI"
+  entry-point = "runtime.cl.jac"
 
-[check.lint]
-ignore = ["remove-empty-parens"]
+  [check.lint]
+  ignore = ["remove-empty-parens"]
 
-[check]
-suppress = ["E1001", "E1030", "E1031", "E1032", "E1053", "E1055"]
+  [check]
+  suppress = ["E1001", "E1030", "E1031", "E1032", "E1053", "E1055"]
 
-[dependencies.npm]
-ink = "^7.0.3"
-react = "^19.2.4"
-ink-text-input = "^6.0.0"
+  [dependencies.npm]
+  ink = ^"7.0.3"
+  react = ^"19.2.4"
+  ink-text-input = ^"6.0.0"
+}

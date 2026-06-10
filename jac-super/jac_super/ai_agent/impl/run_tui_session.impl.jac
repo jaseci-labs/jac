@@ -104,7 +104,6 @@ impl run_tui_session(req: object) -> int {
             return 1;
         }
         server_log_f = open(server_log_path, "w", encoding="utf-8");
-        os.close(server_log_fd);
         server_proc = subprocess.Popen(
             [sys.executable, "-c", server_cmd],
             cwd=str(server_dir),

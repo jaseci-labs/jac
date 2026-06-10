@@ -13,9 +13,6 @@ from pathlib import Path
 from jac_super.ink_compile.bundle_patch import (
     consolidate_bundle_imports,
     fix_broken_nullish_or,
-    fix_double_escaped_unicode,
-    fix_missing_loop_close,
-    fix_tuple_unpack_loops,
     hoist_jac_runtime,
 )
 from jaclang import JacRuntime as Jac
@@ -181,13 +178,9 @@ def _prepare_tui_module(
     code = _strip_inlined_jac_runtime(bundle_code)
     code = _remove_register_client_module(code)
     code, jac_runtime = hoist_jac_runtime(code)
-    code = fix_tuple_unpack_loops(code, entry_file)
-    code = fix_missing_loop_close(code)
-    code = fix_double_escaped_unicode(code)
     code = fix_broken_nullish_or(code)
     if jac_runtime:
         jac_runtime = fix_broken_nullish_or(jac_runtime)
-        jac_runtime = fix_double_escaped_unicode(jac_runtime)
     code = _inject_runtime_imports(code, jac_runtime is not None)
     code = _strip_shimmed_react_imports(code)
     code = _replace_python_os_import(code)
