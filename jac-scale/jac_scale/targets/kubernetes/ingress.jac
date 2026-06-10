@@ -547,16 +547,22 @@ obj IngressDeployer {
             ingress_annotations[str(k)] = str(v);
         }
         main_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
-        # On a shared nginx controller, cert-manager's ingress-shim issues a
-        # per-domain Let's Encrypt cert only when the Ingress carries a spec.tls
-        # block (the issuer itself comes from the caller's
-        # cert-manager.io/cluster-issuer annotation in shared_ingress_annotations).
-        # Non-nginx shared controllers (AWS ALB + ACM) terminate TLS at the load
-        # balancer and need no spec.tls, so this is gated on the nginx class.
+        # cert-manager's ingress-shim issues a per-domain cert only when the
+        # Ingress carries BOTH a cert-manager issuer annotation AND a spec.tls
+        # block. The annotation comes from the caller (shared_ingress_annotations);
+        # add the matching spec.tls here whenever cert-manager is the issuer.
+        # Keyed off the annotation, not the class name, so any nginx class works
+        # (e.g. a per-platform 'jb-custom' class, not just literally 'nginx').
+        # ALB + ACM shared controllers have no cert-manager annotation and
+        # terminate TLS at the load balancer, so they correctly get no spec.tls.
+        cert_manager_managed = (
+            'cert-manager.io/cluster-issuer' in self.k8s_config.shared_ingress_annotations
+            or 'cert-manager.io/issuer' in self.k8s_config.shared_ingress_annotations
+        );
         if (
             self.k8s_config.shared_ingress
             and self.k8s_config.shared_ingress_tls
-            and uses_nginx
+            and cert_manager_managed
             and self.k8s_config.domain
         ) {
             main_spec['tls'] = [
