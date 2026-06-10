@@ -193,9 +193,13 @@ For event-driven scaling or scale-to-zero, switch to the KEDA engine:
 ```toml
 [plugins.scale.kubernetes]
 autoscaler_engine = "keda"
-min_replicas = 1
-max_replicas = 10
-idle_replicas = 0   # Scale to zero when idle
+min_replicas = 1              # default 1; floor while triggers are active
+max_replicas = 10             # default 3; ceiling for scale-out
+cpu_utilization_target = 50   # default 50; seeds a CPU trigger (requires cpu_request)
+idle_replicas = 0             # default null (uses min_replicas); set 0 for scale-to-zero
+autoscaler_polling_interval = 30   # default 30; seconds between trigger evaluations
+autoscaler_cooldown = 300          # default 300; seconds of inactivity before scaling down
+autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scale-to-zero kicks in
 ```
 
 !!! note
