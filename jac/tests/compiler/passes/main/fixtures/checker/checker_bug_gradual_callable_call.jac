@@ -1,11 +1,3 @@
-"""Bug #GRADUAL-CALL fixture.
-
-Calling a value typed as a bare `Callable` (or `Callable[..., T]`) must accept
-any argument list. The real-world trigger is the language-server decorator
-pattern `server.feature(method)(handler)`, where `feature` is annotated
-`-> Callable`.
-"""
-
 obj Server {
     def feature(method: str) -> Callable;
 }
