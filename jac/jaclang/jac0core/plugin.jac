@@ -7,7 +7,7 @@ that supports only the features used by the Jac ecosystem.
 import inspect;
 import importlib.metadata;
 import from collections.abc { Callable }
-import from typing { Any, TypeVar }
+import from typing { Any, TypeVar, cast }
 
 glob _F = TypeVar('_F', bound=Callable[(..., object)]),
      _IMPL_ATTR = '_jac_hookimpl',
@@ -56,14 +56,16 @@ def _get_argnames(func: Callable[(..., Any)]) -> (tuple[(str, ...)] | None) {
 }
 
 """True when every parameter is positional-or-keyword or keyword-only, so a
-real-signature wrapper can forward them by name safely."""
+real-signature wrapper can forward them by name safely. Params named `__jac*`
+are rejected too: they would collide with the codegen'd internals."""
 def _is_simple_sig(sig: inspect.Signature) -> bool {
     for p in sig.parameters.values() {
         if p.kind in (
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
             inspect.Parameter.POSITIONAL_ONLY
-        ) {
+        )
+        or p.name.startswith('__jac') {
             return False;
         }
     }
@@ -80,7 +82,7 @@ def _build_devirt(
     argnames: (tuple[(str, ...)] | None),
     is_coro: bool
 ) -> Callable[(..., Any)] {
-    ns = {'_impl': impl_fn, 'inspect': inspect};
+    ns: dict[(str, Any)] = {'__jac_impl': impl_fn, '__jac_inspect': inspect};
     src_params = [];
     fwd = [];
     seen_kwonly = False;
@@ -92,8 +94,8 @@ def _build_devirt(
         if p.default is inspect.Parameter.empty {
             src_params.append(p.name);
         } else {
-            ns['_d' + str(i)] = p.default;
-            src_params.append(p.name + '=_d' + str(i));
+            ns['__jac_d' + str(i)] = p.default;
+            src_params.append(p.name + '=__jac_d' + str(i));
         }
         if (argnames is None) or (p.name in argnames) {
             fwd.append(p.name + '=' + p.name);
@@ -102,18 +104,18 @@ def _build_devirt(
     kw = 'async def ' if is_coro else 'def ';
     lines = [kw + name + '(' + ', '.join(src_params) + '):'];
     if is_coro {
-        lines.append('    result = _impl(' + ', '.join(fwd) + ')');
-        lines.append('    if inspect.iscoroutine(result):');
-        lines.append('        return await result');
-        lines.append('    return result');
+        lines.append('    __jac_result = __jac_impl(' + ', '.join(fwd) + ')');
+        lines.append('    if __jac_inspect.iscoroutine(__jac_result):');
+        lines.append('        return await __jac_result');
+        lines.append('    return __jac_result');
     } else {
-        lines.append('    return _impl(' + ', '.join(fwd) + ')');
+        lines.append('    return __jac_impl(' + ', '.join(fwd) + ')');
     }
     exec('\n'.join(lines) + '\n', ns);
     fn = ns[name];
     fn.__name__ = name;
     fn.__signature__ = sig;
-    return fn;
+    return cast(Callable[(..., Any)], fn);
 }
 
 """Represents a single hook implementation."""

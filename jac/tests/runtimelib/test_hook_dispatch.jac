@@ -43,6 +43,12 @@ class PassPlugin {
     }
 }
 
+"""Non-firstresult spec: returns a result list, so seal() must not devirt."""
+class SpecNoFirst {
+    @hookspec
+    static def act(x: int) -> object { }
+}
+
 """Fresh plugin manager with the `act` firstresult hookspec registered."""
 def fresh_pm -> pluggy.PluginManager {
     pm = pluggy.PluginManager("jac");
@@ -62,7 +68,7 @@ def facade_for(pm: pluggy.PluginManager) -> type {
 
 """True when the facade's `act` is the direct-call devirtualization."""
 def is_devirt(facade: type) -> bool {
-    return "_impl" in facade.act.__globals__;
+    return "__jac_impl" in facade.act.__globals__;
 }
 
 # ===================== Tier 2: helper correctness =====================
@@ -74,11 +80,14 @@ def _f_varargs(*a: int) { }
 
 def _f_varkw(**k: int) { }
 
+def _f_jacprefixed(__jac_x: int) { }
+
 test "is_simple_sig classifies signatures" {
     assert _is_simple_sig(inspect.signature(_f_simple)) == True;
     assert _is_simple_sig(inspect.signature(_f_kwonly)) == True;
     assert _is_simple_sig(inspect.signature(_f_varargs)) == False;
     assert _is_simple_sig(inspect.signature(_f_varkw)) == False;
+    assert _is_simple_sig(inspect.signature(_f_jacprefixed)) == False;
 }
 
 test "build_devirt preserves behavior and signature" {
@@ -90,7 +99,26 @@ test "build_devirt preserves behavior and signature" {
     assert dv(5) == 50;
     assert dv(x=5) == 50;
     assert inspect.signature(dv) == sig;
-    assert "_impl" in dv.__globals__;
+    assert "__jac_impl" in dv.__globals__;
+}
+
+test "build_devirt survives collision-prone param names" {
+    def impl(c: int, result: int = 2) -> object {
+        return [c, result];
+    }
+    sig = inspect.signature(impl);
+    dv = _build_devirt("act", sig, impl, ("c", "result"), False);
+    assert dv(1) == [1, 2];
+    assert dv(c=5, result=6) == [5, 6];
+}
+
+test "async build_devirt survives a param named inspect" {
+    async def aimpl(inspect: int) -> object {
+        return inspect + 100;
+    }
+    sig = inspect.signature(aimpl);
+    dv = _build_devirt("act", sig, aimpl, ("inspect", ), True);
+    assert asyncio.run(dv(4)) == 104;
 }
 
 test "build_devirt forwards only the impl's argnames" {
@@ -174,6 +202,39 @@ test "phase-1 codegen proxy matches reflective proxy" {
     }
 }
 
+"""Param names that would collide with unmangled codegen internals."""
+class CollideIface {
+    static def collide_hook(c: int, result: int = 2, inspect: int = 3) -> object { }
+}
+
+class CollideImpl {
+    @hookimpl
+    static def collide_hook(c: int, result: int = 2, inspect: int = 3) -> object {
+        return [c, result, inspect];
+    }
+}
+
+test "codegen proxy survives collision-prone param names" {
+    (spec_cls, _ic, proxy_cls) = generate_plugin_helpers(CollideIface);
+    assert proxy_cls.collide_hook.__code__.co_varnames[:3] == (
+        "c",
+        "result",
+        "inspect"
+    );
+    plugin_manager.add_hookspecs(spec_cls);
+    inst = CollideImpl();
+    pname = plugin_manager.register(inst);
+    try {
+        assert proxy_cls.collide_hook(1) == [1, 2, 3];
+        assert proxy_cls.collide_hook(7, result=8, inspect=9) == [7, 8, 9];
+    } finally {
+        plugin_manager.unregister(inst, name=pname);
+        try {
+            delattr(plugin_manager.hook, "collide_hook");
+        } except Exception { }
+    }
+}
+
 # ===================== Tier 1: seal / devirt / regression =====================
 test "seal devirtualizes a single-impl hook" {
     pm = fresh_pm();
@@ -182,6 +243,16 @@ test "seal devirtualizes a single-impl hook" {
     pm.seal(facade);
     assert is_devirt(facade);
     assert facade.act(5) == "core:5";
+}
+
+test "non-firstresult hook stays dynamic even with a single impl" {
+    pm = pluggy.PluginManager("jac");
+    pm.add_hookspecs(SpecNoFirst);
+    facade = facade_for(pm);
+    pm.register(CorePlugin());
+    pm.seal(facade);
+    assert not is_devirt(facade);
+    assert facade.act(5) == ["core:5"];
 }
 
 test "multi-impl hook stays dynamic (not devirtualized)" {

@@ -125,7 +125,9 @@ impl PluginManager._specialize_hook(hook_name: str) -> None {
     hook = getattr(self.hook, hook_name, None);
     impls = hook.get_hookimpls() if hook is not None else [];
     sig = inspect.signature(base);
-    if (len(impls) == 1) and _is_simple_sig(sig) {
+    # non-firstresult hooks return a list; a direct call would change that
+    is_firstresult = (hook is not None) and hook._firstresult;
+    if (len(impls) == 1) and is_firstresult and _is_simple_sig(sig) {
         hi = impls[0];
         setattr(
             self._facade,

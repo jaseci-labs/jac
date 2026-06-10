@@ -1012,7 +1012,8 @@ def generate_plugin_helpers(
                     inspect.Parameter.VAR_POSITIONAL,
                     inspect.Parameter.VAR_KEYWORD,
                     inspect.Parameter.POSITIONAL_ONLY
-                ) {
+                )
+                or p.name.startswith('__jac') {
                     simple = False;
                 }
             }
@@ -1054,10 +1055,10 @@ def generate_plugin_helpers(
             # HookCaller is created later (by add_hookspecs), so resolve it
             # lazily once and memoize in a one-element cell.
             ns = {
-                'plugin_manager': plugin_manager,
-                'inspect': inspect,
-                '_name': name,
-                '_cell': [None]
+                '__jac_pm': plugin_manager,
+                '__jac_inspect': inspect,
+                '__jac_name': name,
+                '__jac_cell': [None]
             };
             src_params = [];
             fwd = [];
@@ -1070,25 +1071,25 @@ def generate_plugin_helpers(
                 if p.default is inspect.Parameter.empty {
                     src_params.append(p.name);
                 } else {
-                    ns['_d' + str(i)] = p.default;
-                    src_params.append(p.name + '=_d' + str(i));
+                    ns['__jac_d' + str(i)] = p.default;
+                    src_params.append(p.name + '=__jac_d' + str(i));
                 }
                 fwd.append(p.name + '=' + p.name);
             }
             kw = 'async def ' if is_coro else 'def ';
             lines = [
                 kw + name + '(' + ', '.join(src_params) + '):',
-                '    c = _cell[0]',
-                '    if c is None:',
-                '        c = _cell[0] = getattr(plugin_manager.hook, _name)'
+                '    __jac_c = __jac_cell[0]',
+                '    if __jac_c is None:',
+                '        __jac_c = __jac_cell[0] = getattr(__jac_pm.hook, __jac_name)'
             ];
             if is_coro {
-                lines.append('    result = c(' + ', '.join(fwd) + ')');
-                lines.append('    if inspect.iscoroutine(result):');
-                lines.append('        return await result');
-                lines.append('    return result');
+                lines.append('    __jac_result = __jac_c(' + ', '.join(fwd) + ')');
+                lines.append('    if __jac_inspect.iscoroutine(__jac_result):');
+                lines.append('        return await __jac_result');
+                lines.append('    return __jac_result');
             } else {
-                lines.append('    return c(' + ', '.join(fwd) + ')');
+                lines.append('    return __jac_c(' + ', '.join(fwd) + ')');
             }
             exec('\n'.join(lines) + '\n', ns);
             fn = ns[name];
@@ -1126,8 +1127,10 @@ with entry {
 # NOT called here. Sealing at import is unsafe: external plugins (byllm,
 # scale) have not registered yet, and the compiler's `without_plugins`
 # churn would transiently devirtualize their hooks to core stubs. Seal
-# is instead triggered explicitly from the `run` and `start` CLI commands,
-# once the plugin set is fully loaded and stable.
+# fires instead at the first `ExecutionContext` (see
+# runtimelib/impl/context.impl.jac, and the `--scale` override in
+# jac-scale's context.impl.jac) -- contexts are only built at run time,
+# after the plugin set is fully loaded and stable.
 """Jac Machine State.
 
 App identity (`base_path_dir`, `full_target_path`) lives on
