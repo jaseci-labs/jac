@@ -927,6 +927,8 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_llm_telemetry_endpoints();
     # /admin/traces/* (Tempo proxy) for the in-admin Traces page.
     self.register_traces_endpoints();
+    # /admin/analyst/* (A-07) - deterministic performance-incident digest.
+    self.register_analyst_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()

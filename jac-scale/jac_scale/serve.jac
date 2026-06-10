@@ -40,6 +40,7 @@ import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 import from jac_scale.admin.workloads { JacAPIServerWorkloads }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
+import from jac_scale.admin.analyst_api { JacAPIServerAnalyst }
 import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
@@ -225,7 +226,7 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerAnalyst, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: any | None = None,

@@ -601,6 +601,7 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_workloads_endpoints();
     self.register_logs_endpoints();
     self.register_traces_endpoints();
+    self.register_analyst_endpoints();
     # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();
