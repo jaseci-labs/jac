@@ -370,6 +370,26 @@ def create_callable_type(
         );
     }
 
+    # Gradual callables accept any call: give them *args/**kwargs.
+    if is_gradual {
+        parameters.append(
+            Parameter(
+                name="args",
+                category=ParameterCategory.ArgsList,
+                param_type=AnyType(),
+                param_kind=ParamKind.VARARG
+            )
+        );
+        parameters.append(
+            Parameter(
+                name="kwargs",
+                category=ParameterCategory.KwargsDict,
+                param_type=AnyType(),
+                param_kind=ParamKind.KWARG
+            )
+        );
+    }
+
     # Set GradualCallableForm flag only for Callable[..., T] form
     flags: int = FunctionTypeFlags.GradualCallableForm
         if is_gradual

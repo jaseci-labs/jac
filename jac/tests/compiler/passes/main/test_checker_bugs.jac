@@ -33,6 +33,7 @@ Bug index:
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #GRADUAL-CALL - calling a bare `Callable` / `Callable[..., T]` value raised a false E1051
 """
 
 import os;
@@ -904,6 +905,29 @@ test "bug_byte_literal_typed_as_bytes" {
         "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
         "so it assigns to bytes and concatenates with other bytes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #GRADUAL-CALL: calling a gradual `Callable` value raised a false E1051
+#
+# A bare `Callable` (and `Callable[..., T]`) evaluates to a FunctionType with
+# the GradualCallableForm flag and no parameters. validate_call_args matched
+# arguments against that empty parameter list, so the first positional arg
+# tripped "Too many positional arguments" (E1051). Per PEP 484 a gradual
+# callable accepts any argument list. The fix gives the gradual form synthetic
+# `*args: Any` / `**kwargs: Any` parameters so the existing VARARG/KWARG
+# matching accepts any call with no call-site special-casing.
+#
+# Real-world trigger: langserve `server.feature(method)(handler)`, where
+# `feature` is annotated `-> Callable`.
+# =========================================================================
+test "bug_gradual_call_accepts_any_arguments" {
+    program = compile_and_check("checker_bug_gradual_callable_call.jac");
+    assert program.errors_had == [] , (
+        "Bug #GRADUAL-CALL: calling a bare `Callable` / `Callable[..., T]` "
+        "value must accept any argument list (PEP 484 gradual form), not raise "
+        f"E1051. Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
 
