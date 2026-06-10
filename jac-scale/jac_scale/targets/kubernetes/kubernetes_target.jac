@@ -1549,7 +1549,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
                 triggers.append(t);
             }
-            AutoscalerFactory.create(
+            autoscaler_applied = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),
                 self.logger
@@ -1566,7 +1566,11 @@ obj KubernetesTarget(DeploymentTarget) {
                     triggers=triggers
                 )
             );
-            details["create_horizontal_auto_scaler"] = "Successful";
+            # apply() returns False when preflight bailed (e.g. KEDA not installed);
+            # stamping "Successful" in that case would misreport the deploy state.
+            details["create_horizontal_auto_scaler"] = "Successful"
+                if autoscaler_applied
+                else "Skipped: autoscaler engine not available on cluster";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.deploy(app_name, namespace, apps_v1, core_v1, provider);

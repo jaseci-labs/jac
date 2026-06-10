@@ -303,7 +303,8 @@ test "apply skips ScaledObject creation when KEDA CRDs are not installed" {
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
-    keda.apply(spec);
+    result = keda.apply(spec);
+    assert result == False;
     mock_api.create_namespaced_custom_object.assert_not_called();
     mock_api.patch_namespaced_custom_object.assert_not_called();
 }
@@ -356,7 +357,8 @@ test "apply creates TriggerAuthentication before ScaledObject" {
             )
         ]
     );
-    keda.apply(spec);
+    result = keda.apply(spec);
+    assert result == True;
     create_calls = mock_api.create_namespaced_custom_object.call_args_list;
     assert len(create_calls) == 2;
     assert create_calls[0][1]["plural"] == "triggerauthentications";
@@ -377,7 +379,8 @@ test "apply creates ScaledObject when it does not yet exist on the cluster" {
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
-    keda.apply(spec);
+    result = keda.apply(spec);
+    assert result == True;
     create_calls = [
         c
         for c in mock_api.create_namespaced_custom_object.call_args_list
@@ -403,7 +406,8 @@ test "apply patches ScaledObject when it already exists on the cluster" {
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
-    keda.apply(spec);
+    result = keda.apply(spec);
+    assert result == True;
     patch_calls = [
         c
         for c in mock_api.patch_namespaced_custom_object.call_args_list

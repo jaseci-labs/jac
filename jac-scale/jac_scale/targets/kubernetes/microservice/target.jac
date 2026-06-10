@@ -555,7 +555,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 triggers.append(t);
             }
             autoscaler_name = autoscaler.resource_name_for(k8s_name);
-            autoscaler.apply(
+            autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
                     scale_target_name=f"{k8s_name}-deployment",
                     autoscaler_name=autoscaler_name,
@@ -569,7 +569,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     triggers=triggers
                 )
             );
-            if self.logger {
+            # Only log success when apply() confirms it wrote the resource;
+            # a False return means preflight bailed silently (engine not available).
+            if self.logger and autoscaler_applied {
                 self.logger.info(
                     f"Applied autoscaler for '{svc_name}'", {"name": autoscaler_name}
                 );

@@ -48,10 +48,17 @@ class Autoscaler {
 
     """Create or update the autoscaler resource on the cluster.
 
+    Returns True when the resource was written to the cluster, False when a
+    preflight check determined the engine is unavailable and apply() exited
+    early without writing anything.  Callers must check the return value
+    before stamping a success detail or emitting an 'applied' log line —
+    engines like KEDAAutoscaler can degrade gracefully (no raise) yet still
+    have written nothing, so an unconditional 'Successful' would be a lie.
+
     Args:
         spec: Autoscaler specification including target, replicas, and triggers
     """
-    def apply(self: Autoscaler, spec: AutoscalerSpec) {
+    def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool {
         raise NotImplementedError(
             "apply() must be implemented by a concrete Autoscaler subclass"
         );

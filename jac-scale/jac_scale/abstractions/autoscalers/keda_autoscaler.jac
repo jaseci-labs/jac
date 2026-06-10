@@ -31,7 +31,7 @@ obj KEDAAutoscaler(Autoscaler) {
     def preflight -> list[str];
 
     """Create or patch ScaledObject (and TriggerAuthentications) on the cluster."""
-    def apply(spec: AutoscalerSpec) -> None;
+    def apply(spec: AutoscalerSpec) -> bool;
 
     """Delete a single ScaledObject from the cluster"""
     def destroy(autoscaler_name: str, namespace: str) -> None;

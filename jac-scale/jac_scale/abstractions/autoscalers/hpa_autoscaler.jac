@@ -15,7 +15,7 @@ obj HPAAutoscaler(Autoscaler) {
     def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
 
     """Validate triggers then create or patch the HPA on the cluster."""
-    def apply(spec: AutoscalerSpec) -> None;
+    def apply(spec: AutoscalerSpec) -> bool;
 
     """Delete the HPA resource from the cluster."""
     def destroy(autoscaler_name: str, namespace: str) -> None;

@@ -207,7 +207,7 @@ impl KEDAAutoscaler.apply{
         if self.logger {
             self.logger.warn(warnings[0]);
         }
-        return;
+        return False;
     }
     api = self._custom_api or client.CustomObjectsApi();
     # TriggerAuthentication must exist before ScaledObject; KEDA validates authenticationRef at admission time
@@ -246,6 +246,7 @@ impl KEDAAutoscaler.apply{
             raise;
         }
     }
+    return True;
 }
 
 """Delete a single ScaledObject by name; no-op if already absent."""

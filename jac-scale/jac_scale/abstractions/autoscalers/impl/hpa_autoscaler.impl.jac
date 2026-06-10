@@ -70,6 +70,7 @@ impl HPAAutoscaler.apply{
             raise;
         }
     }
+    return True;
 }
 
 """Delete the HPA resource; no-op if already absent."""
