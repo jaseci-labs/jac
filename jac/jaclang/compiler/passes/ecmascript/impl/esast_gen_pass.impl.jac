@@ -1112,10 +1112,25 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
             }
             if is_jsx_in_return {
                 abi = 'props_destructure';
+                # Check all positional params (posonly + regular) for a single
+                # ``props`` param so that ``def Comp(props: dict, /)`` is
+                # treated as passthrough, not destructure.  Without posonly
+                # awareness the check would see an empty ``sig.params`` and
+                # classify the component as destructure, while
+                # ``_param_names_from_ability`` (which walks posonly) would
+                # still return ``["props"]``, causing the call site to emit
+                # ``Comp({props: bundle})`` instead of the correct
+                # ``Comp(bundle)``.
+                all_pos_params: list[uni.ParamVar] = [];
+                if sig.posonly_params {
+                    all_pos_params.extend(sig.posonly_params);
+                }
+                if sig.params {
+                    all_pos_params.extend(sig.params);
+                }
                 if (
-                    sig.params
-                    and len(sig.params) == 1
-                    and sig.params[0].name.sym_name == 'props'
+                    len(all_pos_params) == 1
+                    and all_pos_params[0].name.sym_name == 'props'
                 ) {
                     abi = 'props_passthrough';
                 }
@@ -4384,12 +4399,20 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     # The forwarded `ref` is threaded as a trailing positional arg below, never a
     # destructured prop, so it is filtered out of the value-param handling here.
     sig_params = (
-        [p for p in nd.signature.params if p is not ref_param]
+        [
+            p
+            for p in nd.signature.params
+            if p is not ref_param
+        ]
             if isinstance(nd.signature, uni.FuncSignature)
             else []
     );
     value_params = (
-        [p for p in nd.signature.get_parameters() if p is not ref_param]
+        [
+            p
+            for p in nd.signature.get_parameters()
+            if p is not ref_param
+        ]
             if isinstance(nd.signature, uni.FuncSignature)
             else []
     );
@@ -4445,7 +4468,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             # `# jac:ignore[W5015]` for legitimate forwarding/HOC cases.
             if component_call_abi == 'props_passthrough' {
                 self.emit(
-                    W5015, node_override=sig_params[0], component=nd.name_ref.sym_name
+                    W5015, node_override=value_params[0], component=nd.name_ref.sym_name
                 );
             }
             for param in value_params {
