@@ -677,5 +677,5 @@ impl NaIRGenPass._emit_rc_live_dump -> None {
     cur.add_incoming(nxt, next_bb);
     b.branch(check_bb);
     b = ir.IRBuilder(after_bb);
-    self.builder = b;
+    self._builder = b;
 }

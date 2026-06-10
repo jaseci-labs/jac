@@ -420,11 +420,11 @@ impl start(
             no_client=no_client,
             on_ready=lambda actual_port :
                 _print_startup_message(
-                    dev,
-                    no_client,
-                    vite_port if (dev and not no_client) else actual_port,
-                    actual_port,
-                    base
+                    dev=dev,
+                    no_client=no_client,
+                    primary_port=vite_port if (dev and not no_client) else actual_port,
+                    api_port=actual_port,
+                    base_path=base
                 )
         );
         return 0;
@@ -540,7 +540,7 @@ def _count_jac_files(directory: str) -> int {
 
 """Print startup message based on mode."""
 def _print_startup_message(
-    dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
+    dev: bool, no_client: bool, primary_port: int, api_port: int, base_path: str = '.'
 ) {
     import from importlib.metadata { version as pkg_version }
 
@@ -554,12 +554,12 @@ def _print_startup_message(
 
     # Build URLs list as list of tuples to allow duplicate "Network" labels (like Vite)
     urls = [];
-    urls.append(("Local", f"http://localhost:{api_port}/"));
+    urls.append(("Local", f"http://localhost:{primary_port}/"));
 
     # Add network IPs (each as "Network" entry, just like Vite)
     network_ips = _get_network_ips();
     for ip in network_ips {
-        urls.append(("Network", f"http://{ip}:{api_port}/"));
+        urls.append(("Network", f"http://{ip}:{primary_port}/"));
     }
 
     # Print URLs with arrows
@@ -572,7 +572,7 @@ def _print_startup_message(
         console.print("  🚀 Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
-        console.print(f"    Vite:  http://localhost:{port}/", style="muted");
+        console.print(f"    Vite:  http://localhost:{primary_port}/", style="muted");
         console.print(f"    API:   http://localhost:{api_port}/", style="muted");
         console.print();
         # Count and show watching files

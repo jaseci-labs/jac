@@ -644,7 +644,7 @@ end-of-function terminator) are safe — releasing null is a no-op.
 impl NaIRGenPass._emit_scope_cleanup(
     skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
 ) -> None {
-    if self.builder is None {
+    if self._builder is None {
         return;
     }
     for (var_name, alloca) in self.local_vars.items() {
@@ -683,7 +683,7 @@ the loop body was codegen'd — any local present now but not in the
 snapshot was declared inside the body.
 """
 impl NaIRGenPass._emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None {
-    if self.builder is None or self.builder.block.is_terminated {
+    if self._builder is None or self._builder.block.is_terminated {
         return;
     }
     for var_name in list(self.local_vars.keys()) {
