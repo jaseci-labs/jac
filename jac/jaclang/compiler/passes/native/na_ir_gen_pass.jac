@@ -190,6 +190,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         osp_tags: dict[str, int] = {},
         osp_arch_kind: dict[str, str] = {},
         osp_type_tag_field: dict[str, int] = {},
+        # osp_reports_field: walker archetype name -> struct field index of the
+        #   built-in `reports` list (fixed at 2: vtable@0, __type_tag@1). The
+        #   kernel's on_complete delivers `scope.reports` here so `w.reports`
+        #   reads back the values reported during the walk (#6146).
+        osp_reports_field: dict[str, int] = {},
         osp_thunk_funcs: dict[str, ir.Function] = {},
         # The native-context osp_kernel module AST registered into this program
         # (None until _register_osp_kernel_module runs); NativeCompilePass links
@@ -459,6 +464,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         walker_name: str, walker_val: ir.Value, loc_val: ir.Value
     ) -> (ir.Value | None);
 
+    def _codegen_visit(nd: uni.VisitStmt) -> None;
+    def _codegen_disengage(nd: uni.DisengageStmt) -> None;
+    def _codegen_report(nd: uni.ReportStmt) -> None;
+    def _codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
+    def _osp_visit_targets(target: uni.UniNode) -> (ir.Value | None);
+    def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);

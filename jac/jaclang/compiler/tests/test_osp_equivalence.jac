@@ -81,7 +81,7 @@ test "osp visit order: chain / diamond / fan-out / cycle DFS traversal" {
         "visit_order_py",
         "visit_order_cl",
         "visit_order_na",
-        require=["cl"]
+        require=["na", "cl"]
     );
 }
 
@@ -94,7 +94,7 @@ test "osp exit ordering: entry-before-children, exit-after (shared-queue nesting
         "exit_ordering_py",
         "exit_ordering_cl",
         "exit_ordering_na",
-        require=["cl"]
+        require=["na", "cl"]
     );
 }
 
@@ -108,7 +108,7 @@ test "osp subtype dispatch: `with Base entry` fires on Sub; tuple trigger" {
         "subtype_dispatch_py",
         "subtype_dispatch_cl",
         "subtype_dispatch_na",
-        require=["cl"]
+        require=["na", "cl"]
     );
 }
 
@@ -119,14 +119,30 @@ test "osp disengage: early-exit captures the partial visit set" {
         "disengage_py",
         "disengage_cl",
         "disengage_na",
-        require=["cl"]
+        require=["na", "cl"]
+    );
+}
+
+test "osp visit-else + disengage-return: else fires at dead ends; post-disengage code never runs" {
+    assert run_py_fixture("osp_visit_else", "visit_else_py") == {
+        "seen": [1, 2, 3],
+        "ends": 1,
+        "hseen": [1, 2],
+        "tail": 0
+    };
+    run_with_both(
+        "osp_visit_else.jac",
+        "visit_else_py",
+        "visit_else_cl",
+        "visit_else_na",
+        require=["na"]
     );
 }
 
 test "osp report: per-walker reports survive the spawn boundary" {
     assert run_py_fixture("osp_report", "report_py") == {"reports": [10, 20, 30]};
     run_with_both(
-        "osp_report.jac", "report_py", "report_cl", "report_na", require=["cl"]
+        "osp_report.jac", "report_py", "report_cl", "report_na", require=["na", "cl"]
     );
 }
 
@@ -137,6 +153,6 @@ test "osp edge typed: `[->:Road:->]` follows only the typed edge" {
         "edge_typed_py",
         "edge_typed_cl",
         "edge_typed_na",
-        require=["cl"]
+        require=["na", "cl"]
     );
 }
