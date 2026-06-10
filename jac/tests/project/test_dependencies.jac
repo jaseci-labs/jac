@@ -498,10 +498,15 @@ test "DependencyInstaller uninstall_package" {
         venv_dir.mkdir(parents=True, exist_ok=True);
 
         with patch.object(installer, "_run_pip") as mock_pip {
-            mock_pip.return_value = (0, "Successfully uninstalled testpkg-1.0.0", "");
+            mock_pip.side_effect = [
+                (0, "Name: testpkg\nVersion: 1.0.0", ""),
+                (0, "Successfully uninstalled testpkg-1.0.0", "")
+            ];
             result = installer.uninstall_package("testpkg");
             assert result is True;
-            mock_pip.assert_called_once_with(["uninstall", "-y", "testpkg"]);
+            assert mock_pip.call_count == 2;
+            mock_pip.assert_any_call(["show", "testpkg"]);
+            mock_pip.assert_called_with(["uninstall", "-y", "testpkg"]);
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
