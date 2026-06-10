@@ -107,6 +107,7 @@ impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str]
     # Prefer uv's pip-compatible interface (much faster resolver/installer);
     # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
     uv_path = shutil.which("uv") if use_uv else None;
+    # `and args` guards against an empty args list to avoid IndexError on args[0].
     if uv_path and args {
         subcommand = args[0];
         return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
@@ -127,7 +128,8 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     }
     # Warn once when --prefer-binary is requested but uv has no equivalent,
     # so users know their flag was silently dropped rather than honoured.
-    if self.use_uv and "--prefer-binary" in args {
+    if self.use_uv and "--prefer-binary" in args and not self._warned_prefer_binary {
+        self._warned_prefer_binary = True;
         console.print(
             "  note: --prefer-binary has no uv equivalent and will be ignored"
             " (pass --no-uv or set JAC_NO_UV=1 to keep it)",

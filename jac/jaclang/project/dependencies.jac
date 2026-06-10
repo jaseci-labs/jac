@@ -25,7 +25,8 @@ obj DependencyInstaller {
         venv_dir: Path | None = None,
         verbose: bool = False,
         install_flags: list[str] | None = None,
-        use_uv: bool = True;
+        use_uv: bool = True,
+        _warned_prefer_binary: bool = False;
 
     def postinit -> None;
     def ensure_venv -> None;

@@ -1764,6 +1764,44 @@ test "DependencyInstaller JAC_NO_UV unset leaves use_uv True" {
     }
 }
 
+test "pip_command translates and drops flags correctly for uv" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = "/usr/bin/uv";
+        cmd = pip_command(
+            "/path/to/python",
+            [
+                "install",
+                "--force-reinstall",
+                "--no-cache-dir",
+                "--pre",
+                "--prefer-binary",
+                "--some-unknown",
+                "pkg"
+            ],
+            use_uv=True
+        );
+        assert "--reinstall" in cmd;
+        assert "--no-cache" in cmd;
+        assert "--prerelease=allow" in cmd;
+        assert "--some-unknown" in cmd;
+        assert "pkg" in cmd;
+        assert "--force-reinstall" not in cmd;
+        assert "--no-cache-dir" not in cmd;
+        assert "--pre" not in cmd;
+        assert "--prefer-binary" not in cmd;
+        # -y dropped (uv uninstall is non-interactive by default)
+        cmd2 = pip_command("/path/to/python", ["uninstall", "-y", "pkg"], use_uv=True);
+        assert "-y" not in cmd2;
+        assert "pkg" in cmd2;
+        # no translation when use_uv is False
+        cmd3 = pip_command(
+            "/path/to/python", ["install", "--force-reinstall", "pkg"], use_uv=False
+        );
+        assert "--force-reinstall" in cmd3;
+        assert "--reinstall" not in cmd3;
+    }
+}
+
 test "update always uses upgrade flag" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
