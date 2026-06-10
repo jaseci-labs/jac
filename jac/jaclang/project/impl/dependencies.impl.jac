@@ -241,26 +241,42 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         return True;
     }
     self.ensure_venv();
-    import re;
+    import json;
+    is_dry_run = "--dry-run" in self.install_flags;
+    # Snapshot before install so the diff reflects what actually changed
+    before_set: set[tuple] = set();
+    if not is_dry_run {
+        (rc_before, before_json, _) = self._run_pip(["list", "--format=json"]);
+        if rc_before == 0 {
+            before_set = {
+                (p["name"].lower(), p["version"]) for p in json.loads(before_json)
+            };
+        }
+    }
     (returncode, stdout, stderr) = self._run_pip(
         ["install", "--upgrade"] + self.install_flags + specs
     );
     if returncode == 0 {
-        if "--dry-run" in self.install_flags {
-            if stdout {
-                console.print(stdout, style="dim");
+        if is_dry_run {
+            # uv writes human output to stderr; pip writes to stdout
+            preview = stderr if self.use_uv else stdout;
+            if preview {
+                console.print(preview, style="dim");
             }
             return True;
         }
-        # Parse and display what was actually installed
-        if "Successfully installed" in stdout {
+        newly_installed: list[tuple] = [];
+        (rc_after, after_json, _) = self._run_pip(["list", "--format=json"]);
+        if rc_after == 0 {
+            after_set = {
+                (p["name"].lower(), p["version"]) for p in json.loads(after_json)
+            };
+            newly_installed = sorted(after_set - before_set);
+        }
+        if newly_installed {
             console.print("✔ Installation complete:", style="success");
-            installed = re.search(r"Successfully installed (.+)", stdout);
-            if installed {
-                packages = installed.group(1).split();
-                for pkg in packages {
-                    console.print(f"  ✓ {pkg}", style="dim");
-                }
+            for (pkg_name, pkg_ver) in newly_installed {
+                console.print(f"  ✓ {pkg_name}=={pkg_ver}", style="dim");
             }
         } else {
             console.print(
@@ -269,7 +285,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         }
         return True;
     }
-    # Batch failed - show error and suggest checking for conflicts
     console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
