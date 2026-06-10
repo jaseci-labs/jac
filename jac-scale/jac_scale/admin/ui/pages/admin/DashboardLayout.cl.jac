@@ -15,6 +15,7 @@ cl import from "lucide-react" {
     BarChart3,
     BrainCircuit,
     Bot,
+    Activity,
     Workflow,
     ScrollText,
     LogOut,
@@ -40,6 +41,7 @@ cl {
     import from .monitoring.WorkloadsPage { WorkloadsPage }
     import from .monitoring.GraphsPage { GraphsPage }
     import from .monitoring.TracesPage { TracesPage }
+    import from .monitoring.AnalystPage { AnalystPage }
     import from .logs.LogsPage { LogsPage }
 
     # Nav item id -> page component. Keep in sync with navGroups.
@@ -52,6 +54,7 @@ cl {
              "llm_metrics": LLMMetricsPage,
              "llm_traces": LLMTracesPage,
              "traces": TracesPage,
+             "analyst": AnalystPage,
              "logs": LogsPage
          };
 
@@ -115,6 +118,7 @@ cl {
             "llm_metrics": <BrainCircuit className={iconCls}/>,
             "llm_traces": <Bot className={iconCls}/>,
             "traces": <Workflow className={iconCls}/>,
+            "analyst": <Activity className={iconCls}/>,
             "logs": <ScrollText className={iconCls}/>
         };
 

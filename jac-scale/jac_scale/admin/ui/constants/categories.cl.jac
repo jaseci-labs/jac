@@ -24,6 +24,7 @@ cl {
                      {"id": "llm_metrics", "label": "LLM Metrics"},
                      {"id": "llm_traces", "label": "LLM Traces"},
                      {"id": "traces", "label": "Traces"},
+                     {"id": "analyst", "label": "Analyst"},
                      {"id": "logs", "label": "Logs"}
                  ]
              }
