@@ -1,4 +1,4 @@
-import from jac_scale._optdeps.kubernetes { client, ApiException }
+import from jac_scale._optdeps.kubernetes { client, ApiException, AutoscalingV2Api }
 import from jac_scale.abstractions.autoscaler {
     Autoscaler,
     AutoscalerSpec,
@@ -11,6 +11,7 @@ import from jac_scale.abstractions.logger { Logger }
 
 obj KEDAAutoscaler(Autoscaler) {
     has _custom_api: (any | None) = None,
+        _v2_api: (any | None) = None,
         logger: (Logger | None) = None;
 
     static has _preflight_cache: dict[str, any] = {};

@@ -210,6 +210,20 @@ impl KEDAAutoscaler.apply{
         return False;
     }
     api = self._custom_api or client.CustomObjectsApi();
+    # Engine-switch: remove any competing HPA left from a prior hpa-engine deploy.
+    # An active HPA and a new ScaledObject both drive spec.replicas on the same
+    # Deployment, producing non-deterministic scaling behaviour.
+    try {
+        (
+            self._v2_api or AutoscalingV2Api()
+        ).delete_namespaced_horizontal_pod_autoscaler(
+            name=f"{spec.scale_target_name}-hpa", namespace=spec.namespace
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
     # TriggerAuthentication must exist before ScaledObject; KEDA validates authenticationRef at admission time
     for trigger in spec.triggers {
         self._apply_trigger_auth(api, trigger, spec.namespace);
@@ -299,6 +313,18 @@ impl KEDAAutoscaler.destroy_collection{
             if e.status not in [404, 422] {
                 raise;
             }
+        }
+    }
+    # Also sweep any HPAs left from an hpa-engine deploy of the same app
+    try {
+        (
+            self._v2_api or AutoscalingV2Api()
+        ).delete_collection_namespaced_horizontal_pod_autoscaler(
+            namespace=namespace, label_selector=label_selector
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
         }
     }
 }

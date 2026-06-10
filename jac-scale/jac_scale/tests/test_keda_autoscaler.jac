@@ -342,7 +342,7 @@ test "apply creates TriggerAuthentication before ScaledObject" {
         ApiException(status=404),  # TriggerAuthentication does not exist yet
         ApiException(status=404)  # ScaledObject does not exist yet
     ];
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
         namespace="default",
@@ -373,7 +373,7 @@ test "apply creates ScaledObject when it does not yet exist on the cluster" {
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
     mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
         namespace="default",
@@ -400,7 +400,7 @@ test "apply patches ScaledObject when it already exists on the cluster" {
     mock_api.get_namespaced_custom_object.return_value = {
         "metadata": {"name": "svc-deployment-scaledobject"}
     };
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
         namespace="default",
@@ -416,6 +416,64 @@ test "apply patches ScaledObject when it already exists on the cluster" {
     assert len(patch_calls) == 1;
 }
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# engine-switch cleanup
+# ─────────────────────────────────────────────────────────────────────────────
+test "apply deletes competing HPA when switching from hpa engine to keda" {
+    # If an operator switches autoscaler_engine from hpa to keda and redeploys,
+    # the old HPA stays on the cluster and fights the new ScaledObject for
+    # spec.replicas.  apply() must attempt to remove it before writing the
+    # ScaledObject.  A 404 (no HPA present) must be silently ignored.
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_v2 = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2);
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    keda.apply(spec);
+    mock_v2.delete_namespaced_horizontal_pod_autoscaler.assert_called_once_with(
+        name="svc-deployment-hpa", namespace="default"
+    );
+}
+
+test "apply engine-switch HPA deletion is a no-op when no HPA exists" {
+    # 404 on the HPA delete means there was nothing to clean up; must not raise.
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_v2 = unittest.mock.MagicMock();
+    mock_v2.delete_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
+        status=404
+    );
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2);
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    result = keda.apply(spec);
+    assert result == True;
+}
+
+test "destroy collection also sweeps competing HPAs" {
+    # destroy_collection is called on jac start --scale --destroy.  Any HPA left
+    # from a prior hpa-engine deploy must be removed alongside ScaledObjects.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {"items": []};
+    mock_v2 = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2);
+    keda.destroy_collection("default", "managed=jac-scale");
+    mock_v2.delete_collection_namespaced_horizontal_pod_autoscaler.assert_called_once_with(
+        namespace="default", label_selector="managed=jac-scale"
+    );
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # destroy
@@ -457,7 +515,7 @@ test "destroy collection removes all labeled ScaledObjects and TriggerAuthentica
     mock_api.list_namespaced_custom_object.return_value = {
         "items": [{"metadata": {"name": "svc-scaledobject"}}]
     };
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     keda.destroy_collection("staging", "managed=jac-scale");
     delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
     assert len(delete_calls) == 2;
@@ -471,7 +529,7 @@ test "destroy collection is silent when KEDA CRDs are not installed (404)" {
     # must not crash.  Operators tear down staging environments regularly.
     mock_api = unittest.mock.MagicMock();
     mock_api.list_namespaced_custom_object.side_effect = ApiException(status=404);
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     keda.destroy_collection("staging", "managed=jac-scale");
     # reaching here without an exception is the assertion
 }
@@ -481,7 +539,7 @@ test "destroy collection is silent when cluster returns 422 for absent CRD group
     # does not exist.  Both must be treated as "nothing to delete".
     mock_api = unittest.mock.MagicMock();
     mock_api.list_namespaced_custom_object.side_effect = ApiException(status=422);
-    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     keda.destroy_collection("staging", "managed=jac-scale");
     # reaching here without an exception is the assertion
 }
