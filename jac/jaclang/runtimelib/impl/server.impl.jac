@@ -50,20 +50,14 @@ impl UserManager._ensure_connection -> None {
     }
 }
 
-impl UserManager.conn -> sqlite3.Connection {
-    if self._conn is None {
-        raise RuntimeError("SQLite connection is not initialized; call _ensure_connection() first");
-    }
-    return self._conn;
-}
-
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if user already exists
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
         );
         if cursor.fetchone() {
@@ -78,11 +72,11 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
         root_id = root_anchor.id.hex;
         token = secrets.token_urlsafe(32);
         password_hash = hashlib.sha256(password.encode()).hexdigest();
-        self.conn.execute(
+        self._conn.execute(
             "INSERT INTO users (username, password_hash, token, root_id) VALUES (?, ?, ?, ?)",
             (username, password_hash, token, root_id)
         );
-        self.conn.commit();
+        self._conn.commit();
         return {'username': username, 'token': token, 'root_id': root_id};
     }
 }
@@ -92,9 +86,10 @@ impl UserManager.authenticate(
     username: str, password: str
 ) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     with self._lock {
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT token, root_id FROM users WHERE username = ? AND password_hash = ?",
             (username, password_hash)
         );
@@ -109,8 +104,9 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT username FROM users WHERE token = ?", (token, )
         );
         row = cursor.fetchone();
@@ -121,8 +117,9 @@ impl UserManager.validate_token(token: str) -> (str | None) {
 """Get user's root node ID."""
 impl UserManager.get_root_id(username: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT root_id FROM users WHERE username = ?", (username, )
         );
         row = cursor.fetchone();
@@ -138,8 +135,9 @@ impl UserManager.aget_root_id(username: str) -> (str | None) {
 """Get user data by username."""
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (username, )
         );
         row = cursor.fetchone();
@@ -153,8 +151,9 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 """Check if a user exists."""
 impl UserManager.user_exists(username: str) -> bool {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
         );
         return cursor.fetchone() is not None;
@@ -167,25 +166,26 @@ impl UserManager.update_username(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if new username already exists
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ? ", (new_username, )
         );
         if cursor.fetchone() {
             return {'error': 'Username already taken'};
         }
         # Update username
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "UPDATE users SET username = ? WHERE username = ?",
             (new_username, current_username)
         );
-        self.conn.commit();
+        self._conn.commit();
         if cursor.rowcount == 0 {
             return {'error': 'User not found'};
         }
         # Get updated user data
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
         );
         row = cursor.fetchone();
@@ -199,10 +199,11 @@ impl UserManager.update_password(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Verify current password
         current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
             (username, current_password_hash)
         );
@@ -211,11 +212,11 @@ impl UserManager.update_password(
         }
         # Update password
         new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
-        cursor = self.conn.execute(
+        cursor = self._conn.execute(
             "UPDATE users SET password_hash = ? WHERE username = ?",
             (new_password_hash, username)
         );
-        self.conn.commit();
+        self._conn.commit();
         return {'username': username, 'message': 'Password updated successfully'};
     }
 }

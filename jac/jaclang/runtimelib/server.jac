@@ -75,15 +75,6 @@ obj UserManager {
 
     def postinit -> None;
     def _ensure_connection -> None;
-
-    """The live SQLite connection, asserting it has been opened.
-
-    Call `_ensure_connection()` before touching this. Centralizes the
-    non-None narrowing so call sites can use `self.conn` directly.
-    """
-    @property
-    def conn -> sqlite3.Connection;
-
     def create_user(username: str, password: str) -> dict[str, str];
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def validate_token(token: str) -> (str | None);
