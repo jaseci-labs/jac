@@ -129,6 +129,7 @@ Violations cause accessibility errors or runtime white screens.
 - **`AlertDialog` requires both `AlertDialogAction` and `AlertDialogCancel`** in the footer.
 - **`ButtonGroup` uses nested `<ButtonGroup>` for gaps** between sections; `<ButtonGroupSeparator>` for subtle 1px dividers only.
 - **`Field` + `FieldLabel` for form fields** - never raw `<div className="flex flex-col gap-2">` with a plain `<label>`.
+- **`Tooltip` must be wrapped in `<TooltipProvider>`** - usually at app root or `Layout.cl.jac`.
 
 ## Styling rules
 
@@ -196,6 +197,92 @@ menuAccent = "subtle" # subtle | bold
 ```
 
 `jac retheme --font <name>` patches `[dependencies.npm]` automatically - no manual font package edit, and `jac install` runs before `jac start --dev`.
+
+### baseColor vs theme
+
+**baseColor** sets the gray palette of the entire UI: backgrounds, borders, muted text,
+card surfaces, and secondary states. Think of it as the "temperature" of the neutral shades.
+
+| baseColor | Tone | Use when |
+|---|---|---|
+| neutral | Pure gray (default) | Most apps - safe universal choice |
+| stone | Warm gray | Organic, earthy, warm brands |
+| zinc | Cool gray | Technical, cold, developer tools |
+| gray | Mid gray | Clean, slightly warm neutral |
+
+**theme** is the accent/brand color layered on top of baseColor. It sets only `--primary`,
+chart highlight colors, and `--sidebar-primary`. These two are independent:
+`baseColor=neutral + theme=amber` = gray UI with amber buttons.
+
+### Theme reference
+
+Choose based on the app's domain and target audience.
+
+| Theme | Visual feel | Best for |
+|---|---|---|
+| neutral | Monochrome, no accent | Minimal tools, content-first apps |
+| stone | Neutral warm tone | Subtle warmth, organic brands |
+| zinc | Neutral cool tone | Cool/technical feel |
+| gray | Mid neutral tone | Clean, versatile |
+| amber | Warm orange-yellow | E-commerce, food, productivity |
+| orange | Bold orange | Energy, sports, bold consumer apps |
+| yellow | Bright yellow | Education, children, playful apps |
+| lime | Fresh lime-green | Environmental, health, food |
+| green | Classic green | Finance, health, success states |
+| emerald | Rich emerald-green | Health, wellness, sustainability |
+| teal | Teal/cyan-green | Healthcare, professional services |
+| cyan | Bright cyan | Tech, data visualization, modern SaaS |
+| sky | Light blue | Travel, cloud, open/airy feel |
+| blue | Classic blue | Enterprise, finance, trusted services |
+| indigo | Deep indigo/purple-blue | Developer tools, analytics, B2B SaaS |
+| violet | Vibrant violet | Creative tech, AI products |
+| purple | Deep purple | Premium, luxury, creative |
+| fuchsia | Hot pink-purple | Fashion, beauty, bold consumer |
+| pink | Soft pink | Lifestyle, wellness, social |
+| rose | Rose pink | Romantic, lifestyle, friendly apps |
+| red | Bold red | Alerts-heavy tools, bold brands |
+
+### Font reference
+
+Choose based on the app's tone and audience.
+
+| Font | Feel | Best for |
+|---|---|---|
+| figtree | Warm, friendly, modern | Default - most apps |
+| inter | Professional, neutral | SaaS, enterprise, dashboards |
+| geist | Clean technical, Vercel-like | Developer tools, API products |
+| geist-mono | Monospace, code-oriented | Code editors, terminal apps |
+| roboto | Neutral, Material-like | Familiar, widely readable |
+| raleway | Elegant, light weight | Portfolio, creative, luxury |
+| dm-sans | Modern, geometric | Startup, modern SaaS |
+| public-sans | Clean, government-like | Government, civic, structured |
+| outfit | Friendly, rounded | Mobile apps, consumer products |
+| noto-sans | Universal, multilingual | Apps needing broad language support |
+| nunito-sans | Rounded, approachable | Children, education, accessibility |
+| jetbrains-mono | Developer monospace | IDE-like tools, code display |
+
+### Full retheme flag reference
+
+```bash
+# Apply all 6 design choices from a UISpec in one command:
+jac retheme --style nova --baseColor neutral --theme indigo --font inter --radius default --menuAccent subtle
+
+# All supported flags (any combination, all optional):
+# --style       nova | vega | maia | lyra | mira
+# --baseColor   neutral | stone | zinc | gray        (NOT --base-color)
+# --theme       <any theme name from table above>
+# --font        <any font name from table above>
+# --radius      default | none | small | medium | large
+# --menuAccent  subtle | bold                        (NOT --menu-accent)
+# skip --menuColor: field exists but CSS generation ignores it (no visual effect)
+```
+
+> **Flag names are camelCase** - matching jac.toml key names exactly: `--baseColor` not
+> `--base-color`, `--menuAccent` not `--menu-accent`. Kebab-case variants are not recognized.
+>
+> **menuColor: exclude from UISpec and retheme calls.** The `--menuColor` flag and
+> `menuColor` jac.toml field exist, but `resolve_css_vars()` in jac-super does not process
+> them. Any value set has zero CSS effect. Leave as default until jac-super ships support.
 
 ### Understanding / hand-editing the generated CSS
 
@@ -314,6 +401,50 @@ def:pub EventListPage() -> JsxElement {
 - **`cn()` always from `lib/utils`**, never from `@jac/runtime`. It's pre-implemented - don't recreate it.
 - **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
 - **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac add`/`jac retheme` manage them.
+
+## Peer dependency chains
+
+`jac add --shadcn` auto-resolves peer dependencies via BFS. When building `UISpec.components`
+or calling `jac add`, list only primaries - never list peer components manually.
+
+| Primary | Auto-installed peers |
+|---|---|
+| sidebar | button, input, separator, sheet, skeleton, tooltip |
+| command | dialog |
+| dialog | button |
+| sheet | button |
+| pagination | button |
+| calendar | button |
+| toggle-group | toggle |
+| input-group | button, input, textarea |
+| field | label, separator |
+| item | separator |
+| button-group | separator |
+
+## Jac-shadcn gotchas
+
+Consolidated quick-reference. See Import patterns and component selection sections for full details.
+
+**Sidebar className spread** - Never pass `className` directly to `SidebarMenuButton`,
+`SidebarMenuAction`, `SidebarGroup`, `SidebarMenuItem`, or `SidebarTrigger`. The prop
+spreads after computed base classes, overriding them. Use a wrapping `<div>` for layout
+overrides instead.
+
+**Never edit files in `components/ui/`** - Managed by `jac add --shadcn` and
+`jac remove --shadcn`. Manual edits are silently overwritten on next run.
+
+**Import paths must be quoted strings.** Unquoted hyphens cause a parse error.
+Underscores in the module path silently resolve to nothing.
+
+```jac
+import from ".ui.dropdown-menu" { DropdownMenu }   # correct - quoted, hyphenated
+import from .ui.dropdown-menu { DropdownMenu }      # WRONG - unquoted, parse error
+import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolves to nothing
+```
+
+**File name vs import path:** `jac add --shadcn dropdown-menu` installs as
+`dropdown_menu.cl.jac` (underscore). The import path uses the hyphenated name:
+`import from ".ui.dropdown-menu"`.
 
 ## See also
 
