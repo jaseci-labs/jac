@@ -45,6 +45,15 @@ obj ClassMember {
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
 
+"""Resolve a type to its primitive type name (str/int/list/...), or None.
+
+Returns the primitive name if `ty` is a primitive `ClassType` (per
+JAC_TYPE_REGISTRY), walking the MRO so subtypes like `LiteralString` resolve to
+`str`. The single source of truth for "what primitive is this type", shared by
+codegen backends instead of each re-deriving it.
+"""
+def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
+
 """
 Tracks parameter assignments for function calls.
 
@@ -56,6 +65,12 @@ obj ParamAssignmentTracker {
     has params: list[types.Parameter],
         curr_param_idx: int = 0,
         matched_params: set[types.Parameter] = set(),
+        # Params *possibly* filled by a `*`/`**` spread of statically-unknown
+        # contents. Kept apart from `matched_params` (definite positional/keyword
+        # binds): a spread satisfies required-param checks but must NOT trigger a
+        # duplicate-argument error for a later explicit keyword, since we cannot
+        # prove the spread actually set that key.
+        spread_filled: set[types.Parameter] = set(),
         varargs: (types.Parameter | None) = None,
         kwargs: (types.Parameter | None) = None;
 
@@ -113,6 +128,12 @@ def get_completion_items(
 def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
 ) -> (Symbol | None);
+
+"""Collect a name's [primary, *overloads], descending only the statically-live
+branch of `if`/`elif`/`else` guards so dead-branch declarations don't resolve."""
+def collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol];
 
 def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None

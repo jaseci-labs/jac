@@ -65,6 +65,27 @@ class ConsoleLogHandler(logging.Handler) {
     }
 }
 
+"""Filter that suppresses noisy health-check access log entries."""
+class HealthCheckFilter(logging.Filter) {
+    _SUPPRESSED = {
+        '"GET /docs HTTP',
+        '"GET / HTTP',
+        '"GET /openapi.json HTTP',
+        '"GET /health HTTP',
+        '"GET /healthz'
+    };
+
+    def filter(self: HealthCheckFilter, record: logging.LogRecord) -> bool {
+        msg = record.getMessage();
+        for pat in self._SUPPRESSED {
+            if pat in msg {
+                return False;
+            }
+        }
+        return True;
+    }
+}
+
 """Run the FastAPI server using Uvicorn.
 
 If the specified port is in use, tries subsequent ports up to max_retries times.
@@ -74,9 +95,14 @@ impl JFastApiServer.run_server(
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
+    import from jac_scale.config_loader { get_scale_config }
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
     console_handler.setFormatter(logging.Formatter("%(message)s"));
+    server_cfg = get_scale_config().get_server_config();
+    if server_cfg.get('suppress_health_check_logs', False) {
+        console_handler.addFilter(HealthCheckFilter());
+    }
     # Suppress startup logs but route access logs through jac-super console
     log_config = {
         "version": 1,
@@ -114,10 +140,23 @@ impl JFastApiServer.run_server(
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
     import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
-    import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
+    prebound = self?._prebound_listen_socket;
+    if prebound is not None {
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_config=log_config,
+            timeout_graceful_shutdown=int(drain_timeout)
+        );
+        server = uvicorn.Server(config);
+        install_signal_drain(server, timeout_s=drain_timeout);
+        server.run(sockets=[prebound]);
+        return;
+    }
     current_port = port;
     for _ in range(max_retries) {
         try {
@@ -411,7 +450,7 @@ impl JFastApiServer._build_pydantic_model(
 impl PathParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
-    return f"{param.name}: {type_name} = Path(..., description='{description}')";
+    return f"{param.name}: {type_name} = Path(..., description={repr(description)})";
 }
 
 """Implementation of QUERY parameter handler."""
@@ -419,13 +458,17 @@ impl QueryParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Query(..., description='{description}')";
+        return f"{param.name}: {type_name} = Query(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Query(description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Query(description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Query({repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 
@@ -434,13 +477,17 @@ impl HeaderParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Header(..., description='{description}')";
+        return f"{param.name}: {type_name} = Header(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Header(default=None, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Header(default=None, description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Header({repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 
@@ -450,15 +497,23 @@ impl FileParameterHandler.generate_param_string(param: APIParameter) -> str {
     is_multiple = 'list' in param.data_type.lower();
     if is_multiple {
         if param.required {
-            return f"{param.name}: List[UploadFile] = File(..., description='{description}')";
+            return f"{param.name}: List[UploadFile] = File(..., description={repr(
+                description
+            )})";
         } else {
-            return f"{param.name}: Optional[List[UploadFile]] = File(default=None, description='{description}')";
+            return f"{param.name}: Optional[List[UploadFile]] = File(default=None, description={repr(
+                description
+            )})";
         }
     } else {
         if param.required {
-            return f"{param.name}: UploadFile = File(..., description='{description}')";
+            return f"{param.name}: UploadFile = File(..., description={repr(
+                description
+            )})";
         } else {
-            return f"{param.name}: Optional[UploadFile] = File(default=None, description='{description}')";
+            return f"{param.name}: Optional[UploadFile] = File(default=None, description={repr(
+                description
+            )})";
         }
     }
 }
@@ -468,13 +523,17 @@ impl FormBodyParameterHandler.generate_param_string(param: APIParameter) -> str 
     type_name = self.get_type_name(param);
     description = param.description or '';
     if param.required {
-        return f"{param.name}: {type_name} = Form(..., description='{description}')";
+        return f"{param.name}: {type_name} = Form(..., description={repr(
+            description
+        )})";
     } elif (param.default is None) {
-        return f"{param.name}: Optional[{type_name}] = Form(default=None, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Form(default=None, description={repr(
+            description
+        )})";
     } else {
         return f"{param.name}: Optional[{type_name}] = Form(default={repr(
             param.default
-        )}, description='{description}')";
+        )}, description={repr(description)})";
     }
 }
 
@@ -1118,18 +1177,46 @@ impl JFastApiServer.init(
         # Same pattern for distributed trace id. If the inbound request
         # lacks X-Trace-Id (e.g. client-to-service direct call, or a
         # test harness), mint one so every downstream hop has a shared
-        # correlator. Install the log filter so this service's logs
-        # get a [trace=xxxx] prefix matching the gateway's and every
-        # sibling service's.
+        # correlator. Install the JSON formatter (M-14.b) once at first
+        # request - emits structured JSON to stdout so Alloy + Loki get
+        # queryable `service`/`level`/`trace_id` fields. The function is
+        # idempotent and also installs the trace-id filter internally.
         import from jac_scale.microservices.runtime.trace_ctx {
             set_current_trace,
             reset_current_trace,
-            ensure_trace_id,
-            install_trace_log_filter
+            ensure_trace_id
         }
-        install_trace_log_filter();
+        import from jac_scale.microservices.runtime.log_emit {
+            install_structured_logging
+        }
+        install_structured_logging();
+
+        # O-02: configure tracing once (gated by tracing_installed), then
+        # open a SERVER span parented by the inbound traceparent.
+        import from jac_scale.microservices.runtime.tracing {
+            install_tracing,
+            tracing_installed,
+            start_server_span,
+            end_span
+        }
+        if not tracing_installed() {
+            import from jac_scale.config_loader { get_scale_config }
+            _trc_cfg = get_scale_config().get_microservices_config().get("tracing", {});
+            install_tracing(
+                enabled=_trc_cfg.get("enabled", False),
+                endpoint=_trc_cfg.get("endpoint"),
+                sample_ratio=float(_trc_cfg.get("sample_ratio", 1.0))
+            );
+        }
+
         trace_id = ensure_trace_id(request.headers.get('X-Trace-Id'));
         trace_token = set_current_trace(trace_id);
+        trace_span = start_server_span(
+            f"{request.method} {request.url.path}",
+            trace_id,
+            request.headers.get("traceparent"),
+            {"http.method": request.method, "http.target": request.url.path}
+        );
 
         user_id = request.state?.user_root_id if request?.state else None;
 
@@ -1158,6 +1245,10 @@ impl JFastApiServer.init(
             if trace_id {
                 response.headers["X-Trace-Id"] = trace_id;
             }
+            # O-02: record the status on this service's SERVER span.
+            if trace_span is not None {
+                trace_span.set_attribute("http.status_code", response.status_code);
+            }
 
             return response;
         } finally {
@@ -1171,6 +1262,11 @@ impl JFastApiServer.init(
                 reset_current_auth(auth_token);
             } except Exception as e {
                 logger.warning(f"Failed to reset auth context: {e}", exc_info=True);
+            }
+            try {
+                end_span(trace_span);
+            } except Exception as e {
+                logger.warning(f"Failed to end trace span: {e}", exc_info=True);
             }
             try {
                 reset_current_trace(trace_token);

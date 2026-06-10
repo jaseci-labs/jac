@@ -136,13 +136,16 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 
 """Generate code for a list literal [a, b, c, ...]."""
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
+    # Reset the boxed-tuple element-struct hint; set below if the first element
+    # is a boxed tuple so the enclosing assignment can seed var_list_elem_struct.
+    self._pending_list_elem_struct = None;
     if not nd.values {
         # Empty list: infer type from context
         elem_type_name = "i64";
         # 1. Check the type hint set by assignment/field context
         if self._list_type_hint is not None {
             elem_type_name = self._list_type_hint;
-        } elif self.builder and self.builder.function {
+        } elif self._builder and self._builder.function {
             # 2. Fallback: infer from function return type
             ret_type = self.builder.function.return_value.type;
             if isinstance(ret_type, ir.PointerType) {
@@ -194,6 +197,17 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         elem_type_name = "f64";
     } elif isinstance(elem_type, ir.PointerType) {
         elem_type_name = "ptr";
+    } elif self?.jacval_type and elem_type == self.jacval_type {
+        # A boxed `any` element (JacVal struct, by value) gets its own helper key
+        # so it never collides with a real `i64` list — they share neither slot
+        # type nor layout. Mirrors the dict `jacval` value-spec convention.
+        elem_type_name = "jacval";
+    }
+    # If the element is a boxed tuple (pointer-to-struct), remember its struct
+    # shape so a later `(a, b) = lst.pop()` on a bare `list` can recover it.
+    if isinstance(elem_type, ir.PointerType)
+    and isinstance(elem_type.pointee, ir.LiteralStructType) {
+        self._pending_list_elem_struct = elem_type;
     }
     # Ensure helpers exist
     self._emit_list_helpers(elem_type_name, elem_type);
@@ -226,6 +240,18 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            # The first element fixed this list's boxed-tuple layout; coerce later
+            # tuple elements to match so a concrete scalar landing in an `any`
+            # slot is boxed (e.g. `[(seed, 0), (7, 0)]` with `seed: any`). #6511.
+            if self._pending_list_elem_struct is not None
+            and isinstance(self._pending_list_elem_struct, ir.PointerType)
+            and isinstance(
+                self._pending_list_elem_struct.pointee, ir.LiteralStructType
+            ) {
+                val = self._coerce_tuple_to_struct(
+                    val, self._pending_list_elem_struct.pointee
+                );
+            }
             _orig_val = val;
             val = self._box_value_tuple(val, loc=_linit_loc);
             _boxed_val = val;  # Save post-box, pre-bitcast for check
@@ -263,14 +289,20 @@ impl NaIRGenPass._codegen_index(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
-    # IndexError: check index < 0
+    # Python negative indexing: a < 0 index counts from the end (idx += len).
+    # Bounds are then checked on the normalized index, so an out-of-range value
+    # (in either direction) still raises IndexError.
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="idx.neg.chk"
     );
-    self._emit_runtime_raise(is_neg, "IndexError", "list index out of range");
-    # IndexError: check index >= len
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
-    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
+    adjusted = self.builder.add(index_val, len_val, name="idx.adj");
+    index_val = self.builder.select(is_neg, adjusted, index_val, name="idx.norm");
+    below = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="idx.below"
+    );
+    above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
+    is_oob = self.builder.or_(below, above, name="idx.range.chk");
     self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
     return self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
 }
@@ -285,16 +317,19 @@ impl NaIRGenPass._codegen_index_set(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
-    # IndexError: check index < 0
+    # Python negative indexing (idx += len), then bounds-check the normalized
+    # index in both directions.
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
     );
-    self._emit_runtime_raise(
-        is_neg, "IndexError", "list assignment index out of range"
+    adjusted = self.builder.add(index_val, len_val, name="setidx.adj");
+    index_val = self.builder.select(is_neg, adjusted, index_val, name="setidx.norm");
+    below = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="setidx.below"
     );
-    # IndexError: check index >= len
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
-    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
+    above = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
+    is_oob = self.builder.or_(below, above, name="setidx.range.chk");
     self._emit_runtime_raise(
         is_oob, "IndexError", "list assignment index out of range"
     );

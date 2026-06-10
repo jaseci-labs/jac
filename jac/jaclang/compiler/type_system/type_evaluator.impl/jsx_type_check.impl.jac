@@ -8,7 +8,7 @@ Validates that JSX element attributes match the expected types from:
 # Reserved JSX attributes consumed by the framework reconciler, never forwarded
 # to the component as props.  Must be accepted on any element/component without
 # being declared in its parameter list (mirrors React/Preact behaviour).
-glob _JSX_RESERVED_ATTRS: set[str] = {"key","ref"};
+glob _JSX_RESERVED_ATTRS: set[str] = {"key", "ref"};
 
 
 """Resolve a JsxElementName to the FunctionType of the component it references."""

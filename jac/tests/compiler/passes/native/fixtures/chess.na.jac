@@ -180,8 +180,11 @@ obj Pawn(Piece) {
             }
         }
 
-        # Diagonal captures using set of offsets
-        capture_offsets: set[int] = {-1,1};  # Set value
+        # Diagonal captures. (A `set[int]` here used to silently iterate to
+        # nothing on the native backend -- set iteration is unsupported and now
+        # raises E5090 rather than dropping the loop body; see the #6470 audit.
+        # A list iterates correctly and the two offsets are already distinct.)
+        capture_offsets: list[int] = [-1, 1];
         for dc in capture_offsets {
             nc = col + dc;
             if board.is_valid_pos(new_row, nc) {

@@ -40,20 +40,32 @@ def discover_bootstrap_na_modules -> dict[str, str] {
 Returns number of functions wrapped, or -1 on error.
 """
 def accelerate_module(mod_name: str, na_file: str) -> int {
-    import from jaclang.jac0core.native_marshal { install_native_wrappers }
+    import from jaclang.jac0core.native_marshal {
+        install_native_wrappers,
+        init_native_globals
+    }
     import from jaclang.jac0core.program { JacProgram }
 
     module = sys.modules.get(mod_name);
     if module is None {
         return -1;
     }
+    # Native acceleration is a best-effort optimization: failures fall back to
+    # the Python module, so they are debug-logged rather than raised. That makes
+    # the native pass hard to debug (a codegen bug looks like "nothing happened").
+    # JAC_NATIVE_DEBUG=1 surfaces the compile errors / exception traceback to
+    # stderr so the failure is visible while developing the backend (see #6435
+    # item 6).
+    _na_debug = bool(os.environ.get("JAC_NATIVE_DEBUG"));
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=na_file);
         if prog.errors_had {
-            _logger.debug(
-                f"Native compilation errors for {mod_name}: {prog.errors_had}"
-            );
+            _msg = f"Native compilation errors for {mod_name}: {prog.errors_had}";
+            _logger.debug(_msg);
+            if _na_debug {
+                sys.stderr.write(_msg + "\n");
+            }
             return -1;
         }
         engine = ir.gen.native_engine;
@@ -61,6 +73,9 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
         if engine is None or layout is None {
             return 0;
         }
+        # Initialize the module's (and its native imports') globals before any
+        # wrapper can be called — otherwise reads of native globals segfault.
+        init_native_globals(engine, ir.gen.interop_manifest);
         count = install_native_wrappers(module, engine, layout);
         if count > 0 {
             # Keep engine alive on the module to prevent GC
@@ -73,6 +88,11 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
         return count;
     } except Exception as e {
         _logger.debug(f"Native acceleration failed for {mod_name}: {e}");
+        if _na_debug {
+            import traceback;
+            sys.stderr.write(f"Native acceleration failed for {mod_name}: {e}\n");
+            traceback.print_exc(file=sys.stderr);
+        }
         return -1;
     }
 }

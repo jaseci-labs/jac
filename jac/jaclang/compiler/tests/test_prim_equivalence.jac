@@ -1,243 +1,23 @@
 """Unified cross-backend primitive equivalence tests.
 
-One test per emitter class in primitives.jac. Each fixture contains:
-  - def func_py()            Python reference (always run)
-  - cl def func_cl()         ECMAScript/JS via Node.js
-  - na { def func_na() }     Native LLVM JIT via ctypes
-
-compare_results uses intersection semantics: only keys present in both
-dicts are checked. Backends returning {} (unimplemented) are silently skipped.
+One test per emitter class in primitives.jac. Each fixture exposes a
+func_py / cl func_cl / na func_na returning a JSON-able dict; the shared
+`xbackend_equiv` harness runs them across the sv/cl/na backends and compares
+with intersection semantics (a backend that returns {} or fails to compile is
+silently skipped).
 """
 
 import ctypes;
-import importlib;
-import json;
-import os;
-import struct;
-import subprocess;
-import sys;
-import from pathlib { Path }
-import jaclang;
-import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
-import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
-import from jaclang.jac0core.program { JacProgram }
-
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures"
-     );
-
-# -----------------------------------------------------------------------
-# Python reference helper
-# -----------------------------------------------------------------------
-def run_py_fixture(fixture_stem: str, func_name: str) -> dict {
-    added = False;
-    if FIXTURES not in sys.path {
-        sys.path.insert(0, FIXTURES);
-        added = True;
-    }
-    try {
-        sys.modules.pop(fixture_stem, None);
-        mod = importlib.import_module(fixture_stem);
-        fn = getattr(mod, func_name);
-        return json.loads(json.dumps(fn()));
-    } finally {
-        if added {
-            sys.path.remove(FIXTURES);
-        }
-        sys.modules.pop(fixture_stem, None);
-    }
+import from jaclang.compiler.tests.xbackend_equiv {
+    run_with_both,
+    run_py_fixture,
+    compile_fixture_to_js,
+    run_js_function,
+    compile_native,
+    get_func,
+    compare_results
 }
 
-# -----------------------------------------------------------------------
-# ES (ECMAScript / JavaScript) helpers
-# -----------------------------------------------------------------------
-def compile_fixture_to_js(fixture_name: str) -> str {
-    fixture_path = os.path.join(FIXTURES, fixture_name);
-    prog = JacProgram();
-    ir = prog.compile(file_path=fixture_path, no_cgen=True);
-    assert not prog.errors_had , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
-    );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
-    es_ir = es_pass.ir_out;
-    assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
-    return es_to_js(es_ir.gen.es_ast);
-}
-
-def run_js_function(js_code: str, func_name: str) -> dict {
-    wrapper = js_code + "\nconsole.log(JSON.stringify(" + func_name + "()));";
-    result = subprocess.run(
-        ["node", "-e", wrapper], capture_output=True, text=True, timeout=10
-    );
-    assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
-    return json.loads(result.stdout.strip());
-}
-
-# -----------------------------------------------------------------------
-# NA (Native / LLVM) helpers
-# -----------------------------------------------------------------------
-def compile_native(fixture: str) -> tuple {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, ir);
-}
-
-def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
-    addr = eng.get_function_address(name);
-    assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    functype = ctypes.CFUNCTYPE(restype, *argtypes);
-    return functype(addr);
-}
-
-class JacVal(ctypes.Structure) {
-    has _fields_: list = [("tag", ctypes.c_int8), ("payload", ctypes.c_int64)];
-}
-
-def unbox_jacval(jv: JacVal) -> object {
-    if jv.tag == 0 {
-        return jv.payload;
-    } elif jv.tag == 1 {
-        return struct.unpack('d', struct.pack('q', jv.payload))[0];
-    } elif jv.tag == 2 {
-        if jv.payload == 0 {
-            return "";
-        }
-        return ctypes.cast(jv.payload, ctypes.c_char_p).value.decode("utf-8");
-    } elif jv.tag == 3 {
-        # List pointer: struct { i64 len, i64 cap, i64* data } (List.i64 layout)
-        if jv.payload == 0 {
-            return [];
-        }
-        class ListStruct(ctypes.Structure) {
-            has _fields_: list = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("data", ctypes.POINTER(ctypes.c_int64))
-            ];
-        }
-        lst_ptr = ctypes.cast(jv.payload, ctypes.POINTER(ListStruct));
-        n = lst_ptr.contents.len;
-        return [lst_ptr.contents.data[i] for i in range(n)];
-    } elif jv.tag == 4 {
-        # Dict pointer: struct { i64 len, i64 cap, i8** keys, JacVal* vals }
-        if jv.payload == 0 {
-            return {};
-        }
-        class InnerDictStruct(ctypes.Structure) {
-            has _fields_: list = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("keys", ctypes.POINTER(ctypes.c_char_p)),
-                ("vals", ctypes.POINTER(JacVal))
-            ];
-        }
-        dct_ptr = ctypes.cast(jv.payload, ctypes.POINTER(InnerDictStruct));
-        n = dct_ptr.contents.len;
-        result: dict = {};
-        for i in range(n) {
-            k = dct_ptr.contents.keys[i].decode("utf-8");
-            result[k] = unbox_jacval(dct_ptr.contents.vals[i]);
-        }
-        return result;
-    } elif jv.tag == 5 {
-        # Set pointer: struct { i64 len, i64 cap, i64* elems } (Set.i64 layout)
-        if jv.payload == 0 {
-            return set();
-        }
-        class SetStruct(ctypes.Structure) {
-            has _fields_: list = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("elems", ctypes.POINTER(ctypes.c_int64))
-            ];
-        }
-        st_ptr = ctypes.cast(jv.payload, ctypes.POINTER(SetStruct));
-        n = st_ptr.contents.len;
-        return {st_ptr.contents.elems[i] for i in range(n)};
-    }
-    return None;
-}
-
-def run_native_function(eng: object, func_name: str) -> dict {
-    class DictStruct(ctypes.Structure) {
-        has _fields_: list = [
-            ("len", ctypes.c_int64),
-            ("cap", ctypes.c_int64),
-            ("keys", ctypes.POINTER(ctypes.c_char_p)),
-            ("vals", ctypes.POINTER(JacVal))
-        ];
-    }
-    f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
-    dict_ptr = f();
-    result: dict = {};
-    for i in range(dict_ptr.contents.len) {
-        key = dict_ptr.contents.keys[i].decode("utf-8");
-        jv = dict_ptr.contents.vals[i];
-        result[key] = unbox_jacval(jv);
-    }
-    return result;
-}
-
-# -----------------------------------------------------------------------
-# Comparison: intersection-based (only keys present in BOTH dicts)
-# -----------------------------------------------------------------------
-def compare_results(
-    py_result: dict, backend_result: dict, label: str, tolerance: float = 1e-9
-) -> None {
-    common_keys = set(py_result.keys()) & set(backend_result.keys());
-    if not common_keys {
-        return;
-    }
-    for key in sorted(common_keys) {
-        py_val = py_result[key];
-        bk_val = backend_result[key];
-        if isinstance(py_val, float) or isinstance(bk_val, float) {
-            assert abs(float(py_val) - float(bk_val)) < tolerance , (
-                f"[{label}] Float mismatch on '{key}': py={py_val} backend={bk_val}"
-            );
-        } elif isinstance(py_val, list) and isinstance(bk_val, list) {
-            assert py_val == bk_val , (
-                f"[{label}] List mismatch on '{key}': py={py_val} backend={bk_val}"
-            );
-        } elif isinstance(py_val, dict) and isinstance(bk_val, dict) {
-            assert py_val == bk_val , (
-                f"[{label}] Dict mismatch on '{key}': py={py_val} backend={bk_val}"
-            );
-        } else {
-            assert py_val == bk_val , (
-                f"[{label}] Mismatch on '{key}': py={py_val!r} backend={bk_val!r}"
-            );
-        }
-    }
-}
-
-# -----------------------------------------------------------------------
-# Dispatch helper: run py reference, then try ES and NA backends
-# -----------------------------------------------------------------------
-def run_with_both(
-    fixture: str, py_fn: str, cl_fn: str, na_fn: str, tolerance: float = 1e-9
-) {
-    stem = fixture[:-4] if fixture.endswith(".jac") else fixture;
-    py_result = run_py_fixture(stem, py_fn);
-    label = fixture;
-    try {
-        js_code = compile_fixture_to_js(fixture);
-        compare_results(
-            py_result, run_js_function(js_code, cl_fn), f"{label} [ES]", tolerance
-        );
-    } except Exception { }
-    try {
-        (eng, _) = compile_native(fixture);
-        compare_results(
-            py_result, run_native_function(eng, na_fn), f"{label} [NA]", tolerance
-        );
-    } except Exception { }
-}
 
 # =======================================================================
 # Tests — one per emitter class in primitives.jac
@@ -265,6 +45,17 @@ test "str" {
     run_with_both("prim_str.jac", "str_py", "str_cl", "str_na");
 }
 
+# --- String literal escape sequences (#6476 item 1), cl required ---
+test "string escapes" {
+    run_with_both(
+        "cl_string_escapes.jac",
+        "escapes_py",
+        "escapes_cl",
+        "escapes_na",
+        require=["cl"]
+    );
+}
+
 # --- String Types (BytesEmitter) ---
 test "bytes search" {
     run_with_both(
@@ -289,6 +80,88 @@ test "bytes test methods" {
 # --- Collection Types (ListEmitter) ---
 test "list" {
     run_with_both("prim_list.jac", "list_py", "list_cl", "list_na");
+}
+
+# --- Native list/`any` codegen gaps (#6435), na required ---
+test "native list pop index" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "pop_index_py",
+        "pop_index_cl",
+        "pop_index_na",
+        require=["na"]
+    );
+}
+
+test "native list tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "tuple_roundtrip_py",
+        "tuple_roundtrip_cl",
+        "tuple_roundtrip_na",
+        require=["na"]
+    );
+}
+
+test "native list any literal" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_literal_py",
+        "any_literal_cl",
+        "any_literal_na",
+        require=["na"]
+    );
+}
+
+test "native list any unpack stack" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_stack_py",
+        "any_stack_cl",
+        "any_stack_na",
+        require=["na"]
+    );
+}
+
+test "native list container truthiness dfs" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "dfs_stack_py",
+        "dfs_stack_cl",
+        "dfs_stack_na",
+        require=["na"]
+    );
+}
+
+# --- #6449: scalar/boxed `any` values round-trip through the native JacVal, na required ---
+test "native any scalar box" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_scalar_box_py",
+        "any_scalar_box_cl",
+        "any_scalar_box_na",
+        require=["na"]
+    );
+}
+
+test "native any dict local read" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_dict_local_py",
+        "any_dict_local_cl",
+        "any_dict_local_na",
+        require=["na"]
+    );
+}
+
+test "native any tuple roundtrip" {
+    run_with_both(
+        "native_list_any_ops.jac",
+        "any_tuple_roundtrip_py",
+        "any_tuple_roundtrip_cl",
+        "any_tuple_roundtrip_na",
+        require=["na"]
+    );
 }
 
 # --- Collection Types (DictEmitter) ---
@@ -319,6 +192,44 @@ test "range" {
 # --- Builtin Functions (BuiltinEmitter) ---
 test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
+}
+
+# --- Stdlib: math module (Mechanism A → libm, issue #6404 v1) ---
+test "math" {
+    run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
+}
+
+# --- Stdlib: time module (Mechanism A → clock_gettime/nanosleep, #6404 v1) ---
+test "time" {
+    run_with_both("prim_time.jac", "time_py", "time_cl", "time_na", require=["na"]);
+}
+
+# --- Stdlib: sys module (Mechanism A, issue #6404 v1) ---
+test "sys" {
+    run_with_both("prim_sys.jac", "sys_py", "sys_cl", "sys_na", require=["na"]);
+}
+
+# --- Stdlib: os + os.path (Mechanism A/H → libc, issue #6404 v1) ---
+test "os" {
+    run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
+}
+
+# --- Stdlib: random module (CPython-faithful MT19937, issue #6404 v1) ---
+test "random" {
+    run_with_both(
+        "prim_random.jac", "random_py", "random_cl", "random_na", require=["na"]
+    );
+}
+
+# --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
+test "dict order" {
+    run_with_both(
+        "prim_dictorder.jac",
+        "dictorder_py",
+        "dictorder_cl",
+        "dictorder_na",
+        require=["na"]
+    );
 }
 
 # --- Exception Types (ExceptionEmitter) — dict-comparison for py/cl ---

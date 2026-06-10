@@ -652,6 +652,8 @@ obj MonitoringDeployer {
 
         # Datasource ConfigMap Prometheus is always ClusterIP at port 9090
         prometheus_url = f"http://{prometheus_name}-service:9090";
+        loki_name = f"{app_name}-loki";
+        loki_url = f"http://{loki_name}-service:3100";
         datasource_yaml = (
             "apiVersion: 1\n"
             "datasources:\n"
@@ -663,6 +665,43 @@ obj MonitoringDeployer {
             "    access: proxy\n"
             "    editable: true\n"
         );
+        if self.k8s_config.loki_enabled {
+            datasource_yaml = datasource_yaml + (
+                "  - name: Loki\n"
+                "    uid: loki\n"
+                "    type: loki\n"
+                f"    url: {loki_url}\n"
+                "    access: proxy\n"
+                "    editable: true\n"
+            );
+        }
+        # Tempo trace datasource. `tracesToLogsV2` (added when Loki is
+        # present) enables the span -> logs pivot by trace_id.
+        if self.k8s_config.tracing_enabled {
+            tempo_name = f"{app_name}-tempo";
+            tempo_url = f"http://{tempo_name}-service:3200";
+            tempo_ds = (
+                "  - name: Tempo\n"
+                "    uid: tempo\n"
+                "    type: tempo\n"
+                f"    url: {tempo_url}\n"
+                "    access: proxy\n"
+                "    editable: true\n"
+                "    jsonData:\n"
+                "      nodeGraph:\n"
+                "        enabled: true\n"
+            );
+            if self.k8s_config.loki_enabled {
+                tempo_ds = tempo_ds + (
+                    "      tracesToLogsV2:\n"
+                    "        datasourceUid: loki\n"
+                    "        filterByTraceID: true\n"
+                    "        spanStartTimeShift: \"-1h\"\n"
+                    "        spanEndTimeShift: \"1h\"\n"
+                );
+            }
+            datasource_yaml = datasource_yaml + tempo_ds;
+        }
         grafana_ds_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -995,6 +1034,36 @@ obj MonitoringDeployer {
             f'"legendFormat":"{{{{node}}}}","datasource":{ds}' + '}]}' ']}'
         );
 
+        lds = '{"type":"loki","uid":"loki"}';
+        logs_dashboard_json = (
+            '{"title":"Pod Logs","uid":"pod-logs",'
+            '"schemaVersion":36,"refresh":"30s","time":{"from":"now-1h","to":"now"},'
+            '"panels":['
+            '{"id":1,"type":"timeseries","title":"Log Volume (lines/min)",'
+            '"gridPos":{"x":0,"y":0,"w":24,"h":6},'
+            '"fieldConfig":{"defaults":{"unit":"short"}},'
+            f'"datasource":{lds},'
+            '"targets":[{"refId":"A",'
+            '"expr":"sum(count_over_time({namespace=~\\".+\\"}[1m])) by (namespace,pod)",'
+            f'"legendFormat":"{{{{namespace}}}}/{{{{pod}}}}","datasource":{lds}' + '}]},'
+            '{"id":2,"type":"logs","title":"All Pod Logs",'
+            '"gridPos":{"x":0,"y":6,"w":24,"h":20},'
+            f'"datasource":{lds},'
+            '"options":{"dedupStrategy":"none","showLabels":true,'
+            '"showCommonLabels":false,"wrapLogMessage":true,"sortOrder":"Descending"},'
+            '"targets":[{"refId":"A",'
+            '"expr":"{namespace=~\\".+\\"}",'
+            f'"datasource":{lds}' + '}]}]}'
+        );
+
+        dashboard_data: dict[str, str] = {'jac-scale.json': app_dashboard_json};
+        if self.k8s_config.k8s_metrics_enabled {
+            dashboard_data['k8s-metrics.json'] = k8s_dashboard_json;
+        }
+        if self.k8s_config.loki_enabled {
+            dashboard_data['pod-logs.json'] = logs_dashboard_json;
+        }
+
         grafana_dashboard_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -1003,14 +1072,7 @@ obj MonitoringDeployer {
                 'namespace': namespace,
                 'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
-            'data': (
-                {
-                    'jac-scale.json': app_dashboard_json,
-                    'k8s-metrics.json': k8s_dashboard_json
-                }
-                    if self.k8s_config.k8s_metrics_enabled
-                    else {'jac-scale.json': app_dashboard_json}
-            )
+            'data': dashboard_data
         };
         try {
             core_v1.read_namespaced_config_map(
@@ -1196,6 +1258,865 @@ obj MonitoringDeployer {
         }
     }
 
+    """Deploy Tempo as a single-binary trace store.
+
+    OTLP receivers on 4317/4318 (the Alloy collector exports spans here)
+    and an HTTP API on 3200 for TraceQL search. emptyDir storage, so
+    traces are ephemeral (suitable for dev/staging).
+    """
+    def _deploy_tempo(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        tempo_name = f"{app_name}-tempo";
+        tempo_sa_name = f"{tempo_name}-sa";
+
+        tempo_config_yaml = (
+            "server:\n"
+            "  http_listen_port: 3200\n"
+            "distributor:\n"
+            "  receivers:\n"
+            "    otlp:\n"
+            "      protocols:\n"
+            "        grpc:\n"
+            "          endpoint: 0.0.0.0:4317\n"
+            "        http:\n"
+            "          endpoint: 0.0.0.0:4318\n"
+            "ingester:\n"
+            "  trace_idle_period: 10s\n"
+            "  max_block_duration: 5m\n"
+            "compactor:\n"
+            "  compaction:\n"
+            "    block_retention: 48h\n"
+            "storage:\n"
+            "  trace:\n"
+            "    backend: local\n"
+            "    local:\n"
+            "      path: /var/tempo/blocks\n"
+            "    wal:\n"
+            "      path: /var/tempo/wal\n"
+            "usage_report:\n"
+            "  reporting_enabled: false\n"
+        );
+        tempo_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{tempo_name}-config",
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'data': {'tempo.yaml': tempo_config_yaml}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace, body=tempo_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=tempo_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': tempo_sa_name,
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=tempo_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=tempo_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': tempo_name,
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': tempo_name}},
+                'template': {
+                    'metadata': {'labels': {'app': tempo_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': tempo_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'tempo',
+                                'image': 'grafana/tempo:2.7.0',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 10001,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': ['-config.file=/etc/tempo/tempo.yaml'],
+                                'ports': [
+                                    {'containerPort': 3200, 'name': 'http'},
+                                    {'containerPort': 4317, 'name': 'otlp-grpc'},
+                                    {'containerPort': 4318, 'name': 'otlp-http'}
+                                ],
+                                'readinessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3200},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'livenessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3200},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'volumeMounts': [
+                                    {
+                                        'name': 'tempo-config-vol',
+                                        'mountPath': '/etc/tempo'
+                                    },
+                                    {'name': 'tempo-data', 'mountPath': '/var/tempo'},
+                                    {'name': 'tmp', 'mountPath': '/tmp'}
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'tempo-config-vol',
+                                'configMap': {'name': f"{tempo_name}-config"}
+                            },
+                            {'name': 'tempo-data', 'emptyDir': {}},
+                            {'name': 'tmp', 'emptyDir': {}}
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.patch_namespaced_deployment(
+                name=tempo_name, namespace=namespace, body=tempo_deployment
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=tempo_deployment
+                );
+            } else {
+                raise;
+            }
+        }
+
+        tempo_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{tempo_name}-service",
+                'namespace': namespace,
+                'labels': {'app': tempo_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': tempo_name},
+                'ports': [
+                    {
+                        'name': 'http',
+                        'protocol': 'TCP',
+                        'port': 3200,
+                        'targetPort': 3200
+                    },
+                    {
+                        'name': 'otlp-grpc',
+                        'protocol': 'TCP',
+                        'port': 4317,
+                        'targetPort': 4317
+                    },
+                    {
+                        'name': 'otlp-http',
+                        'protocol': 'TCP',
+                        'port': 4318,
+                        'targetPort': 4318
+                    }
+                ]
+            }
+        };
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{tempo_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=tempo_service
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Tempo deployed for '{app_name}'");
+        }
+    }
+
+    """Deploy Loki as a single-process log store.
+
+    Loki is always ClusterIP — Grafana and Alloy talk to it internally.
+    Data is stored in emptyDir so it is ephemeral (suitable for dev/staging).
+    """
+    def _deploy_loki(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        loki_name = f"{app_name}-loki";
+        loki_sa_name = f"{loki_name}-sa";
+
+        loki_config_yaml = (
+            "auth_enabled: false\n"
+            "server:\n"
+            "  http_listen_port: 3100\n"
+            "  grpc_listen_port: 9096\n"
+            "common:\n"
+            "  path_prefix: /loki\n"
+            "  storage:\n"
+            "    filesystem:\n"
+            "      chunks_directory: /loki/chunks\n"
+            "      rules_directory: /loki/rules\n"
+            "  replication_factor: 1\n"
+            "  ring:\n"
+            "    instance_addr: 127.0.0.1\n"
+            "    kvstore:\n"
+            "      store: inmemory\n"
+            "schema_config:\n"
+            "  configs:\n"
+            "    - from: 2020-10-24\n"
+            "      store: tsdb\n"
+            "      object_store: filesystem\n"
+            "      schema: v13\n"
+            "      index:\n"
+            "        prefix: index_\n"
+            "        period: 24h\n"
+            "limits_config:\n"
+            "  reject_old_samples: true\n"
+            "  reject_old_samples_max_age: 168h\n"
+        );
+        loki_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{loki_name}-config",
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'data': {'loki.yaml': loki_config_yaml}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace, body=loki_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=loki_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': loki_sa_name,
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=loki_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=loki_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': loki_name,
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': loki_name}},
+                'template': {
+                    'metadata': {'labels': {'app': loki_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': loki_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'loki',
+                                'image': 'grafana/loki:3.4.2',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 10001,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': ['-config.file=/etc/loki/loki.yaml'],
+                                'ports': [{'containerPort': 3100, 'name': 'http'}],
+                                'readinessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3100},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'livenessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3100},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'volumeMounts': [
+                                    {
+                                        'name': 'loki-config-vol',
+                                        'mountPath': '/etc/loki'
+                                    },
+                                    {'name': 'loki-data', 'mountPath': '/loki'},
+                                    {'name': 'tmp', 'mountPath': '/tmp'}
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'loki-config-vol',
+                                'configMap': {'name': f"{loki_name}-config"}
+                            },
+                            {'name': 'loki-data', 'emptyDir': {}},
+                            {'name': 'tmp', 'emptyDir': {}}
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.patch_namespaced_deployment(
+                name=loki_name, namespace=namespace, body=loki_deployment
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=loki_deployment
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{loki_name}-service",
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': loki_name},
+                'ports': [{'protocol': 'TCP', 'port': 3100, 'targetPort': 3100}]
+            }
+        };
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{loki_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=loki_service
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Loki deployed for '{app_name}'");
+        }
+    }
+
+    """Deploy Grafana Alloy as a DaemonSet for logs and/or traces.
+
+    Tails pod logs to Loki and/or receives OTLP spans and forwards them
+    to Tempo, depending on which signals are enabled. River-syntax config.
+    """
+    def _deploy_alloy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        loki_name = f"{app_name}-loki";
+        alloy_name = f"{app_name}-alloy";
+        alloy_sa_name = f"{alloy_name}-sa";
+        cluster_role_name = f"{namespace}-{alloy_name}";
+        cluster_role_binding_name = f"{namespace}-{alloy_name}";
+        rbac_v1 = client.RbacAuthorizationV1Api();
+        loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
+        tempo_name = f"{app_name}-tempo";
+        tempo_otlp_endpoint = f"{tempo_name}-service:4317";
+
+        # River pipeline: a header plus two optional lanes - the logs lane
+        # (loki_enabled) and the OTLP traces lane (tracing_enabled).
+        alloy_header = (
+            "logging {\n" "  level  = \"info\"\n" "  format = \"logfmt\"\n" "}\n" "\n"
+        );
+
+        # Logs lane: discover pods, relabel to per-container log paths under
+        # /var/log/pods, tail them, parse the CRI wrapper, push to Loki.
+        alloy_logs_lane = (
+            "discovery.kubernetes \"pods\" {\n"
+            "  role = \"pod\"\n"
+            "}\n"
+            "\n"
+            "discovery.relabel \"pods\" {\n"
+            "  targets = discovery.kubernetes.pods.targets\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_node_name\"]\n"
+            "    target_label  = \"__host__\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    action = \"labelmap\"\n"
+            "    regex  = \"__meta_kubernetes_pod_label_(.+)\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_namespace\"]\n"
+            "    target_label  = \"namespace\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_name\"]\n"
+            "    target_label  = \"pod\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_container_name\"]\n"
+            "    target_label  = \"container\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    action        = \"replace\"\n"
+            "    separator     = \"/\"\n"
+            "    source_labels = [\n"
+            "      \"__meta_kubernetes_pod_uid\",\n"
+            "      \"__meta_kubernetes_pod_container_name\",\n"
+            "    ]\n"
+            "    target_label = \"__path__\"\n"
+            "    replacement  = \"/var/log/pods/*$1/*.log\"\n"
+            "  }\n"
+            "}\n"
+            "\n"
+            "local.file_match \"pods\" {\n"
+            "  path_targets = discovery.relabel.pods.output\n"
+            "}\n"
+            "\n"
+            "loki.source.file \"pods\" {\n"
+            "  targets    = local.file_match.pods.targets\n"
+            "  forward_to = [loki.process.cri.receiver]\n"
+            "}\n"
+            "\n"
+            "loki.process \"cri\" {\n"
+            "  forward_to = [loki.write.default.receiver]\n"
+            "\n"
+            "  // Strip the containerd CRI wrapper (timestamp + stream + tag\n"
+            "  // + content). After this stage the line body is whatever the\n"
+            "  // app wrote to stdout.\n"
+            "  stage.cri {}\n"
+            "\n"
+            "  // Lift top-level keys out of structured-JSON log lines.\n"
+            "  // Non-JSON lines fall through unmolested (variables stay unset).\n"
+            "  stage.json {\n"
+            "    expressions = {\n"
+            "      ts       = \"ts\",\n"
+            "      level    = \"level\",\n"
+            "      service  = \"service\",\n"
+            "      trace_id = \"trace_id\",\n"
+            "    }\n"
+            "  }\n"
+            "\n"
+            "  // Use the app-emitted timestamp when present (defends against\n"
+            "  // node clock skew); lines without a valid ts keep the agent's.\n"
+            "  stage.timestamp {\n"
+            "    source            = \"ts\"\n"
+            "    format            = \"RFC3339Nano\"\n"
+            "    action_on_failure = \"skip\"\n"
+            "  }\n"
+            "\n"
+            "  // Promote bounded-cardinality fields to Loki labels. trace_id\n"
+            "  // is deliberately NOT a label (one stream per request); query\n"
+            "  // it via `{namespace=ns} | json | trace_id=\"...\"`.\n"
+            "  stage.labels {\n"
+            "    values = {\n"
+            "      service = \"\",\n"
+            "      level   = \"\",\n"
+            "    }\n"
+            "  }\n"
+            "}\n"
+            "\n"
+            "loki.write \"default\" {\n"
+            "  endpoint {\n"
+            f"    url = \"{loki_push_url}\"\n"
+            "  }\n"
+            "}\n"
+        );
+        # Drop the logs lane entirely when Loki is off (tracing-only
+        # deploy): no point tailing pods if there's nowhere to ship them.
+        if not self.k8s_config.loki_enabled {
+            alloy_logs_lane = "";
+        }
+
+        # Traces lane: receive OTLP from app pods, batch, export to Tempo.
+        alloy_otel_lane = "";
+        if self.k8s_config.tracing_enabled {
+            alloy_otel_lane = (
+                "\n"
+                "otelcol.receiver.otlp \"default\" {\n"
+                "  grpc { endpoint = \"0.0.0.0:4317\" }\n"
+                "  http { endpoint = \"0.0.0.0:4318\" }\n"
+                "  output {\n"
+                "    traces = [otelcol.processor.batch.default.input]\n"
+                "  }\n"
+                "}\n"
+                "\n"
+                "otelcol.processor.batch \"default\" {\n"
+                "  output {\n"
+                "    traces = [otelcol.exporter.otlp.tempo.input]\n"
+                "  }\n"
+                "}\n"
+                "\n"
+                "otelcol.exporter.otlp \"tempo\" {\n"
+                "  client {\n"
+                f"    endpoint = \"{tempo_otlp_endpoint}\"\n"
+                "    tls { insecure = true }\n"
+                "  }\n"
+                "}\n"
+            );
+        }
+
+        alloy_config_river = alloy_header + alloy_logs_lane + alloy_otel_lane;
+        alloy_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{alloy_name}-config",
+                'namespace': namespace,
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+            },
+            'data': {'config.alloy': alloy_config_river}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{alloy_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{alloy_name}-config", namespace=namespace, body=alloy_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=alloy_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        alloy_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': alloy_sa_name,
+                'namespace': namespace,
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+            }
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=alloy_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=alloy_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        cluster_role_body = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRole',
+            'metadata': {
+                'name': cluster_role_name,
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+            },
+            'rules': [
+                {
+                    'apiGroups': [''],
+                    'resources': [
+                        'nodes',
+                        'nodes/proxy',
+                        'pods',
+                        'namespaces',
+                        'services',
+                        'endpoints'
+                    ],
+                    'verbs': ['get', 'watch', 'list']
+                }
+            ]
+        };
+        try {
+            rbac_v1.read_cluster_role(name=cluster_role_name);
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_cluster_role(body=cluster_role_body);
+            } else {
+                raise;
+            }
+        }
+
+        crb_body = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRoleBinding',
+            'metadata': {
+                'name': cluster_role_binding_name,
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+            },
+            'roleRef': {
+                'apiGroup': 'rbac.authorization.k8s.io',
+                'kind': 'ClusterRole',
+                'name': cluster_role_name
+            },
+            'subjects': [
+                {
+                    'kind': 'ServiceAccount',
+                    'name': alloy_sa_name,
+                    'namespace': namespace
+                }
+            ]
+        };
+        try {
+            rbac_v1.read_cluster_role_binding(name=cluster_role_binding_name);
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_cluster_role_binding(body=crb_body);
+            } else {
+                raise;
+            }
+        }
+
+        # Base agent port; add the OTLP receiver ports when tracing is on
+        # so app pods can send spans to this Alloy via the Alloy Service.
+        alloy_ports = [{'containerPort': 12345, 'name': 'http'}];
+        if self.k8s_config.tracing_enabled {
+            alloy_ports.append({'containerPort': 4317, 'name': 'otlp-grpc'});
+            alloy_ports.append({'containerPort': 4318, 'name': 'otlp-http'});
+        }
+
+        alloy_daemonset = {
+            'apiVersion': 'apps/v1',
+            'kind': 'DaemonSet',
+            'metadata': {
+                'name': alloy_name,
+                'namespace': namespace,
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'selector': {'matchLabels': {'app': alloy_name}},
+                'template': {
+                    'metadata': {'labels': {'app': alloy_name, 'managed': 'jac-scale'}},
+                    'spec': {
+                        'automountServiceAccountToken': True,
+                        'serviceAccountName': alloy_sa_name,
+                        'tolerations': [{'operator': 'Exists', 'effect': 'NoSchedule'}],
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'alloy',
+                                'image': 'grafana/alloy:v1.6.0',
+                                'securityContext': {
+                                    # /var/log/pods is root-owned on the
+                                    # node so the agent runs as root with
+                                    # all capabilities dropped. Same
+                                    # hardening Promtail used in #5731.
+                                    'runAsUser': 0,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': [
+                                    'run',
+                                    '--server.http.listen-addr=0.0.0.0:12345',
+                                    # Use container /tmp as the WAL + remotecfg
+                                    # scratch path instead of a mounted volume.
+                                    # /tmp is always tmpfs-writable for any UID,
+                                    # which sidesteps an Alloy v1.6 startup quirk
+                                    # where the remotecfg service mkdir under a
+                                    # mounted emptyDir fails with EACCES even
+                                    # when the container runs as root with the
+                                    # dir mode 0777. Validated on EKS m14a
+                                    # deploy 2026-05-20 (13/13 pods Ready after
+                                    # this swap).
+                                    '--storage.path=/tmp/alloy',
+                                    '/etc/alloy/config.alloy'
+                                ],
+                                'ports': alloy_ports,
+                                'volumeMounts': [
+                                    {
+                                        'name': 'alloy-config-vol',
+                                        'mountPath': '/etc/alloy'
+                                    },
+                                    {
+                                        'name': 'varlogpods',
+                                        'mountPath': '/var/log/pods',
+                                        'readOnly': True
+                                    },
+                                    {
+                                        # `/var/log/pods/<...>/<container>/<N>.log`
+                                        # is a symlink chain pointing into the
+                                        # container runtime's data dir (docker:
+                                        # /var/lib/docker/containers, also where
+                                        # minikube + EKS docker-shim land). Without
+                                        # this mount the symlink follow fails with
+                                        # ENOENT and Alloy logs
+                                        # `error getting os stat ... no such file
+                                        # or directory` every scrape interval. On
+                                        # pure-containerd clusters the dir does
+                                        # not exist; hostPath silently no-ops.
+                                        # Validated on EKS 2026-05-20 + minikube.
+                                        'name': 'varlogcontainers',
+                                        'mountPath': '/var/lib/docker/containers',
+                                        'readOnly': True
+                                    }
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'alloy-config-vol',
+                                'configMap': {'name': f"{alloy_name}-config"}
+                            },
+                            {
+                                'name': 'varlogpods',
+                                'hostPath': {'path': '/var/log/pods'}
+                            },
+                            {
+                                'name': 'varlogcontainers',
+                                'hostPath': {'path': '/var/lib/docker/containers'}
+                            }
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_daemon_set(
+                    namespace=namespace, body=alloy_daemonset
+                );
+            } else {
+                raise;
+            }
+        }
+
+        # ClusterIP Service in front of the Alloy DaemonSet so app pods
+        # have a stable OTLP target (`<app>-alloy-service:4318`). Only the
+        # traces leg needs an inbound Service (logs push outbound to Loki).
+        if self.k8s_config.tracing_enabled {
+            alloy_service = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': {
+                    'name': f"{alloy_name}-service",
+                    'namespace': namespace,
+                    'labels': {'app': alloy_name, 'managed': 'jac-scale'}
+                },
+                'spec': {
+                    'type': 'ClusterIP',
+                    'selector': {'app': alloy_name},
+                    'ports': [
+                        {
+                            'name': 'otlp-grpc',
+                            'protocol': 'TCP',
+                            'port': 4317,
+                            'targetPort': 4317
+                        },
+                        {
+                            'name': 'otlp-http',
+                            'protocol': 'TCP',
+                            'port': 4318,
+                            'targetPort': 4318
+                        }
+                    ]
+                }
+            };
+            try {
+                core_v1.read_namespaced_service(
+                    name=f"{alloy_name}-service", namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    core_v1.create_namespaced_service(
+                        namespace=namespace, body=alloy_service
+                    );
+                } else {
+                    raise;
+                }
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Alloy deployed for '{app_name}'");
+        }
+    }
+
     """Deploy the full monitoring stack (Prometheus, kube-state-metrics, node-exporter, Grafana) for an app namespace."""
     def deploy(
         app_name: str,
@@ -1213,15 +2134,28 @@ obj MonitoringDeployer {
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, provider);
+        if self.k8s_config.tracing_enabled {
+            self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
+        }
+        if self.k8s_config.loki_enabled {
+            self._deploy_loki(app_name, namespace, apps_v1, core_v1);
+        }
+        # Alloy serves both legs (logs to Loki, traces to Tempo); deploy it
+        # when either is on - its River config is built from both flags.
+        if self.k8s_config.loki_enabled or self.k8s_config.tracing_enabled {
+            self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
+        }
         self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
     }
 
-    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter."""
-    def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
+    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter, Loki, Alloy."""
+    def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
+        loki_name = f"{app_name}-loki";
+        alloy_name = f"{app_name}-alloy";
         cluster_role_name = f"{namespace}-{ksm_name}";
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
 
@@ -1297,6 +2231,115 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
+
+        # Loki resources
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, loki_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{loki_name}-service",
+            namespace,
+            'Service'
+        );
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{loki_name}-sa", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Alloy resources
+        try {
+            apps_v1.delete_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{alloy_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{alloy_name}-sa", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        # The Alloy OTLP Service (only present in traces deploys).
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{alloy_name}-service",
+            namespace,
+            'Service'
+        );
+        alloy_cr_name = f"{namespace}-{alloy_name}";
+        try {
+            rbac_v1.delete_cluster_role(name=alloy_cr_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            rbac_v1.delete_cluster_role_binding(name=alloy_cr_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Tempo resources. Deleted by name unconditionally so teardown is
+        # idempotent regardless of the tracing toggle state.
+        tempo_name = f"{app_name}-tempo";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{tempo_name}-service",
+            namespace,
+            'Service'
+        );
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{tempo_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{tempo_name}-sa", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
 
         # Grafana resources
         delete_if_exists(

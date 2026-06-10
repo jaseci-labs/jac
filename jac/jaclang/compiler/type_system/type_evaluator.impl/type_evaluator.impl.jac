@@ -66,6 +66,14 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                for s in expr.strings {
+                    if isinstance(s, uni.String) and isinstance(s.lit_value, bytes) {
+                        if self.prefetch.bytes_class {
+                            return self._convert_to_instance(self.prefetch.bytes_class);
+                        }
+                        return types.UnknownType();
+                    }
+                }
                 # Forward-reference resolution for single-string type annotations.
                 # When 'Path' is used as a type annotation, the parser wraps
                 # the String in a MultiString. Check if this is in a type context.
@@ -628,9 +636,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         # and is required for proper type checking of overloaded functions.
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
-                            # Look up all symbols with the same name to find overloads
-                            all_syms = base_type.symbol_table.lookup_all(
-                                expr.right.value, deep=False
+                            # Overloads, including version-guarded ones.
+                            all_syms = type_utils.collect_member_syms(
+                                base_type.symbol_table, expr.right.value
                             );
                             for overload_symbol in all_syms {
                                 if overload_symbol == sym {
@@ -923,6 +931,34 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # TypedDict instances expose dict methods. get/pop/setdefault
+                    # get per-field overloads so a literal key resolves precisely;
+                    # the rest (keys, items, values, ...) resolve against the
+                    # equivalent dict[str, V].
+                    if base_type.is_typeddict() {
+                        if expr.right.value in ("get", "pop", "setdefault") {
+                            synth = self._synthesize_typeddict_method(
+                                base_type, expr.right.value
+                            );
+                            if synth is not None {
+                                expr.right.type = synth;
+                                return synth;
+                            }
+                        }
+                        td_dict = self._typeddict_as_dict(base_type);
+                        if (
+                            td_dict is not None
+                            and (
+                                td_member := self._lookup_object_member(
+                                    td_dict, expr.right.value
+                                )
+                            )
+                        ) {
+                            td_member_ty = self.get_type_of_member(td_member, td_dict);
+                            expr.right.type = td_member_ty;
+                            return td_member_ty;
+                        }
+                    }
                     # Check for __getattr__ override before reporting error.
                     # When a class defines __getattr__, any attribute access that doesn't
                     # match an explicit member should return the __getattr__ return type.
@@ -1165,7 +1201,20 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Unbounded TypeVar - only universal object attributes are allowed
                     # Pyright: treats unbounded TypeVars as "object*"
-                    universal_attrs = {"__class__","__doc__","__dict__","__module__","__sizeof__","__str__","__repr__","__hash__","__eq__","__ne__","__init__","__new__"};
+                    universal_attrs = {
+                        "__class__",
+                        "__doc__",
+                        "__dict__",
+                        "__module__",
+                        "__sizeof__",
+                        "__str__",
+                        "__repr__",
+                        "__hash__",
+                        "__eq__",
+                        "__ne__",
+                        "__init__",
+                        "__new__"
+                    };
                     if attr_name in universal_attrs {
                         # Look up on object class
                         if self.prefetch.object_class {
@@ -1321,16 +1370,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                             if isinstance(ua_vals, uni.TupleVal) {
                                 for val in ua_vals.values {
                                     union_args.append(
-                                        self._convert_to_instance(
-                                            self.get_type_of_expression(val)
-                                        )
+                                        self._type_from_union_annotation_arg(val)
                                     );
                                 }
                             } else {
                                 union_args.append(
-                                    self._convert_to_instance(
-                                        self.get_type_of_expression(ua_vals)
-                                    )
+                                    self._type_from_union_annotation_arg(ua_vals)
                                 );
                             }
                         }
@@ -1361,6 +1406,32 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
                         }
                         # Bare ClassVar without type arg - return Unknown
+                        return types.UnknownType();
+                    }
+                    # --- Handle Literal special form ---
+                    # Literal["a"] / Literal[1, 2] build literal-typed instances
+                    # (a union when multiple values are given) so distinct
+                    # literals stay distinct for assignability and overloads.
+                    if target_name == "Literal" {
+                        lit_types: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            lit_vals = expr.right.slices[0].start;
+                            val_exprs = lit_vals.values
+                                if isinstance(lit_vals, uni.TupleVal)
+                                else [lit_vals];
+                            for val in val_exprs {
+                                if lt := self._literal_type_from_expr(val) {
+                                    lit_types.append(lt);
+                                }
+                            }
+                        }
+                        if len(lit_types) == 1 {
+                            return lit_types[0];
+                        }
+                        if len(lit_types) > 1 {
+                            return types.UnionType(types=lit_types);
+                        }
                         return types.UnknownType();
                     }
                 }
@@ -1459,6 +1530,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     subscript_arg = expr.right.slices[0].start;
                 }
+                # TypedDict subscript: td["field"] resolves to the field type.
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.is_class_instance()
+                    and base_type.is_typeddict()
+                ) {
+                    td_result = self._get_typeddict_indexed_type(
+                        base_type, subscript_arg, expr
+                    );
+                    if td_result is not None {
+                        return td_result;
+                    }
+                }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
                 );
@@ -1525,8 +1609,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 self.emit_diag(E1041, expr, type=target_type.name);
                 return types.UnknownType();
             }
-            # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
-            return target_type;
+            # Unwrap the awaitable: Coroutine[Y, S, R] -> R, Awaitable[T] -> T,
+            # else via the `__await__` protocol. Non-awaitables pass through.
+            return self._unwrap_awaitable_type(target_type, expr);
 
         case uni.CastExpr():
             # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
@@ -1822,6 +1907,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if (method := self._get_enclosing_method(expr)) {
                         if isinstance(method.signature, uni.EventSignature) {
                             if arch := method.signature.arch_tag_info {
+                                # A tuple trigger `with (A, B) entry` fires on
+                                # any listed archetype, so the implicit `here`/
+                                # `visitor` is the *union* of the member instance
+                                # types -- not a tuple of them. Typing it as the
+                                # union lets `here.attr` resolve against the
+                                # common members (matching py/sv) instead of
+                                # failing on `tuple` having no such attribute.
+                                if isinstance(arch, uni.TupleVal) {
+                                    member_insts: list[types.TypeBase] = [];
+                                    for member in (arch.values or []) {
+                                        member_insts.append(
+                                            self._convert_to_instance(
+                                                self.get_type_of_expression(member)
+                                            )
+                                        );
+                                    }
+                                    if len(member_insts) == 1 {
+                                        return member_insts[0];
+                                    }
+                                    if member_insts {
+                                        return types.UnionType(types=member_insts);
+                                    }
+                                }
                                 type_arch_cls = self.get_type_of_expression(arch);
                                 type_arch_inst = self._convert_to_instance(
                                     type_arch_cls
@@ -1868,9 +1976,32 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if scope := self._resolution_scope_for(expr) {
-                if symbol := type_utils.lookup_symtab(
+                symbol = type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
-                ) {
+                );
+                # Native (.na.jac) ambient names: `File` and the native `open`
+                # (-> File) override the Python builtins of the same name but
+                # never shadow a user-defined symbol. Gated on native context
+                # so they stay invisible to regular .jac modules.
+                if self._in_native_context()
+                and (symbol is None or symbol.parent_tab is self.builtins_module) {
+                    na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
+                    if na_sym is not None {
+                        symbol = na_sym;
+                    }
+                }
+                # Client (.cl.jac / cl {}) ambient names: ECMAScript and browser
+                # globals (Date, Math, console, window, ...). Like the native
+                # block above they override a Python builtin of the same name
+                # but never shadow a user-defined symbol, and are gated on
+                # client context so they stay invisible to server .jac code.
+                if symbol is None or symbol.parent_tab is self.builtins_module {
+                    js_sym = self.js_globals_module.names_in_scope.get(expr.value);
+                    if js_sym is not None and expr.in_client_context() {
+                        symbol = js_sym;
+                    }
+                }
+                if symbol {
                     symbol = self.resolve_imported_symbols(symbol);
                     symbol.add_use(expr);
                     # Only set sym if not already set (preserves existing symbol info for declarations)
@@ -1919,22 +2050,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if isinstance(symbol_type, types.FunctionType) {
                         overloaded_ty: types.OverloadedType | None = None;
                         overloaded_fns: list[types.FunctionType] = [symbol_type];
-                        # Find the scope where the symbol is defined to check for overloads
-                        symbol_scope: uni.UniScopeNode | None = symbol.parent_tab;
-                        if symbol_scope is None {
-                            # If parent_tab is None, try to find the scope from the declaration
-                            if symbol.decl
-                            and symbol.decl.find_parent_of_type(uni.UniScopeNode) {
-                                symbol_scope = symbol.decl.find_parent_of_type(
-                                    uni.UniScopeNode
-                                );
-                            }
+                        # Collect sibling overloads at the symbol's definition
+                        # scope. Follow re-export chains (e.g. an `@overload`-ed
+                        # function imported through several `__init__` layers, as
+                        # SQLAlchemy's `create_engine`) so the overloads at the
+                        # `def` site are found, not the lone re-export.
+                        def_sym = self.resolve_to_definition_symbol(symbol);
+                        symbol_scope: uni.UniScopeNode | None = def_sym.parent_tab;
+                        if symbol_scope is None and def_sym.decl {
+                            symbol_scope = def_sym.decl.find_parent_of_type(
+                                uni.UniScopeNode
+                            );
                         }
-                        # Check if there are overloads in the symbol's scope
                         if symbol_scope {
-                            all_syms = symbol_scope.lookup_all(expr.value, deep=False);
+                            all_syms = type_utils.collect_member_syms(
+                                symbol_scope, def_sym.sym_name
+                            );
                             for overload_symbol in all_syms {
-                                if overload_symbol == symbol {
+                                if overload_symbol == def_sym {
                                     continue;
                                 }
                                 overload_type = self.get_type_of_symbol(
@@ -2006,6 +2139,25 @@ impl TypeEvaluator._get_type_of_expression_core(
     }
     # TODO: More expressions.
     return types.UnknownType();
+}
+
+"""Widen literal types to their base class for an inferred declared type.
+
+`Literal["x"]` -> `str`, `Literal[1]` -> `int`, etc. Unions are widened
+member-wise; non-literal and non-class types pass through unchanged. Applied
+when freezing the declared type of an unannotated variable at its first
+binding, so the frozen type is the base class rather than the initial
+value's literal.
+"""
+impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
+    if isinstance(ty, types.ClassType) and ty.is_literal_type() {
+        return ty.clone_with_literal(None);
+    }
+    if isinstance(ty, types.UnionType) and ty.types is not None {
+        widened = [self._widen_literal_for_declaration(member) for member in ty.types];
+        return types.UnionType(types=widened);
+    }
+    return ty;
 }
 
 """Return the declared type of the symbol."""
@@ -2097,46 +2249,25 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         if elem := self._extract_tuple_element_type(rhs_type, idx) {
                             return elem;
                         }
+                        # Non-tuple iterables (bytes, str, range, ...) bind
+                        # every target to the same iteration element type.
+                        if elem := self._get_iterable_element_type(
+                            rhs_type, unpack_assignment.value
+                        ) {
+                            return elem;
+                        }
                     }
                 }
-                # ---- Handle tuple unpacking in for loops: for (a, b, c) in <expr> ----
-                # Similar to Pyright's evaluateTypesForForStatement + assignTypeToTupleOrListNode
+                # Tuple unpacking in for loops / comprehensions:
+                # `for (a, b, c) in <expr>`. The loop element (e.g.
+                # tuple[int, Item] from enumerate) is unpacked positionally.
                 elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
                     collection_type = self.get_type_of_expression(
                         unpack_assignment.collection
                     );
-                    # Get the iterator type from __iter__
-                    iter_type = self.get_type_of_magic_method_call(
-                        collection_type, "__iter__", [], unpack_assignment
+                    elem_type = self._get_iterable_element_type(
+                        collection_type, unpack_assignment
                     );
-                    elem_type: types.TypeBase | None = None;
-                    if isinstance(iter_type, types.ClassType) {
-                        # Get element type from __next__ - this gives the actual iteration element
-                        # For enumerate[Item], __next__ returns tuple[int, Item]
-                        next_type = self.get_type_of_magic_method_call(
-                            iter_type, "__next__", [], unpack_assignment
-                        );
-                        if next_type and not isinstance(next_type, types.UnknownType) {
-                            elem_type = self._convert_to_instance(next_type);
-                        } elif iter_type.private
-                        and iter_type.private.type_args
-                        and len(iter_type.private.type_args) == 1 {
-                            # Fallback: try to extract from type_args
-                            elem_type = iter_type.private.type_args[0];
-                            # If element type is a TypeVar, specialize it using collection's type_args
-                            if isinstance(elem_type, types.TypeVarType)
-                            and isinstance(collection_type, types.ClassType)
-                            and collection_type.private.type_args {
-                                specialized = iter_type.specialize_generics(
-                                    collection_type.private.type_args
-                                );
-                                if len(specialized.private.type_args) == 1 {
-                                    elem_type = specialized.private.type_args[0];
-                                }
-                            }
-                        }
-                    }
-                    # Now extract the tuple element at the correct index
                     if elem_type is not None {
                         idx = -1;
                         for (vi, v) in enumerate(unpack_container.values) {
@@ -2178,7 +2309,12 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
                     if node_.parent.value is not None {
-                        return self.get_type_of_expression(node_.parent.value);
+                        # The declared type is frozen at the first binding;
+                        # widen literals so it is the base class, not the
+                        # initial value's `Literal[...]`. Use sites stay narrow.
+                        return self._widen_literal_for_declaration(
+                            self.get_type_of_expression(node_.parent.value)
+                        );
                     }
                 }
             }
@@ -3021,12 +3157,12 @@ impl TypeEvaluator.assign_type(
             }
         }
 
-        # Case 3: Literal["x"] -> Literal["y"] (same base type)
-        # Allow any literal to be assigned to another literal of the same base type.
-        # This effectively widens both to the base type (e.g., str).
+        # Case 3: Literal["x"] -> Literal["y"] (same base type) is assignable
+        # only when the values are equal. Distinct literals must not match, so
+        # literal-typed overloads (e.g. TypedDict get/pop) discriminate on key.
         if src_type.is_literal_type() and dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
-                return True;
+                return src_type.get_literal_value() == dest_type.get_literal_value();
             }
         }
 
@@ -3415,6 +3551,133 @@ impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | N
     return None;
 }
 
+"""Wrap a return type as the coroutine an `async def` call evaluates to.
+
+Returns `Coroutine[Any, Any, inner]`. If the Coroutine class is unavailable
+(e.g. a minimal typeshed) or `inner` is already a generator-family type
+(async generators are async-iterated, not awaited), `inner` is returned
+unchanged.
+"""
+impl TypeEvaluator._make_coroutine_type(inner: TypeBase) -> TypeBase {
+    if self.prefetch.coroutine_class is None {
+        return inner;
+    }
+    if type_utils.is_generator_family_type(inner) {
+        return inner;
+    }
+    coro = self.prefetch.coroutine_class.clone_as_instance();
+    coro.private.type_args = [types.AnyType(), types.AnyType(), inner];
+    return coro;
+}
+
+"""True if `t` is an awaitable value (a Coroutine/Awaitable instance, or a
+class implementing the `__await__` protocol)."""
+impl TypeEvaluator._is_awaitable_type(t: TypeBase) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if t.is_builtin(["Coroutine", "Awaitable"]) {
+        return True;
+    }
+    return self.get_type_of_magic_method_call(t, "__await__", [], None) is not None;
+}
+
+"""Unwrap a single `await`.
+
+`Coroutine[Y, S, R]` -> R, `Awaitable[T]` -> T, otherwise the return of the
+`__await__` protocol. Non-awaitable and gradual (Unknown/Any) types pass
+through unchanged so incomplete async modeling never raises a false
+"not awaitable" error on otherwise-correct code.
+"""
+impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase {
+    if not isinstance(t, types.ClassType) {
+        return t;
+    }
+    if t.is_builtin("Coroutine") {
+        if t.private.type_args and len(t.private.type_args) >= 3 {
+            return t.private.type_args[2];
+        }
+        return t;
+    }
+    if t.is_builtin("Awaitable") {
+        if t.private.type_args and len(t.private.type_args) >= 1 {
+            return t.private.type_args[0];
+        }
+        return t;
+    }
+    # Generic `__await__` protocol: it returns a Generator[Any, Any, R] whose
+    # R is the awaited value.
+    await_ret = self.get_type_of_magic_method_call(t, "__await__", [], node_);
+    if await_ret is not None {
+        gen_ret = type_utils.get_declared_generator_return_type(
+            self._convert_to_instance(await_ret)
+        );
+        if gen_ret is not None {
+            return gen_ret;
+        }
+    }
+    return t;
+}
+
+"""True if `expr` calls a function bound by a CLIENT-context `sv import` in
+the enclosing module. Only the cl->sv edge lowers to an async RPC stub, so
+only there do the calls return coroutines that must be `await`ed even though
+the server declaration is synchronous.
+
+An sv->sv import (a server module consuming another server) lowers instead
+to a *synchronous* `def` stub (see `PyastGenPass._gen_py_sv_func_stub`): the
+runtime spawns the provider as its own process and routes the call, so the
+call returns the bare value and must NOT be treated as awaitable. We mirror
+`BoundaryAnalysisPass`'s client/server split exactly — a `.cl.jac` module, or
+any `sv import` nested in a `cl { ... }` block, is the client edge.
+
+Scoped per module (keyed by `id(module)`) so a server function called from
+server code — the same shared symbol — is not affected.
+"""
+impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
+    tgt = expr.target;
+    if not isinstance(tgt, uni.Name) or tgt.sym is None {
+        return False;
+    }
+    mod = expr.find_parent_of_type(uni.Module);
+    if mod is None {
+        return False;
+    }
+    mod_key = id(mod);
+    syms = self._sv_async_syms_cache.get(mod_key);
+    if syms is None {
+        # A whole `.cl.jac` module is client code; a `cl { ... }` block makes
+        # an individual import client code even inside a server module.
+        mod_is_client_file = (
+            mod.loc is not None and mod.loc.mod_path.endswith(".cl.jac")
+        );
+        syms = set();
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            tok = imp._source_context_token();
+            if tok is None or tok.name != Tok.KW_SERVER {
+                continue;
+            }
+            # Only the cl->sv edge becomes an async stub; an sv->sv import
+            # stays synchronous, so its calls are not coroutines.
+            if not (mod_is_client_file or imp.in_client_context()) {
+                continue;
+            }
+            for item in imp.items {
+                if (
+                    isinstance(item, uni.ModuleItem)
+                    and isinstance(item.name, uni.Name)
+                    and item.name.sym is not None
+                    and item.name.sym.sym_type == SymbolType.ABILITY
+                ) {
+                    syms.add(id(item.name.sym));
+                }
+            }
+        }
+        self._sv_async_syms_cache[mod_key] = syms;
+    }
+    return id(tgt.sym) in syms;
+}
+
 """Return the prefetched types for the type evaluator."""
 impl TypeEvaluator._prefetch_types{
     # Helper to fetch a type and assert it's a ClassType
@@ -3451,7 +3714,10 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
     self.prefetch.union_type_class = get_types_class("UnionType");
-    # self.prefetch.awaitable_class =
+    # Awaitable[T] / Coroutine[Y, S, R] live in typing.pyi. Used to model
+    # `async def` call results (Coroutine) and to unwrap `await` expressions.
+    self.prefetch.awaitable_class = get_typing_class("Awaitable");
+    self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
     # self.prefetch.method_class =
     self.prefetch.tuple_class = get_builtin_class("tuple");
@@ -3564,6 +3830,12 @@ impl TypeEvaluator.postinit -> None {
     self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "dom_types.pyi"
     );
+    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "na_builtins.pyi"
+    );
+    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "js_globals.pyi"
+    );
     self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "typing_ambient.pyi"
     );
@@ -3593,6 +3865,15 @@ impl TypeEvaluator.postinit -> None {
         self._JAC_BUILTINS_STUB_FILE_PATH
     );
     self.dom_types_module = self._load_stub_module(self._DOM_TYPES_STUB_FILE_PATH);
+    # Native ambient stub. Deliberately NOT merged into builtins: its names
+    # (File, native open) are resolved by a native-context-gated lookup in
+    # get_type_of_expression so they stay invisible to regular .jac modules.
+    self.na_builtins_module = self._load_stub_module(self._NA_BUILTINS_STUB_FILE_PATH);
+    # Client (JS) ambient stub. Like na_builtins, deliberately NOT merged into
+    # builtins: its names (Date, Math, console, window, ...) are resolved by a
+    # client-context-gated lookup in get_type_of_expression so they stay
+    # invisible to server .jac modules where they would be a real error.
+    self.js_globals_module = self._load_stub_module(self._JS_GLOBALS_STUB_FILE_PATH);
     # Read jac_builtins.pyi's __all__ as the declarative public surface.
     # Names not listed there (e.g. typing imports used only for this stub's
     # own annotations) stay private; user code must import them explicitly.
@@ -3740,7 +4021,8 @@ impl TypeEvaluator.get_narrowed_type(
     }
     symbol_type = self.get_type_of_symbol(symbol);
     if not isinstance(
-        symbol_type, (types.UnionType, types.ClassType, types.UnknownType)
+        symbol_type,
+        (types.UnionType, types.ClassType, types.UnknownType, types.AnyType)
     ) {
         return None;
     }
@@ -4019,7 +4301,12 @@ impl TypeEvaluator._get_type_from_flow_node(
                     and not isinstance(assigned_type, types.UnknownType)
                 ) {
                     declared_type = target.declared_type;
-                    if (
+                    # Evolving-locals: declared type NoneType (from `x = None`
+                    # without annotation) accepts any later assignment as the
+                    # new type. Matches `is_evolving_reassign` in type_checker_pass.
+                    if self.is_none_type(declared_type) {
+                        narrowed_from_assignment = assigned_type;
+                    } elif (
                         self.assign_type(assigned_type, declared_type)
                         and not self.assign_type(declared_type, assigned_type)
                     ) {
@@ -4207,6 +4494,11 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
     if callable_key := self._extract_callable_info(condition) {
         return ConditionInfo(kind=NarrowingKind.CALLABLE, key=callable_key,);
     }
+    # 2b. hasattr(x, "name")
+    if hasattr_info := self._extract_hasattr_info(condition) {
+        (h_key, h_attr) = hasattr_info;
+        return ConditionInfo(kind=NarrowingKind.HASATTR, key=h_key, attr_name=h_attr);
+    }
     # 3-4. x is None / x is not None / x == None / x != None
     # `==`/`!=` against `None` narrow identically to `is`/`is not None` —
     # this matches Pyright/mypy/TypeScript and the W2058 lint already nudges
@@ -4317,7 +4609,8 @@ impl TypeEvaluator._find_predicate_for(
             return NarrowingPredicate(
                 key=inner_pred.key,
                 narrow_type=inner_pred.narrow_type,
-                is_inverted=not inner_pred.is_inverted
+                is_inverted=not inner_pred.is_inverted,
+                attr_name=inner_pred.attr_name
             );
         }
         return None;
@@ -4431,6 +4724,15 @@ impl TypeEvaluator._find_predicate_for(
                     );
                 }
 
+            case NarrowingKind.HASATTR:
+                # attr_name drives filtering; narrow_type is a placeholder.
+                return NarrowingPredicate(
+                    key=key,
+                    narrow_type=target.declared_type,
+                    is_inverted=False,
+                    attr_name=info.attr_name
+                );
+
             case NarrowingKind.NONE_IS:
                 if self.prefetch and self.prefetch.none_type_class {
                     none_inst = self._convert_to_instance(
@@ -4510,6 +4812,16 @@ impl TypeEvaluator._apply_narrowing(
     is_positive: bool = (
         is_true_branch if not predicate.is_inverted else not is_true_branch
     );
+    # HASATTR uses attribute-presence filtering, not class identity. Same
+    # filter on both branches, parameterized by `keep_with_attr`.
+    if predicate.attr_name is not None {
+        base_type: TypeBase = (
+            incoming if incoming is not None else target.declared_type
+        );
+        return self._filter_union_for_hasattr(
+            base_type, predicate.attr_name, is_positive
+        );
+    }
     if is_positive {
         # Get the base type to filter
         base_type: TypeBase;
@@ -4639,6 +4951,45 @@ impl TypeEvaluator._type_matches_isinstance(
         return True;
     }
     return False;
+}
+
+"""True if `t` declares `attr_name` (MRO walk; `__getattr__` makes it always true)."""
+impl TypeEvaluator._type_has_attribute(t: TypeBase, attr_name: str) -> bool {
+    if not isinstance(t, types.ClassType) {
+        return False;
+    }
+    if self._lookup_class_member(t, attr_name) is not None {
+        return True;
+    }
+    if self._get_getattr_return_type(t) is not None {
+        return True;
+    }
+    return False;
+}
+
+"""Keep union members whose attribute presence matches `keep_with_attr`."""
+impl TypeEvaluator._filter_union_for_hasattr(
+    base_type: TypeBase, attr_name: str, keep_with_attr: bool
+) -> TypeBase | None {
+    matching: list[TypeBase] = [];
+    if isinstance(base_type, types.UnionType) and base_type.types {
+        for t in base_type.types {
+            if self._type_has_attribute(t, attr_name) == keep_with_attr {
+                matching.append(t);
+            }
+        }
+    } else {
+        if self._type_has_attribute(base_type, attr_name) == keep_with_attr {
+            matching.append(base_type);
+        }
+    }
+    if len(matching) == 0 {
+        return None;
+    } elif len(matching) == 1 {
+        return matching[0];
+    } else {
+        return types.UnionType(types=matching);
+    }
 }
 
 """Union multiple narrowed types at a join point."""
@@ -4871,6 +5222,44 @@ impl TypeEvaluator._extract_callable_info(condition: uni.Expr) -> str | None {
         return None;
     }
     return self.create_key_for_reference(condition.params[0]);
+}
+
+"""Parse hasattr(x, "name") → (key, attr); None for dynamic attr names."""
+impl TypeEvaluator._extract_hasattr_info(
+    condition: uni.Expr
+) -> tuple[str, str] | None {
+    if not isinstance(condition, uni.FuncCall) {
+        return None;
+    }
+    if not isinstance(condition.target, uni.Name)
+    or condition.target.value != "hasattr" {
+        return None;
+    }
+    if not condition.params or len(condition.params) != 2 {
+        return None;
+    }
+    narrowing_key = self.create_key_for_reference(condition.params[0]);
+    if narrowing_key is None {
+        return None;
+    }
+    # Only single-part, non-formatted string literals.
+    attr_arg = condition.params[1];
+    if (
+        isinstance(attr_arg, uni.MultiString)
+        and len(attr_arg.strings) == 1
+        and isinstance(attr_arg.strings[0], uni.String)
+    ) {
+        str_node = attr_arg.strings[0];
+    } elif isinstance(attr_arg, uni.String) {
+        str_node = attr_arg;
+    } else {
+        return None;
+    }
+    attr_name = str_node.lit_value;
+    if not isinstance(attr_name, str) {
+        return None;
+    }
+    return (narrowing_key, attr_name);
 }
 
 """Check whether a type is callable (FunctionType or Callable annotation)."""
@@ -5184,6 +5573,14 @@ impl TypeEvaluator._resolve_py_ast_type_node(
             and base.symbol_table is not None
         ) {
             member = base.symbol_table.lookup(ast_node.attr);
+            if member is None
+            and (
+                inner := type_utils.collect_member_syms(
+                    base.symbol_table, ast_node.attr
+                )
+            ) {
+                member = inner[0];
+            }
             if member {
                 return self.get_type_of_symbol(member);
             }

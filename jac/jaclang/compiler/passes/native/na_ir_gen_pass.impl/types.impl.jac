@@ -68,9 +68,20 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in ("any", "Any", "object") {
         return self.jacval_type;
     }
-    # User-defined enum -> backing integer type.
-    if cname in self.enum_types {
-        return self.enum_types[cname];
+    # (No enum branch: _codegen_enum registers every enum name in both
+    # enum_types and type_map with the same i64 backing, and type_map is
+    # checked above -- so an enum_types lookup here could never be reached.)
+    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+    # its struct on demand so a `File` annotation lowers even before any file
+    # op has emitted the helpers.
+    if cname == "File" {
+        return self._get_file_struct_type().as_pointer();
+    }
+    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
+    # its struct on demand so a `File` annotation lowers even before any file
+    # op has emitted the helpers.
+    if cname == "File" {
+        return self._get_file_struct_type().as_pointer();
     }
     # User-defined object/struct -> pointer to struct.
     if cname in self.struct_types {
@@ -207,12 +218,13 @@ impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
 
 """Resolve a Jac type expression to an LLVM type.
 
-The primary path is unified with the central type checker: an annotation
-Expr carries a `.type` (TypeBase) populated by TypeCheckPass, and
-_lower_type maps that TypeBase to an LLVM type. A small name-based path
-follows it for NA-internal runtime types (e.g. native `File`) the central
-checker does not model — those types are registered by NA itself
-(_emit_file_helpers etc.) and only ever resolved via their textual name.
+An annotation Expr carries a `.type` (TypeBase) populated by TypeCheckPass;
+_lower_type maps it to an LLVM type. Every native type now flows through the
+central checker -- primitives, user structs/enums, collections, and the
+runtime `File` (modeled by na_builtins.pyi) -- including annotations in
+imported .na.jac modules (type-checked on load, #6117). The former name-based
+fallback (struct_types / type_map lookups) is gone: with `File` modeled
+centrally (#6118) it was reached zero times across the native suite.
 Unhandled cases default to i64.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
@@ -224,19 +236,6 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         lowered = self._lower_type(type_expr.type);
         if lowered is not None {
             return lowered;
-        }
-    }
-    # NA-internal types not modeled by the central checker (e.g. native File).
-    type_name = self._get_name(type_expr);
-    if type_name is not None {
-        if type_name in self.struct_types {
-            return self.struct_types[type_name].as_pointer();
-        }
-        if type_name in self.type_map {
-            return self.type_map[type_name];
-        }
-        if type_name in self.enum_types {
-            return self.enum_types[type_name];
         }
     }
     return ir.IntType(64);
@@ -316,6 +315,44 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
         );
     }
     if isinstance(val.type, ir.PointerType) {
+        # Container truthiness (Python semantics): a list/dict/set is falsy when
+        # EMPTY, not when null. Every container struct stores its length as field
+        # 0 (i64), so test that instead of the pointer — otherwise `while stack`
+        # tests the always-non-null pointer, loops forever, and pop() runs past
+        # empty into out-of-bounds memory (see #6435 item 5).
+        _is_container = False;
+        for (_, _lt) in self.list_types.items() {
+            if val.type == _lt.as_pointer() {
+                _is_container = True;
+                break;
+            }
+        }
+        if not _is_container {
+            for (_, _dt) in self.dict_types.items() {
+                if val.type == _dt.as_pointer() {
+                    _is_container = True;
+                    break;
+                }
+            }
+        }
+        if not _is_container {
+            for (_, _st) in self.set_types.items() {
+                if val.type == _st.as_pointer() {
+                    _is_container = True;
+                    break;
+                }
+            }
+        }
+        if _is_container {
+            _i32 = ir.IntType(32);
+            _len_ptr = self.builder.gep(
+                val, [ir.Constant(_i32, 0), ir.Constant(_i32, 0)], name="tobool.len.ptr"
+            );
+            _len = self.builder.load(_len_ptr, name="tobool.len");
+            return self.builder.icmp_unsigned(
+                "!=", _len, ir.Constant(ir.IntType(64), 0), name="tobool"
+            );
+        }
         null_ptr = ir.Constant(val.type, None);
         return self.builder.icmp_unsigned("!=", val, null_ptr, name="tobool");
     }
@@ -338,6 +375,19 @@ Called only via _coerce_type so the ownership marker stays attached.
 impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
+    }
+    # Gradual `any` boxing/unboxing — the single seam through which scalar/pointer
+    # values cross the `JacVal` (tagged-union) boundary. Routing it here means call
+    # args, returns, local assignments, and every list/dict/tuple element coercion
+    # round-trip `any` faithfully (sv parity) instead of mismatching or corrupting
+    # the value at each site. See #6449.
+    if self?.jacval_type {
+        if target_type == self.jacval_type and val.type != self.jacval_type {
+            return self._box_to_jacval(val);
+        }
+        if val.type == self.jacval_type and target_type != self.jacval_type {
+            return self._unbox_from_jacval(val, target_type);
+        }
     }
     # Int → Double (f64)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.DoubleType) {
@@ -1685,6 +1735,10 @@ impl NaIRGenPass._peel_list_type(type_node: (object | None)) -> tuple {
                         inner_elem_name = "f64";
                     } elif isinstance(inner_type, ir.PointerType) {
                         inner_elem_name = "ptr";
+                    } elif self?.jacval_type and inner_type == self.jacval_type {
+                        # `list[any]` slots hold boxed JacVal structs; key them
+                        # distinctly from `i64` (see _codegen_list_val).
+                        inner_elem_name = "jacval";
                     }
                     return (inner, inner_type, inner_elem_name);
                 }

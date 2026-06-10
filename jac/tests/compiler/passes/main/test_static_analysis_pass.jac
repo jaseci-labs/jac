@@ -214,6 +214,42 @@ test "redundant typing imports warn on the import line" {
     assert len(error_msgs) == 0 , f"Expected no errors, got: {error_msgs}";
 }
 
+test "lowercase boolean and null literals carry a did-you-mean hint" {
+    # Issue #6357: `true`/`false`/`null`/`none` parse as undefined names. The
+    # W2001 warning must point the author at the right Python-style literal
+    # (`True`/`False`/`None`) so a common cross-language slip is a one-line fix
+    # instead of a confusing "Cannot return <Unknown>" dead end.
+    file_path = os.path.join(FIXTURES, "lowercase_bool_literals.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    w2001 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W2001"
+    ];
+
+    def hint_for(name: str) -> (str | None) {
+        for w in w2001 {
+            if f"'{name}'" in w.msg {
+                return w.help_text;
+            }
+        }
+        return None;
+    }
+
+    true_hint = hint_for("true");
+    false_hint = hint_for("false");
+    null_hint = hint_for("null");
+    none_hint = hint_for("none");
+
+    assert true_hint is not None and "True" in true_hint , f"Expected 'did you mean True' hint for `true`, got: {true_hint!r} (all W2001: {[
+        str(w) for w in w2001
+    ]})";
+    assert false_hint is not None and "False" in false_hint , f"Expected 'did you mean False' hint for `false`, got: {false_hint!r}";
+    assert null_hint is not None and "None" in null_hint , f"Expected 'did you mean None' hint for `null`, got: {null_hint!r}";
+    assert none_hint is not None and "None" in none_hint , f"Expected 'did you mean None' hint for `none`, got: {none_hint!r}";
+}
+
 test "obj bare assignment to has var name still warns as unused" {
     file_path = os.path.join(FIXTURES, "obj_bare_has_assign.jac");
     prog = JacProgram();

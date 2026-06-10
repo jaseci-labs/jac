@@ -164,7 +164,8 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
     import from jaclang.project.config { get_config }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = self.introspector.resolve_root_app(configured_root);
     # Register the configurable cl route (e.g., /cl/{page_name})
     self.server.add_endpoint(
         JEndPoint(
@@ -254,7 +255,30 @@ impl JacAPIServerStatic.render_base_route_callback(
 """Serve root-level assets like /img.png, /icons/logo.svg, etc.
 Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
-    allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
+    allowed_extensions = {
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.webp',
+        '.svg',
+        '.ico',
+        '.woff',
+        '.woff2',
+        '.ttf',
+        '.otf',
+        '.eot',
+        '.mp4',
+        '.webm',
+        '.mp3',
+        '.wav',
+        '.css',
+        '.js',
+        '.json',
+        '.pdf',
+        '.txt',
+        '.xml'
+    };
     file_ext = Path(file_path).suffix.lower();
     import from jaclang.project.config { get_config }
     config = get_config();
@@ -269,7 +293,8 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     );
     if (not file_ext or (file_ext not in allowed_extensions)) {
         # SPA catch-all: serve base_route_app for extensionless paths
-        base_route_app = config.serve.base_route_app if config else "";
+        configured_root = config.serve.base_route_app if config else "";
+        base_route_app = self.introspector.resolve_root_app(configured_root);
         if (
             not file_ext and base_route_app and not file_path.startswith(api_prefixes)
         ) {

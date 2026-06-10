@@ -241,6 +241,20 @@ test "from_import" {
     );
 }
 
+"""Calling an @overload-ed function imported through a re-export chain matches
+the later overload. Overloads must be gathered at the definition scope, not the
+single-symbol re-export scope (regression: SQLAlchemy `create_engine`)."""
+test "imported_overloaded_function_call_resolves" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_imported_overload.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert program.errors_had == [] , (
+        "make(\"a\") matches the no-strict overload; expected no errors, got: " + str(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
 test "call_expr" {
     path = os.path.join(CHECKER_FIXTURES, "checker_expr_call.jac");
     program = JacProgram();
@@ -1048,7 +1062,7 @@ test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
     # validated element-wise. Untyped triggers (`with entry`) are valid.
-    # The fixture has 6 walker-side bad cases (E1116) and 5 node/edge
+    # The fixture has 7 walker-side bad cases (E1116) and 5 node/edge
     # bad cases (E1117); the good cases must produce neither diagnostic.
     path = os.path.join(CHECKER_FIXTURES, "checker_ability_trigger_archetype.jac");
     program = JacProgram();
@@ -1059,7 +1073,7 @@ test "ability_trigger_archetype" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 6 , f"Expected 6 E1116 (invalid walker trigger), got {len(
+    assert len(e1116) == 7 , f"Expected 7 E1116 (invalid walker trigger), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
     e1117 = [
@@ -1070,6 +1084,40 @@ test "ability_trigger_archetype" {
     assert len(e1117) == 5 , f"Expected 5 E1117 (invalid node/edge trigger), got {len(
         e1117
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1117);
+}
+
+test "root_keyword_as_walker_trigger" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_root_keyword_trigger.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1116 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1116"
+    ];
+    assert len(e1116) == 7 , f"Expected 7 E1116 (3 root keyword + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
+        e1116
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
+    var_errors = [
+        e
+        for e in e1116
+        if "my_node" in e.pretty_print()
+    ];
+    # `N()` call-expr instance: no name leaf, so diagnostic uses the type name `N`.
+    call_errors = [
+        e
+        for e in e1116
+        if 'got "N"' in e.pretty_print()
+    ];
+    root_errors = [
+        e
+        for e in e1116
+        if e not in var_errors and e not in call_errors
+    ];
+    assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
+    assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
+    assert len(call_errors) == 1 , "Expected 1 E1116 for `N()` call-expr instance trigger";
 }
 
 test "undefined_osp_position" {
@@ -1282,6 +1330,30 @@ test "inferred_local_type_frozen" {
         a = "some str";  # <-- Error
     """,
         program.errors_had[0].pretty_print()
+    );
+}
+
+test "inferred_local_type_widens_literals" {
+    # Only the cross-type reassignment errors, and the message reports the
+    # widened base type (`str`), not a leaked `Literal[...]`.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_literal_widening_reassignment.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert program.errors_had[0].code.code == "E1001";
+    msg = program.errors_had[0].pretty_print();
+    assert "Cannot assign int to str" in msg , f"Expected widened-base message, got: {msg}";
+    assert "Literal[" not in msg , f"Frozen type should not leak a literal: {msg}";
+    assert_error_pretty_found(
+        """
+        name = 5;  # <-- Error
+        ^^^^^^^^
+    """, msg
     );
 }
 
@@ -2067,6 +2139,23 @@ test "impl_body_type_checking" {
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
 }
 
+"""Reassigning a module global from an impl-file body keeps the global's
+declared type. Without decl/impl-aware `global x;` binding the assignment
+would shadow `_rand_state` with an inferred local, dropping its `int` type and
+tripping `__mul__`/`__add__`/`__mod__` overload-resolution errors."""
+test "impl_body_global_reassignment_keeps_declared_type" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_impl_global_reassign.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , (
+        "Expected no type errors for an impl-body global reassignment, but got " + f"{len(
+            program.errors_had
+        )}:\n" + "\n".join([err.pretty_print() for err in program.errors_had])
+    );
+}
+
 """Test that self.x = value in impl files creates valid archetype attributes."""
 test "impl_self_member_assignment" {
     program = JacProgram();
@@ -2806,6 +2895,47 @@ test "union_and_optional_special_forms" {
         ^^^^^^^^^^^
     """,
         program.errors_had[2].pretty_print()
+    );
+}
+
+"""Union/Optional string forward refs resolve to actual types, not Literal[...]."""
+test "union_string_forward_refs" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , (
+        "Expected 0 errors — Union[('Foo','Bar')], Union['Foo'], and Optional['Foo'] "
+        "should resolve to real types, not Literal strings. Got "
+        f"{len(program.errors_had)}: " + "\n".join(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
+"""Unresolvable Union[('A', 'B')] strings still degrade to Literal (safety net)."""
+test "union_string_forward_refs_unresolved" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_forward_ref_unresolved.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 1 , (
+        f"Expected 1 error for int return to Literal union, got {len(user_errors)}: " + "\n".join(
+            [e.pretty_print() for e in user_errors]
+        )
+    );
+    assert user_errors[0].code and user_errors[0].code.code == "E1002" , (
+        f"Expected E1002 return mismatch, got {user_errors[0].code.code
+            if user_errors[0].code
+            else '?'}"
     );
 }
 
@@ -4124,6 +4254,39 @@ test "callable_narrowing" {
     );
 }
 
+test "hasattr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_hasattr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 5 , "Expected exactly 5 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: attribute is missing from NoFoo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.bar;  # <-- Error: x is WithFoo here, no `bar`
+    """,
+        program.errors_had[1].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        return x.foo;  # <-- Error: x is NoFoo here, no `foo`
+    """,
+        program.errors_had[3].pretty_print()
+    );
+}
+
 """Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
 test "type_alias_narrowing" {
     program = JacProgram();
@@ -5004,4 +5167,38 @@ test "duplicate_archetype_decl_is_hard_error" {
     assert "Animal" in e0077[1].pretty_print() , f"second E0077 should name 'Animal': {e0077[
         1
     ].pretty_print()}";
+}
+
+test "comprehension_in_ternary_narrowing" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_comprehension_in_ternary.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "spread_with_explicit_kwarg_no_false_positive" {
+    # Regression: a call that mixes a `*`/`**` spread with an explicit keyword
+    # argument must not emit E1057 "Parameter 'X' already matched". The spread
+    # contents are statically unknown, so the explicit keyword wins and the
+    # spread only satisfies the required-param check.
+    path = os.path.join(CHECKER_FIXTURES, "checker_spread_with_kwarg.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors for spread + explicit kwarg, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "circular_import_preserves_class_identity" {
+    abs_entry = os.path.join(CHECKER_FIXTURES, "circular_import_identity", "entry.jac");
+    rel_entry = os.path.relpath(abs_entry);
+    program = JacProgram();
+    program.compile(rel_entry, type_check=True);
+    assert len(program.errors_had) == 0 , f"Circular import split the class identity, got {len(
+        program.errors_had
+    )} error(s):\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

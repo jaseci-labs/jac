@@ -1,10 +1,25 @@
 """CLI tests for the `jac bundle` command."""
 
 import os;
+import sys;
 import tempfile;
 import shutil;
+import jaclang;
 import from pathlib { Path }
 import from subprocess { run }
+import from jaclang.cli.commands.project { _PRECOMPILE_MINOR_RANGE }
+
+
+"""Return the cpython-3XX tags for every python3.X present on PATH."""
+def _available_python_tags -> list[str] {
+    tags: list[str] = [];
+    for minor in _PRECOMPILE_MINOR_RANGE {
+        if shutil.which(f"python3.{minor}") {
+            tags.append(f"cpython-3{minor}");
+        }
+    }
+    return tags;
+}
 
 
 """Write a minimal jac.toml and package skeleton into tmp_path."""
@@ -21,7 +36,7 @@ def _make_project(tmp_path: str, pkg_name: str = "mypkg", version: str = "1.0.0"
     (pkg_dir / "__init__.jac").write_text(f"# {pkg_name}\n");
 }
 
-test "bundle succeeds and writes wheel to dist/" {
+test "bundle succeeds and writes wheel and sdist to dist/" {
     tmp_path = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     os.chdir(tmp_path);
@@ -30,10 +45,16 @@ test "bundle succeeds and writes wheel to dist/" {
 
         result = run(["jac", "bundle"], capture_output=True, text=True);
 
-        assert result.returncode == 0;
-        whl_files = list((Path(tmp_path) / "dist").glob("*.whl"));
-        assert len(whl_files) == 1;
+        assert result.returncode == 0 , (
+            f"jac bundle failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        );
+        dist = Path(tmp_path) / "dist";
+        whl_files = list(dist.glob("*.whl"));
+        sdist_files = list(dist.glob("*.tar.gz"));
+        assert len(whl_files) == 1 , f"Expected 1 wheel, found: {whl_files}";
+        assert len(sdist_files) == 1 , f"Expected 1 sdist, found: {sdist_files}";
         assert whl_files[0].name == "mypkg-1.0.0-py3-none-any.whl";
+        assert sdist_files[0].name == "mypkg-1.0.0.tar.gz";
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
@@ -55,6 +76,100 @@ test "bundle writes wheel to a custom output directory" {
         assert result.returncode == 0;
         whl_files = list(Path(custom_out).glob("*.whl"));
         assert len(whl_files) == 1;
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
+
+test "bundle --precompile generates .jir files per version and produces wheel" {
+    tags = _available_python_tags();
+    if not tags {
+        return;
+    }
+
+    # Point precompile at the local jaclang source so the test passes on release
+    # PRs where the bumped version isn't yet on PyPI. The jac/ source root is the
+    # parent of the jaclang/ package directory and contains pyproject.toml.
+    jac_source_root = str(Path(jaclang.__path__[0]).parent);
+    prev_local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
+    os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = jac_source_root;
+
+    tmp_path = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp_path);
+        _make_project(tmp_path);
+        precompiled_dir = Path(tmp_path) / "mypkg" / "_precompiled";
+
+        result = run(
+            ["jac", "bundle", "--precompile"], capture_output=True, text=True,
+        );
+
+        assert result.returncode == 0 , (
+            f"jac bundle --precompile failed (exit {result.returncode}):\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        );
+
+        assert precompiled_dir.is_dir() , f"_precompiled/ not created under {precompiled_dir.parent}";
+        for tag in tags {
+            tag_dir = precompiled_dir / tag;
+            assert tag_dir.is_dir() , f"Missing version directory: {tag_dir}";
+            assert len(list(tag_dir.rglob("*.jir"))) > 0 , f"No .jir files under {tag_dir}";
+        }
+        whl_files = list((Path(tmp_path) / "dist").glob("*.whl"));
+        assert len(whl_files) == 1 , f"Expected 1 wheel in dist/, found: {whl_files}";
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+        if prev_local_install is None {
+            os.environ.pop("JAC_PRECOMPILE_LOCAL_INSTALL", None);
+        } else {
+            os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = prev_local_install;
+        }
+    }
+}
+
+
+test "bundle sdist installs with pip" {
+    tmp_path = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    try {
+        _make_project(tmp_path);
+
+        bundle_result = run(["jac", "bundle"], capture_output=True, text=True);
+        assert bundle_result.returncode == 0 , (
+            f"jac bundle failed:\nstdout: {bundle_result.stdout}\nstderr: {bundle_result.stderr}"
+        );
+
+        sdist_files = list((Path(tmp_path) / "dist").glob("*.tar.gz"));
+        assert len(sdist_files) == 1;
+        sdist_path = sdist_files[0];
+
+        install_dir = Path(tmp_path) / "installed";
+        install_dir.mkdir();
+        pip_result = run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--no-build-isolation",
+                "--target",
+                str(install_dir),
+                "--quiet",
+                str(sdist_path),
+
+            ],
+            capture_output=True,
+            text=True,
+        );
+        assert pip_result.returncode == 0 , (
+            f"pip install from sdist failed:\nstdout: {pip_result.stdout}\nstderr: {pip_result.stderr}"
+        );
+        assert (install_dir / "mypkg").is_dir() , "installed package directory not found";
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);

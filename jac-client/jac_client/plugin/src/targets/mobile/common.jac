@@ -5,6 +5,7 @@ import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.client { get_bun }
 
 # ==============================================================================
 # Constants
@@ -163,7 +164,9 @@ def _run_install_cmd(project_dir: Path, packages: list[str], dev: bool = False) 
         }
         cmd.extend(packages);
     } else {
-        cmd = ["bun", "add"];
+        # Fall back to bun (auto-installs to .jac/bin if not on PATH).
+        bun = get_bun();
+        cmd = [bun or "bun", "add"];
         if dev {
             cmd.append("--dev");
         }

@@ -62,6 +62,14 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             } else {
                 global_var.linkage = "";
             }
+            # Record `:pub` globals as C-ABI shared-library exports, consumed by
+            # `jac nacompile --shared` (a C host reads them via dlsym).
+            _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
+            if _is_pub and self.ir_in?.gen and var_name.isidentifier() {
+                if var_name not in self.ir_in.gen._exported_symbols {
+                    self.ir_in.gen._exported_symbols.append(var_name);
+                }
+            }
             # Try compile-time constant initialization for simple values
             const_init = self._codegen_const_expr(assign.value, var_type)
                 if assign.value is not None
@@ -108,8 +116,22 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     }
 }
 
-"""Infer the LLVM type from an initializer AST node (e.g., Game() → Game*)."""
+"""Infer the LLVM type of an un-annotated global from its initializer.
+
+Primary path: consume the initializer Expr's `.type` (set by TypeCheckPass)
+via _lower_type, the same seam annotated globals use. Falls back to
+initializer-shape inference for nodes the checker did not type (e.g. globals
+in imported .na.jac modules, until those modules are themselves type-checked).
+Returns None when nothing resolves.
+"""
 impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None) {
+    # Unified path: lower the central checker's resolved type.
+    if isinstance(value_node, uni.Expr) and value_node?.type is not None {
+        lowered = self._lower_type(value_node.type);
+        if lowered is not None {
+            return lowered;
+        }
+    }
     # FuncCall whose target is a known archetype name → constructor
     if isinstance(value_node, uni.FuncCall) {
         call_name = self._get_name(value_node.target);
@@ -142,15 +164,13 @@ impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
     if isinstance(nd, uni.Int) {
-        # Use base=0 to auto-detect prefix: 0x=hex, 0o=oct, 0b=bin, else decimal
-        return ir.Constant(target_type, int(nd.value, 0));
+        return ir.Constant(target_type, nd.lit_value);
     }
     if isinstance(nd, uni.Float) {
-        return ir.Constant(target_type, float(nd.value));
+        return ir.Constant(target_type, nd.lit_value);
     }
     if isinstance(nd, uni.Bool) {
-        val = 1 if nd.value.lower() in ("true", "1") else 0;
-        return ir.Constant(target_type, val);
+        return ir.Constant(target_type, 1 if nd.lit_value else 0);
     }
     if isinstance(nd, uni.String) or isinstance(nd, uni.MultiString) {
         # String constants - create global string

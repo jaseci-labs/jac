@@ -26,7 +26,7 @@ RUN git config --system --add safe.directory '*'
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
         jaclang \
-        "jac-scale[deploy,data]" \
+        "jac-scale[deploy,data,tracing]" \
         jac-client
 
 WORKDIR /app
@@ -39,6 +39,12 @@ RUN if [ -f jac.toml ]; then jac install || true; fi
 # Fail-loud check that the CLI is on PATH (runtime jaclang compiles .jac
 # on first import anyway, so no pre-compile needed).
 RUN jac --version
+
+# Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
+# (12-char git SHA, +`-dirty` on uncommitted changes); in-pod code reads it
+# to report "running build X" with zero RBAC. Kept LAST for layer caching.
+ARG JAC_BUILD_SHA=unknown
+ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}
 
 # Pod-spec sets command + args; no ENTRYPOINT needed.
 EXPOSE 8000

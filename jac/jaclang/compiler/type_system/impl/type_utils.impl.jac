@@ -1,3 +1,20 @@
+impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if not isinstance(ty, types.ClassType) {
+        return None;
+    }
+    if JAC_TYPE_REGISTRY.is_primitive(ty.shared.class_name) {
+        return ty.shared.class_name;
+    }
+    # Walk the MRO so subtypes (e.g. LiteralString) resolve to their primitive base.
+    for base in ty.shared.mro {
+        if JAC_TYPE_REGISTRY.is_primitive(base.shared.class_name) {
+            return base.shared.class_name;
+        }
+    }
+    return None;
+}
+
 # Generator / Iterator return-type helpers.
 """Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 impl get_generator_type_args(
@@ -158,7 +175,16 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    symbol = symtable.lookup(name, deep=True, incl_inner_scope=True);
+    # Live-guard-branch resolution before the plain deep walk, so a guarded
+    # declaration (e.g. typing_extensions' `else`-branch ParamSpec) isn't
+    # shadowed by a same-named builtins import the filter below discards.
+    symbol: (Symbol | None) = None;
+    if (inner := collect_member_syms(symtable, name, deep=True)) {
+        symbol = inner[0];
+    }
+    if symbol is None {
+        symbol = symtable.lookup(name, deep=True, incl_inner_scope=False);
+    }
     # Filter out imported symbols from builtins module when accessed from user code.
     # In Python stub files, imports are NOT re-exported by default.
     # Symbols like 'types', 'SupportsAdd' are imported into builtins.pyi
@@ -174,6 +200,64 @@ impl lookup_symtab(
         return None;
     }
     return symbol;
+}
+
+impl collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol] {
+    import from jaclang.jac0core.helpers { evaluate_version_condition }
+
+    # Live branch of a guard chain: True/None keeps it, False hands off to else.
+    def live_branches(guard: uni.IfStmt) -> list[uni.UniScopeNode] {
+        eval_result = evaluate_version_condition(guard.condition);
+        if eval_result is None or eval_result {
+            return [guard];
+        }
+        if isinstance(guard.else_body, uni.ElseIf) {
+            return live_branches(guard.else_body);
+        }
+        if isinstance(guard.else_body, uni.ElseStmt) {
+            return [guard.else_body];
+        }
+        return [];
+    }
+
+    # Own scope, else live control-flow children. Skip Python name scopes
+    # (opaque) and else-branches handled via their head guard above.
+    def descend(s: uni.UniScopeNode) -> list[Symbol] {
+        if (here := s.lookup_all(name, deep=False)) {
+            return here;
+        }
+        for kid in s.kid_scope {
+            if isinstance(kid, uni.UniScopeNode.get_python_scoping_nodes()) {
+                continue;
+            }
+            if isinstance(kid, (uni.ElseStmt, uni.ElseIf))
+            and isinstance(kid.parent, uni.IfStmt) {
+                continue;
+            }
+            branches = live_branches(kid) if isinstance(kid, uni.IfStmt) else [kid];
+            for branch in branches {
+                if (found := descend(branch)) {
+                    return found;
+                }
+            }
+        }
+        return [];
+    }
+
+    if not deep {
+        return descend(scope);
+    }
+    # deep: also climb enclosing scopes (resolve from a nested ability body).
+    s: uni.UniScopeNode | None = scope;
+    while s is not None {
+        if (found := descend(s)) {
+            return found;
+        }
+        s = s.parent_scope;
+    }
+    return [];
 }
 
 """Return a list of completion items for the type."""
@@ -237,6 +321,7 @@ impl ParamAssignmentTracker.get_unmatched_required_params -> list[types.Paramete
     for param in self.params {
         if (
             (param not in self.matched_params)
+            and (param not in self.spread_filled)
             and (param.default_value is None)
             and (
                 param.param_kind not in (types.ParamKind.VARARG, types.ParamKind.KWARG)
@@ -294,7 +379,7 @@ impl ParamAssignmentTracker.match_named_argument(
     }
 }
 
-"""Mark all positional parameters as matched."""
+"""Mark positional params as *possibly* filled by a `*args` spread."""
 impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
     for param in self.params {
         if (
@@ -304,13 +389,13 @@ impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
                 types.ParamKind.VARARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
     self.curr_param_idx = -1;
 }
 
-"""Mark all named parameters as matched."""
+"""Mark named params as *possibly* filled by a `**kwargs` spread."""
 impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
     for param in self.params {
         if (
@@ -320,7 +405,7 @@ impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
                 types.ParamKind.KWARG
             )
         ) {
-            self.matched_params.add(param);
+            self.spread_filled.add(param);
         }
     }
 }
@@ -342,6 +427,10 @@ impl ParamAssignmentTracker.lookup_named_parameter(
             continue;
         }
         if (param.name == param_name) {
+            # A param in `matched_params` was bound by a real positional or
+            # keyword arg, so naming it again is a true duplicate. A param only
+            # in `spread_filled` (a `**`/`*` spread of unknown keys) is not — we
+            # cannot prove the spread set it, so the explicit keyword wins.
             if (param in self.matched_params) {
                 raise Exception(f"Parameter '{param.name}' already matched");
             }
@@ -573,6 +662,12 @@ impl apply_solved_type_vars(
             # This handles typeshed TypeVars without bounds
             if not is_declared_class_param
             and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+            # Free-function path: no class context → per-call solution is authoritative.
+            if not is_declared_class_param
+            and class_type is None
             and ty.name in solution {
                 is_declared_class_param = True;
             }

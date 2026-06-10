@@ -844,7 +844,7 @@ test "config files from jac toml" {
             }
 
             # Import and use ViteBundler to generate config files
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+            import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
             bundler = ViteBundler(Path(temp_dir));
             created_files = bundler.create_config_files();
@@ -897,7 +897,7 @@ test "raw template config files from jac toml" {
                 f.write(toml_content);
             }
 
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+            import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
             bundler = ViteBundler(Path(temp_dir));
             created_files = bundler.create_config_files();
@@ -939,7 +939,7 @@ test "npmrc from jac toml" {
             }
 
             # Import and use ViteBundler to generate .npmrc
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+            import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
             bundler = ViteBundler(Path(temp_dir));
             npmrc_path = bundler.create_npmrc();
@@ -963,7 +963,7 @@ test "npmrc from jac toml" {
             assert "@mycompany:registry=https://npm.pkg.github.com" in npmrc_content;
             assert "@myorg:registry=https://registry.example.com" in npmrc_content;
 
-            # Verify auth entry — env var should pass through as literal
+            # Verify auth entry - env var should pass through as literal
             # (interpolation swallows ValueError when env var is unset)
             assert "//npm.pkg.github.com/:_authToken=" in npmrc_content;
         } finally {
@@ -1037,7 +1037,7 @@ test "create cl and run no root files" {
 
 """Test that ViteBundler.build() prompts to install deps when jac.toml is missing."""
 test "vite build prompts for missing client deps" {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = Path(temp_dir);
@@ -1047,8 +1047,7 @@ test "vite build prompts for missing client deps" {
         # Mock input to accept, and mock bun/vite so we don't need real installs.
         with unittest.mock.patch("builtins.input", return_value="Y") {
             with unittest.mock.patch(
-                "jac_client.plugin.utils.bun_installer.ensure_bun_available",
-                return_value=True
+                "jaclang.runtimelib.client.bun_installer.get_bun", return_value="bun"
             ) {
                 with unittest.mock.patch("subprocess.run") as mock_subprocess {
                     # bun install returns success, vite build returns failure
@@ -1181,7 +1180,7 @@ test "vite config generation" {
             }
 
             # Import ViteBundler
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+            import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
             # Initialize bundler
             bundler = ViteBundler(Path(temp_dir));
@@ -1254,7 +1253,7 @@ test "path aliases in generated vite and tsconfig" {
                 f.write(toml_content);
             }
 
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+            import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
             bundler = ViteBundler(Path(temp_dir));
 

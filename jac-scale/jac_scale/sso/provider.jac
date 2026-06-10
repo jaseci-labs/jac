@@ -53,10 +53,16 @@ Example:
 obj SSOProvider {
     """Initialize SSO authentication flow.
 
+    Args:
+        state: Optional opaque value round-tripped through the OAuth provider and
+            returned on the callback. Used to carry a native/desktop client's own
+            loopback redirect URL (RFC 8252) so the token is delivered to the
+            origin that initiated the flow.
+
     Returns:
         Response object (typically a redirect to the SSO provider's auth page)
     """
-    async def initiate_auth -> Response;
+    async def initiate_auth(state: str | None = None) -> Response;
 
     """Handle the OAuth callback from the SSO provider.
 

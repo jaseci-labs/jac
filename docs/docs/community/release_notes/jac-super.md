@@ -2,7 +2,46 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.15 (Latest Release)
+## jac-super 0.1.20 (Latest Release)
+
+### New Features
+
+- **Feature: sonner toast component**: The jac-shadcn registry now ships the sonner toast/notification component, installable with `jac add --shadcn sonner`. (jaseci-labs/jaseci#6467)
+
+### Bug Fixes
+
+- **Fix: jac-shadcn projects build out of the box**: `jac create --use jac-shadcn` now wires Tailwind and generates importable, compilable components. (jaseci-labs/jaseci#6461)
+- **Fix: idiomatic `cn(*inputs)` in shadcn scaffold**: now that the client compiler emits rest parameters, the generated `cn` helper uses `cn(*inputs: any)` instead of a 12-positional-argument workaround. (jaseci-labs/jaseci#6466)
+
+### Refactors
+
+- **Refactor: registry components use the bare client form**: jac-shadcn components delivered by `jac add --shadcn` no longer carry redundant `cl` import and block markers. (jaseci-labs/jaseci#6467)
+
+## jac-super 0.1.18
+
+### Bug Fixes
+
+- **Fix: `jac remove --shadcn` resolves the installed filename**: Removal now looks up each component's file via the registry instead of assuming `<name>.cl.jac`, so components whose registry name differs from their file (e.g. `input-otp` installs as `otp-input.cl.jac`) are correctly removed instead of silently no-op'ing.
+
+### Refactors
+
+- **Refactor: shadcn components use idiomatic Jac client style**: All 53 shadcn UI components under `registry/components/ui` were rewritten from JS/React-flavored code to idiomatic Jac client conventions (typed prop bundles spread with `{**x}`, list comprehensions and `{for ... {}}` statement slots over `.map`/`.filter`, `len()`/`isinstance`/f-strings/`is None` over their JS equivalents, and `any` annotations on npm/context-derived values) so the whole set passes `jac check` with zero errors. No runtime behavior change.
+- **Refactor: One-line JSX returns across shadcn components**: Applied the updated formatter, collapsing short `return <Element/>;` statements onto a single line across the shadcn registry UI components.
+
+## jac-super 0.1.16
+
+### New Features
+
+- **shadcn/ui components bundled into jac-super**: The former standalone `jac-shadcn` plugin is now part of `jac-super`. Install `jac-super` (no separate `pip install jac-shadcn`) to get the `--shadcn` flag on `jac add`/`jac remove` and the `jac-shadcn` project template. The full component set ships with the package, so `jac add --shadcn` resolves and installs components fully offline -- no calls to the registry website.
+- **Offline themed shadcn projects**: `jac create --use jac-shadcn` now scaffolds a themed starter fully offline -- color themes (21 of them), fonts, and radii are bundled with `jac-super`, no registry website needed. Pass `--style`, `--baseColor`, `--theme`, `--font`, `--radius`, and `--menuAccent` to customize at create time.
+- **`jac retheme` command**: Re-theme an existing jac-shadcn project in place -- regenerates `global.css` from the `[jac-shadcn]` config (with optional `--theme`/`--font`/`--style`/… overrides) and re-resolves installed components when the style changes.
+- **Fix: scoped npm deps in jac.toml**: `jac add --shadcn` and themed create now TOML-quote scoped npm keys (e.g. `@fontsource-variable/inter`, `@hugeicons/react`), which previously produced a malformed `[dependencies.npm]` section.
+
+### Refactors
+
+- **Refactor: jac-super console reduced to a single Rich renderer**: The Rich-enhanced console collapses 15 re-implemented methods into one `RichRenderer` (a `ConsoleRenderer` backend) plus a thin `JacSuperConsole` that overrides only `_make_renderer`, so the method surface can no longer drift from the base. Caller data is rendered through `rich.text.Text` and is never markup-parsed or auto-highlighted, and the renderer honors the facade's `no_color`/`emoji` decision instead of Rich's independent auto-detection.
+
+## jac-super 0.1.15
 
 ### Bug Fixes
 

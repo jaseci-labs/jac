@@ -12,6 +12,10 @@ impl JacLangServer.postinit -> None {
     self.version = 'v0.1';
     self._write_lock = threading.Lock();
     JacProgram.init(self);
+    # Record import edges structurally on every compile so `_fanout_dependents`
+    # re-checks every open consumer of a changed module, even ones whose imports
+    # were served from cache and never re-resolved.
+    self._track_dependencies = True;
     self._state_lock = ReadWriteLock();
     self.module_manager = ModuleManager(self, self.sem_managers);
     # Initialize idle event as set (server starts idle)
@@ -818,7 +822,7 @@ impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
-impl JacLangServer.diagnostics -> dict[str, list] {
+impl JacLangServer.diagnostics.getter -> dict[str, list] {
     with self._state_lock.read_lock() {
         all_errors = list(self.errors_had);
         all_warnings = list(self.warnings_had);

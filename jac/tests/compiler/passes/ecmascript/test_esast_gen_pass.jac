@@ -317,6 +317,42 @@ test "reactive state scoping across functions" {
     assert "let cart = useCart()" in js_code;
 }
 
+test "reactive writes transform inside nested and deferred closures" {
+    # Regression for #6459: a reactive `has` write must lower to its setter at
+    # any closure depth, not only in the direct handler scope.
+    es_ast = compile_to_esast(fixture_path("reactive_state_closures.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Direct handler scope.
+    assert "setSeen(true)" in js_code , "direct handler write should use setter";
+    # Inside a setTimeout(...) callback (deferred closure). If the write had not
+    # transformed it would emit `armed = true` and `setArmed` would be absent.
+    assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
+    assert "setArmed(true)" in js_code , (
+        "write inside setTimeout closure should use setter"
+    );
+    # Inside an immediately-invoked nested lambda.
+    assert "setFired(true)" in js_code , (
+        "write inside nested closure should use setter"
+    );
+    # The raw reactive assignment form must never leak through.
+    assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
+}
+
+test "varargs parameter lowers to JS rest parameter" {
+    # Regression: `*args` was dropped from the emitted signature, leaving the
+    # body referencing an undefined name (broke the shadcn `cn(*inputs)` helper).
+    es_ast = compile_to_esast(fixture_path("vararg_params.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "function collect(...items)" in js_code , (
+        "vararg-only function should emit a rest parameter"
+    );
+    assert "function mixed(first, ...rest)" in js_code , (
+        "regular param followed by vararg should emit `first, ...rest`"
+    );
+}
+
 # SKIP: Jac-in-Jac compilation produces different import output (e.g.
 # `import "lodash"` instead of `import { debounce } from "lodash"`).
 # test "equivalent context patterns" { ... }
@@ -819,5 +855,47 @@ test "unsafe_html marker has the correct shape" {
     assert "__jacUnsafeHtml: String(html" in js_code , (
         "runtime must coerce the argument with String() so non-string\n"
         "values (e.g. numbers from a walker) don't blow up:\n" + js_code
+    );
+}
+
+test "skip in a plain function body lowers to an early return" {
+    # `skip` is a Return-family keyword (like `return`/`yield`/`report`),
+    # not a Loop keyword. Used as a guard clause inside a plain function it
+    # must lower to a bare `return;`, mirroring the Python target. It must
+    # NOT become `continue;`, which is illegal JavaScript outside a loop and
+    # crashes the client build at runtime (issue #6206).
+    es_ast = compile_to_esast(fixture_path("skip_early_return.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    nodes = walk_es_nodes(es_ast);
+    continues = [
+        nd
+        for nd in nodes
+        if isinstance(nd, es.ContinueStatement)
+    ];
+    assert len(continues) == 0 , (
+        "skip in a function body must not emit `continue;` (illegal JS "
+        "outside a loop):\n" + js_code
+    );
+    assert "continue;" not in js_code , js_code;
+    assert "return;" in js_code , (
+        "skip should lower to a bare early return:\n" + js_code
+    );
+}
+
+test "user function shadowing a builtin name is called, not the builtin" {
+    es_ast = compile_to_esast(fixture_path("shadow_builtin.cl.jac"));
+    user_len_calls = [
+        nd
+        for nd in walk_es_nodes(es_ast)
+        if isinstance(nd, es.CallExpression)
+        and isinstance(nd.callee, es.Identifier)
+        and nd.callee.name == "len"
+    ];
+    # The builtin path would emit a raw primitive-emitter expression instead of
+    # a CallExpression to the user-defined `len`.
+    assert len(user_len_calls) >= 1 , (
+        "expected a call to the user-defined len(), but the builtin emitter "
+        "was used instead:\n" + es_to_js(es_ast)
     );
 }

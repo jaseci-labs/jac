@@ -420,11 +420,11 @@ impl start(
             no_client=no_client,
             on_ready=lambda actual_port :
                 _print_startup_message(
-                    dev,
-                    no_client,
-                    vite_port if (dev and not no_client) else actual_port,
-                    actual_port,
-                    base
+                    dev=dev,
+                    no_client=no_client,
+                    primary_port=vite_port if (dev and not no_client) else actual_port,
+                    api_port=actual_port,
+                    base_path=base
                 )
         );
         return 0;
@@ -454,15 +454,26 @@ impl start(
     }
 }
 
+"""Return True if watchdog is importable in the current process."""
+def _watchdog_importable -> bool {
+    import importlib;
+    try {
+        importlib.invalidate_caches();
+        import watchdog;
+        return True;
+    } except ImportError {
+        return False;
+    }
+}
+
 """Ensure watchdog is installed, auto-install if missing."""
 def _ensure_watchdog_installed -> bool {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dependencies { DependencyInstaller, add_venv_to_path }
 
-    try {
-        import watchdog;
+    if _watchdog_importable() {
         return True;
-    } except ImportError { }
+    }
 
     config = get_config();
     if config is None {
@@ -476,8 +487,18 @@ def _ensure_watchdog_installed -> bool {
     );
     installer = DependencyInstaller(config=config, verbose=False);
     if installer.install_package(["watchdog>=3.0.0"]) {
-        console.success("watchdog installed");
-        return True;
+        add_venv_to_path(config);
+        if _watchdog_importable() {
+            console.success("watchdog installed");
+            return True;
+        }
+        console.error(
+            "\n  Error: watchdog was installed in the project venv but cannot be imported.\n"
+        );
+        console.error(
+            "  Run 'jac install --dev' using a Jac install that matches the project venv Python version.\n"
+        );
+        return False;
     }
     console.error("\n  Error: Failed to install watchdog\n");
     return False;
@@ -519,7 +540,7 @@ def _count_jac_files(directory: str) -> int {
 
 """Print startup message based on mode."""
 def _print_startup_message(
-    dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
+    dev: bool, no_client: bool, primary_port: int, api_port: int, base_path: str = '.'
 ) {
     import from importlib.metadata { version as pkg_version }
 
@@ -533,12 +554,12 @@ def _print_startup_message(
 
     # Build URLs list as list of tuples to allow duplicate "Network" labels (like Vite)
     urls = [];
-    urls.append(("Local", f"http://localhost:{api_port}/"));
+    urls.append(("Local", f"http://localhost:{primary_port}/"));
 
     # Add network IPs (each as "Network" entry, just like Vite)
     network_ips = _get_network_ips();
     for ip in network_ips {
-        urls.append(("Network", f"http://{ip}:{api_port}/"));
+        urls.append(("Network", f"http://{ip}:{primary_port}/"));
     }
 
     # Print URLs with arrows
@@ -551,7 +572,7 @@ def _print_startup_message(
         console.print("  🚀 Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
-        console.print(f"    Vite:  http://localhost:{port}/", style="muted");
+        console.print(f"    Vite:  http://localhost:{primary_port}/", style="muted");
         console.print(f"    API:   http://localhost:{api_port}/", style="muted");
         console.print();
         # Count and show watching files
@@ -584,7 +605,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
     import from pathlib { Path }
 
     try {
-        import from jac_client.plugin.src.vite_bundler { ViteBundler }
+        import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
         project_dir = Path(base_path);
         bundler = ViteBundler(project_dir);

@@ -35,6 +35,38 @@ def _mark_message_for_caching(msg: dict) {
 }
 
 
+"""Read an int usage field from a litellm usage dict-or-object, 0 if absent.
+
+For `cache_read_input_tokens`, falls back to the `prompt_tokens_details.cached_tokens`
+alias some providers nest it under.
+"""
+def _usage_int(usage: any, key: str) -> int {
+    if usage is None {
+        return 0;
+    }
+    val = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None);
+    if val is None and key == "cache_read_input_tokens" {
+        ptd = (
+            usage.get("prompt_tokens_details")
+                if isinstance(usage, dict)
+                else usage?.prompt_tokens_details
+        );
+        if ptd is not None {
+            val = (
+                ptd.get("cached_tokens")
+                    if isinstance(ptd, dict)
+                    else ptd?.cached_tokens
+            );
+        }
+    }
+    try {
+        return int(val or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
 """Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
 def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
@@ -322,12 +354,7 @@ impl BaseLLM.ainvoke(mt_run: MTRuntime) -> object {
     logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
     no_tools = len(mt_run.tools) == 0;
     if not mt_run.stream and no_tools and not logging_stream {
-        try {
-            resp = await self.adispatch_no_streaming(mt_run);
-        } finally {
-            mt_run.write_back_conversation();
-        }
-        return resp.output;
+        return await self._ainvoke_typed_retry(mt_run);
     }
     if mt_run.stream and no_tools and not logging_stream {
         return self.adispatch_streaming(mt_run);
@@ -351,6 +378,14 @@ Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
 impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
+    # A stream_handler turns this into a streamed call whose events are pushed
+    # to the handler as they arrive, while invoke still returns the final
+    # (parsed) value. This is what lets `visit [-->] by model(stream=True,
+    # stream_handler=fn)` surface live tokens yet receive the routing result.
+    handler = mt_run.call_params.get("stream_handler");
+    if mt_run.stream and handler is not None {
+        return self._invoke_with_handler(mt_run, handler);
+    }
     # If logging is enabled with streaming, yield StreamEvent objects
     if mt_run.stream and mt_run.call_params.get("logging", False) {
         return self._invoke_streaming(mt_run);
@@ -364,10 +399,246 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream {
         return self._invoke_react_loop_streaming(mt_run);
     }
+    return self._invoke_typed_retry(mt_run);
+}
+
+
+"""Resolve the typed-output attempt budget (1 + max_output_retries).
+
+max_output_retries counts retries AFTER the first attempt (0 disables). Resolves
+via call_params > self.call_params > jac.toml > 3. Explicit None checks (not
+`or`) so an intentional 0 is honored, not skipped as falsy.
+"""
+impl BaseLLM._resolve_output_attempts(mt_run: MTRuntime) -> int {
+    max_retries = mt_run.call_params.get("max_output_retries");
+    if max_retries is None {
+        max_retries = self.call_params.get("max_output_retries");
+    }
+    if max_retries is None {
+        max_retries = _call_params_config.get("max_output_retries");
+    }
+    if max_retries is None {
+        max_retries = 3;
+    }
+    return 1 + max(0, int(max_retries));
+}
+
+
+"""Invoke the non-streaming path, regenerating empty/malformed typed output.
+
+A weak model may emit empty content or unparseable JSON for a structured return;
+retry up to `max_output_retries` (default 3, 0 disables) after the first attempt,
+resetting to the original prompt between tries. See _typed_retry_feedback for the
+corrective message. The async equivalent is _ainvoke_typed_retry.
+"""
+impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
+    max_attempts = self._resolve_output_attempts(mt_run);
+    base_msgs = list(mt_run.messages);
+    base_scaffolding = list(mt_run._scaffolding_ids);
+    attempt = 0;
+    last_reason = "";
+    last_output = "";
     try {
-        return self._invoke_react_loop(mt_run);
+        while True {
+            attempt += 1;
+            if attempt > 1 {
+                self._typed_retry_reset(
+                    mt_run, base_msgs, base_scaffolding, last_reason, last_output
+                );
+            }
+            try {
+                result = self._invoke_react_loop(mt_run);
+            } except OutputConversionError as e {
+                (last_reason, last_output) = self._parse_failure_feedback(
+                    attempt, max_attempts, e
+                );
+                if attempt >= max_attempts {
+                    raise self._typed_retry_exhausted(attempt, e, last_output) from e;
+                }
+                continue;
+            }
+            if self._structured_output_ok(mt_run, result) {
+                return result;
+            }
+            (last_err, last_reason, last_output) = self._nonconforming_feedback(
+                attempt, max_attempts, mt_run, result
+            );
+            if attempt >= max_attempts {
+                raise self._typed_retry_exhausted(
+                    attempt, last_err, last_output
+                ) from last_err;
+            }
+        }
     } finally {
         mt_run.write_back_conversation();
+    }
+}
+
+
+"""Async equivalent of _invoke_typed_retry for the no-tools, non-streaming path.
+
+Mirrors the sync retry loop but awaits `adispatch_no_streaming` (which parses the
+response, so malformed JSON raises OutputConversionError and an empty response
+yields a non-conforming value) instead of the sync ReAct loop. The per-attempt
+reset and failure handling are shared via _typed_retry_reset /
+_parse_failure_feedback / _nonconforming_feedback so the two loops cannot drift.
+"""
+impl BaseLLM._ainvoke_typed_retry(mt_run: MTRuntime) -> object {
+    max_attempts = self._resolve_output_attempts(mt_run);
+    base_msgs = list(mt_run.messages);
+    base_scaffolding = list(mt_run._scaffolding_ids);
+    attempt = 0;
+    last_reason = "";
+    last_output = "";
+    try {
+        while True {
+            attempt += 1;
+            if attempt > 1 {
+                self._typed_retry_reset(
+                    mt_run, base_msgs, base_scaffolding, last_reason, last_output
+                );
+            }
+            try {
+                result = (await self.adispatch_no_streaming(mt_run)).output;
+            } except OutputConversionError as e {
+                (last_reason, last_output) = self._parse_failure_feedback(
+                    attempt, max_attempts, e
+                );
+                if attempt >= max_attempts {
+                    raise self._typed_retry_exhausted(attempt, e, last_output) from e;
+                }
+                continue;
+            }
+            if self._structured_output_ok(mt_run, result) {
+                return result;
+            }
+            (last_err, last_reason, last_output) = self._nonconforming_feedback(
+                attempt, max_attempts, mt_run, result
+            );
+            if attempt >= max_attempts {
+                raise self._typed_retry_exhausted(
+                    attempt, last_err, last_output
+                ) from last_err;
+            }
+        }
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+"""Reset mt_run to the original prompt and inject the corrective feedback message.
+
+Restores scaffolding ids alongside messages: leaving stale ids behind risks a
+later real message reusing a freed id() being dropped from the persisted history.
+"""
+impl BaseLLM._typed_retry_reset(
+    mt_run: MTRuntime, base_msgs: list, base_scaffolding: list, reason: str, output: str
+) -> None {
+    mt_run.messages = list(base_msgs);
+    mt_run._scaffolding_ids = list(base_scaffolding);
+    mt_run._has_final_output = False;
+    mt_run._final_output = None;
+    mt_run.add_scaffolding_message(self._typed_retry_feedback(mt_run, reason, output));
+}
+
+
+"""Log a parse failure and return (reason, rejected_output) for the next retry."""
+impl BaseLLM._parse_failure_feedback(
+    attempt: int, max_attempts: int, err: object
+) -> tuple {
+    self.log_info(
+        f"[byllm] typed-output attempt {attempt}/{max_attempts} failed to parse: {err}"
+    );
+    return (
+        f"The output parser reported: {err}.",
+        str(getattr(err, "raw_output", "") or "")
+    );
+}
+
+
+"""Log a non-conforming result and return (error, reason, rejected_output)."""
+impl BaseLLM._nonconforming_feedback(
+    attempt: int, max_attempts: int, mt_run: MTRuntime, result: object
+) -> tuple {
+    self.log_info(
+        f"[byllm] typed-output attempt {attempt}/{max_attempts} " + "returned a non-conforming value; retrying"
+    );
+    err = OutputConversionError(
+        f"LLM returned a non-conforming value for return type " + f"'{mt_run.resp_type}' (got '{type(
+            result
+        ).__name__}'); the " + "response was likely empty or not valid JSON"
+    );
+    reason = (
+        "The previous response was empty or did not contain a JSON " + "object (it could not be converted to the required type)."
+    );
+    return (err, reason, str(result));
+}
+
+
+"""Build the error raised when typed-output retries are exhausted.
+
+Reports the attempt/retry counts, chains the last failure, and preserves
+raw_output so downstream consumers still see the rejected text.
+"""
+impl BaseLLM._typed_retry_exhausted(
+    attempts: int, cause: object, raw: str
+) -> OutputConversionError {
+    err = OutputConversionError(
+        f"typed-output generation failed after {attempts} attempt(s) " + f"({attempts - 1} retries); last error: {cause}"
+    );
+    err.raw_output = raw;
+    return err;
+}
+
+
+"""Build the corrective USER message injected before a typed-output retry.
+
+Re-states the failure, echoes the rejected output in full, and re-shows the JSON
+schema, demanding a raw JSON object only.
+"""
+impl BaseLLM._typed_retry_feedback(
+    mt_run: MTRuntime, reason: str, prev_output: str
+) -> Message {
+    rt = mt_run.resp_type;
+    type_name = rt.__name__
+        if (rt is not None and hasattr(rt, "__name__"))
+        else str(rt);
+    # get_typed_output_schema, not get_output_schema (None when tools present),
+    # so the contract still shows when output arrives via finish_tool.
+    schema = mt_run.get_typed_output_schema();
+    schema_txt = (
+        json.dumps(schema, ensure_ascii=False) if schema else "(schema unavailable)"
+    );
+    prev_block = f"Your previous response was:\n{prev_output}\n" if prev_output else "";
+    return Message(
+        role=MessageRole.USER,
+        content=(
+            f"Your previous response could not be used. {reason}\n" + prev_block + f"You MUST reply with ONLY a single JSON object that validates " + f"against this JSON schema for `{type_name}`:\n{schema_txt}\n" + "Output the raw JSON object only, with no explanation, no reasoning " + "text, no markdown code fences, nothing before or after the JSON."
+        )
+    );
+}
+
+
+"""True when `value` is an acceptable result for the runtime's return type.
+
+None/str accept anything. For a structured type only a blank string is rejected
+(parse_response returns the raw response when empty, the failure this targets);
+a non-empty string means a subclass like MockLLM bypassed parsing, so accept it.
+Otherwise a best-effort isinstance check (uncheckable generics pass).
+"""
+impl BaseLLM._structured_output_ok(mt_run: MTRuntime, value: object) -> bool {
+    rt = mt_run.resp_type;
+    if rt is None or rt is str {
+        return True;
+    }
+    if isinstance(value, str) {
+        return value.strip() != "";
+    }
+    try {
+        return isinstance(value, rt);
+    } except Exception {
+        return True;
     }
 }
 
@@ -386,6 +657,90 @@ impl BaseLLM._invoke_react_loop_streaming(
     } finally {
         mt_run.write_back_conversation();
     }
+}
+
+
+"""Drive a streamed invocation through a per-event callback.
+
+Forwards every StreamEvent to `on_event` as it arrives, then returns the
+final value: the parsed structured result for a structured return type, or
+the accumulated answer text otherwise. Backs `visit [-->] by model` and any
+structured `by llm()` call that wants live tokens via a stream_handler.
+"""
+impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object {
+    # No tools + structured return: the model output is JSON constrained by the
+    # response-format schema. Stream those tokens to the handler, accumulate,
+    # and parse them into the expected type.
+    if len(mt_run.tools) == 0
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        self._usage_history = [];
+        accumulated = "";
+        try {
+            for token in self.dispatch_streaming(mt_run) {
+                if token {
+                    accumulated += token;
+                    try {
+                        on_event(
+                            StreamEvent(event_type="chunk", data={"content": token})
+                        );
+                    } except Exception as e {
+                        logger.debug(f"stream_handler raised: {e}");
+                    }
+                }
+            }
+        } finally {
+            mt_run.write_back_conversation();
+        }
+        # This branch streams only content tokens (no ReAct loop), so it never
+        # emits the per-call `llm_timing` the loop does. Surface this call's usage
+        # to the handler too, so structured/routing calls report tokens + cache.
+        if self._usage_history {
+            u = self._usage_history[-1];
+            try {
+                on_event(
+                    StreamEvent(
+                        event_type="llm_timing",
+                        data={
+                            "duration_ms": 0.0,
+                            "iteration": 0,
+                            "completion_tokens": _usage_int(u, "completion_tokens"),
+                            "prompt_tokens": _usage_int(u, "prompt_tokens"),
+                            "cache_read_input_tokens": _usage_int(
+                                u, "cache_read_input_tokens"
+                            ),
+                            "cache_creation_input_tokens": _usage_int(
+                                u, "cache_creation_input_tokens"
+                            )
+                        }
+                    )
+                );
+            } except Exception as e {
+                logger.debug(f"stream_handler raised: {e}");
+            }
+        }
+        return mt_run.parse_response(accumulated);
+    }
+    # Tools (ReAct) or str return: drive the full streaming loop, forwarding
+    # reasoning, tool, and answer events, then return the captured structured
+    # output when present, else the streamed answer text.
+    parts: list[str] = [];
+    for ev in self._invoke_streaming(mt_run) {
+        try {
+            on_event(ev);
+        } except Exception as e {
+            logger.debug(f"stream_handler raised: {e}");
+        }
+        if ev.event_type == "chunk" {
+            parts.append(str(ev.data.get("content", "")));
+        }
+    }
+    if mt_run._has_final_output
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
+        return mt_run._final_output;
+    }
+    return "".join(parts);
 }
 
 
@@ -603,6 +958,8 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     }
 
     messages = mt_run.get_msg_list();
+    # Tool-image → user-message reroute for providers that reject images in `role: "tool"`.
+    messages = reroute_tool_images_to_user_message(messages);
     tools = mt_run.get_tool_list() or None;
 
     # Intelligent parallel scheduling: when parallel is active for this call,
@@ -901,7 +1258,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1014,10 +1371,22 @@ impl BaseLLM.dispatch_streaming_with_tools(
     if message is None {
         message = {"role": "assistant", "content": content_buf};
     }
-    # For backends without native tool calling, lift any tool call emitted as
-    # plain text into the structured `tool_calls` field (see dispatch_no_streaming).
-    if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    # Lift any tool call emitted as plain text into the structured `tool_calls`
+    # field (see dispatch_no_streaming). Some native providers (e.g. ollama)
+    # stream a tool call as plain content text that litellm.stream_chunk_builder
+    # cannot reassemble into `tool_calls`, so the native path silently drops it.
+    # When tools were offered but no structured tool_calls came back, rebuild the
+    # message as a plain dict from the accumulated text -- recover_tool_calls
+    # requires a dict and `message` here is a litellm `Message` object -- then
+    # recover the call. recover_tool_calls is idempotent and name-filtered, so it
+    # is a no-op for a genuine native tool_calls field or a plain-text answer.
+    has_native_tool_calls = bool((message or {}).get("tool_calls"));
+    if (not self.supports_native_tools)
+    or (mt_run.tools and not has_native_tool_calls) {
+        if not has_native_tool_calls and not isinstance(message, dict) {
+            message = {"role": "assistant", "content": content_buf};
+        }
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1054,7 +1423,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # emitted as plain text into the structured `tool_calls` field so the
     # ReAct loop below sees it. No-op once `tool_calls` is already populated.
     if not self.supports_native_tools {
-        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+        message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
@@ -1472,10 +1841,27 @@ impl BaseLLM._invoke_streaming(
                 }
             }
 
-            # Metrics: emit LLM call duration for this iteration
+            # Metrics: emit LLM call duration and completion-token count for this
+            # iteration so consumers can show generation speed (tokens/sec).
+            _completion_tokens = int(
+                usage.get("completion_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "completion_tokens", 0)
+            );
             yield StreamEvent(
                 event_type="llm_timing",
-                data={"duration_ms": _llm_ms, "iteration": iter_count}
+                data={
+                    "duration_ms": _llm_ms,
+                    "iteration": iter_count,
+                    "completion_tokens": _completion_tokens,
+                    "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+                    "cache_read_input_tokens": _usage_int(
+                        usage, "cache_read_input_tokens"
+                    ),
+                    "cache_creation_input_tokens": _usage_int(
+                        usage, "cache_creation_input_tokens"
+                    )
+                }
             );
 
             # The model's reasoning already streamed above as incremental
@@ -1524,7 +1910,9 @@ impl BaseLLM._invoke_streaming(
                         # Execute via dispatch_batch, emit results as they complete
                         raw_results: list = [];
                         for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
-                            truncated_result = result_msg.content[:max_result_len];
+                            truncated_result = content_preview(
+                                result_msg.content, max_result_len
+                            );
                             last_tool = btc.tool.get_name();
                             last_result = truncated_result;
                             yield StreamEvent(
@@ -1562,14 +1950,23 @@ impl BaseLLM._invoke_streaming(
 
                 if finish_tc {
                     mt_run.add_message(finish_tc());
+                    # Capture the structured result so a handler-driven invoke
+                    # can return it once this generator is consumed.
+                    mt_run._final_output = finish_tc.get_output();
+                    mt_run._has_final_output = True;
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        if token {
-                            yield StreamEvent(
-                                event_type="chunk", data={"content": token}
-                            );
+                    # A structured return already carries its value in the finish
+                    # tool output; only stream a textual final answer for str/None
+                    # returns (the common `by llm() -> str` case).
+                    if mt_run.resp_type is None or mt_run.resp_type is str {
+                        for token in self._stream_final_answer(mt_run) {
+                            if token {
+                                yield StreamEvent(
+                                    event_type="chunk", data={"content": token}
+                                );
+                            }
                         }
                     }
                     break;

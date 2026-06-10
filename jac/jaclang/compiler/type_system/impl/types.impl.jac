@@ -37,7 +37,7 @@ impl NeverType.__str__ -> str {
 
 """Return a string representation of the any type."""
 impl AnyType.__str__ -> str {
-    return "<Any>";
+    return "<any>";
 }
 
 """Return a string representation of the module type."""
@@ -89,6 +89,7 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ) for param in self.parameters
         ],
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types
@@ -136,6 +137,7 @@ impl FunctionType.specialize_func_type_vars(
         ],
         function_flags=self.function_flags,
         type_params=self.type_params,
+        is_async=self.is_async,
     );
 
     # Specialize parameter types
@@ -246,6 +248,11 @@ impl ClassType.is_namedtuple -> bool {
     return self.shared.is_namedtuple;
 }
 
+"""Return true if this class is a TypedDict."""
+impl ClassType.is_typeddict -> bool {
+    return self.shared.is_typeddict;
+}
+
 """Return true if this class is an enum class."""
 impl ClassType.is_enum_class -> bool {
     return self.shared.is_enum_class;
@@ -274,8 +281,9 @@ impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list | None = None
 ) -> (Symbol | None) {
     import jaclang.jac0core.unitree as uni;
+    import from jaclang.compiler.type_system.type_utils { collect_member_syms }
     for cls in self.shared.mro {
-        all_syms = cls.shared.symbol_table.lookup_all(member, deep=False);
+        all_syms = collect_member_syms(cls.shared.symbol_table, member);
         if all_syms {
             if r_overloaded is not None and len(all_syms) > 1 {
                 r_overloaded.extend(all_syms[1:]);
@@ -474,7 +482,7 @@ impl ClassType.__str__ -> str {
 }
 
 """Non-null view of the shared details (asserted)."""
-impl ClassType.shared -> ClassType.ClassDetailsShared {
+impl ClassType.shared.getter -> ClassType.ClassDetailsShared {
     assert self._shared is not None , "ClassType.shared accessed before construction (detached property ClassType?)";
     return self._shared;
 }
@@ -517,7 +525,7 @@ impl TypeBase.unknown -> UnknownType {
 }
 
 """Returns the category of the type."""
-impl TypeBase.category -> TypeCategory {
+impl TypeBase.category.getter -> TypeCategory {
     return self.CATEGORY;
 }
 

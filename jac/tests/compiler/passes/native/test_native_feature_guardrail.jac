@@ -52,91 +52,73 @@ def fmt_errors(prog: JacProgram) -> str {
 # ─────────────────────────────────────────────────────────────────────
 # Statement-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: match statement is rejected" {
+# Value / OR / capture / wildcard / guard match patterns are supported
+# (see test_native_gen_pass.jac). Structural patterns (sequence/mapping/
+# class) are not yet lowered and must still raise E5090.
+test "guardrail: structural match pattern is rejected" {
     prog = compile_na_inline(
-        "match_stmt",
-        "def classify(x: int) -> int {\n"
+        "match_seq",
+        "def classify(x: list[int]) -> int {\n"
         "    match x {\n"
-        "        case 0: return 100;\n"
-        "        case _: return 300;\n"
+        "        case [1, 2]: return 1;\n"
+        "        case _: return 0;\n"
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchStmt, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchSequence, got: {fmt_errors(
         prog
     )}";
 }
 
-test "guardrail: C-style iter-for is rejected" {
+# Non-capturing nested functions are supported (see test_native_gen_pass.jac).
+# A nested function that captures an enclosing-function local is still
+# rejected, since closure capture is not yet implemented.
+test "guardrail: nested function capturing an enclosing local is rejected" {
     prog = compile_na_inline(
-        "iter_for",
-        "def sum_n(n: int) -> int {\n"
-        "    total: int = 0;\n"
-        "    for i = 0 to i < n by i += 1 {\n"
-        "        total = total + i;\n"
-        "    }\n"
-        "    return total;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for IterForStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: nested function definition is rejected" {
-    prog = compile_na_inline(
-        "nested_def",
-        "def outer() -> int {\n"
-        "    def inner(x: int) -> int { return x * 2; }\n"
+        "nested_def_capture",
+        "def outer(y: int) -> int {\n"
+        "    def inner(x: int) -> int { return x * y; }\n"
         "    return inner(5);\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for nested Ability, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for capturing nested Ability, got: {fmt_errors(
         prog
     )}";
 }
 
-test "guardrail: visit statement is rejected" {
-    prog = compile_na_inline(
-        "visit",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        visit [-->];\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for VisitStmt, got: {fmt_errors(
-        prog
-    )}";
-}
+# NOTE (issue #6146, Phase 4c): the `visit` / `disengage` / `report` guardrails
+# were removed because these statements are now LOWERED to the portable kernel
+# (`osp_visit` / `osp_disengage` / `osp_report`), so they no longer raise E5090.
+#   * `disengage` and `visit` work end-to-end on native: edges lower to the
+#     in-memory adjacency (osp_graph.jac) and the walk runs through the kernel's
+#     `osp_visit`. OSP instances are pinned to a program-lifetime graph arena so
+#     the walk's borrowed location handles are not refcount-freed mid-traversal.
+#     The cross-backend traversal fixtures (osp_visit_order, osp_exit_ordering,
+#     osp_disengage, osp_edge_typed) are `require=["na"]`.
+#   * `report` works end-to-end: it lowers to `osp_report`, and the native
+#     `on_complete` delivers `scope.reports` onto the walker's built-in `reports`
+#     field at the spawn boundary, so `w.reports` reads back (osp_report is
+#     `require=["na"]`).
+# A guardrail asserting E5090 here would be a false negative now that the
+# lowering exists; the equivalence fixtures are the runtime gate.
 
-test "guardrail: disengage statement is rejected" {
+# A tuple/union trigger lowers field access on `here` through one shared member
+# layout (issue #6470). When the members place a common field at *different*
+# offsets, that single-layout lowering would misread it, so the native pass
+# must surface E5091 rather than silently emit a wrong body.
+test "guardrail: union trigger with mismatched field layout is rejected" {
     prog = compile_na_inline(
-        "disengage",
-        "node N { has v: int = 0; }\n"
+        "union_layout_conflict",
+        "node Sub { has pad: int; has val: int; }\n"  # val at index 3
+        "node Other { has val: int; }\n"  # val at index 2
         "walker W {\n"
-        "    can run with N entry {\n"
-        "        disengage;\n"
+        "    has either: int = 0;\n"
+        "    can on_either with (Sub, Other) entry {\n"
+        "        self.either = self.either + here.val;\n"
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisengageStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: report statement is rejected" {
-    prog = compile_na_inline(
-        "report",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        report here.v;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ReportStmt, got: {fmt_errors(
+    assert has_error_code(prog, "E5091") , f"Expected E5091 for divergent union member layout, got: {fmt_errors(
         prog
     )}";
 }
@@ -144,21 +126,6 @@ test "guardrail: report statement is rejected" {
 # ─────────────────────────────────────────────────────────────────────
 # Expression-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: walrus operator is rejected" {
-    prog = compile_na_inline(
-        "walrus",
-        "def f() -> int {\n"
-        "    if (n := 10) > 5 {\n"
-        "        return n;\n"
-        "    }\n"
-        "    return 0;\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for walrus (NamedExpr), got: {fmt_errors(
-        prog
-    )}";
-}
-
 test "guardrail: yield expression is rejected" {
     prog = compile_na_inline(
         "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
@@ -168,29 +135,72 @@ test "guardrail: yield expression is rejected" {
     )}";
 }
 
-test "guardrail: await expression is rejected" {
+
+# ─────────────────────────────────────────────────────────────────────
+# Import / builtin gaps (issue #6357)
+# ─────────────────────────────────────────────────────────────────────
+# Native compilation cannot import arbitrary Python modules: the import is
+# dropped, then `json.dumps(...)` lowers to nothing and the binary prints empty
+# output. That silent-wrong result is the worst failure mode -- reject it.
+# (`math`/`time`/`sys`/`os`/`random` are now lowered; `json` is still
+# unsupported per the #6404 roadmap, so it stays a valid rejection example.)
+test "guardrail: Python module import is rejected" {
     prog = compile_na_inline(
-        "await_expr",
-        "async def get_val() -> int { return 5; }\n"
-        "async def driver() -> int {\n"
-        "    return await get_val();\n"
-        "}\n"
+        "py_import_json",
+        "import json;\n" "with entry { print(json.dumps({\"a\": 1})); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for AwaitExpr, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'json', got: {fmt_errors(
         prog
     )}";
 }
 
-test "guardrail: flow / wait concurrent expression is rejected" {
+# A dotted Python import (`import os.path;`) is equally unsupported.
+test "guardrail: dotted Python module import is rejected" {
     prog = compile_na_inline(
-        "flow_wait",
-        "def task() -> int { return 7; }\n"
-        "def driver() -> int {\n"
-        "    h = flow task();\n"
-        "    return wait h;\n"
+        "py_import_dotted", "import os.path;\n" "with entry { print(\"hi\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'os.path', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Builtins that are not lowered to the native subset (sum, min, max, ...)
+# currently dispatch to nothing and silently yield an empty value. Reject
+# the call rather than emitting a binary that prints garbage.
+test "guardrail: unsupported builtin over an iterable is rejected" {
+    prog = compile_na_inline(
+        "py_builtin_sum", "with entry { print(f\"Total: {sum(range(1, 101))}\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported builtin 'sum', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# A call to a function that resolves to nothing must also be loud.
+test "guardrail: call to an undefined function is rejected" {
+    prog = compile_na_inline(
+        "undefined_call",
+        "def use() -> int { return mystery(3); }\n" "with entry { print(use()); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for call to undefined 'mystery', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Iterating a `set` in a `for` loop is not lowered natively (the element type
+# resolves to nothing), which used to drop the loop body silently. It must now
+# raise E5090 instead of miscompiling -- iterate a list/range, or move to @sv.
+test "guardrail: for-loop over a set is rejected" {
+    prog = compile_na_inline(
+        "for_over_set",
+        "def run() -> int {\n"
+        "    s: set[int] = {1, 2, 3};\n"
+        "    total: int = 0;\n"
+        "    for v in s { total = total + v; }\n"
+        "    return total;\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ConcurrentExpr, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for for-over-set, got: {fmt_errors(
         prog
     )}";
 }
@@ -221,6 +231,49 @@ test "guardrail: supported features do not trigger E5090" {
         "}\n"
     );
     assert not has_error_code(prog, "E5090") , f"Supported features triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
+
+# Negative control for the silent-no-code guards (options 1 & 2 of the #6470
+# audit): the consumers that now raise E5090 when a required sub-expression
+# lowers to nothing (return value, assignment RHS, if/while/for conditions,
+# field & subscript stores, augmented field assignment) must stay silent on
+# the fully-supported forms they wrap. A false positive here would reject
+# ordinary native code.
+test "guardrail: field/index reads, writes, and loops do not trigger E5090" {
+    prog = compile_na_inline(
+        "supported_access_ok",
+        "obj Pt { has x: int; has y: int; }\n"
+        "obj Box { has items: list[int]; has tag: int; }\n"
+        "def run() -> int {\n"
+        "    p: Pt = Pt(x=1, y=2);\n"
+        "    p.x = p.x + p.y;\n"  # field read + field write
+        "    p.y += 5;\n"  # augmented field assignment
+        "    b: Box = Box(items=[10, 20, 30], tag=0);\n"
+        "    b.items[1] = b.items[1] + p.x;\n"  # subscript read + subscript write
+        "    b.tag = b.items[0];\n"  # chained field/index read into field
+        "    d: dict[str, int] = {\"a\": 1};\n"
+        "    d[\"a\"] = d[\"a\"] + 1;\n"  # dict subscript read + write
+        "    total: int = 0;\n"
+        "    for v in b.items {\n"  # for over a field-held list
+        "        if v > 0 { total = total + v; }\n"
+        "    }\n"
+        "    return total + p.x + p.y + d[\"a\"];\n"  # return of a real expression
+        "}\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Supported field/index/loop forms triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
+
+# `import sys;` is the one Python import the native backend models (sys.argv,
+# sys.platform). Rejecting unsupported imports must not regress it.
+test "guardrail: import sys is not rejected" {
+    prog = compile_na_inline(
+        "import_sys_ok", "import sys;\n" "with entry { print(sys.platform); }\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"`import sys` should be supported, got: {fmt_errors(
         prog
     )}";
 }

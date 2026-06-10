@@ -210,11 +210,10 @@ impl HotReloader._recompile_client_code(
             return;
         }
 
-        # Ensure __jacJsx import is present (required for client-side rendering)
-        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
-        if '__jacJsx' in js_code and jac_runtime_import not in js_code {
-            js_code = jac_runtime_import + '\n' + js_code;
-        }
+        # Prepend the runtime-global import the compiler relies on (shared with
+        # the jac2js build, eject, and the cl test harness).
+        import from jaclang.runtimelib.client_surface { with_runtime_globals }
+        js_code = with_runtime_globals(js_code);
 
         # Recursively compile missing dependencies BEFORE writing this file's JS to ensure all dependencies are up to date
         manifest = mod.gen.client_manifest if mod else None;

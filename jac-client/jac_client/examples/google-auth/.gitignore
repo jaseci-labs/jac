@@ -3,6 +3,12 @@ packages/
 *.jbc
 *.jir
 
+# This example ships its source under `lib/` (the auth context + route guard
+# the pages import via `..lib.auth`). The repo-root .gitignore ignores Python
+# build `lib/` dirs, so re-include ours here.
+!lib/
+!lib/**
+
 # Python
 __pycache__/
 *.py[cod]

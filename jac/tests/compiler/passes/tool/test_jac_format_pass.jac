@@ -100,6 +100,13 @@ test "tagbreak" {
     compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
 }
 
+test "connect op compact fmt" {
+    # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
+    # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
+    # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
+    compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
+}
+
 test "has fmt" {
     compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
 }
@@ -464,6 +471,96 @@ test "dynamic JSX tags round-trip through the formatter" {
     );
 }
 
+"""Regression: a `return` whose expression is a JSX element keeps the
+element on the same line as `return` when the whole statement fits the
+print width, and only drops it onto its own indented line when it doesn't.
+Previously the JSX-return path used `hard_line()` unconditionally, forcing
+even tiny elements like `<p>Hello</p>` onto a second line."""
+test "return jsx stays on one line when it fits" {
+    source = (
+        'cl {\n'
+        '    def:pub AlertDialog(props: any) -> JsxElement {\n'
+        '        return\n'
+        '            <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;\n'
+        '    }\n'
+        '\n'
+        '    def:pub Greeting -> JsxElement {\n'
+        '        return\n'
+        '            <p>Hello</p>;\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    # A self-closing element that fits must collapse onto the `return` line.
+    self_closing = 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;';
+    assert self_closing in formatted , (
+        "self-closing JSX return was not collapsed onto the `return` line:\n" + str(
+            formatted
+        )
+    );
+    # A small element with inline children must collapse too.
+    assert "return <p>Hello</p>;" in formatted , (
+        "inline-child JSX return was not collapsed onto the `return` line:\n" + str(
+            formatted
+        )
+    );
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "return-JSX one-line formatting is not idempotent"
+    );
+}
+
+"""Regression: a JSX `return` that does NOT fit the print width — either
+because its opening tag is too wide or because it has element children that
+carry hard lines — must still drop the element onto its own indented line
+below `return`."""
+test "return jsx breaks when it does not fit" {
+    source = (
+        'cl {\n'
+        '    def:pub Big(props: any) -> JsxElement {\n'
+        '        return <AlertDialogPrimitive.Overlay {**props} '
+        'data-slot="alert-dialog-overlay" '
+        'className={cn("a-very-long-class-name-string-that-blows-past-print-width", '
+        'props["className"])}/>;\n'
+        '    }\n'
+        '\n'
+        '    def:pub Tree -> JsxElement {\n'
+        '        return <div><span>a</span><span>b</span></div>;\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac or "";
+
+    # `return` must not carry the element when the statement overflows: every
+    # `return` line in a breaking case must end right after the keyword.
+    for ln in formatted.splitlines() {
+        if (ln.strip() == "return") {
+            continue;
+        }
+        assert not ln.strip().startswith("return <") , (
+            "overflowing JSX return must break onto its own line:\n" + str(formatted)
+        );
+    }
+    # Element children must still expand vertically.
+    assert "<span>a</span>" in formatted;
+    assert "<span>b</span>" in formatted;
+
+    # Idempotency: formatting the formatted output must be a no-op.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "return-JSX break formatting is not idempotent"
+    );
+}
+
 """Regression: top-level and multi-statement `if` blocks must still break —
 the flat-capable rule is strictly scoped to single-statement, no-else `if`
 statements whose direct parent is a `LambdaExpr`. Anywhere else, the
@@ -653,6 +750,91 @@ test "genai ability with kwargs preserves by and arguments" {
     assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
 }
 
+"""Regression: set literals must space after commas like lists, tuples, and
+dicts. `exit_set_val` blindly concatenated its kids, so `{1,2,3}` round-tripped
+crammed while `[1,2,3]`/`(1,2,3)`/`{1: 2,3: 4}` all gained the comma space."""
+test "set literal spaces after commas like other collections" {
+    source = "glob a = {1,2,3};\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "{1, 2, 3}" in formatted , (
+        f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
+}
+
+"""Regression: a set literal wider than the print width must break one element
+per line, exactly like a list. `exit_set_val` had no broken layout at all, so
+long sets stayed on a single overlong line."""
+test "long set literal wraps one element per line like a list" {
+    source = (
+        'glob a = {"alpha","bravo","charlie","delta","echo","foxtrot",'
+        '"golf","hotel","india","juliet","kilo","lima"};\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    assert len(lines) > 3 , (
+        f"long set literal must break across lines, got:\n{formatted}"
+    );
+    # No two elements may share a line once broken.
+    assert not any(('"alpha"' in ln) and ('"bravo"' in ln) for ln in lines) , (
+        f"broken set must place one element per line, got:\n{formatted}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
+}
+
+"""Regression: assign comprehensions must space after commas the same way
+filter comprehensions do. `exit_assign_compr` stripped every space, so
+`(=foo=1,bar=2)` round-tripped crammed while `(?foo>1,bar<2)` got the space."""
+test "assign comprehension spaces after commas like filter comprehension" {
+    source = "with entry { x = (a)(=foo=1,bar=2); }\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "=foo=1, bar=2" in formatted , (
+        f"assign comprehension must space after commas, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
+}
+
+"""Regression: enum base-type declarations must space like type annotations
+and base-class lists. `exit_enum` sent the typed-base colon (`enum X: int`)
+and the base-class parens/commas (`enum X(A, B)`) through the generic kid
+branch, which appends a trailing space after every kid — yielding
+`enum X : int` and `enum X ( A , B )`."""
+test "enum base type colon and parens space correctly" {
+    source = (
+        'enum Category: int { WORK, PERSONAL }\n'
+        'enum Color(Mixin, Enum) { RED, GREEN }\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    # Typed-base colon: no space before, one space after.
+    assert "enum Category: int" in formatted , (
+        f"typed-base colon must format as `Category: int`, got:\n{repr(formatted)}"
+    );
+    assert "Category : int" not in formatted , (
+        f"typed-base colon must not have a space before `:`, got:\n{repr(formatted)}"
+    );
+    # Base-class list: no space inside parens, comma-separated like archetypes.
+    assert "enum Color(Mixin, Enum)" in formatted , (
+        f"base-class list must format as `Color(Mixin, Enum)`, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "enum base-type spacing is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {
@@ -669,5 +851,73 @@ test "syntax error preserves original source" {
     result = gen_output if not prog.errors_had else bad_source;
     assert result == bad_source , (
         "Formatter must return original source on syntax error, " f"got: {repr(result)}"
+    );
+}
+
+"""Regression: significant whitespace between JSX text and inline child
+elements must survive formatting. JSX collapses a newline adjacent to a
+tag to nothing, so when the formatter breaks mixed children (text next to
+elements) onto separate lines it must preserve a same-line space as a
+`{" "}` whitespace marker (Prettier's jsxWhitespace) -- and keep short
+mixed JSX flat. Previously the mixed-children path emitted `hard_line()`
+between every child and the printer rstripped the trailing space, so
+`score <b>0</b> fps` silently reformatted to render `score0fps`."""
+test "jsx significant whitespace around inline elements is preserved" {
+    # Short, space-separated mixed JSX (text interleaved with <b> elements)
+    # must stay flat -- the inline spaces are significant and must survive.
+    short_src = (
+        'cl def:pub hud -> JsxElement {\n'
+        '    return <div id="hud">score <b>0</b> · <b>0</b> fps</div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=short_src, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    short_fmt = prog.mod.main.gen.jac or "";
+    flat_form = '<div id="hud">score <b>0</b> · <b>0</b> fps</div>';
+    assert flat_form in short_fmt , (
+        "short space-separated mixed JSX must stay flat with spaces intact:\n" + short_fmt
+    );
+    # Idempotency.
+    prog_i = JacProgram.jac_str_formatter(source_str=short_fmt, file_path="<test>.jac");
+    assert short_fmt == prog_i.mod.main.gen.jac , (
+        "short mixed-JSX formatting is not idempotent:\n" + short_fmt
+    );
+
+    # Long, space-separated mixed JSX must break, but the significant spaces
+    # at text<->element boundaries must be preserved as `{" "}` markers
+    # rather than dropped.
+    long_src = (
+        'cl def:pub hint -> JsxElement {\n'
+        '    return <div id="hint">Click the canvas to capture the mouse · '
+        '<b>WASD</b> move and mouse aim · <b>Space</b> fire · <b>Tab</b> release the '
+        'cursor</div>;\n'
+        '}\n'
+    );
+    prog2 = JacProgram.jac_str_formatter(source_str=long_src, file_path="<test>.jac");
+    assert not prog2.errors_had , f"formatter errors: {prog2.errors_had}";
+    long_fmt = prog2.mod.main.gen.jac or "";
+    # It must have broken across lines (too long to stay flat)...
+    assert "\n" in long_fmt.split("return")[1].split(";")[0] , (
+        "long mixed JSX was expected to break across lines:\n" + long_fmt
+    );
+    # ...and the significant spaces must be preserved as jsxWhitespace markers,
+    # never silently dropped at the line breaks.
+    assert '{" "}' in long_fmt , (
+        "significant whitespace at text<->element boundaries was dropped "
+        "instead of preserved as a `{\" \"}` marker:\n" + long_fmt
+    );
+    # The buggy pattern: a word line immediately followed by an element line
+    # with no whitespace marker between them must NOT occur for these spaced
+    # boundaries. Specifically, no line may end with a bare word `move` and be
+    # followed directly by `<b>Space</b>` losing the space.
+    assert "move ·" in long_fmt
+    or 'move ·{" "}' in long_fmt
+    or "move\n" not in long_fmt , (
+        "space after 'move ·' before next element appears dropped:\n" + long_fmt
+    );
+    # Idempotency.
+    prog2_i = JacProgram.jac_str_formatter(source_str=long_fmt, file_path="<test>.jac");
+    assert long_fmt == prog2_i.mod.main.gen.jac , (
+        "long mixed-JSX formatting is not idempotent:\n" + long_fmt
     );
 }

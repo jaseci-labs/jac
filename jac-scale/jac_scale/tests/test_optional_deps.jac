@@ -287,16 +287,20 @@ test "multiple require_optional calls do not conflict" {
 # Scheduler graceful degradation without APScheduler
 # =============================================================================
 test "scheduler setup succeeds without apscheduler installed" {
-    import from jac_scale.scheduler { JacScaleScheduler }
+    import from jac_scale.scheduler.scheduler { JacScaleScheduler }
 
     # Simulate APScheduler not being installed by patching the symbols
     # in the scheduler module (where setup() reads them at runtime).
-    with unittest.mock.patch("jac_scale.scheduler.HAS_APSCHEDULER", False) {
-        with unittest.mock.patch("jac_scale.scheduler.BackgroundScheduler", None) {
-            with unittest.mock.patch("jac_scale.scheduler.ThreadPoolExecutor", None) {
+    with unittest.mock.patch("jac_scale.scheduler.scheduler.HAS_APSCHEDULER", False) {
+        with unittest.mock.patch(
+            "jac_scale.scheduler.scheduler.BackgroundScheduler", None
+        ) {
+            with unittest.mock.patch(
+                "jac_scale.scheduler.scheduler.ThreadPoolExecutor", None
+            ) {
                 sched = JacScaleScheduler();
                 # setup() should not crash — APScheduler init is skipped gracefully.
-                sched.setup(system_token="test-token");
+                sched.setup(system_user_id="system-user-id");
                 assert sched._apscheduler is None , "APScheduler should be None when package is not installed";
                 # start/stop should be no-ops, not errors.
                 sched.start();
@@ -307,17 +311,23 @@ test "scheduler setup succeeds without apscheduler installed" {
 }
 
 test "scheduler create_job raises clear error without apscheduler" {
-    import from jac_scale.scheduler { JacScaleScheduler }
+    import from jac_scale.scheduler.scheduler { JacScaleScheduler }
 
-    with unittest.mock.patch("jac_scale.scheduler.HAS_APSCHEDULER", False) {
-        with unittest.mock.patch("jac_scale.scheduler.BackgroundScheduler", None) {
-            with unittest.mock.patch("jac_scale.scheduler.ThreadPoolExecutor", None) {
+    with unittest.mock.patch("jac_scale.scheduler.scheduler.HAS_APSCHEDULER", False) {
+        with unittest.mock.patch(
+            "jac_scale.scheduler.scheduler.BackgroundScheduler", None
+        ) {
+            with unittest.mock.patch(
+                "jac_scale.scheduler.scheduler.ThreadPoolExecutor", None
+            ) {
                 sched = JacScaleScheduler();
-                sched.setup(system_token="test-token");
+                sched.setup(system_user_id="system-user-id");
                 raised = False;
                 try {
+                    import from jac_scale.scheduler.scheduler { TriggerSpec }
+                    spec = TriggerSpec.validate(trigger="interval", interval=60.0);
                     sched.create_job(
-                        name="test_walker", trigger="interval", interval=60.0
+                        name="test_walker", spec=spec, created_by="system-user-id"
                     );
                 } except RuntimeError as e {
                     raised = True;

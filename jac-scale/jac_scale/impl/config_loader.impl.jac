@@ -70,11 +70,20 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'liveness_failure_threshold': 3
         },
         'secrets': {},
-        'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},
+        'server': {
+            'port': 8000,
+            'host': '0.0.0.0',
+            'docs_enabled': True,
+            'suppress_health_check_logs': False
+        },
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
+            'timestamp_header': 'X-Webhook-Timestamp',
             'verify_signature': True,
+            'replay_tolerance_seconds': 300,
+            'max_body_bytes': 1048576,
+            'rate_limit_per_minute': 0,
             'api_key_expiry_days': 365
         },
         'monitoring': {
@@ -109,8 +118,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'require_password_reset': True
         },
         'scheduler': {
-            'system_user_password': 'system_secret',
-            'collection': 'scheduled_jobs'
+            'collection': 'scheduled_jobs',
+            'thread_pool_size': 10,
+            'misfire_grace_time': 60,
+            'shutdown_timeout': 10,
+            'system_user_password': '__no_login__',
+            'user_exists_ttl': 30.0
         },
         'telemetry': {'max_traces': 1000},
         'websocket': {
@@ -233,7 +246,10 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     return {
         'port': int(server_config.get('port', 8000)),
         'host': server_config.get('host', '0.0.0.0'),
-        'docs_enabled': server_config.get('docs_enabled', True)
+        'docs_enabled': server_config.get('docs_enabled', True),
+        'suppress_health_check_logs': bool(
+            server_config.get('suppress_health_check_logs', False)
+        )
     };
 }
 
@@ -245,7 +261,15 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
         'signature_header': webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         ),
+        'timestamp_header': webhook_config.get(
+            'timestamp_header', 'X-Webhook-Timestamp'
+        ),
         'verify_signature': webhook_config.get('verify_signature', True),
+        'replay_tolerance_seconds': int(
+            webhook_config.get('replay_tolerance_seconds', 300)
+        ),
+        'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
+        'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
 }
@@ -381,9 +405,14 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     return {
-        'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
-        or scheduler_config.get('system_user_password', 'system_secret'),
-        'collection': scheduler_config.get('collection', 'scheduled_jobs')
+        'collection': scheduler_config.get('collection', 'scheduled_jobs'),
+        'thread_pool_size': int(scheduler_config.get('thread_pool_size', 10)),
+        'misfire_grace_time': int(scheduler_config.get('misfire_grace_time', 60)),
+        'shutdown_timeout': int(scheduler_config.get('shutdown_timeout', 10)),
+        'system_user_password': scheduler_config.get(
+            'system_user_password', '__no_login__'
+        ),
+        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0))
     };
 }
 
@@ -526,7 +555,18 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         # manifest-build time. Empty list when the user hasn't declared
         # any - existing microservice apps without shared FS state get
         # an empty list and the same pod specs they had before.
-        'shared_volumes': list(ms_config.get('shared_volumes', []))
+        'shared_volumes': list(ms_config.get('shared_volumes', [])),
+        # M-14.a: centralised logs (Loki + Alloy). Opaque pass-through
+        # so KubernetesMicroserviceTarget can read `enabled` and (in
+        # M-14.c) nested storage / retention knobs without revisiting
+        # this loader on every new key.
+        'logs': dict(ms_config.get('logs', {})),
+        # O-02: distributed tracing (OpenTelemetry -> Alloy/Tempo).
+        # Opaque pass-through, same shape as `logs`: `enabled` toggles
+        # the app-side SDK + Tempo deploy; `endpoint` overrides the OTLP
+        # collector URL; `sample_ratio` sets head sampling. Read by the
+        # gateway/service setup (install_tracing) and the K8s target.
+        'tracing': dict(ms_config.get('tracing', {}))
     };
 }
 

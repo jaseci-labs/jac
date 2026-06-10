@@ -73,15 +73,23 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         # Determine format specifier based on type
-        if isinstance(val.type, ir.IntType) and val.type.width == 64 {
+        if isinstance(val.type, ir.IntType) {
+            # Promote any narrow integer (i1 bool, i8/i16/i32 — e.g. a foreign
+            # `i32` return consumed inline) to i64 for the %lld varargs slot.
+            if val.type.width == 1 {
+                val = self.builder.zext(val, ir.IntType(64));
+            } elif val.type.width < 64 {
+                val = self.builder.sext(val, ir.IntType(64));
+            }
             fmt_parts.append("%lld");
             args.append(val);
         } elif isinstance(val.type, ir.DoubleType) {
             fmt_parts.append("%f");
             args.append(val);
-        } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
-            val = self.builder.zext(val, ir.IntType(64));
-            fmt_parts.append("%lld");
+        } elif isinstance(val.type, ir.FloatType) {
+            # C `float` (f32) — widen to double for printf's %f varargs slot.
+            val = self.builder.fpext(val, ir.DoubleType());
+            fmt_parts.append("%f");
             args.append(val);
         } elif isinstance(val.type, ir.PointerType) {
             fmt_parts.append("%s");
@@ -219,30 +227,16 @@ impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir
     return gep;
 }
 
-"""Process common escape sequences in string literals."""
-def _unescape_string(text: str) -> str {
-    text = text.replace("\\n", "\n");
-    text = text.replace("\\t", "\t");
-    text = text.replace("\\\\", "\\");
-    text = text.replace('\\"', '"');
-    text = text.replace("\\'", "'");
-    return text;
-}
+"""Generate a string literal as a global constant, returning i8*.
 
-"""Generate a string literal as a global constant, returning i8*."""
+Decode via `String.lit_value` — the same `ast.literal_eval`-based decoder the
+sv pathway uses — so every escape form (\\n, \\t, \\xNN, \\uXXXX, \\U00XXXXXX,
+\\N{...}, octal) resolves identically across pathways. Reusing the single
+shared decoder keeps the na ⊆ sv guarantee true by construction rather than
+re-deriving an inevitably-incomplete escape table here (regression: #6442).
+"""
 impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
-    raw = nd.value;
-    # Strip quotes for standalone string literals
-    if len(raw) >= 6 and (raw[:3] == '"""' or raw[:3] == "'''") {
-        text = raw[3:-3];
-    } elif len(raw) >= 2 and (raw[0] == '"' or raw[0] == "'") {
-        text = raw[1:-1];
-    } else {
-        # F-string literal parts have no quotes
-        text = raw;
-    }
-    text = _unescape_string(text);
-    return self._make_global_string(text);
+    return self._make_global_string(nd.lit_value);
 }
 
 """Generate f-string by building a printf-style format string and calling snprintf."""
@@ -251,14 +245,9 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     args: list[ir.Value] = [];
     for part in nd.parts {
         if isinstance(part, uni.String) {
-            # Literal text portion — value has no quotes for fstring parts
-            raw = part.value;
-            if len(raw) >= 2 and (raw[0] == '"' or raw[0] == "'") {
-                text = raw[1:-1];
-            } else {
-                text = raw;
-            }
-            text = _unescape_string(text);
+            # Literal text portion — `lit_value` decodes escapes the same way
+            # the sv pathway does (ast.literal_eval), covering \xNN/\uXXXX/etc.
+            text = part.lit_value;
             # Escape % for printf format
             text = text.replace("%", "%%");
             fmt_parts.append(text);

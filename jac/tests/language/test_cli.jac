@@ -14,6 +14,8 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.cli.commands { analysis, execution, project, tools, transform }
 import from jaclang.cli.commands { config as config_cmd }
+import from jaclang.cli.registry { get_registry }
+import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
@@ -41,7 +43,7 @@ def _assert_error_pretty_found(needle: str, haystack: str) {
 }
 
 """Run jac check and return file count."""
-def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
+def _run_jac_check(test_dir: str, ignore_pattern: (list | None) = None) -> int {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -50,7 +52,7 @@ def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
     sys.stderr = captured_stderr;
 
     try {
-        analysis.check([test_dir], ignore=ignore_pattern);
+        analysis.check([test_dir], ignore=ignore_pattern or []);
         stdout = captured_stdout.getvalue();
         stderr = captured_stderr.getvalue();
     } finally {
@@ -483,6 +485,43 @@ test "run test with directory filter" {
     assert "circle_pure.impl" not in stdout;
 }
 
+test "discovery prunes hidden and pycache dirs" {
+    tmp_dir = tempfile.mkdtemp();
+    try {
+        os.makedirs(os.path.join(tmp_dir, ".jac"));
+        os.makedirs(os.path.join(tmp_dir, "__pycache__"));
+        # A real, top-level test that must be discovered and pass.
+        Path(os.path.join(tmp_dir, "good_test.jac")).write_text(
+            'test "good_one" {\n    assert True;\n}\n'
+        );
+        # Failing tests planted inside the build-cache (".jac") and pycache
+        # dirs. The discovery walk must prune these, so they never run.
+        Path(os.path.join(tmp_dir, ".jac", "skip_test.jac")).write_text(
+            'test "pruned_cache" {\n    assert False;\n}\n'
+        );
+        Path(os.path.join(tmp_dir, "__pycache__", "skip_test.jac")).write_text(
+            'test "pruned_pyc" {\n    assert False;\n}\n'
+        );
+        process = subprocess.Popen(
+            ["jac", "test", "-d", tmp_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+        # Top-level test is discovered and runs to a pass.
+        assert "good_test.jac" in combined;
+        assert "Passed successfully." in combined;
+        # Hidden / pycache dirs are pruned: their failing tests never run.
+        assert "skip_test.jac" not in combined;
+        assert "FAILED" not in combined;
+        assert process.returncode == 0;
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
 test "run test with filter maxfail" {
     process = subprocess.Popen(
         ["jac", "test", "-f", "*run_test.jac", "-m", "3"],
@@ -522,8 +561,8 @@ test "run specific test only" {
 test "graph coverage" {
     graph_params = set(inspect.signature(tools.dot).parameters.keys());
     printgraph_params = set(inspect.signature(printgraph).parameters.keys());
-    printgraph_params = printgraph_params - {"nd","file","edge_type"};
-    printgraph_params.update({"initial","saveto","connection","session"});
+    printgraph_params = printgraph_params - {"nd", "file", "edge_type"};
+    printgraph_params.update({"initial", "saveto", "connection", "session"});
     assert printgraph_params.issubset(graph_params);
     assert len(printgraph_params) + 2 == len(graph_params);
 }
@@ -1117,24 +1156,23 @@ test "jac create and run no root files" {
     }
 }
 
-test "jac create default name jactastic" {
+test "jac create without name initializes current directory" {
     _ensure_template_registry();
     _tmpdir = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     os.chdir(_tmpdir);
     try {
         cli_dir = Path(_tmpdir);
-        # First create should use jactastic
+        dir_name = cli_dir.name;
         assert project.create() == 0;
-        assert (cli_dir / "jactastic").is_dir();
+        assert (cli_dir / "jac.toml").is_file();
+        assert (cli_dir / "main.jac").is_file();
+        assert not (cli_dir / "jactastic").exists();
+        toml = (cli_dir / "jac.toml").read_text(encoding="utf-8");
+        assert f'name = "{dir_name}"' in toml;
 
-        # Second create should use jactastic1
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic1").is_dir();
-
-        # Third create should use jactastic2
-        assert project.create() == 0;
-        assert (cli_dir / "jactastic2").is_dir();
+        # Second create in same directory should fail without --force
+        assert project.create() != 0;
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(_tmpdir, ignore_errors=True);
@@ -1164,7 +1202,7 @@ test "install editable resolves config from target package when outside project 
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=str(pkg_dir));
+            result = project.install(editable=[[str(pkg_dir)]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
@@ -1200,7 +1238,7 @@ test "install editable resolves config from cwd when given dot path" {
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=".");
+            result = project.install(editable=[["."]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
@@ -1208,6 +1246,105 @@ test "install editable resolves config from cwd when given dot path" {
         assert captured_src_dir[0] == resolved_tmpdir , (
             f"Expected src_dir={resolved_tmpdir}, got {captured_src_dir[0]}"
         );
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install -e accepts space-separated and repeated flag forms" {
+    _tmpdir = tempfile.mkdtemp();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+
+        # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
+        process = subprocess.Popen(
+            [
+                "jac",
+                "install",
+                "-e",
+                str(pkg_a),
+                str(pkg_b),
+                "-e",
+                str(pkg_c),
+                "--dry-run"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+
+        assert process.returncode == 0 , (
+            f"Expected exit 0, got {process.returncode}.\n{combined}"
+        );
+        assert "pkg-a" in combined , f"pkg-a not mentioned in output:\n{combined}";
+        assert "pkg-b" in combined , f"pkg-b not mentioned in output:\n{combined}";
+        assert "pkg-c" in combined , f"pkg-c not mentioned in output:\n{combined}";
+    } finally {
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install -e links all packages for space-separated and repeated flag forms" {
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+
+        linked: list = [];
+        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+            linked.append(src_dir);
+        }
+
+        with patch(
+            "jaclang.publish.builder.WheelBuilder.install_editable",
+            fake_install_editable
+        ) {
+            # [[pkg_a, pkg_b], [pkg_c]] mirrors: -e pkg_a pkg_b -e pkg_c
+            result = project.install(editable=[[str(pkg_a), str(pkg_b)], [str(pkg_c)]]);
+        }
+
+        assert result == 0 , f"Expected exit 0, got {result}";
+        assert len(linked) == 3 , f"Expected install_editable called 3 times, got {len(
+            linked
+        )}";
+        assert pkg_a in linked , f"pkg-a not linked; linked={linked}";
+        assert pkg_b in linked , f"pkg-b not linked; linked={linked}";
+        assert pkg_c in linked , f"pkg-c not linked; linked={linked}";
     } finally {
         _reset_config();
         os.chdir(original_cwd);
@@ -1879,6 +2016,73 @@ test "jac check nowarn flag suppresses warnings" {
     assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
 }
 
+"""Run analysis.check with captured stdout/stderr; reset global config after."""
+def _check_captured(
+    paths: list, disable_error_code: (list | None) = None
+) -> tuple[int, str] {
+    (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
+    _reset_config();
+    try {
+        result = analysis.check(paths, disable_error_code=disable_error_code or []);
+        combined = captured_stdout.getvalue() + captured_stderr.getvalue();
+        return (result, combined);
+    } finally {
+        _restore_output(old_stdout, old_stderr);
+        set_config(None);
+        _reset_config();
+    }
+}
+
+test "jac check disable_error_code maps to check arg" {
+    parser = get_registry().finalize();
+    (args, _) = parser.parse_known_args(
+        ["check", fixture_path("warnings_only.jac"), "--disable-error-code", "E1030"]
+    );
+    assert args.disable_error_code == ["E1030"] , (
+        "kebab-case CLI flag should map to disable_error_code arg"
+    );
+}
+
+test "jac check disable_error_code resolves kebab alias and comma tokens" {
+    (resolved, unknown) = resolve_diagnostic_tokens(
+        ["no-print", "E1030,W2001", "e9999", "E9999"]
+    );
+    assert resolved == ["E3012", "E1030", "W2001"] , (
+        "kebab aliases and comma-separated codes should resolve"
+    );
+    assert unknown == ["E9999"] , ("unknown tokens should dedupe by canonical code");
+}
+
+test "jac check disable_error_code suppresses matching diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (base_result, _) = _check_captured([fixture]);
+    assert base_result == 1 , "fixture should fail check without suppression";
+    (suppressed_result, suppressed_output) = _check_captured(
+        [fixture], disable_error_code=["E1030"]
+    );
+    assert suppressed_result == 0 , "suppressed E1030 should not fail check";
+    assert "FAILED" not in suppressed_output , "suppressed run should not fail";
+}
+
+test "jac check disable_error_code comma form suppresses diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (result, output) = _check_captured([fixture], disable_error_code=["E1030,E9999"]);
+    assert result == 0 , "comma-separated E1030 should suppress the fixture error";
+    assert "FAILED" not in output , "suppressed comma-form run should not fail";
+    assert "Ignoring unknown diagnostic codes in --disable-error-code" in output , (
+        "unknown comma chunk member should still warn"
+    );
+}
+
+test "jac check disable_error_code warns on unknown diagnostics" {
+    fixture = fixture_path("check_disable_error_code_e1030.jac");
+    (_, combined) = _check_captured([fixture], disable_error_code=["E9999", "E1030"]);
+    assert "Ignoring unknown diagnostic codes in --disable-error-code" in combined , (
+        "unknown codes should produce an explicit warning"
+    );
+    assert "E9999" in combined , "unknown warning should use canonical code casing";
+}
+
 test "lexer does not hang on unterminated jsx" {
     # BUG: Unterminated JSX (e.g. `<div>hello` with no closing tag)
     # hits EOF while the lexer is still in JSX_CONTENT mode.
@@ -2145,6 +2349,58 @@ test "jir cache computes mro for subtype checking" {
         }
         # E1053 "Cannot assign Derived to parameter 'b' of type Base" appears if MRO not computed
         assert "Cannot assign" not in outputs[1] , f"JIR cache lost MRO for subtype check:\n{outputs[
+            1
+        ]}";
+    }
+}
+
+"""Regression: JIR cache must preserve HasVar.accessors None vs empty list.
+
+A plain `has` field has accessors=None; a native property (`has x: T { getter; setter; }`)
+has a non-empty accessors list. The accessors field is serialised as NODE_LIST, which
+cannot distinguish None from [] -- both round-trip to []. On a cache hit a plain field's
+accessors became [], so the property classifier saw a setter-less property and falsely
+raised E1005 on assignment.
+"""
+test "jir cache preserves plain field vs property accessors" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Box has a plain field `data` next to a native getter/setter property `value`.
+        with open(os.path.join(tmpdir, "lib.jac"), "w") as f {
+            f.write(
+                "obj Box {\n"
+                "    has data: int = 0,\n"
+                "        _v: int = 0,\n"
+                "        value: int {\n"
+                "            getter { return self._v; }\n"
+                "            setter(x: int) { self._v = x; }\n"
+                "        }\n"
+                "}\n"
+            );
+        }
+        with open(os.path.join(tmpdir, "main.jac"), "w") as f {
+            f.write(
+                "import from lib { Box }\n"
+                "with entry { b = Box(); b.data = 5; print(b.data); }\n"
+            );
+        }
+        main_path = os.path.join(tmpdir, "main.jac");
+        # Run check twice: first creates cache, second uses it
+        outputs: list[str] = [];
+        for _ in range(2) {
+            JacRuntime.program = JacProgram();
+            (cap_out, cap_err, old_out, old_err) = _capture_output();
+            try {
+                analysis.check([main_path]);
+                outputs.append(cap_out.getvalue() + cap_err.getvalue());
+            } finally {
+                _restore_output(old_out, old_err);
+            }
+        }
+        # E1005 "read-only property" appears if accessors None->[] makes `data` look like a property
+        assert "read-only property" not in outputs[1] , f"JIR cache lost plain-field accessors:\n{outputs[
             1
         ]}";
     }

@@ -2,7 +2,55 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.14 (Latest Release)
+## jac-client 0.3.22 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: jac-client CLI output no longer prints raw Rich markup**: npm/bun install and config-loader messages use `console.print(..., style=)`, `console.warning`, `console.success`, and `console.error` so status lines render with correct colors on the default ANSI console.
+
+### Refactors
+
+- **Refactor: client plugin consumes the unified core build pipeline**: The jac-client plugin no longer ships its own copy of the bun installer, Vite bundler, and client config loader; these moved into `jaclang.runtimelib.client` so the web, pwa, mobile, and desktop targets all share one runtime and one bundler. The plugin and its targets now import these from core instead of `jac_client.plugin.src.*`. (jaseci-labs/jaseci#6390)
+- **Refactor: Drop PyTauri-specific desktop handling**: Removed the `src-pytauri` setup detection/verification and the dead PyInstaller sidecar template from the client target plumbing. The `desktop` target (jac-desktop) is now a native webview build that needs no setup step.
+
+## jac-client 0.3.20
+
+### New Features
+
+- **Feature: PyTauri desktop target**: The desktop build target now uses PyTauri instead of the Rust/Tauri CLI, so desktop apps no longer require a Cargo install; the PyTauri wheel bundles the Tauri runtime.
+- **Feature: Plugin-provided client targets**: jac-client owns a dedicated runtime plugin surface (`JacClientPluginSpec.get_client_targets` on the `jac_client` entry-point group). Plugins such as `jac-desktop` contribute build targets without extending jaclang core; the desktop target and native sidecar register through that hook.
+- **Feature: Desktop config under `[plugins.desktop]`**: Window, identifier, sidecar plugin bundling, Tauri plugins, and PyInstaller `extra_data` globs are configured under `[plugins.desktop]` (and nested `[plugins.desktop.window]`, `[plugins.desktop.plugins]`, `[plugins.desktop.bundle]`).
+
+### Bug Fixes
+
+- **Fix: Client error stacks resolve to the correct `.jac` line**: Per-file source maps for client modules were silently skipped during a fullstack/interop build because map generation re-fetched the module from the global hub, which such builds leave empty (client modules compile into a separate codespace). Without the map, a client-side JS error resolved to the compiled-JS line with the `.jac` filename swapped in, pointing at a line that does not exist in the source. Map generation now uses the module the compiler already produced, and also covers the client and PWA runtime files (which previously emitted no maps).
+- **Fix: client function-name resolution spans both compiler programs**: The web target resolved a loaded module's compiled IR by reading `Jac.program.mod.hub` directly, which misses a jaclang-bundled app's modules (they compile into the internal program) and silently fell back to the default function name. It now resolves through the program-spanning `JacProgram.find_module`.
+
+### Refactors
+
+- **Refactor: One-line JSX returns across client examples and runtime**: Applied the updated formatter, collapsing short `return <Element/>;` statements onto a single line across the `jac-client` examples, fullstack template, and plugin runtime impls.
+
+### Documentation
+
+- **Docs: Desktop tutorial and reference**: Document PyTauri desktop setup, `[plugins.desktop]` configuration, and `jac desktop plugin` commands in the fullstack tutorial and [jac-desktop reference](../../reference/plugins/jac-desktop.md).
+
+## jac-client 0.3.18
+
+### New Features
+
+- **`JacAwaiting` runtime shim**: New ambient `JacAwaiting(props)` view declaration in `client_runtime.cl.jac` -- a thin `React.Suspense` wrapper that the compiler targets when lowering `try { ... } awaiting { ... }` clauses on the `cl` target.
+
+### Bug Fixes
+
+- **Fix: `undefined` JSX children no longer crash the page**: A `cl` component that forwards a missing or optional prop as a JSX child (e.g. `{props.maybe}` when `maybe` isn't passed) now renders cleanly instead of blanking the page with `TypeError: Cannot read properties of undefined (reading '__jacUnsafeHtml')`.
+- **Fix: reading client config no longer mutates non-client projects' `jac.toml`**: `JacClientConfig.load()` previously injected the client's npm dependency set (react, vite, typescript, …) and rewrote `jac.toml` as a side effect of merely reading client config, so any backend-only project that booted the API server gained a `[dependencies.npm]` section and had its file reserialized. The self-healing dependency migration/injection is now gated on the project having explicitly opted into the client via a `[plugins.client]` section; real client projects still self-heal as before.
+
+### Refactors
+
+- **Refactor: read base path via `Jac.get_base_path_dir()`**: Migrated to the new accessor; the prior `Jac.base_path_dir` class attribute has been removed.
+- **Leaner fullstack starter template**: The `jac create` fullstack template is trimmed to a simpler message-based example -- the todo-app scaffolding (AuthForm, Button, TodoItem components and the template README) is removed in favor of a single MessageCard component with reworked `frontend`, `endpoints`, and `main`.
+
+## jac-client 0.3.14
 
 ### New Features
 

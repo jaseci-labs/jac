@@ -51,6 +51,10 @@ obj DocIRGenPass(UniPass) {
     ) -> doc.DocType;
 
     def format_comprehension(parts: list[doc.DocType]) -> doc.DocType;
+    """Lay out a comma-delimited literal (list/set/tuple): flat with a space
+    after each comma, or one element per line when it must break."""
+    def format_comma_collection(nd: uni.UniNode) -> doc.DocType;
+
     def is_one_line(nd: uni.UniNode) -> bool;
     def has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool;
     def add_body_stmt_with_spacing(
@@ -61,6 +65,14 @@ obj DocIRGenPass(UniPass) {
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
+    """Prettier's jsxWhitespace: a literal space when flat, a `{" "}` marker
+    plus a line break when broken, so a significant space survives a break."""
+    def jsx_whitespace -> doc.DocType;
+
+    """Lay out JSX children that mix text with inline elements, preserving
+    JSX-significant whitespace at text<->element boundaries."""
+    def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
+
     """Emit 'to cl:/sv:/na:' section-header form for an implicit context block."""
     def emit_section_header_block(nd: uni.UniNode) -> None;
 

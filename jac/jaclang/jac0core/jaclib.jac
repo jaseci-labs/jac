@@ -55,6 +55,7 @@ glob __all__ = [
          'by_operator',
          'on_entry',
          'on_exit',
+         'set_trigger',
          'thread_run',
          'thread_wait'
      ],
@@ -85,5 +86,6 @@ glob __all__ = [
      `sem = JacRuntimeInterface.sem,
      on_entry = JacRuntimeInterface.on_entry,
      on_exit = JacRuntimeInterface.on_exit,
+     set_trigger = JacRuntimeInterface.set_trigger,
      thread_run = JacRuntimeInterface.thread_run,
      thread_wait = JacRuntimeInterface.thread_wait;

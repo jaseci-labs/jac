@@ -290,59 +290,204 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
-  // Runtime-polymorphic helpers used when the static type of the receiver is
-  // not provably str/list/etc., so the codegen cannot pick a typed emitter.
-  // Each helper checks the JS type and dispatches to the native operation;
-  // if the value is not a JS primitive of the expected shape, it falls back
-  // to calling the same-named method on the object so user-defined classes
-  // that implement Python-style methods still work.
+  // Runtime-polymorphic method dispatch, used when the codegen cannot prove
+  // the static type of a method-call receiver (e.g. a `dict`-typed prop, the
+  // result of `or` widening, or a comprehension over an untyped value) and so
+  // cannot pick a typed emitter. The compiler emits
+  // `_jac.poly.call(obj, "name", ...args)`; `call` resolves the *runtime* type
+  // of `obj` and applies the matching Python operation, forwards to a
+  // same-named method on a user-defined object, or raises AttributeError. The
+  // per-type tables below carry the trivial native-mapped methods inline and
+  // delegate the non-trivial ones to the shared `_jac.str/list/dict/set`
+  // helpers, so each operation has a single implementation and no Python
+  // method name can leak verbatim into the emitted JavaScript.
   poly: {
-    lower(s) { return typeof s === "string" ? s.toLowerCase() : s.lower(); },
-    upper(s) { return typeof s === "string" ? s.toUpperCase() : s.upper(); },
-    strip(s, chars) {
-      if (typeof s === "string") {
+    _typename(o) {
+      if (o === null || o === undefined) return "NoneType";
+      if (Array.isArray(o)) return "list";
+      if (o instanceof Set) return "set";
+      if (o instanceof Map) return "dict";
+      if (o instanceof Uint8Array) return "bytes";
+      const t = typeof o;
+      if (t === "string") return "str";
+      if (t === "boolean") return "bool";
+      if (t === "number") return Number.isInteger(o) ? "int" : "float";
+      if (t === "object") return (o.constructor && o.constructor.name) || "object";
+      return t;
+    },
+    // --- per-runtime-type Python method tables (keyed by Python name) ---
+    // Trivial native-mapped ops are inline; non-trivial ones delegate to the
+    // shared `_jac.<type>` helpers (which the typed emitters also use), so the
+    // typed and polymorphic paths share one implementation.
+    _str: {
+      lower: (s) => s.toLowerCase(),
+      upper: (s) => s.toUpperCase(),
+      casefold: (s) => s.toLowerCase(),
+      strip: (s, chars) => {
         if (chars === undefined) return s.trim();
         let i = 0, j = s.length;
         while (i < j && chars.indexOf(s[i]) !== -1) i++;
         while (j > i && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(i, j);
-      }
-      return chars === undefined ? s.strip() : s.strip(chars);
-    },
-    lstrip(s, chars) {
-      if (typeof s === "string") {
+      },
+      lstrip: (s, chars) => {
         if (chars === undefined) return s.replace(/^\s+/, "");
         let i = 0;
         while (i < s.length && chars.indexOf(s[i]) !== -1) i++;
         return s.slice(i);
-      }
-      return chars === undefined ? s.lstrip() : s.lstrip(chars);
-    },
-    rstrip(s, chars) {
-      if (typeof s === "string") {
+      },
+      rstrip: (s, chars) => {
         if (chars === undefined) return s.replace(/\s+$/, "");
         let j = s.length;
         while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(0, j);
       }
-      return chars === undefined ? s.rstrip() : s.rstrip(chars);
     },
-    append(a, x) {
-      if (Array.isArray(a)) { a.push(x); return null; }
-      return a.append(x);
-    },
-    extend(a, b) {
-      if (Array.isArray(a)) { for (const v of b) a.push(v); return null; }
-      return a.extend(b);
-    },
-    pop(a, i) {
-      if (Array.isArray(a)) {
+    _list: {
+      append: (a, x) => { a.push(x); return null; },
+      clear: (a) => { a.length = 0; return null; },
+      copy: (a) => a.slice(),
+      count: (a, x) => _jac.list.count(a, x),
+      extend: (a, b) => { for (const v of b) a.push(v); return null; },
+      index: (a, x, start, end) => _jac.list.index(a, x, start, end),
+      insert: (a, i, x) => { a.splice(i, 0, x); return null; },
+      pop: (a, i) => {
         if (i === undefined) return a.pop();
         const idx = i < 0 ? a.length + i : i;
         return a.splice(idx, 1)[0];
-      }
-      return i === undefined ? a.pop() : a.pop(i);
+      },
+      remove: (a, x) => _jac.list.remove(a, x),
+      reverse: (a) => { a.reverse(); return null; },
+      sort: (a, key) => _jac.list.sort(a, key)
     },
+    _dict: {
+      clear: (o) => _jac.dict.clear(o),
+      copy: (o) => ({ ...o }),
+      // Python `dict.get`: returns the stored value when the key is present
+      // (even if it is null), and the default only when the key is absent.
+      // A membership check is required — `o[key] ?? default_` would wrongly
+      // substitute the default for a present-but-null value.
+      get: (o, key, default_) =>
+        Object.prototype.hasOwnProperty.call(o, key) ? o[key] : default_,
+      items: (o) => Object.entries(o),
+      keys: (o) => Object.keys(o),
+      pop: (o, key, default_) => _jac.dict.pop(o, key, default_),
+      popitem: (o) => _jac.dict.popitem(o),
+      setdefault: (o, key, default_) => _jac.dict.setdefault(o, key, default_),
+      update: (o, other) => {
+        if (other instanceof Map) { for (const [k, v] of other) o[k] = v; }
+        else if (Array.isArray(other)) { for (const [k, v] of other) o[k] = v; }
+        else if (other) { for (const k of Object.keys(other)) o[k] = other[k]; }
+        return null;
+      },
+      values: (o) => Object.values(o)
+    },
+    _set: {
+      add: (s, x) => { s.add(x); return null; },
+      clear: (s) => { s.clear(); return null; },
+      copy: (s) => new Set(s),
+      difference: (a, b) => _jac.set.difference(a, b),
+      difference_update: (s, o) => _jac.set.difference_update(s, o),
+      discard: (s, x) => { s.delete(x); return null; },
+      intersection: (a, b) => _jac.set.intersection(a, b),
+      intersection_update: (s, o) => _jac.set.intersection_update(s, o),
+      isdisjoint: (a, b) => _jac.set.isDisjointFrom(a, b instanceof Set ? b : new Set(b)),
+      issubset: (a, b) => _jac.set.isSubsetOf(a, b instanceof Set ? b : new Set(b)),
+      issuperset: (a, b) => _jac.set.isSupersetOf(a, b instanceof Set ? b : new Set(b)),
+      pop: (s) => _jac.set.pop(s),
+      remove: (s, x) => _jac.set.remove(s, x),
+      symmetric_difference: (a, b) => _jac.set.symmetricDifference(a, b),
+      symmetric_difference_update: (s, o) => _jac.set.symmetric_difference_update(s, o),
+      union: (a, b) => _jac.set.union(a, b),
+      update: (s, o) => _jac.set.update(s, o)
+    },
+    // Jac dicts compile to plain objects, but interop code may hand us a real
+    // Map; mirror the dict methods over the Map API for that case.
+    _map: {
+      clear: (m) => { m.clear(); return null; },
+      copy: (m) => new Map(m),
+      get: (m, key, default_) => (m.has(key) ? m.get(key) : default_),
+      items: (m) => [...m.entries()],
+      keys: (m) => [...m.keys()],
+      pop: (m, key, default_) => {
+        if (m.has(key)) { const v = m.get(key); m.delete(key); return v; }
+        if (default_ !== undefined) return default_;
+        throw new _jac.exc.KeyError("KeyError: " + key);
+      },
+      popitem: (m) => {
+        if (m.size === 0) throw new _jac.exc.KeyError("dictionary is empty");
+        const key = [...m.keys()].pop();
+        const val = m.get(key);
+        m.delete(key);
+        return [key, val];
+      },
+      setdefault: (m, key, default_) => {
+        if (!m.has(key)) m.set(key, default_ === undefined ? null : default_);
+        return m.get(key);
+      },
+      update: (m, other) => {
+        if (other instanceof Map) { for (const [k, v] of other) m.set(k, v); }
+        else if (Array.isArray(other)) { for (const [k, v] of other) m.set(k, v); }
+        else if (other) { for (const k of Object.keys(other)) m.set(k, other[k]); }
+        return null;
+      },
+      values: (m) => [...m.values()]
+    },
+    // Single entry point. `obj.method(...args)` on a receiver whose static
+    // type is not provably primitive is compiled to
+    // `_jac.poly.call(obj, "method", ...args)`.
+    call(o, m, ...args) {
+      // 1. Genuine JS primitives get Python-semantic dispatch: a plain object
+      //    is a Python dict, an Array is a list, a Set/Map/string/number/bytes
+      //    maps to its Python counterpart. These are the types whose Python
+      //    method semantics differ from (or have no) native JS equivalent.
+      if (typeof o === "string") {
+        if (_jac.poly._str[m]) return _jac.poly._str[m](o, ...args);
+        if (_jac.str[m]) return _jac.str[m](o, ...args);
+      } else if (typeof o === "number") {
+        const ns = Number.isInteger(o) ? _jac.int : _jac.float;
+        if (ns && ns[m]) return ns[m](o, ...args);
+      } else if (Array.isArray(o)) {
+        if (_jac.poly._list[m]) return _jac.poly._list[m](o, ...args);
+      } else if (o instanceof Set) {
+        if (_jac.poly._set[m]) return _jac.poly._set[m](o, ...args);
+      } else if (o instanceof Map) {
+        if (_jac.poly._map[m]) return _jac.poly._map[m](o, ...args);
+      } else if (o instanceof Uint8Array) {
+        if (_jac.bytes[m]) return _jac.bytes[m](o, ...args);
+      } else if (
+        o !== null && o !== undefined && typeof o === "object"
+        && (Object.getPrototypeOf(o) === Object.prototype
+            || Object.getPrototypeOf(o) === null)
+      ) {
+        // A plain object is a Python dict literal.
+        if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
+      }
+      // 2. Otherwise forward to a same-named method the receiver carries
+      //    itself: a user-defined class instance, a host/framework object
+      //    (Headers, URLSearchParams, ...), a callable with attached methods,
+      //    or a Set/Map/Array method not mirrored above. This matches the
+      //    direct `obj.method(...)` that a typed call would have emitted.
+      if (o !== null && o !== undefined && typeof o[m] === "function") {
+        return o[m](...args);
+      }
+      // 3. Nothing applies: raise the Python-style error instead of leaking a
+      //    method name or silently returning a wrong value.
+      throw new _jac.exc.AttributeError(
+        "'" + _jac.poly._typename(o) + "' object has no attribute '" + m + "'");
+    },
+    // Backward-compatible named shims. The compiler now emits `call`, but a
+    // previously-built bundle may still reference a named helper; these route
+    // it through the same dispatcher (rest params preserve the arg count).
+    lower(s, ...r) { return _jac.poly.call(s, "lower", ...r); },
+    upper(s, ...r) { return _jac.poly.call(s, "upper", ...r); },
+    strip(s, ...r) { return _jac.poly.call(s, "strip", ...r); },
+    lstrip(s, ...r) { return _jac.poly.call(s, "lstrip", ...r); },
+    rstrip(s, ...r) { return _jac.poly.call(s, "rstrip", ...r); },
+    append(a, ...r) { return _jac.poly.call(a, "append", ...r); },
+    extend(a, ...r) { return _jac.poly.call(a, "extend", ...r); },
+    pop(a, ...r) { return _jac.poly.call(a, "pop", ...r); },
+    get(o, ...r) { return _jac.poly.call(o, "get", ...r); },
     contains(c, x) {
       // Python-equivalent membership for a value of unknown static type.
       // string -> substring; array (list/tuple/range) -> element;
@@ -354,6 +499,41 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         return Object.prototype.hasOwnProperty.call(c, x);
       }
       return false;
+    },
+    getitem(c, i) {
+      // Subscript read for a value of unknown static type. This is a faithful
+      // superset of a raw `c[i]`: it only adds Python's negative indexing for
+      // sequences (string/array) and otherwise preserves JS semantics exactly
+      // (mapping/object access, out-of-range -> `undefined`, no new throws).
+      if (typeof i === "number" && i < 0
+          && (typeof c === "string" || Array.isArray(c))) {
+        return c[c.length + i];
+      }
+      if (c instanceof Map) return c.get(i);
+      return c[i];
+    },
+    setitem(c, i, v) {
+      // Subscript assignment for a value of unknown/list static type. A
+      // negative index writes the array element counted from the end (a raw
+      // JS `c[-1] = v` would instead create a bogus "-1" property); every
+      // other case behaves like a plain `c[i] = v`.
+      if (typeof i === "number" && i < 0 && Array.isArray(c)) {
+        c[c.length + i] = v;
+        return v;
+      }
+      if (c instanceof Map) { c.set(i, v); return v; }
+      c[i] = v;
+      return v;
+    },
+    and_(a, bf) {
+      // Python `a and b`: returns `a` when it is falsy, else evaluates and
+      // returns `b`. `bf` is a thunk so the right operand keeps short-circuit
+      // (lazy) evaluation, and `a` is evaluated exactly once by the caller.
+      return _jac.builtin.bool(a) ? bf() : a;
+    },
+    or_(a, bf) {
+      // Python `a or b`: returns `a` when it is truthy, else `b`.
+      return _jac.builtin.bool(a) ? a : bf();
     }
   },
 
@@ -963,7 +1143,50 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     filter(fn, iterable) {
       return [...iterable].filter(fn || (x => x));
     },
+    // Python subclass relation over builtin-type *tags* -- the string names
+    // (`"str"`, `"int"`, ...) that `exit_builtin_type` lowers builtin types to.
+    // `object` is the universal base and `bool` is a subclass of `int`; `tuple`
+    // and `frozenset` share JS representations with `list`/`set`, so fold those
+    // aliases to their runtime tag first. One source of truth so isinstance and
+    // issubclass can never disagree.
+    _tagSubclass(subTag, superTag) {
+      const fold = (t) => t === "tuple" ? "list" : t === "frozenset" ? "set" : t;
+      const sub = fold(subTag), sup = fold(superTag);
+      if (sup === "object") return true;
+      if (sub === sup) return true;
+      if (sup === "int" && sub === "bool") return true;
+      return false;
+    },
+    isinstance(o, classinfo) {
+      // isinstance(x, (A, B, ...)) -- the tuple of types lowers to a JS array;
+      // match if `o` is an instance of any member.
+      if (Array.isArray(classinfo)) {
+        for (const c of classinfo) {
+          if (_jac.builtin.isinstance(o, c)) return true;
+        }
+        return false;
+      }
+      // Builtin types lower to a string tag (their Python type name): compare
+      // the value's runtime type against it via the shared subclass relation.
+      if (typeof classinfo === "string") {
+        return _jac.builtin._tagSubclass(_jac.poly._typename(o), classinfo);
+      }
+      // User archetype / JS constructor.
+      if (typeof classinfo === "function") return o instanceof classinfo;
+      return false;
+    },
     issubclass(cls, classinfo) {
+      if (Array.isArray(classinfo)) {
+        for (const c of classinfo) {
+          if (_jac.builtin.issubclass(cls, c)) return true;
+        }
+        return false;
+      }
+      // When either side is a builtin-type tag, compare by the shared subclass
+      // relation (covers `object`, `bool` ⊂ `int`, and identity).
+      if (typeof cls === "string" || typeof classinfo === "string") {
+        return _jac.builtin._tagSubclass(cls, classinfo);
+      }
       if (cls === classinfo) return true;
       let proto = cls;
       while (proto) {
@@ -1121,55 +1344,150 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
-  exc: (() => {
-    class BaseException extends Error { constructor(m) { super(m); this.name = 'BaseException'; } }
-    class Exception extends BaseException { constructor(m) { super(m); this.name = 'Exception'; } }
-    class ArithmeticError extends Exception { constructor(m) { super(m); this.name = 'ArithmeticError'; } }
-    class ZeroDivisionError extends ArithmeticError { constructor(m) { super(m); this.name = 'ZeroDivisionError'; } }
-    class OverflowError extends ArithmeticError { constructor(m) { super(m); this.name = 'OverflowError'; } }
-    class FloatingPointError extends ArithmeticError { constructor(m) { super(m); this.name = 'FloatingPointError'; } }
-    class LookupError extends Exception { constructor(m) { super(m); this.name = 'LookupError'; } }
-    class IndexError extends LookupError { constructor(m) { super(m); this.name = 'IndexError'; } }
-    class KeyError extends LookupError { constructor(m) { super(m); this.name = 'KeyError'; } }
-    class ValueError extends Exception { constructor(m) { super(m); this.name = 'ValueError'; } }
-    class TypeError_ extends Exception { constructor(m) { super(m); this.name = 'TypeError'; } }
-    class AttributeError extends Exception { constructor(m) { super(m); this.name = 'AttributeError'; } }
-    class RuntimeError extends Exception { constructor(m) { super(m); this.name = 'RuntimeError'; } }
-    class NotImplementedError extends RuntimeError { constructor(m) { super(m); this.name = 'NotImplementedError'; } }
-    class RecursionError extends RuntimeError { constructor(m) { super(m); this.name = 'RecursionError'; } }
-    class OSError extends Exception { constructor(m) { super(m); this.name = 'OSError'; } }
-    class FileNotFoundError extends OSError { constructor(m) { super(m); this.name = 'FileNotFoundError'; } }
-    class FileExistsError extends OSError { constructor(m) { super(m); this.name = 'FileExistsError'; } }
-    class PermissionError extends OSError { constructor(m) { super(m); this.name = 'PermissionError'; } }
-    class TimeoutError extends OSError { constructor(m) { super(m); this.name = 'TimeoutError'; } }
-    class IsADirectoryError extends OSError { constructor(m) { super(m); this.name = 'IsADirectoryError'; } }
-    class NotADirectoryError extends OSError { constructor(m) { super(m); this.name = 'NotADirectoryError'; } }
-    class AssertionError extends Exception { constructor(m) { super(m); this.name = 'AssertionError'; } }
-    class ImportError extends Exception { constructor(m) { super(m); this.name = 'ImportError'; } }
-    class ModuleNotFoundError extends ImportError { constructor(m) { super(m); this.name = 'ModuleNotFoundError'; } }
-    class NameError extends Exception { constructor(m) { super(m); this.name = 'NameError'; } }
-    class UnboundLocalError extends NameError { constructor(m) { super(m); this.name = 'UnboundLocalError'; } }
-    class StopIteration extends Exception { constructor(m) { super(m); this.name = 'StopIteration'; } }
-    class StopAsyncIteration extends Exception { constructor(m) { super(m); this.name = 'StopAsyncIteration'; } }
-    class EOFError extends Exception { constructor(m) { super(m); this.name = 'EOFError'; } }
-    class MemoryError extends Exception { constructor(m) { super(m); this.name = 'MemoryError'; } }
-    class ReferenceError_ extends Exception { constructor(m) { super(m); this.name = 'ReferenceError'; } }
-    class KeyboardInterrupt extends BaseException { constructor(m) { super(m); this.name = 'KeyboardInterrupt'; } }
-    class SystemExit extends BaseException { constructor(m) { super(m); this.name = 'SystemExit'; } }
-    class GeneratorExit extends BaseException { constructor(m) { super(m); this.name = 'GeneratorExit'; } }
-    return {
-      BaseException, Exception,
-      ArithmeticError, ZeroDivisionError, OverflowError, FloatingPointError,
-      LookupError, IndexError, KeyError,
-      ValueError, TypeError: TypeError_, AttributeError,
-      RuntimeError, NotImplementedError, RecursionError,
-      OSError, FileNotFoundError, FileExistsError, PermissionError,
-      TimeoutError, IsADirectoryError, NotADirectoryError,
-      AssertionError, ImportError, ModuleNotFoundError,
-      NameError, UnboundLocalError,
-      StopIteration, StopAsyncIteration, EOFError, MemoryError,
-      ReferenceError: ReferenceError_,
-      KeyboardInterrupt, SystemExit, GeneratorExit
-    };
-  })()
-}""";
+  exc: __JAC_EXC_RUNTIME__
+}""",
+     # JS globals shadowed by builtin exception names; defined under an aliased
+     # local name and re-exported under their real name so generated code can
+     # reference _jac.exc.<RealName> without colliding with the host global.
+     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
+
+"""Build the `_jac.exc` IIFE from the canonical exception hierarchy.
+
+Emits one JS class per exception (in topological order so each `extends`
+references an already-declared parent) and returns the export map, all derived
+from JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
+"""
+def _build_exc_runtime_js -> str {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    lines: list[str] = ["(() => {"];
+    exports: list[str] = [];
+    for (name, parent) in JAC_TYPE_REGISTRY.exception_entries() {
+        local = (name + "_") if name in _JS_RESERVED_EXC_NAMES else name;
+        parent_local = (
+            "Error"
+                if parent is None
+                else ((parent + "_") if parent in _JS_RESERVED_EXC_NAMES else parent)
+        );
+        lines.append(
+            "    class " + local + " extends " + parent_local + " { constructor(m) { super(m); this.name = '" + name + "'; } }"
+        );
+        exports.append(
+            (name + ": " + local) if name in _JS_RESERVED_EXC_NAMES else name
+        );
+    }
+    lines.append("    return { " + ", ".join(exports) + " };");
+    lines.append("  })()");
+    return "\n".join(lines);
+}
+
+"""Return the fully-assembled `_jac` runtime object literal (raw JS string)."""
+def build_jac_runtime_js -> str {
+    return JAC_RUNTIME_JS_OBJECT.replace(
+        "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+    );
+}
+
+"""Memoized compiled-kernel JS (declarations only; no `_jac`, no exports)."""
+glob _OSP_KERNEL_JS_CACHE: list[str] = [];
+
+"""Compile the portable Object-Spatial kernel (`osp_kernel.jac`) to JS for cl
+injection and return its declarations only.
+
+`osp_kernel.jac` is the single source of truth for OSP traversal across every
+backend (#6146). A cl module that runs a walker locally (rather than via the
+`__jacSpawn` server RPC) needs the kernel's `osp_spawn` / `osp_visit` /
+`osp_disengage` / `osp_report` and its `OspRuntime` / `WalkerDesc` / `NodeDesc`
+/ `Slot` classes inlined in the emitted JS. The kernel's own injected
+`const _jac = ...` runtime and its `export {...}` statement are stripped: the
+host module already supplies `_jac` (via `needs_jac_runtime`) and manages its
+own exports, so re-emitting either would redeclare `_jac` or place an illegal
+nested `export`. Compiled once and memoized."""
+def build_osp_kernel_js -> str {
+    if _OSP_KERNEL_JS_CACHE {
+        return _OSP_KERNEL_JS_CACHE[0];
+    }
+    import os;
+    import shutil;
+    import tempfile;
+    import jaclang;
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+    import from jaclang.compiler.passes.ecmascript { estree as es }
+    src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
+    # The kernel is a plain `.jac` (server-default context); compile a copy
+    # named `.cl.jac` so its module-level decls are coerced to client context
+    # and the ES pass emits them.
+    tmp_dir = tempfile.mkdtemp();
+    cl_copy = os.path.join(tmp_dir, "osp_kernel.cl.jac");
+    shutil.copyfile(src, cl_copy);
+    js = "";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+        program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
+        kept: list = [];
+        if isinstance(program, es.Program) {
+            for stmt in program.body {
+                is_jac_rt = (
+                    isinstance(stmt, es.VariableDeclaration)
+                    and stmt.declarations
+                    and isinstance(stmt.declarations[0].id, es.Identifier)
+                    and (stmt.declarations[0].id.name == "_jac")
+                );
+                if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
+                    continue;
+                }
+                kept.append(stmt);
+            }
+        }
+        js = es_to_js(es.Program(body=kept, sourceType='module'));
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+    _OSP_KERNEL_JS_CACHE.append(js);
+    return js;
+}
+
+"""The cl Object-Spatial graph runtime (raw JS): in-memory adjacency mirroring
+the server's `JacNode.edges_to_nodes` / `build_edge`. A node object holds
+`__edges` (the incident edges); an edge holds `__src` / `__tgt` / `__undirected`
+/ `__tag`. Injected when a cl module lowers a connect op or edge ref.
+
+`__ospConn(srcs, tgts, makeEdge, undirected)` connects each src->tgt, appending
+the edge to both endpoints, and returns the targets (Jac connect returns its
+right operand for chaining). `__ospRefs(nodes, dir, edgeTag, edgesOnly)` walks
+incident edges (dir 1=IN, 2=OUT, 3=ANY; an undirected edge is ANY), optionally
+filtering by edge type tag, and returns the connected nodes (or the edges when
+`edgesOnly`), de-duplicated in first-seen order."""
+def build_osp_graph_js -> str {
+    return r"""
+function __ospConn(srcs, tgts, makeEdge, undirected) {
+  srcs = Array.isArray(srcs) ? srcs : [srcs];
+  tgts = Array.isArray(tgts) ? tgts : [tgts];
+  for (const s of srcs) for (const t of tgts) {
+    const e = makeEdge ? makeEdge() : {};
+    e.__src = s; e.__tgt = t; e.__undirected = !!undirected;
+    (s.__edges ??= []).push(e); (t.__edges ??= []).push(e);
+  }
+  return tgts.length === 1 ? tgts[0] : tgts;
+}
+function __ospRefs(nodes, dir, edgeTag, edgesOnly) {
+  nodes = Array.isArray(nodes) ? nodes : [nodes];
+  const seen = new Set(), out = [];
+  for (const n of nodes) for (const e of (n.__edges || [])) {
+    if (edgeTag != null && e.__tag !== edgeTag) continue;
+    const eff = e.__undirected ? 3 : dir;
+    if ((eff === 2 || eff === 3) && e.__src === n) {
+      const o = edgesOnly ? e : e.__tgt;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+    if ((eff === 1 || eff === 3) && e.__tgt === n) {
+      const o = edgesOnly ? e : e.__src;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+  }
+  return out;
+}
+""";
+}

@@ -35,7 +35,7 @@ enum SymbolType {
 }
 
 """LSP Token types for Jac."""
-enum JacSemTokenType : int {
+enum JacSemTokenType: int {
     NAMESPACE = 0,
     TYPE = 1,
     CLASS = 2,
@@ -95,7 +95,6 @@ class Constants(StrEnum) {
         ROOT = 'root';
         VISITOR = 'visitor';
         GUEST = '__guest__';
-        JAC_CHECK = '_check';
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
@@ -113,20 +112,11 @@ enum CodeContext {
             return self.value;
         }
 
-        @property
-        def is_server(self: CodeContext) -> bool {
-            return (self == CodeContext.SERVER);
-        }
+        has is_server: bool { getter; }
 
-        @property
-        def is_client(self: CodeContext) -> bool {
-            return (self == CodeContext.CLIENT);
-        }
+        has is_client: bool { getter; }
 
-        @property
-        def is_native(self: CodeContext) -> bool {
-            return (self == CodeContext.NATIVE);
-        }
+        has is_native: bool { getter; }
     }
 }
 

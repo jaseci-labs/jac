@@ -59,7 +59,7 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
 
 """Generate IR for a single statement."""
 impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
-    if self.builder is None or self.builder.block.is_terminated {
+    if self._builder is None or self._builder.block.is_terminated {
         return;
     }
     if isinstance(nd, uni.ReturnStmt) {
@@ -70,6 +70,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_while(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self._codegen_for(nd);
+    } elif isinstance(nd, uni.IterForStmt) {
+        self._codegen_iter_for(nd);
+    } elif isinstance(nd, uni.MatchStmt) {
+        self._codegen_match(nd);
+    } elif isinstance(nd, uni.Ability) {
+        self._codegen_nested_ability(nd);
     } elif isinstance(nd, uni.Assignment) {
         self._codegen_assignment(nd);
     } elif isinstance(nd, uni.CtrlStmt) {
@@ -93,7 +99,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_with(nd);
     } elif isinstance(nd, uni.AssertStmt) {
         # AssertionError: evaluate condition, raise if false
-        cond = self._codegen_expr(nd.condition);
+        cond = self._codegen_required(nd.condition);
         if cond is not None {
             cond_bool = self._to_bool(cond);
             # assert fires when condition is FALSE
@@ -183,6 +189,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.PyInlineCode) {
         # ::py:: blocks are intentionally stripped from native output —
         # they target the Python pathway only.
+    } elif isinstance(nd, uni.VisitStmt) {
+        self._codegen_visit(nd);
+    } elif isinstance(nd, uni.DisengageStmt) {
+        self._codegen_disengage(nd);
+    } elif isinstance(nd, uni.ReportStmt) {
+        self._codegen_report(nd);
     } else {
         # Catch-all: any statement node we didn't recognize is a real
         # gap, not a no-op. Emit a structured error so the failure is
@@ -217,7 +229,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._dict_val_type_hint = "jacval";
             }
         }
-        val = self._codegen_expr(nd.expr);
+        # Flag return-tuple context so borrowed pointer elements are retained
+        # as they are packed (the tuple box does not own its elements, and the
+        # owning local is torn down at scope exit below).
+        self._return_tuple_ctx = isinstance(nd.expr, uni.TupleVal);
+        val = self._codegen_required(nd.expr);
+        self._return_tuple_ctx = False;
         self._list_type_hint = None;
         self._dict_val_type_hint = None;
         if val is not None {
@@ -319,7 +336,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
 """Generate if/else/elif statement with proper basic blocks."""
 impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
-    cond = self._codegen_expr(nd.condition);
+    cond = self._codegen_required(nd.condition);
     if cond is None {
         return;
     }
@@ -435,7 +452,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.builder.branch(cond_bb);
     # Condition block
     self.builder.position_at_end(cond_bb);
-    cond = self._codegen_expr(nd.condition);
+    cond = self._codegen_required(nd.condition);
     if cond is not None {
         cond = self._to_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
@@ -464,6 +481,236 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.pop();
     # Continue after loop
     self.builder.position_at_end(end_bb);
+}
+
+"""Generate a C-style iter-for loop.
+
+`for <init> to <cond> by <step> { body }` lowers to:
+
+    <init>                  ; in the current block, runs once
+  iterfor.cond:
+    if <cond> goto body else goto end
+  iterfor.body:
+    <body>
+    goto step               ; fallthrough back-edge
+  iterfor.step:
+    <step>
+    goto cond
+  iterfor.end:
+
+`break` targets end and `continue` targets step (so the counter still
+advances), matching the InForStmt loop_stack convention of
+(continue_target, break_target).
+"""
+impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
+    # init runs once in the current block.
+    self._codegen_assignment(nd.iter);
+    func = self.builder.function;
+    cond_bb = func.append_basic_block(name="iterfor.cond");
+    body_bb = func.append_basic_block(name="iterfor.body");
+    step_bb = func.append_basic_block(name="iterfor.step");
+    end_bb = func.append_basic_block(name="iterfor.end");
+    self.builder.branch(cond_bb);
+    # Condition block.
+    self.builder.position_at_end(cond_bb);
+    cond = self._codegen_required(nd.condition);
+    if cond is not None {
+        cond = self._to_bool(cond);
+        self.builder.cbranch(cond, body_bb, end_bb);
+    } else {
+        self.builder.branch(end_bb);
+    }
+    # Body block — continue lands on the step block so the counter advances.
+    self.loop_stack.append((step_bb, end_bb));
+    self.builder.position_at_end(body_bb);
+    _saved_locals = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        if nd.loc
+        else 0}";
+    if not self.builder.block.is_terminated {
+        self._emit_loop_iter_cleanup(_saved_locals, loc=_loc);
+        self.builder.branch(step_bb);
+    }
+    self.loop_stack.pop();
+    # Step block — run the count_by update, then re-check the condition.
+    self.builder.position_at_end(step_bb);
+    if not self.builder.block.is_terminated {
+        self._codegen_assignment(nd.count_by);
+        self.builder.branch(cond_bb);
+    }
+    # Continue after the loop.
+    self.builder.position_at_end(end_bb);
+}
+
+"""Generate a match statement.
+
+The subject is evaluated once into a temp slot, then each case is lowered
+to an if/elif chain: test the pattern, optionally bind captures and check
+the guard, then run the body and jump to the shared end block. Supported
+patterns are literal value, singleton, wildcard, capture (`as`), and OR of
+those. Structural patterns (sequence/mapping/class) emit E5090.
+"""
+impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
+    subj = self._codegen_expr(nd.target);
+    if subj is None {
+        return;
+    }
+    # Evaluate the subject exactly once and read it from a slot per test.
+    subj_alloca = self._entry_alloca(subj.type, "match.subj");
+    self.builder.store(subj, subj_alloca);
+    func = self.builder.function;
+    end_bb = func.append_basic_block(name="match.end");
+    n = len(nd.cases);
+    for (ci, case) in enumerate(nd.cases) {
+        subj_val = self.builder.load(subj_alloca, name="match.subj.l");
+        cond = self._match_pattern_cond(case.pattern, subj_val);
+        body_bb = func.append_basic_block(name=f"match.c{ci}.body");
+        next_bb = func.append_basic_block(name=f"match.c{ci}.next")
+            if ci < n - 1
+            else end_bb;
+        if cond is None {
+            # Unsupported pattern — E5090 already emitted. Keep the IR valid
+            # by skipping straight to the next test.
+            self.builder.branch(next_bb);
+            if next_bb is not end_bb {
+                self.builder.position_at_end(next_bb);
+            }
+            continue;
+        }
+        if case.guard is not None {
+            # Bind captures before the guard so the guard can reference them,
+            # then gate the body on the guard result.
+            bind_bb = func.append_basic_block(name=f"match.c{ci}.bind");
+            self.builder.cbranch(cond, bind_bb, next_bb);
+            self.builder.position_at_end(bind_bb);
+            self._bind_match_pattern(case.pattern, subj_val);
+            gval = self._codegen_expr(case.guard);
+            if gval is not None {
+                self.builder.cbranch(self._to_bool(gval), body_bb, next_bb);
+            } else {
+                self.builder.branch(next_bb);
+            }
+        } else {
+            self.builder.cbranch(cond, body_bb, next_bb);
+        }
+        # Case body — bind captures (the guard path already did, a repeat
+        # store is harmless) then emit the statements.
+        self.builder.position_at_end(body_bb);
+        self._bind_match_pattern(case.pattern, subj_val);
+        if isinstance(case.body, (list, tuple)) {
+            self._codegen_body(case.body);
+        }
+        if not self.builder.block.is_terminated {
+            self.builder.branch(end_bb);
+        }
+        if next_bb is not end_bb {
+            self.builder.position_at_end(next_bb);
+        }
+    }
+    self.builder.position_at_end(end_bb);
+}
+
+"""Compute an i1 condition for whether `pat` matches `subj`.
+
+Returns None for unsupported pattern kinds (after emitting E5090). Does
+not perform capture binding — see _bind_match_pattern.
+"""
+impl NaIRGenPass._match_pattern_cond(
+    pat: uni.MatchPattern, subj: ir.Value
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    if isinstance(pat, uni.MatchWild) {
+        return ir.Constant(i1, 1);
+    }
+    if isinstance(pat, uni.MatchAs) {
+        # `case x:` (no sub-pattern) matches anything; `case <p> as x:`
+        # matches iff the sub-pattern matches.
+        if pat.pattern is None {
+            return ir.Constant(i1, 1);
+        }
+        return self._match_pattern_cond(pat.pattern, subj);
+    }
+    if isinstance(pat, uni.MatchValue) {
+        return self._match_value_eq(subj, pat.value);
+    }
+    if isinstance(pat, uni.MatchSingleton) {
+        return self._match_value_eq(subj, pat.value);
+    }
+    if isinstance(pat, uni.MatchOr) {
+        # OR is restricted to non-capturing alternatives so there is no
+        # ambiguity about which names a matched alternative binds.
+        result: (ir.Value | None) = None;
+        for sub in pat.patterns {
+            if not isinstance(
+                sub, (uni.MatchValue, uni.MatchSingleton, uni.MatchWild, uni.MatchOr)
+            ) {
+                self.emit(
+                    E5090,
+                    node_override=sub,
+                    kind="match pattern",
+                    name=f"{type(sub).__name__} inside OR pattern"
+                );
+                return None;
+            }
+            sub_cond = self._match_pattern_cond(sub, subj);
+            if sub_cond is None {
+                return None;
+            }
+            result = sub_cond
+                if result is None
+                else self.builder.or_(result, sub_cond, name="match.or");
+        }
+        return result;
+    }
+    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet lowered.
+    self.emit(E5090, node_override=pat, kind="match pattern", name=type(pat).__name__);
+    return None;
+}
+
+"""Emit an i1 equality test between `subj` and the value of `value_node`."""
+impl NaIRGenPass._match_value_eq(
+    subj: ir.Value, value_node: uni.UniNode
+) -> (ir.Value | None) {
+    pat = self._codegen_expr(value_node);
+    if pat is None {
+        return None;
+    }
+    # Reconcile integer widths (e.g. i1 singleton vs i64 subject, enum widths).
+    if isinstance(subj.type, ir.IntType)
+    and isinstance(pat.type, ir.IntType)
+    and subj.type != pat.type {
+        pat = self._coerce_type(pat, subj.type);
+    }
+    is_float = isinstance(subj.type, ir.DoubleType)
+    or isinstance(pat.type, ir.DoubleType);
+    (lhs, rhs) = (subj, pat);
+    if is_float {
+        (lhs, rhs) = self._promote_to_float(subj, pat);
+    }
+    cmp = self._emit_comparison(Tok.EE, lhs, rhs, is_float);
+    if cmp is None {
+        return None;
+    }
+    return self._to_bool(cmp);
+}
+
+"""Bind capture names introduced by `pat` to `subj` (Python `case x:` /
+`case <p> as x:`). Non-capturing patterns bind nothing."""
+impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None {
+    if isinstance(pat, uni.MatchAs) {
+        cap_name = self._get_name(pat.name) if pat.name else None;
+        if cap_name is not None {
+            alloca = self._entry_alloca(subj.type, cap_name);
+            self.builder.store(subj, alloca);
+            self.local_vars[cap_name] = alloca;
+        }
+        if pat.pattern is not None {
+            self._bind_match_pattern(pat.pattern, subj);
+        }
+    }
 }
 
 """Generate assignment statement."""
@@ -520,7 +767,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     self._dict_val_type_hint = None;
     if nd.type_tag and nd.type_tag.tag {
         tag_node = nd.type_tag.tag;
-        tag_name = self._get_name(tag_node);
+        # `dict[K, V]` parses as an AtomTrailer whose base name lives on `.target`
+        # (e.g. Name("dict")); `_get_name` on the whole trailer is None. Read the
+        # base name so a local `d: dict[str, any] = {...}` gets the jacval value
+        # hint, not just the return-type path (see #6449).
+        tag_name = self._get_name(tag_node.target)
+            if isinstance(tag_node, uni.AtomTrailer)
+            else self._get_name(tag_node);
         if tag_name == "dict" and isinstance(tag_node, uni.AtomTrailer) {
             if tag_node?.right and tag_node.right?.slices {
                 slices = tag_node.right.slices or [];
@@ -547,6 +800,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
         }
     }
+    _rhs_errs_before = len(self.errors_had);
     value = self._codegen_expr(nd.value) if nd.value else None;
     self._list_type_hint = None;
     self._dict_val_type_hint = None;
@@ -653,6 +907,18 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
     }
     if value is None {
+        # An RHS that lowered to no value silently dropped the whole assignment
+        # (the #6470 class). Make it loud -- unless this is a bare typed
+        # declaration (`x: T;`, no initializer) or a deeper diagnostic already
+        # pinpointed the cause.
+        if nd.value is not None and len(self.errors_had) == _rhs_errs_before {
+            self.emit(
+                E5090,
+                node_override=nd.value,
+                kind="expression",
+                name=type(nd.value).__name__
+            );
+        }
         return;
     }
     targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
@@ -667,11 +933,20 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             if nd.aug_op is not None {
                 # Augmented assignment on field: self.field += val
                 # Load current field value, apply op, then store result
+                _faug_errs = len(self.errors_had);
                 field_val = self._codegen_field_aug_assign(
                     target_expr, value, nd.aug_op.value
                 );
                 if field_val is not None {
                     self._codegen_field_assign(target_expr, field_val);
+                } elif len(self.errors_had) == _faug_errs {
+                    # Field read / op could not be lowered: don't drop it silently.
+                    self.emit(
+                        E5090,
+                        node_override=target_expr,
+                        kind="augmented field assignment",
+                        name=(self._get_name(target_expr.right) or "<field>")
+                    );
                 }
             } else {
                 self._codegen_field_assign(target_expr, value);
@@ -680,6 +955,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
         # Handle index assignment: items[i] = val or expr[i] = val (lists or dicts)
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
+            _idx_errs_before = len(self.errors_had);
+            _idx_stored = False;
             idx_target_name = self._get_name(target_expr.target);
             target_val = self._codegen_expr(target_expr.target);
             if target_val is not None and target_expr.right?.slices {
@@ -710,6 +987,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 self._codegen_dict_set(
                                     target_val, idx_val, value, parts[0], parts[1]
                                 );
+                                _idx_stored = True;
                             }
                         } else {
                             # List assignment: list[idx] = value
@@ -727,10 +1005,21 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 self._codegen_index_set(
                                     target_val, idx_val, value, elem_type_name
                                 );
+                                _idx_stored = True;
                             }
                         }
                     }
                 }
+            }
+            if not _idx_stored and len(self.errors_had) == _idx_errs_before {
+                # Subscript store dropped: container expr, index, or element/dict
+                # type could not be resolved natively. Surface it (#6470 class).
+                self.emit(
+                    E5090,
+                    node_override=target_expr,
+                    kind="subscript assignment",
+                    name=(idx_target_name or "<expr>")
+                );
             }
             continue;
         }
@@ -754,7 +1043,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
                     bare_redecl = _redecl_tag.value;
                 }
-                _skip_redecl = bare_redecl in {"list","dict","set","frozenset"};
+                _skip_redecl = bare_redecl in {"list", "dict", "set", "frozenset"};
                 if not _skip_redecl {
                     _declared_type = self._resolve_jac_type(_redecl_tag);
                     if _declared_type is not None
@@ -1365,7 +1654,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     bare_name = tag_node.value;
                 }
                 infer_from_val = (
-                    bare_name in {"list","dict","set","frozenset"}
+                    bare_name in {"list", "dict", "set", "frozenset"}
                     and isinstance(value.type, ir.PointerType)
                 );
                 if infer_from_val {
@@ -1495,6 +1784,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         for (ename, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 self.var_list_elem_type[var_name] = ename;
+                # Seed the boxed-tuple element-struct shape from the literal that
+                # produced this value (if any), so `(a, b) = var.pop()` on a bare
+                # `list` can recover the tuple type later. See #6435.
+                if self._pending_list_elem_struct is not None {
+                    self.var_list_elem_struct[var_name] = self._pending_list_elem_struct;
+                }
                 break;
             }
         }
@@ -1561,9 +1856,28 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
 # ─── Phase 1: For Loops ──────────────────────────────────────
 """Generate for loop (currently supports range(n) and range(start, stop))."""
 impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
+    # Iterator protocol (#6403): map/filter/enumerate/zip/iter collections are
+    # driven through first-class JacIter objects. Container collections (plain
+    # list/str/dict/range) fall through to the fast paths below.
+    if self._try_iter_protocol_for(nd) {
+        return;
+    }
+    # Baseline for the silent-drop guards below: a `for` whose loop var,
+    # collection, or element type can't be lowered natively used to drop the
+    # entire loop body without a word (the #6470 class). Emit E5090 at each
+    # dead-end unless a deeper diagnostic already fired.
+    _for_errs0 = len(self.errors_had);
     # Extract loop variable name
     loop_var_name = self._get_name(nd.target);
     if loop_var_name is None {
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="for-loop target",
+                name=type(nd.target).__name__
+            );
+        }
         return;
     }
     _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -1713,35 +2027,47 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             }
         }
     }
+    # ── Evaluate the collection expression AT MOST ONCE ──
+    # Re-calling _codegen_expr(nd.collection) re-emits its side effects: for a
+    # call like `for x in obj.method()` each re-eval invokes the method again,
+    # doing the work N times AND leaking the unused results. We evaluate here a
+    # single time (with the list element-type hint set, so list literals are
+    # typed correctly) and reuse `_coll_memo` in the dict / string / set / list
+    # paths below. `_coll_memo_hint` carries the return-type node for a method
+    # call so the list path can recover the element type.
+    coll_name = self._get_name(nd.collection);
+    self._list_type_hint = None;
+    if coll_name is not None and coll_name in self.var_type_node {
+        _hint0 = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
+        if _hint0 is not None {
+            self._list_type_hint = _hint0;
+        }
+    }
+    self._last_type_node_hint = None;
+    _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
+    _coll_memo_hint = self._last_type_node_hint;
+    self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
     # Only use dict iteration if the collection variable is explicitly tracked as a dict
     # (This avoids premature code generation from type inference)
-    coll_name = self._get_name(nd.collection);
     dict_type_key: (str | None) = None;
     if coll_name is not None and coll_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[coll_name];
     }
     # Fallback: for field access (e.g. c.props) where coll_name is None or not
-    # tracked, evaluate the expression and infer the dict type from its LLVM type.
-    _ford_coll_val: (ir.Value | None) = None;
-    if dict_type_key is None {
-        _ford_coll_val = self._codegen_expr(nd.collection);
-        if _ford_coll_val is not None {
-            dict_info = self._infer_dict_type(_ford_coll_val);
-            if dict_info is not None {
-                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
-            }
+    # tracked, infer the dict type from the evaluated value's LLVM type.
+    _ford_coll_val: (ir.Value | None) = _coll_memo;
+    if dict_type_key is None and _ford_coll_val is not None {
+        dict_info = self._infer_dict_type(_ford_coll_val);
+        if dict_info is not None {
+            dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
         }
     }
     if dict_type_key is not None {
         # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
         if helpers is not None {
-            collection_val = (
-                _ford_coll_val
-                    if _ford_coll_val is not None
-                    else self._codegen_expr(nd.collection)
-            );
+            collection_val = _coll_memo;
             if collection_val is not None {
                 i64 = ir.IntType(64);
                 key_type = helpers["key_type"];
@@ -1822,6 +2148,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 self.builder.branch(cond_bb);
                 # Continue after loop
                 self.builder.position_at_end(end_bb);
+                # Release the collection if it was an owned temporary
+                # (e.g. `for k in make_dict()`); a named var is borrowed.
+                if isinstance(collection_val.type, ir.PointerType)
+                and self._is_owned(collection_val) {
+                    self._emit_rc_release_simple(
+                        collection_val, op="ford_coll", loc=_for_loc
+                    );
+                }
                 return;
             }
         }
@@ -1836,7 +2170,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     );
     is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
     if not is_list_coll and not is_dict_coll {
-        str_coll_val = self._codegen_expr(nd.collection);
+        str_coll_val = _coll_memo;
         i8p_s = ir.IntType(8).as_pointer();
         if str_coll_val is not None and str_coll_val.type == i8p_s {
             i64 = ir.IntType(64);
@@ -1883,26 +2217,31 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             self.builder.store(next_idx, idx_alloca);
             self.builder.branch(cond_bb);
             self.builder.position_at_end(end_bb);
+            # Release the collection if it was an owned temporary string.
+            if isinstance(str_coll_val.type, ir.PointerType)
+            and self._is_owned(str_coll_val) {
+                self._emit_rc_release_simple(
+                    str_coll_val, op="fors_coll", loc=_for_loc
+                );
+            }
             return;
         }
     }
     # ── List iteration: for x in items ──
-    # Set list type hint in case collection is a list literal
-    self._list_type_hint = None;
-    coll_name = self._get_name(nd.collection);
-    # Infer elem type hint from collection variable's type node
-    if coll_name is not None and coll_name in self.var_type_node {
-        coll_type_node = self.var_type_node[coll_name];
-        hint = self._get_list_elem_from_type_node(coll_type_node);
-        if hint is not None {
-            self._list_type_hint = hint;
-        }
-    }
-    self._last_type_node_hint = None;
-    collection_val = self._codegen_expr(nd.collection);
-    coll_type_hint = self._last_type_node_hint;
-    self._list_type_hint = None;
+    # Reuse the single evaluation captured at the top of this function
+    # (see `_coll_memo`); re-evaluating would re-run the collection
+    # expression's side effects and leak the extra results.
+    coll_type_hint = _coll_memo_hint;
+    collection_val = _coll_memo;
     if collection_val is None {
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd.collection,
+                kind="for-loop iterable",
+                name=type(nd.collection).__name__ if nd.collection else "<expr>"
+            );
+        }
         return;
     }
     # Determine element type of the list
@@ -1933,13 +2272,20 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             elem_type_name = "ptr";
         }
     }
-    if elem_type_name is None {
+    if elem_type_name is None or self.list_helpers.get(elem_type_name) is None {
+        # Iterating a value whose native element type / list helpers couldn't be
+        # resolved: don't drop the loop body silently (#6470 class).
+        if len(self.errors_had) == _for_errs0 {
+            self.emit(
+                E5090,
+                node_override=nd.collection or nd,
+                kind="for-loop iterable element type",
+                name=(coll_name or "<expr>")
+            );
+        }
         return;
     }
     helpers = self.list_helpers.get(elem_type_name);
-    if helpers is None {
-        return;
-    }
     i64 = ir.IntType(64);
     # Get list length
     len_val = self.builder.call(helpers["len"], [collection_val], name="forl.len");
@@ -2094,5 +2440,15 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     self.builder.branch(cond_bb);
     # Continue after loop
     self.builder.position_at_end(end_bb);
+    # If the collection was an owned temporary (e.g. a call result like
+    # `for x in obj.method()` or a literal), the loop consumed the only
+    # reference to it — release it now that iteration is done. A named
+    # variable / field load is borrowed (is_owned False) and must NOT be
+    # released here; its owner frees it. Mirrors the list-comprehension
+    # path in comprehensions.impl.jac.
+    if isinstance(collection_val.type, ir.PointerType)
+    and self._is_owned(collection_val) {
+        self._emit_rc_release_simple(collection_val, op="forl_coll", loc=_for_loc);
+    }
 }
 # ─── Phase 1: Ternary If-Else Expression ─────────────────────

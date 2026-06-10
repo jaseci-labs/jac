@@ -47,12 +47,12 @@ impl _SetupProgress.on_internal_compile(file_path: str) -> None {
 }
 
 """Whether we're currently in a first-run setup."""
-impl _SetupProgress.is_active -> bool {
+impl _SetupProgress.is_active.getter -> bool {
     return self._banner_shown;
 }
 
 """Module hub for jaclang.* modules (lazily initialized)."""
-impl JacCompiler.internal_program -> JacProgram {
+impl JacCompiler.internal_program.getter -> JacProgram {
     if (self._internal_program is None) {
         import from jaclang.jac0core.program { JacProgram }
         self._internal_program = JacProgram();
@@ -132,10 +132,12 @@ impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
+    (rebuild, no_precompile) = cache_mode();
 
     # Tier 1: in-memory hub
     if (
-        (full_target in actual_program.mod.hub)
+        (not rebuild)
+        and (full_target in actual_program.mod.hub)
         and actual_program.mod.hub[full_target].gen.py_bytecode
     ) {
         codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
@@ -144,7 +146,7 @@ impl JacCompiler.get_bytecode(
 
     # Tier 2: JIR cache fast path
     cache_path = get_module_cache_path(full_target);
-    if is_module_cache_valid(full_target, cache_path) {
+    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -163,19 +165,29 @@ impl JacCompiler.get_bytecode(
     }
 
     # Tier 2.5: precompiled JIR bundle shipped with the package
-    precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
-    if precompiled_bc is not None {
-        try {
-            import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-            jir_bytes = write_precompiled_jir(precompiled_bc, 0, FLAG_PRECOMPILED);
-            cache_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp_path = cache_path.with_suffix('.tmp');
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
-        } except Exception {
-            ;
+    if (not rebuild) and (not no_precompile) {
+        precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
+        if precompiled_bc is not None {
+            try {
+                # Launder into the module cache, stamped with the real key so
+                # the next load hits the Tier 2 mtime fast-path and the entry
+                # still re-validates correctly when mtime is ambiguous.
+                import from jaclang.jac0core.jir {
+                    write_precompiled_jir,
+                    FLAG_PRECOMPILED
+                }
+                jir_bytes = write_precompiled_jir(
+                    precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
+                );
+                cache_path.parent.mkdir(parents=True, exist_ok=True);
+                tmp_path = cache_path.with_suffix('.tmp');
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } except Exception {
+                ;
+            }
+            return marshal.loads(precompiled_bc);
         }
-        return marshal.loads(precompiled_bc);
     }
 
     # Tier 3: full compile + JIR write
@@ -211,6 +223,7 @@ impl JacCompiler.get_bytecode(
             import zlib;
             sections: dict[int, bytes] = {};
             sections[SEC_BYTECODE] = result.gen.py_bytecode;
+            sections[SEC_MODKEY] = compute_module_key(full_target).encode('utf-8');
             if actual_program.mtir_map {
                 sections[SEC_MTIR] = pickle.dumps(
                     actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
@@ -287,7 +300,7 @@ impl JacCompiler._load_native_from_cache(
         target = llvm.Target.from_default_triple();
         target_machine = target.create_target_machine();
         engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-        import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+        import from jaclang.jac0core.codeinfo { CodeGenTarget }
         gen = CodeGenTarget();
         gen.native_engine = engine;
         py_func_table: dict = {};
@@ -295,21 +308,8 @@ impl JacCompiler._load_native_from_cache(
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
-            import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
             import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-            manifest = InteropManifest();
-            for (name, data) in cached_interop.get('bindings', {}).items() {
-                binding = InteropBinding(
-                    name=name,
-                    source_context=InteropContext(data['source_context']),
-                    callers={InteropContext(c) for c in data.get('callers', [])},
-                    ret_type=data.get('ret_type', 'int'),
-                    param_types=data.get('param_types', []),
-                    param_names=data.get('param_names', []),
-                    source_module=data.get('source_module')
-                );
-                manifest.bindings[name] = binding;
-            }
+            manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
                 register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -368,7 +368,7 @@ impl JacCompiler._load_native_from_bitcode(
     target = llvm.Target.from_default_triple();
     target_machine = target.create_target_machine();
     engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-    import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+    import from jaclang.jac0core.codeinfo { CodeGenTarget }
     gen = CodeGenTarget();
     gen.native_engine = engine;
     py_func_table: dict = {};
@@ -376,21 +376,8 @@ impl JacCompiler._load_native_from_bitcode(
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
-        import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
         import from jaclang.jac0core.interop_bridge { register_py_callbacks }
-        manifest = InteropManifest();
-        for (name, data) in cached_interop.get('bindings', {}).items() {
-            binding = InteropBinding(
-                name=name,
-                source_context=InteropContext(data['source_context']),
-                callers={InteropContext(c) for c in data.get('callers', [])},
-                ret_type=data.get('ret_type', 'int'),
-                param_types=data.get('param_types', []),
-                param_names=data.get('param_names', []),
-                source_module=data.get('source_module')
-            );
-            manifest.bindings[name] = binding;
-        }
+        manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
             register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -452,68 +439,41 @@ impl JacCompiler._restore_sections(
     }
 }
 
-"""Walk up from a .jac file looking for a _precompiled/ JIR bundle."""
+"""Walk up from a .jac file for a self-validating _precompiled/ JIR bundle.
+
+The shipped .jir carries its own SEC_MODKEY, so validation is the same
+`jir_matches_source` key-compare the module cache uses — no manifest, no
+per-file hash table. co_filenames are patched from the build-time sentinel
+back to the install directory.
+"""
 impl JacCompiler._get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
-    import hashlib;
-    import json;
     import from pathlib { Path as _Path }
+    import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
     while True {
-        manifest_path = os.path.join(d, '_precompiled', 'manifest.json');
-        if os.path.isfile(manifest_path) {
-            try {
-                with open(manifest_path, encoding='utf-8') as f {
-                    manifest = json.load(f);
-                }
-                norm_root = os.path.normpath(d);
-                if not norm_file.startswith(norm_root + os.sep) {
-                    break;
-                }
-                rel_path = norm_file[len(norm_root) + 1:];
-                rel_key = rel_path.replace(os.sep, '/');
-                entries = manifest.get('entries', {});
-                entry = entries.get(rel_key);
-                if not isinstance(entry, dict) {
-                    break;
-                }
-                expected = entry.get('source_hash');
-                if expected {
-                    with open(norm_file, 'rb') as f2 {
-                        actual = hashlib.sha256(f2.read()).hexdigest();
-                    }
-                    if actual != expected {
-                        break;
-                    }
-                }
-                sentinel = manifest.get('filename_sentinel', '__PKG_ROOT__');
-                # Try .jir bundle first
-                jir_rel = os.path.splitext(rel_path)[0] + '.jir';
-                jir_path = os.path.join(d, '_precompiled', pyver, jir_rel);
-                if os.path.isfile(jir_path) {
+        bundle_dir = os.path.join(d, '_precompiled');
+        if os.path.isdir(bundle_dir) {
+            norm_root = os.path.normpath(d);
+            if not norm_file.startswith(norm_root + os.sep) {
+                break;
+            }
+            rel_path = norm_file[len(norm_root) + 1:];
+            jir_rel = os.path.splitext(rel_path)[0] + '.jir';
+            jir_path = os.path.join(bundle_dir, pyver, jir_rel);
+            if os.path.isfile(jir_path) {
+                try {
                     jir_data = _Path(jir_path).read_bytes();
-                    if len(jir_data) >= 32 {
-                        import struct;
-                        (flags_val, ) = struct.unpack_from('<I', jir_data, 28);
-                        if flags_val & FLAG_PRECOMPILED {
-                            bc = read_bytecode_only(jir_data);
-                            if bc is not None {
-                                return patch_co_filenames_bytes(bc, sentinel, d);
-                            }
+                    if jir_matches_source(jir_data, norm_file) {
+                        bc = read_bytecode_only(jir_data);
+                        if bc is not None {
+                            return patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d);
                         }
                     }
+                } except Exception {
+                    ;
                 }
-                # Fallback: legacy .jbc bundle
-                jbc_rel = os.path.splitext(rel_path)[0] + '.jbc';
-                jbc_path = os.path.join(d, '_precompiled', pyver, jbc_rel);
-                if os.path.isfile(jbc_path) {
-                    return patch_co_filenames_bytes(
-                        _Path(jbc_path).read_bytes(), sentinel, d
-                    );
-                }
-            } except Exception {
-                ;
             }
             break;
         }
@@ -543,7 +503,44 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'source_module': binding.source_module
         };
     }
+    # Carried so a warm-cache load keeps the serve access table populated.
+    interop_data['func_access'] = dict(manifest.func_access);
+    interop_data['walker_access'] = dict(manifest.walker_access);
+    interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
     return interop_data;
+}
+
+"""Rebuild an InteropManifest from a cached interop dict.
+
+Shared by the native cache loaders so the bindings deserialization lives
+in exactly one place. ast_node is intentionally left None: it is a live
+AST node that is never reserialized and no cache-hit consumer derefs it.
+"""
+impl JacCompiler._deserialize_interop_table(
+    cached_interop: dict[str, any]
+) -> InteropManifest {
+    import from jaclang.jac0core.codeinfo {
+        InteropManifest,
+        InteropBinding,
+        InteropContext
+    }
+    manifest = InteropManifest();
+    for (name, data) in cached_interop.get('bindings', {}).items() {
+        binding = InteropBinding(
+            name=name,
+            source_context=InteropContext(data['source_context']),
+            callers={InteropContext(c) for c in data.get('callers', [])},
+            ret_type=data.get('ret_type', 'int'),
+            param_types=data.get('param_types', []),
+            param_names=data.get('param_names', []),
+            source_module=data.get('source_module')
+        );
+        manifest.bindings[name] = binding;
+    }
+    manifest.func_access.update(cached_interop.get('func_access', {}));
+    manifest.walker_access.update(cached_interop.get('walker_access', {}));
+    manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
+    return manifest;
 }
 
 """Parse source string into AST module."""
@@ -586,7 +583,8 @@ impl JacCompiler.parse_str(
         target_program.mod = uni.ProgramModule(main_mod=mod);
         target_program.mod.hub.update(old_hub);
     }
-    target_program.mod.hub[mod.loc.mod_path] = mod;
+    import from pathlib { Path as _HubPath }
+    target_program.mod.hub[str(_HubPath(mod.loc.mod_path).resolve())] = mod;
     JacAnnexPass(ir_in=mod, prog=target_program);
     return mod;
 }
@@ -635,6 +633,14 @@ impl JacCompiler.compile(
         keep_str, file_path, actual_program, cancel_token=options.cancel_token
     );
     had_parse_errors = len(actual_program.errors_had) > had_parse_errors;
+    # Count codegen-blocking errors attributed to *this* module only. The IR
+    # schedule below recursively compiles imported modules into the same
+    # program; filtering by file path keeps a nested module's diagnostics from
+    # poisoning this module's codegen gate.
+    cur_mod_path = os.path.normpath(file_path);
+    blocking_errs_pre_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
     if options.symtab_ir_only {
         self.run_schedule(
             mod=mod_targ,
@@ -650,6 +656,15 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
+    # Diagnostics flagged blocks_codegen (e.g. E0063 glob inside a function)
+    # must prevent code generation just like parse errors, otherwise an
+    # invalid construct that happens to compile to valid Python would silently
+    # execute. Structural errors not flagged blocking (e.g. E0076 duplicate
+    # method) stay non-fatal, matching the codebase's lenient codegen policy.
+    blocking_errs_post_ir = self._count_module_blocking_errors(
+        actual_program, cur_mod_path
+    );
+    had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
     # Native-compiled modules consume the central type checker's results:
     # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
     # parallel AST type resolver. Run the type-check schedule for any .na.jac
@@ -687,7 +702,7 @@ impl JacCompiler.compile(
         }
         if (
             not is_native_mod
-            and getattr(actual_program, '_auto_promote_native', False)
+            and actual_program._auto_promote_native
             and mod_targ?.gen
             and mod_targ.gen.native_compat
         ) {
@@ -696,6 +711,17 @@ impl JacCompiler.compile(
         if is_native_mod {
             run_type_check = True;
         }
+        # NOTE: client (.cl.jac) modules are deliberately NOT force-type-checked
+        # here. Unlike the native path -- where NaIRGenPass hard-depends on
+        # `Expr.type` to lower annotations -- BoundaryAnalysisPass derives every
+        # cross-boundary fact (server_exports_to_client bindings, func_access,
+        # boundary types) from the AST + symbol table alone: it reads raw
+        # annotation ASTs (`type_tag.tag`) and access tokens, never resolved
+        # `.type`. Forcing type-check on .cl.jac bought no boundary fidelity and
+        # surfaced type-checker false positives on idiomatic client code
+        # (untyped-prop access, Any-typed event handlers, kwargs override);
+        # see #6262. Plain .jac/.cl.jac modules follow the explicit
+        # `options.type_check` contract.
     }
     if run_type_check {
         # Explicit `jac check` (options.type_check=True) runs the full
@@ -719,7 +745,114 @@ impl JacCompiler.compile(
             cancel_token=options.cancel_token
         );
     }
-    if (not had_parse_errors and not options.no_cgen) {
+    # Single front-end producer of cross-boundary (interop) facts. Runs after
+    # type-check and before any codegen, for EVERY module (server / client /
+    # native), independent of the codegen gate — so client (.cl.jac) modules
+    # and --no-client / --dev compiles still get their boundary facts. Skipped
+    # for symtab_ir_only provider resolutions (lightweight, no codegen need).
+    if (
+        not had_parse_errors and not had_blocking_errors and not options.symtab_ir_only
+    ) {
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=get_boundary_analysis_sched(),
+            cancel_token=options.cancel_token
+        );
+    }
+    # Boundary completion for cross-boundary apps. A plain top-level compile runs
+    # BoundaryAnalysisPass only on the entry; the client (.cl.jac) modules reached
+    # through its `to cl:` imports -- which carry the client->server `sv import`
+    # bindings the serve runtime needs -- are not pulled into the program by a
+    # normal compile/import (only the bundle/ecmascript build compiles them).
+    # Walk the entry's client import graph and front-end-compile each reachable
+    # `.cl.jac` into THIS program so BoundaryAnalysisPass records its
+    # `server_exports_to_client` bindings in the hub. The serve runtime then
+    # reads the endpoint set from that table rather than re-deriving it at
+    # request time. Gated to the real top-level compile (not the lightweight
+    # symtab_ir_only / no_cgen provider resolutions that nest under it).
+    if (
+        not had_parse_errors
+        and not had_blocking_errors
+        and not options.symtab_ir_only
+        and not options.no_cgen
+    ) {
+        import os as _cb_os;
+        cb_seen: set[str] = set();
+        cb_worklist: list = [mod_targ];
+        # type_check=False is load-bearing: CompileOptions.type_check defaults
+        # to True, and BoundaryAnalysisPass derives every cross-boundary fact
+        # from the AST + symbol table alone (never resolved `.type`), so the
+        # type-check schedule buys no boundary fidelity here. Leaving it on
+        # would force the full TypeCheckPass over every reachable .cl.jac --
+        # exactly the idiomatic-client false positives (untyped JSX-returning
+        # components, untyped-prop access, Any-typed handlers) that the
+        # top-of-compile NOTE deliberately avoids on the entry; see #6262.
+        cb_opts = CompileOptions(
+            type_check=False,
+            no_cgen=True,
+            force_target_program=True,
+            cancel_token=options.cancel_token
+        );
+        while cb_worklist {
+            cb_cur = cb_worklist.pop();
+            if cb_cur is None {
+                continue;
+            }
+            for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
+                if not cb_imp.from_loc {
+                    continue;
+                }
+                # Skip language built-in `@jac/*` virtual modules (e.g.
+                # `@jac/runtime`, the client framework runtime). These are never
+                # user cross-boundary providers -- they carry no `sv import`
+                # bindings -- yet the alias resolves to a real `.cl.jac` under
+                # runtimelib. Pulling the framework runtime into the program
+                # makes the entry's codegen type-evaluate its browser-global
+                # bodies (document/Array/...), surfacing spurious type errors.
+                cb_tgt = cb_imp.from_loc.dot_path_str
+                    if cb_imp.from_loc?.dot_path_str
+                    else '';
+                if cb_tgt.startswith('@jac/') {
+                    continue;
+                }
+                try {
+                    cb_src = cb_imp.from_loc.resolve_relative_path();
+                } except Exception {
+                    continue;
+                }
+                if not (isinstance(cb_src, str) and cb_src.endswith('.cl.jac')) {
+                    continue;
+                }
+                cb_src = _cb_os.path.abspath(cb_src);
+                if cb_src in cb_seen {
+                    continue;
+                }
+                cb_seen.add(cb_src);
+                cb_mod = actual_program.mod.hub.get(cb_src);
+                cb_has_facts = (
+                    cb_mod is not None
+                    and cb_mod.gen
+                    and cb_mod.gen.interop_manifest
+                    and bool(cb_mod.gen.interop_manifest.bindings)
+                );
+                if not cb_has_facts {
+                    try {
+                        cb_mod = self.compile(
+                            file_path=cb_src,
+                            target_program=actual_program,
+                            options=cb_opts
+                        );
+                    } except Exception {
+                        cb_mod = actual_program.mod.hub.get(cb_src);
+                    }
+                }
+                cb_worklist.append(cb_mod);
+            }
+        }
+        actual_program._compile_options = options;
+    }
+    if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         # Re-pin _compile_options to *our* options before codegen runs.
         # Earlier schedules may have invoked nested compile()s (e.g.
         # TypeCheckPass loading an imported module to resolve a symbol),
@@ -765,6 +898,26 @@ impl JacCompiler.run_schedule(
         }
         current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token);
     }
+}
+
+impl JacCompiler._count_module_blocking_errors(
+    target_program: JacProgram, mod_path: str
+) -> int {
+    count = 0;
+    for e in target_program.errors_had {
+        if e.code is None or not e.code.blocks_codegen {
+            continue;
+        }
+        try {
+            e_path = os.path.normpath(e.loc.mod_path);
+        } except Exception {
+            continue;
+        }
+        if e_path == mod_path {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 """Parse a Jac file/string and optionally load annexes for tooling passes.

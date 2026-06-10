@@ -50,9 +50,9 @@ glob alice = root ++> Person(
 
 # Create friendships with metadata
 with entry {
-    alice +>: FriendsWith(since="2020-01-15", closeness=8) :+> bob;
-    alice +>: FriendsWith(since="2021-06-10", closeness=9) :+> charlie;
-    bob +>: FriendsWith(since="2020-12-03", closeness=7) :+> charlie;
+    alice +>:FriendsWith(since="2020-01-15", closeness=8):+> bob;
+    alice +>:FriendsWith(since="2021-06-10", closeness=9):+> charlie;
+    bob +>:FriendsWith(since="2020-12-03", closeness=7):+> charlie;
 
     print("=== Friend Network Analysis ===");
 }

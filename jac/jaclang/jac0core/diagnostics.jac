@@ -26,7 +26,14 @@ obj DiagnosticInfo {
         category: Category,
         message_template: str,
         help_text: str | None = None,
-        url_slug: str | None = None;
+        url_slug: str | None = None,
+        # When True, this error blocks Python code generation for the module
+        # it is reported in, so the invalid construct cannot be executed.
+        # Most structural errors are reported but non-fatal (the codebase
+        # generates code through them, e.g. E0076 duplicate method); set this
+        # only for constructs that would otherwise compile to valid-but-wrong
+        # Python and silently run (e.g. E0063 glob inside a function).
+        blocks_codegen: bool = False;
 
     def format_message(**kwargs: object) -> str {
         try {
@@ -44,7 +51,8 @@ def _reg(
     severity: Severity,
     category: Category,
     template: str,
-    help_text: str | None = None
+    help_text: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
     info = DiagnosticInfo(
         code=code,
@@ -52,7 +60,8 @@ def _reg(
         category=category,
         message_template=template,
         help_text=help_text,
-        url_slug=code.lower()
+        url_slug=code.lower(),
+        blocks_codegen=blocks_codegen
     );
     DIAGNOSTICS[code] = info;
     return info;
@@ -60,9 +69,13 @@ def _reg(
 
 # Shorthand aliases
 def _err(
-    code: str, cat: Category, tmpl: str, help: str | None = None
+    code: str,
+    cat: Category,
+    tmpl: str,
+    help: str | None = None,
+    blocks_codegen: bool = False
 ) -> DiagnosticInfo {
-    return _reg(code, Severity.ERROR, cat, tmpl, help);
+    return _reg(code, Severity.ERROR, cat, tmpl, help, blocks_codegen);
 }
 
 def _warn(
@@ -213,6 +226,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0062 = _err("E0062", Category.SYNTAX, "'nonlocal' is not valid at module level"),
+     E0063 = _err(
+         "E0063",
+         Category.SYNTAX,
+         "'glob' is only valid at module level, perhaps you mean global",
+         help="Move the glob declaration to the top of the file, outside any function or code block.",
+         blocks_codegen=True
+     ),
      E0065 = _err("E0065", Category.SYNTAX, "Duplicate keyword argument '{name}'"),
      E0066 = _err(
          "E0066", Category.SYNTAX, "Positional argument follows keyword argument"
@@ -347,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1036",
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
-         " \"{type}[Any]\"; consider adding explicit type arguments"
+         " \"{type}[any]\"; consider adding explicit type arguments"
      ),
      # Explicit `any` annotation warning
      W1037 = _warn(
@@ -359,6 +379,21 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
+     E1042 = _err(
+         "E1042",
+         Category.TYPE,
+         "Expected {expected}, but got {actual} -- this call returns a coroutine "
+         "that was not awaited",
+         help="Add 'await' to the call, e.g. 'await foo()'. 'sv import' (server) "
+         "functions are async RPC stubs on the client and always need 'await'."
+     ),
+     E1043 = _err(
+         "E1043",
+         Category.TYPE,
+         "TypedDict \"{type}\" has no key \"{key}\"",
+         help="Add the key to the TypedDict definition, or index with a key "
+         "declared on the type."
+     ),
      # Function call errors
      E1050 = _err(
          "E1050",
@@ -581,7 +616,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1102 = _warn(
          "W1102",
          Category.IMPORT,
-         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+         "Imported name '{name}' from foreign-source module '{module}' typed as any"
      ),
      W1103 = _warn(
          "W1103",
@@ -775,6 +810,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "annotate one child element with 'key=' so iteration siblings "
          "keep their identity across re-renders."
      ),
+     E2025 = _err(
+         "E2025",
+         Category.SEMANTIC,
+         "A 'has'-field of type 'Ref[...]' must be constructed with an "
+         "initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' "
+         "for a value ref. It lowers to React's 'useRef', so a bare "
+         "declaration has no ref object to hold — '.current' would never be "
+         "defined. This mirrors how every other 'has'-field carries a value."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -918,6 +962,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
          "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
      ),
+     W3043 = _warn(
+         "W3043",
+         Category.LINT,
+         "@property '{name}' can be replaced with native property syntax "
+         "'has {name}: {type_name} {{ getter; ... }}' [property-to-native]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -946,7 +996,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
          "stale-has-read": "W3041",
-         "map-lambda-to-comprehension": "W3042"
+         "map-lambda-to-comprehension": "W3042",
+         "property-to-native": "W3043"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
@@ -991,6 +1042,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5011 = _err("E5011", Category.CODEGEN, "Expected expression in spawn argument."),
      E5012 = _err(
          "E5012", Category.CODEGEN, "Expected main module to be a Module node."
+     ),
+     E5016 = _err(
+         "E5016",
+         Category.CODEGEN,
+         "Could not generate JavaScript for builtin '{name}': {error}"
      ),
      W5013 = _warn(
          "W5013",
@@ -1077,6 +1133,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Native pathway does not yet support {kind} '{name}'",
          help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the .na.jac native compiler yet. Move the code to a non-native context, or extend NaIRGenPass to handle this node type."
+     ),
+     E5091 = _err(
+         "E5091",
+         Category.CODEGEN,
+         "Native union trigger members {members} disagree on the layout of field '{field}'",
+         help="A tuple/union trigger like `with (A, B) entry` lowers field access on `here`/`visitor` through a single shared layout, so every member must place the common field at the same offset and type. Reorder the `has` declarations so the shared fields line up, or split the trigger into separate abilities per archetype."
      ),
      # Language server
      E5070 = _err("E5070", Category.CODEGEN, "Error during type check: {error}"),

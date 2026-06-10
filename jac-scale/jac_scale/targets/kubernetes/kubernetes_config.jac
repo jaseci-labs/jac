@@ -28,7 +28,9 @@ obj KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         min_replicas: int = 1,
         max_replicas: int = 3,
-        cpu_utilization_target: int = 50,
+        cpu_utilization_target:
+            int = 50,  # matches DEFAULT_CPU_UTILIZATION_TARGET in autoscaler.jac
+        autoscaler_engine: str = "hpa",
         health_check_path: str = '/docs',
         # Runtime configuration
         python_image: str = 'python:3.12-slim',
@@ -52,6 +54,10 @@ obj KubernetesConfig(BaseConfig) {
         plugin_versions: dict[str, str] = {},
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
+        loki_enabled: bool = False,
+        # Deploy Tempo + the Alloy OTLP-receiver lane for distributed
+        # traces. Set from `[plugins.scale.microservices.tracing].enabled`.
+        tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
         # Dashboard configuration
         redis_dashboard: bool = False,
@@ -66,6 +72,22 @@ obj KubernetesConfig(BaseConfig) {
         redis_password: str = 'password',
         # Ingress configuration
         ingress_node_port: int = 30080,
+        # When True, skip deploying a dedicated NGINX controller and instead
+        # attach Ingress resources to an existing shared controller identified
+        # by shared_ingress_class (default 'nginx').
+        shared_ingress: bool = False,
+        shared_ingress_class: str = 'nginx',
+        # Extra annotations merged onto the Ingress metadata in shared mode.
+        # These drive non-nginx controllers (e.g. AWS ALB group / ACM cert /
+        # scheme, Traefik, GKE) without baking any cloud-specific values into
+        # jac-scale; the caller supplies them. nginx-specific tuning is only
+        # emitted when the controller class is 'nginx'.
+        shared_ingress_annotations: dict[str, str] = {},
+        # Whether the shared controller terminates TLS for `domain` (so the
+        # reported service URL uses https). nginx+cert-manager sets spec.tls and
+        # is detected automatically; controllers that terminate TLS out-of-band
+        # (e.g. ALB via an ACM certificate-arn annotation) set this explicitly.
+        shared_ingress_tls: bool = False,
         # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
@@ -107,6 +129,7 @@ obj KubernetesConfig(BaseConfig) {
                 'min_replicas': self.min_replicas,
                 'max_replicas': self.max_replicas,
                 'cpu_utilization_target': self.cpu_utilization_target,
+                'autoscaler_engine': self.autoscaler_engine,
                 'health_check_path': self.health_check_path,
                 # Runtime configuration
                 'python_image': self.python_image,
@@ -132,6 +155,8 @@ obj KubernetesConfig(BaseConfig) {
                 # Monitoring configuration
                 'monitoring_enabled': self.monitoring_enabled,
                 'k8s_metrics_enabled': self.k8s_metrics_enabled,
+                'loki_enabled': self.loki_enabled,
+                'tracing_enabled': self.tracing_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
                 # Dashboard configuration
                 'redis_dashboard': self.redis_dashboard,
@@ -146,6 +171,10 @@ obj KubernetesConfig(BaseConfig) {
                 'redis_password': self.redis_password,
                 # Ingress configuration
                 'ingress_node_port': self.ingress_node_port,
+                'shared_ingress': self.shared_ingress,
+                'shared_ingress_class': self.shared_ingress_class,
+                'shared_ingress_annotations': self.shared_ingress_annotations,
+                'shared_ingress_tls': self.shared_ingress_tls,
                 'ingress_limit_rps': self.ingress_limit_rps,
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
@@ -181,6 +210,7 @@ obj KubernetesConfig(BaseConfig) {
             min_replicas=config.get('min_replicas', 1),
             max_replicas=config.get('max_replicas', 3),
             cpu_utilization_target=config.get('cpu_utilization_target', 50),
+            autoscaler_engine=config.get('autoscaler_engine', 'hpa'),
             health_check_path=config.get('health_check_path', '/docs'),
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
@@ -202,6 +232,8 @@ obj KubernetesConfig(BaseConfig) {
             plugin_versions=config.get('plugin_versions', {}),
             monitoring_enabled=config.get('monitoring_enabled', False),
             k8s_metrics_enabled=config.get('k8s_metrics_enabled', True),
+            loki_enabled=config.get('loki_enabled', False),
+            tracing_enabled=config.get('tracing_enabled', False),
             prometheus_admin_password=config.get(
                 'prometheus_admin_password', 'Adminpassword123'
             ),
@@ -216,6 +248,10 @@ obj KubernetesConfig(BaseConfig) {
             redis_username=config.get('redis_username', 'admin'),
             redis_password=config.get('redis_password', 'password'),
             ingress_node_port=config.get('ingress_node_port', 30080),
+            shared_ingress=config.get('shared_ingress', False),
+            shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
+            shared_ingress_annotations=config.get('shared_ingress_annotations', {}),
+            shared_ingress_tls=config.get('shared_ingress_tls', False),
             ingress_limit_rps=config.get('ingress_limit_rps', 20),
             ingress_limit_burst_multiplier=config.get(
                 'ingress_limit_burst_multiplier', 5

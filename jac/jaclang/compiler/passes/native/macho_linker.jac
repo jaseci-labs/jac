@@ -54,14 +54,34 @@ obj MachOLinker {
         relocations: list[MachOReloc],
         needed_libs: list[str],
         cpu_type: int = 0,
-        cpu_subtype: int = 0;
+        cpu_subtype: int = 0,
+        # Maps an undefined symbol's C name (no leading underscore) to the
+        # `needed_libs` entry that exports it, e.g. "InitWindow" ->
+        # "libraylib.dylib". Drives the per-symbol dylib ordinal emitted in the
+        # two-level-namespace bind table; symbols absent from the map bind to
+        # libSystem (ordinal 1), which covers all compiler-emitted libc calls.
+        symbol_lib_map: dict[str, str] = {},
+        # Shared-object (.dylib) build state. When `shared` is True, link() calls
+        # build_shared_object(): an MH_DYLIB with base vmaddr 0, no __PAGEZERO,
+        # an export trie listing the `:pub` symbols, a __mod_init_func vector of
+        # init functions run on load, and LC_ID_DYLIB instead of LC_MAIN.
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = "";
 
     static def link(
         obj_bytes: bytes,
         output_path: str,
-        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"]
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"],
+        symbol_lib_map: dict[str, str] = {},
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = ""
     ) -> bool;
 
     def parse_object -> bool;
     def build_executable -> bytes;
+    def build_shared_object -> bytes;
 }

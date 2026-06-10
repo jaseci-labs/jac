@@ -686,9 +686,9 @@ test "separated files" {
     assert "let response = await __jacSpawn(" in js_code;
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
-    # runtime helper instead of leaking the Python method name.
+    # runtime dispatcher instead of leaking the Python method name.
     assert (
-        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.strip(input)});" in js_code
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")});" in js_code
     );
 }
 
@@ -1028,6 +1028,35 @@ test "convert to js import path preserves js format" {
     assert convert_to_js_import_path("lodash") == "lodash";
 }
 
+test "for-of tuple targets destructure into binding patterns" {
+    jac_code = (
+        "cl def f() {\n"
+        "    pairs = [[1, 2]];\n"
+        "    nested = [[[1, 2], 3]];\n"
+        "    rows = [[1, 2, 3]];\n"
+        "    for x in pairs {  }\n"
+        "    for (a, b) in pairs {  }\n"
+        "    for (i, p) in enumerate(pairs) {  }\n"
+        "    for ((c, d), e) in nested {  }\n"
+        "    for (g, *rest) in rows {  }\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "for (const x of pairs)" in js_code;
+        assert "for (const [a, b] of pairs)" in js_code;
+        assert "for (const [i, p] of _jac.builtin.enumerate(pairs))" in js_code;
+        assert "for (const [[c, d], e] of nested)" in js_code;
+        assert "for (const [g, ...rest] of rows)" in js_code;
+        assert "_item" not in js_code;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 # ============================================================================
 # Comprehension → JavaScript Tests
 # ============================================================================
@@ -1068,14 +1097,14 @@ test "compr list multiple filters" {
 test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
-    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.strip(x))
+    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.call(x, "strip"))
     # `items` is typed as bare `list` (no element type), so x is Unknown.
     # Pre-#5508 the codegen leaked the Python `.strip()` verbatim into JS,
-    # which crashes at runtime. The polymorphic runtime helper dispatches
+    # which crashes at runtime. The polymorphic runtime dispatcher routes
     # to `String.prototype.trim` for actual strings.
-    assert "_jac.poly.strip(x)" in js_code , (
+    assert "_jac.poly.call(x, \"strip\")" in js_code , (
         "Untyped element method calls in comprehensions should route "
-        "through _jac.poly.* runtime helpers"
+        "through the _jac.poly.call runtime dispatcher"
     );
 }
 
@@ -1104,6 +1133,165 @@ test "issue 5508 case1 in operator on str method call" {
     );
 }
 
+test "poly get dispatches through runtime helper for untyped receivers" {
+    js_code = compile_fixture_to_js("poly_get_dispatch.cl.jac", FIXTURES);
+
+    # Pluck out the user-compiled function body (skip the injected _jac
+    # runtime, which legitimately contains `.get(` inside its dispatcher).
+    fn_idx = js_code.find("function test_poly_get");
+    assert fn_idx >= 0 , "compiled function test_poly_get must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 500];
+
+    # When the receiver's static type is unknown, .get() must route through
+    # the _jac.poly.call runtime dispatcher (with the method name as a string
+    # argument) instead of leaking the Python method name verbatim into JS.
+    assert "_jac.poly.call(" in user_chunk and '"get"' in user_chunk , (
+        "Untyped .get() must route through the _jac.poly.call() dispatcher;\n"
+        "got:\n" + user_chunk
+    );
+    # `_jac.poly.call(mapping, "get", "a")` does NOT contain `.get("`, but a
+    # leak like `mapping.get("a")` would — so this cleanly catches a raw
+    # Python method name escaping into the JS output.
+    assert '.get("' not in user_chunk , (
+        "Python `.get()` should not appear verbatim in compiled user JS"
+    );
+
+    # Verify the emitted JS actually runs and produces correct results.
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 1 , (
+        "poly.get hit must return existing value 1, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get miss must return default -1, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_dispatch.cl.jac");
+}
+
+test "poly get dispatches to custom obj method not plain-object bracket" {
+    js_code = compile_fixture_to_js("poly_get_custom_obj.cl.jac", FIXTURES);
+
+    fn_idx = js_code.find("function test_poly_get_custom");
+    assert fn_idx >= 0 , "compiled function test_poly_get_custom must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 600];
+
+    # Must route through the dispatcher because the receiver is any-typed.
+    assert "_jac.poly.call(" in user_chunk and '"get"' in user_chunk , (
+        "Untyped .get() on a custom obj must route through _jac.poly.call();\n"
+        "got:\n" + user_chunk
+    );
+
+    # Verify runtime behavior: the dispatcher must detect the user-defined
+    # `Cache.get` method and call it (returning 42 for "x"), rather than
+    # treating the instance as a plain-object dict — which would miss keys
+    # stored in the internal `data` dict and return the default (-1).
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_poly_get_custom()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.get custom-obj dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert "hit" in got and got["hit"] == 42 , (
+        "poly.get on custom obj must call the object's .get() method and "
+        "return 42, got " + str(got)
+    );
+    assert "miss" in got and got["miss"] == -1 , (
+        "poly.get on custom obj must return default -1 for missing key, got " + str(got)
+    );
+
+    assert_balanced_syntax(js_code, "poly_get_custom_obj.cl.jac");
+}
+
+test "poly call dispatches dict/list/set/user methods on untyped receivers" {
+    js_code = compile_fixture_to_js("poly_dispatch_complete.cl.jac", FIXTURES);
+
+    # Every untyped method call routes through the single dispatcher; no
+    # Python method name leaks verbatim into the compiled user code.
+    fn_idx = js_code.find("function test_poly_complete");
+    assert fn_idx >= 0 , "compiled function test_poly_complete must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 1200];
+    assert "_jac.poly.call(" in user_chunk , (
+        "Untyped container methods must route through _jac.poly.call();\n"
+        "got:\n" + user_chunk
+    );
+    for leaked in [".keys(", ".values(", ".update(", ".append(", ".discard("] {
+        assert leaked not in user_chunk , (
+            "Python method " + leaked + ") leaked verbatim into compiled JS:\n" + user_chunk
+        );
+    }
+
+    wrapper = (
+        js_code + "\nconsole.log(JSON.stringify(test_poly_complete()));" + "\nconsole.log(JSON.stringify(test_poly_attribute_error()));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "poly.call dispatch crashed in Node:\nstdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+    import json;
+    lines = result.stdout.strip().split("\n");
+    got: dict[str, any] = json.loads(lines[0]);
+    raised = json.loads(lines[1]);
+
+    # dict: keys/values captured before update; get after update.
+    assert got["keys"] == ["a", "b"] , ("dict.keys mismatch: " + str(got));
+    assert got["vals"] == [1, 2] , ("dict.values mismatch: " + str(got));
+    assert got["has_c"] == 3 , ("dict.update+get mismatch: " + str(got));
+    # The fixed Python dict.get semantics: present-but-null returns null,
+    # absent returns the default.
+    assert got["null_hit"] is None , (
+        "dict.get on a present null key must return null, not the default: " + str(got)
+    );
+    assert got["missing"] == -1 , (
+        "dict.get on an absent key must return the default: " + str(got)
+    );
+    # list: append + sort + count.
+    assert got["lst"] == [1, 2, 3, 4] , ("list.append/sort mismatch: " + str(got));
+    assert got["cnt"] == 1 , ("list.count mismatch: " + str(got));
+    # set: add + discard reflected by membership.
+    assert got["has_three"] == True , ("set.add mismatch: " + str(got));
+    assert got["has_one"] == False , ("set.discard mismatch: " + str(got));
+    # user-defined method name colliding with a primitive: forwarded.
+    assert got["box_count"] == 3 , (
+        "primitive-named user method must be forwarded, not run as a list op: " + str(
+            got
+        )
+    );
+    # JS-global method on a function-typed receiver (Object.keys): the
+    # dispatcher must forward to the function's own method, not throw.
+    assert got["obj_keys"] == ["p", "q"] , (
+        "Object.keys via the dispatcher must forward to the real method: " + str(got)
+    );
+    # The dispatcher raises a catchable AttributeError for an unsupported op.
+    assert raised == True , (
+        "an eligible method on an incompatible runtime type must raise "
+        "AttributeError, not silently return a wrong value"
+    );
+
+    assert_balanced_syntax(js_code, "poly_dispatch_complete.cl.jac");
+}
+
 test "issue 5508 case2 str methods on untyped receivers" {
     # Regression for jaseci-labs/jaseci#5508 case 2 (also covers #5453).
     # When the static type of the receiver is not provably `str` (props of
@@ -1112,9 +1300,8 @@ test "issue 5508 case2 str methods on untyped receivers" {
     # (`.upper`, `.strip`, `.lower`) which crash at runtime in JS. Fall
     # back to runtime-polymorphic helpers (`_jac.poly.*`) instead.
     js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
-    # Pluck out the user-compiled function bodies (skip the injected
-    # _jac runtime, which legitimately contains `s.upper()` etc. as the
-    # user-class fallback inside its polyfills).
+    # Pluck out the user-compiled function bodies (slice from each function
+    # so the injected _jac runtime is not scanned).
     user_chunks = [];
     for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
         idx = js_code.find("function " + fn_name);
@@ -1133,19 +1320,23 @@ test "issue 5508 case2 str methods on untyped receivers" {
         "Python `.lower()` (without a static str type) should not appear "
         "verbatim in compiled user JS"
     );
-    # Should route through the polymorphic runtime helpers.
-    assert "_jac.poly.upper(" in user_code , (
-        "Untyped .upper() should route through _jac.poly.upper()"
+    # Should route through the polymorphic runtime dispatcher, with the
+    # method name carried as a string argument.
+    assert "_jac.poly.call(" in user_code , (
+        "Untyped str methods should route through the _jac.poly.call() dispatcher"
     );
-    assert "_jac.poly.strip(" in user_code , (
-        "Untyped .strip() should route through _jac.poly.strip()"
+    assert '"upper"' in user_code , (
+        "Untyped .upper() should route through _jac.poly.call(.., \"upper\")"
     );
-    assert "_jac.poly.lower(" in user_code , (
-        "Untyped .lower() should route through _jac.poly.lower()"
+    assert '"strip"' in user_code , (
+        "Untyped .strip() should route through _jac.poly.call(.., \"strip\")"
     );
-    # The _jac runtime must be injected when poly helpers are used.
+    assert '"lower"' in user_code , (
+        "Untyped .lower() should route through _jac.poly.call(.., \"lower\")"
+    );
+    # The _jac runtime must be injected when the dispatcher is used.
     assert "const _jac = {" in js_code , (
-        "_jac runtime must be injected when _jac.poly.* helpers are emitted"
+        "_jac runtime must be injected when _jac.poly.call is emitted"
     );
 }
 
@@ -1680,5 +1871,339 @@ test "in/not in on unknown-typed containers matches Python semantics" {
         assert got[key] == want , (
             f"membership '{key}': got {got[key]!r}, expected {want!r}"
         );
+    }
+}
+
+
+test "cl negative indexing counts from the end like Python (#6320)" {
+    import json;
+    # Python/Jac negative indices count from the end. A raw JS subscript
+    # `xs[-1]` is `undefined`, silently producing the wrong value.
+    jac_code = """
+cl def neg_index() -> dict {
+    xs: list[int] = [10, 20, 30];
+    s: str = "abc";
+    return {
+        "list_last": xs[-1],
+        "list_second_last": xs[-2],
+        "list_first": xs[0],
+        "str_last": s[-1]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The broken raw form `[(-1)]` must never be emitted.
+        assert "[(-1)]" not in js_code , (
+            f"negative index must not lower to a raw JS subscript:\n{js_code}"
+        );
+        wrapper = js_code + "\nconsole.log(JSON.stringify(neg_index()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "negative-index run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "list_last": 30,
+            "list_second_last": 20,
+            "list_first": 10,
+            "str_last": "c"
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"neg-index '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl collection truthiness matches Python emptiness (#6320)" {
+    import json;
+    # JS arrays/objects/Sets are always truthy, so empty-collection guards
+    # never short-circuit. Boolean contexts on a collection must test
+    # emptiness like Python (empty list/dict/set is falsy; str already agrees).
+    jac_code = """
+cl def truthy_probe() -> dict {
+    el: list[int] = [];
+    fl: list[int] = [1];
+    ed: dict[str, int] = {};
+    fd: dict[str, int] = {"a": 1};
+    es_: set[int] = set();
+    fs_: set[int] = {1};
+    em: str = "";
+    fm: str = "x";
+    r: dict[str, int] = {};
+    if el { r["if_el"] = 1; } else { r["if_el"] = 0; }
+    if fl { r["if_fl"] = 1; } else { r["if_fl"] = 0; }
+    if ed { r["if_ed"] = 1; } else { r["if_ed"] = 0; }
+    if fd { r["if_fd"] = 1; } else { r["if_fd"] = 0; }
+    if es_ { r["if_es"] = 1; } else { r["if_es"] = 0; }
+    if fs_ { r["if_fs"] = 1; } else { r["if_fs"] = 0; }
+    if em { r["if_em"] = 1; } else { r["if_em"] = 0; }
+    if fm { r["if_fm"] = 1; } else { r["if_fm"] = 0; }
+    if not el { r["not_el"] = 1; } else { r["not_el"] = 0; }
+    if not fl { r["not_fl"] = 1; } else { r["not_fl"] = 0; }
+    or_res: list[int] = el or fl;
+    and_res: list[int] = el and fl;
+    r["or_len"] = len(or_res);
+    r["and_len"] = len(and_res);
+    r["tern_el"] = 1 if el else 0;
+    r["tern_fl"] = 1 if fl else 0;
+    # `and`/`or` used directly as a condition: the helper returns an *operand*
+    # (a collection), and the enclosing if/while must apply Python truthiness to
+    # it -- a bare `if (and_(...))` would see an empty array/object as truthy.
+    if el and fl { r["and_cond_ff"] = 1; } else { r["and_cond_ff"] = 0; }
+    if fl and fs_ { r["and_cond_tt"] = 1; } else { r["and_cond_tt"] = 0; }
+    if el or ed { r["or_cond_ff"] = 1; } else { r["or_cond_ff"] = 0; }
+    if el or fl { r["or_cond_ft"] = 1; } else { r["or_cond_ft"] = 0; }
+    return r;
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        wrapper = js_code + "\nconsole.log(JSON.stringify(truthy_probe()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "collection-truthiness run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "if_el": 0,
+            "if_fl": 1,
+            "if_ed": 0,
+            "if_fd": 1,
+            "if_es": 0,
+            "if_fs": 1,
+            "if_em": 0,
+            "if_fm": 1,
+            "not_el": 1,
+            "not_fl": 0,
+            "or_len": 1,
+            "and_len": 0,
+            "tern_el": 0,
+            "tern_fl": 1,
+            "and_cond_ff": 0,
+            "and_cond_tt": 1,
+            "or_cond_ff": 0,
+            "or_cond_ft": 1
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"truthiness '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl negative-index assignment and while-truthiness match Python (#6320)" {
+    import json;
+    # Negative-index assignment must write the element counted from the end
+    # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
+    # guard on a collection must drain like Python rather than loop forever.
+    jac_code = """
+cl def probe() -> dict {
+    xs: list[int] = [1, 2, 3];
+    xs[-1] = 99;
+    xs[0] = 5;
+    d: dict[str, int] = {};
+    d["k"] = 7;
+    drained: int = 0;
+    stack: list[int] = [1, 1, 1];
+    while stack {
+        stack.pop();
+        drained = drained + 1;
+    }
+    return {
+        "xs_last": xs[-1],
+        "xs_first": xs[0],
+        "d_k": d["k"],
+        "drained": drained,
+        "stack_empty": len(stack)
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The broken raw negative-write form must not be emitted.
+        assert "xs[(-1)] = 99" not in js_code , (
+            f"negative-index assignment must not write a raw subscript:\n{js_code}"
+        );
+        wrapper = js_code + "\nconsole.log(JSON.stringify(probe()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "negative-write / while-truthiness run crashed in Node:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {
+            "xs_last": 99,
+            "xs_first": 5,
+            "d_k": 7,
+            "drained": 3,
+            "stack_empty": 0
+        };
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"write/while '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
+    import json;
+    # A subscript on an `any`-typed value must remain a faithful superset of a
+    # raw `obj[i]`: string keys stay plain member access, a missing key/index
+    # yields `undefined` (never throws), and only a possibly-negative numeric
+    # index is rewritten to count from the end. This guards the jac-client
+    # `data["data"]["user_id"]` pattern from regressing to a KeyError throw.
+    jac_code = """
+cl def probe(resp: any, xs: any) -> dict {
+    present: any = resp["user_id"];
+    guard: int = 1 if (resp["data"] and resp["data"]["k"]) else 0;
+    return {
+        "present": present,
+        "guard": guard,
+        "neg": xs[-1],
+        "neg2": xs[-2]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # String-literal keys must stay raw member access, not route through
+        # the runtime helper (which only matters for possibly-negative indices).
+        assert '_jac.poly.getitem(resp, "user_id")' not in js_code , (
+            f"string-key access must stay a raw subscript:\n{js_code}"
+        );
+        wrapper = (
+            js_code + "\nconst r = probe({user_id: 'u9', data: {}}, [10, 20, 30]);" + "\nconsole.log(JSON.stringify(r));\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "unknown-typed subscript run crashed in Node (should never throw):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        got = json.loads(result.stdout.strip());
+        expected = {"present": "u9", "guard": 0, "neg": 30, "neg2": 20};
+        for (key, want) in expected.items() {
+            assert got[key] == want , (
+                f"unknown-subscript '{key}': got {got[key]!r}, expected {want!r}\n"
+                f"js:\n{js_code}"
+            );
+        }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "isinstance/issubclass against builtin types, user class, and tuples (#6458)" {
+    import json;
+    # Regression for jaseci-labs/jaseci#6458. `isinstance(x, str)` (and any
+    # other builtin-type check, as used by the shadcn `sidebar` component)
+    # crashed ES codegen with a bare `IndexError: list index out of range`:
+    # the ES pass had no `exit_builtin_type` handler, so the builtin-type
+    # argument was dropped and `emit_isinstance` indexed past the end of its
+    # arg list.
+    js_code = compile_fixture_to_js("isinstance_builtin.cl.jac", FIXTURES);
+
+    # The Python builtin-type name must never leak into the emitted JS as a
+    # bare reference to an undefined global (e.g. `value instanceof str`),
+    # which would be a ReferenceError at runtime.
+    assert "instanceof str" not in js_code , (
+        f"builtin type `str` must not lower to a JS `instanceof str`:\n{js_code}"
+    );
+
+    # Drive the emitted JS through Node to confirm correct Python semantics
+    # (including bool-as-subclass-of-int, tuple-of-types, and issubclass).
+    wrapper = (
+        js_code + "\nconst cases = [['hi'], [true], [5], [3.14], [[1, 2]], " + "[new Widget({name: 'w'})]];" + "\nconsole.log(JSON.stringify({" + "  classify: cases.map(c => classify(c[0]))," + "  scalar: [is_scalar(5), is_scalar(3.14), is_scalar('x'), " + "is_scalar(true), is_scalar([1])]," + "  subclass: subclass_probe()" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "isinstance codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["classify"] == ["str:hi", "bool", "int", "float", "list", "widget:w"] , (
+        f"classify mismatch: {got['classify']}\njs:\n{js_code}"
+    );
+    assert got["scalar"] == [True, True, True, True, False] , (
+        f"is_scalar (tuple-of-types) mismatch: {got['scalar']}\njs:\n{js_code}"
+    );
+    assert got["subclass"] == [True, True, False, False] , (
+        f"issubclass (builtin-tag) mismatch: {got['subclass']}\njs:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
+}
+
+test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {
+    # Same root cause as the isinstance crash: a Python builtin used as a
+    # *value* (here the `type` key of an object literal) produced no es_ast,
+    # so `exit_dict_val` fell back to the literal string `'key'` -- silently
+    # turning `{type: "email"}` into `{key: "email"}`. JacForm's field
+    # renderer read that accidental `config.key`, so once the builtin-type
+    # handler started lowering `type` correctly the form input types broke
+    # (native `type="email"` validation stopped working). Lock the key down.
+    jac_code = "cl def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "\"type\": \"email\"" in js_code or "type: \"email\"" in js_code , (
+            f"builtin `type` key must lower to `type`, not the `key` fallback:\n{js_code}"
+        );
+        assert "key: \"email\"" not in js_code
+        and "\"key\": \"email\"" not in js_code , (
+            f"builtin `type` key must not collapse to the literal `key`:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
     }
 }

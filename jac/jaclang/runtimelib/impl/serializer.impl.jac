@@ -278,7 +278,7 @@ impl Serializer._deserialize_value(val: object) -> object {
         return [Serializer._deserialize_value(v) for v in val];
     }
     if isinstance(val, dict) {
-        if '$ref' in val and val.keys() <= {'$ref','$type'} {
+        if '$ref' in val and val.keys() <= {'$ref', '$type'} {
             return Serializer._deserialize_jac_ref(val);
         }
         return Serializer.deserialize(val)
@@ -291,6 +291,8 @@ impl Serializer._deserialize_value(val: object) -> object {
 """Register a class for safe deserialization and attach its fingerprint."""
 impl Serializer.register(cls: type) -> None {
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
+    import from jaclang.runtimelib.typecache { invalidate as _invalidate_typecache }
+    _invalidate_typecache(cls);
     try {
         cls.__jac_fingerprint__ = Serializer.fingerprint(cls);
     } except Exception as e {
@@ -308,26 +310,6 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
         return;
     }
     Serializer._aliases[old_name] = new_name;
-}
-
-"""Return {field_name: resolved_annotation} for a dataclass (empty otherwise)."""
-impl Serializer._get_field_types(cls: type) -> dict[str, object] {
-    if not is_dataclass(cls) {
-        return {};
-    }
-    # Prefer resolved hints (unwraps string forward-refs); fall back to raw.
-    try {
-        hints = get_type_hints(cls);
-    } except Exception {
-        hints = getattr(cls, '__annotations__', {}) or {};
-    }
-    out: dict[str, object] = {};
-    for f in fields(cls) {
-        if f.name in hints {
-            out[f.name] = hints[f.name];
-        }
-    }
-    return out;
 }
 
 """Best-effort coercion table. Returns (value, ok)."""
@@ -660,7 +642,7 @@ impl Serializer._deserialize_archetype(
     cls = cast(type, resolved);
     try {
         arch: object = cls.__new__(cls);
-        field_types = Serializer._get_field_types(cls);
+        field_types = get_field_types(cls);
         known = set(field_types.keys());
         dropped: list[str] = [];
         for (k, v) in data.items() {
@@ -682,11 +664,34 @@ impl Serializer._deserialize_archetype(
                     (origin is Union or origin is UnionType) and NoneType in args
                 );
                 if deser_v is None and not is_optional {
-                    raise TypeError(
-                        f"{module_name}.{type_name}.{k}: stored value is None "
-                        f"but field type {target} does not allow None — "
-                        "nested class likely removed"
+                    recovered: object = None;
+                    has_default = False;
+                    for fd in fields(cls) {
+                        if fd.name == k {
+                            if fd.default_factory is not MISSING {
+                                recovered = fd.default_factory();
+                                has_default = True;
+                            } elif fd.default is not MISSING {
+                                recovered = fd.default;
+                                has_default = True;
+                            }
+                            break;
+                        }
+                    }
+                    if not has_default {
+                        logger.warning(
+                            f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                            f"on non-Optional field {target} and no class default "
+                            "available; cannot recover."
+                        );
+                        return None;
+                    }
+                    logger.warning(
+                        f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                        f"on non-Optional field {target}; restored class default."
                     );
+                    setattr(arch, k, recovered);
+                    continue;
                 }
                 logger.warning(
                     f"Serializer: coercion fallback on {module_name}."
@@ -703,7 +708,6 @@ impl Serializer._deserialize_archetype(
             );
         }
 
-        arch.__dict__['__jac_initialized__'] = True;
         setattr(arch, '__jac__', anchor);
         return arch;
     } except Exception as e {
@@ -723,7 +727,7 @@ impl Serializer.serialize_fields(
     if arch is None {
         return {};
     }
-    known = set(Serializer._get_field_types(type(arch)).keys());
+    known = set(get_field_types(type(arch)).keys());
     _seen: tuple[set, set] = (set(), set());
     result: dict[str, object] = {};
     for name in field_names & known {
@@ -738,12 +742,6 @@ impl Serializer._compute_hash(anchor: Anchor) -> int {
     import from json { dumps }
     try {
         data = Serializer.serialize(anchor, include_type=True);
-        # Exclude topology_index_data from hash — it's a derived cache,
-        # not user-mutable state. Including it would double the cost of
-        # every serialize round-trip for large graphs.
-        if isinstance(data, dict) {
-            data.pop('topology_index_data', None);
-        }
         return hash(dumps(data, sort_keys=True));
     } except Exception {
         return 0;

@@ -27,6 +27,7 @@ import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any }
 import from urllib.parse { urlencode }
+import type from jaclang.project.config { JacConfig }
 import type from jaclang.runtimelib.server { JacAPIServer }
 
 """HTTP response wrapper for test assertions."""
@@ -37,11 +38,9 @@ obj TestResponse {
         _json_cache: (dict[str, any] | None) = None;
 
     def json -> dict[str, any];
-    @property
-    def ok -> bool;
 
-    @property
-    def data -> (dict[str, any] | None);
+    has ok: bool { getter; }
+    has data: (dict[str, any] | None) { getter; }
 }
 
 """Test client for JacAPIServer - no socket/port required.
@@ -56,10 +55,14 @@ obj JacTestClient {
         _handler_class: (type | None) = None,
         _auth_token: (str | None) = None,
         _current_user: (str | None) = None,
-        _hot_reloader: (Any | None) = None;
+        _hot_reloader: (Any | None) = None,
+        _config: (JacConfig | None) = None;
 
     static def from_file(
-        jac_file: str, base_path: (str | None) = None, module_name: (str | None) = None
+        jac_file: str,
+        base_path: (str | None) = None,
+        module_name: (str | None) = None,
+        config: (JacConfig | None) = None
     ) -> JacTestClient;
 
     def _ensure_initialized -> None;
@@ -101,11 +104,9 @@ obj JacTestClient {
     ) -> TestResponse;
 
     def _parse_response(raw_response: bytes) -> TestResponse;
-    @property
-    def server -> JacAPIServer;
 
-    @property
-    def user_manager -> any;
+    has server: JacAPIServer { getter; }
+    has user_manager: any { getter; }
 
     def reload -> None;
     def close -> None;

@@ -1,19 +1,15 @@
 """{{name}} - Entry Point.
 
-Combines server-side endpoints with client-side UI.
+Combines server-side endpoints with the client-side UI.
 """
 
-# Import server-side data models and walkers
-sv {
-    import from endpoints { Todo, AddTodo, ListTodos, ToggleTodo, DeleteTodo }
-}
+import from endpoints { Message, PostMessage, ListMessages }
 
 # Client-side UI
 cl {
     import from .frontend { app as ClientApp }
 
     def:pub app -> JsxElement {
-        return
-            <ClientApp/>;
+        return <ClientApp/>;
     }
 }

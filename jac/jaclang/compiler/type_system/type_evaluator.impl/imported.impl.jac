@@ -397,22 +397,41 @@ impl TypeEvaluator._import_module_from_path(
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
                         is_module_cache_valid,
-                        SEC_BYTECODE
+                        compute_module_key,
+                        SEC_BYTECODE,
+                        SEC_MODKEY
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
                     if not is_module_cache_valid(resolved_path, cache_path) {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
-                        sections: (dict[int, bytes] | None) = None;
+                        # Always stamp SEC_MODKEY so the entry self-validates on
+                        # the mtime-ambiguous slow path (matches Tier 3).
+                        sections: dict[int, bytes] = {
+                            SEC_MODKEY: compute_module_key(resolved_path).encode(
+                                'utf-8'
+                            )
+                        };
                         bc = mod.gen?.py_bytecode;
                         if bc is not None {
-                            sections = {SEC_BYTECODE: bc};
+                            sections[SEC_BYTECODE] = bc;
                         }
                         jir_bytes = writer.write_module(mod, sections=sections);
-                        tmp_path = cache_path.with_suffix('.tmp');
-                        tmp_path.write_bytes(jir_bytes);
-                        tmp_path.rename(cache_path);
+                        # Write to a process-unique temp then atomically rename.
+                        # A shared `.tmp` name lets two concurrent compiles of the
+                        # same module (the agent's parallel tools, or CLI + LSP)
+                        # clobber each other mid-write and rename a corrupt file
+                        # whose header still validates -- read fails later on the
+                        # truncated body.
+                        import os as _os;
+                        tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                        try {
+                            tmp_path.write_bytes(jir_bytes);
+                            tmp_path.rename(cache_path);
+                        } finally {
+                            tmp_path.unlink(missing_ok=True);
+                        }
                     }
                 } except Exception {
                     ;
@@ -463,6 +482,7 @@ impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None)
 impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None) {
     import from jaclang.jac0core.jir { get_module_cache_path, is_module_cache_valid }
     import from jaclang.jac0core.jir_passes { JirReader }
+    import os;
     import traceback;
     try {
         cache_path = get_module_cache_path(resolved_path);
@@ -483,8 +503,20 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
 
         return mod;
     } except Exception {
-        # Log but don't crash — fall back to full compile
-        traceback.print_exc();
+        # A cache miss or a stale/incompatible entry is an expected, recoverable
+        # condition: returning None falls back to a full compile. Printing the
+        # traceback would spam every CLI and `jac ai` turn that recompiles, so it
+        # is gated behind JAC_JIR_DEBUG for diagnosing genuine reader bugs.
+        if os.environ.get("JAC_JIR_DEBUG") {
+            traceback.print_exc();
+        }
+        # Drop the unreadable entry so the next compile rebuilds it fresh,
+        # instead of failing this read on every recompile of an importer.
+        try {
+            get_module_cache_path(resolved_path).unlink(missing_ok=True);
+        } except Exception {
+            ;
+        }
         return None;
     }
 }
@@ -529,4 +561,27 @@ impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         }
     }
     return types.UnknownType();
+}
+
+"""Follow an imported symbol's re-export chain to its defining symbol.
+
+A `from pkg import f` symbol's decl is the imported `Name`, whose own `.sym`
+points at the next re-export hop (e.g. `pkg/__init__` → `pkg/sub` → the
+`def`). Walk that chain until a non-import decl (the definition) so callers
+collect overloads in the definition scope rather than a re-export scope."""
+impl TypeEvaluator.resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol {
+    visited: set[int] = set();
+    cur = symbol;
+    while id(cur) not in visited {
+        visited.add(id(cur));
+        if not (cur.imported and cur.decl) {
+            break;
+        }
+        node_ = cur.decl.name_of;
+        if not (isinstance(node_, uni.Name) and node_.sym and node_.sym is not cur) {
+            break;
+        }
+        cur = node_.sym;
+    }
+    return cur;
 }

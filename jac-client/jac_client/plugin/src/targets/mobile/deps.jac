@@ -4,6 +4,7 @@ import shutil;
 import platform as platform_mod;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.client { get_bun }
 import from jac_client.plugin.src.targets.mobile.common {
     SUBPROCESS_TIMEOUT_SHORT,
     _check_command_available,
@@ -202,7 +203,14 @@ def _check_and_report_dependencies(plat: str = "android") {
     if node_ok {
         console.print(f"  ✔ Node.js found: {node_ver}", style="success");
     } else {
-        (bun_ok, bun_ver) = _check_command_available(["bun", "--version"]);
+        # Resolve via get_bun so the project-local .jac/bin copy counts too
+        # (auto-installs if neither node nor bun is present anywhere).
+        bun = get_bun();
+        if bun {
+            (bun_ok, bun_ver) = _check_command_available([bun, "--version"]);
+        } else {
+            (bun_ok, bun_ver) = (False, None);
+        }
         if bun_ok {
             console.print(f"  ✔ Bun found: {bun_ver}", style="success");
         } else {

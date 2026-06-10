@@ -106,11 +106,11 @@ Path aliases let you define short prefixes (like `@components`) that map to proj
 Then use them in imports:
 
 ```jac
-to cl:
-
-import from "@components/Button" { Button }
-import from "@utils/format" { formatDate }
-import from "@shared" { constants }
+cl {
+    import from "@components/Button" { Button }
+    import from "@utils/format" { formatDate }
+    import from "@shared" { constants }
+}
 ```
 
 Aliases are resolved by:
@@ -172,41 +172,41 @@ All patterns tested and verified in:
 ### Full Feature Demo
 
 ```jac
-to cl:
+cl {
+    # Named imports
+    import from react { useEffect, useRef }
+    import from lodash { map as mapArray, filter }
 
-# Named imports
-import from react { useEffect, useRef }
-import from lodash { map as mapArray, filter }
+    # Default imports
+    import from react { default as React }
+    import from axios { default as axios }
 
-# Default imports
-import from react { default as React }
-import from axios { default as axios }
+    # Namespace imports
+    import from "date-fns" { * as DateFns }
+    import from .utils { * as Utils }
 
-# Namespace imports
-import from "date-fns" { * as DateFns }
-import from .utils { * as Utils }
+    # String literal imports (for hyphenated packages)
+    import from "react-dom" { render, hydrate }
+    import from "styled-components" { default as styled }
+    import from "react-router-dom" { BrowserRouter, Route }
 
-# String literal imports (for hyphenated packages)
-import from "react-dom" { render, hydrate }
-import from "styled-components" { default as styled }
-import from "react-router-dom" { BrowserRouter, Route }
+    # Mixed imports
+    import from react { default as React, useEffect }
 
-# Mixed imports
-import from react { default as React, useEffect }
+    # Relative paths
+    import from .components.Button { default as Button }
+    import from ..lib.helpers { formatDate }
+    import from ...config.constants { API_URL }
 
-# Relative paths
-import from .components.Button { default as Button }
-import from ..lib.helpers { formatDate }
-import from ...config.constants { API_URL }
+    def MyComponent() {
+        # Reactive state - auto-generates useState
+        has count: int = 0;
 
-def MyComponent() {
-    # Reactive state - auto-generates useState
-    has count: int = 0;
+        now = DateFns.format(Date.now());
+        axios.get(API_URL);
 
-    now = DateFns.format(Date.now());
-    axios.get(API_URL);
-
-    return count;
+        return count;
+    }
 }
 ```
 

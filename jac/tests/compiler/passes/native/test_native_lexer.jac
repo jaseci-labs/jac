@@ -390,6 +390,173 @@ test "native tokenize matches python lexer" {
     }
 }
 
+# F-strings exercise mode_stack.push/pop (a list field) and keyword lookup
+# (an enum-returning function) — the paths fixed by the field-list method
+# dispatch and enum-return marshalling. Native tokens must match Python.
+test "native tokenize matches python lexer for fstrings" {
+    import from jaclang.jac0core.native_marshal {
+        build_ctypes_classes,
+        build_enum_maps,
+        wrap_native_function
+    }
+    import ctypes as ct;
+
+    prog = JacProgram();
+    ir = prog.compile(file_path=NA_LEXER_PATH);
+    eng = ir.gen.native_engine;
+    layout = ir.gen.native_layout;
+    assert eng is not None;
+    assert layout is not None;
+    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
+    if tokens_glob_addr {
+        ct.CFUNCTYPE(None)(tokens_glob_addr)();
+    }
+    glob_init_addr = eng.get_function_address("__jac_glob_init");
+    if glob_init_addr {
+        ct.CFUNCTYPE(None)(glob_init_addr)();
+    }
+
+    ct_classes = build_ctypes_classes(layout);
+    enum_maps = build_enum_maps(layout, {});
+    wrapper = wrap_native_function(
+        eng, layout.functions.get("tokenize"), ct_classes, enum_maps, {}, layout=layout
+    );
+    assert wrapper is not None;
+
+    sources = ['f"hi {x + 1} there"', 'f"{a}{b}c{d}"', 'glob s = f"plain";'];
+    for source in sources {
+        (na_tokens, na_errors) = wrapper(source, "test.jac");
+        py_tokens = Lexer(source, "test.jac").tokenize();
+        assert na_errors == 0 , f"native lex errors for {source!r}: {na_errors}";
+        assert len(na_tokens) == len(py_tokens) , (
+            f"Token count mismatch for {source!r}: "
+            f"native={len(na_tokens)}, python={len(py_tokens)}"
+        );
+        for i in range(len(py_tokens)) {
+            na_tok = na_tokens[i];
+            na_val = na_tok["value"] if isinstance(na_tok, dict) else na_tok.value;
+            assert na_val == py_tokens[i].value , (
+                f"{source!r} token {i}: native={na_val!r} python={py_tokens[i].value!r}"
+            );
+        }
+    }
+}
+
+# Non-ASCII source exercises the rune-aware byte path. Token VALUES and
+# BYTE-OFFSET positions (pos_start/pos_end/col) must match the Python lexer
+# exactly: a multi-byte code point advances `pos` by its UTF-8 width, so every
+# token after it carries the same byte offset in both backends (Rust/Go/Zig
+# convention). Regression for native byte-by-byte scanning that drifted
+# positions after any non-ASCII character.
+test "native tokenize matches python lexer for unicode (byte offsets)" {
+    import from jaclang.jac0core.native_marshal {
+        build_ctypes_classes,
+        build_enum_maps,
+        wrap_native_function
+    }
+    import ctypes as ct;
+
+    prog = JacProgram();
+    ir = prog.compile(file_path=NA_LEXER_PATH);
+    eng = ir.gen.native_engine;
+    layout = ir.gen.native_layout;
+    assert eng is not None and layout is not None;
+    for g in ["__jac_glob_init_tokens_na", "__jac_glob_init"] {
+        addr = eng.get_function_address(g);
+        if addr {
+            ct.CFUNCTYPE(None)(addr)();
+        }
+    }
+    ct_classes = build_ctypes_classes(layout);
+    enum_maps = build_enum_maps(layout, {});
+    wrapper = wrap_native_function(
+        eng, layout.functions.get("tokenize"), ct_classes, enum_maps, {}, layout=layout
+    );
+    assert wrapper is not None;
+
+    sources = [
+        'x = "café"; y = 2;',  # 2-byte é
+        'name = "日本語";',  # 3-byte CJK
+        's = "emoji 😀 ok"; z = 9;',  # 4-byte emoji
+        '# ünïcode comment\nz = 1;',  # non-ASCII in a comment
+        'a = 1 + 2;'  # pure-ASCII fast path
+    ];
+    for source in sources {
+        (na_tokens, na_errors) = wrapper(source, "u.jac");
+        py_tokens = Lexer(source, "u.jac").tokenize();
+        assert na_errors == 0 , f"native lex errors for {source!r}: {na_errors}";
+        assert len(na_tokens) == len(py_tokens) , (
+            f"count mismatch {source!r}: native={len(na_tokens)} python={len(
+                py_tokens
+            )}"
+        );
+        for i in range(len(py_tokens)) {
+            nt = na_tokens[i];
+            pt = py_tokens[i];
+            getn = (lambda k : nt[k])
+                if isinstance(nt, dict)
+                else (lambda k : getattr(nt, k));
+            nloc = getn("loc");
+            getl = (lambda k : nloc[k])
+                if isinstance(nloc, dict)
+                else (lambda k : getattr(nloc, k));
+            assert getn("value") == pt.value , (
+                f"{source!r} tok{i} value: native={getn('value')!r} python={pt.value!r}"
+            );
+            assert getl("pos_start") == pt.loc.pos_start , (
+                f"{source!r} tok{i} pos_start: native={getl('pos_start')} python={pt.loc.pos_start}"
+            );
+            assert getl("pos_end") == pt.loc.pos_end , (
+                f"{source!r} tok{i} pos_end: native={getl('pos_end')} python={pt.loc.pos_end}"
+            );
+            assert getl("col_start") == pt.loc.col_start , (
+                f"{source!r} tok{i} col_start: native={getl('col_start')} python={pt.loc.col_start}"
+            );
+        }
+    }
+}
+
+# Illegal non-ASCII characters must count as ONE bad code point (not one error
+# per UTF-8 byte) and match the Python lexer's error count. Regression for the
+# native lexer treating each continuation byte as a separate illegal char.
+test "native tokenize error count matches python for illegal chars" {
+    import from jaclang.jac0core.native_marshal {
+        build_ctypes_classes,
+        build_enum_maps,
+        wrap_native_function
+    }
+    import ctypes as ct;
+
+    prog = JacProgram();
+    ir = prog.compile(file_path=NA_LEXER_PATH);
+    eng = ir.gen.native_engine;
+    layout = ir.gen.native_layout;
+    assert eng is not None and layout is not None;
+    for g in ["__jac_glob_init_tokens_na", "__jac_glob_init"] {
+        addr = eng.get_function_address(g);
+        if addr {
+            ct.CFUNCTYPE(None)(addr)();
+        }
+    }
+    ct_classes = build_ctypes_classes(layout);
+    enum_maps = build_enum_maps(layout, {});
+    wrapper = wrap_native_function(
+        eng, layout.functions.get("tokenize"), ct_classes, enum_maps, {}, layout=layout
+    );
+    assert wrapper is not None;
+
+    # ASCII illegal char, a single non-ASCII illegal code point, and two of them.
+    sources = ['x = 1; ` y;', 'x = 1; ¿ y;', 'a ¿ b ¿ c'];
+    for source in sources {
+        (na_tokens, na_errors) = wrapper(source, "e.jac");
+        py = Lexer(source, "e.jac");
+        py.tokenize();
+        assert na_errors == py.error_count , (
+            f"{source!r} error count: native={na_errors} python={py.error_count}"
+        );
+    }
+}
+
 # --- Performance benchmark ---
 test "native tokenize performance" {
     import from jaclang.jac0core.native_marshal {

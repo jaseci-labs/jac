@@ -29,11 +29,11 @@ impl CoalesceBBPass.printgraph_cfg -> str {
         bb_out = bb['bb_out'];
         cfg_labels[key] = [self._node_label(s) for s in bb['bb_stmts']];
         if bb_out {
-            out_ids: list[int] = [0 for _ in range(len(bb_out))];
+            out_ids: list[int] = [];
             for out_obj in bb_out {
                 for (k, v) in self.basic_blocks.items() {
                     if (out_obj == v['bb_stmts'][0]) {
-                        out_ids[bb_out.index(out_obj)] = k;
+                        out_ids.append(k);
                         break;
                     }
                 }
@@ -43,7 +43,13 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     }
     for (key, labels) in cfg_labels.items() {
         if labels {
-            stmts_str = '\\n'.join([stmt.replace('"', '\\"') for stmt in labels]);
+            stmts_str = '\\n'.join(
+                [
+                    stmt.replace('"', '\\"')
+                    for stmt in labels
+                    if stmt
+                ]
+            );
             dot += f'  {key} [label="BB{key}\\n{stmts_str}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
@@ -173,6 +179,27 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
             return kw + ' ' + nd.name_ref.unparse();
         }
         return kw;
+    }
+    # ReturnStmt whose value is a ternary: suppress label here -- the condition
+    # and each branch are already shown as separate BBs below this block.
+    if isinstance(nd, uni.ReturnStmt) {
+        if nd.expr and isinstance(nd.expr, uni.IfElseExpr) {
+            return "";
+        }
+        return nd.unparse();
+    }
+    # CfgExpr that is the value or else_value (not the condition) of a ternary
+    # directly inside a ReturnStmt: re-attach "return" so the branch label
+    # makes the control-flow intent visible.
+    if isinstance(nd, uni.CfgExpr) {
+        par = nd.parent;
+        if (
+            isinstance(par, uni.IfElseExpr)
+            and (nd is par.value or nd is par.else_value)
+            and isinstance(par.parent, uni.ReturnStmt)
+        ) {
+            return "return " + nd.unparse();
+        }
     }
     return nd.unparse();
 }
@@ -340,6 +367,14 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
         }
         if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             # Scope boundary -- don't recurse into nested scopes
+            continue;
+        }
+        if isinstance(k, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)) {
+            # Loop boundary -- body tails back-edge to the loop header (wired by
+            # the loop's exit handler), so don't sweep them to the successor.
+            if not k.bb_out and not self._is_terminal(k) {
+                self.link_bbs(k, target);
+            }
             continue;
         }
         if isinstance(k, uni.UniCFGNode) {
@@ -745,23 +780,32 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         }
     }
 
-    if nd.body {
-        self._link_sequential(nd.body);
-        # Back-edge: last body stmt -> loop header
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
+    self._link_body_tails_to_header(nd);
+}
+
+"""Back-edge every unconnected body tail to the loop header, including branch
+tails inside the body (e.g. the true arm of an if-without-else)."""
+impl CFGBuildPass._link_body_tails_to_header(
+    nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+) -> None {
+    if not nd.body {
+        return;
+    }
+    self._link_sequential(nd.body);
+    if not self._is_terminal(nd.body[-1]) {
+        self.link_bbs(nd.body[-1], nd);
+    }
+    # Scope to body stmts so else_body / successor never joins the cycle.
+    for stmt in nd.body {
+        self._connect_tails(stmt, nd);
     }
 }
 
 """InForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
+    self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
-        self._link_sequential(nd.body);
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
     }
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         self.link_bbs(nd, nd.else_body.body[0]);
@@ -770,12 +814,9 @@ impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
 
 """IterForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
+    self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
-        self._link_sequential(nd.body);
-        if not self._is_terminal(nd.body[-1]) {
-            self.link_bbs(nd.body[-1], nd);
-        }
     }
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         self.link_bbs(nd, nd.else_body.body[0]);
@@ -839,7 +880,7 @@ impl CFGBuildPass._wire_compr_filters(
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }
@@ -1014,19 +1055,20 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     }
 }
 
-"""JsxSlot: wire the lowered slot body into the enclosing function's CFG.
+"""JsxSlot: wire the slot body into the enclosing function's CFG.
 
 The slot lives in expression position inside a `CodeBlockStmt` (e.g. a
-`return <jsx>;` or an assignment). `ViewLowerPass` has already rewritten
-the author's `{ stmt; stmt; ... }` template into accumulator form: `acc
-= []; ...; return <>{acc}</>;`. Those statements are children of the
-slot and need their own intra-body sequential linking; additionally, the
-first body statement must inherit incoming flow from the slot's
-enclosing `CodeBlockStmt` so backward narrowing walks from inside the
-slot pick up guards established earlier in the surrounding function
-(e.g. an `if x is None { return; }` before the JSX). Without this link
-the slot body is an island in the CFG and any narrowing established
-outside is silently dropped at the boundary."""
+`return <jsx>;` or an assignment). Its body is the author's faithful
+`{ stmt; stmt; ... }` template — the cl-target accumulator lowering
+happens later, in EsastGenPass, so the control-flow shape the CFG cares
+about (the `if`/`for`/`skip`/`return` guards) is exactly the author's.
+Those statements need their own intra-body sequential linking;
+additionally, the first body statement must inherit incoming flow from
+the slot's enclosing `CodeBlockStmt` so backward narrowing walks from
+inside the slot pick up guards established earlier in the surrounding
+function (e.g. an `if x is None { return; }` before the JSX). Without
+this link the slot body is an island in the CFG and any narrowing
+established outside is silently dropped at the boundary."""
 impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [

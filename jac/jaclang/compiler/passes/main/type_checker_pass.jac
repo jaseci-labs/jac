@@ -10,6 +10,7 @@ Reference:
 """
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
     E1001,
     E1002,
@@ -21,6 +22,7 @@ import from jaclang.jac0core.diagnostics {
     E1020,
     E1021,
     E1022,
+    E1042,
     E1060,
     E1061,
     E1090,

@@ -98,6 +98,24 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+        # `await e`: native has no event loop, so an awaited coroutine has
+        # already run in this synchronous model — await evaluates to the
+        # value of its target. Correct for sequential async code; it does
+        # not provide concurrency.
+    } elif isinstance(nd, uni.AwaitExpr) {
+        _result = self._codegen_expr(nd.target);
+        # `flow e` / `wait e`: native has no threading runtime, so
+        # concurrency runs sequentially. `flow e` evaluates `e` eagerly and
+        # its value acts as the handle; `wait h` reads that already-computed
+        # value. Both therefore reduce to evaluating the target. Correct for
+        # independent tasks; no actual parallelism.
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        _result = self._codegen_expr(nd.target);
+    } elif isinstance(nd, uni.EdgeRefTrailer) {
+        # `[-->]` / `[->:Edge:->]`: query the native edge adjacency from `here`,
+        # yielding a `list` of neighbor handles (the kernel's `visit` target
+        # shape). issue #6146.
+        _result = self._codegen_edge_ref_trailer(nd);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)
@@ -124,6 +142,30 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         _result.jac_loc = _jac_loc;
     }
     return _result;
+}
+
+"""Lower a sub-expression that a statement *requires*, making failure loud.
+
+Statement consumers (return value, assignment RHS, loop/if conditions, store
+targets) must not silently drop a sub-expression that lowers to no value --
+that is the #6470 silent-no-code class, where valid Jac compiles clean and
+then misbehaves at runtime (empty body, dropped statement, default return).
+
+Evaluate `nd`; if it yields no value AND no deeper diagnostic already fired
+for it (e.g. `_codegen_atom_trailer` or `_codegen_call` reported the real
+root), raise E5090 so the gap surfaces at compile time. The errors_had-delta
+guard keeps a single, deepest diagnostic instead of one per enclosing layer.
+"""
+impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None) {
+    if nd is None {
+        return None;
+    }
+    _errs_before = len(self.errors_had);
+    val = self._codegen_expr(nd);
+    if val is None and len(self.errors_had) == _errs_before {
+        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+    }
+    return val;
 }
 
 """Collect free variable names referenced in a lambda body that are not
@@ -215,11 +257,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Emit the lambda body ---
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_func_symtab = dict(self.func_symtab);
     entry_bb = anon_fn.append_basic_block("entry");
-    self.builder = ir.IRBuilder(entry_bb);
+    self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     # Allocate ALL parameters (explicit + captured) as local variables
     for (i, arg) in enumerate(anon_fn.args) {
@@ -251,7 +293,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     # --- Restore parent context ---
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.func_symtab = saved_func_symtab;
     # --- Record pending captures for the assignment to associate with a var name ---
@@ -290,8 +332,92 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     return None;
 }
 
+"""Generate pipe-forward `|>` expression.
+
+`lhs |> f` is sugar for `f(lhs)`; a tuple lhs spreads into positional
+arguments, so `(a, b) |> f` is `f(a, b)`. We desugar by synthesizing a
+FuncCall (target = rhs, params = lhs / lhs.values) and delegating to the
+normal call path, which reuses all builtin/method/user dispatch. This
+mirrors how the Python pathway lowers pipe-forward.
+"""
+impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if isinstance(nd.left, uni.TupleVal) and nd.left.values {
+        call_params = list(nd.left.values);
+    } else {
+        call_params = [nd.left];
+    }
+    call = uni.FuncCall(
+        target=nd.right,
+        params=call_params,
+        genai_call=None,
+        kid=[nd.right, *call_params]
+    );
+    call.parent = nd.parent;
+    return self._codegen_expr(call);
+}
+
+"""Generate walrus `:=` expression.
+
+Binds `nd.left` (always a simple Name — the parser only accepts a Name
+on the left of `:=`) to the value of `nd.right`, then evaluates to that
+value so the enclosing expression can consume it, e.g. `if (n := f()) > 5`.
+
+The binding is stored into the name's local alloca, created in the entry
+block on first use. Pointer-typed values follow the same retain/release
+discipline as a normal assignment: retain a borrowed value before storing,
+release any prior occupant of an existing slot.
+"""
+impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    var_name = self._get_name(nd.left);
+    if var_name is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        return None;
+    }
+    value = self._codegen_expr(nd.right);
+    if value is None {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    if var_name in self.local_vars {
+        # Rebind an existing local: coerce to the slot type, then release
+        # the prior occupant (pointer slots only) after retaining the new one.
+        alloca = self.local_vars[var_name];
+        slot_type = alloca.type.pointee;
+        value = self._coerce_type(value, slot_type);
+        if isinstance(slot_type, ir.PointerType) {
+            if not self._is_owned(value) {
+                self._emit_rc_retain(value, op="walrus", loc=_loc);
+            }
+            old_val = self.builder.load(alloca, name=f"{var_name}.old");
+            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+    } else {
+        # First binding: allocate a slot in the entry block. The store
+        # below always runs before any scope cleanup, so the slot is never
+        # read uninitialized.
+        var_type = value.type;
+        alloca = self._entry_alloca(var_type, var_name);
+        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
+            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        }
+        self.builder.store(value, alloca);
+        self.local_vars[var_name] = alloca;
+    }
+    # Evaluate to the bound value. This is a borrowed read of the slot the
+    # local now owns — matching _codegen_name's borrow semantics.
+    return self.builder.load(alloca, name=var_name);
+}
+
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    # Edge connect (`a ++> b`, `a +>: Edge() :+> b`): the operator node is a
+    # ConnectOp, not a Token. Lower to the native edge adjacency (issue #6146).
+    if isinstance(nd.op, uni.ConnectOp) {
+        return self._codegen_connect(nd);
+    }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     # Inspect the op before recursing into operands. Some operators
     # (walrus `:=`, pipe-forward `|>`) have non-standard evaluation
@@ -299,9 +425,14 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     # Trying to evaluate `nd.left` first would return None, and the
     # function would silently exit returning None — masking the real
     # gap. Catch known-unsupported ops here so the error is loud.
-    if op in (Tok.WALRUS_EQ, Tok.PIPE_FWD) {
-        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
-        return None;
+    if op == Tok.WALRUS_EQ {
+        return self._codegen_walrus(nd);
+    }
+    if op == Tok.PIPE_FWD {
+        return self._codegen_pipe_fwd(nd);
+    }
+    if op == Tok.KW_SPAWN {
+        return self._codegen_spawn(nd);
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
@@ -329,6 +460,123 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         }
     }
     return result;
+}
+
+"""Lower the `spawn` operator: run a walker's entry abilities on a location.
+
+Milestone scope: a direct `walker spawn node` (either operand order) with
+compile-time dispatch and no traversal queue / `visit` yet. Identifies which
+operand is the walker (by archetype kind) and emits direct calls to the
+walker's entry abilities whose trigger matches the spawned location's type (or
+are untyped). Returns the walker, matching `spawn`'s value.
+"""
+impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    left_val = self._codegen_expr(nd.left);
+    right_val = self._codegen_expr(nd.right);
+    if left_val is None or right_val is None {
+        return None;
+    }
+    # Resolve each operand's archetype name from the AST (constructor call or
+    # typed variable).
+    left_name = self._spawn_operand_name(nd.left);
+    right_name = self._spawn_operand_name(nd.right);
+    left_is_walker = left_name is not None and self._is_walker_arch(left_name);
+    right_is_walker = right_name is not None and self._is_walker_arch(right_name);
+    (walker_name, walker_val, loc_val) = (None, None, None);
+    if left_is_walker {
+        (walker_name, walker_val, loc_val) = (left_name, left_val, right_val);
+    } elif right_is_walker {
+        (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
+    } else {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+        return left_val;
+    }
+    # `walker spawn loc` lowers to the portable osp_kernel (issue #6146):
+    # dispatch by the location's RUNTIME type tag, so computed locations,
+    # subtype / tuple triggers, exit abilities, and nested spawns all work. The
+    # kernel + descriptors are always registered for an OSP program (see
+    # _register_archetypes Pass 4.7), so this is the single spawn path.
+    if (walker_name in self.osp_tags)
+    and (self._osp_rt_global is not None)
+    and ("osp_spawn" in self.func_symtab) {
+        return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
+    }
+    # Reaching here means the OSP kernel was not registered for a walker that
+    # nonetheless has a type-tag -- an internal inconsistency rather than a user
+    # error; surface it instead of silently no-op'ing.
+    self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+    return walker_val;
+}
+
+"""Lower `walker spawn loc` to `osp_spawn(rt, box(walker), wdesc, [loc])` after
+a lazy `__osp_ensure_init()`. Dispatch happens at runtime in the kernel keyed on
+the location's `__type_tag`, so the location may be any expression."""
+impl NaIRGenPass._codegen_kernel_spawn(
+    walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+) -> (ir.Value | None) {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    # Lazily build descriptors / init _walk_stack (idempotent).
+    if self._osp_ensure_fn is not None {
+        self.builder.call(self._osp_ensure_fn, []);
+    }
+    osp_spawn_fn = self.func_symtab.get("osp_spawn");
+    if osp_spawn_fn is None {
+        return walker_val;
+    }
+    _argtys = osp_spawn_fn.function_type.args;
+    # starts: List.i64 carrying the start location as a ptrtoint'd handle (the
+    # kernel boxes it through `any`; tag_of recovers the type at the field).
+    _h = self.list_helpers.get("i64");
+    _starts = self._rc_call_with_ctx(
+        _h["new"], [], op="new", loc="", name="spawn.starts"
+    );
+    self._rc_call_with_ctx(
+        _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
+    );
+    # wdesc = (WalkerDesc*) __ospDESC[walker_tag]
+    _wtag = self.osp_tags.get(walker_name, 0);
+    _descp = self.builder.load(
+        self.builder.gep(
+            self._osp_desc_global,
+            [ir.Constant(i32, 0), ir.Constant(i32, _wtag)],
+            name="spawn.descp"
+        ),
+        name="spawn.desc.i8"
+    );
+    _rt = self.builder.load(self._osp_rt_global, name="spawn.rt");
+    self.builder.call(
+        osp_spawn_fn,
+        [
+            self._coerce_type(_rt, _argtys[0]),
+            self._coerce_type(walker_val, _argtys[1]),
+            self._coerce_type(_descp, _argtys[2]),
+            self._coerce_type(_starts, _argtys[3])
+        ]
+    );
+    return walker_val;
+}
+
+"""Resolve a spawn operand to its archetype name (None if not determinable)."""
+impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
+    if isinstance(nd, uni.FuncCall) {
+        return self._get_name(nd.target);
+    }
+    if isinstance(nd, uni.Name) {
+        return self.type_var_map.get(nd.value);
+    }
+    return None;
+}
+
+"""True if `name` is a walker archetype."""
+impl NaIRGenPass._is_walker_arch(name: str) -> bool {
+    arch = self.arch_ast_map.get(name);
+    return (
+        arch is not None
+        and isinstance(arch, uni.Archetype)
+        and arch.arch_type is not None
+        and arch.arch_type.name == Tok.KW_WALKER
+    );
 }
 
 """Generate comparison expression."""
@@ -367,6 +615,12 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                         result, ir.IntType(64), name="notin.i64"
                     );
                 }
+                # Release `left_coerced` (not `_cmp_left_orig`): a value-tuple
+                # key is boxed into a fresh owned heap tuple by _coerce_type, and
+                # that box — borrowed by `contains` — is what leaks otherwise.
+                self._release_owned_operands(
+                    left_coerced, _cmp_right_orig, op="cmp_in_dict"
+                );
                 return result;
             }
         }
@@ -388,6 +642,10 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                         result, ir.IntType(64), name="notin.i64"
                     );
                 }
+                # Release the boxed/coerced element (see dict path above).
+                self._release_owned_operands(
+                    left_coerced, _cmp_right_orig, op="cmp_in_set"
+                );
                 return result;
             }
         }
@@ -439,6 +697,10 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                     );
                     result = self.builder.zext(result, i64, name="notin.i64");
                 }
+                # Release the boxed/coerced element (see dict path above).
+                self._release_owned_operands(
+                    left_coerced, _cmp_right_orig, op="cmp_in_list"
+                );
                 return result;
             }
         }
@@ -698,6 +960,13 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             zero = ir.Constant(operand.type, 0);
             return self.builder.icmp_signed("==", operand, zero, name="not");
         }
+        # Everything else (containers, floats, pointers): negate the value's
+        # truthiness so `not x` agrees with `if x` -- _to_bool implements
+        # Python semantics (an EMPTY list/dict/set is falsy, not a null one).
+        # Without this, `not <list>` fell through unhandled and the enclosing
+        # statement was dropped, silently inverting kernel guards like
+        # `if not filtered { return False; }` in osp_visit (visit-else).
+        return self.builder.not_(self._to_bool(operand), name="not");
     } elif op == Tok.BW_NOT {
         # Bitwise NOT: ~x = x XOR -1 (all 1s)
         if isinstance(operand.type, ir.IntType) {
@@ -882,6 +1151,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     import platform as _plat;
                     return self._make_global_string(_plat.system().lower());
                 }
+                if right_name == "maxsize" {
+                    # Native int is i64, so maxsize is INT64_MAX (matches a
+                    # 64-bit CPython build).
+                    return ir.Constant(ir.IntType(64), 0x7FFFFFFFFFFFFFFF);
+                }
+                if right_name == "byteorder" {
+                    # Resolved at compile time from the host (the AOT target is
+                    # the host arch). CPython reports "little"/"big" the same way.
+                    import sys as _sys;
+                    return self._make_global_string(_sys.byteorder);
+                }
+            }
+            # Native stdlib math constants: math.pi, math.e, math.tau, ...
+            if (
+                target_name == "math"
+                and self?._native_stdlib_modules
+                and "math" in self._native_stdlib_modules
+            ) {
+                _mc = self._emit_math_const(right_name);
+                if _mc is not None {
+                    return _mc;
+                }
             }
             # Check enum member access: Color.WHITE
             full_name = f"{target_name}.{right_name}";
@@ -994,7 +1285,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             } else {
-                # String slicing
+                # Chained target (e.g. field access b.items[:n]) or string slicing.
+                # The target is not a simple list-typed name, so evaluate it and
+                # dispatch on the produced LLVM value: i8* → string slice,
+                # List.T* → list slice (mirrors the chained-index path below).
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
@@ -1002,6 +1296,17 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
+                        }
+                    } else {
+                        elem_type_name = self._infer_list_elem_type(target_val);
+                        if elem_type_name is not None {
+                            result = self._codegen_list_slice(
+                                target_val, s, elem_type_name
+                            );
+                            if result is not None {
+                                self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
+                                return result;
+                            }
                         }
                     }
                 }
@@ -1195,6 +1500,19 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
     }
+    # Dead-end: a recognized attribute/index/slice form we could not resolve to
+    # any load/gep. Returning None here used to let the caller silently drop the
+    # enclosing statement (the #6470 silent-no-code class), so make it loud --
+    # the receiver's type did not resolve to a native struct/container layout.
+    self.emit(
+        E5090,
+        node_override=nd,
+        kind="attribute access" if nd.is_attr else "subscript/index access",
+        name=(self._get_name(nd.right) or "<expr>")
+            if nd.is_attr
+            else (self._get_name(nd.target) or "<expr>"),
+        help_text="The receiver's type could not be resolved to a native struct/container layout, so the access lowered to no code. Give the value a concrete native type, or move this code to a @sv/Python context."
+    );
     return None;
 }
 

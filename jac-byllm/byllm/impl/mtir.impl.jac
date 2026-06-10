@@ -144,6 +144,19 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     } except Exception { }
 
+    # `by llm(system_prompt=...)` extends base. Accepts str or zero-arg callable.
+    call_system_prompt = call_params.get("system_prompt");
+    if callable(call_system_prompt) {
+        try {
+            call_system_prompt = call_system_prompt();
+        } except Exception {
+            call_system_prompt = None;
+        }
+    }
+    if call_system_prompt {
+        system_content += "\n\n" + str(call_system_prompt);
+    }
+
     # Conversational mode: `by llm(conversation=<list>)` splices the
     # caller's prior conversation between SYSTEM and USER. Entries on input
     # may be Messages or dicts; write-back always emits dicts.
@@ -183,9 +196,14 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
-    if is_streaming and return_type is not str {
+    if is_streaming
+    and return_type is not str
+    and call_params.get("stream_handler") is None {
         raise ConfigurationError(
-            "Streaming responses are only supported for str return types."
+            "Streaming responses are only supported for str return types. "
+            "Pass a stream_handler to receive stream events for a structured "
+            "return type (e.g. `visit [-->] by model(stream=True, "
+            "stream_handler=fn)`)."
         );
     }
     if len(tools) > 0 {
@@ -357,17 +375,30 @@ impl MTRuntime.get_output_schema -> dict | None {
     assert (
         len(self.tools) == 0 or self.get_tool("finish_tool") is not None
     );  #Finish tool should be present in the tools list.
-    if len(self.tools) == 0 and self.resp_type {
-        if self.resp_type is str {
-            return None;  # Strings are default and not using a schema.
-        }
-        # Use MTIR info if available, otherwise None (Python library mode)
-        return_type_info = self.mtir.ir_info.return_type
-            if (self.mtir and self.mtir.ir_info)
-            else None;
-        return type_to_schema(resp_type=self.resp_type, info=return_type_info);
+    if len(self.tools) == 0 {
+        return self.get_typed_output_schema();
     }
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.
     return None;
+}
+
+"""Return the JSON schema for the structured return type, even with tools present.
+
+Unlike get_output_schema, not suppressed when tools exist (used for retry feedback).
+"""
+impl MTRuntime.get_typed_output_schema -> dict | None {
+    if self.resp_type is None or self.resp_type is str {
+        # No structured schema: str is the default and not schema-driven.
+        return None;
+    }
+    # Use MTIR info if available, otherwise None (Python library mode)
+    return_type_info = self.mtir.ir_info.return_type
+        if (self.mtir and self.mtir.ir_info)
+        else None;
+    return type_to_schema(resp_type=self.resp_type, info=return_type_info);
+}
+
+impl MTIR.runtime.getter -> MTRuntime {
+    return MTRuntime.factory(self);
 }

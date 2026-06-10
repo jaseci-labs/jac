@@ -13,9 +13,13 @@ import from jaclang.jac0core.jir {
     SEC_LLVM_IR,
     SEC_INTEROP,
     SEC_NATIVE_OBJ,
+    SEC_MODKEY,
     FLAG_PRECOMPILED,
     get_module_cache_path,
     is_module_cache_valid,
+    jir_matches_source,
+    compute_module_key,
+    cache_mode,
     read_bytecode_only,
     read_sections,
     SECTIONS_MAGIC,
@@ -27,8 +31,8 @@ import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes {
     ASTValidationPass,
+    BoundaryAnalysisPass,
     DeclImplMatchPass,
-    InteropAnalysisPass,
     JacAnnexPass,
     PyastGenPass,
     PyBytecodeGenPass,
@@ -46,6 +50,18 @@ def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 glob _ir_sched_loading = False,
      _codegen_sched_loading = False,
      _typecheck_sched_loading = False;
+
+"""Boundary analysis schedule: the single producer of cross-boundary interop
+    facts for every module (server / client / native).
+
+    Runs unconditionally. `BoundaryAnalysisPass` is statically imported, so it
+    has no lazy-compile re-entrancy hazard and must NOT be gated on the
+    `_*_sched_loading` flags — doing so dropped interop facts whenever an
+    unrelated loader was mid-bootstrap during a concurrent compile.
+    """
+def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    return [BoundaryAnalysisPass];
+}
 
 """Full IR generation schedule.
 
@@ -67,7 +83,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
     _ir_sched_loading = True;
     try {
-        import from jaclang.compiler.passes.main.view_lower_pass { ViewLowerPass }
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
@@ -77,10 +92,12 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
-        # ViewLowerPass runs first: it desugars `view` declarators into plain
-        # `def:pub -> JsxElement` abilities before any other pass sees them.
+        # JSX `{...}` slot bodies are NOT desugared here: the surface AST is
+        # kept faithful through analysis (ASTValidationPass enforces the slot
+        # body rules) and the accumulator-IIFE lowering happens at cl codegen
+        # time in EsastGenPass, so the formatter/unparser round-trip the
+        # author's template verbatim from real tokens.
         return [
-            ViewLowerPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -186,10 +203,10 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
-        passes: list[type[Transform[uni.Module, uni.Module]]] = [
-            InteropAnalysisPass,
-            EsastGenPass
-        ];
+        # InteropAnalysis + WalkerEffects were merged into BoundaryAnalysisPass,
+        # which now runs once in the shared front-end (get_boundary_analysis_sched)
+        # rather than here in codegen.
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
         passes.extend([NaIRGenPass, NativeCompilePass]);
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
@@ -267,8 +284,8 @@ obj _SetupProgress {
     def _get_jaclang_root -> str;
     def _atexit_handler -> None;
     def on_internal_compile(file_path: str) -> None;
-    @property
-    def is_active -> bool;
+
+    has is_active: bool { getter; }
 }
 
 glob setup_progress = _SetupProgress();
@@ -367,9 +384,7 @@ obj JacCompiler {
     }
 
     has _internal_program: (JacProgram | None) = None;
-
-    @property
-    def internal_program -> JacProgram;
+    has internal_program: JacProgram { getter; }
 
     @classmethod
     def _get_jaclang_root(cls: any) -> str;
@@ -407,6 +422,7 @@ obj JacCompiler {
 
     def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None);
     def _build_interop_dict(result: uni.Module) -> dict;
+    def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(
         source_str: str,
         file_path: str,
@@ -434,6 +450,11 @@ obj JacCompiler {
         passes: list[type[Transform[uni.Module, uni.Module]]],
         cancel_token: (Event | None) = None
     ) -> None;
+
+    """Count codegen-blocking errors attributed to a specific module file."""
+    static def _count_module_blocking_errors(
+        target_program: JacProgram, mod_path: str
+    ) -> int;
 
     static def _prepare_tool_program(
         source_str: str,

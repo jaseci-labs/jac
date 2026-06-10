@@ -7,7 +7,6 @@ native machine code, and produce correct results when executed via ctypes.
 import ctypes;
 import io;
 import os;
-import pytest;
 import subprocess;
 import sys;
 import tempfile;
@@ -57,6 +56,38 @@ test "arithmetic multiply" {
     assert mul(5, 6) == 30;
     assert mul(-3, 7) == -21;
     assert mul(0, 999) == 0;
+}
+
+# --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
+test "native callable struct field: indirect call through a field" {
+    (eng, _) = compile_native("callable_field.na.jac");
+    call_one = get_func(eng, "call_one", ctypes.c_int64, ctypes.c_int64);
+    assert call_one(21) == 42;
+    dispatch_all = get_func(eng, "dispatch_all", ctypes.c_int64, ctypes.c_int64);
+    # double(x) + negate(x): a list of {tag, fn} structs iterated and called.
+    assert dispatch_all(10) == 10;
+    assert dispatch_all(3) == 3;
+}
+
+# --- Object-Spatial Programming (walker / node / spawn / abilities) ---
+test "native osp: spawn dispatches entry ability and mutates walker state" {
+    (eng, _) = compile_native("osp_spawn.na.jac");
+    collect_two = get_func(
+        eng, "collect_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    # Walker spawns on two Item nodes; the `grab with Item entry` ability reads
+    # `here.val` and accumulates into `self.total` across both spawns.
+    assert collect_two(10, 32) == 42;
+    assert collect_two(0, 0) == 0;
+    assert collect_two(5, 5) == 10;
+}
+
+test "native osp: spawn returns the walker" {
+    (eng, _) = compile_native("osp_spawn.na.jac");
+    collect_one = get_func(eng, "collect_one", ctypes.c_int64, ctypes.c_int64);
+    # `(Collector() spawn Item(val=v)).total` — spawn evaluates to the walker.
+    assert collect_one(7) == 7;
+    assert collect_one(0) == 0;
 }
 
 test "arithmetic negate" {
@@ -119,6 +150,23 @@ test "recursion fibonacci" {
     assert fib(1) == 1;
     assert fib(10) == 55;
     assert fib(15) == 610;
+}
+
+test "nested functions helper recursion and module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    use_helper = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(n) + double(n + 1) == 4n + 2
+    assert use_helper(0) == 2;
+    assert use_helper(5) == 22;
+    nested_recursion = get_func(
+        eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64
+    );
+    assert nested_recursion(1) == 1;
+    assert nested_recursion(5) == 120;
+    uses_global = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    # x + BASE, BASE == 100
+    assert uses_global(0) == 100;
+    assert uses_global(7) == 107;
 }
 
 # --- TestNativeContextIsolation ---
@@ -213,6 +261,28 @@ test "strings greet" {
     assert f() == b"hello";
 }
 
+# Regression for #6442: native must decode numeric/codepoint escapes
+# (\xNN, \uXXXX, \U00XXXXXX) identically to the sv pathway (ast.literal_eval),
+# per the na ⊆ sv guarantee. Native returns the string as a UTF-8 byte buffer
+# (c_char_p), so the expected value is the Python-decoded string, utf-8 encoded.
+test "strings numeric escapes decode (na subseteq sv)" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_numeric", ctypes.c_char_p);
+    assert f() == "aAbéc😀d".encode("utf-8");
+}
+
+test "strings unicode escape decode (na subseteq sv)" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_u", ctypes.c_char_p);
+    assert f() == "X—Y".encode("utf-8");
+}
+
+test "strings simple escapes still decode" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "escapes_simple", ctypes.c_char_p);
+    assert f() == b"p\tq\nr";
+}
+
 test "strings str equal" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "str_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);
@@ -235,6 +305,43 @@ test "strings concat" {
         eng, "concat_strings", ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p
     );
     assert f(b"hello ", b"world") == b"hello world";
+}
+
+# UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
+# previously unimplemented in native (returned empty); these lock in that
+# `s.encode()[a:b].decode()` round-trips and that byte access is portable.
+test "bytes utf8 byte_len" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
+    assert f("café".encode("utf-8")) == 5;
+    assert f("日本語".encode("utf-8")) == 9;
+    assert f(b"ascii") == 5;
+}
+
+test "bytes utf8 byte_at portable" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    f = get_func(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
+    enc = "café".encode("utf-8");  # 63 61 66 C3 A9
+    for i in range(len(enc)) {
+        assert f(enc, i) == enc[i] , f"byte_at({i}) native={f(enc, i)} py={enc[i]}";
+    }
+}
+
+test "bytes utf8 decode roundtrip and slice" {
+    (eng, _) = compile_native("bytes_utf8.na.jac");
+    rt = get_func(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
+    assert rt("café".encode("utf-8")) == "café".encode("utf-8");
+    sd = get_func(
+        eng,
+        "slice_decode",
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    enc = "café".encode("utf-8");
+    assert sd(enc, 0, 3) == b"caf";
+    assert sd(enc, 3, 5) == "é".encode("utf-8");
 }
 
 test "strings fstring int" {
@@ -381,6 +488,76 @@ test "objects empty dict in struct ctor" {
     (eng, _) = compile_native("objects.na.jac");
     f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
     assert f() == 30;
+}
+
+# --- TestNativeSliceObjectField (issue #6473) ---
+test "slice object field roundtrip matches local" {
+    # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)
+    # because the slice was mis-lowered as a plain index. It must now behave
+    # identically to the same logic on a plain-list local.
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    fld = get_func(eng, "field_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    loc = get_func(eng, "local_roundtrip", ctypes.c_int64, ctypes.c_int64);
+    for k in [-1, 0, 1, 2, 3, -2] {
+        assert fld(k) == 3 , f"field_roundtrip({k}) != 3";
+        assert fld(k) == loc(k) , f"field/local mismatch at k={k}";
+    }
+}
+
+test "slice object field takes correct elements" {
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "field_prefix_sum", ctypes.c_int64, ctypes.c_int64);
+    # items = [10, 20, 30, 40]
+    assert f(0) == 0;
+    assert f(1) == 10;
+    assert f(2) == 30;
+    assert f(3) == 60;
+    assert f(4) == 100;
+}
+
+test "slice object field osp insert shape" {
+    # The portable OSP-kernel osp_visit shape: scope.next[:pos] + filtered + scope.next[pos:]
+    (eng, _) = compile_native("slice_object_field.na.jac");
+    f = get_func(eng, "osp_insert", ctypes.c_int64, ctypes.c_int64);
+    assert f(-1) == 4;  # insert before last
+    assert f(0) == 4;  # prepend
+    assert f(-100) == 4;  # clamp to 0
+    assert f(3) == 4;  # append
+}
+
+# --- TestNativeBoxAnyTupleSlot (issue #6511) ---
+test "box int into any tuple slot via append" {
+    # A concrete int appended in a tuple to a bare list whose slot is `any`
+    # (the OSP-kernel work-stack shape) used to be stored unboxed and read back
+    # as 0. It must now round-trip through the `any` seam.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "osp_append_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box int into any tuple slot multiple appends" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "many_append_entry", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "box int into any tuple slot via list literal" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "lit_mix_entry", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "box float into any tuple slot" {
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "flt_append_entry", ctypes.c_double);
+    assert f() == 3.5;
+}
+
+test "box any tuple slot via param still works" {
+    # The already-working control: an `any` value entering the slot stays boxed.
+    (eng, _) = compile_native("box_any_tuple_slot.na.jac");
+    f = get_func(eng, "via_param_entry", ctypes.c_int64);
+    assert f() == 7;
 }
 
 # --- TestNativeInheritance ---
@@ -1194,6 +1371,19 @@ test "runtime errors list negative index" {
     assert f() == 1;
 }
 
+test "list valid negative index" {
+    (eng, _) = compile_native("runtime_errors.na.jac");
+    f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "list method on object field (pop)" {
+    (eng, _) = compile_native("list_field_methods.na.jac");
+    # pop() on a field list must shrink it: depth 2 -> 1 encodes as 21.
+    f = get_func(eng, "field_pop_shrinks", ctypes.c_int64);
+    assert f() == 21;
+}
+
 test "runtime errors list index at len" {
     (eng, _) = compile_native("runtime_errors.na.jac");
     f = get_func(eng, "test_list_index_at_len", ctypes.c_int64);
@@ -1714,6 +1904,88 @@ test "clib import inside na block" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib extensionless logical import produces extern declares (issue #6387)" {
+    # `import from raylib { def ... }` (no path, no extension) must still emit
+    # extern `declare`s for the brace-block decls and resolve to exactly one
+    # logical library name -- no cross-module dependency leak.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_logical_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
+    assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
+    assert 'define void @"open_then_close"' in s , "wrapper not defined";
+    assert ir.gen._clib_paths is not None;
+    assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
+    # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
+    # module, so the type-checker emits no W1100 "module not found" for it. (A
+    # W5021 "C library not found" at JIT time is expected here and unrelated --
+    # raylib is not installed on the test host.)
+    _warns = [
+        w
+        for w in prog.warnings_had
+        if w?.code and w.code.code == "W1100"
+    ];
+    assert not _warns , f"unexpected W1100 module-not-found: {[
+        str(w.msg) for w in _warns
+    ]}";
+}
+
+test "clib extensionless import resolves per platform (issue #6387)" {
+    # The same source names the platform-correct filename off the target triple:
+    # libraylib.so (ELF) / libraylib.dylib (Mach-O) / raylib.dll (PE). Cross-
+    # targets via JAC_NATIVE_TARGET, mirroring the AArch64 ABI test below.
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _fix = str(os.path.join(FIXTURES, "clib_logical_import.na.jac"));
+    try {
+        for (tgt, want) in [
+            ("x86_64-unknown-linux-gnu", "libraylib.so"),
+            ("aarch64-unknown-linux-gnu", "libraylib.so"),
+            ("x86_64-apple-darwin", "libraylib.dylib"),
+            ("arm64-apple-darwin", "libraylib.dylib"),
+            ("x86_64-pc-windows-msvc", "raylib.dll")
+        ] {
+            _os.environ["JAC_NATIVE_TARGET"] = tgt;
+            prog = JacProgram();
+            ir = prog.compile(_fix, options=CompileOptions(type_check=False));
+            assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
+            assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
+        }
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
+}
+
+test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
+    # A dotted name puts leading components in a sub-directory and pins the
+    # lookup to the binary's directory via the loader token, composing with the
+    # $ORIGIN / @loader_path runpath from #6380.
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.na.jac"));
+    try {
+        _os.environ["JAC_NATIVE_TARGET"] = "x86_64-unknown-linux-gnu";
+        ir = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
+        assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
+        _os.environ["JAC_NATIVE_TARGET"] = "arm64-apple-darwin";
+        ir2 = JacProgram().compile(_fix, options=CompileOptions(type_check=False));
+        assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
+}
+
 test "clib struct value-type coercion" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")));
@@ -1735,9 +2007,82 @@ test "clib struct value-type coercion" {
     assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
-    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
-    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+    # System V ABI coercion at the call site: the Color value is reinterpreted
+    # as its register coerce type ({i32}) and the eightbyte is loaded out.
+    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+}
+
+test "clib System V AMD64 ABI lowering" {
+    # x86_64-only: asserts the emitted foreign-call ABI matches what clang/gcc
+    # produce for each eightbyte classification case (Phase 1 of #6353).
+    import platform;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        return;
+    }
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # SSE eightbytes: float fields pack into <2 x float> / trailing float.
+    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
+    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")' in s , "V3 expand + 2-eightbyte SSE return";
+    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    # INTEGER eightbyte: all-int small struct coerces to a single integer.
+    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
+    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    # Two SSE double eightbytes.
+    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return.
+    assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
+    assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
+    assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    # The non-injective return-boxing (gap #7) is gone: a scalar return is never
+    # rerouted through struct boxing.
+    assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
+}
+
+test "clib AArch64 AAPCS ABI lowering" {
+    # Cross-targets aarch64 (works from any host) and asserts the emitted
+    # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
+    import os as _os;
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _os.environ["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+    try {
+        prog = JacProgram();
+        ir = prog.compile(
+            str(os.path.join(FIXTURES, "clib_sysv_abi.na.jac")),
+            options=CompileOptions(type_check=False)
+        );
+        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+        s = str(ir.gen.llvm_ir);
+        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
+        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
+        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
+        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        # HFA of doubles.
+        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
+        # a 4-byte struct).
+        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
+        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
+        # sret for the return.
+        assert 'declare float @"cam_fovy"(%"Cam.cabi"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert "byval" not in s , "AAPCS must not emit byval";
+        assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    } finally {
+        if _saved is None {
+            del _os.environ["JAC_NATIVE_TARGET"];
+        } else {
+            _os.environ["JAC_NATIVE_TARGET"] = _saved;
+        }
+    }
 }
 
 # --- TestRefCounting ---
@@ -1947,17 +2292,7 @@ def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
 }
 
 test "auto promote chess.jac detects native compatible" {
-    # xfail (#6049 section A follow-ups): with native diagnostic suppression
-    # dropped, chess.jac trips type-checker gaps the central evaluator does not
-    # yet model for the native dialect -- nullability narrowing on
-    # `Board | NoneType` and numeric operator-overload resolution
-    # (`__add__`/`__mul__`/`__mod__`). Tracked as separate sub-issues; this test
-    # recovers to green automatically once those land.
-    try {
-        (ir, _) = compile_auto_native(CHESS_JAC);
-    } except AssertionError as e {
-        pytest.xfail(f"#6049 deferred native-dialect type-checker gaps: {e}");
-    }
+    (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
     assert ir.gen.native_compat , ("chess.jac should be auto-promoted to native");
     assert ir.gen.native_engine is not None , (
@@ -1966,15 +2301,7 @@ test "auto promote chess.jac detects native compatible" {
 }
 
 test "auto promote chess.jac has entry and key functions" {
-    # xfail (#6049 section A follow-ups): see "detects native compatible" above
-    # -- chess.jac hits unmodeled native-dialect nullability/operator-overload
-    # type-checker gaps once suppression is dropped. Recovers to green once the
-    # deferred sub-issues land.
-    try {
-        (ir, _) = compile_auto_native(CHESS_JAC);
-    } except AssertionError as e {
-        pytest.xfail(f"#6049 deferred native-dialect type-checker gaps: {e}");
-    }
+    (ir, _) = compile_auto_native(CHESS_JAC);
     eng = ir.gen.native_engine;
     assert eng is not None;
     # jac_entry must exist
@@ -2110,6 +2437,133 @@ test "sys argv via nacompile" {
             f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
         );
     }
+}
+
+# --- TestNativeAArch64Linker ---
+test "aarch64 standalone binary runs (issue #6366)" {
+    # Cross-compile a trivial program to aarch64 via the in-house ELF linker
+    # and run it under qemu-user. Guards the linker's absolute-address
+    # relocations (R_AARCH64_MOVW_UABS_G0..G3): without them every global /
+    # .rodata reference materializes to NULL and the binary segfaults at entry.
+    import shutil;
+    import tempfile;
+    qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
+    ld_prefix = "/usr/aarch64-linux-gnu";
+    loader = os.path.join(ld_prefix, "lib", "ld-linux-aarch64.so.1");
+    if not qemu or not os.path.exists(loader) {
+        import pytest;
+        pytest.skip("aarch64 qemu-user + cross libc not installed");
+    }
+    fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "a64_roundtrip");
+        # Step 1: cross-compile for aarch64.
+        comp_env = dict(os.environ);
+        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=comp_env
+        );
+        assert comp.returncode == 0 , (
+            f"aarch64 nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        # Step 2: run under qemu-user. total = add(40, 2) = 42, surfaced via
+        # sys.exit. A dropped MOVW_UABS reloc stores to NULL -> SIGSEGV
+        # (returncode -11 / 139) instead of the expected 42.
+        run_env = dict(os.environ);
+        run_env["QEMU_LD_PREFIX"] = ld_prefix;
+        result = subprocess.run(
+            [qemu, out_bin], capture_output=True, text=True, timeout=30, env=run_env
+        );
+        assert result.returncode == 42 , (
+            f"Expected exit 42, got {result.returncode} "
+            f"(SIGSEGV/-11/139 == dropped R_AARCH64_MOVW_UABS relocations).\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+    }
+}
+
+test "elf linker rejects unhandled relocation (issue #6366 guard)" {
+    # Defense-in-depth: the linker must refuse to emit a binary when a
+    # relocation targeting an emitted section has no handler, rather than
+    # silently leaving the reference pointing at NULL (the #6366 failure mode).
+    # Pure link-time check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    # A function that loads a module global forces an address-materialization
+    # relocation into .text against the global.
+    ir = "target triple = \"aarch64-unknown-linux-gnu\"\n" + "@g = global i64 0\n" + "define i64 @f() {\n  %v = load i64, i64* @g\n  ret i64 %v\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("aarch64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6"]
+    );
+    assert linker.parse_object() , "parse_object failed on aarch64 object";
+    assert len(linker.relocations) > 0 , "expected at least one relocation";
+    # Corrupt a relocation that patches the emitted code section to an unknown
+    # type; the linker must raise instead of emitting an unrelocated binary.
+    target = None;
+    for r in linker.relocations {
+        if r.target_sec and "text" in r.target_sec {
+            target = r;
+            break;
+        }
+    }
+    assert target is not None , "no .text relocation found to corrupt";
+    target.rtype = 9999;
+    raised = False;
+    try {
+        linker.build_executable();
+    } except ValueError as e {
+        raised = True;
+        assert "relocation type" in str(e) , f"unexpected message: {e}";
+    }
+    assert raised , "linker silently accepted an unhandled relocation";
+}
+
+test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
+    # A standalone binary must find a sibling shared library regardless of the
+    # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
+    # resolves needed libraries relative to the executable. Pure link-time
+    # check -- no execution, so it runs without qemu.
+    import llvmlite.binding as llvm;
+    import struct;
+    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    ir = "target triple = \"x86_64-unknown-linux-gnu\"\n" + "define i64 @f() {\n  ret i64 0\n}\n";
+    mod = llvm.parse_assembly(ir);
+    tm = llvm.Target.from_triple("x86_64-unknown-linux-gnu").create_target_machine(
+        opt=2
+    );
+    obj_bytes = tm.emit_object(mod);
+    linker = ElfLinker(
+        obj_data=obj_bytes,
+        sections=[],
+        symbols=[],
+        relocations=[],
+        needed_libs=["libc.so.6", "libfoo.so"]
+    );
+    assert linker.parse_object() , "parse_object failed";
+    out = linker.build_executable();
+    # The $ORIGIN runpath string is emitted into .dynstr ...
+    assert b"$ORIGIN\x00" in out , "DT_RUNPATH $ORIGIN string not emitted";
+    # ... and referenced by a DT_RUNPATH (tag 29) dynamic entry.
+    assert struct.pack("<q", 29) in out , "DT_RUNPATH (tag 29) dynamic entry missing";
 }
 
 # --- TestNativeListBugs ---
@@ -2485,7 +2939,17 @@ test "layout exports all expected functions" {
     (eng, ir) = compile_native("func_ptr_fields.na.jac");
     layout = ir.gen.native_layout;
     assert layout is not None;
-    expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
+    expected = {
+        "add",
+        "mul",
+        "negate",
+        "identity",
+        "make_all_fields",
+        "get_all_fields_x",
+        "get_all_fields_flag",
+        "make_maybe_point",
+        "get_maybe_x"
+    };
     assert expected == set(layout.functions.keys());
 }
 
@@ -3196,4 +3660,282 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
         "sv pathway must reject `w: Wrapper = raw` (int → obj). The native "
         "pointer-bitcast escape hatch must not apply outside .na.jac modules."
     );
+}
+
+# ─── async / await (synchronous model) ───────────────────────────────────
+test "await resolves an async call to its value" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "driver", ctypes.c_int64, ctypes.c_int64);
+    # x = await get_val() = 5; y = await add_async(5, n)
+    assert f(10) == 15;
+    assert f(0) == 5;
+}
+
+test "nested awaits evaluate inside-out" {
+    (eng, _) = compile_native("async_await.na.jac");
+    f = get_func(eng, "nested_await", ctypes.c_int64, ctypes.c_int64);
+    # add_async(get_val()=5, n)
+    assert f(3) == 8;
+    assert f(-5) == 0;
+}
+
+# ─── flow / wait (synchronous model) ─────────────────────────────────────
+test "flow then wait returns the task result" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_one", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;
+    assert f(0) == 0;
+}
+
+test "wait directly on a flow expression" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_inline", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 14;
+}
+
+test "multiple flow handles waited independently" {
+    (eng, _) = compile_native("flow_wait.na.jac");
+    f = get_func(eng, "run_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # task(3)+task(4) = 6+8 = 14
+    assert f(3, 4) == 14;
+}
+
+# ─── C-style iter-for loop ───────────────────────────────────────────────
+test "iter-for sums a counted range" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "sum_n", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 10;  # 0+1+2+3+4
+    assert f(0) == 0;
+    assert f(1) == 0;
+}
+
+test "iter-for counts down with a decrementing step" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "count_down", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 5;  # i = 5,4,3,2,1
+    assert f(0) == 0;
+}
+
+test "iter-for honors break" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_break", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 3;  # 0+1+2, break at i==3
+    assert f(2) == 1;  # 0+1
+}
+
+test "iter-for honors continue and still advances the counter" {
+    (eng, _) = compile_native("iter_for.na.jac");
+    f = get_func(eng, "with_continue", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 8;  # 0+1+3+4 (skip 2)
+    assert f(2) == 1;  # 0+1
+}
+
+# ─── Nested function definitions ─────────────────────────────────────────
+test "nested function helper is callable from its enclosing function" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
+    # double(5) + double(6) = 10 + 12 = 22
+    assert f(5) == 22;
+    assert f(0) == 2;
+}
+
+test "nested function can recurse" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 120;
+    assert f(1) == 1;
+}
+
+test "nested function can read a module global" {
+    (eng, _) = compile_native("nested_def.na.jac");
+    f = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 107;
+}
+
+# ─── Match statements ────────────────────────────────────────────────────
+test "match dispatches on literal value patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "classify", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 100;
+    assert f(1) == 200;
+    assert f(5) == 300;
+}
+
+test "match supports OR patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_or", ctypes.c_int64, ctypes.c_int64);
+    assert f(1) == 1;
+    assert f(2) == 1;
+    assert f(3) == 1;
+    assert f(4) == 0;
+}
+
+test "match capture pattern binds the subject" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_capture", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;
+    assert f(7) == 14;
+}
+
+test "match honors case guards" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "with_guard", ctypes.c_int64, ctypes.c_int64);
+    assert f(20) == 1;
+    assert f(11) == 1;
+    assert f(5) == 2;
+    assert f(-1) == 3;
+}
+
+test "match dispatches on string patterns" {
+    (eng, _) = compile_native("match_stmt.na.jac");
+    f = get_func(eng, "match_str", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"hi") == 1;
+    assert f(b"bye") == 2;
+    assert f(b"nope") == 0;
+}
+
+# ─── Pipe-forward operator `|>` ──────────────────────────────────────────
+test "pipe-forward feeds lhs as the sole argument" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_single", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 6;
+    assert f(-1) == 0;
+}
+
+test "pipe-forward chains left-associatively" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
+    # inc(inc(5)) == 7
+    assert f(5) == 7;
+    assert f(0) == 2;
+}
+
+test "pipe-forward spreads a tuple lhs into multiple args" {
+    (eng, _) = compile_native("pipe_fwd.na.jac");
+    f = get_func(eng, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    # add(3, 4) == 7
+    assert f(3, 4) == 7;
+    assert f(10, -2) == 8;
+}
+
+# ─── Walrus operator `:=` ────────────────────────────────────────────────
+test "walrus operator binds inside an if-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_if", ctypes.c_int64, ctypes.c_int64);
+    # x=10 -> n=20 (>5) -> 21
+    assert f(10) == 21;
+    # x=1 -> n=2 (not >5) -> returns n=2
+    assert f(1) == 2;
+}
+
+test "walrus operator rebinds inside a while-condition" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_in_while", ctypes.c_int64, ctypes.c_int64);
+    # sum(0..4) = 10
+    assert f(5) == 10;
+    assert f(0) == 0;
+    # sum(0..9) = 45
+    assert f(10) == 45;
+}
+
+test "walrus expression evaluates to the assigned value" {
+    (eng, _) = compile_native("walrus.na.jac");
+    f = get_func(eng, "walrus_value", ctypes.c_int64, ctypes.c_int64);
+    # m = a+10 = 15, y = 15, y+m = 30
+    assert f(5) == 30;
+    # m = 10, y = 10, 20
+    assert f(0) == 20;
+}
+
+test "user function shadowing a builtin name is called instead of the builtin" {
+    (eng, _) = compile_native("shadow_builtin.na.jac");
+    f = get_func(eng, "call_shadowed_len", ctypes.c_int64);
+    # User `def len(x) { return x + 99; }` must win over the `len` builtin.
+    assert f() == 100;
+}
+
+# Primitive method dispatch now keys off the emitter contract (no hardcoded
+# method-name tuples); exercise int/float methods to lock that in.
+test "primitive int bit_length via emitter dispatch" {
+    (eng, _) = compile_native("prim_method_dispatch.na.jac");
+    f = get_func(eng, "int_bit_length", ctypes.c_int64);
+    assert f() == 8;
+}
+
+test "primitive int bit_count via emitter dispatch" {
+    (eng, _) = compile_native("prim_method_dispatch.na.jac");
+    f = get_func(eng, "int_bit_count", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "primitive float is_integer via emitter dispatch" {
+    (eng, _) = compile_native("prim_method_dispatch.na.jac");
+    f = get_func(eng, "float_is_integer", ctypes.c_int64);
+    assert f() == 1;
+}
+
+# Integer enum members fold through the AST .lit_value getter (base-0), so
+# hex/oct/bin literals work (base-10 int(value) parsing would have raised).
+test "enum hex/oct/bin int members fold via lit_value" {
+    (eng, _) = compile_native("hex_enum.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    assert get_func(eng, "flag_a", ctypes.c_int64)() == 255;
+    assert get_func(eng, "flag_b", ctypes.c_int64)() == 15;
+    assert get_func(eng, "flag_c", ctypes.c_int64)() == 10;
+}
+
+test "parameterless no-return function (def foo {}) is not dropped" {
+    # `def foo { ... }` (no parens, no return type) is semantically
+    # `def foo() -> None`. The native backend used to drop such functions and
+    # their call sites entirely, so `run_ticks(n)` returned 0 instead of n.
+    (eng, _) = compile_native("noret_no_params.na.jac");
+    # The function must actually be emitted, not silently elided.
+    assert eng.get_function_address("tick") != 0 , "void no-signature function 'tick' was dropped from the module";
+    run_ticks = get_func(eng, "run_ticks", ctypes.c_int64, ctypes.c_int64);
+    # If the tick() calls are emitted and run, hits == n.
+    assert run_ticks(5) == 5 , "calls to a no-signature void function were not emitted";
+    assert run_ticks(0) == 0;
+    assert run_ticks(13) == 13;
+    # The no-parens form must behave identically to the explicit `()` form.
+    run_ticks_parens = get_func(
+        eng, "run_ticks_parens", ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_ticks_parens(5) == run_ticks(5);
+}
+
+# --- Union / tuple-trigger field access (issue #6470) ---
+test "field access on a `|` union parameter lowers the field load" {
+    # `get_val(x: A | B) -> int { return x.val; }` -- both members carry `val`
+    # at the same offset, so the access resolves via either member's layout.
+    (eng, _) = compile_native("union_field_access.na.jac");
+    get_val = get_func(eng, "get_val", ctypes.c_int64, ctypes.c_void_p);
+    # A is `{ val: int }` -> a single-i64 struct at offset 0.
+    a = (ctypes.c_int64 * 1)(5);
+    assert get_val(ctypes.cast(a, ctypes.c_void_p)) == 5;
+    b = (ctypes.c_int64 * 1)(42);
+    assert get_val(ctypes.cast(b, ctypes.c_void_p)) == 42;
+}
+
+test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
+    # `can on_either with (Sub, Other) entry { self.either += here.val; }`.
+    # The tuple trigger types `here` as a union of node members; the body must
+    # not truncate at `here.val` (the original bug emitted an empty body and no
+    # `field.val` load, so `either` silently stayed 0).
+    (eng, _) = compile_native("union_field_access.na.jac");
+    addr = eng.get_function_address("W.on_either");
+    assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
+    fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
+    # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
+    # walkers carry the built-in `reports` list at index 2, so the user field
+    # `either` sits at index 3. `here` is a node: { vtable@0, __type_tag@1,
+    # val@2 } (nodes have no reports field), so `val` sits at index 2.
+    self_buf = (ctypes.c_int64 * 4)(0, 0, 0, 0);
+    here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
+    assert self_buf[3] == 5 , "here.val was not read through the union member layout";
+    # A second member instance must accumulate the same way.
+    here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
+    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
+    assert self_buf[3] == 12;
 }
