@@ -54,6 +54,7 @@ impl UserManager._ensure_connection -> None {
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if user already exists
         cursor = self._conn.execute(
@@ -85,6 +86,7 @@ impl UserManager.authenticate(
     username: str, password: str
 ) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     with self._lock {
         cursor = self._conn.execute(
@@ -102,6 +104,7 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT username FROM users WHERE token = ?", (token, )
@@ -114,6 +117,7 @@ impl UserManager.validate_token(token: str) -> (str | None) {
 """Get user's root node ID."""
 impl UserManager.get_root_id(username: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT root_id FROM users WHERE username = ?", (username, )
@@ -131,6 +135,7 @@ impl UserManager.aget_root_id(username: str) -> (str | None) {
 """Get user data by username."""
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (username, )
@@ -146,6 +151,7 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 """Check if a user exists."""
 impl UserManager.user_exists(username: str) -> bool {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
@@ -160,6 +166,7 @@ impl UserManager.update_username(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if new username already exists
         cursor = self._conn.execute(
@@ -192,6 +199,7 @@ impl UserManager.update_password(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Verify current password
         current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
@@ -2418,6 +2426,11 @@ impl JacAPIServer.start(
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     configured_root = config.serve.base_route_app if config else "";
     base_route_app = self.introspector.resolve_root_app(configured_root);
+    if self.server is None {
+        raise RuntimeError(
+            "Cannot start server: no socket was bound (test mode, port=0)"
+        );
+    }
     with self.server as httpd {
         console.print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         console.print(f"Module: {self.module_name}");
