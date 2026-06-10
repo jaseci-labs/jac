@@ -177,6 +177,34 @@ Configure deployment via environment variables in `.env`:
 
 ---
 
+## Autoscaling
+
+By default jac-scale creates a Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization. Configure the bounds in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+min_replicas = 2
+max_replicas = 10
+cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
+```
+
+For event-driven scaling or scale-to-zero, switch to the KEDA engine:
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1
+max_replicas = 10
+idle_replicas = 0   # Scale to zero when idle
+```
+
+!!! note
+    KEDA must be installed on your cluster before setting `autoscaler_engine = "keda"`. See the [KEDA installation guide](https://keda.sh/docs/latest/deploy/).
+
+For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [jac-scale Reference](../../reference/plugins/jac-scale.md#autoscaling).
+
+---
+
 ## Remote Clusters and Image Registry
 
 Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.

@@ -293,14 +293,14 @@ Same code, different deployer:
 | URLs | `http://127.0.0.1:18xxx` | `http://svc.ns.svc.cluster.local:8000` |
 | Health | HTTP `/healthz` polling | K8s probes |
 | Lifecycle | `LocalDeployer` | `KubernetesDeployer` |
-| Scaling | 1 replica | HPA per service |
+| Scaling | 1 replica | HPA per service (KEDA `ScaledObject` when `autoscaler_engine = "keda"`) |
 | Data | `.jac/data/{module}/` per process | Separate PVC per pod |
 
 ## Kubernetes Deployment
 
 `jac start <file>.jac --scale` with `[plugins.scale.microservices].enabled = true`
 auto-routes to the microservice K8s target: one image built and pushed,
-then per-service `Deployment` + `ClusterIP Service` + HPA + PDB applied
+then per-service `Deployment` + `ClusterIP Service` + autoscaler (HPA or KEDA `ScaledObject`) + PDB applied
 for every `sv import`-discovered service plus the gateway.
 
 Each pod boots with `JAC_SV_NAME=<service>` (`__gateway__` for gateway);
@@ -321,7 +321,8 @@ code changes from local mode.
 | `image_tag` | unset | per-service override (canary) |
 | `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
-| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler |
+| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
+| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`); each entry: `type`, `metadata`, optional `name`, optional `auth.secret_refs` |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
 ```toml
@@ -334,6 +335,12 @@ rpc_timeout = 120.0
 [plugins.scale.microservices.services.llm_app.hpa]
 min = 3
 max = 20
+
+# KEDA per-service trigger (requires autoscaler_engine = "keda" in [plugins.scale.kubernetes])
+[[plugins.scale.microservices.services.llm_app.triggers]]
+type = "prometheus"
+name = "pending-jobs"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "llm_queue_depth", threshold = "5", query = "sum(llm_queue_depth)" }
 ```
 
 ### Rolling deploy, autoscaling, drain
@@ -344,8 +351,9 @@ drain_timeout_seconds + 5`, and `preStop: sleep 5`. Together with the
 drain middleware (`P13`), `kubectl rollout restart deployment/<svc>-deployment`
 completes with zero non-2xx responses.
 
-Each service also gets an HPA and a PDB (`maxUnavailable=1`). Opt out
-per-service with `hpa.enabled = false` / `pdb.enabled = false`.
+Each service also gets an autoscaler (an HPA by default, or a KEDA `ScaledObject`
+when `autoscaler_engine = "keda"` is set in `[plugins.scale.kubernetes]`) and a
+PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.enabled = false`.
 
 ### Ingress
 
