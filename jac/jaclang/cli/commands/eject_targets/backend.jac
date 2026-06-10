@@ -1,20 +1,6 @@
-"""Standalone FastAPI backend emitter for `jac eject`.
-
-Writes the `backend/` half of the ejected project: the compiled Jac modules
-(with their `jaclang.jac0core.jaclib` import rewritten to a vendored `_osp.py`
-micro-runtime), a FastAPI `main.py` that exposes each walker and function over
-the same HTTP contract the compiled `.cl.jac` frontend speaks
-(`POST /walker/<Name>` -> `{"data": {...reports...}}`,
-`POST /function/<name>` -> `{"ok": true, "data": {"result": ...}}`), and a
-`requirements.txt` with only fastapi + uvicorn. The result runs with no
-`jaclang` installed; `main.py` also serves the built frontend (../frontend/dist)
-when present, so a single `uvicorn main:app` serves the whole app.
-
-The vendored `_osp.py` supports walkers, an in-memory graph (nodes, edges via
-`connect`/`++>`, traversal via `visit`/`OPath`/`refs`) and `report`. The graph
-lives for the server process lifetime (no cross-restart persistence);
-permissions and `by llm()` abilities are not supported.
-"""
+"""Standalone FastAPI backend emitter for `jac eject`: writes compiled Jac
+modules (jaclib import rewritten to a vendored `_osp.py` in-memory runtime),
+a `main.py` serving the @jac/runtime HTTP contract, and requirements.txt."""
 
 import ast;
 import from pathlib { Path }
@@ -25,18 +11,9 @@ import from jaclang.cli.console { console }
 # Built as a line list so the Python docstrings inside it do not terminate the
 # surrounding Jac string.
 glob _OSP_RUNTIME_LINES: list[str] = [
-         '"""Standalone Object-Spatial micro-runtime for ejected Jac backends.',
-         '',
-         'Dependency-free replacements for the jaclang runtime symbols the compiled',
-         'walker modules import (Root, Walker, on_entry, set_trigger, spawn, root,',
-         'log_report, field, ...), so the ejected backend runs with only',
-         'fastapi + uvicorn installed -- no jaclang.',
-         '',
-         'Supports walkers, in-memory graph nodes/edges (connect, visit, OPath,',
-         'refs) and report. The graph lives for the server process lifetime',
-         '(no cross-restart persistence); permissions and `by llm()` are not',
-         'supported.',
-         '"""',
+         '"""Standalone Object-Spatial micro-runtime for ejected Jac backends:',
+         'jaclang-free walkers, in-memory graph (connect/visit/OPath) and report.',
+         'The graph lives for the process lifetime; permissions/LLM unsupported."""',
          'from __future__ import annotations',
          '',
          'import threading',
@@ -124,11 +101,8 @@ glob _OSP_RUNTIME_LINES: list[str] = [
          '',
          '',
          'def root():',
-         '    """Return the process-shared in-memory root node.',
-         '',
-         '    In-memory only: the graph persists for the server process lifetime,',
-         '    not across restarts.',
-         '    """',
+         '    """Return the process-shared in-memory root node (the graph',
+         '    persists for the server process lifetime, not across restarts)."""',
          '    return _ROOT',
          '',
          '',
@@ -156,11 +130,9 @@ glob _OSP_RUNTIME_LINES: list[str] = [
          '',
          '',
          'def connect(left=None, right=None, edge=None, undir=False, **kwargs):',
-         '    """Create directed edges left -> right; return the target node(s).',
-         '',
-         '    Mirrors `left ++> right`. Edges are plain adjacency in the in-memory',
-         '    graph; typed `edge` archetypes are accepted but not stored.',
-         '    """',
+         '    """Create directed edges left -> right (Jac `++>`); return targets.',
+         '    Edges are plain in-memory adjacency; typed `edge` archetypes are',
+         '    accepted but not stored."""',
          '    sources = left if isinstance(left, (list, tuple)) else [left]',
          '    targets = right if isinstance(right, (list, tuple)) else [right]',
          '    made = []',
@@ -249,14 +221,9 @@ glob _OSP_RUNTIME_LINES: list[str] = [
          '',
          '',
          'def spawn(op1, op2):',
-         '    """Run a walker over the graph and return it (Jac `spawn`).',
-         '',
-         '    Either operand may be the walker; the other is the start location.',
-         '    At each location the walker entry abilities whose trigger matches the',
-         '    location type fire (then its exits); abilities grow the frontier via',
-         '    `visit`. Each node is visited at most once. `reports` is populated by',
-         '    `report` / log_report along the way.',
-         '    """',
+         '    """Run a walker over the graph and return it (Jac `spawn`): fire',
+         '    trigger-matched entry/exit abilities per location, grow the frontier',
+         '    via `visit` (each node visited once), collect `reports`."""',
          '    if isinstance(op1, Walker):',
          '        walker, start = op1, op2',
          '    else:',
@@ -285,13 +252,9 @@ glob _OSP_RUNTIME_LINES: list[str] = [
      ];
 
 
-"""Emit the FastAPI backend into `backend_dir`.
-
-`compiled` is a list of {module, py, meaningful} dicts (one per compiled Jac
-file); `walkers` / `functions` are [{name, module}] descriptors harvested from
-the AST by the orchestrator. `remap` renames Jac modules whose stem collided
-with a generated file (e.g. main -> _jac_main).
-"""
+"""Emit the FastAPI backend into `backend_dir` from the orchestrator's
+{module, py, server} units and [{name, module}] walker/function descriptors.
+`remap` renames module stems that collide with generated files (main/_osp)."""
 def emit_backend(
     backend_dir: Path,
     project_name: str,
@@ -383,11 +346,9 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
 }
 
 
-"""Extract each walker's request fields from the compiled Python.
-
-Skips private names and the runtime-managed `reports` field. Returns
-{walker_name: [{name, type, has_default, default}]}.
-"""
+"""Extract each walker's request fields from the compiled Python, skipping
+private names and the runtime-managed `reports` field. Returns
+{walker_name: [{name, type, has_default, default}]}."""
 def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
     result: dict = {};
     try {
@@ -477,14 +438,9 @@ def _emit_main_py(
     backend_dir: Path, project_name: str, walkers: list, functions: list
 ) {
     lines: list[str] = [
-        f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}.',
-        '',
-        'Standalone (fastapi + uvicorn, no jaclang). Implements the @jac/runtime',
-        'client contract: POST /walker/<Name> -> {"data": {...reports...}},',
-        'POST /function/<name> -> {"ok": true, "data": {"result": ...}}. Also',
-        'serves the built frontend (../frontend/dist) when present, so one',
-        '`uvicorn main:app` serves the whole app.',
-        '"""',
+        f'"""Auto-generated FastAPI app for ejected Jac project {project_name!r}:',
+        'standalone (no jaclang), serves the @jac/runtime walker/function HTTP',
+        'contract plus the built frontend (../frontend/dist) when present."""',
         'import os',
         'import dataclasses',
         '',

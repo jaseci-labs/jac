@@ -1,15 +1,6 @@
-"""Implementation of the `jac eject` command.
-
-Eject takes a Jac project and produces a standalone, zero-jaclang app in a
-project-internal `ejected/` folder: a FastAPI `backend/` (walkers and
-functions compiled to Python that imports a vendored `_osp.py` runtime instead
-of jaclang) and a `frontend/` (the `.cl.jac` UI compiled to JavaScript with a
-Vite setup). The result runs with only fastapi + uvicorn (backend) and the
-project's npm deps (frontend); no Jac toolchain or jaclang install is needed.
-
-The FastAPI-specific emission lives in `eject_targets/backend.jac`; this module
-orchestrates the compile pass and emits the frontend half.
-"""
+"""Implementation of `jac eject`: compile the project into a standalone,
+zero-jaclang `ejected/{backend,frontend}` app (FastAPI backend with vendored
+`_osp.py` runtime via eject_targets/backend.jac; Vite frontend from .cl.jac)."""
 
 import shutil;
 import json;
@@ -82,13 +73,9 @@ def load_eject_project_metadata(src: Path) -> dict {
 }
 
 
-"""Eject a Jac project to a standalone, zero-jaclang app.
-
-Produces a project-internal `ejected/` folder split into `backend/` (a FastAPI
-app compiled from the Jac walkers/functions, importing a vendored `_osp.py`
-runtime instead of jaclang) and `frontend/` (the `.cl.jac` UI compiled to
-JavaScript). Re-runnable without `--force` when the output carries our marker.
-"""
+"""Eject a Jac project to a standalone, zero-jaclang app: a project-internal
+`ejected/` folder with a FastAPI `backend/` and a compiled-JS `frontend/`.
+Re-runnable without `--force` when the output carries our marker."""
 impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     src = Path(source).resolve();
     if not src.exists() or not src.is_dir() {

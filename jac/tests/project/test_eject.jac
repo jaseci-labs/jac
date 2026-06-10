@@ -1,13 +1,6 @@
-"""Tests for the `jac eject` command.
-
-Eject turns a Jac project into a standalone, zero-jaclang app: a FastAPI
-`backend/` (walkers/functions compiled to Python that imports a vendored
-`_osp.py` runtime) and a `frontend/` (the `.cl.jac` UI compiled to JavaScript),
-both written into a project-internal `ejected/` folder. These tests run eject
-in-process against tiny projects in TemporaryDirectory(), so the file completes
-in well under a second on a warm cache and runs in the standard `pytest jac`
-suite.
-"""
+"""Tests for `jac eject` (standalone zero-jaclang `ejected/{backend,frontend}`
+output). Runs eject in-process against tiny projects in TemporaryDirectory(),
+completing in under a second on a warm cache as part of `pytest jac`."""
 
 import ast;
 import io;
