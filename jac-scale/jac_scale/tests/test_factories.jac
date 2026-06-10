@@ -331,6 +331,7 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
     # spec.replicas.  apply() must attempt to remove it before writing the HPA.
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
+        app_name="svc",
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
@@ -349,7 +350,7 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
                 version="v1alpha1",
                 namespace="default",
                 plural="scaledobjects",
-                name="svc-deployment-scaledobject"
+                name="svc-scaledobject"
             );
         }
     }
@@ -359,6 +360,7 @@ test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObj
     # 404 or 422 on the ScaledObject delete means nothing to clean up; must not raise.
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
+        app_name="svc",
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );

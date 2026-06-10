@@ -559,6 +559,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 AutoscalerSpec(
                     scale_target_name=f"{k8s_name}-deployment",
                     autoscaler_name=autoscaler_name,
+                    app_name=k8s_name,
                     namespace=namespace,
                     min_replicas=int(cfg.get("min", 1)),
                     max_replicas=int(cfg.get("max", 3)),

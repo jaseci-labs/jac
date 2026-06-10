@@ -28,6 +28,7 @@ obj AutoscalerSpec {
         target_kind: str = "Deployment",
         triggers: list[Trigger] = [],
         autoscaler_name: (str | None) = None,
+        app_name: (str | None) = None,
         idle_replicas: (int | None) = None,
         polling_interval: int = 30,
         cooldown_period: int = 300,

@@ -62,7 +62,7 @@ impl HPAAutoscaler.apply{
             version="v1alpha1",
             namespace=namespace,
             plural="scaledobjects",
-            name=f"{spec.scale_target_name}-scaledobject"
+            name=f"{spec.app_name or spec.scale_target_name}-scaledobject"
         );
     } except ApiException as e {
         if e.status not in [404, 422] {

@@ -217,7 +217,8 @@ impl KEDAAutoscaler.apply{
         (
             self._v2_api or AutoscalingV2Api()
         ).delete_namespaced_horizontal_pod_autoscaler(
-            name=f"{spec.scale_target_name}-hpa", namespace=spec.namespace
+            name=f"{spec.app_name or spec.scale_target_name}-hpa",
+            namespace=spec.namespace
         );
     } except ApiException as e {
         if e.status != 404 {

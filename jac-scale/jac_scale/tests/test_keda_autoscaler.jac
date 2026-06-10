@@ -433,12 +433,13 @@ test "apply deletes competing HPA when switching from hpa engine to keda" {
     keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2);
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
+        app_name="svc",
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
     keda.apply(spec);
     mock_v2.delete_namespaced_horizontal_pod_autoscaler.assert_called_once_with(
-        name="svc-deployment-hpa", namespace="default"
+        name="svc-hpa", namespace="default"
     );
 }
 
@@ -455,6 +456,7 @@ test "apply engine-switch HPA deletion is a no-op when no HPA exists" {
     keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2);
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
+        app_name="svc",
         namespace="default",
         triggers=[Trigger(type="cpu", metadata={})]
     );
