@@ -1112,6 +1112,10 @@ with entry {
         JacRuntimeInterface
     );
     plugin_manager.add_hookspecs(JacRuntimeSpec);
+    # Phase 2: seal now (no impls yet -> all stay Phase-1). As plugins
+    # register during load, reseal-on-register devirtualizes single-impl
+    # hooks and keeps multi-impl hooks on the dynamic dispatcher.
+    plugin_manager.seal(JacRuntimeInterface);
 }
 
 """Jac Machine State.
