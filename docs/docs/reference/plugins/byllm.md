@@ -49,8 +49,9 @@ def classify(text: str) -> str by llm;
 
 byLLM validates that LLM responses match the declared return type. If the LLM returns an invalid type, byLLM will:
 
-1. **Attempt coercion** -- e.g., string `"5"` becomes integer `5`
-2. **Raise an error** if coercion fails
+1. **Attempt coercion**, e.g. string `"5"` becomes integer `5`
+2. **Regenerate** the response for a structured return type when the output is empty or cannot be parsed, retrying up to `max_output_retries` times (see [Typed-Output Retry](#typed-output-retry))
+3. **Raise an error** if it still cannot be converted
 
 This means your Jac type system functions as the LLM's output schema. Declaring `-> int` guarantees you receive an integer, and declaring `-> MyObj` guarantees you receive a properly structured object.
 
@@ -487,6 +488,7 @@ verbose = false                   # Log LLM calls to stderr
 [plugins.byllm.call_params]
 temperature = 0.7                 # Model creativity (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
+max_output_retries = 3            # Retries for structured output (0 = disabled)
 
 [plugins.byllm.litellm]
 local_cost_map = true             # Use local cost map
@@ -528,6 +530,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 |-----|------|---------|-------------|
 | `temperature` | float | `0.7` | Creativity/randomness (0.0-2.0, lower is more deterministic) |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
+| `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
 
 **`[plugins.byllm.litellm]` options:**
 
@@ -755,6 +758,55 @@ def find_date(text: str) -> str | None by llm();
 
 ---
 
+## Typed-Output Retry
+
+When a function declares a structured return type (anything other than `str`), byLLM expects the model to emit a JSON object matching the type's schema. A weak or distracted model sometimes returns empty content, prose, or malformed JSON that cannot be converted. Instead of failing immediately, byLLM **regenerates** the response before giving up.
+
+### How it works
+
+On a typed (non-`str`) call, byLLM runs the generation and then:
+
+1. If the response parses into the declared type, it is returned.
+2. If parsing raises `OutputConversionError`, or the response is empty or otherwise non-conforming, byLLM resets the conversation to the original prompt, injects a corrective message, and tries again.
+3. Once the retries are exhausted, it raises `OutputConversionError`.
+
+The corrective message restates what went wrong, **echoes the rejected output**, re-shows the JSON schema the response must satisfy, and instructs the model to reply with only a raw JSON object. This is usually enough to recover, including for reasoning models that spend their budget on a hidden channel and return empty content.
+
+A `str` return type is never retried, since any string is a valid result.
+
+### Configuring the retry count
+
+`max_output_retries` is the number of retries **after** the first attempt, so total attempts are `1 + max_output_retries`. The default is `3`; set it to `0` to disable retrying.
+
+Resolution order (first wins): per-call argument, then per-object `Model(...)`, then `jac.toml`, then the built-in default.
+
+```jac
+# Per call: allow up to 5 retries
+def extract(text: str) -> Product by llm(max_output_retries=5);
+
+# Per call: disable retrying
+def extract_strict(text: str) -> Product by llm(max_output_retries=0);
+```
+
+```toml
+# jac.toml: project-wide default
+[plugins.byllm.call_params]
+max_output_retries = 5
+```
+
+### When retries are exhausted
+
+If every attempt fails, byLLM raises `OutputConversionError` reporting how many attempts were made and chaining the last underlying error:
+
+```text
+OutputConversionError: typed-output generation failed after 4 attempt(s)
+(3 retries); last error: Failed to convert LLM output to 'Product': ...
+```
+
+The original rejected text remains available on `raw_output` (see [`OutputConversionError.raw_output`](#outputconversionerrorraw_output)).
+
+---
+
 ## Invocation Parameters
 
 Parameters passed to `by llm()` at call time:
@@ -763,6 +815,7 @@ Parameters passed to `by llm()` at call time:
 |-----------|------|-------------|
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Default: 0.7 |
 | `max_tokens` | int | Maximum tokens in response |
+| `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
@@ -1883,6 +1936,43 @@ glob llm = MockLLM(
 ```
 
 Non-tuple entries behave exactly as before - usage defaults to `{}`.
+
+#### Simulating raw model text and errors
+
+A plain string or a pre-built typed instance in `outputs` is returned verbatim, which is fine for happy-path tests but skips byLLM's parsing. To exercise the real parse and retry path (for example to test [typed-output retry](#typed-output-retry)), use these wrappers:
+
+- **`MockRawResponse(content=...)`** routes the text through `parse_response` exactly like a real model: valid JSON parses to the typed object, malformed JSON raises `OutputConversionError` (triggering a retry), and an empty string is returned as-is.
+- **`MockError(error=...)`** raises the wrapped exception when dispatched, to verify that errors which are not `OutputConversionError` propagate without retry.
+- **`MockLLM.seen_prompts`** records the prompt (joined message contents) seen on each dispatch, so a test can assert how many attempts ran and inspect the corrective feedback between them.
+
+```jac
+import from byllm.lib { MockLLM, MockRawResponse }
+
+obj Person {
+    has name: str,
+        age: int;
+}
+
+# First response is malformed JSON (triggers a retry); the second parses cleanly.
+glob llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [
+        MockRawResponse(content="{\"name\": \"Ada\", \"age\":"),
+        MockRawResponse(content="{\"name\": \"Ada\", \"age\": 36}")
+    ]}
+);
+
+def get_person -> Person by llm();
+
+test "malformed output is retried and recovered" {
+    person = get_person();
+    assert person.name == "Ada" and person.age == 36;
+    assert len(llm.seen_prompts) == 2;                      # one retry
+    assert "{\"name\": \"Ada\", \"age\":" in llm.seen_prompts[1];  # broken output echoed back
+}
+```
+
+To cap or disable retries in a test, pass `max_output_retries` on the by-expression, e.g. `by llm(max_output_retries=1)` (a bare `by llm()` resets call params, so set it there rather than on the constructor).
 
 ---
 

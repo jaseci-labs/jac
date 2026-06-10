@@ -1,5 +1,10 @@
 """Redis CacheBackend Implementation."""
 
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
+
 """Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
     if self.redis_url is None {
@@ -47,6 +52,9 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     }
     self.fetch_count += 1;
     key = storage_key(to_uuid(id));
+    span = start_memory_span(
+        "memory.get redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
+    );
     try {
         raw = self.redis_client.get(key);
         if not raw {
@@ -57,6 +65,8 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Redis get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -72,6 +82,9 @@ impl RedisBackend.put(anchor: Anchor) -> None {
         return;
     }
     self.put_count += 1;
+    span = start_memory_span(
+        "memory.put redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
+    );
     try {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
@@ -89,6 +102,8 @@ impl RedisBackend.put(anchor: Anchor) -> None {
         }
     } except Exception as e {
         logger.debug(f"Redis put failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -171,6 +186,15 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         return result;
     }
     self.fetch_count += len(ids);
+    span = start_memory_span(
+        "memory.batch_get redis",
+        {
+            "db.system": "redis",
+            "mem.tier": "L2",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
+    );
     try {
         keys = [storage_key(to_uuid(id)) for id in ids];
         values = self.redis_client.mget(keys);
@@ -189,6 +213,8 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     } except Exception as e {
         logger.debug(f"Redis batch_get failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
     return result;
 }
@@ -244,6 +270,9 @@ impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
         self._async_redis = AsyncRedis.from_url(self.redis_url);
     }
     key = storage_key(to_uuid(id));
+    span = start_memory_span(
+        "memory.get redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "get"}
+    );
     try {
         raw = await self._async_redis.get(key);
         if not raw {
@@ -254,6 +283,8 @@ impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Redis async get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -271,6 +302,9 @@ impl RedisBackend.aput(anchor: Anchor) -> None {
         }
         self._async_redis = AsyncRedis.from_url(self.redis_url);
     }
+    span = start_memory_span(
+        "memory.put redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
+    );
     try {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
@@ -283,5 +317,7 @@ impl RedisBackend.aput(anchor: Anchor) -> None {
         }
     } except Exception as e {
         logger.debug(f"Redis async put failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
 }

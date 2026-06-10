@@ -86,50 +86,21 @@ test "guardrail: nested function capturing an enclosing local is rejected" {
     )}";
 }
 
-test "guardrail: visit statement is rejected" {
-    prog = compile_na_inline(
-        "visit",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        visit [-->];\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for VisitStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: disengage statement is rejected" {
-    prog = compile_na_inline(
-        "disengage",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        disengage;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisengageStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: report statement is rejected" {
-    prog = compile_na_inline(
-        "report",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        report here.v;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ReportStmt, got: {fmt_errors(
-        prog
-    )}";
-}
+# NOTE (issue #6146, Phase 4c): the `visit` / `disengage` / `report` guardrails
+# were removed because these statements are now LOWERED to the portable kernel
+# (`osp_visit` / `osp_disengage` / `osp_report`), so they no longer raise E5090.
+#   * `disengage` and `visit` work end-to-end on native: edges lower to the
+#     in-memory adjacency (osp_graph.jac) and the walk runs through the kernel's
+#     `osp_visit`. OSP instances are pinned to a program-lifetime graph arena so
+#     the walk's borrowed location handles are not refcount-freed mid-traversal.
+#     The cross-backend traversal fixtures (osp_visit_order, osp_exit_ordering,
+#     osp_disengage, osp_edge_typed) are `require=["na"]`.
+#   * `report` works end-to-end: it lowers to `osp_report`, and the native
+#     `on_complete` delivers `scope.reports` onto the walker's built-in `reports`
+#     field at the spawn boundary, so `w.reports` reads back (osp_report is
+#     `require=["na"]`).
+# A guardrail asserting E5090 here would be a false negative now that the
+# lowering exists; the equivalence fixtures are the runtime gate.
 
 # A tuple/union trigger lowers field access on `here` through one shared member
 # layout (issue #6470). When the members place a common field at *different*
