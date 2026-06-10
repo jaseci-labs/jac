@@ -161,10 +161,26 @@ obj Db {
 
     # ===== MONGODB-ONLY METHODS =====
     """Find one document matching filter."""
-    def find_one(col_name: str, filter: dict) -> dict | None;
+    def find_one(
+        col_name: str, filter: dict, projection: dict | None = None
+    ) -> dict | None;
 
-    """Find all documents matching filter."""
-    def find(col_name: str, filter: dict) -> Cursor | list;
+    """Find all documents matching filter.
+
+    `projection` follows pymongo semantics: `{field: 1}` to include, `{field: 0}`
+    to exclude. Passing None returns all fields.
+    """
+    def find(
+        col_name: str, filter: dict, projection: dict | None = None
+    ) -> Cursor | list;
+
+    """Count documents matching filter."""
+    def count_documents(col_name: str, filter: dict) -> int;
+
+    """Create (or no-op if exists) a pymongo index."""
+    def create_index(
+        col_name: str, keys: dict, unique: bool = False, name: str | None = None
+    ) -> str;
 
     """Insert a single document."""
     def insert_one(

@@ -627,27 +627,57 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
 
 """Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
 impl JacAPIServerCore._setup_scheduler -> None {
-    scheduler_config = get_scale_config().get_scheduler_config();
-    system_password = scheduler_config.get('system_user_password', 'system_secret');
+    logger.info("Initializing scheduler subsystem");
+    scheduler_cfg = get_scale_config().get_scheduler_config();
     try {
         self.user_manager.create_internal_user(
-            '__system__', system_password, role='system'
+            '__system__',
+            scheduler_cfg.get('system_user_password', '__no_login__'),
+            role='system'
         );
     } except Exception { }
-    system_token = self.user_manager.create_jwt_token('__system__');
+    system_user = self.user_manager.get_user('__system__');
+    if system_user is None {
+        logger.error("Scheduler: __system__ user not found; using sentinel id");
+    }
+    system_user_id = system_user.get('user_id', '__system__')
+        if system_user
+        else '__system__';
 
     # Initialise JacScaleScheduler singleton
     jac_scheduler = JacScaleScheduler.instance();
-    jac_scheduler.setup(system_token=system_token or '', server=self);
+    jac_scheduler.setup(system_user_id=system_user_id, server=self);
 
     # Register static tasks (walkers/functions with STATIC trigger)
-    jac_scheduler.register_static_tasks(self.get_walkers(), self.get_functions(), self);
+    jac_scheduler.register_static_tasks(
+        self.introspector._walkers or {}, self.introspector._functions or {}, self
+    );
 
     # Reload persisted dynamic jobs from DB
     jac_scheduler.register_dynamic_tasks_from_db();
 
     # Start APScheduler background thread
     jac_scheduler.start();
+    logger.info("Scheduler subsystem ready");
+
+    # Drain scheduled jobs on SIGTERM/graceful shutdown. Timeout is configurable
+    # via [plugins.scale.scheduler] shutdown_timeout in jac.toml (default 10s).
+    timeout_sec = int(scheduler_cfg.get('shutdown_timeout', 10));
+    async def _shutdown_scheduler {
+        import asyncio;
+        try {
+            await asyncio.wait_for(
+                asyncio.to_thread(JacScaleScheduler.instance().stop, drain=True),
+                timeout=float(timeout_sec)
+            );
+        } except asyncio.TimeoutError {
+            logger.warning(
+                f"Scheduler drain exceeded {timeout_sec}s — forcing shutdown"
+            );
+            JacScaleScheduler.instance().stop(drain=False);
+        }
+    }
+    self.server.app.add_event_handler('shutdown', _shutdown_scheduler);
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""

@@ -86,47 +86,39 @@ test "guardrail: nested function capturing an enclosing local is rejected" {
     )}";
 }
 
-test "guardrail: visit statement is rejected" {
-    prog = compile_na_inline(
-        "visit",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        visit [-->];\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for VisitStmt, got: {fmt_errors(
-        prog
-    )}";
-}
+# NOTE (issue #6146, Phase 4c): the `visit` / `disengage` / `report` guardrails
+# were removed because these statements are now LOWERED to the portable kernel
+# (`osp_visit` / `osp_disengage` / `osp_report`), so they no longer raise E5090.
+#   * `disengage` and `visit` work end-to-end on native: edges lower to the
+#     in-memory adjacency (osp_graph.jac) and the walk runs through the kernel's
+#     `osp_visit`. OSP instances are pinned to a program-lifetime graph arena so
+#     the walk's borrowed location handles are not refcount-freed mid-traversal.
+#     The cross-backend traversal fixtures (osp_visit_order, osp_exit_ordering,
+#     osp_disengage, osp_edge_typed) are `require=["na"]`.
+#   * `report` works end-to-end: it lowers to `osp_report`, and the native
+#     `on_complete` delivers `scope.reports` onto the walker's built-in `reports`
+#     field at the spawn boundary, so `w.reports` reads back (osp_report is
+#     `require=["na"]`).
+# A guardrail asserting E5090 here would be a false negative now that the
+# lowering exists; the equivalence fixtures are the runtime gate.
 
-test "guardrail: disengage statement is rejected" {
+# A tuple/union trigger lowers field access on `here` through one shared member
+# layout (issue #6470). When the members place a common field at *different*
+# offsets, that single-layout lowering would misread it, so the native pass
+# must surface E5091 rather than silently emit a wrong body.
+test "guardrail: union trigger with mismatched field layout is rejected" {
     prog = compile_na_inline(
-        "disengage",
-        "node N { has v: int = 0; }\n"
+        "union_layout_conflict",
+        "node Sub { has pad: int; has val: int; }\n"  # val at index 3
+        "node Other { has val: int; }\n"  # val at index 2
         "walker W {\n"
-        "    can run with N entry {\n"
-        "        disengage;\n"
+        "    has either: int = 0;\n"
+        "    can on_either with (Sub, Other) entry {\n"
+        "        self.either = self.either + here.val;\n"
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisengageStmt, got: {fmt_errors(
-        prog
-    )}";
-}
-
-test "guardrail: report statement is rejected" {
-    prog = compile_na_inline(
-        "report",
-        "node N { has v: int = 0; }\n"
-        "walker W {\n"
-        "    can run with N entry {\n"
-        "        report here.v;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for ReportStmt, got: {fmt_errors(
+    assert has_error_code(prog, "E5091") , f"Expected E5091 for divergent union member layout, got: {fmt_errors(
         prog
     )}";
 }
@@ -195,6 +187,24 @@ test "guardrail: call to an undefined function is rejected" {
     )}";
 }
 
+# Iterating a `set` in a `for` loop is not lowered natively (the element type
+# resolves to nothing), which used to drop the loop body silently. It must now
+# raise E5090 instead of miscompiling -- iterate a list/range, or move to @sv.
+test "guardrail: for-loop over a set is rejected" {
+    prog = compile_na_inline(
+        "for_over_set",
+        "def run() -> int {\n"
+        "    s: set[int] = {1, 2, 3};\n"
+        "    total: int = 0;\n"
+        "    for v in s { total = total + v; }\n"
+        "    return total;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for for-over-set, got: {fmt_errors(
+        prog
+    )}";
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Negative controls — supported features must NOT trigger E5090
 # ─────────────────────────────────────────────────────────────────────
@@ -221,6 +231,38 @@ test "guardrail: supported features do not trigger E5090" {
         "}\n"
     );
     assert not has_error_code(prog, "E5090") , f"Supported features triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
+
+# Negative control for the silent-no-code guards (options 1 & 2 of the #6470
+# audit): the consumers that now raise E5090 when a required sub-expression
+# lowers to nothing (return value, assignment RHS, if/while/for conditions,
+# field & subscript stores, augmented field assignment) must stay silent on
+# the fully-supported forms they wrap. A false positive here would reject
+# ordinary native code.
+test "guardrail: field/index reads, writes, and loops do not trigger E5090" {
+    prog = compile_na_inline(
+        "supported_access_ok",
+        "obj Pt { has x: int; has y: int; }\n"
+        "obj Box { has items: list[int]; has tag: int; }\n"
+        "def run() -> int {\n"
+        "    p: Pt = Pt(x=1, y=2);\n"
+        "    p.x = p.x + p.y;\n"  # field read + field write
+        "    p.y += 5;\n"  # augmented field assignment
+        "    b: Box = Box(items=[10, 20, 30], tag=0);\n"
+        "    b.items[1] = b.items[1] + p.x;\n"  # subscript read + subscript write
+        "    b.tag = b.items[0];\n"  # chained field/index read into field
+        "    d: dict[str, int] = {\"a\": 1};\n"
+        "    d[\"a\"] = d[\"a\"] + 1;\n"  # dict subscript read + write
+        "    total: int = 0;\n"
+        "    for v in b.items {\n"  # for over a field-held list
+        "        if v > 0 { total = total + v; }\n"
+        "    }\n"
+        "    return total + p.x + p.y + d[\"a\"];\n"  # return of a real expression
+        "}\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Supported field/index/loop forms triggered E5090: {fmt_errors(
         prog
     )}";
 }

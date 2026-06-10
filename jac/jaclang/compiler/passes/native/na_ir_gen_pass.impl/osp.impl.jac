@@ -25,6 +25,26 @@ no codegen), so the kernel is parsed/type-checked once per process even when
 many OSP programs are compiled. Holds at most one element."""
 glob _NA_OSP_KERNEL_MOD: list = [];
 
+"""Write the native OSP source (portable `osp_kernel.jac` + the native-only
+`osp_graph.jac` edge adjacency) into one `.na.jac` copy at `dest`. Both compile
+into a single native module so the kernel's walk and the graph's adjacency link
+through one transitive-source path and share one glob-init. `osp_kernel.jac`
+stays pristine on disk; the `.na.jac` copy is the native-context combination."""
+def _write_native_osp_source(core_dir: str, dest: str) {
+    import os;
+    _kernel = os.path.join(core_dir, "osp_kernel.jac");
+    _graph = os.path.join(core_dir, "osp_graph.jac");
+    with open(_kernel, "r") as _kf {
+        _ktext = _kf.read();
+    }
+    with open(_graph, "r") as _gf {
+        _gtext = _gf.read();
+    }
+    with open(dest, "w") as _out {
+        _out.write(_ktext + "\n\n" + _gtext);
+    }
+}
+
 """Load (and memoize) the portable OSP kernel as a NATIVE-context module.
 
 `osp_kernel.jac` is the single OSP source of truth (#6146); like the cl backend
@@ -42,12 +62,12 @@ def _load_native_osp_kernel_module -> (uni.Module | None) {
     import tempfile;
     import jaclang;
     import from jaclang.jac0core.program { JacProgram }
-    src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
+    _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
     tmp_dir = tempfile.mkdtemp();
     na_copy = os.path.join(tmp_dir, "osp_kernel.na.jac");
     mod = None;
     try {
-        shutil.copyfile(src, na_copy);
+        _write_native_osp_source(_core, na_copy);
         prog = JacProgram();
         mod = prog.compile(na_copy, no_cgen=True, symtab_ir_only=True);
     } except Exception {
@@ -448,12 +468,51 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
         self.builder.bitcast(_dp, self.struct_types["NodeDesc"].as_pointer(), name="nd")
     );
     out["node_desc"] = _ndf;
-    # on_complete(WalkScope*, i1): NoopHost -- reports/persistence are no-ops on
-    # native (the walker's own state is observed directly).
+    # on_complete(WalkScope*, i1): deliver the walk's collected reports onto the
+    # walker so `w.reports` reads them back -- mirrors cl/sv `scope.wlk.reports =
+    # scope.reports`. The walker's `reports` field is at the uniform byte offset
+    # 16 (vtable@0, __type_tag@1, reports@2). scope.reports is pinned immortal so
+    # the scope teardown can't free the list now owned by the (immortal) walker.
     _ocf = ir.Function(
         self.llvm_module, _fields["on_complete"].pointee, name="__osp_on_complete"
     );
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
+    _ws_idx = self.struct_field_indices.get("WalkScope", {});
+    _li64 = self.list_types.get("i64");
+    if _li64 is not None {
+        _scope = _ocf.args[0];
+        # walker = unbox(scope.wlk): a boxed `any` handle -> instance pointer.
+        _wlk_jv = self.builder.load(
+            self.builder.gep(
+                _scope,
+                [ir.Constant(i32, 0), ir.Constant(i32, _ws_idx.get("wlk", 0))],
+                name="oc.wlk.p"
+            ),
+            name="oc.wlk.jv"
+        );
+        _wlk_i8 = self.builder.inttoptr(
+            self.builder.extract_value(_wlk_jv, 1, name="oc.wlk.payload"),
+            i8p,
+            name="oc.wlk.i8"
+        );
+        _rep = self.builder.load(
+            self.builder.gep(
+                _scope,
+                [ir.Constant(i32, 0), ir.Constant(i32, _ws_idx.get("reports", 4))],
+                name="oc.rep.p"
+            ),
+            name="oc.rep"
+        );
+        self._osp_make_immortal(_rep);
+        self.builder.store(
+            _rep,
+            self.builder.bitcast(
+                self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
+                _li64.as_pointer().as_pointer(),
+                name="oc.repslot"
+            )
+        );
+    }
     self.builder.ret_void();
     out["on_complete"] = _ocf;
     self._builder = _saved;
@@ -595,4 +654,242 @@ impl NaIRGenPass._emit_osp_setup -> None {
     _rb.branch(_e_done);
     ir.IRBuilder(_e_done).ret_void();
     self._builder = _saved;
+}
+
+# ───────────────────────────── traversal lowering ──────────────────────────
+# `visit` / `disengage` / `report` lower to the kernel's `osp_visit` /
+# `osp_disengage` / `osp_report`; edge connect (`++>`) and refs (`[-->]`) lower
+# to the native adjacency (`osp_conn` / `osp_refs`, osp_graph.jac). All four
+# kernel/graph functions are link-merged into the program module and registered
+# in `func_symtab`, so codegen calls them directly -- mirroring spawn (#6146).
+"""rc_alloc a unique, immortal handle for an untyped `++>` edge. The adjacency
+keys edges by handle; a generic edge carries no user fields, so an 8-byte block
+is enough to give it identity. Immortal because the handle is stored raw (not
+RC-tracked) in the graph arena."""
+impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
+    if self.rc_alloc_fn is None {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    _raw = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [ir.Constant(i64, 8)], op="osp", loc="", name="osp.gedge"
+    );
+    self._osp_make_immortal(_raw);
+    return _raw;
+}
+
+"""Lower an edge connect `a ++> b` / `a +>: Edge() :+> b` to `osp_conn`.
+
+Records the directed pair in the native adjacency keyed by `ptrtoint` handles.
+IN edges swap operands; ANY edges are flagged undirected. A typed edge codegens
+its constructor (and passes the edge archetype's tag for `[->:Edge:->]`
+filtering); an untyped edge gets a fresh generic handle. Returns the target
+operand value so the connect expression yields its right side (chaining)."""
+impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    co = nd.op;
+    osp_conn_fn = self.func_symtab.get("osp_conn");
+    if osp_conn_fn is None {
+        self.emit(E5090, node_override=nd, kind="binary operator", name="ConnectOp");
+        return None;
+    }
+    # A connect can be the program's first OSP op (before any spawn), so the
+    # graph adjacency globals (`_e_src`, ...) must be initialized here -- the
+    # kernel/graph glob-init runs lazily via __osp_ensure_init (idempotent).
+    if self._osp_ensure_fn is not None {
+        self.builder.call(self._osp_ensure_fn, []);
+    }
+    left = self._codegen_expr(nd.left);
+    right = self._codegen_expr(nd.right);
+    if (left is None) or (right is None) {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    dir_val = int(co.edge_dir.value);
+    undirected = 1 if dir_val == 3 else 0;
+    if dir_val == 1 {
+        (src, tgt) = (right, left);
+    } else {
+        (src, tgt) = (left, right);
+    }
+    edge_tag = -1;
+    edge_obj: (ir.Value | None) = None;
+    if co.conn_type is not None {
+        edge_obj = self._codegen_expr(co.conn_type);
+        _etname = self._spawn_operand_name(co.conn_type);
+        if _etname is not None {
+            edge_tag = self.osp_tags.get(_etname, -1);
+        }
+    } else {
+        edge_obj = self._osp_generic_edge();
+    }
+    if edge_obj is None {
+        return tgt;
+    }
+    # The edge handle lives raw (ptrtoint) in the adjacency arena, not as an RC
+    # reference, so pin the edge object immortal -- otherwise RC could free a
+    # typed edge at end of statement while the graph still references it.
+    self._osp_make_immortal(edge_obj);
+    _argtys = osp_conn_fn.function_type.args;
+    self.builder.call(
+        osp_conn_fn,
+        [
+            self._coerce_type(src, _argtys[0]),
+            self._coerce_type(tgt, _argtys[1]),
+            self._coerce_type(edge_obj, _argtys[2]),
+            self._coerce_type(ir.Constant(i64, undirected), _argtys[3]),
+            self._coerce_type(ir.Constant(i64, edge_tag), _argtys[4])
+        ]
+    );
+    return tgt;
+}
+
+"""Lower an edge reference `[-->]` / `[->:Edge:->]` to `osp_refs(here, dir,
+edge_tag, edges_only)`, returning a `list` of neighbor (or edge) handles in the
+kernel's list representation -- ready to hand to `osp_visit`. The origin of a
+bare ref is the walker's current location `here`."""
+impl NaIRGenPass._codegen_edge_ref_trailer(
+    nd: uni.EdgeRefTrailer
+) -> (ir.Value | None) {
+    osp_refs_fn = self.func_symtab.get("osp_refs");
+    # Only the single-step form (`[-->]` / `[->:Edge:->]`, one EdgeOpRef) is
+    # lowered -- the same shape the cl backend handles. A multi-element chain
+    # (multi-hop / trailing filter comprehension) must fail loudly rather than
+    # silently traversing on just the first step.
+    if (osp_refs_fn is None) or (len(nd.chain) != 1) {
+        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    step = nd.chain[0];
+    _here = self.local_vars.get("here");
+    if (not isinstance(step, uni.EdgeOpRef)) or (_here is None) {
+        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    i64 = ir.IntType(64);
+    origin_ptr = self.builder.load(_here, name="here");
+    _dir = int(step.edge_dir.value);
+    _edge_tag = -1;
+    _fcond = step.filter_cond;
+    if (_fcond is not None) and (_fcond.f_type is not None) {
+        _etname = self._get_name(_fcond.f_type);
+        if _etname is not None {
+            _edge_tag = self.osp_tags.get(_etname, -1);
+        }
+    }
+    _edges_only = 1 if nd.edges_only else 0;
+    _argtys = osp_refs_fn.function_type.args;
+    return self.builder.call(
+        osp_refs_fn,
+        [
+            self._coerce_type(origin_ptr, _argtys[0]),
+            self._coerce_type(ir.Constant(i64, _dir), _argtys[1]),
+            self._coerce_type(ir.Constant(i64, _edge_tag), _argtys[2]),
+            self._coerce_type(ir.Constant(i64, _edges_only), _argtys[3])
+        ],
+        name="osp.refs"
+    );
+}
+
+"""Resolve a `visit` target to the kernel's `list` representation. An edge-ref
+target already yields that list; a bare location is wrapped via `osp_wrap1`."""
+impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
+    if isinstance(target, uni.EdgeRefTrailer) {
+        return self._codegen_edge_ref_trailer(target);
+    }
+    _wrap = self.func_symtab.get("osp_wrap1");
+    _val = self._codegen_expr(target);
+    if (_val is None) or (_wrap is None) {
+        return None;
+    }
+    _argtys = _wrap.function_type.args;
+    return self.builder.call(
+        _wrap, [self._coerce_type(_val, _argtys[0])], name="osp.wrap1"
+    );
+}
+
+"""Lower `visit <targets> [else ...]` to `osp_visit(targets, insert_loc)`.
+The kernel enqueues the (ignore-filtered) targets into the current walk scope's
+`next` queue at `insert_loc` (default -1 = append) and returns whether anything
+was enqueued; a `visit ... else { ... }` runs the else body when nothing was
+(mirroring the py lowering `if not visit(...): else_body`)."""
+impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
+    osp_visit_fn = self.func_symtab.get("osp_visit");
+    if osp_visit_fn is None {
+        self.emit(E5090, node_override=nd, kind="statement", name="VisitStmt");
+        return;
+    }
+    _targets = self._osp_visit_targets(nd.target);
+    if _targets is None {
+        return;
+    }
+    i64 = ir.IntType(64);
+    _insert: ir.Value = ir.Constant(i64, -1);
+    if nd.insert_loc is not None {
+        _il = self._codegen_expr(nd.insert_loc);
+        if _il is not None {
+            _insert = self._coerce_type(_il, i64);
+        }
+    }
+    _argtys = osp_visit_fn.function_type.args;
+    _did = self.builder.call(
+        osp_visit_fn,
+        [
+            self._coerce_type(_targets, _argtys[0]),
+            self._coerce_type(_insert, _argtys[1])
+        ],
+        name="visit.did"
+    );
+    if nd.else_body is None {
+        return;
+    }
+    func = self.builder.function;
+    else_bb = func.append_basic_block(name="visit.else");
+    merge_bb = func.append_basic_block(name="visit.end");
+    self.builder.cbranch(self._to_bool(_did), merge_bb, else_bb);
+    self.builder.position_at_end(else_bb);
+    if isinstance(nd.else_body, uni.ElseIf) {
+        self._codegen_if(nd.else_body);
+    } elif isinstance(nd.else_body, uni.ElseStmt) {
+        if isinstance(nd.else_body.body, (list, tuple)) {
+            self._codegen_body(nd.else_body.body);
+        }
+    }
+    if not self.builder.block.is_terminated {
+        self.builder.branch(merge_bb);
+    }
+    self.builder.position_at_end(merge_bb);
+}
+
+"""Lower `disengage` to `osp_disengage()` -- flags the current walk scope so the
+kernel halts the walk, then returns from the ability. The py lowering emits a
+bare `return` after the call (statements after `disengage` never run), so native
+must terminate too or side effects after `disengage` would diverge silently."""
+impl NaIRGenPass._codegen_disengage(nd: uni.DisengageStmt) -> None {
+    osp_disengage_fn = self.func_symtab.get("osp_disengage");
+    if osp_disengage_fn is None {
+        self.emit(E5090, node_override=nd, kind="statement", name="DisengageStmt");
+        return;
+    }
+    self.builder.call(osp_disengage_fn, []);
+    # disengage is walker-ability-only (event abilities return void); subsequent
+    # statements in the block are skipped by the is_terminated check.
+    if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
+        self.builder.ret_void();
+    }
+}
+
+"""Lower `report <expr>` to `osp_report(box(expr))` -- appends the boxed value
+to the current walk scope's `reports`, delivered at the spawn boundary."""
+impl NaIRGenPass._codegen_report(nd: uni.ReportStmt) -> None {
+    osp_report_fn = self.func_symtab.get("osp_report");
+    if osp_report_fn is None {
+        self.emit(E5090, node_override=nd, kind="statement", name="ReportStmt");
+        return;
+    }
+    _val = self._codegen_expr(nd.expr);
+    if _val is None {
+        return;
+    }
+    _argtys = osp_report_fn.function_type.args;
+    self.builder.call(osp_report_fn, [self._coerce_type(_val, _argtys[0])]);
 }

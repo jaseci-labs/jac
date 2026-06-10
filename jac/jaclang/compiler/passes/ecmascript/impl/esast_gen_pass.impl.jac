@@ -191,6 +191,28 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.es_ast = identifier;
 }
 
+"""Lower a Python builtin type (str, int, list, ...) used as a *value*.
+
+A builtin-type name has no first-class JS counterpart, so when one appears as a
+value -- the 2nd arg of isinstance/issubclass, a member of a tuple of types,
+etc. -- lower it to a string tag carrying its Python type name. The
+`_jac.builtin.isinstance`/`issubclass` runtime helpers interpret these tags
+(via `_jac.poly._typename`). Without this handler the node produced no es_ast
+and was silently dropped from enclosing argument lists, crashing
+`isinstance(x, str)` codegen with a bare IndexError (jaseci-labs/jaseci#6458).
+
+A builtin type in *call* position (`str(x)`, `list(it)`) is dispatched to its
+emitter in `exit_func_call` before this es_ast is consulted, so constructors are
+unaffected.
+"""
+impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
+    type_name = nd.sym_name;
+    tag = self.sync_loc(
+        es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
+    );
+    nd.gen.es_ast = tag;
+}
+
 """Process null/None literal."""
 impl EsastGenPass.exit_null(nd: uni.Null) -> None {
     null_lit = self.sync_loc(es.Literal(value=None, raw='null'), jac_node=nd);
@@ -1828,12 +1850,27 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     _args_strs.append(_unparser.generate(_p.value));
                 }
             }
-            _result = _emit_fn(_ctx, _args_strs);
-            if _result is not None and "_jac." in str(_result) {
-                self.needs_jac_runtime = True;
+            # Guard the emitter so a malformed builtin call surfaces a located
+            # diagnostic instead of aborting the whole build with a bare,
+            # unlocated exception (jaseci-labs/jaseci#6458).
+            _result = None;
+            try {
+                _result = _emit_fn(_ctx, _args_strs);
+            } except Exception as _emit_err {
+                self.emit(
+                    E5016, node_override=nd, name=_builtin_name, error=str(_emit_err)
+                );
+                return;
             }
-            nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
-            return;
+            # An emitter may return None to decline (e.g. unexpected arity); in
+            # that case fall through to the default member-call codegen below.
+            if _result is not None {
+                if "_jac." in str(_result) {
+                    self.needs_jac_runtime = True;
+                }
+                nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
+                return;
+            }
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
@@ -3794,6 +3831,33 @@ impl EsastGenPass._ref_head_name(expr: (uni.UniNode | None)) -> (str | None) {
     return cur.value if isinstance(cur, uni.Name) else None;
 }
 
+"""The trailing `ref: Ref` parameter of a JSX component, or None.
+
+A client component opts into being a ref target -- a 1:1 match with React's
+`forwardRef((props, ref) => ...)` render signature -- by declaring a trailing
+parameter typed `Ref`. It is detected structurally with the same ambient-`Ref`
+recognition used for `has`-field refs (`_ref_head_name`), so client codegen
+needs no type-checker pass. Only the *last* declared parameter qualifies: `ref`
+is the 2nd positional arg React threads in, so it must trail the props. The
+gating to a client JSX component happens at the call site; a non-`Ref`-typed
+trailing param (or none) returns None and the component lowers as before."""
+impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
+    if not isinstance(nd.signature, uni.FuncSignature) {
+        return None;
+    }
+    params = nd.signature.params;
+    if not params {
+        return None;
+    }
+    last = params[-1];
+    if (
+        last.type_tag is not None and self._ref_head_name(last.type_tag.tag) == 'Ref'
+    ) {
+        return last;
+    }
+    return None;
+}
+
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Get the body statements
@@ -4072,19 +4136,6 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         self._transform_to_useeffect(nd);
         return;
     }
-    if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
-        self.client_manifest.has_client = True;
-        is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
-            name = nd.name_ref.sym_name;
-            self.client_manifest.exports.append(name);
-            self.client_manifest.params[name] = [
-                p.name.sym_name for p in nd.signature.params
-            ]
-                if isinstance(nd.signature, uni.FuncSignature)
-                else [];
-        }
-    }
     is_jsx_in_return = False;
     if isinstance(nd.body, list) {
         for stmt in nd.body {
@@ -4098,17 +4149,68 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             }
         }
     }
+    # A client JSX component opts into being a ref target -- React's
+    # `forwardRef((props, ref) => ...)` render signature -- by declaring a
+    # trailing `ref: Ref` parameter. When present, `ref` is threaded as the 2nd
+    # positional arg (not a destructured prop) and the component lowers to
+    # `const C = forwardRef(function C(props, ref) {...})`. Without this a jac
+    # component cannot *be* a ref target, so any radix `asChild` composition over
+    # it silently fails to position (#6520).
+    ref_param: (uni.ParamVar | None) = None;
+    if (
+        nd.code_context == CodeContext.CLIENT and not nd.is_method and is_jsx_in_return
+    ) {
+        ref_param = self._ref_forward_param(nd);
+    }
+    if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
+        self.client_manifest.has_client = True;
+        is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            name = nd.name_ref.sym_name;
+            self.client_manifest.exports.append(name);
+            # `ref` is not a positional prop validated at JSX call sites -- React
+            # delivers it through the special `ref=` attribute -- so it is
+            # excluded from the component's prop manifest.
+            self.client_manifest.params[name] = [
+                p.name.sym_name
+                for p in nd.signature.params
+                if p is not ref_param
+            ]
+                if isinstance(nd.signature, uni.FuncSignature)
+                else [];
+        }
+    }
     params: list[es.Pattern] = [];
     destructure_stmts: list[es.Statement] = [];
     destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
-    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.get_parameters() {
+    # The forwarded `ref` is threaded as a trailing positional arg below, never a
+    # destructured prop, so it is filtered out of the value-param handling here.
+    # `sig_params` mirrors the `.params` view used for the props-destructure
+    # decision; `value_params` mirrors `get_parameters()` for the passthrough
+    # loop (which also carries varargs/kwonly).
+    sig_params = (
+        [
+            p
+            for p in nd.signature.params
+            if p is not ref_param
+        ]
+            if isinstance(nd.signature, uni.FuncSignature)
+            else []
+    );
+    value_params = (
+        [
+            p
+            for p in nd.signature.get_parameters()
+            if p is not ref_param
+        ]
+            if isinstance(nd.signature, uni.FuncSignature)
+            else []
+    );
+    if value_params {
         if is_jsx_in_return
-        and not (
-            len(nd.signature.params) == 1
-            and nd.signature.params[0].name.sym_name == 'props'
-        ) {
+        and not (len(sig_params) == 1 and sig_params[0].name.sym_name == 'props') {
             params.append(es.Identifier(name="props"));
-            for param in nd.signature.params {
+            for param in sig_params {
                 param_key = self.sync_loc(
                     es.Identifier(name=param.name.sym_name), jac_node=param.name
                 );
@@ -4155,23 +4257,40 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             # any single-`props` signature). Surface W5015 so the author picks
             # direct named params explicitly — or suppresses with
             # `# jac:ignore[W5015]` for legitimate forwarding/HOC cases.
+            # A trailing `ref` param is itself a deliberate React-`forwardRef`
+            # shape, so the `(props, ref)` signature it implies is not the
+            # accidental props-bundle W5015 warns about -- skip it then.
             if (
                 is_jsx_in_return
-                and len(nd.signature.params) == 1
-                and nd.signature.params[0].name.sym_name == 'props'
+                and len(sig_params) == 1
+                and sig_params[0].name.sym_name == 'props'
+                and ref_param is None
             ) {
                 self.emit(
-                    W5015,
-                    node_override=nd.signature.params[0],
-                    component=nd.name_ref.sym_name
+                    W5015, node_override=sig_params[0], component=nd.name_ref.sym_name
                 );
             }
-            for param in nd.signature.get_parameters() {
+            for param in value_params {
                 if param.gen.es_ast {
                     params.append(cast(es.Pattern, param.gen.es_ast));
                 }
             }
         }
+    }
+    if ref_param is not None {
+        # React invokes the `forwardRef` render fn as `(props, ref)`, so the
+        # component always takes a leading `props` even when it declares no value
+        # props; `ref` then lands at position 2 and threads into `ref={ref}`.
+        if not params {
+            params.append(self.sync_loc(es.Identifier(name="props"), jac_node=nd));
+        }
+        params.append(
+            cast(es.Pattern, ref_param.gen.es_ast)
+                if ref_param.gen.es_ast
+                else self.sync_loc(
+                    es.Identifier(name=ref_param.name.sym_name), jac_node=ref_param.name
+                )
+        );
     }
     inner = self.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
@@ -4196,6 +4315,39 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             jac_node=nd
         );
         nd.gen.es_ast = method_def;
+    } elif ref_param is not None {
+        # Lower a ref-forwarding component to
+        # `const C = forwardRef(function C(props, ref) {...})`. The named function
+        # expression preserves the component name in React devtools, and the
+        # `forwardRef` wrapper is the React-18 shim that lets `ref` reach the
+        # component. The jac source contract is version-independent: on React 19
+        # the same source could instead lower to a plain `ref` prop, so adopting
+        # React 19 becomes an optimization rather than the fix.
+        self._inject_runtime_import('forwardRef', nd);
+        func_expr = self.sync_loc(
+            es.FunctionExpression(
+                id=func_id, params=params, body=block, async_=nd.is_async
+            ),
+            jac_node=nd
+        );
+        forward_call = self.sync_loc(
+            es.CallExpression(
+                callee=es.Identifier(name='forwardRef'), arguments=[func_expr]
+            ),
+            jac_node=nd
+        );
+        declarator = self.sync_loc(
+            es.VariableDeclarator(
+                id=self.sync_loc(
+                    es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
+                ),
+                `init=forward_call,
+            ),
+            jac_node=nd
+        );
+        nd.gen.es_ast = self.sync_loc(
+            es.VariableDeclaration(declarations=[declarator], kind='const'), jac_node=nd
+        );
     } else {
         func_decl = self.sync_loc(
             es.FunctionDeclaration(

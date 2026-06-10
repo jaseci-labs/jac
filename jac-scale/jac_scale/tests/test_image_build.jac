@@ -48,6 +48,69 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         assert "FROM python:3.12-slim" in contents;
         assert "jac-scale[deploy,data]" in contents;
         assert "jac install" in contents;
+        # Build identity (B-01) is stamped into the image.
+        assert "ARG JAC_BUILD_SHA" in contents;
+        assert "ENV JAC_BUILD_SHA" in contents;
+    }
+}
+
+
+test "_compute_build_sha returns 'unknown' when git is unavailable" {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value=None) {
+        assert helpers_mod._compute_build_sha(Path("/tmp")) == "unknown";
+    }
+}
+
+
+test "_compute_build_sha returns the bare SHA when the tree is clean" {
+    # subprocess.run is called in order: rev-parse, then status --porcelain.
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=0, stdout="")
+            ]
+        ) {
+            assert helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456";
+        }
+    }
+}
+
+
+test "_compute_build_sha omits -dirty when the tree state cannot be checked" {
+    # git status failing must degrade to the bare SHA, never silently to a
+    # clean stamp over a possibly-dirty build (a warning is emitted instead).
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=1, stdout="")
+            ]
+        ) {
+            assert helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456";
+        }
+    }
+}
+
+
+test "_compute_build_sha appends -dirty when the tree has uncommitted changes" {
+    with mock.patch.object(helpers_mod.shutil, "which", return_value="/usr/bin/git") {
+        with mock.patch.object(
+            helpers_mod.subprocess,
+            "run",
+            side_effect=[
+                mock.Mock(returncode=0, stdout="abc123def456\n"),
+                mock.Mock(returncode=0, stdout=" M app.jac\n")
+            ]
+        ) {
+            assert (
+                helpers_mod._compute_build_sha(Path("/repo")) == "abc123def456-dirty"
+            );
+        }
     }
 }
 
@@ -105,7 +168,7 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
                         with mock.patch.object(
                             dist_mod,
                             "_retag_with_content_id",
-                            side_effect=lambda tag , envNone : f"{tag}-abc123"
+                            side_effect=lambda tag : f"{tag}-abc123"
                         ) {
                             with mock.patch.object(
                                 dist_mod, "run_docker_push"

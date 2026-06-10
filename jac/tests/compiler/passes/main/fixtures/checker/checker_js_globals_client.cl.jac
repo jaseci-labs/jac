@@ -21,3 +21,17 @@ def parse_and_format(raw: str) -> int {
     n = parseInt(raw, 10);
     return int(n);
 }
+
+# Mirrors the this_is_jac frontend.cl.jac:61 failure: `document`'s
+# always-present root elements (documentElement/body/head) must carry the
+# real HTMLElement type so `.classList` (and other element members) resolve
+# instead of erroring E1030 off the bare `object` placeholder.
+def toggle_dark(dark: bool) -> bool {
+    if dark {
+        document.documentElement.classList.add("dark");
+    } else {
+        document.documentElement.classList.remove("dark");
+    }
+    document.body.classList.toggle("ready");
+    return document.head.classList.contains("loaded");
+}

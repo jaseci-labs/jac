@@ -285,6 +285,35 @@ cl {
 
 The field must be constructed (`= Ref()` / `= Ref(initial)`); a bare `has r: Ref[T];` is rejected ([E2025](../../reference/diagnostics.md)) because, like every other `has`-field, it needs a value. `.current` is typed `T | None`, so null-check it before use.
 
+### Forwarding a ref into your component
+
+The example above uses a ref *inside* a component. The other direction -- letting a **parent** attach a ref to a component *you* wrote -- requires the component to **forward** that ref to a real DOM node. A component opts in by declaring a trailing parameter typed `Ref`, a 1:1 match with React's `forwardRef((props, ref) => ...)` render signature:
+
+```jac
+cl {
+    def:pub FancyInput(props: any, ref: Ref[HTMLInputElement]) -> JsxElement {
+        return <input ref={ref} className="fancy" {**props} />;
+    }
+}
+```
+
+This lowers to `const FancyInput = forwardRef(function FancyInput(props, ref) { ... })`, so a parent can point its own ref at the component and reach the underlying `<input>`:
+
+```jac
+cl {
+    def:pub ParentForm() -> JsxElement {
+        has inputRef: Ref[HTMLInputElement] = Ref();
+        return <FancyInput ref={inputRef} placeholder="Type here" />;
+    }
+}
+```
+
+- Only the **last** parameter qualifies, and it must be typed `Ref` (or `Ref[T]`). Named props before it destructure as usual; `ref` stays the trailing positional argument and is never folded into the props bundle.
+- `forwardRef` is auto-imported from React; you do not import it yourself.
+- A component that declares no `ref` parameter compiles exactly as before -- this is opt-in and zero-cost.
+
+Forwarding is what makes a component usable as a [radix](npm-and-libraries.md) `asChild` trigger -- `DropdownMenuTrigger`, `Tooltip.Trigger`, `Popover.Trigger`, and friends attach a ref to their child to use as a positioning anchor, so a component that cannot forward a ref leaves that anchor null and the menu/popover silently never opens.
+
 ---
 
 ## useContext - Global State

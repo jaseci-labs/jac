@@ -363,6 +363,23 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     # Flatten fields from all ancestors in MRO order (diamond dedup by name)
     mro = self.mro_order.get(arch_name, [arch_name]);
     seen_fields: set[str] = set();
+    # Built-in walker `reports` list at a uniform field index 2 (vtable@0,
+    # __type_tag@1). The kernel's on_complete delivers `scope.reports` here at
+    # the spawn boundary, so `w.reports` reads back like a normal field. Added
+    # before MRO/own fields and marked seen so it sits at a fixed offset and a
+    # user-declared `reports` cannot shadow it (issue #6146).
+    if is_osp and (self.osp_arch_kind.get(arch_name) == "walker") {
+        self._emit_list_helpers("i64", ir.IntType(64));
+        _rep_lt = self.list_types.get("i64");
+        if _rep_lt is not None {
+            _rep_idx = len(field_types);
+            field_types.append(_rep_lt.as_pointer());
+            field_index_map["reports"] = _rep_idx;
+            field_type_map["reports"] = _rep_lt.as_pointer();
+            self.osp_reports_field[arch_name] = _rep_idx;
+            seen_fields.add("reports");
+        }
+    }
     for ancestor_name in mro[1:] {
         if ancestor_name not in self.struct_field_indices {
             continue;
@@ -718,6 +735,77 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self._param_promoted = saved_param_promoted;
 }
 
+"""Collect the member struct names a trigger tag denotes.
+
+A trigger may be a single `Name` (`with Base entry`), a `|` union, or a
+`(A, B)` tuple trigger -- each fires the ability on any listed archetype, so
+the implicit `here`/`visitor` is the union of those members. Returns the
+known-struct member names in source order (deduped), skipping `None`/unknown.
+"""
+impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str] {
+    out: list[str] = [];
+    if tag is None {
+        return out;
+    }
+    parts: list[uni.UniNode] = [];
+    if isinstance(tag, uni.TupleVal) {
+        parts = list(tag.values or []);
+    } elif isinstance(tag, uni.BinaryExpr) and getattr(tag.op, "value", "") == "|" {
+        parts = [tag.left, tag.right];
+    } else {
+        parts = [tag];
+    }
+    for part in parts {
+        # Recurse so nested forms (e.g. `(A, B | C)`) flatten uniformly.
+        if isinstance(part, uni.TupleVal)
+        or (
+            isinstance(part, uni.BinaryExpr) and getattr(part.op, "value", "") == "|"
+        ) {
+            for nm in self._trigger_member_structs(part) {
+                if nm not in out {
+                    out.append(nm);
+                }
+            }
+            continue;
+        }
+        name = self._get_name(part);
+        if name is not None and name in self.struct_types and name not in out {
+            out.append(name);
+        }
+    }
+    return out;
+}
+
+"""Find a field whose layout diverges across union trigger members.
+
+Field access on `here`/`visitor` lowers through a single member's layout, so
+this is only sound when every field common to all members sits at the same
+index and LLVM type. Returns the first divergent field name (for E5091), or
+None when the shared layout is consistent (so any member's layout is usable).
+"""
+impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
+    if len(members) <= 1 {
+        return None;
+    }
+    base = members[0];
+    base_idx = self.struct_field_indices.get(base, {});
+    base_types = self.struct_field_types.get(base, {});
+    for fname in base_idx {
+        for other in members[1:] {
+            other_idx = self.struct_field_indices.get(other, {});
+            if fname not in other_idx {
+                continue;  # not a common field -- union attr access rejects it
+            }
+            other_types = self.struct_field_types.get(other, {});
+            if other_idx[fname] != base_idx[fname]
+            or base_types.get(fname) != other_types.get(fname) {
+                return fname;
+            }
+        }
+    }
+    return None;
+}
+
 """Forward-declare an Object-Spatial ability (`can ... with T entry/exit`).
 
 An ability with an EventSignature is lowered like a two-parameter method:
@@ -741,7 +829,17 @@ impl NaIRGenPass._forward_declare_event_method(
     }
     loc_type: ir.Type = ir.IntType(8).as_pointer();
     if sig.arch_tag_info is not None {
-        loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        # A tuple/union trigger has no single struct type; lower the implicit
+        # location parameter to a representative member's pointer so field
+        # access on `here`/`visitor` has a usable layout (issue #6470). A plain
+        # single-type trigger yields exactly the one member, matching the prior
+        # `_resolve_jac_type` result.
+        _members = self._trigger_member_structs(sig.arch_tag_info);
+        if _members {
+            loc_type = self.struct_types[_members[0]].as_pointer();
+        } else {
+            loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        }
     }
     fnty = ir.FunctionType(ir.VoidType(), [struct_type.as_pointer(), loc_type]);
     func = ir.Function(self.llvm_module, fnty, name=full_name);
@@ -815,13 +913,29 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.param_vars.add(loc_name);
     if sig.arch_tag_info is not None {
         self.var_type_node[loc_name] = sig.arch_tag_info;
-        loc_tname = self._get_name(sig.arch_tag_info);
-        if loc_tname is not None and loc_tname in self.struct_types {
-            self.type_var_map[loc_name] = loc_tname;
+        # For a tuple/union trigger (`with (A, B) entry`), `here`/`visitor`
+        # binds to a representative member so `here.field` resolves against a
+        # real struct layout instead of silently dropping (issue #6470).
+        _members = self._trigger_member_structs(sig.arch_tag_info);
+        _conflict = self._union_layout_conflict(_members);
+        if _conflict is not None {
+            # Members disagree on a shared field's offset: the single-layout
+            # lowering would misread it, so surface a diagnostic rather than
+            # emit a quietly-wrong body.
+            self.emit(
+                E5091,
+                node_override=sig.arch_tag_info,
+                members=", ".join(_members),
+                field=_conflict
+            );
         }
-        if loc_tname is not None and loc_tname in self.field_type_node {
-            for (fname, ftn) in self.field_type_node[loc_tname].items() {
-                self.var_type_node[f"{loc_name}.{fname}"] = ftn;
+        loc_tname = _members[0] if _members else None;
+        if loc_tname is not None {
+            self.type_var_map[loc_name] = loc_tname;
+            if loc_tname in self.field_type_node {
+                for (fname, ftn) in self.field_type_node[loc_tname].items() {
+                    self.var_type_node[f"{loc_name}.{fname}"] = ftn;
+                }
             }
         }
     }
@@ -926,6 +1040,37 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.store(
             ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
         );
+        # Graph-arena lifetime: an OSP instance is a graph location, referenced
+        # by the walk as a borrowed `any` handle (boxed pointer) inside the
+        # kernel's work-stack / scope lists. Those lists retain/release the boxed
+        # pointer, which over-releases the location and frees it mid-walk (the
+        # edge<->node refcount issue, #6146). Pin every node/walker/edge to the
+        # immortal sentinel so the graph persists for the program -- matching the
+        # immortal descriptor singletons. A scoped arena teardown is future work.
+        self._osp_make_immortal(obj_ptr);
+    }
+    # Initialize the built-in walker `reports` list to empty so `w.reports` is a
+    # valid (empty) list before any spawn; the kernel's on_complete replaces it
+    # with the walk's collected reports at the spawn boundary (issue #6146).
+    _rep_idx = self.osp_reports_field.get(type_name);
+    if _rep_idx is not None {
+        _rep_h = self.list_helpers.get("i64");
+        if _rep_h is not None {
+            _rep_list = self._rc_call_with_ctx(
+                _rep_h["new"], [], op="new", loc="", name="reports.init"
+            );
+            self.builder.store(
+                _rep_list,
+                self.builder.gep(
+                    obj_ptr,
+                    [
+                        ir.Constant(ir.IntType(32), 0),
+                        ir.Constant(ir.IntType(32), _rep_idx)
+                    ],
+                    name="reports.slot"
+                )
+            );
+        }
     }
     # Initialize fields from keyword arguments
     field_indices = self.struct_field_indices.get(type_name, {});
@@ -1338,6 +1483,27 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 v = self._codegen_expr(param);
                 if v is not None {
                     arg_vals.append(v);
+                }
+            }
+            # A tuple appended/inserted into a list whose boxed element-struct is
+            # tracked (a bare `list` seeded with an `any`-containing tuple) must
+            # be stored in that exact layout, otherwise the unpack side reads the
+            # wrong field types. Box any concrete scalar that lands in an
+            # `any`/`JacVal` slot so producer and consumer agree. See #6511.
+            _elem_struct = self.var_list_elem_struct.get(target_name);
+            if _elem_struct is not None
+            and isinstance(_elem_struct, ir.PointerType)
+            and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
+                _tidx = -1;
+                if method_name == "append" and arg_vals {
+                    _tidx = 0;
+                } elif method_name == "insert" and len(arg_vals) > 1 {
+                    _tidx = 1;
+                }
+                if _tidx >= 0 {
+                    arg_vals[_tidx] = self._coerce_tuple_to_struct(
+                        arg_vals[_tidx], _elem_struct.pointee
+                    );
                 }
             }
             if method_name == "append" {
@@ -1809,31 +1975,41 @@ impl NaIRGenPass._codegen_field_aug_assign(
 impl NaIRGenPass._codegen_field_assign(
     target: uni.AtomTrailer, value: ir.Value
 ) -> None {
+    # A field store whose receiver type / field can't be resolved used to
+    # vanish silently (the #6470 write-side analog). Surface it as E5090,
+    # unless a deeper diagnostic already pinpointed the cause.
+    _fa_errs = len(self.errors_had);
     target_name = self._get_name(target.target);
     field_name = self._get_name(target.right);
-    if field_name is None {
-        return;
-    }
-    # Resolve the type: try simple name first, then infer from expression
+    obj_val = self._codegen_expr(target.target);
     type_name: (str | None) = None;
     if target_name is not None {
         type_name = self.type_var_map.get(target_name);
     }
-    obj_val = self._codegen_expr(target.target);
-    if obj_val is None {
-        return;
-    }
-    if type_name is None {
+    if type_name is None and obj_val is not None {
         type_name = self._infer_type_name(obj_val);
     }
-    if type_name is None {
+    field_indices = self.struct_field_indices.get(type_name)
+        if type_name is not None
+        else None;
+    if (
+        field_name is None
+        or obj_val is None
+        or type_name is None
+        or field_indices is None
+        or field_name not in field_indices
+    ) {
+        if len(self.errors_had) == _fa_errs {
+            self.emit(
+                E5090,
+                node_override=target,
+                kind="field assignment",
+                name=(field_name or "<field>")
+            );
+        }
         return;
     }
-    field_indices = self.struct_field_indices.get(type_name);
     field_types = self.struct_field_types.get(type_name);
-    if field_indices is None or field_name not in field_indices {
-        return;
-    }
     idx = field_indices[field_name];
     ftype = field_types[field_name];
     value = self._coerce_type(value, ftype);

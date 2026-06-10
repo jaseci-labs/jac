@@ -118,9 +118,9 @@ walker StudentAnalyzer {
 glob science_lab = root ++> Classroom(
          room_number="Lab-A", capacity=24, has_projector=True
      ),
-     dr_smith = science_lab +>: Teaches(
+     dr_smith = science_lab +>:Teaches(
          start_date="2024-08-01", schedule="TR 10:00-11:30"
-     ) :+> Teacher(
+     ):+> Teacher(
          name="Dr. Smith",
          subject="Chemistry",
          years_experience=12,
@@ -134,9 +134,9 @@ glob science_lab = root ++> Classroom(
 
 with entry {
     for (name, age, grade, id) in students {
-        student = science_lab +>: EnrolledIn(
+        student = science_lab +>:EnrolledIn(
             enrollment_date="2024-08-15", attendance_rate=92.0
-        ) :+> Student(name=name, age=age, grade_level=grade, student_id=id);
+        ):+> Student(name=name, age=age, grade_level=grade, student_id=id);
 
         print(f"Enrolled {student[0].name} in {science_lab[0].room_number}");
     }

@@ -622,6 +622,22 @@ impl ModuleIntrospector._extract_access_levels -> None {
     self._walker_access = {};
     mod_path = self._module?.__file__;
     main_mod = Jac.program.find_module(os.path.abspath(mod_path)) if mod_path else None;
+    # A bytecode-only cache hit leaves the entry module out of the hub; compile
+    # it so its access map is available rather than defaulting all to auth.
+    if not main_mod and mod_path {
+        try {
+            main_mod = Jac.program.compile(os.path.abspath(mod_path));
+        } except Exception as e {
+            import logging;
+            logging.getLogger(__name__).warning(
+                "serve: fallback compile of %s failed; access table will be "
+                "empty and endpoints default to auth-required: %s",
+                mod_path,
+                e
+            );
+            main_mod = None;
+        }
+    }
     if not main_mod {
         return;
     }
@@ -656,11 +672,29 @@ impl ModuleIntrospector._extract_access_levels -> None {
             }
         }
     }
+    import from jaclang.jac0core.compiler { get_boundary_analysis_sched }
     for src_mod in sources {
         if not (src_mod and src_mod.gen and src_mod.gen.interop_manifest) {
             continue;
         }
         man = src_mod.gen.interop_manifest;
+        # BoundaryAnalysisPass runs on a compile's entry module, not on the
+        # providers it imports -- so a provider's access map is empty until we
+        # run the pass on it here (a no-op when it declares no endpoints).
+        if not (man.walker_access or man.func_access) {
+            try {
+                Jac.program.run_schedule(src_mod, get_boundary_analysis_sched());
+            } except Exception as e {
+                import logging;
+                logging.getLogger(__name__).warning(
+                    "serve: boundary analysis of %s failed; its imported "
+                    "endpoints will default to auth-required: %s",
+                    src_mod?.loc?.mod_path,
+                    e
+                );
+            }
+            man = src_mod.gen.interop_manifest;
+        }
         for (name, auth) in man.func_access.items() {
             if name not in self._function_access {
                 self._function_access[name] = auth;
@@ -776,7 +810,20 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
             if imported {
                 return getattr(imported[0], name, None);
             }
-        } except Exception {
+        } except Exception as e {
+            # Fail loud: a cross-boundary endpoint whose provider module fails
+            # to import would otherwise vanish from the API with no trace (the
+            # #6507 debugging trap). Surface it on the server log so a broken
+            # module is visible instead of silently dropping its endpoints.
+            import logging;
+            logging.getLogger("jaclang.serve").warning(
+                "cross-boundary endpoint '%s' unavailable: server module %r "
+                "failed to import (%s: %s)",
+                name,
+                src_path,
+                type(e).__name__,
+                e
+            );
             return None;
         }
         return None;

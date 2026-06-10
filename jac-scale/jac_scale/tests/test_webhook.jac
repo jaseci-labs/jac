@@ -343,14 +343,18 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) {
 
     payload = json.dumps({});
     payload_bytes = payload.encode("utf-8");
-    signature = _generate_webhook_signature(payload_bytes, api_key);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
     response = requests.post(
         f"{base_url}/webhook/MinimalWebhook",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -390,7 +394,10 @@ def run_webhook_payment_received_test(base_url: str) {
         }
     );
     payload_bytes = payload.encode("utf-8");
-    signature = _generate_webhook_signature(payload_bytes, api_key);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
 
     response = requests.post(
         f"{base_url}/webhook/PaymentReceived",
@@ -398,7 +405,8 @@ def run_webhook_payment_received_test(base_url: str) {
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -454,14 +462,18 @@ def run_webhook_revoked_api_key_test(base_url: str) {
     # Verify API key works with MinimalWebhook
     payload = json.dumps({});
     payload_bytes = payload.encode("utf-8");
-    signature = _generate_webhook_signature(payload_bytes, api_key);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
     response = requests.post(
         f"{base_url}/webhook/MinimalWebhook",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -484,13 +496,82 @@ def run_webhook_revoked_api_key_test(base_url: str) {
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
 
     assert response.status_code == 401 , (
         f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
+    );
+}
+
+"""A key scoped via allowed_walkers cannot call other webhook walkers."""
+def run_webhook_scoped_api_key_test(base_url: str) {
+    username = f"webhook_scoped_user_{uuid.uuid4().hex[:8]}";
+    token = _register_and_login(base_url, username, "password123");
+
+    api_key_response = requests.post(
+        f"{base_url}/api-key/create",
+        json={
+            "name": "scoped_key",
+            "expiry_days": 30,
+            "allowed_walkers": "PaymentReceived"
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10
+    );
+    assert api_key_response.status_code == 201;
+    api_key_data = cast(
+        dict[str, Any], _extract_transport_response_data(api_key_response.json())
+    );
+    api_key = api_key_data["api_key"];
+
+    # Allowed walker works
+    payload = json.dumps(
+        {"payment_id": "PAY-1", "order_id": "ORD-1", "amount": 1.0, "currency": "USD"}
+    );
+    payload_bytes = payload.encode("utf-8");
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
+    allowed_resp = requests.post(
+        f"{base_url}/webhook/PaymentReceived",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key,
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
+        },
+        timeout=10
+    );
+    assert allowed_resp.status_code == 200 , (
+        f"Expected 200 for allowed walker, got {allowed_resp.status_code}: {allowed_resp.text}"
+    );
+
+    # Walker outside the allow-list is rejected with 403
+    other_payload = json.dumps({});
+    other_bytes = other_payload.encode("utf-8");
+    ts2 = str(int(time.time()));
+    other_sig = _generate_webhook_signature(
+        f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]
+    );
+    denied_resp = requests.post(
+        f"{base_url}/webhook/MinimalWebhook",
+        data=other_payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key,
+            "X-Webhook-Signature": other_sig,
+            "X-Webhook-Timestamp": ts2
+        },
+        timeout=10
+    );
+    assert denied_resp.status_code == 403 , (
+        f"Expected 403 for walker outside scope, got {denied_resp.status_code}: {denied_resp.text}"
     );
 }
 
@@ -649,14 +730,18 @@ test "webhook without mongo - minimal webhook with valid api key" {
 
         payload = json.dumps({});
         payload_bytes = payload.encode("utf-8");
-        signature = _generate_webhook_signature(payload_bytes, api_key);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
         response = client.post(
             "/webhook/MinimalWebhook",
             content=payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
@@ -701,7 +786,10 @@ test "webhook without mongo - payment received with fields" {
             }
         );
         payload_bytes = payload.encode("utf-8");
-        signature = _generate_webhook_signature(payload_bytes, api_key);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
 
         response = client.post(
             "/webhook/PaymentReceived",
@@ -709,7 +797,8 @@ test "webhook without mongo - payment received with fields" {
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
@@ -778,14 +867,18 @@ test "webhook without mongo - revoked api key" {
         # Verify API key works with MinimalWebhook
         payload = json.dumps({});
         payload_bytes = payload.encode("utf-8");
-        signature = _generate_webhook_signature(payload_bytes, api_key);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
         response = client.post(
             "/webhook/MinimalWebhook",
             content=payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
         assert response.status_code == 200;
@@ -805,12 +898,243 @@ test "webhook without mongo - revoked api key" {
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
         assert response.status_code == 401 , (
             f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        client.close();
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
+    }
+}
+
+test "webhook without mongo - scoped api key" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    client = make_client();
+    try {
+        _wh_user5 = f"webhook_scoped_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(_wh_user5, "password123");
+        token = client.login_user(_wh_user5, "password123");
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={
+                "name": "scoped_key",
+                "expiry_days": 30,
+                "allowed_walkers": "PaymentReceived"
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+
+        payload = json.dumps(
+            {
+                "payment_id": "PAY-1",
+                "order_id": "ORD-1",
+                "amount": 1.0,
+                "currency": "USD"
+            }
+        );
+        payload_bytes = payload.encode("utf-8");
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
+        allowed_resp = client.post(
+            "/webhook/PaymentReceived",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
+            }
+        );
+        assert allowed_resp.status_code == 200 , (
+            f"Expected 200 for allowed walker, got {allowed_resp.status_code}: {allowed_resp.text}"
+        );
+
+        other_payload = json.dumps({});
+        other_bytes = other_payload.encode("utf-8");
+        ts2 = str(int(time.time()));
+        other_sig = _generate_webhook_signature(
+            f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]
+        );
+        denied_resp = client.post(
+            "/webhook/MinimalWebhook",
+            content=other_payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": other_sig,
+                "X-Webhook-Timestamp": ts2
+            }
+        );
+        assert denied_resp.status_code == 403 , (
+            f"Expected 403 for walker outside scope, got {denied_resp.status_code}: {denied_resp.text}"
+        );
+    } finally {
+        client.close();
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
+    }
+}
+
+test "webhook without mongo - stale timestamp rejected" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    client = make_client();
+    try {
+        username = f"webhook_replay_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(username, "password123");
+        token = client.login_user(username, "password123");
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "replay_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+        signing_secret = api_key_data["signing_secret"];
+
+        payload = json.dumps({});
+        payload_bytes = payload.encode("utf-8");
+        # 1 hour in the past, well outside the default 300s tolerance.
+        stale_ts = str(int(time.time()) - 3600);
+        signature = _generate_webhook_signature(
+            f"{stale_ts}.".encode("utf-8") + payload_bytes, signing_secret
+        );
+
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": stale_ts
+            }
+        );
+
+        assert response.status_code == 401 , (
+            f"Expected 401 for stale timestamp, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        client.close();
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
+    }
+}
+
+test "webhook without mongo - unknown body fields dropped" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    client = make_client();
+    try {
+        username = f"webhook_massassign_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(username, "password123");
+        token = client.login_user(username, "password123");
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "mass_assign_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+        signing_secret = api_key_data["signing_secret"];
+
+        # Body carries declared walker fields plus an undeclared evil_field.
+        # The walker has no such attribute; without filtering, spawn_walker
+        # would either error or silently set it. With filtering, the field
+        # is dropped before reaching the walker.
+        payload = json.dumps(
+            {
+                "payment_id": "PAY-MA-1",
+                "order_id": "ORD-MA-1",
+                "amount": 5.0,
+                "currency": "USD",
+                "evil_field": "should-be-dropped"
+            }
+        );
+        payload_bytes = payload.encode("utf-8");
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, signing_secret
+        );
+
+        response = client.post(
+            "/webhook/PaymentReceived",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
+            }
+        );
+
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        rpt = data["reports"][0];
+        assert rpt["payment_id"] == "PAY-MA-1";
+        assert "evil_field" not in rpt , (
+            f"evil_field leaked into walker report: {rpt}"
+        );
+    } finally {
+        client.close();
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
+    }
+}
+
+test "webhook without mongo - api key rejected as user session token" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    client = make_client();
+    try {
+        username = f"webhook_l2_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(username, "password123");
+        token = client.login_user(username, "password123");
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "session_test_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+
+        # The api_key is a JWT signed with the same secret as session tokens.
+        # validate_jwt_token must refuse it because its 'type' claim is
+        # 'api_key', not a user session.
+        response = client.post(
+            "/walker/NormalPayment",
+            json={
+                "payment_id": "PAY-L2-1",
+                "order_id": "ORD-L2-1",
+                "amount": 1.0,
+                "currency": "USD"
+            },
+            headers={"Authorization": f"Bearer {api_key}"}
+        );
+
+        assert response.status_code == 401 , (
+            f"Expected 401 for api_key used as session token, got {response.status_code}: {response.text}"
         );
     } finally {
         client.close();
@@ -986,6 +1310,25 @@ test "webhook with mongo - revoked api key" {
     sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
     try {
         run_webhook_revoked_api_key_test(base_url);
+    } finally {
+        _stop_server(sp);
+        os.environ.pop("MONGODB_URI", None);
+        mongo_container.stop();
+        _cleanup_db_files(wh_fixtures_dir);
+    }
+}
+
+test "webhook with mongo - scoped api key" {
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    mongo_uri = mongo_container.get_connection_url();
+    os.environ["MONGODB_URI"] = mongo_uri;
+    _cleanup_db_files(wh_fixtures_dir);
+    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    try {
+        run_webhook_scoped_api_key_test(base_url);
     } finally {
         _stop_server(sp);
         os.environ.pop("MONGODB_URI", None);
