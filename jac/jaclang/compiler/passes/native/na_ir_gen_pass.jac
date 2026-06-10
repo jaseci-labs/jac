@@ -629,63 +629,39 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
-    # Phase 10: Comprehensions
+    # Phase 10: Comprehensions. One unified walker serves list/dict/set:
+    # `kind` selects the element emission, `spec` is the element spec or
+    # dict registry key, `val_expr` is dict-only.
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
-    def _codegen_compr_loops(
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
-    ) -> None;
-
-    def _codegen_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
-    def _codegen_dict_compr_loops(
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str
-    ) -> None;
-
-    def _codegen_dict_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
-    def _codegen_set_compr_loops(
-        comprs: list,
-        idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
+    def _emit_compr_element(
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
     ) -> None;
 
-    def _codegen_set_compr_range_loop(
+    def _codegen_compr_walk(
+        comprs: list,
+        idx: int,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
+    ) -> None;
+
+    def _codegen_compr_range_walk(
         inner: uni.InnerCompr,
         comprs: list,
         idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str,
         conditionals: list
     ) -> None;
     # Phase 11: Global Variables
