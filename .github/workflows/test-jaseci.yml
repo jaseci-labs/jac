@@ -596,15 +596,8 @@ jobs:
         fi
 
     # ========== fullstack eject smoke ==========
-    # Structural / codegen correctness of `jac eject` is covered by
-    # jac/tests/project/test_eject.jac (in-process unit tests, ~0.5s).
-    # The steps below are deliberately end-to-end: they exist to validate
-    # what the unit tests cannot - that `jac eject` works against the real
-    # fullstack template and that the standalone (zero-jaclang) FastAPI
-    # backend installs with only fastapi + uvicorn and actually serves HTTP.
-    # The live `jac start` path is exercised separately by the test-client
-    # job (`start dev with client does initial compilation`), so this job
-    # focuses solely on the eject pipeline.
+    # End-to-end: the ejected zero-jaclang FastAPI backend must install with
+    # only fastapi + uvicorn and serve HTTP. Codegen unit tests: test_eject.jac.
     - name: Create fullstack project and eject it
       run: |
         jac create --use fullstack fs-smoke

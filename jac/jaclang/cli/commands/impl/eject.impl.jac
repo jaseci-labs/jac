@@ -211,11 +211,9 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             js_count += 1;
         }
 
-        # Backend half: server-side Python only. A `.cl.jac` file is
-        # client-only — the compiler still emits Python for it, but that is a
-        # frontend artifact (its `app`/components are not API endpoints), so it
-        # never goes to the backend. Pick the emitted module name, renaming any
-        # collision with a generated file (main/_osp).
+        # Backend half: server-side Python only — `.cl.jac` output is a
+        # frontend artifact and never goes to the backend. Module stems that
+        # collide with generated files (main/_osp) are renamed via remap.
         stem = str(_strip_jac_suffix(rel.name));
         bmod = stem;
         if stem in reserved {
