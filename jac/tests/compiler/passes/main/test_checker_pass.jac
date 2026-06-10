@@ -5192,3 +5192,13 @@ test "spread_with_explicit_kwarg_no_false_positive" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+test "circular_import_preserves_class_identity" {
+    abs_entry = os.path.join(CHECKER_FIXTURES, "circular_import_identity", "entry.jac");
+    rel_entry = os.path.relpath(abs_entry);
+    program = JacProgram();
+    program.compile(rel_entry, type_check=True);
+    assert len(program.errors_had) == 0 , f"Circular import split the class identity, got {len(
+        program.errors_had
+    )} error(s):\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

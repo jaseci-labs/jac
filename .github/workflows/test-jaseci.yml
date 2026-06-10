@@ -361,6 +361,8 @@ jobs:
 
       - name: Run K8 tests
         run: |
+          pytest  -s -x jac-scale/jac_scale/tests/test_image_build.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_pod_env.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 

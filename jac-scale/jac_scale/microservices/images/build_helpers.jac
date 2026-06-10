@@ -6,11 +6,14 @@ client-bundle preparation. The Strategy distributors in `distributors.jac`
 and the entry point in `auto_build.jac` call into here.
 """
 
+import logging;
 import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
 
+
+glob _logger = logging.getLogger(__name__);
 
 # Subprocess timeouts (seconds). Largest is docker build because first
 # minikube builds download apt + pip from scratch.
@@ -35,6 +38,10 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "COPY . /app\n\n"
      "RUN if [ -f jac.toml ]; then jac install || true; fi\n\n"
      "RUN jac --version\n\n"
+     # Build identity (B-01). Stamped LAST so a changing SHA only rebuilds
+     # this tiny layer, never the expensive install/COPY layers above.
+     "ARG JAC_BUILD_SHA=unknown\n"
+     "ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}\n\n"
      "EXPOSE 8000\n",
      # Embedded .dockerignore. Without one, docker build sends GB of
      # .git + caches to the daemon and times out.
@@ -167,6 +174,91 @@ def ensure_dockerignore(context_dir: Path) -> bool {
 }
 
 
+"""Warn when build identity can't be derived, so a non-git deploy doesn't
+silently ship JAC_BUILD_SHA=unknown."""
+def _warn_build_sha_unavailable(reason: str) {
+    _logger.warning(
+        f"JAC_BUILD_SHA unavailable ({reason}); stamping 'unknown'. "
+        "Deploy from a git checkout for build identity."
+    );
+}
+
+
+"""Warn when the tree's dirty state can't be checked, so a silent
+fall-through doesn't stamp a clean SHA over a dirty build - the exact
+failure the `-dirty` suffix exists to prevent."""
+def _warn_dirty_check_failed(context_dir: Path) {
+    _logger.warning(
+        f"Could not verify git tree state in {context_dir}; "
+        "JAC_BUILD_SHA may omit its '-dirty' suffix."
+    );
+}
+
+
+"""True if the git tree at `context_dir` has staged, unstaged, or
+untracked changes. Untracked counts: `COPY . /app` pulls them into the
+image, so the build doesn't match HEAD. Best-effort - warns and returns
+False on error (can't prove dirty, so don't claim it)."""
+def _git_tree_dirty(context_dir: Path) -> bool {
+    try {
+        result = subprocess.run(
+            ["git", "-C", str(context_dir), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_PROBE_TIMEOUT_S
+        );
+    } except Exception {
+        _warn_dirty_check_failed(context_dir);
+        return False;
+    }
+    if result.returncode != 0 {
+        _warn_dirty_check_failed(context_dir);
+        return False;
+    }
+    return bool(result.stdout.strip());
+}
+
+
+"""Best-effort build identifier for stamping into the image as
+JAC_BUILD_SHA (B-01): the 12-char git commit SHA of the build context,
+suffixed `-dirty` when the tree has uncommitted/untracked changes so the
+stamp never claims a clean commit that doesn't match what was COPY'd in.
+Falls back to "unknown" (with a warning) when the context isn't a git
+repo or git is absent. Stable per clean commit, so rebuilds of the same
+commit reuse the cached ENV layer; an in-pod self-check can read
+JAC_BUILD_SHA to report "running build X" with zero RBAC."""
+def _compute_build_sha(context_dir: Path) -> str {
+    if shutil.which("git") is None {
+        _warn_build_sha_unavailable("git CLI not found");
+        return "unknown";
+    }
+    try {
+        result = subprocess.run(
+            ["git", "-C", str(context_dir), "rev-parse", "--short=12", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_PROBE_TIMEOUT_S
+        );
+    } except Exception {
+        _warn_build_sha_unavailable(f"git rev-parse failed in {context_dir}");
+        return "unknown";
+    }
+    if result.returncode != 0 {
+        _warn_build_sha_unavailable(f"{context_dir} is not a git repository");
+        return "unknown";
+    }
+    sha = result.stdout.strip();
+    if not sha {
+        _warn_build_sha_unavailable(f"empty git SHA for {context_dir}");
+        return "unknown";
+    }
+    if _git_tree_dirty(context_dir) {
+        return f"{sha}-dirty";
+    }
+    return sha;
+}
+
+
 """Run `docker build` with optional env override (e.g. minikube's daemon).
 Streams output. Raises RuntimeError on failure."""
 def run_docker_build(
@@ -213,6 +305,14 @@ def run_docker_build(
     for (key, value) in build_args.items() {
         cmd.append("--build-arg");
         cmd.append(f"{key}={value}");
+    }
+    # Stamp build identity (B-01) unless the caller already supplied one.
+    # This ENV feeds the image digest K-29's content tag derives from, so a
+    # new commit forces a rollout even on byte-identical content (intended:
+    # rollouts couple to commit identity, not just content).
+    if "JAC_BUILD_SHA" not in build_args {
+        cmd.append("--build-arg");
+        cmd.append(f"JAC_BUILD_SHA={_compute_build_sha(context_dir)}");
     }
     cmd.append(str(context_dir));
 

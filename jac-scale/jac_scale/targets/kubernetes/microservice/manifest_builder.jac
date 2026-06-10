@@ -698,14 +698,25 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
+        # suffix, surfaced so an in-pod self-check can report "running build X"
+        # with zero RBAC. Strip any user-set copy first so the rendered YAML
+        # has a single, system-owned entry (no duplicate-env reliance).
+        env_list = [
+            e
+            for e in self._build_env(svc_name, svc_cfg)
+            if e["name"] != "JAC_IMAGE_REF"
+        ];
+        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
-            "image": self._resolve_image(image, svc_cfg),
+            "image": resolved_image,
             "command": entry["command"],
             "args": entry["args"],
-            "env": self._build_env(svc_name, svc_cfg),
+            "env": env_list,
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_readiness_probe(),
             "livenessProbe": self._build_liveness_probe(),
