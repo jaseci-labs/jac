@@ -2844,6 +2844,15 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 
 **Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
 
+!!! warning "CPU/memory triggers: scale-down always takes ~5 minutes"
+    When using CPU or memory triggers, KEDA implements scaling through an internal Kubernetes `HorizontalPodAutoscaler`. Kubernetes applies a built-in 5-minute scale-down stabilization window (`stabilizationWindowSeconds = 300`) to every HPA regardless of the `autoscaler_cooldown` value set in `jac.toml`. Replicas will not decrease until CPU/memory has stayed below the target for a full 5 minutes. The `autoscaler_cooldown` setting is effective only for **event-driven triggers** (e.g. Prometheus, Redis, RabbitMQ) where KEDA directly controls the replica count without going through the HPA stabilization window.
+
+!!! tip "Startup CPU spikes causing unwanted scale-up?"
+    Pod initialization (Python imports, FastAPI startup, Jac runtime boot) can briefly spike CPU above the target, causing KEDA to scale up immediately after a fresh deploy before the app has finished starting. Set `autoscaler_initial_cooldown` to delay KEDA's first evaluation and give pods time to settle:
+    ```toml
+    autoscaler_initial_cooldown = 120  # wait 2 minutes after deploy before scaling
+    ```
+
 **KEDA-specific configuration (`[plugins.scale.kubernetes]`):**
 
 | TOML Key | Default | Description |
