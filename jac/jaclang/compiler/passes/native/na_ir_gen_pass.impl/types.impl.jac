@@ -1966,15 +1966,6 @@ impl NaIRGenPass._peel_list_type(type_node: (object | None)) -> tuple {
     return (None, None, None);
 }
 
-"""Get the list element type name from a Jac type annotation AST node.
-Returns the elem_type_name string ('i64', 'f64', 'ptr') or None."""
-impl NaIRGenPass._get_list_elem_from_type_node(
-    type_node: (object | None)
-) -> (str | None) {
-    (inner, inner_type, elem_name) = self._peel_list_type(type_node);
-    return elem_name;
-}
-
 """Infer the struct type name of a comprehension loop variable from its collection.
 For `for m in piece.raw_moves(self)`, returns 'Move' from the checked type of the
 collection expression (`list[Move]`, or `list[Move | None]` via the struct member).

@@ -196,33 +196,15 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     func_ret_type = self.builder.function.return_value.type;
     if nd.expr is not None {
-        # Set list type hint from function return type for list comprehensions
-        self._list_type_hint = None;
-        self._dict_val_type_hint = None;
-        if isinstance(func_ret_type, ir.PointerType) {
-            # Check if return type is a list type
-            ret_type_name = str(func_ret_type.pointee);
-            if ret_type_name.startswith("%\"List.") {
-                # Extract element type from list type name
-                # e.g., %"List.ptr" -> "ptr", %"List.i64" -> "i64"
-                elem_type = ret_type_name[7:-1]
-                    if ret_type_name.endswith("\"")
-                    else ret_type_name[7:];
-                self._list_type_hint = elem_type;
-            }
-            # Check if return type is a dict with JacVal values (dict[str, any])
-            if ret_type_name.startswith("%\"Dict.") and "jacval" in ret_type_name {
-                self._dict_val_type_hint = "jacval";
-            }
-        }
+        # An empty collection literal in return position types itself: the
+        # checker stamps it with the declared return type (bidirectional
+        # inference), so no emission-context hints are threaded here.
         # Flag return-tuple context so borrowed pointer elements are retained
         # as they are packed (the tuple box does not own its elements, and the
         # owning local is torn down at scope exit below).
         self._return_tuple_ctx = isinstance(nd.expr, uni.TupleVal);
         val = self._codegen_required(nd.expr);
         self._return_tuple_ctx = False;
-        self._list_type_hint = None;
-        self._dict_val_type_hint = None;
         if val is not None {
             # _coerce_type propagates is_owned across any bitcast/inttoptr it
             # emits, so checking val after coerce is safe — no need to capture
@@ -701,142 +683,12 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
 
 """Generate assignment statement."""
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
-    # Set list type hint from context before evaluating expression
-    # This helps _codegen_list_val create the correct empty list type
-    self._list_type_hint = None;
-    # 1. From explicit type annotation: var: list[T] = []
-    if nd.type_tag and nd.type_tag.tag {
-        hint = self._get_list_elem_from_type_node(nd.type_tag.tag);
-        if hint is not None {
-            self._list_type_hint = hint;
-        }
-    }
-    # 2. From the target's checked list type (fields/reassignment/globals)
-    if self._list_type_hint is None {
-        check_targets = nd.target
-            if isinstance(nd.target, (list, tuple))
-            else [(nd.target)];
-        for ct in check_targets {
-            _ct_spec = self._list_spec_of(ct);
-            if _ct_spec is not None {
-                self._list_type_hint = _ct_spec;
-                break;
-            }
-        }
-    }
-    # Set dict val type hint for dict[str, any] support
-    self._dict_val_type_hint = None;
-    if nd.type_tag and nd.type_tag.tag {
-        tag_node = nd.type_tag.tag;
-        # `dict[K, V]` parses as an AtomTrailer whose base name lives on `.target`
-        # (e.g. Name("dict")); `_get_name` on the whole trailer is None. Read the
-        # base name so a local `d: dict[str, any] = {...}` gets the jacval value
-        # hint, not just the return-type path (see #6449).
-        tag_name = self._get_name(tag_node.target)
-            if isinstance(tag_node, uni.AtomTrailer)
-            else self._get_name(tag_node);
-        if tag_name == "dict" and isinstance(tag_node, uni.AtomTrailer) {
-            if tag_node?.right and tag_node.right?.slices {
-                slices = tag_node.right.slices or [];
-                val_node: (object | None) = None;
-                if len(slices) == 1
-                and slices[0]?.start
-                and isinstance(slices[0].start, uni.TupleVal) {
-                    tv = slices[0].start;
-                    if tv.values and len(tv.values) >= 2 {
-                        val_node = tv.values[1];
-                    }
-                } elif len(slices) >= 2 {
-                    val_node = slices[1];
-                    if val_node?.start and val_node.start is not None {
-                        val_node = val_node.start;
-                    }
-                }
-                if val_node is not None {
-                    val_name = self._get_name(val_node);
-                    if val_name == "any" {
-                        self._dict_val_type_hint = "jacval";
-                    }
-                }
-            }
-        }
-    }
+    # Empty collection literals on the RHS type themselves: the checker
+    # stamps them with the expected type (bidirectional inference from the
+    # annotation or the target's declared type), and the literal codegen
+    # reads its own checked type. No emission-context hints are threaded.
     _rhs_errs_before = len(self.errors_had);
     value = self._codegen_expr(nd.value) if nd.value else None;
-    self._list_type_hint = None;
-    self._dict_val_type_hint = None;
-    # Handle empty dict literal {} with type annotation
-    if value is None and isinstance(nd.value, uni.DictVal) {
-        if not nd.value.kv_pairs {
-            _edict_type_tag = nd.type_tag.tag
-                if nd.type_tag and nd.type_tag.tag
-                else None;
-            # Fallback: no explicit type annotation but the target (obj.field
-            # / reassigned local) carries a checked dict type — emit the
-            # matching __dict_new_*().
-            if _edict_type_tag is None {
-                _check_targets = nd.target
-                    if isinstance(nd.target, (list, tuple))
-                    else [(nd.target)];
-                for _ct in _check_targets {
-                    _dk = self._dict_key_of(_ct);
-                    if _dk is None {
-                        continue;
-                    }
-                    helpers = self.dict_helpers.get(_dk);
-                    if helpers is not None {
-                        value = self.builder.call(helpers["new"], [], name="dict.new");
-                        # RC: fresh allocation — caller owns it; skip RETAIN on assign.
-                        self._mark_owned(value);
-                    }
-                    break;
-                }
-            }
-            if value is None and _edict_type_tag is not None {
-                # Empty dict with type hint - create empty dict of correct type
-                dict_type = self._resolve_jac_type(_edict_type_tag);
-                if isinstance(dict_type, ir.PointerType) {
-                    # Find the dict helpers for this type
-                    for (dict_key, dtype) in self.dict_types.items() {
-                        if dict_type == dtype.as_pointer() {
-                            helpers = self.dict_helpers.get(dict_key);
-                            if helpers is not None {
-                                value = self.builder.call(
-                                    helpers["new"], [], name="dict.new"
-                                );
-                                # RC: fresh allocation — caller owns it; skip RETAIN on assign.
-                                self._mark_owned(value);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    # Handle empty set literal {} that should be a set with type annotation
-    if value is None and isinstance(nd.value, uni.SetVal) {
-        if not nd.value.values and nd.type_tag and nd.type_tag.tag {
-            # Empty set with type hint - create empty set of correct type
-            set_type = self._resolve_jac_type(nd.type_tag.tag);
-            if isinstance(set_type, ir.PointerType) {
-                # Find the set helpers for this type
-                for (elem_name, stype) in self.set_types.items() {
-                    if set_type == stype.as_pointer() {
-                        helpers = self.set_helpers.get(elem_name);
-                        if helpers is not None {
-                            value = self.builder.call(
-                                helpers["new"], [], name="set.new"
-                            );
-                            # RC: fresh allocation — caller owns it; skip RETAIN on assign.
-                            self._mark_owned(value);
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-    }
     # Handle set() constructor call with type annotation
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
@@ -1909,17 +1761,11 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Re-calling _codegen_expr(nd.collection) re-emits its side effects: for a
     # call like `for x in obj.method()` each re-eval invokes the method again,
     # doing the work N times AND leaking the unused results. We evaluate here a
-    # single time (with the list element-type hint set, so list literals are
-    # typed correctly) and reuse `_coll_memo` in the dict / string / set / list
-    # paths below.
+    # single time (a collection literal types itself from its own checked
+    # type) and reuse `_coll_memo` in the dict / string / set / list paths
+    # below.
     coll_name = self._get_name(nd.collection);
-    self._list_type_hint = None;
-    _hint0 = self._elem_spec_of(nd.collection);
-    if _hint0 is not None {
-        self._list_type_hint = _hint0;
-    }
     _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
-    self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
     # Dict-ness comes from the checked type of the collection expression.
     dict_type_key: (str | None) = self._dict_key_of(nd.collection);

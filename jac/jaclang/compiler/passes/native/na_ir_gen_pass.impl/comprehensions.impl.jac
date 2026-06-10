@@ -4,11 +4,19 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     if not nd.compr {
         return None;
     }
-    # Determine element type from context
+    # Determine element type from the comprehension's own checked type
+    # (stamped by the checker bottom-up from the output expression, or
+    # bidirectionally from the assignment/return context).
     elem_type_name = "i64";
-    # 1. Check type hint from assignment context (highest priority)
-    if self._list_type_hint is not None {
-        elem_type_name = self._list_type_hint;
+    _own_spec = self._elem_spec_of(nd);
+    if _own_spec == "i64" and isinstance(nd.out_expr, uni.Null) {
+        # `[None for ...]` with no expected type stamps `list[None]`, whose
+        # element lowers to the scalar i64 None-sentinel - but a bare-None
+        # element is a null pointer, not a scalar payload.
+        _own_spec = "ptr";
+    }
+    if _own_spec is not None {
+        elem_type_name = _own_spec;
     } else {
         # 2. Try to infer from first collection's checked element type
         # For [m for m in items], infer from items' element type
@@ -92,13 +100,10 @@ impl NaIRGenPass._codegen_compr_loops(
     elem_type_name: str
 ) -> None {
     if idx >= len(comprs) {
-        # Base case: all loops complete, evaluate and append
-        # Clear list type hint before evaluating out_expr to allow nested comprehensions
-        # to determine their own element type
-        saved_hint = self._list_type_hint;
-        self._list_type_hint = None;
+        # Base case: all loops complete, evaluate and append. Nested
+        # comprehensions determine their own element type from their own
+        # checked type, so no emission context needs clearing here.
         val = self._codegen_expr(out_expr);
-        self._list_type_hint = saved_hint;
         if val is not None {
             helpers = self.list_helpers.get(elem_type_name);
             if helpers is not None {
@@ -153,12 +158,9 @@ impl NaIRGenPass._codegen_compr_loops(
             return;
         }
     }
-    # Save original list type hint (for the output list)
-    saved_hint = self._list_type_hint;
-    # Evaluate collection (may need its own hint for nested lists)
+    # Evaluate collection (a nested list literal types itself from its
+    # own checked type).
     coll_val = self._codegen_expr(collection);
-    # Restore the output list type hint
-    self._list_type_hint = saved_hint;
     if coll_val is None {
         return;
     }

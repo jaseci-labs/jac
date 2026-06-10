@@ -15,6 +15,37 @@ impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Resolved callee signature for a call site.
+
+Consumes the checker-stamped `FuncCall.callee_decl` (Phase 4, analysis
+centralization). Call nodes synthesized after type checking (desugared
+pipe-forward) carry no stamp; for those the declaration is recovered
+through the target's stored `.sym` - a stamped-fact read, mirroring how
+`call_kind` is classified on the spot for the same nodes.
+"""
+impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) {
+    decl = nd.callee_decl;
+    if decl is None {
+        sym: (uni.Symbol | None) = None;
+        if isinstance(nd.target, uni.AstSymbolNode) {
+            sym = nd.target.sym;
+        } elif isinstance(nd.target, uni.AtomTrailer)
+        and isinstance(nd.target.right, uni.AstSymbolNode) {
+            sym = nd.target.right.sym;
+        }
+        if sym is not None and sym.defn {
+            cand = sym.defn[0];
+            if isinstance(cand, uni.Ability) {
+                decl = cand;
+            } elif isinstance(cand.parent, uni.Ability) {
+                decl = cand.parent;
+            }
+        }
+    }
+    sig = decl.signature if decl is not None else None;
+    return sig if isinstance(sig, uni.FuncSignature) else None;
+}
+
 """Emit E5090 for a builtin call the native emitter could not lower.
 
 Shared by the multi-arg and single-arg builtin dispatch paths so the
@@ -689,9 +720,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             args.append(val);
         }
     }
-    # Fill in missing optional parameters with their AST default values
-    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
-        sig_params = self.method_ast_sigs[func_name].get_parameters();
+    # Fill in missing optional parameters with the resolved callee's
+    # default-value exprs (checker-stamped fact, not a name-keyed cache)
+    callee_sig = self._callee_sig_of(nd);
+    if callee_sig is not None and len(args) < len(func.args) {
+        sig_params = callee_sig.get_parameters();
         for pix in range(len(args), len(sig_params)) {
             p = sig_params[pix];
             expected_type = func.args[len(args)].type

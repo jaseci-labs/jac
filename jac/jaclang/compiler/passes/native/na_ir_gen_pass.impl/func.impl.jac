@@ -49,8 +49,25 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.func_symtab[name] = func;
     # Store line info for use when the body is generated (codegen_ability)
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
-    # Store AST signature for return type propagation in for-loops
-    self.method_ast_sigs[name] = sig;
+    # Interop-marshalling return facts, recorded while the declaration is
+    # in hand (replacing the deleted name-keyed AST-signature cache):
+    # tuple-element struct hints, and the union-peeled return annotation
+    # name for enum-return recovery. Consumed by build_interop_layout.
+    if sig.return_type is not None {
+        hints = self._extract_tuple_struct_hints(sig.return_type);
+        if hints {
+            self.func_ret_tuple_hints[name] = hints;
+        }
+        _rt = sig.return_type;
+        # Peel `T | None` (and general unions) to the first member.
+        if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+            _rt = _rt.left;
+        }
+        _rname = self._get_name(_rt);
+        if _rname is not None {
+            self.func_ret_ann_name[name] = _rname;
+        }
+    }
     self.has_native_code = True;
 }
 

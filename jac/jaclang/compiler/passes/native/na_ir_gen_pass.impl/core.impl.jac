@@ -307,20 +307,14 @@ impl NaIRGenPass._export_native_layout -> None {
                     if func.function_type.return_type.pointee == ttype {
                         ret_tuple = layout.tuples.get(tkey);
                         if ret_tuple is not None {
-                            sig = self.method_ast_sigs.get(fname);
-                            if sig and sig.return_type {
-                                hints = self._extract_tuple_struct_hints(
-                                    sig.return_type
+                            hints = self.func_ret_tuple_hints.get(fname);
+                            if hints and len(hints) == len(ret_tuple.element_types) {
+                                ret_tuple = NativeTupleLayout(
+                                    key=ret_tuple.key,
+                                    element_types=ret_tuple.element_types,
+                                    element_struct_hints=hints
                                 );
-                                if hints
-                                and len(hints) == len(ret_tuple.element_types) {
-                                    ret_tuple = NativeTupleLayout(
-                                        key=ret_tuple.key,
-                                        element_types=ret_tuple.element_types,
-                                        element_struct_hints=hints
-                                    );
-                                    layout.tuples[tkey] = ret_tuple;
-                                }
+                                layout.tuples[tkey] = ret_tuple;
                             }
                         }
                         break;
@@ -328,23 +322,14 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
-        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
-        # the enum name from the AST sig so the marshaller maps the ordinal back
-        # to the Python enum member.
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`);
+        # recover the enum name from the declaration-time return fact so the
+        # marshaller maps the ordinal back to the Python enum member.
         ret_enum: (str | None) = None;
         if ret_type == "i64" {
-            _fsig = self.method_ast_sigs.get(fname);
-            if _fsig and _fsig.return_type {
-                _rt = _fsig.return_type;
-                # Peel `T | None` (and general unions) to the first member.
-                if isinstance(_rt, uni.BinaryExpr)
-                and getattr(_rt.op, 'value', '') == "|" {
-                    _rt = _rt.left;
-                }
-                _rname = self._get_name(_rt);
-                if _rname is not None and _rname in self.enum_types {
-                    ret_enum = _rname;
-                }
+            _rname = self.func_ret_ann_name.get(fname);
+            if _rname is not None and _rname in self.enum_types {
+                ret_enum = _rname;
             }
         }
         layout.functions[fname] = NativeFuncLayout(

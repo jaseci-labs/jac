@@ -142,7 +142,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
         method_funcs: dict[str, ir.Function] = {},
-        method_ast_sigs: dict[str, object] = {},
+        # Interop-marshalling return facts for free functions, recorded at
+        # declaration time (while the Ability node is in hand) and consumed
+        # by build_interop_layout. These replaced the name-keyed
+        # AST-signature cache (method_ast_sigs); call sites read resolved
+        # signatures off the checker-stamped FuncCall.callee_decl instead.
+        func_ret_tuple_hints: dict[str, list] = {},
+        func_ret_ann_name: dict[str, str] = {},
         # List support (Phase 4)
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
@@ -160,7 +166,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # (flattened) layout, not the declaring parent the checker reports.
         _self_arch: (str | None) = None,
         field_type_node: dict[str, dict] = {},
-        _list_type_hint: (str | None) = None,
         # True while codegen'ing the TupleVal of a `return (...)`. In that
         # context borrowed (field-load / element-read) pointer elements must be
         # retained so they outlive the owning local's scope-exit teardown — the
@@ -217,7 +222,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Dictionary support (Phase 12)
         dict_types: dict[str, object] = {},
         dict_helpers: dict[str, dict] = {},
-        _dict_val_type_hint: (str | None) = None,
         # Set support (Phase 13)
         set_types: dict[str, object] = {},
         set_helpers: dict[str, dict] = {},
@@ -376,6 +380,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
+    # Resolved callee signature for a call site (checker-stamped fact).
+    def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
@@ -459,12 +465,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Resolve the member struct names a trigger tag denotes -- a single `Name`,
     # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
     def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
-    # Checker-resolved trigger type names from `Ability.event_triggers`
-    # (mangled keys; `type[X]` unwrapped, unions split). None when the
-    # checker recorded no resolution (fall back to the trigger AST).
-    def _event_trigger_type_names(method: uni.Ability) -> (list[str] | None);
     # Member struct names an event ability fires on: checker-resolved
-    # triggers filtered to known structs, with AST-flattening fallback.
+    # triggers (Ability.event_trigger_type_names) filtered to known
+    # structs, with AST-flattening fallback.
     def _trigger_struct_names(method: uni.Ability) -> list[str];
     # Validate that every field common to all union members lives at the same
     # index and type; returns the first divergent field name, or None if the
@@ -584,7 +587,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
     def _peel_list_type(type_node: (object | None)) -> tuple;
-    def _get_list_elem_from_type_node(type_node: (object | None)) -> (str | None);
     def _infer_compr_elem_struct(compr: object) -> (str | None);
     def _resolve_for_loop_elem_type(
         coll_name: (str | None), coll_node: (object | None)

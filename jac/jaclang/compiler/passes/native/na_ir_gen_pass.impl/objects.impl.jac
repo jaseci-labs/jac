@@ -506,8 +506,6 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
-    # Store AST signature for return type propagation in method calls
-    self.method_ast_sigs[full_name] = sig;
 }
 
 """Generate LLVM IR for a method body."""
@@ -688,40 +686,15 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     return out;
 }
 
-"""Trigger type names from the checker's `Ability.event_triggers`.
-
-Each resolved TypeBase is mangled to its canonical key; class-object forms
-(`type[X]`) are unwrapped to `X` and union keys are split on `|`. Returns
-None when the checker recorded no resolution for this ability, signalling
-callers to fall back to flattening the trigger AST.
-"""
-impl NaIRGenPass._event_trigger_type_names(method: uni.Ability) -> (list[str] | None) {
-    if method.event_triggers is None {
-        return None;
-    }
-    names: list[str] = [];
-    for t in method.event_triggers {
-        for part in t.mangle().split("|") {
-            name = part.strip();
-            if name.startswith("type[") and name.endswith("]") {
-                name = name[5:-1];
-            }
-            if name and name not in names {
-                names.append(name);
-            }
-        }
-    }
-    return names;
-}
-
 """Member struct names an event ability fires on.
 
-Prefers the checker-resolved `Ability.event_triggers` filtered to known
-structs; falls back to flattening the trigger AST (`_trigger_member_structs`)
-when the checker left no resolution.
+Prefers the checker-resolved `Ability.event_triggers` (via the central
+`Ability.event_trigger_type_names`) filtered to known structs; falls back
+to flattening the trigger AST (`_trigger_member_structs`) when the checker
+left no resolution.
 """
 impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
-    names = self._event_trigger_type_names(method);
+    names = method.event_trigger_type_names();
     if names is None {
         sig = method.signature;
         tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
@@ -1070,39 +1043,10 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
-            # Set _list_type_hint from the field's IR type so that an empty list
-            # literal `[]` creates the correct List variant (List.ptr / List.i64 /
-            # List.f64) with the right dtor.  We extract the elem key directly from
-            # the IdentifiedStructType name (e.g. "List.ptr" → "ptr") so this works
-            # even before _emit_list_helpers has been called for that variant.
-            _saved_hint_d = self._list_type_hint;
-            ftype_probe_d = field_types.get(fname);
-            if ftype_probe_d is not None
-            and isinstance(ftype_probe_d, ir.PointerType) {
-                _inner_d = ftype_probe_d.pointee;
-                if _inner_d?.name and _inner_d.name.startswith("List.") {
-                    _ek_d = _inner_d.name[5:];
-                    if _ek_d not in self.list_helpers {
-                        if _ek_d == "ptr" {
-                            self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
-                        } elif _ek_d == "f64" {
-                            self._emit_list_helpers("f64", ir.DoubleType());
-                        } else {
-                            self._emit_list_helpers("i64", ir.IntType(64));
-                        }
-                    }
-                    self._list_type_hint = _ek_d;
-                } else {
-                    for (_ek_d2, _lt_d2) in self.list_types.items() {
-                        if ftype_probe_d == _lt_d2.as_pointer() {
-                            self._list_type_hint = _ek_d2;
-                            break;
-                        }
-                    }
-                }
-            }
+            # An empty collection literal default types itself: the checker
+            # stamps it with the declared field type (bidirectional
+            # inference), and the literal codegen emits the right variant.
             val = self._codegen_expr(default_expr);
-            self._list_type_hint = _saved_hint_d;
             # Empty dict/list default returns None — fall back to helpers["new"].
             if val is None {
                 ftype_probe = field_types.get(fname);
@@ -1700,9 +1644,11 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             args.append(val);
         }
     }
-    # Fill in missing optional parameters with their AST default values
-    if full_name in self.method_ast_sigs and len(args) < len(func.args) {
-        sig_params = self.method_ast_sigs[full_name].get_parameters();
+    # Fill in missing optional parameters with the resolved callee's
+    # default-value exprs (checker-stamped fact, not a name-keyed cache)
+    callee_sig = self._callee_sig_of(nd);
+    if callee_sig is not None and len(args) < len(func.args) {
+        sig_params = callee_sig.get_parameters();
         provided_count = len(args) - 1;  # exclude self
         for pix in range(provided_count, len(sig_params)) {
             p = sig_params[pix];

@@ -40,7 +40,7 @@ glob FORBIDDEN: dict[str, str] = {
          ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): 2,
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): 12,
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): 6,
-         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): 14,
+         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): 6,
          ("native/na_ir_gen_pass.impl/expr.impl.jac", "type_tag.tag"): 2,
          ("native/na_ir_gen_pass.impl/globals.impl.jac", "type_tag.tag"): 2,
 
