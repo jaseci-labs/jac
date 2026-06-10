@@ -649,6 +649,9 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
 
     def get_pos_argc_range -> tuple[(int, int)];
     def py_resolve_name -> str;
+    # Checker-resolved trigger type names as canonical mangled keys; None
+    # when unresolved (callers fall back to flattening the trigger AST).
+    def event_trigger_type_names -> (list[str] | None);
 }
 
 """FuncSignature node type for Jac Ast."""

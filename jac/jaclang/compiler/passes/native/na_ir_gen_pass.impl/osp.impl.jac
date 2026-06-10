@@ -299,7 +299,7 @@ impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
         }
         # Prefer the checker-resolved trigger types; fall back to flattening
         # the trigger AST when no resolution was recorded.
-        trigs = self._event_trigger_type_names(stmt);
+        trigs = stmt.event_trigger_type_names();
         if trigs is None {
             trigs = self._osp_trigger_names(ev.arch_tag_info)
                 if ev.arch_tag_info is not None

@@ -686,40 +686,15 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     return out;
 }
 
-"""Trigger type names from the checker's `Ability.event_triggers`.
-
-Each resolved TypeBase is mangled to its canonical key; class-object forms
-(`type[X]`) are unwrapped to `X` and union keys are split on `|`. Returns
-None when the checker recorded no resolution for this ability, signalling
-callers to fall back to flattening the trigger AST.
-"""
-impl NaIRGenPass._event_trigger_type_names(method: uni.Ability) -> (list[str] | None) {
-    if method.event_triggers is None {
-        return None;
-    }
-    names: list[str] = [];
-    for t in method.event_triggers {
-        for part in t.mangle().split("|") {
-            name = part.strip();
-            if name.startswith("type[") and name.endswith("]") {
-                name = name[5:-1];
-            }
-            if name and name not in names {
-                names.append(name);
-            }
-        }
-    }
-    return names;
-}
-
 """Member struct names an event ability fires on.
 
-Prefers the checker-resolved `Ability.event_triggers` filtered to known
-structs; falls back to flattening the trigger AST (`_trigger_member_structs`)
-when the checker left no resolution.
+Prefers the checker-resolved `Ability.event_triggers` (via the central
+`Ability.event_trigger_type_names`) filtered to known structs; falls back
+to flattening the trigger AST (`_trigger_member_structs`) when the checker
+left no resolution.
 """
 impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
-    names = self._event_trigger_type_names(method);
+    names = method.event_trigger_type_names();
     if names is None {
         sig = method.signature;
         tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
