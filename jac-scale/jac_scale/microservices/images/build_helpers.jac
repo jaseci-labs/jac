@@ -420,6 +420,11 @@ def _retag_with_content_id(
 ) -> str {
     image_id = _docker_image_id(base_tag, env_overrides);
     if image_id is None or not image_id.startswith("sha256:") {
+        _logger.warning(
+            f"Could not resolve image id for '{base_tag}'; shipping the "
+            "mutable tag. Auto-rollout on rebuild is disabled and the node "
+            "may serve a stale cached image."
+        );
         return base_tag;
     }
     short_id = image_id[len("sha256:"):][:12];
@@ -437,10 +442,20 @@ def _retag_with_content_id(
             timeout=_DOCKER_INSPECT_TIMEOUT_S,
             env=env
         );
-    } except Exception {
+    } except Exception as e {
+        _logger.warning(
+            f"`docker tag {base_tag} {new_tag}` failed ({e}); shipping the "
+            "mutable tag. Auto-rollout on rebuild is disabled and the node "
+            "may serve a stale cached image."
+        );
         return base_tag;
     }
     if result.returncode != 0 {
+        _logger.warning(
+            f"`docker tag {base_tag} {new_tag}` exited {result.returncode}; "
+            "shipping the mutable tag. Auto-rollout on rebuild is disabled "
+            "and the node may serve a stale cached image."
+        );
         return base_tag;
     }
     return new_tag;
