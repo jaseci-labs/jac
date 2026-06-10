@@ -1145,7 +1145,13 @@ obj YieldExpr(Expr) {
 obj FuncCall(Expr) {
     has target: Expr,
         params: (Sequence[(Expr | KWPair)] | None),
-        genai_call: (Expr | None);
+        genai_call: (Expr | None),
+        # Call-site classification ("method" | "instantiation" | "builtin"
+        # | "function"), stamped by TypeCheckPass at resolution time from
+        # symbol_utils.classify_call. None on nodes synthesized after
+        # checking (e.g. desugared pipe-forward); backends classify those
+        # on the spot.
+        call_kind: (str | None) = None;
 
     def postinit -> None;
 }

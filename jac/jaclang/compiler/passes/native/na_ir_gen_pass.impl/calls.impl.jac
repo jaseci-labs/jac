@@ -34,10 +34,16 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
 
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
-    _call_kind = classify_call(nd);
+    # Dispatch on the checker-stamped call classification. Only call nodes
+    # synthesized after type checking (e.g. desugared pipe-forward) lack
+    # the stamp and are classified on the spot.
+    _call_kind = nd.call_kind;
+    if _call_kind is None {
+        import from jaclang.compiler.symbol_utils { classify_call }
+        _call_kind = classify_call(nd).value;
+    }
     # Handle method calls: obj.method(args)
-    if _call_kind == CallKind.METHOD {
+    if _call_kind == "method" {
         return self._codegen_method_call(nd);
     }
     func_name = self._get_name(nd.target);
@@ -45,10 +51,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     # Builtin fast-paths fire only when the call actually resolves to a builtin.
-    # classify_call is shadow-aware, so a user symbol named e.g. `len` is
-    # FUNCTION and falls through to the free-function path below instead of
+    # The classification is shadow-aware, so a user symbol named e.g. `len` is
+    # "function" and falls through to the free-function path below instead of
     # being hijacked by the builtin handling.
-    if _call_kind == CallKind.BUILTIN {
+    if _call_kind == "builtin" {
         # Handle print() specially
         if func_name == "print" {
             return self._emit_print(nd);
@@ -669,7 +675,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         # reaches this point and is materialized from the assignment's type
         # annotation; builtin calls that truly cannot be lowered are caught at
         # their dispatch site above (where the arguments are known).
-        if _call_kind != CallKind.BUILTIN {
+        if _call_kind != "builtin" {
             self.emit(E5090, node_override=nd, kind="function", name=func_name);
         }
         return None;

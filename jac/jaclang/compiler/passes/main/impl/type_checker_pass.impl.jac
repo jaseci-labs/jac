@@ -155,7 +155,12 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
 
 """Handle the function call node."""
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
+    import from jaclang.compiler.symbol_utils { classify_call }
     self.evaluator.get_type_of_expression(nd);
+
+    # Stamp the call-site classification on the tree so backends dispatch
+    # on a stored fact instead of re-classifying at emission time.
+    nd.call_kind = classify_call(nd).value;
 
     # Validate TypeVar usage in runtime context (e.g., list[T]())
     # Pyright: Type variable "T" has no meaning in this context
