@@ -17,8 +17,8 @@ cl {
 
     def:pub MatchGreeting(kind: str, title: str) -> JsxElement {
         match kind {
-            case "div" => return <div>{title}</div>;
-            case _ => return <span>{title}</span>;
+            case "div": return <div>{title}</div>;
+            case _: return <span>{title}</span>;
         }
     }
 
