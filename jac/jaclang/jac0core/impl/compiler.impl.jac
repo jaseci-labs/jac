@@ -733,12 +733,20 @@ impl JacCompiler.compile(
         # prog._compile_options with their own (non-check) options before
         # the pass reads its diagnostic gate. See before_pass.
         mod_targ._type_check_requested = bool(options.type_check);
-        self.run_schedule(
-            mod=mod_targ,
-            target_program=actual_program,
-            passes=get_inference_sched(),
-            cancel_token=options.cancel_token
-        );
+        try {
+            self.run_schedule(
+                mod=mod_targ,
+                target_program=actual_program,
+                passes=get_inference_sched(),
+                cancel_token=options.cancel_token
+            );
+        } except Exception {
+            # A partial inference run must not satisfy the dep-sweep guard:
+            # the module would be skipped on retry with an incompletely
+            # typed tree and no E9002 to catch it.
+            mod_targ._inference_started = False;
+            raise;
+        }
         # JIR-loaded dependency modules arrive untyped (Expr.type is not
         # serialized), while a freshly compiled dep is typed by its own
         # nested compile. Native cross-module codegen lowers dep-module
@@ -761,13 +769,22 @@ impl JacCompiler.compile(
                 # positives; diagnostics belong to each module's own
                 # entry compile.
                 dep_mod._inference_quiet = True;
-                self.run_schedule(
-                    mod=dep_mod,
-                    target_program=actual_program,
-                    passes=get_inference_sched(),
-                    cancel_token=options.cancel_token
-                );
-                dep_mod._inference_quiet = False;
+                try {
+                    self.run_schedule(
+                        mod=dep_mod,
+                        target_program=actual_program,
+                        passes=get_inference_sched(),
+                        cancel_token=options.cancel_token
+                    );
+                } except Exception {
+                    dep_mod._inference_started = False;
+                    raise;
+                } finally {
+                    # A leaked quiet flag would silently suppress every
+                    # diagnostic from this module's own entry compile later
+                    # in the same process.
+                    dep_mod._inference_quiet = False;
+                }
             }
         }
     }
