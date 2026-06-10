@@ -291,7 +291,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Always infer element types bottom-up first.
                     elem_types_t: list[types.TypeBase] = [];
                     for _val in expr.values {
-                        et = self.get_type_of_expression(_val);
+                        # Kw-tuples `(a=1, b=2)` carry KWPair (not Expr)
+                        # elements; the element type is the pair's value.
+                        et = self.get_type_of_expression(
+                            _val.value if isinstance(_val, uni.KWPair) else _val
+                        );
                         if not isinstance(et, types.UnknownType) {
                             elem_types_t.append(et);
                         }

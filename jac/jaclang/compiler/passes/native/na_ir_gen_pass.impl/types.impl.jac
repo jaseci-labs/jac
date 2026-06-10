@@ -6,6 +6,10 @@ NaIRGenPass runs after TypeCheckPass, so annotation Expr nodes carry a fully
 resolved `.type`. This consumes that TypeBase directly instead of re-deriving
 type structure from raw annotation AST. Returns None when the type category
 is not (yet) handled, so callers can fall back to the legacy AST walk.
+
+Successful lowerings are memoized per LLVM module keyed by the canonical
+type key (TypeBase.mangle); a cache hit also implies the type's collection
+helpers were already emitted for this module.
 """
 impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
@@ -22,31 +26,236 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     } except ImportError {
         return None;
     }
+    key = t.mangle() if t?.mangle else None;
+    if key is not None and key in self._lowered_type_cache {
+        return self._lowered_type_cache[key];
+    }
+    lowered: (ir.Type | None) = None;
     if isinstance(t, _NeverType) {
-        return ir.VoidType();
-    }
-    if isinstance(t, _AnyType) {
-        return self.jacval_type;
-    }
-    if isinstance(t, _ClassType) {
-        return self._lower_class_type(t);
-    }
-    if isinstance(t, _UnionType) {
+        lowered = ir.VoidType();
+    } elif isinstance(t, _AnyType) {
+        lowered = self.jacval_type;
+    } elif isinstance(t, _ClassType) {
+        lowered = self._lower_class_type(t);
+    } elif isinstance(t, _UnionType) {
         # `T | None` (and general unions) lower to the first non-None member;
         # native pointers are nullable, so the optional wrapper is implicit.
+        lowered = ir.VoidType();
         for m in (t.types or []) {
             if isinstance(m, _ClassType)
             and m.shared.class_name in ("NoneType", "None") {
                 continue;
             }
-            return self._lower_type(m);
+            lowered = self._lower_type(m);
+            break;
         }
-        return ir.VoidType();
+    } elif isinstance(t, _FunctionType) {
+        lowered = self._lower_function_type(t);
     }
-    if isinstance(t, _FunctionType) {
-        return self._lower_function_type(t);
+    if key is not None and lowered is not None {
+        self._lowered_type_cache[key] = lowered;
+    }
+    return lowered;
+}
+
+"""Return the canonical type key (TypeBase.mangle) of an expression's checked
+type, or None when the expression is untyped. This is the sanctioned way for
+native codegen to ask "what Jac type is this expression" — replacing the
+legacy variable-name-keyed shadow dicts/sets."""
+impl NaIRGenPass._type_key_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    return expr.type.mangle();
+}
+
+"""Return the enum class name of an expression's checked type, or None when
+the expression is not enum-typed. Handles both an enum instance (ClassType
+with is_enum_class) and a specific member (EnumMemberType)."""
+impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.type_system.types {
+            ClassType as _ClassType,
+            EnumMemberType as _EnumMemberType
+        }
+    } except ImportError {
+        return None;
+    }
+    t = expr.type;
+    if isinstance(t, _EnumMemberType) and t.enum_class is not None {
+        return t.enum_class.shared.class_name;
+    }
+    if isinstance(t, _ClassType) and t._shared is not None and t.shared.is_enum_class {
+        return t.shared.class_name;
     }
     return None;
+}
+
+"""Return the native tuple registry key for an expression's checked type, or
+None when the expression is not tuple-typed (or its element types cannot be
+lowered). Lowering the type registers the tuple struct as a side effect, so
+the returned key is always present in `tuple_types`."""
+impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not tk.startswith("tuple[") {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None
+    or not isinstance(lowered, ir.PointerType)
+    or not isinstance(lowered.pointee, ir.LiteralStructType) {
+        return None;
+    }
+    elems = lowered.pointee.elements;
+    return f"Tuple.{len(elems)}." + ".".join([str(x) for x in elems]);
+}
+
+"""Return the native set spec key for an expression's checked set/frozenset
+type, or None when the expression is not set-typed. Lowering the type
+registers the set struct + helpers as a side effect, so the returned spec is
+always present in `set_types`/`set_helpers`."""
+impl NaIRGenPass._set_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not (
+        tk in ("set", "frozenset")
+        or tk.startswith("set[")
+        or tk.startswith("frozenset[")
+    ) {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None {
+        return None;
+    }
+    for (spec, st) in self.set_types.items() {
+        if lowered == st.as_pointer() {
+            return spec;
+        }
+    }
+    return None;
+}
+
+"""Return the native dict registry key ("k:v" spec) for an expression's
+checked dict type, or None when the expression is not dict-typed. Lowering
+the type registers the dict struct + helpers as a side effect, so the
+returned key is always present in `dict_types`/`dict_helpers`."""
+impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not (tk == "dict" or tk.startswith("dict[")) {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None {
+        return None;
+    }
+    for (dkey, dt) in self.dict_types.items() {
+        if lowered == dt.as_pointer() {
+            return dkey;
+        }
+    }
+    return None;
+}
+
+"""Return the native list spec key for an expression's checked list type, or
+None when the expression is not list-typed. Lowering the type registers the
+list struct + helpers as a side effect, so the returned spec is always
+present in `list_types`/`list_helpers`."""
+impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if not (tk == "list" or tk.startswith("list[")) {
+        return None;
+    }
+    lowered = self._lower_type(expr.type);
+    if lowered is None {
+        return None;
+    }
+    for (spec, lt) in self.list_types.items() {
+        if lowered == lt.as_pointer() {
+            return spec;
+        }
+    }
+    return None;
+}
+
+"""Return the native struct name for an expression whose checked type is a
+known struct instance, or None otherwise. Unions like `T | None` resolve to
+the struct member. `self` resolves to the archetype currently being
+codegen'd: inherited methods are re-emitted per subclass with a flattened
+layout, so the declaring parent the checker reports would be wrong."""
+impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
+    if (
+        isinstance(expr, uni.Name)
+        and expr.value == "self"
+        and self._self_arch is not None
+    ) {
+        return self._self_arch;
+    }
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    tk = expr.type.mangle();
+    if tk in self.struct_types {
+        return tk;
+    }
+    if "|" in tk {
+        for part in tk.split("|") {
+            if part in self.struct_types {
+                return part;
+            }
+        }
+    }
+    return None;
+}
+
+"""Return the lowered LLVM type of a checked list type's element, or None.
+For `list[Piece | None]` returns `Piece*`; for `list[list[int]]` returns
+`List.i64*`. Lowering registers any needed collection helpers."""
+impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    if not expr.type.mangle().startswith("list[") {
+        return None;
+    }
+    args = expr.type.private.type_args or [];
+    if not args {
+        return None;
+    }
+    return self._lower_type(args[0]);
+}
+
+"""Return the native element spec of a checked list type's element
+("i64"/"f64"/"ptr"/"jacval"), or None when the expression isn't a typed list."""
+impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    et = self._list_elem_llvm_of(expr);
+    if et is None {
+        return None;
+    }
+    if isinstance(et, ir.DoubleType) {
+        return "f64";
+    }
+    if isinstance(et, ir.PointerType) {
+        return "ptr";
+    }
+    if self?.jacval_type and et == self.jacval_type {
+        return "jacval";
+    }
+    return "i64";
 }
 
 """Lower a ClassType TypeBase to an LLVM type, or None if unresolved.
@@ -71,12 +280,6 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     # (No enum branch: _codegen_enum registers every enum name in both
     # enum_types and type_map with the same i64 backing, and type_map is
     # checked above -- so an enum_types lookup here could never be reached.)
-    # Native runtime `File` (modeled centrally via na_builtins.pyi): register
-    # its struct on demand so a `File` annotation lowers even before any file
-    # op has emitted the helpers.
-    if cname == "File" {
-        return self._get_file_struct_type().as_pointer();
-    }
     # Native runtime `File` (modeled centrally via na_builtins.pyi): register
     # its struct on demand so a `File` annotation lowers even before any file
     # op has emitted the helpers.
@@ -225,14 +428,29 @@ runtime `File` (modeled by na_builtins.pyi) -- including annotations in
 imported .na.jac modules (type-checked on load, #6117). The former name-based
 fallback (struct_types / type_map lookups) is gone: with `File` modeled
 centrally (#6118) it was reached zero times across the native suite.
-Unhandled cases default to i64.
+
+An annotation that reaches codegen without a `.type` is an E9002 ICE: the
+typed-tree contract (Phase 0) guarantees inference ran, so a missing type
+is a pipeline bug, never a user error. A present-but-unlowerable type still
+defaults to i64 (capability gap, E5090 territory -- tightened separately).
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
     }
     # Unified path: TypeBase → ir.Type via the central type checker.
-    if isinstance(type_expr, uni.Expr) and type_expr?.type is not None {
+    if isinstance(type_expr, uni.Expr) {
+        if type_expr.type is None {
+            self.emit(
+                E9002,
+                node_override=type_expr,
+                details=(
+                    "native codegen found no inferred type on annotation "
+                    f"'{type_expr.unparse()}'"
+                )
+            );
+            return ir.IntType(64);
+        }
         lowered = self._lower_type(type_expr.type);
         if lowered is not None {
             return lowered;
@@ -1758,128 +1976,35 @@ impl NaIRGenPass._get_list_elem_from_type_node(
 }
 
 """Infer the struct type name of a comprehension loop variable from its collection.
-For `for m in piece.raw_moves(self)`, returns 'Move' by looking up the method's
-return type in method_ast_sigs and peeling the list type."""
+For `for m in piece.raw_moves(self)`, returns 'Move' from the checked type of the
+collection expression (`list[Move]`, or `list[Move | None]` via the struct member).
+The checker owns this fact (Phase 0/1); the former AST call dissection +
+method_ast_sigs MRO walk re-derived it and is gone."""
 impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
-    collection = compr.collection;
-    # Determine target and method name from the collection expression.
-    # Two AST shapes for method calls:
-    #   1. FuncCall(target=AtomTrailer(target=obj, right=method, is_attr=True), params=[...])
-    #   2. AtomTrailer(target=obj, right=FuncCall(target=method, ...), is_attr=False)
-    target_name: (str | None) = None;
-    method_name: (str | None) = None;
-    if isinstance(collection, uni.FuncCall) {
-        if isinstance(collection.target, uni.AtomTrailer)
-        and collection.target.is_attr {
-            target_name = self._get_name(collection.target.target);
-            method_name = self._get_name(collection.target.right);
+    _coll_tk = self._type_key_of(compr.collection);
+    if _coll_tk is not None
+    and _coll_tk.startswith("list[")
+    and _coll_tk.endswith("]") {
+        _inner_tk = _coll_tk[5:-1];
+        if _inner_tk in self.struct_types {
+            return _inner_tk;
         }
-    } elif isinstance(collection, uni.AtomTrailer) and not collection.is_attr {
-        target_name = self._get_name(collection.target);
-        if isinstance(collection.right, uni.FuncCall) {
-            method_name = self._get_name(collection.right.target);
-        } else {
-            method_name = self._get_name(collection.right);
-        }
-    }
-    if target_name is None or method_name is None {
-        # Fallback: if collection is a simple variable (Name node), try to
-        # resolve its list element type from the variable's type annotation
-        coll_name = self._get_name(collection);
-        if coll_name is not None {
-            # Check var_type_node for type annotation like list[Move]
-            type_node = self.var_type_node.get(coll_name);
-            if type_node is not None {
-                (inner, _, _) = self._peel_list_type(type_node);
-                if inner is not None {
-                    inner_name = self._get_name(inner);
-                    if inner_name is not None and inner_name in self.struct_types {
-                        return inner_name;
-                    }
-                }
+        for part in _inner_tk.split("|") {
+            if part in self.struct_types {
+                return part;
             }
-            # Check var_list_elem_type for computed element type name
-            elem_type = self.var_list_elem_type.get(coll_name);
-            if elem_type is not None and elem_type in self.struct_types {
-                return elem_type;
-            }
-        }
-        return None;
-    }
-    # Look up the struct type for target variable
-    type_name = self.type_var_map.get(target_name);
-    if type_name is None {
-        if target_name in self.local_vars {
-            lv = self.local_vars[target_name];
-            if isinstance(lv.type, ir.PointerType) {
-                pointee = lv.type.pointee;
-                for (sname, stype) in self.struct_types.items() {
-                    if pointee == stype.as_pointer() {
-                        type_name = sname;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    if type_name is None {
-        return None;
-    }
-    # Walk MRO to find method signature and extract return element type
-    for check in self.mro_order.get(type_name, [type_name]) {
-        full = f"{check}.{method_name}";
-        if full in self.method_ast_sigs {
-            sig = self.method_ast_sigs[full];
-            ret_type = sig?.return_type;
-            if ret_type is not None {
-                (inner, _, _) = self._peel_list_type(ret_type);
-                if inner is not None {
-                    inner_name = self._get_name(inner);
-                    if inner_name is not None and inner_name in self.struct_types {
-                        return inner_name;
-                    }
-                }
-            }
-            break;
         }
     }
     return None;
 }
 
 """Resolve the LLVM type of elements in a ptr list for a for-loop variable.
-Uses Jac type annotations (var_type_node or field_type_node) to determine
-what i8* elements should be bitcast to."""
+Uses the checked type of the collection expression to determine what i8*
+elements should be bitcast to."""
 impl NaIRGenPass._resolve_for_loop_elem_type(
     coll_name: (str | None), coll_node: (object | None)
 ) -> (ir.Type | None) {
-    # Check variable type annotation first
-    type_node: (object | None) = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        type_node = self.var_type_node[coll_name];
-    }
-    if type_node is not None {
-        (inner, inner_type, inner_elem) = self._peel_list_type(type_node);
-        if inner_type is not None {
-            return inner_type;
-        }
-    }
-    return None;
-}
-
-"""Resolve the LLVM type that ptr list elements should be bitcast to,
-given a Jac type AST node for the list variable/field.
-For list[list[int]], returns List.i64* (the type of each element).
-For list[Piece|None], returns Piece* (the type of each element)."""
-impl NaIRGenPass._resolve_ptr_elem_cast_type(
-    type_node: (object | None)
-) -> (ir.Type | None) {
-    if type_node is None {
-        return None;
-    }
-    (inner, inner_type, inner_elem) = self._peel_list_type(type_node);
-    if inner_type is not None and isinstance(inner_type, ir.PointerType) {
-        return inner_type;
-    }
-    return None;
+    # Element type comes from the checked type of the collection expression.
+    return self._list_elem_llvm_of(coll_node);
 }
 # ─── Phase 7: String Methods and Builtins ─────────────────────

@@ -15,6 +15,7 @@ import from jaclang.jac0core.constant {
     CodeContext,
     EdgeDir,
     SymbolAccess,
+    SymbolStorage,
     SymbolType
 }
 import from jaclang.jac0core.constant { Constants as Con }
@@ -99,6 +100,7 @@ obj Symbol {
     has sym_type: SymbolType { getter; }
     has sym_dotted_name: str { getter; }
     has symbol_table: (UniScopeNode | None) { getter; }
+    has storage: SymbolStorage { getter; }
 
     def add_defn(nd: NameAtom) -> None;
     def add_use(nd: NameAtom) -> None;
@@ -142,6 +144,10 @@ obj UniScopeNode(UniNode) {
     ) -> (UniNode | None);
 
     def find_scope(name: str) -> (UniScopeNode | None);
+    # Symbols defined in strictly-enclosing function-like scopes
+    # (Ability/ImplDef/LambdaExpr/Test) that are referenced inside this
+    # scope, i.e. its free variables, deduped in source order.
+    def get_enclosing_captures -> list[Symbol];
     def link_kid_scope(key_node: UniScopeNode) -> UniScopeNode;
     def def_insert(
         nd: AstSymbolNode,
@@ -337,6 +343,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     has sym: (Symbol | None) { getter; setter(sym: Symbol); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
+    has binds_new_var: bool { getter; }
 
     def create_symbol(
         access: SymbolAccess,
@@ -572,6 +579,9 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
     def _get_impl_resolved_body -> list;
 
     has is_abstract: bool { getter; }
+    # OSP kind ("node" | "edge" | "walker") from sym_category; None for
+    # obj/class archetypes. The single API for archetype-kind queries.
+    has arch_kind: (str | None) { getter; }
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];
@@ -624,7 +634,10 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
         type_params: (Sequence[TypeParam] | None) = None,
-        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
+        accessor_kind: str = "",  # "" | "property" | "setter" | "deleter"
+        # Resolved trigger types of an event ability (`can ... with T entry`),
+        # written by TypeCheckPass; None when unresolved/untyped.
+        event_triggers: (list[TypeBase] | None) = None;
 
     def postinit -> None;
 
@@ -960,6 +973,10 @@ obj LambdaExpr(Expr, UniScopeNode) {
         signature: (FuncSignature | None) = None;
 
     def postinit -> None;
+
+    # Free variables captured from enclosing function scopes, derived
+    # from symbol tables (see UniScopeNode.get_enclosing_captures).
+    has captures: list[Symbol] { getter; }
 }
 
 """UnaryExpr node type for Jac Ast."""
@@ -1128,7 +1145,13 @@ obj YieldExpr(Expr) {
 obj FuncCall(Expr) {
     has target: Expr,
         params: (Sequence[(Expr | KWPair)] | None),
-        genai_call: (Expr | None);
+        genai_call: (Expr | None),
+        # Call-site classification ("method" | "instantiation" | "builtin"
+        # | "function"), stamped by TypeCheckPass at resolution time from
+        # symbol_utils.classify_call. None on nodes synthesized after
+        # checking (e.g. desugared pipe-forward); backends classify those
+        # on the spot.
+        call_kind: (str | None) = None;
 
     def postinit -> None;
 }
@@ -1435,8 +1458,6 @@ obj Token(UniNode) {
 
 """Name node type for Jac Ast."""
 obj Name(Token, NameAtom) {
-    has js_decl_kind: (str | None) by postinit;
-
     def init(
         orig_src: Source,
         name: str,

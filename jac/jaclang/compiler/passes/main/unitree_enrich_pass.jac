@@ -1,13 +1,11 @@
 """Pre-computes backend-neutral analysis on AST nodes so codegen passes
-are pure code generation. Populates Name.js_decl_kind and
-Module.gen.native_compat."""
+are pure code generation. Populates Module.gen.native_compat."""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 
-"""Pre-compute backend hints on every Name node."""
+"""Pre-compute backend hints on the module tree."""
 obj UniTreeEnrichPass(UniPass) {
     def before_pass -> None;
-    def enter_name(nd: uni.Name) -> None;
     def enter_archetype(nd: uni.Archetype) -> None;
     def enter_ability(nd: uni.Ability) -> None;
     def enter_visit_stmt(nd: uni.VisitStmt) -> None;

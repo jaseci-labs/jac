@@ -2003,14 +2003,21 @@ test "clib struct value-type coercion" {
     # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
     # Color struct type should be defined
     assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
-    # Extern draw should have Color param ABI-coerced to i32
-    assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # System V ABI coercion at the call site: the Color value is reinterpreted
-    # as its register coerce type ({i32}) and the eightbyte is loaded out.
-    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    # Struct-by-value coercion at the call site: the small struct is passed in
+    # an integer register, loaded out of the struct slot.
     assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+    import platform;
+    if "x86_64" in platform.machine() or "AMD64" in platform.machine() {
+        # System V AMD64: the 4-byte Color eightbyte coerces to i32 and the
+        # value is reinterpreted via a struct-to-ABI bitcast.
+        assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (SysV ABI coercion)";
+        assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    } elif platform.machine() in ("arm64", "aarch64") {
+        # AAPCS64: composites are rounded up to the 8-byte register size.
+        assert 'declare void @"draw"(i32 %"x", i32 %"y", i64 %"color")' in llvm_ir_str , "draw should use i64 for Color param (AAPCS64 coercion)";
+    }
 }
 
 test "clib System V AMD64 ABI lowering" {
@@ -3926,14 +3933,16 @@ test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
     addr = eng.get_function_address("W.on_either");
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
-    # Both node structs lower to `{ header_ptr, header_i64, value_i64 }`, so the
-    # user field (`either` / `val`) sits at index 2 (byte offset 16).
-    self_buf = (ctypes.c_int64 * 3)(0, 0, 0);
+    # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
+    # walkers carry the built-in `reports` list at index 2, so the user field
+    # `either` sits at index 3. `here` is a node: { vtable@0, __type_tag@1,
+    # val@2 } (nodes have no reports field), so `val` sits at index 2.
+    self_buf = (ctypes.c_int64 * 4)(0, 0, 0, 0);
     here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
-    assert self_buf[2] == 5 , "here.val was not read through the union member layout";
+    assert self_buf[3] == 5 , "here.val was not read through the union member layout";
     # A second member instance must accumulate the same way.
     here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
-    assert self_buf[2] == 12;
+    assert self_buf[3] == 12;
 }

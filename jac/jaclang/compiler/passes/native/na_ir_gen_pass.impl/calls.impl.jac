@@ -34,10 +34,16 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
 
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
-    _call_kind = classify_call(nd);
+    # Dispatch on the checker-stamped call classification. Only call nodes
+    # synthesized after type checking (e.g. desugared pipe-forward) lack
+    # the stamp and are classified on the spot.
+    _call_kind = nd.call_kind;
+    if _call_kind is None {
+        import from jaclang.compiler.symbol_utils { classify_call }
+        _call_kind = classify_call(nd).value;
+    }
     # Handle method calls: obj.method(args)
-    if _call_kind == CallKind.METHOD {
+    if _call_kind == "method" {
         return self._codegen_method_call(nd);
     }
     func_name = self._get_name(nd.target);
@@ -45,10 +51,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     # Builtin fast-paths fire only when the call actually resolves to a builtin.
-    # classify_call is shadow-aware, so a user symbol named e.g. `len` is
-    # FUNCTION and falls through to the free-function path below instead of
+    # The classification is shadow-aware, so a user symbol named e.g. `len` is
+    # "function" and falls through to the free-function path below instead of
     # being hijacked by the builtin handling.
-    if _call_kind == CallKind.BUILTIN {
+    if _call_kind == "builtin" {
         # Handle print() specially
         if func_name == "print" {
             return self._emit_print(nd);
@@ -123,24 +129,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if func_name == "len" {
             params_l = nd.params or [];
             if params_l {
-                arg_name = self._get_name(params_l[0]);
                 elem_type_name: (str | None) = None;
-                if arg_name is not None and arg_name in self.var_list_elem_type {
-                    elem_type_name = self.var_list_elem_type[arg_name];
-                }
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
-                    # Check for dict type first
-                    if arg_name is not None and arg_name in self.var_dict_type {
-                        dict_key = self.var_dict_type[arg_name];
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="dict.len"
-                            );
-                        }
-                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {
@@ -152,18 +144,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                                 );
                                 break;
                             }
-                        }
-                    }
-                    # Check for set type
-                    if _len_result is None
-                    and arg_name is not None
-                    and arg_name in self.var_set_elem_type {
-                        set_key = self.var_set_elem_type[arg_name];
-                        helpers = self.set_helpers.get(set_key);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="set.len"
-                            );
                         }
                     }
                     # Check for set type by inferring from value
@@ -695,17 +675,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         # reaches this point and is materialized from the assignment's type
         # annotation; builtin calls that truly cannot be lowered are caught at
         # their dispatch site above (where the arguments are known).
-        if _call_kind != CallKind.BUILTIN {
+        if _call_kind != "builtin" {
             self.emit(E5090, node_override=nd, kind="function", name=func_name);
         }
         return None;
-    }
-    # Propagate return type hint for for-loop element resolution
-    if func_name in self.method_ast_sigs {
-        fn_sig = self.method_ast_sigs[func_name];
-        if fn_sig?.return_type and fn_sig.return_type is not None {
-            self._last_type_node_hint = fn_sig.return_type;
-        }
     }
     # Build arguments
     args: list[ir.Value] = [];

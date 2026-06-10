@@ -103,6 +103,14 @@ method signatures are compared using resolved types (via get_type_of_ability
 and _assign_callable), which handles complex types like generics, unions, and
 aliases correctly.
 """
+# (cls, proto) protocol checks currently on the stack. A self-referential
+# protocol (e.g. a method typed against the protocol itself, directly or via
+# another class) would otherwise recurse forever through _assign_callable ->
+# assign_type -> _assign_class -> class_implements_protocol. Matching
+# pyright's recursion handling, an in-progress pair is optimistically
+# assumed compatible.
+glob _proto_checks_in_progress: set = set();
+
 impl class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool {
@@ -138,28 +146,37 @@ impl class_implements_protocol(
         }
     }
 
-    # Check all protocol methods exist AND have compatible signatures
-    for (name, proto_method) in proto_methods.items() {
-        if name not in cls_methods {
-            return False;
-        }
-        cls_method = cls_methods[name];
-        # When evaluator is available, use resolved types for signature comparison.
-        # This is the proper approach: resolve each method to a FunctionType and
-        # compare using _assign_callable (which handles parameter contravariance
-        # and return type covariance correctly).
-        if evaluator is not None {
-            proto_func_type = evaluator.get_type_of_ability(proto_method);
-            cls_func_type = evaluator.get_type_of_ability(cls_method);
-            if isinstance(proto_func_type, types.FunctionType)
-            and isinstance(cls_func_type, types.FunctionType) {
-                if not evaluator._assign_callable(cls_func_type, proto_func_type) {
-                    return False;
+    _key = (id(cls.shared), id(proto.shared));
+    if _key in _proto_checks_in_progress {
+        return True;
+    }
+    _proto_checks_in_progress.add(_key);
+    try {
+        # Check all protocol methods exist AND have compatible signatures
+        for (name, proto_method) in proto_methods.items() {
+            if name not in cls_methods {
+                return False;
+            }
+            cls_method = cls_methods[name];
+            # When evaluator is available, use resolved types for signature comparison.
+            # This is the proper approach: resolve each method to a FunctionType and
+            # compare using _assign_callable (which handles parameter contravariance
+            # and return type covariance correctly).
+            if evaluator is not None {
+                proto_func_type = evaluator.get_type_of_ability(proto_method);
+                cls_func_type = evaluator.get_type_of_ability(cls_method);
+                if isinstance(proto_func_type, types.FunctionType)
+                and isinstance(cls_func_type, types.FunctionType) {
+                    if not evaluator._assign_callable(cls_func_type, proto_func_type) {
+                        return False;
+                    }
                 }
             }
         }
+        return True;
+    } finally {
+        _proto_checks_in_progress.discard(_key);
     }
-    return True;
 }
 
 """Lookup a symbol in the symbol table."""

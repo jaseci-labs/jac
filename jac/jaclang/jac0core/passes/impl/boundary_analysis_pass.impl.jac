@@ -314,17 +314,7 @@ impl BoundaryAnalysisPass._collect_pub_walkers(
     self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
     if isinstance(nd, uni.Archetype) and nd.sym_name {
-        is_walker = False;
-        try {
-            arch_type = nd.arch_type;
-            if hasattr(arch_type, 'name') {
-                is_walker = (
-                    arch_type.name == Tok.KW_WALKER or arch_type.name == 'KW_WALKER'
-                );
-            }
-        } except Exception {
-            is_walker = False;
-        }
+        is_walker = nd.arch_kind == "walker";
         is_pub = False;
         try {
             is_pub = bool(getattr(nd, 'public_access', False));
@@ -746,16 +736,10 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     }
     # Handle Archetype (obj, node, walker)
     if isinstance(arch_node, uni.Archetype) {
-        arch_type = arch_node.arch_type;
-        kind = "obj";
-        if hasattr(arch_type, 'name') {
-            name_val = arch_type.name;
-            if name_val == "KW_NODE" or "node" in str(name_val).lower() {
-                kind = "node";
-            } elif name_val == "KW_WALKER" or "walker" in str(name_val).lower() {
-                kind = "walker";
-            }
-        }
+        # Edge archetypes intentionally fall back to "obj" here -- this
+        # manifest only distinguishes node/walker shapes.
+        _ak = arch_node.arch_kind;
+        kind = _ak if _ak in ("node", "walker") else "obj";
         fields: list[tuple[(str, str)]] = [];
         nested: list[str] = [];
         # Extract has declarations (walk through ArchHas -> HasVar)
@@ -956,7 +940,7 @@ impl BoundaryAnalysisPass._record_access_levels(
 impl BoundaryAnalysisPass.enter_archetype(
     self: BoundaryAnalysisPass, nd: uni.Archetype
 ) -> None {
-    if nd.arch_type.name != Tok.KW_WALKER {
+    if nd.arch_kind != "walker" {
         return;
     }
     if not isinstance(nd.name, uni.Name) {

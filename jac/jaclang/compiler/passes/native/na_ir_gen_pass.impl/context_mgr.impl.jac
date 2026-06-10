@@ -116,15 +116,6 @@ impl NaIRGenPass._codegen_with_recursive(
             }
             self.builder.store(enter_result, alloca);
             self.local_vars[alias_name] = alloca;
-            # Track type info for the alias variable
-            if isinstance(enter_result.type, ir.PointerType) {
-                for (sname, stype) in self.struct_types.items() {
-                    if enter_result.type == stype.as_pointer() {
-                        self.type_var_map[alias_name] = sname;
-                        break;
-                    }
-                }
-            }
         }
     }
     # Create basic blocks for body and exit

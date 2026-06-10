@@ -635,6 +635,8 @@ Roles are stored in the user document and included in JWT claims. The admin user
 - System accounts (role `system`)
 - The guest account (identity `__guest__`)
 
+The guest account's root is the deployment's public graph - every unauthenticated request runs on it, and Jac code addresses it from any request as `root.shared` (see [The Shared Root](../language/osp.md#6-the-shared-root-rootshared)).
+
 Roles are managed via the admin portal API or programmatically through the `UserManager`:
 
 ```bash

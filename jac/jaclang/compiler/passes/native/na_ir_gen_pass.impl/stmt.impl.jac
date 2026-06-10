@@ -116,13 +116,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         ) {
             slices = target_expr.right.slices or [];
             if slices {
-                idx_target_name = self._get_name(target_expr.target);
-                # Only handle known dict variables
-                dict_type_key: (str | None) = None;
-                if idx_target_name is not None
-                and idx_target_name in self.var_dict_type {
-                    dict_type_key = self.var_dict_type[idx_target_name];
-                }
+                # Only handle dict-typed targets (checked type, then LLVM shape)
+                dict_type_key = self._dict_key_of(target_expr.target);
                 if dict_type_key is None {
                     dict_val_tmp = self._codegen_expr(target_expr.target);
                     if dict_val_tmp is not None {
@@ -173,22 +168,19 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.Semi) {
         # Bare `;` — no codegen needed.
     } elif isinstance(nd, uni.GlobalStmt) {
-        # `global`/`nonlocal` are declarations consumed by the symbol
-        # table; the corresponding Name/Assignment nodes do the actual
-        # codegen. We still record the declared names so a later
-        # `x = ...` in this function rebinds the module global instead of
-        # allocating a function-local (see _codegen_assignment). Without an
-        # explicit `global x;`, a function-scope assignment is a local —
-        # matching CPython and the sv pathway.
-        for _g_target in nd.target {
-            _g_name = self._get_name(_g_target);
-            if _g_name is not None {
-                self._declared_globals.add(_g_name);
-            }
-        }
+        # `global`/`nonlocal` are declarations fully consumed by the symbol
+        # table (bind_global_stmt rebinds the function-scope name to the
+        # module symbol); the corresponding Name/Assignment nodes do the
+        # actual codegen via Symbol.storage. No backend bookkeeping needed.
     } elif isinstance(nd, uni.PyInlineCode) {
         # ::py:: blocks are intentionally stripped from native output —
         # they target the Python pathway only.
+    } elif isinstance(nd, uni.VisitStmt) {
+        self._codegen_visit(nd);
+    } elif isinstance(nd, uni.DisengageStmt) {
+        self._codegen_disengage(nd);
+    } elif isinstance(nd, uni.ReportStmt) {
+        self._codegen_report(nd);
     } else {
         # Catch-all: any statement node we didn't recognize is a real
         # gap, not a no-op. Emit a structured error so the failure is
@@ -719,40 +711,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             self._list_type_hint = hint;
         }
     }
-    # 2. From field target: self.field = [] where field has known list type
+    # 2. From the target's checked list type (fields/reassignment/globals)
     if self._list_type_hint is None {
         check_targets = nd.target
             if isinstance(nd.target, (list, tuple))
             else [(nd.target)];
         for ct in check_targets {
-            if isinstance(ct, uni.AtomTrailer) and ct.is_attr {
-                ct_target_name = self._get_name(ct.target);
-                ct_field_name = self._get_name(ct.right);
-                if ct_target_name is not None and ct_field_name is not None {
-                    ct_type_name = self.type_var_map.get(ct_target_name);
-                    if ct_type_name is not None
-                    and ct_type_name in self.field_type_node {
-                        ftn = self.field_type_node[ct_type_name].get(ct_field_name);
-                        if ftn is not None {
-                            hint = self._get_list_elem_from_type_node(ftn);
-                            if hint is not None {
-                                self._list_type_hint = hint;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    # 3. From existing variable's tracked list element type (for reassignment/globals)
-    if self._list_type_hint is None {
-        check_targets = nd.target
-            if isinstance(nd.target, (list, tuple))
-            else [(nd.target)];
-        for ct in check_targets {
-            ct_name = self._get_name(ct);
-            if ct_name is not None and ct_name in self.var_list_elem_type {
-                self._list_type_hint = self.var_list_elem_type[ct_name];
+            _ct_spec = self._list_spec_of(ct);
+            if _ct_spec is not None {
+                self._list_type_hint = _ct_spec;
                 break;
             }
         }
@@ -804,35 +771,28 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             _edict_type_tag = nd.type_tag.tag
                 if nd.type_tag and nd.type_tag.tag
                 else None;
-            # Fallback: no explicit type annotation but target is obj.field = {} —
-            # infer the dict type from field_type_node so we emit __dict_new_*().
+            # Fallback: no explicit type annotation but the target (obj.field
+            # / reassigned local) carries a checked dict type — emit the
+            # matching __dict_new_*().
             if _edict_type_tag is None {
                 _check_targets = nd.target
                     if isinstance(nd.target, (list, tuple))
                     else [(nd.target)];
                 for _ct in _check_targets {
-                    if isinstance(_ct, uni.AtomTrailer) and _ct.is_attr {
-                        _ct_target_name = self._get_name(_ct.target);
-                        _ct_field_name = self._get_name(_ct.right);
-                        if _ct_target_name is not None and _ct_field_name is not None {
-                            _ct_type_name = self.type_var_map.get(_ct_target_name);
-                            if _ct_type_name is not None
-                            and _ct_type_name in self.field_type_node {
-                                _ftn = self.field_type_node[_ct_type_name].get(
-                                    _ct_field_name
-                                );
-                                if _ftn is not None {
-                                    _edict_type_tag = _ftn;
-                                }
-                            }
-                        }
+                    _dk = self._dict_key_of(_ct);
+                    if _dk is None {
+                        continue;
                     }
-                    if _edict_type_tag is not None {
-                        break;
+                    helpers = self.dict_helpers.get(_dk);
+                    if helpers is not None {
+                        value = self.builder.call(helpers["new"], [], name="dict.new");
+                        # RC: fresh allocation — caller owns it; skip RETAIN on assign.
+                        self._mark_owned(value);
                     }
+                    break;
                 }
             }
-            if _edict_type_tag is not None {
+            if value is None and _edict_type_tag is not None {
                 # Empty dict with type hint - create empty dict of correct type
                 dict_type = self._resolve_jac_type(_edict_type_tag);
                 if isinstance(dict_type, ir.PointerType) {
@@ -962,12 +922,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         idx_val = self._codegen_expr(idx_node.start);
                     }
                     if idx_val is not None {
-                        # Check if this is a dict assignment
-                        dict_type_key: (str | None) = None;
-                        if idx_target_name is not None
-                        and idx_target_name in self.var_dict_type {
-                            dict_type_key = self.var_dict_type[idx_target_name];
-                        }
+                        # Check if this is a dict assignment (checked type first)
+                        dict_type_key = self._dict_key_of(target_expr.target);
                         if dict_type_key is None {
                             dict_info = self._infer_dict_type(target_val);
                             if dict_info is not None {
@@ -985,16 +941,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             }
                         } else {
                             # List assignment: list[idx] = value
-                            elem_type_name: (str | None) = None;
-                            if idx_target_name is not None
-                            and idx_target_name in self.var_list_elem_type {
-                                elem_type_name = self.var_list_elem_type[
-                                    idx_target_name
-                                ];
-                            }
-                            if elem_type_name is None {
-                                elem_type_name = self._infer_list_elem_type(target_val);
-                            }
+                            elem_type_name: (str | None) = (
+                                self._infer_list_elem_type(target_val)
+                            );
                             if elem_type_name is not None {
                                 self._codegen_index_set(
                                     target_val, idx_val, value, elem_type_name
@@ -1215,9 +1164,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"{var_name}.or"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        # Dict |= (update) via emitter
-                        if var_name in self.var_dict_type {
-                            dict_type_key = self.var_dict_type[var_name];
+                        # Dict |= (update) via emitter (checked type, then shape)
+                        dict_type_key = self._dict_key_of(target_expr);
+                        if dict_type_key is None {
+                            dict_info = self._infer_dict_type(current);
+                            if dict_info is not None {
+                                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                            }
+                        }
+                        if dict_type_key is not None {
                             self._ensure_emitters();
                             _de = self._native_emitters.get("dict");
                             if _de is not None {
@@ -1453,13 +1408,17 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
-        and (self._in_module_scope or var_name in self._declared_globals) {
-            # Store to a module global. Only reached for module-level code
-            # (_in_module_scope) or after an explicit `global var;` declared
-            # the name in this function (_declared_globals). A bare
-            # function-scope assignment to a glob-named variable does NOT land
-            # here — it falls through to the `else` branch and allocates a
-            # function-local, matching CPython and the sv pathway.
+        and isinstance(target_expr, uni.NameAtom)
+        and target_expr.sym is not None
+        and target_expr.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
+            # Store to a module global. The symbol table is the single owner
+            # of this fact: module-level code binds names to module symbols,
+            # and an explicit `global var;` rebinds the function-scope name to
+            # the module symbol (sym_tab_build_pass.bind_global_stmt). A bare
+            # function-scope assignment to a glob-named variable binds a
+            # shadow LOCAL symbol, so it does NOT land here — it falls through
+            # to the `else` branch and allocates a function-local, matching
+            # CPython and the sv pathway.
             global_var = self.global_vars[var_name];
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
@@ -1743,91 +1702,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             self.lambda_captures[var_name] = self._pending_lambda_captures;
             self._pending_lambda_captures = None;
         }
-        # Track type info for variables pointing to structs
-        if isinstance(value.type, ir.PointerType) {
-            # Check if it's a known struct pointer type
-            for (sname, stype) in self.struct_types.items() {
-                if value.type == stype.as_pointer() {
-                    self.type_var_map[var_name] = sname;
-                    break;
-                }
-            }
-        }
-        # Track from type_tag annotation (supports T and T | None union types)
-        if nd.type_tag and nd.type_tag.tag {
-            tag_node = nd.type_tag.tag;
-            tag_name = self._get_name(tag_node);
-            # Handle union type: T | None → extract T
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[var_name] = tag_name;
-            }
-            # Track enum type for enum-typed variables
-            if tag_name is not None and tag_name in self.enum_types {
-                self.var_enum_type[var_name] = tag_name;
-            }
-            # Store the full type AST node for nested type resolution
-            self.var_type_node[var_name] = tag_node;
-        }
-        # Track list element type for list variables
-        for (ename, ltype) in self.list_types.items() {
-            if value.type == ltype.as_pointer() {
-                self.var_list_elem_type[var_name] = ename;
-                # Seed the boxed-tuple element-struct shape from the literal that
-                # produced this value (if any), so `(a, b) = var.pop()` on a bare
-                # `list` can recover the tuple type later. See #6435.
-                if self._pending_list_elem_struct is not None {
+        # Seed the boxed-tuple element-struct shape from the literal that
+        # produced this value (if any), so `(a, b) = var.pop()` on a bare
+        # `list` can recover the tuple type later. See #6435.
+        if self._pending_list_elem_struct is not None {
+            for (ename, ltype) in self.list_types.items() {
+                if value.type == ltype.as_pointer() {
                     self.var_list_elem_struct[var_name] = self._pending_list_elem_struct;
-                }
-                break;
-            }
-        }
-        # Track dict type for dict variables
-        for (dkey, dtype) in self.dict_types.items() {
-            if value.type == dtype.as_pointer() {
-                self.var_dict_type[var_name] = dkey;
-                break;
-            }
-        }
-        # Track set element type for set variables
-        for (ename, stype) in self.set_types.items() {
-            if value.type == stype.as_pointer() {
-                self.var_set_elem_type[var_name] = ename;
-                break;
-            }
-        }
-        # Track tuple type for tuple variables (value or pointer tuples)
-        ttrack_struct: (ir.LiteralStructType | None) = None;
-        if isinstance(value.type, ir.LiteralStructType) {
-            ttrack_struct = value.type;
-        } elif isinstance(value.type, ir.PointerType)
-        and isinstance(value.type.pointee, ir.LiteralStructType) {
-            ttrack_struct = value.type.pointee;
-        }
-        if ttrack_struct is not None {
-            for (tkey, ttype) in self.tuple_types.items() {
-                if str(ttrack_struct) == str(ttype) {
-                    self.var_tuple_type[var_name] = tkey;
                     break;
                 }
             }
-        }
-        # Track complex variables
-        if value.type == self.complex_struct_type.as_pointer() {
-            self.var_complex.add(var_name);
-        }
-        # Track range variables
-        if value.type == self.range_struct_type.as_pointer() {
-            self.var_range.add(var_name);
-        }
-        # Track slice variables
-        if value.type == self.slice_struct_type.as_pointer() {
-            self.var_slice.add(var_name);
         }
     }
 }
@@ -1937,13 +1821,13 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         coll_call = nd.collection;
         if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
             items_method = self._get_name(coll_call.target.right);
-            items_base = self._get_name(coll_call.target.target);
-            if (
-                items_method == "items"
-                and items_base is not None
-                and items_base in self.var_dict_type
-            ) {
-                dict_type_key = self.var_dict_type[items_base];
+            items_dict_key = (
+                self._dict_key_of(coll_call.target.target)
+                    if items_method == "items"
+                    else None
+            );
+            if items_dict_key is not None {
+                dict_type_key = items_dict_key;
                 helpers = self.dict_helpers.get(dict_type_key);
                 unpack_targets = nd.target.values or [];
                 if helpers is not None and len(unpack_targets) == 2 {
@@ -2027,27 +1911,18 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # doing the work N times AND leaking the unused results. We evaluate here a
     # single time (with the list element-type hint set, so list literals are
     # typed correctly) and reuse `_coll_memo` in the dict / string / set / list
-    # paths below. `_coll_memo_hint` carries the return-type node for a method
-    # call so the list path can recover the element type.
+    # paths below.
     coll_name = self._get_name(nd.collection);
     self._list_type_hint = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        _hint0 = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
-        if _hint0 is not None {
-            self._list_type_hint = _hint0;
-        }
+    _hint0 = self._elem_spec_of(nd.collection);
+    if _hint0 is not None {
+        self._list_type_hint = _hint0;
     }
-    self._last_type_node_hint = None;
     _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
-    _coll_memo_hint = self._last_type_node_hint;
     self._list_type_hint = None;
     # ── Dict iteration: for k in dict ──
-    # Only use dict iteration if the collection variable is explicitly tracked as a dict
-    # (This avoids premature code generation from type inference)
-    dict_type_key: (str | None) = None;
-    if coll_name is not None and coll_name in self.var_dict_type {
-        dict_type_key = self.var_dict_type[coll_name];
-    }
+    # Dict-ness comes from the checked type of the collection expression.
+    dict_type_key: (str | None) = self._dict_key_of(nd.collection);
     # Fallback: for field access (e.g. c.props) where coll_name is None or not
     # tracked, infer the dict type from the evaluated value's LLVM type.
     _ford_coll_val: (ir.Value | None) = _coll_memo;
@@ -2158,11 +2033,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Must be checked before the list path: a raw `i8*` string would otherwise
     # be misclassified as a `list[ptr]` and hit a type-mismatch when calling
     # the List.ptr helpers.
-    coll_name_str = self._get_name(nd.collection);
-    is_list_coll = (
-        coll_name_str is not None and coll_name_str in self.var_list_elem_type
-    );
-    is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
+    is_list_coll = self._list_spec_of(nd.collection) is not None;
+    is_dict_coll = self._dict_key_of(nd.collection) is not None;
     if not is_list_coll and not is_dict_coll {
         str_coll_val = _coll_memo;
         i8p_s = ir.IntType(8).as_pointer();
@@ -2225,7 +2097,6 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Reuse the single evaluation captured at the top of this function
     # (see `_coll_memo`); re-evaluating would re-run the collection
     # expression's side effects and leak the extra results.
-    coll_type_hint = _coll_memo_hint;
     collection_val = _coll_memo;
     if collection_val is None {
         if len(self.errors_had) == _for_errs0 {
@@ -2238,19 +2109,11 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
-    # Determine element type of the list
-    elem_type_name: (str | None) = None;
-    if coll_name is not None and coll_name in self.var_list_elem_type {
-        elem_type_name = self.var_list_elem_type[coll_name];
-    } else {
-        elem_type_name = self._infer_list_elem_type(collection_val);
-    }
-    # Fallback: use _last_type_node_hint from method call return type
-    if elem_type_name is None and coll_type_hint is not None {
-        hint_elem = self._get_list_elem_from_type_node(coll_type_hint);
-        if hint_elem is not None {
-            elem_type_name = hint_elem;
-        }
+    # Determine element type of the list from the value's LLVM shape
+    elem_type_name: (str | None) = self._infer_list_elem_type(collection_val);
+    # Fallback: the checked element type of the collection expression
+    if elem_type_name is None {
+        elem_type_name = self._elem_spec_of(nd.collection);
     }
     # Fallback: if still None and collection is a list ptr, assume ptr elements.
     # Skip if collection is a set type (sets use different helpers).
@@ -2287,46 +2150,16 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     idx_alloca = self._entry_alloca(i64, "forl.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     # Resolve actual element type for ptr lists (before allocating loop var)
+    # from the checked type of the collection expression.
     actual_elem_type = helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
-    # Get the type node for the collection (from variable or from field access hint)
-    coll_type_node: (object | None) = None;
-    if coll_name is not None and coll_name in self.var_type_node {
-        coll_type_node = self.var_type_node[coll_name];
-    } elif coll_type_hint is not None {
-        coll_type_node = coll_type_hint;
-    }
     if elem_type_name == "ptr" {
         inner_type = self._resolve_for_loop_elem_type(coll_name, nd.collection);
-        # Fallback: use coll_type_hint from field access
-        if inner_type is None and coll_type_node is not None {
-            (_, inner_type_from_hint, _) = self._peel_list_type(coll_type_node);
-            if inner_type_from_hint is not None {
-                inner_type = inner_type_from_hint;
-            }
+        if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
+            inner_type = None;
         }
         if inner_type is not None {
             actual_elem_type = inner_type;
-            # Track inner type info on loop var
-            for (sname, stype) in self.struct_types.items() {
-                if inner_type == stype.as_pointer() {
-                    self.type_var_map[loop_var_name] = sname;
-                    break;
-                }
-            }
-            for (ename, ltype) in self.list_types.items() {
-                if inner_type == ltype.as_pointer() {
-                    self.var_list_elem_type[loop_var_name] = ename;
-                    break;
-                }
-            }
-            # Propagate inner type node for nested access
-            if coll_type_node is not None {
-                (inner_node, _, _) = self._peel_list_type(coll_type_node);
-                if inner_node is not None {
-                    self.var_type_node[loop_var_name] = inner_node;
-                }
-            }
         }
     }
     # Allocate loop variable with resolved element type.
