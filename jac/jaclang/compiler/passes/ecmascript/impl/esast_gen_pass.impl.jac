@@ -1100,28 +1100,40 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
             if (
                 rt is not None and isinstance(rt, uni.Name) and rt.value == 'JsxElement'
             ) {
-                abi = 'props_destructure';
-                # Check all positional params (posonly + regular) for a single
-                # ``props`` param so that ``def Comp(props: dict, /)`` is
-                # treated as passthrough, not destructure.  Without posonly
-                # awareness the check would see an empty ``sig.params`` and
-                # classify the component as destructure, while
-                # ``_param_names_from_ability`` (which walks posonly) would
-                # still return ``["props"]``, causing the call site to emit
-                # ``Comp({props: bundle})`` instead of the correct
-                # ``Comp(bundle)``.
-                all_pos_params: list[uni.ParamVar] = [];
-                if sig.posonly_params {
-                    all_pos_params.extend(sig.posonly_params);
-                }
-                if sig.params {
-                    all_pos_params.extend(sig.params);
-                }
+                # Runtime helpers (e.g. __jacJsx) are not user components; keep
+                # their original positional ABI so parameter names don't collide
+                # with the synthetic `props` destructuring parameter.
                 if (
-                    len(all_pos_params) == 1
-                    and all_pos_params[0].name.sym_name == 'props'
+                    ability_node.name_ref
+                    and ability_node.name_ref?.sym_name
+                    and ability_node.name_ref.sym_name.startswith('__jac')
                 ) {
-                    abi = 'props_passthrough';
+                    abi = 'direct';
+                } else {
+                    # Check all positional params (posonly + regular) for a
+                    # single ``props`` param so that ``def Comp(props: dict, /)``
+                    # is treated as passthrough, not destructure.  Without
+                    # posonly awareness the check would see an empty
+                    # ``sig.params`` and classify the component as destructure,
+                    # while ``_param_names_from_ability`` (which walks posonly)
+                    # would still return ``["props"]``, causing the call site to
+                    # emit ``Comp({props: bundle})`` instead of the correct
+                    # ``Comp(bundle)``.
+                    all_pos_params: list[uni.ParamVar] = [];
+                    if sig.posonly_params {
+                        all_pos_params.extend(sig.posonly_params);
+                    }
+                    if sig.params {
+                        all_pos_params.extend(sig.params);
+                    }
+                    if (
+                        len(all_pos_params) == 1
+                        and all_pos_params[0].name.sym_name == 'props'
+                    ) {
+                        abi = 'props_passthrough';
+                    } else {
+                        abi = 'props_destructure';
+                    }
                 }
             }
         }
