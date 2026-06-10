@@ -9,20 +9,12 @@ with tool rows highlighted via background color.  One-shot RPC endpoints
 If the stream disconnects, the loop backs off 800 ms and reconnects."""
 import from os { environ }
 
-cl import from react { useEffect }
+cl import from react { useEffect, useRef }
 cl import from "ink" { Box, Text, useApp, useInput }
 cl import from "ink-text-input" { default as TextInput }
 
 glob TUI_CWD: str = str(environ.get("JAC_TUI_CWD") or ""),
      BASE: str = str(environ.get("JAC_TUI_API_URL") or ""),
-     _streamCtrl: any = None,
-     _unmounted: bool = False,
-     feedSinceId: int = 0,
-     toolSeq: int = 1,
-     toolLabelByEvent: dict = {},
-     resultLabelByEvent: dict = {},
-     displayEvents: list[any] = [],
-     activeToolLabel: str = "",
      TUI_COMMANDS: list[str] = [
          "/help",
          "/model",
@@ -158,29 +150,38 @@ cl {
         return str(result.get("message", "") or result.get("error", "") or fallback);
     }
 
-    def resetFeedState {
-        global feedSinceId,toolSeq,toolLabelByEvent,resultLabelByEvent;
-        global displayEvents,activeToolLabel;
-        feedSinceId = 0;
-        toolSeq = 1;
-        toolLabelByEvent = {};
-        resultLabelByEvent = {};
-        displayEvents = [];
-        activeToolLabel = "";
+    def emptyFeedState -> any {
+        return {
+            "feedSinceId": 0,
+            "toolSeq": 1,
+            "toolLabelByEvent": {},
+            "resultLabelByEvent": {},
+            "displayEvents": [],
+            "activeToolLabel": ""
+        };
     }
 
-    def toolLabelFor(eventId: int) -> str {
-        global toolSeq,toolLabelByEvent;
-        if eventId in toolLabelByEvent {
-            return str(toolLabelByEvent[eventId]);
+    def resetFeedState(feed: any) {
+        feed["feedSinceId"] = 0;
+        feed["toolSeq"] = 1;
+        feed["toolLabelByEvent"] = {};
+        feed["resultLabelByEvent"] = {};
+        feed["displayEvents"] = [];
+        feed["activeToolLabel"] = "";
+    }
+
+    def toolLabelFor(feed: any, eventId: int) -> str {
+        labels = feed["toolLabelByEvent"];
+        if eventId in labels {
+            return str(labels[eventId]);
         }
-        lab = "#" + str(toolSeq);
-        toolSeq += 1;
-        toolLabelByEvent[eventId] = lab;
+        lab = "#" + str(feed["toolSeq"]);
+        feed["toolSeq"] += 1;
+        labels[eventId] = lab;
         return lab;
     }
 
-    def eventToDisplayRow(ev: any, eid: int, creating: bool) -> any {
+    def eventToDisplayRow(feed: any, ev: any, eid: int, creating: bool) -> any {
         kind = str(ev.get("kind", "") or "");
         text = str(ev.get("text", "") or "");
         if kind == "status" {
@@ -208,19 +209,18 @@ cl {
             row["kind"] = "system";
             row["text"] = "Phase > " + phase_node;
         } elif kind == "tool" {
-            tlab = toolLabelFor(eid);
-            global activeToolLabel;
-            activeToolLabel = tlab;
+            tlab = toolLabelFor(feed, eid);
+            feed["activeToolLabel"] = tlab;
             row["text"] = "Tool " + tlab + " > " + text;
         } elif kind == "tool_result" {
-            global resultLabelByEvent;
-            rlab = str(resultLabelByEvent.get(eid, "") or "");
+            resultLabels = feed["resultLabelByEvent"];
+            rlab = str(resultLabels.get(eid, "") or "");
             if not rlab {
-                rlab = activeToolLabel;
+                rlab = str(feed["activeToolLabel"] or "");
                 if not rlab {
-                    rlab = "#" + str(max(1, toolSeq - 1));
+                    rlab = "#" + str(max(1, int(feed["toolSeq"]) - 1));
                 }
-                resultLabelByEvent[eid] = rlab;
+                resultLabels[eid] = rlab;
             }
             row["text"] = "Result " + rlab + " > " + text;
         } elif kind == "answer" and not text and creating {
@@ -231,8 +231,8 @@ cl {
         return row;
     }
 
-    def processPollEvents(rawEvents: list[any]) -> list[any] {
-        global feedSinceId,displayEvents;
+    def processPollEvents(feed: any, rawEvents: list[any]) -> list[any] {
+        displayEvents = list(feed["displayEvents"] or []);
         byId: dict = {};
         for row in displayEvents {
             rid = int(row.get("id", 0) or 0);
@@ -245,25 +245,26 @@ cl {
             if eid <= 0 {
                 continue;
             }
-            if eid > feedSinceId {
-                feedSinceId = eid;
+            if eid > int(feed["feedSinceId"] or 0) {
+                feed["feedSinceId"] = eid;
             }
             if eid in byId {
                 # Streaming reasoning/answer events grow in place on the server;
                 # upsert the latest text (same pattern as the web UI SSE handler).
-                fresh = eventToDisplayRow(ev, eid, False);
+                fresh = eventToDisplayRow(feed, ev, eid, False);
                 if fresh is not None and fresh["text"] {
                     byId[eid]["text"] = fresh["text"];
                 }
                 continue;
             }
-            row = eventToDisplayRow(ev, eid, True);
+            row = eventToDisplayRow(feed, ev, eid, True);
             if row is None {
                 continue;
             }
             byId[eid] = row;
             displayEvents.append(row);
         }
+        feed["displayEvents"] = displayEvents;
         return list(displayEvents);
     }
 
@@ -550,19 +551,18 @@ cl {
         );
     }
 
-    def applyMsg(msg: any, setters: any) -> None {
+    def applyMsg(msg: any, feed: any, setters: any) -> None {
         if msg.get("heartbeat", False) {
             return;
         }
         if msg.get("full", False) {
-            global displayEvents,feedSinceId;
-            displayEvents = [];
-            feedSinceId = 0;
+            feed["displayEvents"] = [];
+            feed["feedSinceId"] = 0;
             raw_events = list(msg.get("events", []) or []);
-            setters["setEvents"](processPollEvents(raw_events));
+            setters["setEvents"](processPollEvents(feed, raw_events));
         } elif msg.get("ev", None) is not None {
             ev = msg.get("ev", None);
-            setters["setEvents"](processPollEvents([ev]));
+            setters["setEvents"](processPollEvents(feed, [ev]));
         }
         setters["setStatus"](str(msg.get("status", "idle") or "idle"));
         setters["setActive"](str(msg.get("active", "") or ""));
@@ -579,11 +579,12 @@ cl {
         setters["setPath"](path_val);
     }
 
-    async def streamLoop(setters: any) {
-        global _streamCtrl,_unmounted;
-        _unmounted = False;
-        while not _unmounted {
-            _streamCtrl = new(AbortController);
+    async def streamLoop(
+        setters: any, feed: any, unmountedRef: any, streamCtrlRef: any
+    ) {
+        unmountedRef.current = False;
+        while not unmountedRef.current {
+            streamCtrlRef.current = new(AbortController);
             try {
                 resp = await fetch(
                     BASE + "/function/agent_stream",
@@ -591,7 +592,7 @@ cl {
                         "method": "POST",
                         "headers": {"Content-Type": "application/json"},
                         "body": "{}",
-                        "signal": _streamCtrl.signal
+                        "signal": streamCtrlRef.current.signal
                     }
                 );
                 if resp.body is not None {
@@ -618,7 +619,7 @@ cl {
                             }
                             if data {
                                 try {
-                                    applyMsg(JSON.parse(data), setters);
+                                    applyMsg(JSON.parse(data), feed, setters);
                                 } except Exception { }
                             }
                             i += 1;
@@ -628,18 +629,17 @@ cl {
             } except Exception {
             # compile.py patches this catch to also tolerate SSE disconnects.
             }
-            if _unmounted {
+            if unmountedRef.current {
                 break;
             }
             await new(Promise, lambda resolve: any { setTimeout(resolve, 800); });
         }
     }
 
-    def stopStream {
-        global _streamCtrl,_unmounted;
-        _unmounted = True;
-        if _streamCtrl is not None {
-            _streamCtrl.abort();
+    def stopStream(unmountedRef: any, streamCtrlRef: any) {
+        unmountedRef.current = True;
+        if streamCtrlRef.current is not None {
+            streamCtrlRef.current.abort();
         }
     }
 
@@ -735,7 +735,6 @@ cl {
             return;
         }
         if cmd == "/clear" {
-            resetFeedState();
             actions["clear"]();
             actions["clearDraft"]();
             setInfo(actions, "", []);
@@ -873,8 +872,12 @@ cl {
             infoLines: list[str] = [];
 
         appCtl: any = useApp();
+        feedRef: any = useRef(emptyFeedState());
+        unmountedRef: any = useRef(False);
+        streamCtrlRef: any = useRef(None);
 
         def clearView {
+            resetFeedState(feedRef.current);
             events = [];
         }
 
@@ -935,7 +938,9 @@ cl {
                     "setStats": updateStats,
                     "setPath": lambda (value: any) { path = list(value or []); }
                 };
-                streamLoop(stream_setters);
+                streamLoop(
+                    stream_setters, feedRef.current, unmountedRef, streamCtrlRef
+                );
                 async def boot {
                     await refreshSettings(actions);
                     initial_prompt = str(
@@ -948,7 +953,7 @@ cl {
                     }
                 }
                 boot();
-                return lambda { stopStream(); };
+                return lambda { stopStream(unmountedRef, streamCtrlRef); };
             },
             []
         );
