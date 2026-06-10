@@ -900,13 +900,6 @@ impl MongoBackend._put_node_atomic(
         hash_dirty = _derive_dirty_from_field_hashes(anchor);
         dirty = setattr_dirty | hash_dirty;
 
-        # Serialize only the dirty archetype fields. On servers < 6.1.0 the
-        # aggregation-pipeline $set below rejects empty embedded documents
-        # (error 40180), so strip empty-dict leaves to keep the write durable;
-        # the cost is that a deliberate "clear a dict field to {}" cannot be
-        # expressed on this atomic path there. On >= 6.1.0 (capability detected
-        # once at connect) we keep empty dicts so such clears persist, matching
-        # put_partial's classic-$set behavior. See _pipeline_requires_empty_dict_strip.
         serialized: dict = Serializer.serialize_fields(anchor, dirty) if dirty else {};
         partial_data: dict[str, object] = (
             cast(dict, _strip_empty_dicts(serialized))
