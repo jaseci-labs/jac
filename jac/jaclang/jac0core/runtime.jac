@@ -1000,30 +1000,93 @@ def generate_plugin_helpers(
         }
         """Create a proxy method for the proxy class.""";
         def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
-            if is_coro {
-                async def async_proxy(*args: object, **kwargs: object) -> object {
+            # Phase 1: emit a real-signature function so CPython binds call
+            # args natively, instead of paying inspect.Signature.bind +
+            # apply_defaults on every hooked call (~73% of per-call cost).
+            # Signatures with *args/**kwargs/positional-only keep the
+            # reflective path below.
+            params = list(sig.parameters.values());
+            simple = True;
+            for p in params {
+                if p.kind in (
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                    inspect.Parameter.POSITIONAL_ONLY
+                ) {
+                    simple = False;
+                }
+            }
+            if not simple {
+                if is_coro {
+                    async def async_proxy(*args: object, **kwargs: object) -> object {
+                        bound = sig.bind_partial(*args, **kwargs);
+                        bound.apply_defaults();
+                        hookcaller = getattr(plugin_manager.hook, name);
+                        result = hookcaller(**bound.arguments);
+                        if inspect.iscoroutine(result) {
+                            return await result;
+                        }
+                        return result;
+                    }
+                    async_proxy.__name__ = name;
+                    async_proxy.__signature__ = sig;
+                    return async_proxy;
+                }
+                def proxy(*args: object, **kwargs: object) -> object {
                     bound = sig.bind_partial(*args, **kwargs);
                     bound.apply_defaults();
                     hookcaller = getattr(plugin_manager.hook, name);
-                    result = hookcaller(**bound.arguments);
-                    if inspect.iscoroutine(result) {
-                        return await result;
-                    }
-                    return result;
+                    return hookcaller(**bound.arguments);
                 }
-                async_proxy.__name__ = name;
-                async_proxy.__signature__ = sig;
-                return async_proxy;
+                proxy.__name__ = name;
+                proxy.__signature__ = sig;
+                return proxy;
             }
-            def proxy(*args: object, **kwargs: object) -> object {
-                bound = sig.bind_partial(*args, **kwargs);
-                bound.apply_defaults();
-                hookcaller = getattr(plugin_manager.hook, name);
-                return hookcaller(**bound.arguments);
+            # Fast path: codegen `def name(<params>): dispatch(<fwd>)`. The
+            # HookCaller is created later (by add_hookspecs), so resolve it
+            # lazily once and memoize in a one-element cell.
+            ns = {
+                'plugin_manager': plugin_manager,
+                'inspect': inspect,
+                '_name': name,
+                '_cell': [None]
+            };
+            src_params = [];
+            fwd = [];
+            seen_kwonly = False;
+            for (i, p) in enumerate(params) {
+                if (p.kind == inspect.Parameter.KEYWORD_ONLY) and (not seen_kwonly) {
+                    src_params.append('*');
+                    seen_kwonly = True;
+                }
+                if p.default is inspect.Parameter.empty {
+                    src_params.append(p.name);
+                } else {
+                    ns['_d' + str(i)] = p.default;
+                    src_params.append(p.name + '=_d' + str(i));
+                }
+                fwd.append(p.name + '=' + p.name);
             }
-            proxy.__name__ = name;
-            proxy.__signature__ = sig;
-            return proxy;
+            kw = 'async def ' if is_coro else 'def ';
+            lines = [
+                kw + name + '(' + ', '.join(src_params) + '):',
+                '    c = _cell[0]',
+                '    if c is None:',
+                '        c = _cell[0] = getattr(plugin_manager.hook, _name)'
+            ];
+            if is_coro {
+                lines.append('    result = c(' + ', '.join(fwd) + ')');
+                lines.append('    if inspect.iscoroutine(result):');
+                lines.append('        return await result');
+                lines.append('    return result');
+            } else {
+                lines.append('    return c(' + ', '.join(fwd) + ')');
+            }
+            exec('\n'.join(lines) + '\n', ns);
+            fn = ns[name];
+            fn.__name__ = name;
+            fn.__signature__ = sig;
+            return fn;
         }
         proxy_methods[name] = make_proxy(
             name, sig, inspect.iscoroutinefunction(method)
