@@ -13,13 +13,10 @@ during compiler self-bootstrap (registry.jac must not be imported while
 it itself is being compiled)."""
 impl EsastGenPass._ensure_backend -> None {
     if self.backend is None {
-        import from jaclang.project.config { get_config }
         import from jaclang.compiler.passes.ecmascript.backends.registry {
-            resolve_framework_backend
+            resolve_active_backend
         }
-        cfg = get_config();
-        fw = cfg.client.framework if (cfg and cfg.client) else "react";
-        self.backend = resolve_framework_backend(fw);
+        self.backend = resolve_active_backend();
     }
 }
 
@@ -3860,13 +3857,15 @@ impl EsastGenPass._view_push_stmt(
     return self.sync_loc(es.ExpressionStatement(expression=call), jac_node=anchor);
 }
 
-"""Build `<>{children...}</>` — a fragment `__jacJsx(null, {}, [children])`."""
+"""Build `<>{children...}</>` — a fragment `<factory>(null, {}, [children])`."""
 impl EsastGenPass._jsx_fragment(
     children: list[es.Expression], anchor: uni.UniNode
 ) -> es.CallExpression {
+    self._ensure_backend();
+    factory_name = self.backend.jsx_factory_name;
     return self.sync_loc(
         es.CallExpression(
-            callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=anchor),
+            callee=self.sync_loc(es.Identifier(name=factory_name), jac_node=anchor),
             arguments=[
                 self.sync_loc(es.Literal(value=None), jac_node=anchor),
                 self.sync_loc(es.ObjectExpression(properties=[]), jac_node=anchor),

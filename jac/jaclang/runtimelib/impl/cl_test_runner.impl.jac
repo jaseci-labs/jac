@@ -333,13 +333,10 @@ impl _run_harness(
     try {
         if "@jac/runtime" in imports {
             import from jaclang.runtimelib.client_surface { with_runtime_globals }
-            import from jaclang.project.config { get_config }
             import from jaclang.compiler.passes.ecmascript.backends.registry {
-                resolve_framework_backend
+                resolve_active_backend
             }
-            cfg = get_config();
-            fw = cfg.client.framework if (cfg and cfg.client) else "react";
-            backend = resolve_framework_backend(fw);
+            backend = resolve_active_backend();
             runtime_js = _compile_runtime_js();
             # Add the runtime-global import the compiler relies on, the same way
             # every bundle path does -- so `root spawn` / JSX resolve here too.

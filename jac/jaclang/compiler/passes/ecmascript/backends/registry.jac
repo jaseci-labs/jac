@@ -21,3 +21,17 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
     }
     raise ValueError(E5081.format_message(framework=framework));
 }
+
+"""Resolve the active FrameworkBackend from the project config.
+
+Reads `cfg.client.framework` and falls back to `"react"` when the config
+is absent or has no client section. This helper eliminates the identical
+3-line resolution sequence that was duplicated in eject, hmr, cl_test_runner,
+jac_to_js, and esast_gen_pass.
+"""
+def resolve_active_backend -> FrameworkBackend {
+    import from jaclang.project.config { get_config }
+    cfg = get_config();
+    fw = cfg.client.framework if (cfg and cfg.client) else "react";
+    return resolve_framework_backend(fw);
+}

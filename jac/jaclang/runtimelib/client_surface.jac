@@ -87,8 +87,10 @@ back to React defaults. Skips the runtime module itself, which defines the
 globals, and is idempotent.
 """
 def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
-    # The runtime module defines these globals; importing them there is circular.
-    if "function __jacJsx(" in js_code {
+    # The runtime module defines the JSX factory; importing it there is circular.
+    # Detect the factory function signature so any backend's runtime is recognised.
+    factory_name = backend.jsx_factory_name if (backend is not None) else "__jacJsx";
+    if f"function {factory_name}(" in js_code {
         return js_code;
     }
     line = prepended_runtime_import(backend);

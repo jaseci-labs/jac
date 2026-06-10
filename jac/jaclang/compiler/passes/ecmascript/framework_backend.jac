@@ -14,18 +14,10 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     AsyncBoundary
 }
 
-"""Capability flags advertised by a backend."""
-obj BackendCaps {
-    has memo: bool = False,
-        cleanup: bool = True,
-        async_boundary: bool = True;
-}
-
 """Abstract base for per-framework lowering strategies."""
 obj FrameworkBackend {
     def name -> str;
     def runtime_module -> str;
-    def capabilities -> BackendCaps;
     def lower_state_field(s: StateField) -> list[es.Statement];
     def lower_ref_field(r: RefField) -> list[es.Statement];
     def lower_state_update(u: StateUpdate) -> es.Expression;
@@ -35,4 +27,8 @@ obj FrameworkBackend {
     def jsx_factory_name -> str;
     def import_source(symbol: str) -> str;
     def required_globals -> list[str];
+    # Entry-point script — builds the JS bootstrap that mounts the app
+    def build_entry_script(
+        entry_module: str, install_global_handlers: bool = True
+    ) -> str;
 }

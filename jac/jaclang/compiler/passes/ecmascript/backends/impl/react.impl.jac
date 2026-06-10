@@ -8,7 +8,6 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
-import from jaclang.compiler.passes.ecmascript.framework_backend { BackendCaps }
 
 impl ReactBackend.name -> str {
     return "react";
@@ -16,10 +15,6 @@ impl ReactBackend.name -> str {
 
 impl ReactBackend.runtime_module -> str {
     return "@jac/runtime";
-}
-
-impl ReactBackend.capabilities -> BackendCaps {
-    return BackendCaps();
 }
 
 impl ReactBackend.jsx_factory_name -> str {
@@ -37,6 +32,14 @@ impl ReactBackend.required_globals -> list[str] {
     return ["__jacJsx", "__jacSpawn"];
 }
 
+"""Build the React entry script that mounts an exported `app` component."""
+impl ReactBackend.build_entry_script(
+    entry_module: str, install_global_handlers: bool = True
+) -> str {
+    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    return build_simple_react_entry_script(entry_module, install_global_handlers);
+}
+
 """Generate setter name for reactive variable (count -> setCount)."""
 impl ReactBackend._get_setter_name(var_name: str) -> str {
     if not var_name {
@@ -45,10 +48,10 @@ impl ReactBackend._get_setter_name(var_name: str) -> str {
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
-"""Build `<>{children...}</>` — a fragment `__jacJsx(null, {}, [children])`."""
+"""Build `<>{children...}</>` — a fragment `<factory>(null, {}, [children])`."""
 impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpression {
     return es.CallExpression(
-        callee=es.Identifier(name='__jacJsx'),
+        callee=es.Identifier(name=self.jsx_factory_name),
         arguments=[
             es.Literal(value=None),
             es.ObjectExpression(properties=[]),
@@ -152,7 +155,7 @@ impl ReactBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
         computed=False
     );
     wrapper = es.CallExpression(
-        callee=es.Identifier(name='__jacJsx'),
+        callee=es.Identifier(name=self.jsx_factory_name),
         arguments=[
             es.Identifier(name='JacAwaiting'),
             es.ObjectExpression(properties=[fallback_prop]),
@@ -169,7 +172,7 @@ impl ReactBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
             computed=False
         );
         wrapper = es.CallExpression(
-            callee=es.Identifier(name='__jacJsx'),
+            callee=es.Identifier(name=self.jsx_factory_name),
             arguments=[
                 es.Identifier(name='JacClientErrorBoundary'),
                 es.ObjectExpression(properties=[eb_fallback_prop]),

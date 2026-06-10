@@ -408,13 +408,10 @@ def _js_exports_app(js_code: str) -> bool {
 
 def _inject_runtime_imports(js_code: str) -> str {
     import from jaclang.runtimelib.client_surface { with_runtime_globals }
-    import from jaclang.project.config { get_config }
     import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_framework_backend
+        resolve_active_backend
     }
-    cfg = get_config();
-    fw = cfg.client.framework if (cfg and cfg.client) else "react";
-    backend = resolve_framework_backend(fw);
+    backend = resolve_active_backend();
     return with_runtime_globals(js_code, backend);
 }
 
@@ -677,9 +674,12 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
 (which main.js exports but never renders), wraps it in the runtime
 ErrorBoundary, and createRoot()s it onto <div id="root">. Without it: blank page."""
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
-    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    backend = resolve_active_backend();
     (frontend_src_dir / "__jac_entry.js").write_text(
-        build_simple_react_entry_script(entry_module), encoding="utf-8"
+        backend.build_entry_script(entry_module), encoding="utf-8"
     );
 }
 
