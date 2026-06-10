@@ -49,6 +49,15 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
+impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
+    config = self.load();
+    plugins = config.get('plugins', {});
+    if not isinstance(plugins, dict) {
+        return {};
+    }
+    return plugins;
+}
+
 impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     config = self.load();
     name = str(config.get('name', ''));

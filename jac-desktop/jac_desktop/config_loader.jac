@@ -69,6 +69,7 @@ class JacDesktopConfig(PluginConfigBase) {
     override def get_default_config(self: JacDesktopConfig) -> dict[str, any];
     def get_identity(self: JacDesktopConfig) -> DesktopIdentity;
     def get_window_config(self: JacDesktopConfig) -> WindowConfig;
+    def get_plugin_configs(self: JacDesktopConfig) -> dict[str, any];
     def validate(self: JacDesktopConfig) -> None;
 }
 

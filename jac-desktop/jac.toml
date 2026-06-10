@@ -27,6 +27,7 @@ packages = ["jac_desktop*"]
 # Explicit globs so tests/ and build caches don't end up in the wheel.
 jac_desktop = [
     "native/webview/webview.na.jac",
+    "native/plugin_bridge.na.jac",
     "native/webview/build_libwebview.sh",
     "native/webview/install_webkit_deps.sh",
     "native/webview/README.md",

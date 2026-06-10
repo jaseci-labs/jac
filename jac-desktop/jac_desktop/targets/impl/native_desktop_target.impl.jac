@@ -77,7 +77,12 @@ so a stable origin makes login (and all other client state) survive a restart
 without any token re-injection. A document-start bootstrap only flags desktop
 mode + the broker prefix for the SPA."""
 def _generate_host_source(
-    libpy: str, title: str, width: int, height: int, app_name: str
+    libpy: str,
+    title: str,
+    width: int,
+    height: int,
+    app_name: str,
+    plugin_configs: dict = {}
 ) -> str {
     # Deterministic per-app port in the dynamic/private range (49152-65215) so
     # the same app reuses the same origin across launches; computed at build
@@ -116,18 +121,119 @@ def _generate_host_source(
         "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
         "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
     );
-    # Runs at document-start (before the SPA's own scripts) on every full load.
-    # Just flags desktop mode + the broker prefix so the SPA can detect the shell
-    # and drive /__jac/oauth/*. Token persistence is handled by the stable origin
-    # (localStorage survives restarts), not by re-injection.
-    bootstrap_js = (
-        "(function(){try{"
-        "window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';"
-        "}catch(e){}})();"
+    # --- Plugin IPC bootstrap (embedded CPython) ---
+    # Import plugin modules, register enabled plugins, expose dispatch.
+    # Plugin configs are baked at build time as Python literals.
+    _plugin_mods = [
+        "desktop_plugin",
+        "plugin_host",
+        "built_in.path_plugin",
+        "built_in.window_plugin",
+        "built_in.fs_plugin",
+        "built_in.notification_plugin",
+        "built_in.clipboard_plugin",
+        "built_in.dialog_plugin",
+        "built_in.shell_plugin"
+    ];
+    plugin_py = "import sys, importlib.util\n";
+    for _mod in _plugin_mods {
+        _mod_path = _mod.replace(".", "/");
+        plugin_py += (
+            f"_spec = importlib.util.spec_from_file_location(\n"
+            f"    '{_mod}', '{_mod_path}.py')\n"
+            f"_m = importlib.util.module_from_spec(_spec)\n"
+            f"_spec.loader.exec_module(_m)\n"
+            f"sys.modules['{_mod}'] = _m\n"
+        );
+    }
+    # Build plugin host + register enabled plugins
+    _pc = plugin_configs;  # baked at build time
+    plugin_py += (
+        "_DP = sys.modules['desktop_plugin']\n"
+        "_PH = sys.modules['plugin_host']\n"
+        "_host = _PH.PluginHost()\n"
+        "_path = sys.modules['built_in.path_plugin'].PathPlugin()\n"
     );
+    # Register plugins based on config (baked literals)
+    plugin_py += f"_pc = {repr(_pc)}\n";
+    plugin_py += (
+        "if _pc.get('path', False):\n" "    _host.register('jac.path', _path)\n"
+    );
+    plugin_py += (
+        "if _pc.get('window', False):\n"
+        "    _wp = sys.modules['built_in.window_plugin'].WindowPlugin(0, None)\n"
+        "    _host.register('jac.window', _wp)\n"
+    );
+    plugin_py += (
+        "if _pc.get('fs', False):\n"
+        "    _fs_cfg = _pc['fs'] if isinstance(_pc['fs'], dict) else True\n"
+        "    _fp = sys.modules['built_in.fs_plugin'].FsPlugin(_fs_cfg, _path)\n"
+        "    _host.register('jac.fs', _fp)\n"
+    );
+    plugin_py += (
+        "if _pc.get('notification', False):\n"
+        "    _np = sys.modules['built_in.notification_plugin'].NotificationPlugin(_pc['notification'])\n"
+        "    _host.register('jac.notification', _np)\n"
+    );
+    plugin_py += (
+        "if _pc.get('clipboard', False):\n"
+        "    _cb_cfg = _pc['clipboard'] if isinstance(_pc['clipboard'], dict) else True\n"
+        "    _cp = sys.modules['built_in.clipboard_plugin'].ClipboardPlugin(_cb_cfg)\n"
+        "    _host.register('jac.clipboard', _cp)\n"
+    );
+    plugin_py += (
+        "if _pc.get('dialog', False):\n"
+        "    _dp = sys.modules['built_in.dialog_plugin'].DialogPlugin(_pc['dialog'])\n"
+        "    _host.register('jac.dialog', _dp)\n"
+    );
+    plugin_py += (
+        "if _pc.get('shell', False):\n"
+        "    _sh_cfg = _pc['shell'] if isinstance(_pc['shell'], dict) else True\n"
+        "    _sp = sys.modules['built_in.shell_plugin'].ShellPlugin(_sh_cfg)\n"
+        "    _host.register('jac.shell', _sp)\n"
+    );
+    plugin_py += (
+        "# Expose dispatch callable and plugin host for the native shim\n"
+        "_dispatch_fn = _host.dispatch\n"
+    );
+    serve_py = serve_py + "\n" + plugin_py;
+    # --- JS SDK: window.__jac.invoke() + window.__jac.on() ---
+    # Replaces the existing bootstrap with a backward-compatible superset.
+    # Sets __JAC_DESKTOP__ and __JAC_BROKER__ for backward compat.
+    js_sdk = (
+        "(function(){"
+        "var _l={};"
+        "window.__jac={"
+        "invoke:function(p,c,a){"
+        "return window.__jac_invoke(JSON.stringify({"
+        "plugin:p,command:c,args:a||{}})"
+        ").then(function(j){"
+        "var r=JSON.parse(j);"
+        "if(r.ok)return r.data;"
+        "var e=new Error(r.error.message);"
+        "e.code=r.error.code;throw e;"
+        "});"
+        "},"
+        "on:function(ev,cb){"
+        "(_l[ev]=_l[ev]||[]).push(cb);"
+        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
+        "if(i!==-1)a.splice(i,1);};"
+        "},"
+        "__emit__:function(ev,p){"
+        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
+        "}"
+        "};"
+        "window.__JAC_DESKTOP__=true;"
+        "window.__JAC_BROKER__='/__jac';"
+        "})();"
+    );
+    # --- Generated host source ---
+    # The plugin bridge is inlined directly into the host (nacompile does not
+    # support string-literal imports between .na.jac files). The ~20-line bridge
+    # handles: inttoptr coercion, GIL management, CPython dispatch, webview_return.
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
-        "import from webview { Webview, new_webview, HINT_NONE }\n"
+        "import from webview { Webview, new_webview, respond, HINT_NONE }\n"
         f'import from "{libpy}" {{\n'
         "    def Py_Initialize() -> None;\n"
         "    def Py_Finalize() -> None;\n"
@@ -138,20 +244,44 @@ def _generate_host_source(
         "    def PyLong_AsLong(o: int) -> int;\n"
         "    def PyEval_SaveThread() -> int;\n"
         "    def PyEval_RestoreThread(s: int) -> None;\n"
+        "    def PyGILState_Ensure() -> int;\n"
+        "    def PyGILState_Release(state: int) -> None;\n"
+        "    def PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
+        "    def PyUnicode_FromString(s: str) -> int;\n"
+        "    def PyUnicode_AsUTF8(pyobj: int) -> str;\n"
+        "    def Py_DecRef(pyobj: int) -> None;\n"
         "}\n"
         "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
-        f"glob BOOTSTRAP_JS: str = {json.dumps(bootstrap_js, ensure_ascii=False)};\n"
+        f"glob BOOTSTRAP_JS: str = {json.dumps(js_sdk, ensure_ascii=False)};\n"
+        # --- Inlined plugin bridge (see native/plugin_bridge.na.jac for docs) ---
+        "glob _PH_DISPATCH: int = 0;\n"
+        "def _jac_invoke_handler(id: int, req: int, wv_handle: int) -> None {\n"
+        "    req_str: str = req;\n"
+        "    gstate = PyGILState_Ensure();\n"
+        "    py_req = PyUnicode_FromString(req_str);\n"
+        "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    result_str = PyUnicode_AsUTF8(py_result);\n"
+        "    Py_DecRef(py_req);\n"
+        "    Py_DecRef(py_result);\n"
+        "    PyGILState_Release(gstate);\n"
+        "    respond(wv_handle, id, result_str);\n"
+        "}\n"
+        # --- End inlined plugin bridge ---
         "with entry {\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(SERVE_PY);\n"
         "    main_mod = PyImport_AddModule(\"__main__\");\n"
         "    d = PyModule_GetDict(main_mod);\n"
         "    port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
+        "    # Wire up plugin host dispatch pointer\n"
+        "    _PH_DISPATCH = PyRun_String(\"id(_dispatch_fn)\", PY_EVAL, d, d);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    wv = new_webview(False);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
         f"    wv.size({width}, {height}, HINT_NONE);\n"
+        "    # Register the plugin IPC callback in the webview\n"
+        "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
         "    wv.navigate(url);\n"
         "    ts = PyEval_SaveThread();\n"
@@ -178,6 +308,7 @@ impl NativeDesktopTarget.build(
     cfg = get_desktop_config(project_dir);
     ident = cfg.get_identity();
     win = cfg.get_window_config();
+    plugin_configs = cfg.get_plugin_configs();
     app_name = ident.name or "app";
 
     # 3. Prepare a clean output dir beside the dist.
@@ -193,10 +324,8 @@ impl NativeDesktopTarget.build(
     lib = _ensure_libwebview(webview_dir);
     shutil.copy2(lib, out_dir / "libwebview.so");
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
-    # The loopback OAuth/session broker is exec'd by the embedded CPython at
-    # runtime (see _generate_host_source). That interpreter has only the stdlib
-    # (no jaclang), so transpile the Jac source to dependency-free Python and
-    # ship the result beside the binary.
+
+    # 5. Transpile oauth_broker.jac -> .py (unchanged from before).
     broker_src = webview_dir.parent / "oauth_broker.jac";
     console.print(
         "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
@@ -209,10 +338,56 @@ impl NativeDesktopTarget.build(
     }
     (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
 
-    # 5. Generate + compile the native host into the output dir.
+    # 6. Transpile all plugin .jac -> .py for the embedded CPython.
+    plugin_src_dir = webview_dir.parent.parent / "plugin";
+    if plugin_src_dir.exists() {
+        console.print("  Transpiling plugin IPC modules...", style="muted");
+        for jac_file in plugin_src_dir.rglob("*.jac") {
+            rel = jac_file.relative_to(plugin_src_dir);
+            py_name = str(rel.with_suffix(".py"));
+            console.print(f"    {rel} -> {py_name}", style="muted");
+            res = subprocess.run(
+                [_jac_bin(), "jac2py", str(jac_file)], capture_output=True, text=True
+            );
+            if res.returncode != 0 or not res.stdout.strip() {
+                # jac2py silently fails on some files (e.g. `import from pathlib
+                # { Path }` or `import fnmatch` triggers a transpiler edge case).
+                # Fall back to a hand-transpiled .py companion if one exists.
+                companion = jac_file.with_suffix(".py");
+                if companion.exists() {
+                    console.print(
+                        f"    ⚠ jac2py failed for {rel}, using companion .py",
+                        style="yellow"
+                    );
+                    res_stdout = companion.read_text();
+                } else {
+                    raise RuntimeError(
+                        f"Plugin transpile failed: {rel} (no companion .py fallback)\n"
+                        f"jac2py stderr: {res.stderr or '(empty)'}"
+                    );
+                }
+            } else {
+                res_stdout = res.stdout;
+            }
+            target = out_dir / py_name;
+            target.parent.mkdir(parents=True, exist_ok=True);
+            target.write_text(res_stdout);
+        }
+    }
+
+    # 7. The plugin bridge is inlined into the generated host source
+    # (nacompile does not support string-literal imports between .na.jac files).
+    # The standalone plugin_bridge.na.jac is kept for documentation only.
+
+    # 8. Generate + compile the native host into the output dir.
     libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
     host_src = _generate_host_source(
-        libpy, win.title or app_name, win.width, win.height, str(app_name)
+        libpy,
+        win.title or app_name,
+        win.width,
+        win.height,
+        str(app_name),
+        plugin_configs
     );
     (out_dir / "host.na.jac").write_text(host_src);
 

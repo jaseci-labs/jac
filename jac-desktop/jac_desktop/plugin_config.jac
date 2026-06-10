@@ -141,6 +141,48 @@ def _desktop_config_schema -> PluginConfigSchema {
                     "min_height": schema_int_option(600, ""),
                     "resizable": schema_bool_option(True, "")
                 }
+            ),
+            "plugins": schema_dict_option(
+                "Desktop capability plugins: each key is a plugin name (window, path, fs, notification, clipboard, dialog, shell). Value can be true (enabled with defaults) or a dict of plugin-specific config.",
+                nested={
+                    "window": schema_bool_option(True, "Enable window control plugin"),
+                    "path": schema_bool_option(True, "Enable path resolution plugin"),
+                    "fs": schema_dict_option(
+                        "Filesystem plugin config",
+                        nested={
+                            "allow_read": schema_list_option(
+                                ["$HOME"], "Glob paths allowed for read operations"
+                            ),
+                            "allow_write": schema_list_option(
+                                ["$APP_DATA"], "Glob paths allowed for write operations"
+                            )
+                        }
+                    ),
+                    "notification": schema_bool_option(
+                        True, "Enable notification plugin"
+                    ),
+                    "clipboard": schema_dict_option(
+                        "Clipboard plugin config",
+                        nested={
+                            "allow_read": schema_bool_option(
+                                True, "Allow clipboard read"
+                            ),
+                            "allow_write": schema_bool_option(
+                                True, "Allow clipboard write"
+                            )
+                        }
+                    ),
+                    "dialog": schema_bool_option(True, "Enable dialog plugin"),
+                    "shell": schema_dict_option(
+                        "Shell plugin config (deny-all by default)",
+                        nested={
+                            "allow": schema_list_option(
+                                [],
+                                "Glob patterns for allowed commands (e.g. ['git *'])"
+                            )
+                        }
+                    )
+                }
             )
         }
     );
