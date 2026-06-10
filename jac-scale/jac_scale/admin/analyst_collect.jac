@@ -19,7 +19,7 @@ import logging;
 import os;
 import time;
 import from jac_scale.utilities.metrics.prometheus_client { query, scalar }
-import from jac_scale.admin.analyst { Symptom, ExemplarTrace }
+import from jac_scale.admin.analyst { Symptom, ExemplarTrace, ErrorSignature }
 
 glob logger = logging.getLogger(__name__);
 
@@ -208,4 +208,137 @@ async def collect_trace_exemplars(
         );
     }
     return out;
+}
+
+
+# --- Logs (Loki / A-05a) -> ErrorSignature[] ---------------------------------
+# Self-contained (same rationale as the Tempo collector). Groups error lines by
+# a Drain-lite signature so the digest carries counts + one sample trace_id per
+# cluster, never raw log lines (A07_DESIGN section 5.2 + 13).
+
+
+"""Resolve the in-cluster Loki base URL, or None off-K8s."""
+def loki_base_url -> str | None {
+    env = os.getenv("LOKI_URL", "").strip();
+    if env {
+        return env.rstrip("/");
+    }
+    app = os.getenv("K8S_APP_NAME", "").strip();
+    if not app {
+        return None;
+    }
+    return f"http://{app}-loki-service:3100";
+}
+
+
+"""Drain-lite log-message template: long hex/uuid runs -> <id>, digit runs ->
+<n>, trimmed. Collapses near-identical errors into one signature so the digest
+counts them instead of repeating them. Uses char-class patterns (no r-strings).
+"""
+def log_signature(msg: str) -> str {
+    import re;
+    s = re.sub("[0-9a-fA-F-]{16,}", "<id>", msg);
+    s = re.sub("[0-9]+", "<n>", s);
+    return s.strip()[:120];
+}
+
+
+"""Count rank key for an ErrorSignature (typed so count resolves to int)."""
+def esig_rank(e: ErrorSignature) -> int {
+    return e.count;
+}
+
+
+"""Collect error-log signatures from Loki (namespace-scoped, level=ERROR).
+
+Pulls the last hour of ERROR lines, parses M-14 structured-JSON bodies for
+msg / service / trace_id, groups by Drain-lite signature, and returns the
+top-N clusters by count. Best-effort + async: unreachable Loki or off-K8s
+(no namespace) yields []. Only grouped counts + one sample trace_id per
+signature reach the model - never raw lines.
+"""
+async def collect_error_signatures(
+    top_n: int = 5, max_lines: int = 1000
+) -> list[ErrorSignature] {
+    import httpx;
+    import json;
+    out: list[ErrorSignature] = [];
+    base = loki_base_url();
+    namespace = os.getenv("K8S_NAMESPACE", "").strip();
+    if base is None or not namespace {
+        return out;
+    }
+    now_ns = int(time.time() * 1_000_000_000);
+    start_ns = now_ns - 3600 * 1_000_000_000;
+    logql = "{namespace=\"" + namespace + "\"} | json | level=\"ERROR\"";
+    try {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as cl {
+            resp = await cl.get(
+                base + "/loki/api/v1/query_range",
+                params={
+                    "query": logql,
+                    "start": str(start_ns),
+                    "end": str(now_ns),
+                    "limit": str(max_lines),
+                    "direction": "backward"
+                }
+            );
+            resp.raise_for_status();
+            payload = resp.json();
+        }
+    } except Exception as e {
+        logger.warning(f"analyst: Loki query unavailable: {e}");
+        return out;
+    }
+
+    counts: dict[str, int] = {};
+    svcs: dict[str, set] = {};
+    samples: dict[str, str] = {};
+    data = payload.get("data", {}) or {};
+    result = data.get("result", []) or [];
+    for stream in result {
+        labels = stream.get("stream", {}) or {};
+        svc_label = str(labels.get("service", "") or labels.get("app", "") or "");
+        for v in (stream.get("values", []) or []) {
+            line = str(v[1]) if len(v) > 1 else "";
+            msg = line;
+            trace_id = "";
+            svc = svc_label;
+            try {
+                rec = json.loads(line);
+                if isinstance(rec, dict) {
+                    msg = str(rec.get("msg", "") or rec.get("message", "") or line);
+                    trace_id = str(rec.get("trace_id", "") or "");
+                    svc = str(rec.get("service", "") or svc_label);
+                }
+            } except Exception {
+                msg = line;
+            }
+            sig = log_signature(msg);
+            counts[sig] = int(counts.get(sig, 0)) + 1;
+            if sig not in svcs {
+                svcs[sig] = set();
+            }
+            if svc {
+                svcs[sig].add(svc);
+            }
+            if sig not in samples and trace_id {
+                samples[sig] = trace_id;
+            }
+        }
+    }
+
+    items: list[ErrorSignature] = [];
+    for sig in list(counts.keys()) {
+        items.append(
+            ErrorSignature(
+                signature=sig,
+                count=int(counts.get(sig, 0)),
+                services=list(svcs.get(sig, set())),
+                sample_trace_id=samples.get(sig, None)
+            )
+        );
+    }
+    items.sort(key=esig_rank, reverse=True);
+    return items[:top_n];
 }
