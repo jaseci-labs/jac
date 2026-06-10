@@ -1108,7 +1108,7 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
                 # with the synthetic `props` destructuring parameter.
                 if (
                     ability_node.name_ref
-                    and ability_node.name_ref?.sym_name
+                    and ability_node.name_ref.sym_name
                     and ability_node.name_ref.sym_name.startswith('__jac')
                 ) {
                     abi = 'direct';
@@ -1242,7 +1242,7 @@ impl EsastGenPass._pos_params_from_ability(
     ability_node: uni.Ability
 ) -> list[uni.ParamVar] {
     sig = ability_node.signature;
-    return sig.posonly_params + sig.params;
+    return (sig.posonly_params or []) + (sig.params or []);
 }
 
 """Extract normal positional parameter names from an ability."""
