@@ -71,9 +71,13 @@ slice against the full native suite, 398 passed / 1 skipped):
   `symbol_utils.classify_call` at resolution time (TypeInferencePass is a
   TypeCheckPass subclass, so every full codegen compile stamps it). Native
   and ES call dispatch consume the stored fact; only nodes synthesized
-  after checking (desugared pipe-forward) classify on the spot. Remaining:
-  full `CallInfo` (resolved signature + default-arg exprs) so native's
-  `method_ast_sigs` AST-signature cache can be deleted.
+  after checking (desugared pipe-forward) classify on the spot. One
+  `method_ast_sigs` reader is already gone: comprehension element-struct
+  inference now reads the collection's checked type instead of dissecting
+  the call AST and peeling the method's return annotation over the MRO.
+  Remaining: full `CallInfo` (resolved signature + default-arg exprs) so
+  native's `method_ast_sigs` AST-signature cache can be deleted (the other
+  readers are default-arg filling and Phase 8 FFI marshalling hints).
 - **Phase 0 (typed-tree consumption) - ES slice.** Three of four
   `get_type_evaluator()` sites in the ES backend (primitive-method
   dispatch, `_try_primitive_op`, `_expr_type_name`) now read `Expr.type`
