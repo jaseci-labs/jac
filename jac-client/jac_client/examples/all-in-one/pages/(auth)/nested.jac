@@ -12,16 +12,11 @@ cl {
             >
                 <h1>📁 Nested Folder Imports</h1>
                 <p>
-                    This page mirrors the
-                    {" "}
-                    <code>nested-folders/nested-basic</code>
-                    {" "}
-                    example by importing components from both
-                    {" "}
-                    <code>components.button</code>
-                    {" "}
-                    and
-                    {" "}
+                    This page mirrors the{" "}
+                    <code>nested-folders/nested-basic</code>{" "}
+                    example by importing components from both{" "}
+                    <code>components.button</code>{" "}
+                    and{" "}
                     <code>button</code>
                 </p>
                 <p style={{"marginTop": "0.75rem"}}>

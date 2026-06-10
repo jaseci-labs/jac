@@ -1009,7 +1009,17 @@ impl JacBasics.run_test(
     }
     if (filter or directory) {
         current_dir = directory or os.getcwd();
-        for (root_dir, _, files) in os.walk(current_dir, topdown=True) {
+        for (root_dir, dirs, files) in os.walk(current_dir, topdown=True) {
+            # Prune hidden / build-cache / pycache directories in place so the
+            # walk never descends into them — e.g. the per-project ".jac" build
+            # cache, which holds generated artifacts that are not test sources.
+            # Mutating the list in place is required: os.walk in topdown mode
+            # only honors pruning of the same list object it yields.
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (d.startswith('.') or d == '__pycache__')
+            ];
             files = [
                 file
                 for file in files
@@ -2479,6 +2489,53 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
         cls.program = JacProgram();
     }
     return cls.program;
+}
+
+"""Return the deployment's shared root (resolver-backed, context-root fallback)."""
+impl JacRuntime.get_shared_root -> Root {
+    resolver = _shared_root_resolver[0];
+    if resolver is None {
+        return JacRuntimeInterface.get_context().get_root();
+    }
+    root_id = _shared_root_resolver[1];
+    if not isinstance(root_id, str) {
+        root_id = resolver();
+        if not isinstance(root_id, str) {
+            raise RuntimeError(
+                "Shared root unavailable: the registered shared-root resolver "
+                "returned no root id."
+            );
+        }
+        _shared_root_resolver[1] = root_id;
+    }
+    shared = JacRuntimeInterface.get_object(root_id);
+    if not isinstance(shared, Root) {
+        raise RuntimeError(
+            f"Shared root unavailable: id {root_id} did not resolve to a Root node."
+        );
+    }
+    # Default policy: the shared root is a commons - readable and attachable
+    # (CONNECT) by every user, since anonymous requests already act as its
+    # owner through any public endpoint. The grant is floored lazily on
+    # access so pre-existing deployments pick it up too; persistence
+    # write-through lands the first time an owner-context request touches
+    # it, and until then the in-memory floor keeps each request correct.
+    # An app may lower the level explicitly (e.g. ReadPerm for a read-only
+    # commons) - any level other than NO_ACCESS is respected. Only the
+    # never-granted state is floored: a root owned by the anonymous public
+    # cannot be meaningfully closed.
+    if shared.__jac__.access.all == AccessLevel.NO_ACCESS {
+        JacRuntimeInterface.perm_grant(shared, AccessLevel.CONNECT);
+    }
+    return shared;
+}
+
+"""Register (or clear) the shared-root resolver and drop the cached id."""
+impl JacRuntime.set_shared_root_resolver(
+    resolver: (Callable[([], (str | None))] | None)
+) -> None {
+    _shared_root_resolver[0] = resolver;
+    _shared_root_resolver[1] = None;
 }
 
 """Return the seed base path for new contexts."""

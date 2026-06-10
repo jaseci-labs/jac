@@ -397,17 +397,25 @@ impl TypeEvaluator._import_module_from_path(
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
                         is_module_cache_valid,
-                        SEC_BYTECODE
+                        compute_module_key,
+                        SEC_BYTECODE,
+                        SEC_MODKEY
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
                     if not is_module_cache_valid(resolved_path, cache_path) {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
-                        sections: (dict[int, bytes] | None) = None;
+                        # Always stamp SEC_MODKEY so the entry self-validates on
+                        # the mtime-ambiguous slow path (matches Tier 3).
+                        sections: dict[int, bytes] = {
+                            SEC_MODKEY: compute_module_key(resolved_path).encode(
+                                'utf-8'
+                            )
+                        };
                         bc = mod.gen?.py_bytecode;
                         if bc is not None {
-                            sections = {SEC_BYTECODE: bc};
+                            sections[SEC_BYTECODE] = bc;
                         }
                         jir_bytes = writer.write_module(mod, sections=sections);
                         # Write to a process-unique temp then atomically rename.
@@ -553,4 +561,27 @@ impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         }
     }
     return types.UnknownType();
+}
+
+"""Follow an imported symbol's re-export chain to its defining symbol.
+
+A `from pkg import f` symbol's decl is the imported `Name`, whose own `.sym`
+points at the next re-export hop (e.g. `pkg/__init__` → `pkg/sub` → the
+`def`). Walk that chain until a non-import decl (the definition) so callers
+collect overloads in the definition scope rather than a re-export scope."""
+impl TypeEvaluator.resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol {
+    visited: set[int] = set();
+    cur = symbol;
+    while id(cur) not in visited {
+        visited.add(id(cur));
+        if not (cur.imported and cur.decl) {
+            break;
+        }
+        node_ = cur.decl.name_of;
+        if not (isinstance(node_, uni.Name) and node_.sym and node_.sym is not cur) {
+            break;
+        }
+        cur = node_.sym;
+    }
+    return cur;
 }

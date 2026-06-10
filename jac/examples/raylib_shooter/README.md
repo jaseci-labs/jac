@@ -41,6 +41,11 @@ resolves no matter where the binary is launched from.
 ./demo.sh --zig   # build & play only the Zig shooter, interactively
 ```
 
+> **Run it in the browser too:** [`web/`](web/) compiles the _same_ rlgl source to
+> WebAssembly (`jac nacompile --target wasm32`) and renders it with WebGL - the
+> `import from raylib` externs become the wasm module's imports. See
+> [`web/README.md`](web/README.md); run `cd web && ./demo.sh`.
+
 `demo.sh` will:
 
 1. detect your platform/architecture,

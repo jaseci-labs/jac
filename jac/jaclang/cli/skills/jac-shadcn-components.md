@@ -97,6 +97,7 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Loading spinner | `Spinner` |
 | Empty state | `Empty` |
 | Alert / banner | `Alert` + `AlertTitle` + `AlertDescription` |
+| Toast / notification | `Toaster` (mount once at app root); call `toast(...)` from `"sonner"` |
 | Progress bar | `Progress` |
 | Date picker | `Calendar` |
 | Slider | `Slider` |

@@ -129,6 +129,12 @@ def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
 ) -> (Symbol | None);
 
+"""Collect a name's [primary, *overloads], descending only the statically-live
+branch of `if`/`elif`/`else` guards so dead-branch declarations don't resolve."""
+def collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol];
+
 def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool;

@@ -17,8 +17,8 @@ impl Creator.create{
     for i = 0 to i < 3 by i += 1 {
         end ++> (end := node_a(val=i));
     }
-    end +>: connector : value=i :+> (end := node_a(val=i + 10));
-    root <+: connector : value=i :<+ (end := node_a(val=i + 10));
+    end +>:connector:value=i:+> (end := node_a(val=i + 10));
+    root <+:connector:value=i:<+ (end := node_a(val=i + 10));
     visit [-->];
 }
 

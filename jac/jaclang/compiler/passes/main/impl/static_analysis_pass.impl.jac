@@ -330,9 +330,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         parent = nd.parent;
         while parent is not None {
             if isinstance(parent, uni.Archetype) {
-                if parent.arch_type is not None
-                and isinstance(parent.arch_type, uni.Token)
-                and parent.arch_type.value == "walker" {
+                if parent.arch_kind == "walker" {
                     in_walker = True;
                 }
                 break;

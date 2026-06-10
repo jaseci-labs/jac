@@ -25,9 +25,7 @@ impl JacDesktopConfig.get_default_config(self: JacDesktopConfig) -> dict[str, an
         name=project_name,
         identifier=identifier,
         version=project_version,
-        window=WindowConfig(title=project_name),
-        client_only=False,
-        plugins=SidecarPluginsConfig.defaults()
+        window=WindowConfig(title=project_name)
     ).to_dict();
 }
 
@@ -51,74 +49,12 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
-"""Jac plugins to bundle in the desktop sidecar."""
-impl JacDesktopConfig.get_sidecar_plugins_config(
-    self: JacDesktopConfig
-) -> SidecarPluginsConfig {
-    config = self.load();
-    raw = config.get('plugins', {});
-    if isinstance(raw, dict) {
-        return SidecarPluginsConfig.from_dict(raw);
-    }
-    return SidecarPluginsConfig.defaults();
-}
-
-"""Read configured Tauri plugin ids from [plugins.desktop].tauri_plugins."""
-impl JacDesktopConfig.get_tauri_plugins_config(self: JacDesktopConfig) -> list[str] {
-    config = self.load();
-    raw = config.get('tauri_plugins', None);
-    if raw is None {
-        return [];
-    }
-    if isinstance(raw, list) {
-        return [
-            str(p).strip()
-            for p in raw
-            if str(p).strip()
-        ];
-    }
-    if isinstance(raw, dict) {
-        return [
-            str(k).strip()
-            for (k, v) in raw.items()
-            if v and str(k).strip()
-        ];
-    }
-    return [];
-}
-
-impl JacDesktopConfig.is_auto_tauri_plugin_npm_enabled(self: JacDesktopConfig) -> bool {
-    config = self.load();
-    raw = config.get('auto_tauri_plugin_npm', None);
-    if raw is None {
-        return True;
-    }
-    return bool(raw);
-}
-
-impl JacDesktopConfig.is_client_only(self: JacDesktopConfig) -> bool {
-    config = self.load();
-    return bool(config.get('client_only', False));
-}
-
 impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     config = self.load();
     name = str(config.get('name', ''));
     if not name {
         raise ValueError(
             "Desktop configuration error: 'name' is required in [plugins.desktop]"
-        );
-    }
-    identifier = str(config.get('identifier', ''));
-    if not identifier {
-        raise ValueError(
-            "Desktop configuration error: 'identifier' is required in [plugins.desktop]"
-        );
-    }
-    if not _is_valid_identifier(identifier) {
-        console.warning(
-            f"Desktop identifier '{identifier}' may not be valid. "
-            "Use reverse domain notation (e.g., 'com.example.myapp')"
         );
     }
     window = config.get('window', {});
@@ -142,7 +78,6 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
 
 impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
     # Module-level singleton mirrors jac-client/jac-scale; not thread-safe.
-    # If those packages move to contextvars, follow suit here.
     global _desktop_config_instance;
     if (
         _desktop_config_instance is not None
@@ -170,9 +105,4 @@ def _generate_identifier(name: str) -> str {
         cleaned = f"com.{cleaned}" if cleaned else "com.myapp";
     }
     return cleaned;
-}
-
-def _is_valid_identifier(identifier: str) -> bool {
-    import re;
-    return bool(re.match(r'^[a-z0-9]+(\.[a-z0-9]+)+$', identifier.lower()));
 }

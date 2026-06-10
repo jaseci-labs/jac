@@ -34,7 +34,7 @@ cl {
                     {[
                         <TableRow key={p["platform"]}>
                             <TableCell>
-                                <span className="text-sm text-white capitalize">
+                                <span className="text-sm text-fg capitalize">
                                     {p["platform"]}
                                 </span>
                             </TableCell>
@@ -43,7 +43,7 @@ cl {
                                 and <span className="text-xs text-emerald-400">
                                     Configured
                                 </span>
-                                or <span className="text-xs text-slate-500">
+                                or <span className="text-xs text-faint">
                                     Not configured
                                 </span>}
                             </TableCell>
@@ -52,7 +52,7 @@ cl {
                                     className={"text-xs " + (
                                         p["client_id_set"]
                                         and "text-emerald-400"
-                                        or "text-slate-600"
+                                        or "text-faint"
                                     )}
                                 >
                                     {p["client_id_set"] and "Set" or "Not set"}
@@ -63,7 +63,7 @@ cl {
                                     className={"text-xs " + (
                                         p["client_secret_set"]
                                         and "text-emerald-400"
-                                        or "text-slate-600"
+                                        or "text-faint"
                                     )}
                                 >
                                     {p["client_secret_set"] and "Set" or "Not set"}

@@ -103,6 +103,14 @@ method signatures are compared using resolved types (via get_type_of_ability
 and _assign_callable), which handles complex types like generics, unions, and
 aliases correctly.
 """
+# (cls, proto) protocol checks currently on the stack. A self-referential
+# protocol (e.g. a method typed against the protocol itself, directly or via
+# another class) would otherwise recurse forever through _assign_callable ->
+# assign_type -> _assign_class -> class_implements_protocol. Matching
+# pyright's recursion handling, an in-progress pair is optimistically
+# assumed compatible.
+glob _proto_checks_in_progress: set = set();
+
 impl class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool {
@@ -138,28 +146,37 @@ impl class_implements_protocol(
         }
     }
 
-    # Check all protocol methods exist AND have compatible signatures
-    for (name, proto_method) in proto_methods.items() {
-        if name not in cls_methods {
-            return False;
-        }
-        cls_method = cls_methods[name];
-        # When evaluator is available, use resolved types for signature comparison.
-        # This is the proper approach: resolve each method to a FunctionType and
-        # compare using _assign_callable (which handles parameter contravariance
-        # and return type covariance correctly).
-        if evaluator is not None {
-            proto_func_type = evaluator.get_type_of_ability(proto_method);
-            cls_func_type = evaluator.get_type_of_ability(cls_method);
-            if isinstance(proto_func_type, types.FunctionType)
-            and isinstance(cls_func_type, types.FunctionType) {
-                if not evaluator._assign_callable(cls_func_type, proto_func_type) {
-                    return False;
+    _key = (id(cls.shared), id(proto.shared));
+    if _key in _proto_checks_in_progress {
+        return True;
+    }
+    _proto_checks_in_progress.add(_key);
+    try {
+        # Check all protocol methods exist AND have compatible signatures
+        for (name, proto_method) in proto_methods.items() {
+            if name not in cls_methods {
+                return False;
+            }
+            cls_method = cls_methods[name];
+            # When evaluator is available, use resolved types for signature comparison.
+            # This is the proper approach: resolve each method to a FunctionType and
+            # compare using _assign_callable (which handles parameter contravariance
+            # and return type covariance correctly).
+            if evaluator is not None {
+                proto_func_type = evaluator.get_type_of_ability(proto_method);
+                cls_func_type = evaluator.get_type_of_ability(cls_method);
+                if isinstance(proto_func_type, types.FunctionType)
+                and isinstance(cls_func_type, types.FunctionType) {
+                    if not evaluator._assign_callable(cls_func_type, proto_func_type) {
+                        return False;
+                    }
                 }
             }
         }
+        return True;
+    } finally {
+        _proto_checks_in_progress.discard(_key);
     }
-    return True;
 }
 
 """Lookup a symbol in the symbol table."""
@@ -175,7 +192,16 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    symbol = symtable.lookup(name, deep=True, incl_inner_scope=True);
+    # Live-guard-branch resolution before the plain deep walk, so a guarded
+    # declaration (e.g. typing_extensions' `else`-branch ParamSpec) isn't
+    # shadowed by a same-named builtins import the filter below discards.
+    symbol: (Symbol | None) = None;
+    if (inner := collect_member_syms(symtable, name, deep=True)) {
+        symbol = inner[0];
+    }
+    if symbol is None {
+        symbol = symtable.lookup(name, deep=True, incl_inner_scope=False);
+    }
     # Filter out imported symbols from builtins module when accessed from user code.
     # In Python stub files, imports are NOT re-exported by default.
     # Symbols like 'types', 'SupportsAdd' are imported into builtins.pyi
@@ -191,6 +217,64 @@ impl lookup_symtab(
         return None;
     }
     return symbol;
+}
+
+impl collect_member_syms(
+    scope: uni.UniScopeNode, name: str, deep: bool = False
+) -> list[Symbol] {
+    import from jaclang.jac0core.helpers { evaluate_version_condition }
+
+    # Live branch of a guard chain: True/None keeps it, False hands off to else.
+    def live_branches(guard: uni.IfStmt) -> list[uni.UniScopeNode] {
+        eval_result = evaluate_version_condition(guard.condition);
+        if eval_result is None or eval_result {
+            return [guard];
+        }
+        if isinstance(guard.else_body, uni.ElseIf) {
+            return live_branches(guard.else_body);
+        }
+        if isinstance(guard.else_body, uni.ElseStmt) {
+            return [guard.else_body];
+        }
+        return [];
+    }
+
+    # Own scope, else live control-flow children. Skip Python name scopes
+    # (opaque) and else-branches handled via their head guard above.
+    def descend(s: uni.UniScopeNode) -> list[Symbol] {
+        if (here := s.lookup_all(name, deep=False)) {
+            return here;
+        }
+        for kid in s.kid_scope {
+            if isinstance(kid, uni.UniScopeNode.get_python_scoping_nodes()) {
+                continue;
+            }
+            if isinstance(kid, (uni.ElseStmt, uni.ElseIf))
+            and isinstance(kid.parent, uni.IfStmt) {
+                continue;
+            }
+            branches = live_branches(kid) if isinstance(kid, uni.IfStmt) else [kid];
+            for branch in branches {
+                if (found := descend(branch)) {
+                    return found;
+                }
+            }
+        }
+        return [];
+    }
+
+    if not deep {
+        return descend(scope);
+    }
+    # deep: also climb enclosing scopes (resolve from a nested ability body).
+    s: uni.UniScopeNode | None = scope;
+    while s is not None {
+        if (found := descend(s)) {
+            return found;
+        }
+        s = s.parent_scope;
+    }
+    return [];
 }
 
 """Return a list of completion items for the type."""

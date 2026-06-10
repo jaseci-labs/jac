@@ -789,6 +789,39 @@ with entry {
 }
 ```
 
+### 6 The Shared Root (`root.shared`)
+
+Every served deployment has one public graph alongside the per-user roots: the **shared root**, the root that every unauthenticated request runs on. `root.shared` resolves to it from any request context, so a walker can read or extend the public graph directly - no `allroots()` fan-out, no passing root ids around:
+
+```jac
+node Post { has text: str; }
+edge Posted {}
+
+walker:pub publish {
+    has text: str;
+
+    can run with Root entry {
+        # Lands on the public graph whoever the caller is.
+        fresh = root.shared +>: Posted() :+> Post(text=self.text);
+        grant(fresh[0], level=ReadPerm);   # author opens the post to readers
+    }
+}
+
+walker:pub read_feed {
+    can run with Root entry {
+        report [p.text for p in [root.shared-->[?:Post]]];
+    }
+}
+```
+
+**Default policy.** The shared root is a commons: its access level is floored at `ConnectPerm`, so every user - authenticated or anonymous - can read it and attach nodes to it without any arming grant. The floor reflects reality rather than weakening security: anonymous requests already act as the shared root's owner through any public endpoint, so withholding access from authenticated users protects nothing.
+
+**Ownership stays the boundary.** Nodes a user hangs on the shared graph remain owned by that user and closed until the author grants. The conventional levels: `ConnectPerm` on container nodes others should build under, `ReadPerm` on leaf contributions others should only see. Anonymous-created content is collectively owned by the anonymous identity and is readable by everyone through the floor.
+
+**Lockdown.** An app can lower the commons explicitly - for example `grant(root.shared, level=ReadPerm)` from an anonymous or system context makes it read-only. Any explicitly set level other than `NoPerm` is respected; only the never-granted state is floored back to `ConnectPerm`.
+
+Outside a server (CLI runs, scripts, tests without a server) there are no separate users, so `root.shared` is the current root itself: `jid(root.shared) == jid(root)`.
+
 ---
 
 ## Graph Traversal

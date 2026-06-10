@@ -113,6 +113,13 @@ jac bundle --precompile
 
 The flag creates an isolated venv per Python version, compiles all `.jac` sources inside it, and folds the resulting `.jir` files into the wheel. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
 
+Each venv installs your declared dependencies from PyPI to compile against. If a dependency's **new** version isn't on PyPI yet -- e.g. you're releasing two interdependent packages together -- point precompile at the local source so the version pin resolves without PyPI:
+
+| Variable | Installs from local source |
+|----------|----------------------------|
+| `JAC_PRECOMPILE_LOCAL_INSTALL` | `jaclang` (a path to the local source tree). |
+| `JAC_PRECOMPILE_LOCAL_DEPS` | Sibling Jac packages (comma-separated source dirs), installed via `jac install -e` before the PyPI deps. |
+
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 
 ## 3. Test before uploading

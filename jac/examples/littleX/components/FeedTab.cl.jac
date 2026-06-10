@@ -1,9 +1,12 @@
 """Home feed tab for Little X."""
 
-sv import from ..server { TweetView }
+import from "lucide-react" { Inbox }
+import from .ui.skeleton { Skeleton }
+import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription }
 import from .TweetCard { TweetCard }
 import from .Composer { Composer }
 import from .WelcomeBanner { WelcomeBanner }
+sv import from ..social_graph { TweetView }
 
 def:pub FeedTab(
     showWelcome: bool,
@@ -37,13 +40,31 @@ def:pub FeedTab(
                 showCharRing={True}
             />
             {if feedLoading {
-                <div className="lx-loading">Loading feed...</div>
+                <div className="flex flex-col gap-4 p-4">
+                    {[
+                        <div className="flex gap-3" key={i}>
+                            <Skeleton className="size-10 rounded-full"/>
+                            <div className="flex-1 space-y-2">
+                                <Skeleton className="h-3 w-32"/>
+                                <Skeleton className="h-3 w-full"/>
+                                <Skeleton className="h-3 w-2/3"/>
+                            </div>
+                        </div> for i in range(4)
+                    ]}
+                </div>
                 skip;
             }if len(tweets) == 0 {
-                <div className="lx-empty">
-                    <div className="lx-empty-title">Nothing here yet</div>
-                    <span>Follow people or post something!</span>
-                </div>
+                <Empty className="py-16">
+                    <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                            <Inbox/>
+                        </EmptyMedia>
+                        <EmptyTitle>Nothing here yet</EmptyTitle>
+                        <EmptyDescription>
+                            Follow people or post something to fill your feed.
+                        </EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
                 skip;
             }for tweet in tweets {
                 <TweetCard

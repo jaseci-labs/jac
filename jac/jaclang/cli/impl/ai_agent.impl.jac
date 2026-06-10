@@ -2429,15 +2429,15 @@ impl build_pipeline -> Plan {
     build = Build();
     qa = QA();
     done = Done();
-    plan +>: Flow :+> build;
+    plan +>:Flow:+> build;
     # Read-only fast path: a pure question or inspection that needs no file
     # changes finishes straight from Plan, so it never enters Build (and its
     # wrote-nothing nudge loop) or QA. Build remains the default Plan successor.
-    plan +>: Flow :+> done;
-    build +>: Flow :+> qa;
-    qa +>: Flow :+> build;
-    qa +>: Flow :+> plan;
-    qa +>: Flow :+> done;
+    plan +>:Flow:+> done;
+    build +>:Flow:+> qa;
+    qa +>:Flow:+> build;
+    qa +>:Flow:+> plan;
+    qa +>:Flow:+> done;
     # Materialize each state's tool affordances as Exposes edges from the single
     # TOOL_SPECS registry, in registry order (the order tools are offered to the
     # model). Built fresh per pipeline, so edges never accumulate across turns;
@@ -2445,7 +2445,7 @@ impl build_pipeline -> Plan {
     for ph in [plan, build, qa] {
         for spec in TOOL_SPECS {
             if type(ph) in spec.phases {
-                ph +>: Exposes :+> Tool(
+                ph +>:Exposes:+> Tool(
                     fn=spec.fn, category=spec.category, serialize=spec.serialize
                 );
             }

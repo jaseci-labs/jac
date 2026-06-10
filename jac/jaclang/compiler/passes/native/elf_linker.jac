@@ -58,7 +58,15 @@ obj ArchConfig {
         jump_slot_rtype: int,
         copy_rtype: int,
         glob_dat_rtype: int,
-        gotpcrel_rtypes: set[int];
+        gotpcrel_rtypes: set[int],
+        # R_*_RELATIVE: base-relative dynamic reloc the loader patches with
+        # (load_bias + addend). Used by the shared-object path to relocate
+        # absolute pointers in data, GOT slots for defined symbols, and the
+        # DT_INIT_ARRAY entries — none of which have a fixed address in a .so.
+        relative_rtype: int,
+        # R_*_64 / R_AARCH64_ABS64: an absolute 64-bit pointer slot. In a .so
+        # these become RELATIVE (defined target) or a symbolic dynamic reloc.
+        abs64_rtype: int;
 
     def build_plt0(got_plt_vaddr: int, plt_vaddr: int) -> bytes;
     def build_plt_entry(
@@ -93,15 +101,28 @@ obj ElfLinker {
         relocations: list[ElfRela],
         needed_libs: list[str],
         arch: (ArchConfig | None) = None,
-        sym_vaddrs: dict[str, int] = {};
+        sym_vaddrs: dict[str, int] = {},
+        # Shared-object (.so) build state. When `shared` is True, link() calls
+        # build_shared_object() instead of build_executable(): an ET_DYN image
+        # with base vaddr 0, no PT_INTERP, an exported .dynsym, R_*_RELATIVE
+        # relocations, and a DT_INIT_ARRAY of init functions run on dlopen.
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = "";
 
     static def link(
         obj_bytes: bytes,
         output_path: str,
         needed_libs: list[str] = ["libc.so.6"],
-        crt_objects: list[bytes] = []
+        crt_objects: list[bytes] = [],
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = ""
     ) -> bool;
 
     def parse_object -> bool;
     def build_executable -> bytes;
+    def build_shared_object -> bytes;
 }

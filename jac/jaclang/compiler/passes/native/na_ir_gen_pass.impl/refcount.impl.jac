@@ -477,6 +477,44 @@ impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return bool(getattr(val, 'is_owned', False));
 }
 
+"""Release comparison operands that are owned temporaries.
+
+The fall-through comparison path releases owned left/right operands after
+computing its result; the membership (`in`/`not in`) paths early-return and
+would otherwise bypass that cleanup, leaking a temporary container operand
+(e.g. `x in obj.method()` where the method returns a fresh set/dict/list).
+"""
+impl NaIRGenPass._release_owned_operands(
+    left_orig: ir.Value, right_orig: ir.Value, op: str = ""
+) -> None {
+    if isinstance(left_orig.type, ir.PointerType) and self._is_owned(left_orig) {
+        self._emit_rc_release_simple(
+            left_orig, op=op, loc=getattr(left_orig, 'jac_loc', '')
+        );
+    }
+    if isinstance(right_orig.type, ir.PointerType) and self._is_owned(right_orig) {
+        self._emit_rc_release_simple(
+            right_orig, op=op, loc=getattr(right_orig, 'jac_loc', '')
+        );
+    }
+}
+
+"""Release any owned-temporary arguments after a call.
+
+A callee borrows its arguments (it RETAINs internally any it keeps and, for a
+returned borrowed ref, RETAINs on return), so an owned temporary the caller
+passed — a literal, a call result, or a value-tuple boxed by _coerce_type —
+leaks unless released here. Pass the coerced argument list so the boxed value
+is released, not its unboxed source. Skips non-pointers and borrowed refs.
+"""
+impl NaIRGenPass._release_owned_args(call_args: list, op: str = "call_arg") -> None {
+    for _arg in call_args {
+        if isinstance(_arg.type, ir.PointerType) and self._is_owned(_arg) {
+            self._emit_rc_release_simple(_arg, op=op, loc="");
+        }
+    }
+}
+
 """Emit IR that loads the upper 32 bits of the alloc_id field at
 ptr+HDR_ALLOC_ID_OFF and compares them against HDR_MAGIC. Returns the i1
 boolean comparison result. Used by retain/release to skip externally-owned
@@ -606,7 +644,7 @@ end-of-function terminator) are safe — releasing null is a no-op.
 impl NaIRGenPass._emit_scope_cleanup(
     skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
 ) -> None {
-    if self.builder is None {
+    if self._builder is None {
         return;
     }
     for (var_name, alloca) in self.local_vars.items() {
@@ -645,7 +683,7 @@ the loop body was codegen'd — any local present now but not in the
 snapshot was declared inside the body.
 """
 impl NaIRGenPass._emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None {
-    if self.builder is None or self.builder.block.is_terminated {
+    if self._builder is None or self._builder.block.is_terminated {
         return;
     }
     for var_name in list(self.local_vars.keys()) {

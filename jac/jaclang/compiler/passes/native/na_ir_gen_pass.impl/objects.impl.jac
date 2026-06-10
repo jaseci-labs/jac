@@ -56,6 +56,9 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         self.struct_types[arch_name] = struct_type;
         self.has_native_code = True;
     }
+    # Pass 1.6: assign OSP type-tags (issue #6146) before struct bodies are
+    # laid out, so OSP archetypes reserve their `__type_tag` field.
+    self._register_osp_tags(archetypes);
     # Pass 1.5 + 1.7: Read class hierarchy and MRO from centralized LayoutRegistry
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
@@ -121,6 +124,10 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                         # Object-spatial ability (`can ... with T entry/exit`):
                         # lower as a two-arg method (self, here/visitor).
                         self._forward_declare_event_method(arch_name, stmt);
+                        # Emit its kernel dispatch thunk (issue #6146).
+                        if arch_name in self.osp_arch_kind {
+                            self._emit_osp_thunk(arch_name, stmt);
+                        }
                     } else {
                         _sig_kind = (
                             type(stmt.signature).__name__
@@ -252,6 +259,12 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 4.5: Forward-declare free functions (must happen before method bodies)
     self._forward_declare_functions(module);
+    # Pass 4.7: Register the portable OSP kernel + emit __osp_setup BEFORE method
+    # bodies, so `spawn` lowering inside an ability (e.g. a walker ability that
+    # spawns a nested walker) can reference __ospRT / __osp_ensure_init. OSP tags
+    # (Pass 1.6) and ability thunks (Pass 3) are already available (issue #6146).
+    self._register_osp_kernel_module();
+    self._emit_osp_setup();
     # Pass 5: Generate method bodies (own methods)
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
@@ -330,18 +343,43 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         return;
     }
     needs_vtable = arch_name in self.has_vtable;
+    is_osp = arch_name in self.osp_arch_kind;
     # Collect fields
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[(str, object)] = {};
-    # Add vtable pointer as field 0 if needed
-    if needs_vtable {
+    # Field 0 is the vtable slot. OSP archetypes always reserve it (null when
+    # the type has no vtable) so the i64 `__type_tag` lands at a uniform field
+    # index 1 across every OSP archetype -- letting the kernel's `tag_of` read
+    # an arbitrary `any` handle's tag at a fixed offset (issue #6146).
+    if needs_vtable or is_osp {
         field_types.append(ir.IntType(8).as_pointer().as_pointer());
+    }
+    if is_osp {
+        field_types.append(ir.IntType(64));  # __type_tag at field index 1
+        self.osp_type_tag_field[arch_name] = len(field_types) - 1;
     }
     # Flatten fields from all ancestors in MRO order (diamond dedup by name)
     mro = self.mro_order.get(arch_name, [arch_name]);
     seen_fields: set[str] = set();
+    # Built-in walker `reports` list at a uniform field index 2 (vtable@0,
+    # __type_tag@1). The kernel's on_complete delivers `scope.reports` here at
+    # the spawn boundary, so `w.reports` reads back like a normal field. Added
+    # before MRO/own fields and marked seen so it sits at a fixed offset and a
+    # user-declared `reports` cannot shadow it (issue #6146).
+    if is_osp and (self.osp_arch_kind.get(arch_name) == "walker") {
+        self._emit_list_helpers("i64", ir.IntType(64));
+        _rep_lt = self.list_types.get("i64");
+        if _rep_lt is not None {
+            _rep_idx = len(field_types);
+            field_types.append(_rep_lt.as_pointer());
+            field_index_map["reports"] = _rep_idx;
+            field_type_map["reports"] = _rep_lt.as_pointer();
+            self.osp_reports_field[arch_name] = _rep_idx;
+            seen_fields.add("reports");
+        }
+    }
     for ancestor_name in mro[1:] {
         if ancestor_name not in self.struct_field_indices {
             continue;
@@ -482,26 +520,19 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
     # Create entry block
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_map = dict(self.type_var_map);
-    saved_type_node = dict(self.var_type_node);
-    saved_list_elem = dict(self.var_list_elem_type);
-    saved_dict_type = dict(self.var_dict_type);
-    saved_set_elem = dict(self.var_set_elem_type);
-    saved_tuple_type = dict(self.var_tuple_type);
-    self.builder = ir.IRBuilder(block);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
-    self.var_type_node = {};
-    self.var_list_elem_type = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    self.var_tuple_type = {};
+    self.var_list_elem_struct = {};
     # Reset per-function borrowed-param promotion state.
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
+    saved_self_arch = self._self_arch;
+    self._self_arch = arch_name;
     self._param_store_instr = {};
     self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
@@ -512,18 +543,6 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
-    self.type_var_map["self"] = arch_name;
-    # Re-populate field list/type info from archetype has-declarations
-    if arch_name in self.field_type_node {
-        for (fname, ftn) in self.field_type_node[arch_name].items() {
-            qname = f"self.{fname}";
-            self.var_type_node[qname] = ftn;
-            ename = self._get_list_elem_from_type_node(ftn);
-            if ename is not None {
-                self.var_list_elem_type[qname] = ename;
-            }
-        }
-    }
     # Store other parameters
     sig = method.signature;
     for (i, p) in enumerate(sig.get_parameters()) {
@@ -534,42 +553,6 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         self.local_vars[param_name] = alloca;
         self.param_vars.add(param_name);
         self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
-        # Track type info for struct pointer parameters
-        if isinstance(arg_val.type, ir.PointerType) {
-            for (sname, stype) in self.struct_types.items() {
-                if arg_val.type == stype.as_pointer() {
-                    self.type_var_map[param_name] = sname;
-                    break;
-                }
-            }
-        }
-        # Track Jac type annotation for parameters (enables nested list resolution)
-        if p.type_tag and p.type_tag.tag {
-            self.var_type_node[param_name] = p.type_tag.tag;
-            # Also track list elem type from annotation
-            for (ename, ltype) in self.list_types.items() {
-                if arg_val.type == ltype.as_pointer() {
-                    self.var_list_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Handle union types T | None for struct tracking
-            tag_name = self._get_name(p.type_tag.tag);
-            tag_node = p.type_tag.tag;
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_name] = tag_name;
-            }
-            # Track enum type for enum-typed method parameters
-            if tag_name is not None and tag_name in self.enum_types {
-                self.var_enum_type[param_name] = tag_name;
-            }
-        }
     }
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
     body = ModuleCodegenPass.unwrap_body(method);
@@ -596,17 +579,13 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     # DWARF post-pass: tag untagged instructions with fallback line
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_map;
-    self.var_type_node = saved_type_node;
-    self.var_list_elem_type = saved_list_elem;
-    self.var_dict_type = saved_dict_type;
-    self.var_set_elem_type = saved_set_elem;
-    self.var_tuple_type = saved_tuple_type;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
+    self._self_arch = saved_self_arch;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""
@@ -619,25 +598,18 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     }
     # Create entry block
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_map = dict(self.type_var_map);
-    saved_type_node = dict(self.var_type_node);
-    saved_list_elem = dict(self.var_list_elem_type);
-    saved_dict_type = dict(self.var_dict_type);
-    saved_set_elem = dict(self.var_set_elem_type);
-    saved_tuple_type = dict(self.var_tuple_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
-    self.builder = ir.IRBuilder(block);
+    saved_self_arch = self._self_arch;
+    self._self_arch = arch_name;
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
-    self.var_type_node = {};
-    self.var_list_elem_type = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    self.var_tuple_type = {};
+    self.var_list_elem_struct = {};
     self._param_store_instr = {};
     self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
@@ -648,18 +620,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
-    self.type_var_map["self"] = arch_name;
-    # Re-populate field list/type info from archetype has-declarations
-    if arch_name in self.field_type_node {
-        for (fname, ftn) in self.field_type_node[arch_name].items() {
-            qname = f"self.{fname}";
-            self.var_type_node[qname] = ftn;
-            ename = self._get_list_elem_from_type_node(ftn);
-            if ename is not None {
-                self.var_list_elem_type[qname] = ename;
-            }
-        }
-    }
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
     body = ModuleCodegenPass.unwrap_body(method);
     if body is not None {
@@ -678,17 +638,130 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     # DWARF post-pass: tag untagged instructions with fallback line
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_map;
-    self.var_type_node = saved_type_node;
-    self.var_list_elem_type = saved_list_elem;
-    self.var_dict_type = saved_dict_type;
-    self.var_set_elem_type = saved_set_elem;
-    self.var_tuple_type = saved_tuple_type;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
+    self._self_arch = saved_self_arch;
+}
+
+"""Collect the member struct names a trigger tag denotes.
+
+A trigger may be a single `Name` (`with Base entry`), a `|` union, or a
+`(A, B)` tuple trigger -- each fires the ability on any listed archetype, so
+the implicit `here`/`visitor` is the union of those members. Returns the
+known-struct member names in source order (deduped), skipping `None`/unknown.
+"""
+impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str] {
+    out: list[str] = [];
+    if tag is None {
+        return out;
+    }
+    parts: list[uni.UniNode] = [];
+    if isinstance(tag, uni.TupleVal) {
+        parts = list(tag.values or []);
+    } elif isinstance(tag, uni.BinaryExpr) and getattr(tag.op, "value", "") == "|" {
+        parts = [tag.left, tag.right];
+    } else {
+        parts = [tag];
+    }
+    for part in parts {
+        # Recurse so nested forms (e.g. `(A, B | C)`) flatten uniformly.
+        if isinstance(part, uni.TupleVal)
+        or (
+            isinstance(part, uni.BinaryExpr) and getattr(part.op, "value", "") == "|"
+        ) {
+            for nm in self._trigger_member_structs(part) {
+                if nm not in out {
+                    out.append(nm);
+                }
+            }
+            continue;
+        }
+        name = self._get_name(part);
+        if name is not None and name in self.struct_types and name not in out {
+            out.append(name);
+        }
+    }
+    return out;
+}
+
+"""Trigger type names from the checker's `Ability.event_triggers`.
+
+Each resolved TypeBase is mangled to its canonical key; class-object forms
+(`type[X]`) are unwrapped to `X` and union keys are split on `|`. Returns
+None when the checker recorded no resolution for this ability, signalling
+callers to fall back to flattening the trigger AST.
+"""
+impl NaIRGenPass._event_trigger_type_names(method: uni.Ability) -> (list[str] | None) {
+    if method.event_triggers is None {
+        return None;
+    }
+    names: list[str] = [];
+    for t in method.event_triggers {
+        for part in t.mangle().split("|") {
+            name = part.strip();
+            if name.startswith("type[") and name.endswith("]") {
+                name = name[5:-1];
+            }
+            if name and name not in names {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
+"""Member struct names an event ability fires on.
+
+Prefers the checker-resolved `Ability.event_triggers` filtered to known
+structs; falls back to flattening the trigger AST (`_trigger_member_structs`)
+when the checker left no resolution.
+"""
+impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
+    names = self._event_trigger_type_names(method);
+    if names is None {
+        sig = method.signature;
+        tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
+        return self._trigger_member_structs(tag);
+    }
+    return [
+        nm
+        for nm in names
+        if nm in self.struct_types
+    ];
+}
+
+"""Find a field whose layout diverges across union trigger members.
+
+Field access on `here`/`visitor` lowers through a single member's layout, so
+this is only sound when every field common to all members sits at the same
+index and LLVM type. Returns the first divergent field name (for E5091), or
+None when the shared layout is consistent (so any member's layout is usable).
+"""
+impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
+    if len(members) <= 1 {
+        return None;
+    }
+    base = members[0];
+    base_idx = self.struct_field_indices.get(base, {});
+    base_types = self.struct_field_types.get(base, {});
+    for fname in base_idx {
+        for other in members[1:] {
+            other_idx = self.struct_field_indices.get(other, {});
+            if fname not in other_idx {
+                continue;  # not a common field -- union attr access rejects it
+            }
+            other_types = self.struct_field_types.get(other, {});
+            if other_idx[fname] != base_idx[fname]
+            or base_types.get(fname) != other_types.get(fname) {
+                return fname;
+            }
+        }
+    }
+    return None;
 }
 
 """Forward-declare an Object-Spatial ability (`can ... with T entry/exit`).
@@ -714,7 +787,17 @@ impl NaIRGenPass._forward_declare_event_method(
     }
     loc_type: ir.Type = ir.IntType(8).as_pointer();
     if sig.arch_tag_info is not None {
-        loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        # A tuple/union trigger has no single struct type; lower the implicit
+        # location parameter to a representative member's pointer so field
+        # access on `here`/`visitor` has a usable layout (issue #6470). A plain
+        # single-type trigger yields exactly the one member, matching the prior
+        # `_resolve_jac_type` result.
+        _members = self._trigger_struct_names(method);
+        if _members {
+            loc_type = self.struct_types[_members[0]].as_pointer();
+        } else {
+            loc_type = self._resolve_jac_type(sig.arch_tag_info);
+        }
     }
     fnty = ir.FunctionType(ir.VoidType(), [struct_type.as_pointer(), loc_type]);
     func = ir.Function(self.llvm_module, fnty, name=full_name);
@@ -739,25 +822,18 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
         return;
     }
     block = func.append_basic_block(name="entry");
-    saved_builder = self.builder;
+    saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_map = dict(self.type_var_map);
-    saved_type_node = dict(self.var_type_node);
-    saved_list_elem = dict(self.var_list_elem_type);
-    saved_dict_type = dict(self.var_dict_type);
-    saved_set_elem = dict(self.var_set_elem_type);
-    saved_tuple_type = dict(self.var_tuple_type);
+    saved_list_elem_struct = dict(self.var_list_elem_struct);
     saved_param_store_instr = self._param_store_instr;
     saved_param_promoted = self._param_promoted;
-    self.builder = ir.IRBuilder(block);
+    saved_self_arch = self._self_arch;
+    self._self_arch = arch_name;
+    self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
-    self.var_type_node = {};
-    self.var_list_elem_type = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    self.var_tuple_type = {};
+    self.var_list_elem_struct = {};
     self._param_store_instr = {};
     self._param_promoted = set();
     self._attach_di_subprogram(
@@ -766,17 +842,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
-    self.type_var_map["self"] = arch_name;
-    if arch_name in self.field_type_node {
-        for (fname, ftn) in self.field_type_node[arch_name].items() {
-            qname = f"self.{fname}";
-            self.var_type_node[qname] = ftn;
-            ename = self._get_list_elem_from_type_node(ftn);
-            if ename is not None {
-                self.var_list_elem_type[qname] = ename;
-            }
-        }
-    }
     # Bind the implicit location parameter (here / visitor).
     loc_name = "here" if sig.from_walker else "visitor";
     loc_arg = func.args[1];
@@ -785,15 +850,18 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.local_vars[loc_name] = loc_alloca;
     self.param_vars.add(loc_name);
     if sig.arch_tag_info is not None {
-        self.var_type_node[loc_name] = sig.arch_tag_info;
-        loc_tname = self._get_name(sig.arch_tag_info);
-        if loc_tname is not None and loc_tname in self.struct_types {
-            self.type_var_map[loc_name] = loc_tname;
-        }
-        if loc_tname is not None and loc_tname in self.field_type_node {
-            for (fname, ftn) in self.field_type_node[loc_tname].items() {
-                self.var_type_node[f"{loc_name}.{fname}"] = ftn;
-            }
+        # For a tuple/union trigger (`with (A, B) entry`), members must agree
+        # on shared field offsets or `here.field` reads would be quietly wrong
+        # under the single-layout lowering (issue #6470).
+        _members = self._trigger_struct_names(method);
+        _conflict = self._union_layout_conflict(_members);
+        if _conflict is not None {
+            self.emit(
+                E5091,
+                node_override=sig.arch_tag_info,
+                members=", ".join(_members),
+                field=_conflict
+            );
         }
     }
     body = ModuleCodegenPass.unwrap_body(method);
@@ -809,17 +877,13 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     }
     method.gen.llvm_ir = func;
     self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
-    self.builder = saved_builder;
+    self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_map;
-    self.var_type_node = saved_type_node;
-    self.var_list_elem_type = saved_list_elem;
-    self.var_dict_type = saved_dict_type;
-    self.var_set_elem_type = saved_set_elem;
-    self.var_tuple_type = saved_tuple_type;
+    self.var_list_elem_struct = saved_list_elem_struct;
     self._param_store_instr = saved_param_store_instr;
     self._param_promoted = saved_param_promoted;
+    self._self_arch = saved_self_arch;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""
@@ -883,6 +947,50 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             name="vtable.slot"
         );
         self.builder.store(vtable_base, vtable_slot);
+    }
+    # Store the OSP type-tag into the reserved __type_tag field (issue #6146)
+    # so the kernel's `tag_of` can recover this instance's type at runtime.
+    _tt_idx = self.osp_type_tag_field.get(type_name);
+    if _tt_idx is not None {
+        _tt_slot = self.builder.gep(
+            obj_ptr,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _tt_idx)],
+            name="type_tag.slot"
+        );
+        self.builder.store(
+            ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
+        );
+        # Graph-arena lifetime: an OSP instance is a graph location, referenced
+        # by the walk as a borrowed `any` handle (boxed pointer) inside the
+        # kernel's work-stack / scope lists. Those lists retain/release the boxed
+        # pointer, which over-releases the location and frees it mid-walk (the
+        # edge<->node refcount issue, #6146). Pin every node/walker/edge to the
+        # immortal sentinel so the graph persists for the program -- matching the
+        # immortal descriptor singletons. A scoped arena teardown is future work.
+        self._osp_make_immortal(obj_ptr);
+    }
+    # Initialize the built-in walker `reports` list to empty so `w.reports` is a
+    # valid (empty) list before any spawn; the kernel's on_complete replaces it
+    # with the walk's collected reports at the spawn boundary (issue #6146).
+    _rep_idx = self.osp_reports_field.get(type_name);
+    if _rep_idx is not None {
+        _rep_h = self.list_helpers.get("i64");
+        if _rep_h is not None {
+            _rep_list = self._rc_call_with_ctx(
+                _rep_h["new"], [], op="new", loc="", name="reports.init"
+            );
+            self.builder.store(
+                _rep_list,
+                self.builder.gep(
+                    obj_ptr,
+                    [
+                        ir.Constant(ir.IntType(32), 0),
+                        ir.Constant(ir.IntType(32), _rep_idx)
+                    ],
+                    name="reports.slot"
+                )
+            );
+        }
     }
     # Initialize fields from keyword arguments
     field_indices = self.struct_field_indices.get(type_name, {});
@@ -1128,9 +1236,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # --- Callable struct field: `obj.field(args)` where `field` is a
     # function-pointer field (not a method). Load the pointer and indirect-call.
     # (Method dispatch handles real methods; fields are checked here first.)
-    _fld_struct = self.type_var_map.get(target_name)
-        if target_name is not None
-        else None;
+    _fld_struct = self._struct_name_of(trailer.target);
     if (
         _fld_struct is not None
         and _fld_struct in self.struct_field_types
@@ -1187,6 +1293,58 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_sys_exit(arg_vals);
         }
     }
+    # --- Native stdlib math module calls: math.sqrt(x), math.pow(a, b), ... ---
+    if (
+        target_name == "math"
+        and self?._native_stdlib_modules
+        and "math" in self._native_stdlib_modules
+    ) {
+        _mres = self._emit_math_call(method_name, nd);
+        if _mres is not None {
+            return _mres;
+        }
+    }
+    # --- Native stdlib time module calls: time.time(), time.sleep(s), ... ---
+    # Gated on the known name set so a void result (time.sleep) is not mistaken
+    # for "unhandled" and routed to E5090.
+    if (
+        target_name == "time"
+        and self?._native_stdlib_modules
+        and "time" in self._native_stdlib_modules
+        and method_name in NATIVE_TIME_FUNCS
+    ) {
+        return self._emit_time_call(method_name, nd);
+    }
+    # --- Native stdlib os.path.X(...) (nested attribute: trailer.target is
+    # itself the AtomTrailer `os.path`). Checked before the flat os.* path. ---
+    if (
+        isinstance(trailer.target, uni.AtomTrailer)
+        and trailer.target.is_attr
+        and self._get_name(trailer.target.target) == "os"
+        and self._get_name(trailer.target.right) == "path"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+    ) {
+        return self._emit_ospath_call(method_name, nd);
+    }
+    # --- Native stdlib flat os.X(...) calls ---
+    if (
+        target_name == "os"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+        and method_name in NATIVE_OS_FUNCS
+    ) {
+        return self._emit_os_call(method_name, nd);
+    }
+    # --- Native stdlib random.X(...) calls (gated: random.seed is void) ---
+    if (
+        target_name == "random"
+        and self?._native_stdlib_modules
+        and "random" in self._native_stdlib_modules
+        and method_name in NATIVE_RANDOM_FUNCS
+    ) {
+        return self._emit_random_call(method_name, nd);
+    }
     # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
     if target_name == "int" and method_name == "from_bytes" {
         params = nd.params or [];
@@ -1232,17 +1390,42 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     # --- Primitive emitter dispatch (list, set, str methods) ---
     # Evaluate target and args, dispatch through emitter layer.
-    # List methods (simple name target)
-    if target_name is not None and target_name in self.var_list_elem_type {
-        elem_type_name = self.var_list_elem_type[target_name];
+    # List methods — list-ness comes from the checked type of the target;
+    # the dispatch spec prefers the value's actual LLVM shape (a bare `list`
+    # annotation may hold ptr/f64 elements seeded at runtime).
+    list_spec = self._list_spec_of(trailer.target);
+    if list_spec is not None {
         list_val = self._codegen_expr(trailer.target);
         if list_val is not None {
+            _shape_spec = self._infer_list_elem_type(list_val);
+            elem_type_name = _shape_spec if _shape_spec is not None else list_spec;
             params = nd.params or [];
             arg_vals: list[ir.Value] = [];
             for param in params {
                 v = self._codegen_expr(param);
                 if v is not None {
                     arg_vals.append(v);
+                }
+            }
+            # A tuple appended/inserted into a list whose boxed element-struct is
+            # tracked (a bare `list` seeded with an `any`-containing tuple) must
+            # be stored in that exact layout, otherwise the unpack side reads the
+            # wrong field types. Box any concrete scalar that lands in an
+            # `any`/`JacVal` slot so producer and consumer agree. See #6511.
+            _elem_struct = self.var_list_elem_struct.get(target_name);
+            if _elem_struct is not None
+            and isinstance(_elem_struct, ir.PointerType)
+            and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
+                _tidx = -1;
+                if method_name == "append" and arg_vals {
+                    _tidx = 0;
+                } elif method_name == "insert" and len(arg_vals) > 1 {
+                    _tidx = 1;
+                }
+                if _tidx >= 0 {
+                    arg_vals[_tidx] = self._coerce_tuple_to_struct(
+                        arg_vals[_tidx], _elem_struct.pointee
+                    );
                 }
             }
             if method_name == "append" {
@@ -1264,9 +1447,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Set methods (simple name target)
-    if target_name is not None and target_name in self.var_set_elem_type {
-        elem_type_name = self.var_set_elem_type[target_name];
+    # Set methods — set-ness comes from the checked type of the target
+    set_spec = self._set_spec_of(trailer.target);
+    if set_spec is not None {
+        elem_type_name = set_spec;
         set_val = self._codegen_expr(trailer.target);
         if set_val is not None {
             params = nd.params or [];
@@ -1285,9 +1469,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Tuple methods (simple name target)
-    if target_name is not None and target_name in self.var_tuple_type {
-        tuple_type_key = self.var_tuple_type[target_name];
+    # Tuple methods — tuple-ness comes from the checked type of the target
+    tuple_type_key = self._tuple_key_of(trailer.target);
+    if tuple_type_key is not None {
         tuple_val = self._codegen_expr(trailer.target);
         if tuple_val is not None {
             params = nd.params or [];
@@ -1306,13 +1490,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Dict methods (simple name target or global dict)
-    dict_type_key: (str | None) = None;
-    if target_name is not None and target_name in self.var_dict_type {
-        dict_type_key = self.var_dict_type[target_name];
-    }
+    # Dict methods — dict-ness comes from the checked type of the target
+    dict_type_key: (str | None) = self._dict_key_of(trailer.target);
     if dict_type_key is None and target_name is not None {
-        # Fallback: infer dict type from LLVM type (handles globals after var_dict_type reset)
+        # Fallback: infer dict type from LLVM type (handles untyped targets)
         probe_val = self._codegen_expr(trailer.target);
         if probe_val is not None {
             dict_type_info = self._infer_dict_type(probe_val);
@@ -1394,8 +1575,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     # Range methods (count, index)
     if method_name in ("count", "index") {
-        rng_target_name = self._get_name(trailer.target);
-        if rng_target_name is not None and rng_target_name in self.var_range {
+        if self._type_key_of(trailer.target) == "range" {
             rng_val = self._codegen_expr(trailer.target);
             if rng_val is not None {
                 params = nd.params or [];
@@ -1435,12 +1615,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Determine type_name and obj_val (supports chained access)
-    type_name: (str | None) = None;
+    # Determine type_name and obj_val (supports chained access) —
+    # struct-ness comes from the checked type of the target expression.
+    type_name: (str | None) = self._struct_name_of(trailer.target);
     obj_val: (ir.Value | None) = None;
-    if target_name is not None {
-        type_name = self.type_var_map.get(target_name);
-    }
     if type_name is None {
         # Complex expression target (chained access) — evaluate and infer
         obj_val = self._codegen_expr(trailer.target);
@@ -1496,14 +1674,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
-    # Save return type hint — will be set AFTER args evaluation to avoid overwrite
-    method_ret_type_hint: (object | None) = None;
-    if full_name in self.method_ast_sigs {
-        method_sig = self.method_ast_sigs[full_name];
-        if method_sig?.return_type and method_sig.return_type is not None {
-            method_ret_type_hint = method_sig.return_type;
-        }
-    }
     # Get the object pointer (reuse if already computed in chained path)
     if obj_val is None {
         obj_val = self._codegen_expr(trailer.target);
@@ -1557,10 +1727,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if type_name in self.has_vtable {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
-            # Set return type hint AFTER call (args eval may have overwritten it)
-            if method_ret_type_hint is not None {
-                self._last_type_node_hint = method_ret_type_hint;
-            }
             if isinstance(func.return_value.type, ir.VoidType) {
                 return ir.Constant(ir.IntType(64), 0);
             }
@@ -1581,10 +1747,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
-    # Set return type hint AFTER call (args eval may have overwritten it)
-    if method_ret_type_hint is not None {
-        self._last_type_node_hint = method_ret_type_hint;
-    }
     # Return void calls as None
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
@@ -1628,15 +1790,11 @@ impl NaIRGenPass._codegen_field_aug_assign(
     target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
 ) -> (ir.Value | None) {
     # Resolve the object and field
-    target_name = self._get_name(target.target);
     field_name = self._get_name(target.right);
     if field_name is None {
         return None;
     }
-    type_name: (str | None) = None;
-    if target_name is not None {
-        type_name = self.type_var_map.get(target_name);
-    }
+    type_name: (str | None) = self._struct_name_of(target.target);
     obj_val = self._codegen_expr(target.target);
     if obj_val is None {
         return None;
@@ -1714,31 +1872,37 @@ impl NaIRGenPass._codegen_field_aug_assign(
 impl NaIRGenPass._codegen_field_assign(
     target: uni.AtomTrailer, value: ir.Value
 ) -> None {
-    target_name = self._get_name(target.target);
+    # A field store whose receiver type / field can't be resolved used to
+    # vanish silently (the #6470 write-side analog). Surface it as E5090,
+    # unless a deeper diagnostic already pinpointed the cause.
+    _fa_errs = len(self.errors_had);
     field_name = self._get_name(target.right);
-    if field_name is None {
-        return;
-    }
-    # Resolve the type: try simple name first, then infer from expression
-    type_name: (str | None) = None;
-    if target_name is not None {
-        type_name = self.type_var_map.get(target_name);
-    }
     obj_val = self._codegen_expr(target.target);
-    if obj_val is None {
-        return;
-    }
-    if type_name is None {
+    type_name: (str | None) = self._struct_name_of(target.target);
+    if type_name is None and obj_val is not None {
         type_name = self._infer_type_name(obj_val);
     }
-    if type_name is None {
+    field_indices = self.struct_field_indices.get(type_name)
+        if type_name is not None
+        else None;
+    if (
+        field_name is None
+        or obj_val is None
+        or type_name is None
+        or field_indices is None
+        or field_name not in field_indices
+    ) {
+        if len(self.errors_had) == _fa_errs {
+            self.emit(
+                E5090,
+                node_override=target,
+                kind="field assignment",
+                name=(field_name or "<field>")
+            );
+        }
         return;
     }
-    field_indices = self.struct_field_indices.get(type_name);
     field_types = self.struct_field_types.get(type_name);
-    if field_indices is None or field_name not in field_indices {
-        return;
-    }
     idx = field_indices[field_name];
     ftype = field_types[field_name];
     value = self._coerce_type(value, ftype);
