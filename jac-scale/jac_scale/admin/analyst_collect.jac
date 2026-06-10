@@ -16,8 +16,10 @@ so a missing signal degrades the digest rather than failing the analysis.
 Pure-ish: the only I/O is read-only metric queries. No model, no mutation.
 """
 import logging;
+import os;
+import time;
 import from jac_scale.utilities.metrics.prometheus_client { query, scalar }
-import from jac_scale.admin.analyst { Symptom }
+import from jac_scale.admin.analyst { Symptom, ExemplarTrace }
 
 glob logger = logging.getLogger(__name__);
 
@@ -124,4 +126,86 @@ def collect_metric_symptoms(
     }
     symptoms.sort(key=symptom_rank, reverse=True);
     return symptoms[:top_n];
+}
+
+
+# --- Traces (Tempo / O-02) -> ExemplarTrace[] --------------------------------
+# Self-contained (mirrors prometheus_client's pattern) rather than importing
+# the admin traces proxy's impl-private _tempo_* helpers, which only its own
+# module can resolve. v1 surfaces slow-trace EXEMPLARS (id + total_ms) the
+# model/operator can pivot on; critical-path enrichment (fetch + OTLP flatten
+# + self-time ranking into CriticalPathSpan[]) is a scoped follow-up commit.
+
+
+"""Resolve the in-cluster Tempo base URL, or None off-K8s.
+
+Honors TEMPO_URL, else the K8S_APP_NAME-derived service DNS - same resolution
+the admin traces proxy uses, kept local so collect has no cross-module coupling.
+"""
+def tempo_base_url -> str | None {
+    env = os.getenv("TEMPO_URL", "").strip();
+    if env {
+        return env.rstrip("/");
+    }
+    app = os.getenv("K8S_APP_NAME", "").strip();
+    if not app {
+        return None;
+    }
+    return f"http://{app}-tempo-service:3200";
+}
+
+
+"""Collect slow-trace exemplars from Tempo (TraceQL `duration > Nms`).
+
+Returns the `top_traces` slowest traces in the last hour as ExemplarTrace
+(trace_id + total_ms; critical_path empty until the enrichment follow-up).
+Best-effort + async: an unreachable backend or off-K8s deploy yields [] so the
+analysis degrades rather than fails. Only reduced summaries reach the model -
+never raw spans.
+"""
+async def collect_trace_exemplars(
+    min_duration_ms: int = 500, top_traces: int = 3
+) -> list[ExemplarTrace] {
+    import httpx;
+    out: list[ExemplarTrace] = [];
+    base = tempo_base_url();
+    if base is None {
+        return out;
+    }
+    now_s = int(time.time());
+    traceql = f"{{ duration > {min_duration_ms}ms }}";
+    try {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as cl {
+            resp = await cl.get(
+                base + "/api/search",
+                params={
+                    "q": traceql,
+                    "limit": "20",
+                    "start": str(now_s - 3600),
+                    "end": str(now_s)
+                }
+            );
+            resp.raise_for_status();
+            payload = resp.json();
+        }
+    } except Exception as e {
+        logger.warning(f"analyst: Tempo search unavailable: {e}");
+        return out;
+    }
+    summaries: list = list(payload.get("traces", []) or []);
+    summaries.sort(key=lambda t : int(t.get("durationMs", 0) or 0), reverse=True);
+    for t in summaries[:top_traces] {
+        tid = str(t.get("traceID", "") or "");
+        if not tid {
+            continue;
+        }
+        out.append(
+            ExemplarTrace(
+                trace_id=tid,
+                total_ms=float(t.get("durationMs", 0) or 0),
+                critical_path=[]
+            )
+        );
+    }
+    return out;
 }
