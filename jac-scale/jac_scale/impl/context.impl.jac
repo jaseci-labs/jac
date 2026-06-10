@@ -12,6 +12,13 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
         PermissionDenied,
         Root
     }
+    import from jaclang.jac0core.runtime { plugin_manager, JacRuntimeInterface }
+    # Phase-2 seal: JScaleExecutionContext.init overrides core
+    # ExecutionContext.postinit (where the seal otherwise fires), so trigger
+    # it here too. Idempotent, so the first request seals and the rest no-op.
+    # The plugin set is fully loaded at request time, so devirtualization is
+    # safe (jac-scale's multi-impl hooks stay on the dynamic dispatcher).
+    plugin_manager.seal(JacRuntimeInterface);
     # ScaleTieredMemory gets storage config from environment variables
     self.mem = ScaleTieredMemory();
     self.reports: list[any] = [];
