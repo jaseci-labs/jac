@@ -65,6 +65,21 @@ slice against the full native suite, 398 passed / 1 skipped):
   `_find_free_vars` is deleted. Native keeps its `local_vars` filter
   (restricts captures to live allocas; excludes sibling nested functions).
   Remaining: `IterationInfo`, with-items, match patterns, f-string parts.
+- **Phase 4 (call semantics) - classification slice done.** New
+  `FuncCall.call_kind` ("method"/"instantiation"/"builtin"/"function"),
+  stamped by `TypeCheckPass.exit_func_call` from
+  `symbol_utils.classify_call` at resolution time (TypeInferencePass is a
+  TypeCheckPass subclass, so every full codegen compile stamps it). Native
+  and ES call dispatch consume the stored fact; only nodes synthesized
+  after checking (desugared pipe-forward) classify on the spot. Remaining:
+  full `CallInfo` (resolved signature + default-arg exprs) so native's
+  `method_ast_sigs` AST-signature cache can be deleted.
+- **Phase 0 (typed-tree consumption) - ES slice.** Three of four
+  `get_type_evaluator()` sites in the ES backend (primitive-method
+  dispatch, `_try_primitive_op`, `_expr_type_name`) now read `Expr.type`
+  off the tree instead of re-querying the evaluator. The remaining site
+  (`_resolve_call_ability`) is kept because the evaluator call repopulates
+  a missing `.sym` as a side effect, not a pure type fetch.
 - **Phase 10 (enforcement) - ratchet test landed early.**
   `tests/compiler/test_backend_purity.jac` statically scans
   `passes/ecmascript` + `passes/native` for analysis APIs
@@ -74,8 +89,8 @@ slice against the full native suite, 398 passed / 1 skipped):
   migrations land). The plan's "empty allowlist" end state is reached by
   draining it.
 
-Remaining phases (0, 4, 7-9) are untouched; Phase 6 continues with
-`IterationInfo`.
+Remaining phases (7-9) are untouched; Phase 4 continues with `CallInfo`,
+Phase 6 with `IterationInfo`.
 
 ## Architectural principles (the contract every phase enforces)
 
