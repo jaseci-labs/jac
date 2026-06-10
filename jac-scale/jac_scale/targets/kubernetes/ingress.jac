@@ -559,22 +559,25 @@ obj IngressDeployer {
             'cert-manager.io/cluster-issuer' in self.k8s_config.shared_ingress_annotations
             or 'cert-manager.io/issuer' in self.k8s_config.shared_ingress_annotations
         );
-        if (
-            self.k8s_config.shared_ingress
-            and self.k8s_config.shared_ingress_tls
-            and cert_manager_managed
-            and self.k8s_config.domain
-        ) {
-            main_spec['tls'] = [
-                {'hosts': [self.k8s_config.domain], 'secretName': f"{app_name}-tls"}
-            ];
-        } else {
-            # patch_namespaced_ingress is a strategic-merge patch, which leaves
-            # fields absent from the body untouched. Explicitly null tls so a
-            # redeploy that no longer wants cert-manager TLS (shared_ingress_tls
-            # off, or a non-cert-manager class) removes any stale spec.tls block
-            # instead of leaving the old cert advertised for the domain.
-            main_spec['tls'] = None;
+        # Only the shared-ingress path manages spec.tls here. The dedicated
+        # (non-shared) path's TLS is owned by enable_tls, so we must not touch
+        # the key at all for it — setting it (even to None) would clobber that
+        # cert on every redeploy via the strategic-merge patch.
+        if self.k8s_config.shared_ingress {
+            if (
+                self.k8s_config.shared_ingress_tls
+                and cert_manager_managed
+                and self.k8s_config.domain
+            ) {
+                main_spec['tls'] = [
+                    {'hosts': [self.k8s_config.domain], 'secretName': f"{app_name}-tls"}
+                ];
+            } else {
+                # Strategic-merge leaves absent fields untouched, so null tls to
+                # remove a stale block when a shared redeploy turns cert-manager
+                # TLS off (or switches to a non-cert-manager class).
+                main_spec['tls'] = None;
+            }
         }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
