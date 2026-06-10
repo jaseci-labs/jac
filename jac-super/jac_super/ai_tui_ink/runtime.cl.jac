@@ -26,9 +26,14 @@ glob TUI_CWD: str = str(environ.get("JAC_TUI_CWD") or ""),
      TUI_COMMANDS: list[str] = [
          "/help",
          "/model",
+         "/mode",
          "/context-max",
+         "/verbose",
+         "/feedback",
          "/stats",
          "/usage",
+         "/guides",
+         "/mcp",
          "/stop",
          "/reset",
          "/clear",
@@ -121,8 +126,36 @@ cl {
         );
     }
 
+    async def runtimeConfig -> any {
+        return await agent_fetch("agent_runtime_config");
+    }
+
+    async def applyMode(mode: str) -> any {
+        return await agent_fetch("agent_apply_mode", {"mode": mode});
+    }
+
+    async def toggleVerboseServer -> any {
+        return await agent_fetch("agent_toggle_verbose");
+    }
+
+    async def toggleFeedbackServer -> any {
+        return await agent_fetch("agent_toggle_feedback");
+    }
+
     async def toggleStatsServer -> any {
         return await agent_fetch("agent_toggle_stats");
+    }
+
+    async def fetchGuides -> any {
+        return await agent_fetch("agent_guides");
+    }
+
+    async def mcpStatus -> any {
+        return await agent_fetch("agent_mcp_status");
+    }
+
+    def actionResultMessage(result: any, fallback: str) -> str {
+        return str(result.get("message", "") or result.get("error", "") or fallback);
     }
 
     def resetFeedState {
@@ -501,10 +534,17 @@ cl {
                 <Text bold color="cyan">Commands</Text>
                 <Text dimColor>{commandListLine()}</Text>
                 <Text dimColor>/model [name|#] to inspect or switch models</Text>
+                <Text dimColor>/mode [safe|yolo] to inspect or change approvals</Text>
                 <Text dimColor>
                     /context-max [n] to inspect or update the context cap
                 </Text>
-                <Text dimColor>/stats and /usage toggle local details</Text>
+                <Text dimColor>/verbose and /feedback toggle agent display flags</Text>
+                <Text dimColor>
+                    /stats toggles per-turn stats; /usage shows usage panel
+                </Text>
+                <Text dimColor>
+                    /guides lists bundled reference guides; /mcp shows MCP status
+                </Text>
             </Box>
         );
     }
@@ -631,12 +671,73 @@ cl {
             actions["toggleUsage"]();
             return;
         }
+        if cmd == "/mode" and not arg {
+            cfg = await runtimeConfig();
+            mode = str(cfg.get("mode", "") or "unknown");
+            yolo = bool(cfg.get("yolo_mode", False));
+            lines: list[str] = ["mode: " + mode, "yolo: " + ("on" if yolo else "off")];
+            setInfo(actions, "Mode", lines);
+            return;
+        }
+        if cmd == "/mode" and arg {
+            result = await applyMode(arg);
+            setInfo(
+                actions,
+                "Mode" if bool(result.get("ok", False)) else "Error",
+                [actionResultMessage(result, "mode update failed")]
+            );
+            return;
+        }
+        if cmd == "/verbose" {
+            result = await toggleVerboseServer();
+            setInfo(
+                actions, "Verbose", [actionResultMessage(result, "verbose toggled")]
+            );
+            return;
+        }
+        if cmd == "/feedback" {
+            result = await toggleFeedbackServer();
+            setInfo(
+                actions, "Feedback", [actionResultMessage(result, "feedback toggled")]
+            );
+            return;
+        }
         if cmd == "/stats" {
             result = await toggleStatsServer();
-            msg = str(
-                result.get("message", "") or result.get("error", "") or "stats toggled"
+            setInfo(actions, "Stats", [actionResultMessage(result, "stats toggled")]);
+            return;
+        }
+        if cmd == "/guides" {
+            guides = list(await fetchGuides() or []);
+            lines: list[str] = [];
+            for g in guides {
+                name = str(g.get("name", "") or "");
+                desc = str(g.get("description", "") or "");
+                if name {
+                    if desc {
+                        lines.append(name + " — " + desc);
+                    } else {
+                        lines.append(name);
+                    }
+                }
+            }
+            if not lines {
+                lines = ["No guides found."];
+            }
+            setInfo(actions, "Guides", lines);
+            return;
+        }
+        if cmd == "/mcp" {
+            status = await mcpStatus();
+            title = "MCP";
+            if bool(status.get("available", False)) {
+                title = "MCP (available)";
+            }
+            setInfo(
+                actions,
+                title,
+                [str(status.get("message", "") or "jac-mcp status unknown")]
             );
-            setInfo(actions, "Stats", [msg]);
             return;
         }
         if cmd == "/clear" {
