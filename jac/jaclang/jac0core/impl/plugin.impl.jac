@@ -82,6 +82,18 @@ impl PluginManager.seal(facade: type) -> None {
     if self._sealed {
         return;
     }
+    import os;
+    # Ablation flag: JAC_HOOK_SEAL=0 keeps hooks on the Phase-1 dispatcher
+    # (Phase-2 devirtualization disabled). Marked sealed so we skip re-checking.
+    if os.environ.get('JAC_HOOK_SEAL', '1').strip().lower() in (
+        '0',
+        'false',
+        'no',
+        'off'
+    ) {
+        self._sealed = True;
+        return;
+    }
     self._facade = facade;
     for hook_name in `list(vars(self.hook).keys()) {
         m = getattr(facade, hook_name, None);

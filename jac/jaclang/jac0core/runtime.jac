@@ -1016,7 +1016,15 @@ def generate_plugin_helpers(
                     simple = False;
                 }
             }
-            if not simple {
+            # Ablation flag: JAC_HOOK_CODEGEN=0 forces the reflective proxy
+            # (Phase-1 disabled / baseline dispatch).
+            codegen_off = os.environ.get('JAC_HOOK_CODEGEN', '1').strip().lower() in (
+                '0',
+                'false',
+                'no',
+                'off'
+            );
+            if (not simple) or codegen_off {
                 if is_coro {
                     async def async_proxy(*args: object, **kwargs: object) -> object {
                         bound = sig.bind_partial(*args, **kwargs);
@@ -1113,6 +1121,7 @@ with entry {
     );
     plugin_manager.add_hookspecs(JacRuntimeSpec);
 }
+
 # NOTE: Phase-2 devirtualization (plugin_manager.seal) is intentionally
 # NOT called here. Sealing at import is unsafe: external plugins (byllm,
 # scale) have not registered yet, and the compiler's `without_plugins`
