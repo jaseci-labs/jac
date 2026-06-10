@@ -633,6 +633,39 @@ test "props-destructured component direct calls preserve wrapping and spreads" {
     assert isinstance(plain_spread_call.arguments[0], es.SpreadElement);
 }
 
+test "conditional JSX returns still trigger props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_conditional_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    # Both components have JSX returns nested inside if/else/match; they must
+    # still lower to a single `props` parameter plus destructure preamble.
+    conditional = funcs["ConditionalGreeting"];
+    assert len(conditional.params) == 1;
+    assert isinstance(conditional.params[0], es.Identifier);
+    assert conditional.params[0].name == "props";
+
+    match_greeting = funcs["MatchGreeting"];
+    assert len(match_greeting.params) == 1;
+    assert isinstance(match_greeting.params[0], es.Identifier);
+    assert match_greeting.params[0].name == "props";
+
+    # Direct call site must wrap positional args into a props object.
+    direct_ret = funcs["direct_call_conditional"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+    direct_props = direct_call.arguments[0].properties;
+    assert len(direct_props) == 2;
+}
+
 test "components with JSX slots compile to function declarations" {
     # `def:pub Name(...) -> JsxElement { return ... }` is the universal
     # component shape. JSX `{...}` slots in child position with statement

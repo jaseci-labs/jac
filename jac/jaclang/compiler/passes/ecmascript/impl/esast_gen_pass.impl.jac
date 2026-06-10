@@ -1095,22 +1095,11 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
     abi = 'direct';
     if isinstance(ability_node.signature, uni.FuncSignature) {
         sig = ability_node.signature;
-        if sig.get_parameters() and isinstance(ability_node.body, list) {
-            is_jsx_in_return = False;
-            for stmt in ability_node.body {
-                if isinstance(stmt, uni.ReturnStmt) {
-                    for kid in stmt.kid {
-                        if isinstance(kid, uni.JsxElement) {
-                            is_jsx_in_return = True;
-                            break;
-                        }
-                    }
-                }
-                if is_jsx_in_return {
-                    break;
-                }
-            }
-            if is_jsx_in_return {
+        if sig.get_parameters() {
+            rt = sig.return_type;
+            if (
+                rt is not None and isinstance(rt, uni.Name) and rt.value == 'JsxElement'
+            ) {
                 abi = 'props_destructure';
                 # Check all positional params (posonly + regular) for a single
                 # ``props`` param so that ``def Comp(props: dict, /)`` is
