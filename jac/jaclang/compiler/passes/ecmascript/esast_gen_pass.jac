@@ -485,6 +485,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         props: list[(es.Property | es.SpreadElement)]
     ) -> es.Expression;
 
+    def _pos_params_from_ability(ability_node: uni.Ability) -> list[uni.ParamVar];
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
     def _wrap_to_wire_if_boundary(

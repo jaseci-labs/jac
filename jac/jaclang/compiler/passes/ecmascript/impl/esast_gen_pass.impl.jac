@@ -1097,6 +1097,9 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
         sig = ability_node.signature;
         if sig.get_parameters() {
             rt = sig.return_type;
+            # JSX detection relies on the explicit return type annotation
+            # (``-> JsxElement``).  Abilities that return JSX implicitly or
+            # via a wider union type are not recognised as components here.
             if (
                 rt is not None and isinstance(rt, uni.Name) and rt.value == 'JsxElement'
             ) {
@@ -1110,22 +1113,13 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
                 ) {
                     abi = 'direct';
                 } else {
-                    # Check all positional params (posonly + regular) for a
-                    # single ``props`` param so that ``def Comp(props: dict, /)``
-                    # is treated as passthrough, not destructure.  Without
-                    # posonly awareness the check would see an empty
-                    # ``sig.params`` and classify the component as destructure,
-                    # while ``_param_names_from_ability`` (which walks posonly)
-                    # would still return ``["props"]``, causing the call site to
-                    # emit ``Comp({props: bundle})`` instead of the correct
-                    # ``Comp(bundle)``.
-                    all_pos_params: list[uni.ParamVar] = [];
-                    if sig.posonly_params {
-                        all_pos_params.extend(sig.posonly_params);
-                    }
-                    if sig.params {
-                        all_pos_params.extend(sig.params);
-                    }
+                    # Use the same positional-param list that
+                    # ``_param_names_from_ability`` consumes so the two stay
+                    # in lockstep.  ``get_parameters()`` includes varargs /
+                    # kwonly / kwargs, which must not influence the
+                    # ``props_passthrough`` count (a single ``props`` plus
+                    # ``**kwargs`` is still passthrough).
+                    all_pos_params = self._pos_params_from_ability(ability_node);
                     if (
                         len(all_pos_params) == 1
                         and all_pos_params[0].name.sym_name == 'props'
@@ -1239,6 +1233,18 @@ impl EsastGenPass._build_props_spread_component_call(
     );
 }
 
+"""Return the positional parameters (posonly + regular) of an ability.
+
+Shared helper so ``_component_call_abi`` and call-site lowering both derive
+parameter order from the same source and never drift out of sync.
+"""
+impl EsastGenPass._pos_params_from_ability(
+    ability_node: uni.Ability
+) -> list[uni.ParamVar] {
+    sig = ability_node.signature;
+    return sig.posonly_params + sig.params;
+}
+
 """Extract normal positional parameter names from an ability."""
 impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[str] {
     if not isinstance(ability_node.signature, uni.FuncSignature) {
@@ -1246,13 +1252,8 @@ impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[s
     }
     sig = ability_node.signature;
     names: list[str] = [];
-    for p in sig.posonly_params {
+    for p in self._pos_params_from_ability(ability_node) {
         names.append(p.name.sym_name);
-    }
-    if sig.params {
-        for p in sig.params {
-            names.append(p.name.sym_name);
-        }
     }
     for p in sig.kwonlyargs {
         names.append(p.name.sym_name);
@@ -2078,6 +2079,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         and self._component_call_abi(ability_node_resolved) == 'props_destructure'
     ) {
         result_expr: es.Expression;
+        # We test the *raw* ``args`` (before keyword reordering) for
+        # positional spreads because a spread in the original positional
+        # list changes how we must pack the props object.  ``call_args``
+        # has already been reordered by ``_resolve_call_arg_slots``, so
+        # it is not the right source for this test.
         if any(isinstance(arg, es.SpreadElement) for arg in args) {
             result_expr = self._build_props_spread_component_call(
                 nd, callee_expr, ability_node_resolved, args, props
