@@ -195,13 +195,24 @@ impl JacCompiler.get_bytecode(
     if is_internal {
         setup_progress.on_internal_compile(full_target);
     }
-    # Skip type checking when the type check infrastructure is not yet
-    # available. This happens during bootstrap: TypeCheckPass and
-    # TypeEvaluator are themselves internal modules that need compilation,
-    # so attempting to type-check before they're ready causes circular
-    # imports. Once bootstrap completes, all modules get type-checked.
+    # Full type checking here is for INTERNAL (jaclang.*) modules only: the
+    # compiler's own code is held to full type discipline post-bootstrap
+    # (compile() skips inference for internal modules mid-bootstrap, so this
+    # is where they get typed). It must wait until the type check
+    # infrastructure is available — TypeCheckPass and TypeEvaluator are
+    # themselves internal modules, and type-checking before they're ready
+    # causes circular imports.
+    #
+    # USER modules loaded at runtime must NOT have full diagnostics forced
+    # on them: their compile() already runs gated inference (typed-tree
+    # contract), and surfacing checker diagnostics belongs to explicit
+    # `jac check` / options.type_check (plus the native-context gate).
+    # Forcing it here would make `jac run`/`jac start` of a plain sv/cl app
+    # fail on checker false positives whenever the module cache is cold and
+    # the type system happens to be loaded (#6262).
     can_typecheck = (
-        'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
+        is_internal
+        and 'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
         and 'jaclang.compiler.type_system.type_evaluator' in sys.modules
         and hasattr(
             sys.modules['jaclang.compiler.passes.main.type_checker_pass'],
