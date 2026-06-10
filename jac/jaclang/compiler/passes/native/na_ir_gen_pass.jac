@@ -166,7 +166,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # (flattened) layout, not the declaring parent the checker reports.
         _self_arch: (str | None) = None,
         field_type_node: dict[str, dict] = {},
-        _list_type_hint: (str | None) = None,
         # True while codegen'ing the TupleVal of a `return (...)`. In that
         # context borrowed (field-load / element-read) pointer elements must be
         # retained so they outlive the owning local's scope-exit teardown — the
@@ -223,7 +222,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Dictionary support (Phase 12)
         dict_types: dict[str, object] = {},
         dict_helpers: dict[str, dict] = {},
-        _dict_val_type_hint: (str | None) = None,
         # Set support (Phase 13)
         set_types: dict[str, object] = {},
         set_helpers: dict[str, dict] = {},
@@ -589,7 +587,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
     def _peel_list_type(type_node: (object | None)) -> tuple;
-    def _get_list_elem_from_type_node(type_node: (object | None)) -> (str | None);
     def _infer_compr_elem_struct(compr: object) -> (str | None);
     def _resolve_for_loop_elem_type(
         coll_name: (str | None), coll_node: (object | None)

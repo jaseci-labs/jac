@@ -1043,39 +1043,10 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
-            # Set _list_type_hint from the field's IR type so that an empty list
-            # literal `[]` creates the correct List variant (List.ptr / List.i64 /
-            # List.f64) with the right dtor.  We extract the elem key directly from
-            # the IdentifiedStructType name (e.g. "List.ptr" → "ptr") so this works
-            # even before _emit_list_helpers has been called for that variant.
-            _saved_hint_d = self._list_type_hint;
-            ftype_probe_d = field_types.get(fname);
-            if ftype_probe_d is not None
-            and isinstance(ftype_probe_d, ir.PointerType) {
-                _inner_d = ftype_probe_d.pointee;
-                if _inner_d?.name and _inner_d.name.startswith("List.") {
-                    _ek_d = _inner_d.name[5:];
-                    if _ek_d not in self.list_helpers {
-                        if _ek_d == "ptr" {
-                            self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
-                        } elif _ek_d == "f64" {
-                            self._emit_list_helpers("f64", ir.DoubleType());
-                        } else {
-                            self._emit_list_helpers("i64", ir.IntType(64));
-                        }
-                    }
-                    self._list_type_hint = _ek_d;
-                } else {
-                    for (_ek_d2, _lt_d2) in self.list_types.items() {
-                        if ftype_probe_d == _lt_d2.as_pointer() {
-                            self._list_type_hint = _ek_d2;
-                            break;
-                        }
-                    }
-                }
-            }
+            # An empty collection literal default types itself: the checker
+            # stamps it with the declared field type (bidirectional
+            # inference), and the literal codegen emits the right variant.
             val = self._codegen_expr(default_expr);
-            self._list_type_hint = _saved_hint_d;
             # Empty dict/list default returns None — fall back to helpers["new"].
             if val is None {
                 ftype_probe = field_types.get(fname);

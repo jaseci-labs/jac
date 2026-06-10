@@ -1174,9 +1174,14 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         # and `(spawn W).reports` (read side) share a single element type.
         self._check_walker_reports_shape(nd, declared_type);
         # If there's an initializer, check that its type is compatible
-        # with the declared type (e.g., bad1: int = unknown_val;).
+        # with the declared type (e.g., bad1: int = unknown_val;). The
+        # declared type flows as the expected type so empty collection
+        # literal defaults (`has xs: list[str] = []`) are stamped with the
+        # declared element type (bidirectional inference).
         if nd.value is not None and nd.type is not None {
-            right_type = self.evaluator.get_type_of_expression(nd.value);
+            right_type = self.evaluator.get_type_of_expression(
+                nd.value, expected_type=nd.type
+            );
             if not self.evaluator.assign_type(
                 right_type, nd.type, strict=self.evaluator._is_strict_site(nd)
             ) {

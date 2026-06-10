@@ -134,7 +134,16 @@ impl NaIRGenPass._emit_set_helpers(
 """Generate code for a set literal {a, b, c, ...}."""
 impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     if not nd.values {
-        # Empty set: need type hint
+        # Empty set: the checker stamps the literal with the expected type
+        # (bidirectional inference); lowering it registers the set helpers.
+        _sk = self._set_spec_of(nd);
+        _helpers = self.set_helpers.get(_sk) if _sk is not None else None;
+        if _helpers is not None {
+            _empty_s = self.builder.call(_helpers["new"], [], name="set.empty");
+            # RC: fresh allocation - caller owns it; skip RETAIN on assign.
+            self._mark_owned(_empty_s);
+            return _empty_s;
+        }
         return None;
     }
     # Get first element to determine type
