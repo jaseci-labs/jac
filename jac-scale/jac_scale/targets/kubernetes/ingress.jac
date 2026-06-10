@@ -546,6 +546,23 @@ obj IngressDeployer {
         for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
             ingress_annotations[str(k)] = str(v);
         }
+        main_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
+        # On a shared nginx controller, cert-manager's ingress-shim issues a
+        # per-domain Let's Encrypt cert only when the Ingress carries a spec.tls
+        # block (the issuer itself comes from the caller's
+        # cert-manager.io/cluster-issuer annotation in shared_ingress_annotations).
+        # Non-nginx shared controllers (AWS ALB + ACM) terminate TLS at the load
+        # balancer and need no spec.tls, so this is gated on the nginx class.
+        if (
+            self.k8s_config.shared_ingress
+            and self.k8s_config.shared_ingress_tls
+            and uses_nginx
+            and self.k8s_config.domain
+        ) {
+            main_spec['tls'] = [
+                {'hosts': [self.k8s_config.domain], 'secretName': f"{app_name}-tls"}
+            ];
+        }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
             'kind': 'Ingress',
@@ -555,7 +572,7 @@ obj IngressDeployer {
                 'labels': {'app': app_name, 'managed': 'jac-scale'},
                 'annotations': ingress_annotations
             },
-            'spec': {'ingressClassName': ingress_class, 'rules': [main_rule]}
+            'spec': main_spec
         };
         try {
             networking_v1.patch_namespaced_ingress(
