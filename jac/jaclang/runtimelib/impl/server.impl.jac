@@ -50,13 +50,20 @@ impl UserManager._ensure_connection -> None {
     }
 }
 
+impl UserManager.conn -> sqlite3.Connection {
+    if self._conn is None {
+        raise RuntimeError("SQLite connection is not initialized; call _ensure_connection() first");
+    }
+    return self._conn;
+}
+
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
     with self._lock {
         # Check if user already exists
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
         );
         if cursor.fetchone() {
@@ -71,11 +78,11 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
         root_id = root_anchor.id.hex;
         token = secrets.token_urlsafe(32);
         password_hash = hashlib.sha256(password.encode()).hexdigest();
-        self._conn.execute(
+        self.conn.execute(
             "INSERT INTO users (username, password_hash, token, root_id) VALUES (?, ?, ?, ?)",
             (username, password_hash, token, root_id)
         );
-        self._conn.commit();
+        self.conn.commit();
         return {'username': username, 'token': token, 'root_id': root_id};
     }
 }
@@ -87,7 +94,7 @@ impl UserManager.authenticate(
     self._ensure_connection();
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     with self._lock {
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT token, root_id FROM users WHERE username = ? AND password_hash = ?",
             (username, password_hash)
         );
@@ -103,7 +110,7 @@ impl UserManager.authenticate(
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
     with self._lock {
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT username FROM users WHERE token = ?", (token, )
         );
         row = cursor.fetchone();
@@ -115,7 +122,7 @@ impl UserManager.validate_token(token: str) -> (str | None) {
 impl UserManager.get_root_id(username: str) -> (str | None) {
     self._ensure_connection();
     with self._lock {
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT root_id FROM users WHERE username = ?", (username, )
         );
         row = cursor.fetchone();
@@ -132,7 +139,7 @@ impl UserManager.aget_root_id(username: str) -> (str | None) {
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     self._ensure_connection();
     with self._lock {
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (username, )
         );
         row = cursor.fetchone();
@@ -147,7 +154,7 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 impl UserManager.user_exists(username: str) -> bool {
     self._ensure_connection();
     with self._lock {
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
         );
         return cursor.fetchone() is not None;
@@ -162,23 +169,23 @@ impl UserManager.update_username(
     self._ensure_connection();
     with self._lock {
         # Check if new username already exists
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT 1 FROM users WHERE username = ? ", (new_username, )
         );
         if cursor.fetchone() {
             return {'error': 'Username already taken'};
         }
         # Update username
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "UPDATE users SET username = ? WHERE username = ?",
             (new_username, current_username)
         );
-        self._conn.commit();
+        self.conn.commit();
         if cursor.rowcount == 0 {
             return {'error': 'User not found'};
         }
         # Get updated user data
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
         );
         row = cursor.fetchone();
@@ -195,7 +202,7 @@ impl UserManager.update_password(
     with self._lock {
         # Verify current password
         current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
             (username, current_password_hash)
         );
@@ -204,11 +211,11 @@ impl UserManager.update_password(
         }
         # Update password
         new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
-        cursor = self._conn.execute(
+        cursor = self.conn.execute(
             "UPDATE users SET password_hash = ? WHERE username = ?",
             (new_password_hash, username)
         );
-        self._conn.commit();
+        self.conn.commit();
         return {'username': username, 'message': 'Password updated successfully'};
     }
 }
@@ -2418,6 +2425,9 @@ impl JacAPIServer.start(
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     configured_root = config.serve.base_route_app if config else "";
     base_route_app = self.introspector.resolve_root_app(configured_root);
+    if self.server is None {
+        raise RuntimeError("Cannot start server: no socket was bound (test mode, port=0)");
+    }
     with self.server as httpd {
         console.print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         console.print(f"Module: {self.module_name}");
