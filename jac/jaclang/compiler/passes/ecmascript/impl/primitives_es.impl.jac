@@ -1243,7 +1243,7 @@ impl ESDictEmitter.emit_get(
     if len(args) == 1 {
         return target + "[" + args[0] + "] ?? undefined";
     }
-    return target + "[" + args[0] + "] ?? " + args[1];
+    return "(" + target + "[" + args[0] + "] ?? " + args[1] + ")";
 }
 
 impl ESDictEmitter.emit_keys(
@@ -1971,7 +1971,7 @@ impl ESBuiltinEmitter.emit_getattr(
     if len(args) == 2 {
         return args[0] + "[" + args[1] + "]";
     }
-    return args[0] + "[" + args[1] + "] ?? " + args[2];
+    return "(" + args[0] + "[" + args[1] + "] ?? " + args[2] + ")";
 }
 
 impl ESBuiltinEmitter.emit_setattr(

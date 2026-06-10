@@ -2184,6 +2184,56 @@ test "isinstance/issubclass against builtin types, user class, and tuples (#6458
     assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
 }
 
+test "getattr default with or/and emits parenthesized nullish coalescing (#6562)" {
+    fixture = "dict_get_nullish_or_precedence.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_nullish_logical_precedence_cases()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "getattr + or/and fixture crashed in Node:\n" + "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+
+    import json;
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "getattr_two_arg_hit": "hi",
+        "getattr_two_arg_miss": "",
+        "getattr_two_arg_falsy": "",
+        "getattr_numeric_hit": 5,
+        "getattr_numeric_miss": 0,
+        "getattr_numeric_falsy": 0,
+        "getattr_fallback_hit": "hi",
+        "getattr_fallback_miss": "fallback",
+        "getattr_dict_or_hit": {"a": 1},
+        "getattr_dict_or_miss": {},
+        "getattr_chain_first": "A",
+        "getattr_chain_second": "B",
+        "getattr_chain_third": "c",
+        "literal_or_getattr": "x",
+        "getattr_and_truthy": True,
+        "getattr_and_falsy": False,
+        "getattr_alone_hit": "present",
+        "getattr_alone_miss": "default",
+        "dict_get_poly_hit": "hi",
+        "dict_get_poly_miss": "",
+
+    };
+    for (key, val) in expected.items() {
+        assert key in got , f"missing result key {key!r} in {got}";
+        assert got[key] == val , (
+            f"{key}: expected {val!r}, got {got[key]!r}\nfull={got}\njs:\n{js_code}"
+        );
+    }
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {
     # Same root cause as the isinstance crash: a Python builtin used as a
     # *value* (here the `type` key of an object literal) produced no es_ast,
