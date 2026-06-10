@@ -116,7 +116,10 @@ impl PluginManager._specialize_hook(hook_name: str) -> None {
             self._facade,
             hook_name,
             _build_devirt(
-                hook_name, sig, hi.function, hi.argnames,
+                hook_name,
+                sig,
+                hi.function,
+                hi.argnames,
                 inspect.iscoroutinefunction(base)
             )
         );
