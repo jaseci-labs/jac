@@ -258,8 +258,7 @@ test "preflight returns warning with kubectl install command when cluster return
     warnings = keda.preflight();
     assert len(warnings) == 1;
     assert "KEDA CRDs not found" in warnings[0];
-    assert "kubectl apply --server-side" in warnings[0];
-    assert "kedacore/keda" in warnings[0];
+    assert "keda.sh/docs" in warnings[0];
 }
 
 test "preflight treats 422 the same as 404" {
@@ -309,7 +308,7 @@ test "apply skips ScaledObject creation when KEDA CRDs are not installed" {
     mock_api.patch_namespaced_custom_object.assert_not_called();
 }
 
-test "apply logs the install one-liner when KEDA CRDs are not installed" {
+test "apply logs the install docs link when KEDA CRDs are not installed" {
     # The operator's only signal that autoscaling is silently absent is this log
     # line.  If apply() calls preflight() but discards the returned warnings, the
     # deployment appears healthy and the missing KEDA install is invisible.
@@ -326,8 +325,8 @@ test "apply logs the install one-liner when KEDA CRDs are not installed" {
     keda.apply(spec);
     mock_logger.warn.assert_called_once();
     warn_msg = mock_logger.warn.call_args[0][0];
-    assert "kubectl apply --server-side" in warn_msg;
-    assert "kedacore/keda" in warn_msg;
+    assert "KEDA CRDs not found" in warn_msg;
+    assert "keda.sh/docs" in warn_msg;
 }
 
 test "apply creates TriggerAuthentication before ScaledObject" {

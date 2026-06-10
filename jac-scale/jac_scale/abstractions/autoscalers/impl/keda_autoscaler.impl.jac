@@ -11,9 +11,9 @@ impl KEDAAutoscaler._get_cluster_key{
 """Check KEDA CRDs are present; result cached per cluster host to avoid repeated API calls on multi-service deploys."""
 impl KEDAAutoscaler.preflight{
     install_warning = [
-        "KEDA CRDs not found on cluster. Install KEDA once with: "
-        "kubectl apply --server-side -f "
-        "https://github.com/kedacore/keda/releases/download/v2.16.0/keda-2.16.0.yaml"
+        "KEDA CRDs not found on cluster. "
+        "Install KEDA from the official docs, then redeploy: "
+        "https://keda.sh/docs/latest/deploy/"
     ];
     cluster_key = self._get_cluster_key();
     if cluster_key in KEDAAutoscaler._preflight_cache {
