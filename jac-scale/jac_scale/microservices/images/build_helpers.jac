@@ -452,9 +452,10 @@ def _retag_with_content_id(
     }
     if result.returncode != 0 {
         _logger.warning(
-            f"`docker tag {base_tag} {new_tag}` exited {result.returncode}; "
-            "shipping the mutable tag. Auto-rollout on rebuild is disabled "
-            "and the node may serve a stale cached image."
+            f"`docker tag {base_tag} {new_tag}` exited {result.returncode} "
+            f"({result.stderr.strip()}); shipping the mutable tag. "
+            "Auto-rollout on rebuild is disabled and the node may serve a "
+            "stale cached image."
         );
         return base_tag;
     }
