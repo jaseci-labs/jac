@@ -416,11 +416,11 @@ impl start(
         }
     }
     # Vite starts after the API's port is known so the proxy is wired right;
-    # skip= keeps Vite off that port (on_ready fires before the API binds).
+    # skip_port keeps Vite off that port (on_ready fires before the API binds).
     def _announce_ready(actual_port: int) {
         primary_port = actual_port;
         if dev and not no_client {
-            free_vite_port = _find_free_port(vite_port, skip=actual_port);
+            free_vite_port = _find_free_port(vite_port, skip_port=actual_port);
             (started_vite, bound_port) = _start_vite_dev_server(
                 base, free_vite_port, actual_port
             );
@@ -612,12 +612,12 @@ def _print_startup_message(
     console.print();
 }
 
-"""First free 0.0.0.0 port from `start`, skipping `skip`."""
-def _find_free_port(start: int, skip: int = 0) -> int {
+"""First free 0.0.0.0 port from `start`, never `skip_port`."""
+def _find_free_port(start: int, skip_port: int = 0) -> int {
     import socket;
     candidate = start;
     for _ in range(50) {
-        if candidate != skip {
+        if candidate != skip_port {
             try {
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe {
                     probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
@@ -633,8 +633,8 @@ def _find_free_port(start: int, skip: int = 0) -> int {
     console.warning(
         f"[Vite] No free port found in {start}-{start + 49}; falling back."
     );
-    # Never hand back `skip` — Vite would steal the API's not-yet-bound port.
-    return start if start != skip else start + 50;
+    # Never hand back skip_port — Vite would steal the API's not-yet-bound port.
+    return start if start != skip_port else start + 50;
 }
 
 """Start Vite dev server for HMR mode. Returns (process, bound_port)."""
