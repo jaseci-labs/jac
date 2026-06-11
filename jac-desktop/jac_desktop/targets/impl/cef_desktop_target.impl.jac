@@ -13,6 +13,7 @@ import json;
 import hashlib;
 import subprocess;
 import stat;
+import sys;
 import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
@@ -330,19 +331,56 @@ impl CefDesktopTarget.build(
     (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
 
     # 5. Generate + compile the CEF native host (jac nacompile, same as native target).
-    libpy = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
+    libpy = sysconfig.get_config_var("INSTSONAME")
+    or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
         libpy, win.title or app_name, win.width, win.height, str(app_name), cache_path,
     );
     (out_dir / "host.na.jac").write_text(host_src);
 
+    close_preload = cef_dir / ".build" / "close_preload.o";
+    if not close_preload.exists() {
+        raise RuntimeError(
+            "close_preload.o missing after libcef_dispatch build. "
+            "Re-run jac_desktop/native/cef/build_cef_dispatch.sh."
+        );
+    }
+    host_obj = out_dir / "host.o";
+    nacompile_env = dict(os.environ);
+    nacompile_env["JAC_EMIT_OBJECT_PATH"] = str(host_obj);
     console.print("  Compiling CEF native host (jac nacompile)...", style="muted");
     res = subprocess.run(
-        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name], cwd=str(out_dir)
+        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name],
+        cwd=str(out_dir),
+        env=nacompile_env,
     );
-    if res.returncode != 0 {
+    if res.returncode != 0 or not host_obj.exists() {
         raise RuntimeError("CEF native host compilation failed.");
+    }
+    # gcc relink: export close() for libcef zygote (chromiumembedded/cef#4066).
+    console.print("  Relinking CEF host with gcc (--export-dynamic)...", style="muted");
+    relink = subprocess.run(
+        [
+            "gcc",
+            "-o",
+            app_name,
+            str(host_obj),
+            str(close_preload),
+            f"-L{out_dir}",
+            "-lcef_dispatch",
+            "-lcef",
+            libpy,
+            "-ldl",
+            "-lm",
+            "-Wl,-rpath,$ORIGIN",
+            "-Wl,--export-dynamic",
+
+        ],
+        cwd=str(out_dir),
+    );
+    if relink.returncode != 0 {
+        raise RuntimeError("CEF host gcc relink failed.");
     }
     binary = out_dir / app_name;
     console.print(f"\n✅ CEF desktop app built: {binary}", style="bold green");

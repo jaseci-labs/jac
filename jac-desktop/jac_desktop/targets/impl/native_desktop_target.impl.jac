@@ -4,6 +4,7 @@ import shutil;
 import json;
 import hashlib;
 import subprocess;
+import sys;
 import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
@@ -210,7 +211,10 @@ impl NativeDesktopTarget.build(
     (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
 
     # 5. Generate + compile the native host into the output dir.
-    libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
+    libpy = str(
+        sysconfig.get_config_var("INSTSONAME")
+        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
+    );
     host_src = _generate_host_source(
         libpy, win.title or app_name, win.width, win.height, str(app_name)
     );

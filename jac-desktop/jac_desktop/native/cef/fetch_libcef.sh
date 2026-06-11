@@ -59,7 +59,7 @@ curl -fsSL --retry 3 -o "$TMP_JSON" "$API_URL" || {
     exit 1
 }
 
-# Extract the URL for the pinned major version using python.
+# Extract the URL and SHA-1 for the pinned major version using python.
 RESOLVED="$(python3 -c "
 import json, urllib.parse, sys
 with open('$TMP_JSON') as f:
@@ -71,10 +71,14 @@ for v in versions:
             name = f['name']
             if '${PLAT_TAG}.tar.bz2' in name and not any(s in name for s in ['client', 'minimal', 'tools']):
                 url = 'https://cef-builds.spotifycdn.com/' + urllib.parse.quote(name)
-                print(url)
+                sha1 = f.get('sha1', '')
+                print(url + ' ' + sha1)
                 sys.exit(0)
 print('', end='')
 " 2>/dev/null || true)"
+
+EXPECTED_SHA1="${RESOLVED#* }"
+RESOLVED="${RESOLVED%% *}"
 
 rm -f "$TMP_JSON"
 
@@ -91,6 +95,22 @@ if [ ! -f "$CACHED_TARBALL" ]; then
     curl -fsSL --retry 3 -o "$CACHED_TARBALL" "$RESOLVED"
 else
     echo ">> using cached tarball ($CACHED_TARBALL)"
+fi
+
+# --- Verify SHA-1 checksum ---------------------------------------------
+if [ -n "$EXPECTED_SHA1" ]; then
+    ACTUAL_SHA1="$(sha1sum "$CACHED_TARBALL" | cut -d' ' -f1)"
+    if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+        echo "ERROR: SHA-1 mismatch for cached/downloaded tarball" >&2
+        echo "  expected: $EXPECTED_SHA1" >&2
+        echo "  actual:   $ACTUAL_SHA1" >&2
+        echo "  Deleting corrupted tarball." >&2
+        rm -f "$CACHED_TARBALL"
+        exit 1
+    fi
+    echo ">> SHA-1 verified: $ACTUAL_SHA1"
+else
+    echo "WARNING: no SHA-1 available in index; skipping integrity check" >&2
 fi
 
 # --- Extract runtime (skip if libcef.so already present) ---------------
