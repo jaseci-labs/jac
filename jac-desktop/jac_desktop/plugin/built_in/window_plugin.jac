@@ -11,10 +11,10 @@ import from desktop_plugin { PluginError, DesktopPlugin }
 
 """Controls the native webview window via ctypes -> libwebview."""
 obj WindowPlugin(DesktopPlugin) {
-    has _wv: ctypes.CDLL,
+    has _wv: ctypes.CDLL | None = None,
         _handle: int = 0;
 
-    def init(wv_handle: int, wv_lib: ctypes.CDLL) {
+    def init(wv_handle: int, wv_lib: ctypes.CDLL | None) {
         super.init("jac.window");
         self._handle = wv_handle;
         self._wv = wv_lib;
@@ -27,6 +27,9 @@ obj WindowPlugin(DesktopPlugin) {
     }
 
     def handle(command: str, args: dict) -> dict {
+        if self._wv is None {
+            raise PluginError("NOT_READY", "Window plugin not yet initialized");
+        }
         if command == "set_title" {
             title = args.get("title", "");
             if not title {

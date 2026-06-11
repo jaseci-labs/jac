@@ -15,9 +15,9 @@ import from built_in.path_plugin { PathPlugin }
 
 """Filesystem operations with allow-list enforcement."""
 obj FsPlugin(DesktopPlugin) {
-    has _allow_read: list = [],
+    has _path_plugin: PathPlugin,
+        _allow_read: list = [],
         _allow_write: list = [],
-        _path_plugin: PathPlugin,
         _resolved_read: list = [],
         _resolved_write: list = [];
 
@@ -94,15 +94,19 @@ obj FsPlugin(DesktopPlugin) {
             raise PluginError("NOT_FOUND", f"Not a directory: {path}");
         }
         entries = [];
-        for entry in sorted(path.iterdir()) {
-            entries.append(
-                {
-                    "name": entry.name,
-                    "is_dir": entry.is_dir(),
-                    "is_file": entry.is_file(),
-                    "size": entry.stat().st_size if entry.is_file() else 0
-                }
-            );
+        try {
+            for entry in sorted(path.iterdir()) {
+                entries.append(
+                    {
+                        "name": entry.name,
+                        "is_dir": entry.is_dir(),
+                        "is_file": entry.is_file(),
+                        "size": entry.stat().st_size if entry.is_file() else 0
+                    }
+                );
+            }
+        } except PermissionError {
+            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
         }
         return {"entries": entries};
     }

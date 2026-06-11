@@ -69,7 +69,14 @@ obj ShellPlugin(DesktopPlugin) {
                 "FORBIDDEN", f"Command '{cmd_name}' is not in the allowed list."
             );
         }
-        timeout = int(args.get("timeout", 30));
+        try {
+            timeout = int(args.get("timeout", 30));
+        } except (ValueError, TypeError) {
+            raise PluginError("INVALID_ARGS", "timeout must be a positive integer");
+        }
+        if timeout <= 0 or timeout > 3600 {
+            raise PluginError("INVALID_ARGS", "timeout must be between 1 and 3600");
+        }
         cwd = args.get("cwd") or None;
         try {
             result = subprocess.run(
