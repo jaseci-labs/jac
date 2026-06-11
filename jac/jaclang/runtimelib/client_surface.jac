@@ -99,3 +99,15 @@ def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
     }
     return line + '\n' + js_code;
 }
+
+"""Resolve the active backend and prepend its runtime-global import.
+
+Shared by `JacToJSCompiler.add_runtime_imports`, eject, HMR, and the cl test
+harness so runtime-import behavior stays in one place.
+"""
+def prepend_active_runtime_globals(js_code: str) -> str {
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    return with_runtime_globals(js_code, resolve_active_backend());
+}

@@ -6,7 +6,7 @@ impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
     self.es = es;
 }
 
-"""Process JSX element into __jacJsx(tag, props, children) call."""
+"""Process JSX element into the active backend's JSX factory call."""
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
     es = self.es;
     if nd.dynamic_tag is not None {
@@ -121,9 +121,19 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     children_expr = self.pass_ref.sync_loc(
         es.ArrayExpression(elements=children_elements), jac_node=nd
     );
+    self.pass_ref._ensure_backend();
+    factory_name = "__jacJsx";
+    if self.pass_ref.backend is not None {
+        name = self.pass_ref.backend.jsx_factory_name;
+        if isinstance(name, str) and name {
+            factory_name = name;
+        }
+    }
     call_expr = self.pass_ref.sync_loc(
         es.CallExpression(
-            callee=self.pass_ref.sync_loc(es.Identifier(name='__jacJsx'), jac_node=nd),
+            callee=self.pass_ref.sync_loc(
+                es.Identifier(name=factory_name), jac_node=nd
+            ),
             arguments=[tag_expr, props_expr, children_expr]
         ),
         jac_node=nd
