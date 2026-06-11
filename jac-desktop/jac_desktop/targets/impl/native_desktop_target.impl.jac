@@ -265,6 +265,12 @@ def _generate_host_source(
         "    gstate = PyGILState_Ensure();\n"
         "    py_req = PyUnicode_FromString(req_str);\n"
         "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    if py_result == 0 {\n"
+        "        Py_DecRef(py_req);\n"
+        "        PyGILState_Release(gstate);\n"
+        '        respond(wv_handle, id, "{\\"ok\\":false,\\"error\\":{\\"code\\":\\"DISPATCH_CRASHED\\"}}");\n'
+        "        return;\n"
+        "    }\n"
         "    result_str = PyUnicode_AsUTF8(py_result);\n"
         "    Py_DecRef(py_req);\n"
         "    Py_DecRef(py_result);\n"

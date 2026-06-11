@@ -22,13 +22,13 @@ obj PathPlugin(DesktopPlugin) {
             return {"path": str(Path.home())};
         }
         if command == "data" {
-            return {"path": self._resolve_xdg("XDG_DATA_HOME", ".local/share")};
+            return {"path": self.resolve_xdg("XDG_DATA_HOME", ".local/share")};
         }
         if command == "config" {
-            return {"path": self._resolve_xdg("XDG_CONFIG_HOME", ".config")};
+            return {"path": self.resolve_xdg("XDG_CONFIG_HOME", ".config")};
         }
         if command == "cache" {
-            return {"path": self._resolve_xdg("XDG_CACHE_HOME", ".cache")};
+            return {"path": self.resolve_xdg("XDG_CACHE_HOME", ".cache")};
         }
         if command == "downloads" {
             dl = Path.home() / "Downloads";
@@ -42,7 +42,7 @@ obj PathPlugin(DesktopPlugin) {
             return {"path": tempfile.gettempdir()};
         }
         if command == "app_data" {
-            base = self._resolve_xdg("XDG_DATA_HOME", ".local/share");
+            base = self.resolve_xdg("XDG_DATA_HOME", ".local/share");
             app_name = args.get("app", "jac-desktop");
             return {"path": str(Path(base) / app_name)};
         }
@@ -66,11 +66,30 @@ obj PathPlugin(DesktopPlugin) {
         return super.handle(command, args);
     }
 
-    """Resolve an XDG directory with fallback."""
-    def _resolve_xdg(env_var: str, fallback: str) -> str {
+    """Resolve an XDG directory with platform-appropriate fallback."""
+    def resolve_xdg(env_var: str, fallback: str) -> str {
         val = os.environ.get(env_var);
         if val {
             return str(Path(val).expanduser().resolve());
+        }
+        platform = self._detect_platform();
+        if platform == "windows" {
+            if env_var == "XDG_CONFIG_HOME" {
+                base = os.environ.get(
+                    "APPDATA", str(Path.home() / "AppData" / "Roaming")
+                );
+                return str(Path(base).expanduser().resolve());
+            }
+            base = os.environ.get(
+                "LOCALAPPDATA", str(Path.home() / "AppData" / "Local")
+            );
+            return str(Path(base).expanduser().resolve());
+        }
+        if platform == "darwin" {
+            if env_var == "XDG_CACHE_HOME" {
+                return str(Path.home() / "Library" / "Caches");
+            }
+            return str(Path.home() / "Library" / "Application Support");
         }
         return str(Path.home() / fallback);
     }

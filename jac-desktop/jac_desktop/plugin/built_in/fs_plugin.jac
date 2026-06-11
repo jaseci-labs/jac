@@ -175,13 +175,13 @@ obj FsPlugin(DesktopPlugin) {
             return str(Path.home());
         }
         if pattern == "$APP_DATA" {
-            return self._path_plugin._resolve_xdg("XDG_DATA_HOME", ".local/share");
+            return self._path_plugin.resolve_xdg("XDG_DATA_HOME", ".local/share");
         }
         if pattern.startswith("$HOME/") {
             return str(Path.home() / pattern[6:]);
         }
         if pattern.startswith("$APP_DATA/") {
-            base = self._path_plugin._resolve_xdg("XDG_DATA_HOME", ".local/share");
+            base = self._path_plugin.resolve_xdg("XDG_DATA_HOME", ".local/share");
             return str(Path(base) / pattern[10:]);
         }
         return str(Path(pattern).expanduser().resolve());

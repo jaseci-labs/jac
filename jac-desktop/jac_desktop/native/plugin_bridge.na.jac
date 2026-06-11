@@ -29,6 +29,14 @@ def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
     gstate = PyGILState_Ensure();
     py_req = PyUnicode_FromString(req_str);
     py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);
+    if py_result == 0 {
+        Py_DecRef(py_req);
+        PyGILState_Release(gstate);
+        respond(
+            wv_handle, id, "{\"ok\":false,\"error\":{\"code\":\"DISPATCH_CRASHED\"}}"
+        );
+        return;
+    }
     result_str = PyUnicode_AsUTF8(py_result);
     Py_DecRef(py_req);
     Py_DecRef(py_result);

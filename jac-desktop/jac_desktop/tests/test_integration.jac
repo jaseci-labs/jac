@@ -1092,6 +1092,7 @@ test "plugin bridge source contains expected elements" {
     assert "_PH_DISPATCH" in src;
     assert "_jac_invoke_handler" in src;
     assert "respond" in src;
+    assert "DISPATCH_CRASHED" in src;
     assert "req_str: str = req" in src;
 }
 
@@ -1125,6 +1126,12 @@ test "plugin bridge links with full native stack" {
         "    gstate = PyGILState_Ensure();\n"
         "    py_req = PyUnicode_FromString(req_str);\n"
         "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    if py_result == 0 {\n"
+        "        Py_DecRef(py_req);\n"
+        "        PyGILState_Release(gstate);\n"
+        '        respond(wv_handle, id, "{\\"ok\\":false,\\"error\\":{\\"code\\":\\"DISPATCH_CRASHED\\"}}");\n'
+        "        return;\n"
+        "    }\n"
         "    result_str = PyUnicode_AsUTF8(py_result);\n"
         "    Py_DecRef(py_req);\n"
         "    Py_DecRef(py_result);\n"
