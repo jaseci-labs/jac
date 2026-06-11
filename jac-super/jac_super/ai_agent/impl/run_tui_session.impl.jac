@@ -91,7 +91,7 @@ impl run_tui_session(req: object) -> int {
         env["JAC_AI_TUI"] = "1";
         server_cmd = (
             "import sys;"
-            f" sys.argv = ['jac', 'start', '{server_entry}'"
+            f" sys.argv = ['jac', 'start', {repr(str(server_entry))}"
             ", '--port', '0'"
             ", '--no_client'];"
             " from jaclang.jac0core.cli_boot import start_cli;"
