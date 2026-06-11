@@ -28,6 +28,15 @@ class DesktopPlugin {
         self.plugin_name = plugin_name;
     }
 
+    """Receive the live webview handle and ctypes lib after the native webview is created.
+
+    Default is a no-op; override in plugins that need to call back into libwebview
+    (e.g. WindowPlugin). Called by PluginHost.setup() once the webview exists.
+    """
+    def setup(self: DesktopPlugin, wv_handle: int, wv_lib) {
+        pass;
+    }
+
     """Handle a command from JS. Returns a dict result or raises PluginError."""
     def handle(self: DesktopPlugin, command: str, args: dict) -> dict {
         raise PluginError(

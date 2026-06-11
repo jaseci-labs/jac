@@ -17,6 +17,12 @@ class WindowPlugin(DesktopPlugin) {
         self._handle = wv_handle;
     }
 
+    """Late-bind the real webview handle and lib after native webview creation."""
+    def setup(self: WindowPlugin, wv_handle: int, wv_lib) {
+        self._handle = wv_handle;
+        self._wv = wv_lib;
+    }
+
     def handle(self: WindowPlugin, command: str, args: dict) -> dict {
         if command == "set_title" {
             title = args.get("title", "");

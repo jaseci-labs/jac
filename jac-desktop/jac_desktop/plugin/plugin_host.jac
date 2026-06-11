@@ -13,6 +13,34 @@ import from pathlib { Path }
 import from desktop_plugin { PluginError, DesktopPlugin }
 
 
+"""Return the directory containing the running binary, cross-platform.
+
+Uses /proc/self/exe on Linux (fast, no argv[0] edge cases), falls back to
+resolving sys.argv[0] on macOS/Windows. Works inside embedded CPython where
+__main__.__file__ is unset but sys.argv[0] is still the host binary.
+"""
+def _binary_dir -> str {
+    import os, sys;
+    if os.path.isfile("/proc/self/exe") {
+        return os.path.dirname(os.path.realpath("/proc/self/exe"));
+    }
+    # macOS / Windows: sys.argv[0] is the binary path set by the native host.
+    return os.path.dirname(os.path.abspath(sys.argv[0]));
+}
+
+"""Return the platform-correct libwebview filename."""
+def _libwebview_name -> str {
+    import sys;
+    if sys.platform == "darwin" {
+        return "libwebview.dylib";
+    }
+    if sys.platform == "win32" {
+        return "webview.dll";
+    }
+    return "libwebview.so";
+}
+
+
 """Plugin host: registry, dispatch, emit."""
 class PluginHost {
     def init(self: PluginHost) {
@@ -31,14 +59,21 @@ class PluginHost {
     The webview DSO is already loaded by the native binary; dlopen returns
     the same handle. The opaque wv_handle (int pointer) is valid across both
     native and CPython contexts.
+
+    Also propagates the handle and lib to any registered plugin that overrides
+    setup() (e.g. WindowPlugin).
     """
     def setup(self: PluginHost, wv_handle: int) {
         self._wv_handle = wv_handle;
-        # Find libwebview.so next to the running binary.
         import os;
-        exe_dir = os.path.dirname(os.path.realpath("/proc/self/exe"));
-        lib_path = os.path.join(exe_dir, "libwebview.so");
+        exe_dir = _binary_dir();
+        lib_name = _libwebview_name();
+        lib_path = os.path.join(exe_dir, lib_name);
         self._wv_lib = ctypes.CDLL(lib_path);
+        # Propagate to all registered plugins so they can call into libwebview.
+        for plugin in self.plugins.values() {
+            plugin.setup(wv_handle, self._wv_lib);
+        }
     }
 
     """Dispatch a JS invoke() request to the registered plugin.

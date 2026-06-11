@@ -61,8 +61,20 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
     return lib;
 }
 
+"""Platform-correct libwebview filename for the build output directory."""
+def _libwebview_name_build -> str {
+    import sys;
+    if sys.platform == "darwin" {
+        return "libwebview.dylib";
+    }
+    if sys.platform == "win32" {
+        return "webview.dll";
+    }
+    return "libwebview.so";
+}
+
 """Generate the native host source: embed CPython, serve `dist/` (resolved next
-to the binary via /proc/self/exe) on loopback through the OAuth/session broker,
+to the running binary) on loopback through the OAuth/session broker,
 and render it in the webview.
 
 The loopback server is the `oauth_broker` module staged beside the binary, not a
@@ -89,8 +101,11 @@ def _generate_host_source(
     # time so the host needs no hashing at runtime.
     pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
     serve_py = (
-        "import os, socketserver, threading, importlib.util\n"
-        "_exe = os.path.realpath('/proc/self/exe')\n"
+        "import os, sys, socketserver, threading, importlib.util\n"
+        "if os.path.isfile('/proc/self/exe'):\n"
+        "    _exe = os.path.realpath('/proc/self/exe')\n"
+        "else:\n"
+        "    _exe = os.path.abspath(sys.argv[0])\n"
         "_root = os.path.dirname(_exe)\n"
         "_dir = os.path.join(_root, 'dist')\n"
         "_spec = importlib.util.spec_from_file_location("
@@ -282,6 +297,11 @@ def _generate_host_source(
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    # Register the plugin IPC callback in the webview\n"
         "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
+        "    # Wire the live webview handle into CPython so plugins (e.g. WindowPlugin)\n"
+        "    # can call back into libwebview. Must happen *after* webview creation but\n"
+        "    # *before* wv.run().\n"
+        "    PyRun_SimpleString(f\"_wv_handle = {wv.handle}\");\n"
+        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
         "    wv.navigate(url);\n"
         "    ts = PyEval_SaveThread();\n"
@@ -322,7 +342,8 @@ impl NativeDesktopTarget.build(
     shutil.copytree(dist_dir, out_dir / "dist");
     webview_dir = _find_webview_dir();
     lib = _ensure_libwebview(webview_dir);
-    shutil.copy2(lib, out_dir / "libwebview.so");
+    out_lib_name = _libwebview_name_build();
+    shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
     # 5. Transpile oauth_broker.jac -> .py (unchanged from before).
