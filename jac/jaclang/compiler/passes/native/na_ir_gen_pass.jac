@@ -126,6 +126,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # replaces the old non-injective `result.type == abi_type` matching that
         # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
         clib_fn_abi: dict[str, dict] = {},
+        # Clib vtable structs (fn-ptr slots) and their C→Jac callback
+        # trampolines, cached per (jac_fn, c_fn_type) pair (issue #6570).
+        clib_vtable_structs: set[str] = set(),
+        clib_trampoline_funcs: dict[str, ir.Function] = {},
         # Enum support (Phase 1)
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
@@ -749,6 +753,20 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    # ─── C→Jac callback trampolines for clib vtable structs (#6570) ───
+    # True when a registered clib struct has a function-pointer field.
+    def _clib_struct_has_fn_ptr(name: str) -> bool;
+    # Record clib structs with fn-ptr slots in clib_vtable_structs.
+    def _clib_detect_vtable_structs() -> None;
+    # Coerce a value stored into a vtable fn-ptr slot to the slot's C type
+    # (Jac def → trampoline, int 0 → NULL fn ptr, passthrough otherwise).
+    def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Value;
+    # Sign-correct scalar coercion at the C↔Jac trampoline boundary.
+    def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    # Emit (or fetch from cache) the C-ABI wrapper for a Jac def.
+    def _emit_clib_c_trampoline(
+        jac_fn: ir.Function, c_fn_ty: ir.Type
+    ) -> ir.Function;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
     # Compute the C in-memory layout of a clib struct: (size, align, scalars)
     # where scalars is a list of (byte_offset, is_sse, bits). Nested clib

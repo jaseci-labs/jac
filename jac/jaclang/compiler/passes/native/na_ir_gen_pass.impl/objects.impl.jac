@@ -1011,12 +1011,26 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
-            # _coerce_type propagates is_owned across bitcasts so checking val
-            # post-coerce is sufficient.
-            val = self._coerce_type(val, ftype);
+            # Clib vtable fn-ptr slots hold C function pointers (a NULL
+            # default or a Jac def behind a C-ABI trampoline) — code
+            # addresses, never RC objects (issue #6570).
+            _is_clib_cb = (
+                type_name in self.clib_vtable_structs
+                and isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType)
+            );
+            if _is_clib_cb {
+                val = self._clib_coerce_callback(val, ftype);
+            } else {
+                # _coerce_type propagates is_owned across bitcasts so checking
+                # val post-coerce is sufficient.
+                val = self._coerce_type(val, ftype);
+            }
             # RC: retain pointer values stored into struct fields.
             # skip if already owned (call result) — field takes over rc=1.
-            if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+            if isinstance(ftype, ir.PointerType)
+            and not _is_clib_cb
+            and not self._is_owned(val) {
                 self._emit_rc_retain(
                     val,
                     op="ctor_field",
@@ -1075,10 +1089,24 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             if val is not None {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
-                val = self._coerce_type(val, ftype);
+                # Clib vtable fn-ptr slots: `= 0` defaults lower to a NULL C
+                # function pointer; a Jac def default goes through a C-ABI
+                # trampoline (issue #6570). Never RC-retained.
+                _is_clib_cb_d = (
+                    type_name in self.clib_vtable_structs
+                    and isinstance(ftype, ir.PointerType)
+                    and isinstance(ftype.pointee, ir.FunctionType)
+                );
+                if _is_clib_cb_d {
+                    val = self._clib_coerce_callback(val, ftype);
+                } else {
+                    val = self._coerce_type(val, ftype);
+                }
                 # RC: retain pointer defaults stored into struct fields.
                 # skip if already owned (call result) — field takes over rc=1.
-                if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+                if isinstance(ftype, ir.PointerType)
+                and not _is_clib_cb_d
+                and not self._is_owned(val) {
                     self._emit_rc_retain(
                         val,
                         op="ctor_field",
@@ -1819,7 +1847,19 @@ impl NaIRGenPass._codegen_field_assign(
     field_types = self.struct_field_types.get(type_name);
     idx = field_indices[field_name];
     ftype = field_types[field_name];
-    value = self._coerce_type(value, ftype);
+    # Clib vtable fn-ptr slots hold C function pointers (NULL or a Jac def
+    # behind a C-ABI trampoline) — code addresses, never RC objects, so
+    # the retain/release discipline below does not apply (issue #6570).
+    _is_clib_cb = (
+        type_name in self.clib_vtable_structs
+        and isinstance(ftype, ir.PointerType)
+        and isinstance(ftype.pointee, ir.FunctionType)
+    );
+    if _is_clib_cb {
+        value = self._clib_coerce_callback(value, ftype);
+    } else {
+        value = self._coerce_type(value, ftype);
+    }
     field_ptr = self.builder.gep(
         obj_val,
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -1828,7 +1868,7 @@ impl NaIRGenPass._codegen_field_assign(
     # RC: retain new value and release old value for pointer fields.
     # skip retain if value is already owned (function call result) — the
     # field takes over the existing rc=1 without an extra increment.
-    if isinstance(ftype, ir.PointerType) {
+    if isinstance(ftype, ir.PointerType) and not _is_clib_cb {
         if not self._is_owned(value) {
             self._emit_rc_retain(
                 value,
