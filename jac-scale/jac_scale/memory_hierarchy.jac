@@ -145,6 +145,10 @@ obj MongoBackend(PersistentMemory) {
     def show_quarantined(id_prefix: str) -> (dict | None);
     def recover_one(id_prefix: str) -> tuple;
     def recover_all -> tuple;
+    # Startup auto-retry of quarantined docs a new deploy may have fixed
+    # (new classes, aliases, or __jac_schema__ drift rules). Returns
+    # (attempted, recovered).
+    def _auto_retry_quarantine(limit: int = 500) -> tuple;
     def list_aliases -> list;
     def add_alias(old_name: str, new_name: str) -> None;
     def remove_alias(old_name: str) -> bool;

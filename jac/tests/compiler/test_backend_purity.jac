@@ -31,18 +31,16 @@ glob FORBIDDEN: dict[str, str] = {
      # (relative-path, pattern-name) -> max allowed matching lines.
      # These are existing violations awaiting migration; do not add entries.
      ALLOWLIST: dict[tuple, int] = {
-         ("ecmascript/impl/esast_gen_pass.impl.jac", "type_evaluator"): 4,
+         ("ecmascript/impl/esast_gen_pass.impl.jac", "type_evaluator"): 3,
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): 3,
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): 7,
-         ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): 3,
+         ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): 2,
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): 1,
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): 1,
          ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): 2,
-         ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): 12,
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): 6,
-         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): 6,
-         ("native/na_ir_gen_pass.impl/expr.impl.jac", "type_tag.tag"): 2,
-         ("native/na_ir_gen_pass.impl/globals.impl.jac", "type_tag.tag"): 2,
+         ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): 8,
+         ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): 2,
+         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): 4,
 
      };
 

@@ -44,6 +44,14 @@ impl MongoBackend.postinit -> None {
         } except Exception as e {
             logger.debug(f"MongoBackend: index creation skipped: {e}");
         }
+        # Deploy-the-fix-and-data-heals: with classes, aliases, and drift
+        # rules now registered, re-attempt quarantined docs this deploy may
+        # have fixed. Never blocks startup on failure.
+        try {
+            self._auto_retry_quarantine();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: quarantine auto-retry skipped: {e}");
+        }
     }
 }
 
@@ -189,10 +197,64 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
     };
 }
 
+"""Persist a read-repaired anchor back to its document (lazy migration).
+
+The Serializer records applied drift-rule steps on the archetype
+(`__jac_schema_repairs__`); when present, the upgraded form is written
+back with compare-and-set on the originally stored fingerprint, so a
+concurrent writer on an older code version cleanly wins and the doc
+simply repairs again on its next read. Never raises — a failed
+write-back just means the repair re-runs next load (idempotent).
+"""
+def _mongo_persist_repairs(
+    backend: MongoBackend, id_str: str, anchor: Anchor, stored_fp: (str | None)
+) -> None {
+    arch = anchor.archetype if anchor.is_populated() else None;
+    if arch is None {
+        return;
+    }
+    steps = arch.__dict__.get('__jac_schema_repairs__');
+    if not steps {
+        return;
+    }
+    try {
+        doc = _anchor_to_doc(anchor);
+        result = backend.collection.update_one(
+            {'_id': id_str, 'fingerprint': stored_fp}, {'$set': doc}
+        );
+        if result.matched_count {
+            logger.info(
+                f"MongoBackend: persisted read-repair of {id_str} "
+                f"({doc.get('arch_module')}.{doc.get('arch_type')}): {steps}"
+            );
+            if backend._l2_ref {
+                backend._l2_ref.delete(to_uuid(anchor.id));
+            }
+        } else {
+            logger.info(
+                f"MongoBackend: read-repair write-back of {id_str} skipped "
+                "(concurrent write since load); will repair on next read."
+            );
+        }
+        # Either way the in-memory anchor is current; drop the marker so a
+        # later full save doesn't re-log this as a fresh repair.
+        arch.__dict__.pop('__jac_schema_repairs__', None);
+    } except Exception as e {
+        logger.warning(f"MongoBackend: read-repair write-back of {id_str} failed: {e}");
+    }
+}
+
+
 """Move an unreadable document into the quarantine collection.
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+`reason_code` is a stable, machine-readable classification used by the
+startup auto-retry to decide which quarantined docs a new deploy might
+fix: CLASS_MISSING (archetype unresolvable), FIELD_RECONSTRUCT (class
+resolved but field deserialization failed), DESER_ERROR (deserialize
+raised), CASCADE (edge orphaned by a quarantined node).
 
 When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
 whose data.source or data.target references this node, then strip those
@@ -209,7 +271,8 @@ def _mongo_quarantine(
     data: any,
     error: str,
     from_format_version: (int | None) = None,
-    l2: (any | None) = None
+    l2: (any | None) = None,
+    reason_code: str = 'DESER_ERROR'
 ) {
     try {
         q_col = _mongo_q_collection(backend);
@@ -224,6 +287,7 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
+                    'reason_code': reason_code,
                     'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
@@ -268,6 +332,7 @@ def _mongo_quarantine(
                                 'fingerprint': edge_doc.get('fingerprint'),
                                 'data': edge_doc.get('data'),
                                 'error': cascade_error,
+                                'reason_code': 'CASCADE',
                                 'quarantined_at': now_ts,
                                 'from_format_version': edge_doc.get('format_version')
                             }
@@ -404,7 +469,8 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
@@ -416,12 +482,14 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         if cls_resolved is None {
             reason = f"class {arch_module}.{arch_type} unresolvable";
+            code = 'CLASS_MISSING';
             logger.warning(
                 f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
                 f"for anchor {id}. Moving to quarantine."
             );
         } else {
             reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            code = 'FIELD_RECONSTRUCT';
             logger.warning(
                 f"MongoBackend: archetype field deserialization failed for "
                 f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
@@ -437,10 +505,12 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             reason,
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
+    _mongo_persist_repairs(self, str(_id), cast(Anchor, anchor), fingerprint);
     _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
@@ -1041,14 +1111,21 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
     if anchor is None {
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
+        );
+        code = 'CLASS_MISSING' if cls_resolved is None else 'FIELD_RECONSTRUCT';
         logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {doc_id}. Moving to quarantine."
+            f"MongoBackend: failed to load {arch_module}.{arch_type} "
+            f"for anchor {doc_id} ({code}). Moving to quarantine."
         );
         _mongo_quarantine(
             self,
@@ -1058,12 +1135,14 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
+            f"load failed for class {arch_module}.{arch_type}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
+    _mongo_persist_repairs(self, doc_id, cast(Anchor, anchor), fingerprint);
     _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
@@ -1146,8 +1225,10 @@ def _format_q_doc(d: dict) -> dict {
         'arch_type': d.get('arch_type'),
         'fingerprint': d.get('fingerprint'),
         'error': d.get('error'),
+        'reason_code': d.get('reason_code'),
         'quarantined_at': d.get('quarantined_at'),
         'from_format_version': d.get('from_format_version'),
+        'retry_count': d.get('retry_count'),
         'data': d.get('data')
     };
 }
@@ -1224,6 +1305,7 @@ impl MongoBackend.list_quarantined(limit: int = 50) -> list {
             'arch': ((d.get('arch_module') or '?') + '.' + (d.get('arch_type') or '?')),
             'fingerprint': str(d.get('fingerprint') or ''),
             'error': str(d.get('error') or ''),
+            'reason_code': str(d.get('reason_code') or ''),
             'quarantined_at': str(d.get('quarantined_at') or '')
         } for d in docs
     ];
@@ -1311,6 +1393,90 @@ impl MongoBackend.recover_all -> tuple {
         }
     }
     return (recovered, still_stuck);
+}
+
+
+"""Auto-retry quarantined documents that a new deploy plausibly fixed.
+
+Runs once at backend startup (after class/alias registration). A doc is
+eligible when its archetype class now resolves AND one of: its reason
+code is CLASS_MISSING (the class/alias appearing IS the fix signal), the
+class declares `__jac_schema__` drift rules (a rule may now repair it),
+or it was CASCADE-quarantined (its node may have recovered). Each failed
+attempt increments `retry_count`; docs give up loudly after 5. Recovery
+itself reuses `_mongo_attempt_recover`, so repaired forms are re-stamped
+with the live fingerprint. Gated off when JAC_SCHEMA_REPAIR=off.
+"""
+impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
+    import from jaclang.runtimelib.schema_rules { merged_rules_for, repair_mode }
+    if self.client is None or repair_mode() == 'off' {
+        return (0, 0);
+    }
+    try {
+        docs = list(
+            _mongo_q_collection(self).find(
+                {
+                    '$or': [
+                        {'retry_count': {'$exists': False}},
+                        {'retry_count': {'$lt': 5}}
+                    ]
+                }
+            ).limit(
+                limit
+            )
+        );
+    } except Exception as e {
+        logger.debug(f"MongoBackend: quarantine auto-retry scan failed: {e}");
+        return (0, 0);
+    }
+    if not docs {
+        return (0, 0);
+    }
+    # Nodes before edges so cascade re-link finds live nodes.
+    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    attempted = 0;
+    recovered = 0;
+    for d in docs {
+        cls = Serializer._get_class(d.get('arch_module'), d.get('arch_type'));
+        if cls is None {
+            continue;
+        }
+        code = d.get('reason_code');
+        if not (
+            code == 'CLASS_MISSING'
+            or code == 'CASCADE'
+            or merged_rules_for(cls) is not None
+        ) {
+            continue;
+        }
+        attempted += 1;
+        (ok, reason) = _mongo_attempt_recover(self, d);
+        if ok {
+            recovered += 1;
+        } else {
+            doc_id = str(d.get('_id', ''));
+            try {
+                _mongo_q_collection(self).update_one(
+                    {'_id': doc_id}, {'$inc': {'retry_count': 1}}
+                );
+            } except Exception { }
+            retries = int(d.get('retry_count') or 0) + 1;
+            if retries >= 5 {
+                logger.warning(
+                    f"MongoBackend: quarantined doc {doc_id} still failing "
+                    f"after {retries} auto-retries ({reason}); giving up "
+                    "until `jac db recover` is run manually."
+                );
+            }
+        }
+    }
+    if attempted {
+        logger.info(
+            f"MongoBackend: quarantine auto-retry attempted {attempted}, "
+            f"recovered {recovered} (of {len(docs)} scanned)."
+        );
+    }
+    return (attempted, recovered);
 }
 
 

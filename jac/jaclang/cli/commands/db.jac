@@ -25,7 +25,7 @@ glob registry = get_registry();
             "action",
             kind=ArgKind.POSITIONAL,
             default="inspect",
-            help="Action: inspect, quarantine, alias, recover, recover-all"
+            help="Action: inspect, quarantine, alias, recover, recover-all, schema"
         ),
         Arg.create(
             "sub",
@@ -72,6 +72,7 @@ glob registry = get_registry();
         ("jac db alias remove old.mod.OldName", "Remove a rescue alias"),
         ("jac db recover <row-id>", "Try to un-quarantine one row"),
         ("jac db recover-all", "Try to un-quarantine every row; report counts"),
+        ("jac db schema rules", "List registered __jac_schema__ drift rules"),
 
     ],
     group="db"

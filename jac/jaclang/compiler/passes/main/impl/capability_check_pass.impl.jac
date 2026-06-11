@@ -1,4 +1,4 @@
-"""Portability check pass implementation."""
+"""Implementation of the capability / portability authority (Phase 9)."""
 
 # JS-specific globals and their Jac alternatives
 glob JS_GLOBALS: dict[str, str] = {
@@ -83,23 +83,77 @@ glob JS_GLOBALS: dict[str, str] = {
      };
 
 
-impl PortabilityCheckPass.postinit -> None {
+impl classify_native_import(item: uni.UniNode) -> tuple {
+    mod_name: (str | None) = None;
+    if isinstance(item, uni.ModulePath) and item.path {
+        parts = [];
+        for pseg in item.path {
+            parts.append(pseg.value if isinstance(pseg, uni.Name) else str(pseg));
+        }
+        mod_name = ".".join(parts);
+    }
+    return (mod_name, mod_name is not None and mod_name in NATIVE_SUPPORTED_STDLIB);
+}
+
+impl module_native_compat(mod: uni.Module) -> bool {
+    scan_mods = [mod] + list(mod.impl_mod) + list(mod.test_mod) + list(mod.variant_mod);
+    has_entry = False;
+    for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode, brute_force=True) {
+        for k in mc.kid {
+            if isinstance(k, uni.Token) and k.value == "entry" {
+                has_entry = True;
+                break;
+            }
+        }
+        if has_entry {
+            break;
+        }
+    }
+    if not has_entry {
+        return False;
+    }
+    for m in scan_mods {
+        for nd_type in NATIVE_DISQUALIFIER_NODES {
+            if m.get_all_sub_nodes(typ=nd_type, brute_force=True) {
+                return False;
+            }
+        }
+        for arch in m.get_all_sub_nodes(typ=uni.Archetype, brute_force=True) {
+            # Any OSP archetype (node/edge/walker) disqualifies; plain
+            # obj/class archetypes (arch_kind None) are native-lowerable.
+            if arch.arch_kind is not None {
+                return False;
+            }
+        }
+        for ab in m.get_all_sub_nodes(typ=uni.Ability, brute_force=True) {
+            if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
+impl CapabilityCheckPass.postinit -> None {
     super.postinit();
 }
 
-"""Run all portability checks via bulk sub-node queries (no tree traversal).
+impl CapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
+    ir_in.gen.native_compat = module_native_compat(ir_in);
+    return ir_in;
+}
 
-Warnings fire in ALL contexts (server, client, native) because Jac idioms
-are the preferred style everywhere. The ES backend translates Jac idioms
-to their JS equivalents, so there is no reason to use JS-specific patterns
-even in cl {} blocks.
-"""
-impl PortabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
-    self._check_js_globals(self.ir_in);
-    self._check_js_methods(self.ir_in);
-    self._check_js_keywords(self.ir_in);
-    self._check_js_properties(self.ir_in);
-    for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
+impl PortabilityWarnPass.postinit -> None {
+    super.postinit();
+}
+
+"""Run all portability checks via bulk sub-node queries (no tree traversal)."""
+impl PortabilityWarnPass.transform(ir_in: uni.Module) -> uni.Module {
+    self._check_js_globals(ir_in);
+    self._check_js_methods(ir_in);
+    self._check_js_keywords(ir_in);
+    self._check_js_properties(ir_in);
+    for annex_mod in ir_in.impl_mod + ir_in.test_mod + ir_in.variant_mod {
         self._check_js_globals(annex_mod);
         self._check_js_methods(annex_mod);
         self._check_js_keywords(annex_mod);
@@ -109,7 +163,7 @@ impl PortabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 }
 
 """Detect usage of JS-specific global objects (console, Math, JSON, etc.)."""
-impl PortabilityCheckPass._check_js_globals(mod: uni.Module) -> None {
+impl PortabilityWarnPass._check_js_globals(mod: uni.Module) -> None {
     import ast as ast3;
     all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
     for name_nd in all_names {
@@ -137,7 +191,7 @@ impl PortabilityCheckPass._check_js_globals(mod: uni.Module) -> None {
 }
 
 """Detect usage of JS-idiomatic method calls (.push, .forEach, .indexOf, etc.)."""
-impl PortabilityCheckPass._check_js_methods(mod: uni.Module) -> None {
+impl PortabilityWarnPass._check_js_methods(mod: uni.Module) -> None {
     all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer, brute_force=True);
     for trailer in all_trailers {
         if not trailer.is_attr {
@@ -168,7 +222,7 @@ impl PortabilityCheckPass._check_js_methods(mod: uni.Module) -> None {
 }
 
 """Detect usage of JS-specific keywords used as identifiers (undefined, typeof, etc.)."""
-impl PortabilityCheckPass._check_js_keywords(mod: uni.Module) -> None {
+impl PortabilityWarnPass._check_js_keywords(mod: uni.Module) -> None {
     import ast as ast3;
     all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
     for name_nd in all_names {
@@ -202,7 +256,7 @@ impl PortabilityCheckPass._check_js_keywords(mod: uni.Module) -> None {
 }
 
 """Detect usage of JS-specific property access (.length instead of len(), etc.)."""
-impl PortabilityCheckPass._check_js_properties(mod: uni.Module) -> None {
+impl PortabilityWarnPass._check_js_properties(mod: uni.Module) -> None {
     all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer, brute_force=True);
     for trailer in all_trailers {
         if not trailer.is_attr {

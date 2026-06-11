@@ -738,6 +738,13 @@ Extracts library paths for loading and forward-declares
 extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
+    # The native-stdlib legality table lives in the capability authority
+    # (Phase 9); this post-coercion point enforces it because
+    # auto-promotion makes imports native-context after CapabilityCheckPass
+    # runs.
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        NATIVE_SUPPORTED_STDLIB
+    }
     # Collect imports from top-level and inside na {} blocks
     imports = [
         s
@@ -749,17 +756,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
-                    mod_name = None;
-                    if isinstance(item, uni.ModulePath) and item.path {
-                        parts = [];
-                        for p in item.path {
-                            parts.append(
-                                p.value if isinstance(p, uni.Name) else str(p)
-                            );
-                        }
-                        mod_name = ".".join(parts);
+                    # Legality is the capability authority's call (Phase 9);
+                    # this post-coercion point only enforces and tracks.
+                    import from jaclang.compiler.passes.main.capability_check_pass {
+                        classify_native_import
                     }
-                    if mod_name in NATIVE_SUPPORTED_STDLIB {
+                    (mod_name, _supported) = classify_native_import(item);
+                    if _supported {
                         # A stdlib module the native backend lowers (its members
                         # are intercepted in codegen). Track it so those
                         # intercepts know it was imported. Grows with the

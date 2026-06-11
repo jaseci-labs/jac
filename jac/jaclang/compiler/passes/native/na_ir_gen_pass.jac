@@ -14,19 +14,6 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091, E9002 }
 
-# ── Python stdlib modules the native backend can lower ────────────────────
-# Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
-# `X.func(...)`) the native codegen actually intercepts and lowers. A native
-# `import` of anything NOT in this set is rejected (issue #6357) so it fails
-# loudly instead of dropping the import and emitting a silently-wrong binary.
-#
-# This is the extension point for the Python-congruent native stdlib roadmap
-# (issue #6404): as each module gains real native lowering (e.g. `math` via
-# libm intercepts + types in na_builtins.pyi), add its name here in the SAME
-# change that adds the codegen support. Only list a module once its members
-# are genuinely lowered — listing it early re-introduces the silent-wrong
-# failure this guard exists to prevent.
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"};
 
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
 # via a None return) because time.sleep legitimately produces a void result.
@@ -370,6 +357,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _resolve_type_str(type_name: str) -> ir.Type;
     # Resolved callee signature for a call site (checker-stamped fact).
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
+    # Evaluate a call's argument expressions (drops failed lowers).
+    def _codegen_call_args(nd: uni.FuncCall) -> list;
+    # Take a reference for a slot about to own `value` (retain if borrowed).
+    def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
     # Fill omitted trailing params from the resolved callee's defaults.
     def _fill_default_args(
         nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
@@ -790,15 +781,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Compute the C in-memory layout of a clib struct: (size, align, scalars)
     # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
     # structs are flattened (inlined) recursively to match the C ABI.
-    def _clib_struct_layout(name: str) -> tuple;
-    def _scalar_layout(llt: ir.Type) -> tuple;
-    # Classify a clib struct for the active target's C ABI (dispatches to the
+    def _clib_struct_layout(
+        name: str
+    ) -> tuple;  # Classify a clib struct for the active target's C ABI (dispatches to the
+
+
     # System V or AAPCS variant) into either MEMORY (indirect) or register
     # coerce types.
-    def _classify_clib_struct(name: str) -> dict;
-    def _classify_clib_struct_sysv(name: str) -> dict;
-    def _classify_clib_struct_aapcs(name: str) -> dict;
-    # Name of the (struct) type an annotation refers to, or None.
+    def _classify_clib_struct(
+        name: str
+    ) -> dict;  # Name of the (struct) type an annotation refers to, or None.
+
+
     def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
     # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
@@ -866,7 +860,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
     ) -> None;
 
-    def _emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None;
+    def _emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None;
     def _set_rc_ctx(op: str, loc: str) -> None;
     def _clear_rc_ctx -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;

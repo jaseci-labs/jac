@@ -341,6 +341,44 @@ def _cmd_recover_all(app: str) -> int {
 }
 
 
+def _cmd_schema_rules(app: str) -> int {
+    # Loading the backend imports the app, which registers archetypes and
+    # collects their __jac_schema__ rules — the registry we list from.
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    import from jaclang.runtimelib.schema_rules { repair_mode }
+    import jaclang.runtimelib.schema_rules as _rules_mod;
+    collected = getattr(_rules_mod, '_collected', {});
+    console.print_header("Registered schema drift rules");
+    console.info(f"JAC_SCHEMA_REPAIR mode: {repair_mode()}", emoji=False);
+    if not collected {
+        console.info("No archetype declares a __jac_schema__ hook.");
+        return 0;
+    }
+    rows: list = [];
+    for (owner, r) in sorted(collected.items()) {
+        for w in r.was_names {
+            rows.append([owner, 'was', w]);
+        }
+        for a in r.aliases {
+            rows.append([owner, 'alias', f"{a.stored_name} -> {a.new_name}"]);
+        }
+        for d in r.drops {
+            rows.append([owner, 'drop', d.field_name]);
+        }
+        for u in r.upgrades {
+            rows.append([owner, 'upgrade', getattr(u.fn, '__name__', '<fn>')]);
+        }
+    }
+    console.print_table(
+        headers=["archetype", "rule", "detail"], rows=rows, title="Rules"
+    );
+    return 0;
+}
+
+
 """Entry point — dispatches to the right subcommand."""
 impl db(
     action: str = 'inspect',
@@ -386,9 +424,16 @@ impl db(
     if action == 'recover-all' {
         return _cmd_recover_all(app);
     }
+    if action == 'schema' {
+        if sub == 'rules' or sub == '' {
+            return _cmd_schema_rules(app);
+        }
+        console.error(f"Unknown schema sub-action '{sub}'", hint="expected: rules");
+        return 1;
+    }
     console.error(
         f"Unknown action '{action}'",
-        hint="expected: inspect, quarantine, alias, recover, recover-all"
+        hint="expected: inspect, quarantine, alias, recover, recover-all, schema"
     );
     return 1;
 }
