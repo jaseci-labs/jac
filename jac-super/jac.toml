@@ -1,6 +1,6 @@
 [project]
 name = "jac-super"
-version = "0.1.20"
+version = "0.1.21"
 description = "Enhanced console output for Jac CLI with Rich formatting"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -31,7 +31,7 @@ jac_super = [
 ]
 
 [dependencies]
-jaclang = ">=0.16.1"
+jaclang = ">=0.16.2"
 rich = ">=13.0.0"
 "jac-client" = ">=0.1.0"
 
