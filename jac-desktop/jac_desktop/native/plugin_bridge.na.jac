@@ -1,7 +1,9 @@
-"""Native shim bridging webview callbacks into the CPython plugin host.
+"""Reference source for the native plugin IPC shim (not compiled directly).
 
-This is the only new native file. It sits in nacompile alongside webview.na.jac
-and the generated host.na.jac. ~20 lines that handle:
+This file is **not** compiled by nacompile. The bridge is inlined into the
+generated host source by ``_generate_host_source()`` in
+``native_desktop_target.impl.jac``. Keep this file in sync with that inline
+block — it documents the ~20 lines that handle:
   - inttoptr coercion (C string pointer -> Jac str)
   - GIL management (PyGILState_Ensure / Release)
   - CPython function call (PyObject_CallOneArg)
