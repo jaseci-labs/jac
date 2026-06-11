@@ -32,13 +32,9 @@ import from "libcef_dispatch.so" {
         title: str, width: i32, height: i32
     ) -> int;  def cef_dispatch_browser_settings_create -> int;  def cef_dispatch_main_args_create -> int;  def cef_dispatch_create_browser(
         window_info: int, client: int, url: str, settings: int
-    ) -> i32;  def cef_dispatch_get_exe_dir -> str;
-}
-
-import from "libc.so.6" {
-    def getenv(name: str) -> int;  def fprintf(stream: int, fmt: str) -> int;  def fflush(
-        stream: int
-    ) -> int;
+    ) -> i32;  def cef_dispatch_get_exe_dir -> str;  def cef_dispatch_getenv_set(
+        name: str
+    ) -> i32;  def cef_dispatch_log(msg: str) -> None;
 }
 
 # ---------------------------------------------------------------------------
@@ -168,12 +164,8 @@ def _cef_has_at_least_one_ref(self: int) -> int {
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-glob STDERR: int = 0,
-     LOG_FMT: str = "[cef] %s\n";
-
 def _cef_log(msg: str) {
-    fprintf(STDERR, LOG_FMT, msg);
-    fflush(STDERR);
+    cef_dispatch_log(msg);
 }
 
 # ---------------------------------------------------------------------------
@@ -293,12 +285,12 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
     cef_dispatch_cmdline_append_switch_value(command_line, "use-gl", "desktop");
     cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-sandbox");
     cef_dispatch_cmdline_append_switch(command_line, "disable-dev-shm-usage");
-    if getenv("JAC_CEF_DISABLE_GPU") != 0 {
+    if cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-compositing");
         cef_dispatch_cmdline_append_switch(command_line, "enable-software-rasterizer");
     }
-    if getenv("JAC_CEF_SINGLE_PROCESS") != 0 {
+    if cef_dispatch_getenv_set("JAC_CEF_SINGLE_PROCESS") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "single-process");
     }
 }

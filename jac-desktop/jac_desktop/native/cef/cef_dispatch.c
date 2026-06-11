@@ -149,6 +149,18 @@ intptr_t cef_dispatch_browser_settings_create(void) {
     return (intptr_t)s;
 }
 
+int cef_dispatch_getenv_set(const char* name) {
+    const char* v = getenv(name);
+    return (v != NULL && v[0] != '\0') ? 1 : 0;
+}
+
+void cef_dispatch_log(const char* msg) {
+    if (msg) {
+        fprintf(stderr, "[cef] %s\n", msg);
+        fflush(stderr);
+    }
+}
+
 intptr_t cef_dispatch_main_args_create(void) {
     cef_main_args_t* a = (cef_main_args_t*)calloc(1, sizeof(cef_main_args_t));
     FILE* f;
