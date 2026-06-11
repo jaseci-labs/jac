@@ -97,7 +97,13 @@ class Walker:
     reports: list[Any]
 
 class Obj: ...
-class Root(Node): ...
+
+class Root(Node):
+    # The deployment's shared root: the root every unauthenticated
+    # request runs on. Normal permission checks still apply to its graph.
+    @property
+    def shared(self) -> Root: ...
+
 class GenericEdge(Edge): ...
 
 class JsxElement:

@@ -567,14 +567,6 @@ impl NaIRGenPass._rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value {
     return self.builder.call(self.rc_alloc_fn, [size], name=name);
 }
 
-"""Allocate RC-managed memory and bitcast to target pointer type."""
-impl NaIRGenPass._rc_alloc_typed(
-    size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
-) -> ir.Value {
-    raw = self._rc_alloc(size, name="rc.raw");
-    return self.builder.bitcast(raw, target_type, name=name);
-}
-
 """Emit rc_retain call for a pointer value.
 
 op: short string identifying the source-level operation (e.g. "assign", "return").

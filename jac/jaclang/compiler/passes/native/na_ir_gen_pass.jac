@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091, E9002 }
 
 # ── Python stdlib modules the native backend can lower ────────────────────
 # Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
@@ -126,6 +126,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # replaces the old non-injective `result.type == abi_type` matching that
         # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
         clib_fn_abi: dict[str, dict] = {},
+        # Clib vtable structs (fn-ptr slots) and their C→Jac callback
+        # trampolines, cached per (jac_fn, c_fn_type) pair (issue #6570).
+        clib_vtable_structs: set[str] = set(),
+        clib_trampoline_funcs: dict[str, ir.Function] = {},
         # Enum support (Phase 1)
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
@@ -133,7 +137,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
         enum_member_ordinal: dict[str, int] = {},
-        var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
         _str_count: int = 0,
@@ -143,12 +146,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
         method_funcs: dict[str, ir.Function] = {},
-        method_ast_sigs: dict[str, object] = {},
-        type_var_map: dict[str, str] = {},
+        # Interop-marshalling return facts for free functions, recorded at
+        # declaration time (while the Ability node is in hand) and consumed
+        # by build_interop_layout. These replaced the name-keyed
+        # AST-signature cache (method_ast_sigs); call sites read resolved
+        # signatures off the checker-stamped FuncCall.callee_decl instead.
+        func_ret_tuple_hints: dict[str, list] = {},
+        func_ret_ann_name: dict[str, str] = {},
         # List support (Phase 4)
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
-        var_list_elem_type: dict[str, str] = {},
         # For ptr-element lists holding boxed tuples, the pointer-to-struct
         # LLVM type of an element (e.g. `{i64, i64}*`). Lets `(a, b) = lst.pop()`
         # recover the tuple shape for a bare `list` whose annotation carries no
@@ -158,22 +165,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # just boxed, read by the enclosing assignment to seed
         # var_list_elem_struct. Reset at the start of each list-literal codegen.
         _pending_list_elem_struct: (object | None) = None,
+        # Archetype whose method body is being codegen'd. Inherited methods are
+        # re-emitted per subclass, so `self` must resolve to the *current*
+        # (flattened) layout, not the declaring parent the checker reports.
+        _self_arch: (str | None) = None,
         field_type_node: dict[str, dict] = {},
-        var_type_node: dict[str, object] = {},
-        _list_type_hint: (str | None) = None,
-        _last_type_node_hint: (object | None) = None,
-        # True while codegen'ing the TupleVal of a `return (...)`. In that
-        # context borrowed (field-load / element-read) pointer elements must be
-        # retained so they outlive the owning local's scope-exit teardown — the
-        # returned tuple box does not own its elements (see _codegen_tuple_val).
-        _return_tuple_ctx: bool = False,
-        # Inheritance / vtable support (Phase 5)
-        class_hierarchy: dict[str, str] = {},
-        class_parents: dict[str, list[str]] = {},
-        mro_order: dict[str, list[str]] = {},
+        # Inheritance / vtable support (Phase 5). Hierarchy, MRO, and
+        # vtable-need are NOT copied here: they are queried from the central
+        # LayoutRegistry via _mro_of / _arch_has_vtable.
         parent_field_start: dict[str, dict[str, int]] = {},
         arch_ast_map: dict[str, object] = {},
-        has_vtable: dict[str, bool] = {},
         vtable_layouts: dict[str, list[str]] = {},
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
@@ -212,23 +213,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _osp_ensure_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
-        var_tuple_type: dict[str, str] = {},
-        # Complex/Range/Slice var tracking
-        var_complex: set[str] = set(),
-        var_range: set[str] = set(),
-        var_slice: set[str] = set(),
         # Global variable support (Phase 11)
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
         # Dictionary support (Phase 12)
         dict_types: dict[str, object] = {},
         dict_helpers: dict[str, dict] = {},
-        var_dict_type: dict[str, str] = {},
-        _dict_val_type_hint: (str | None) = None,
         # Set support (Phase 13)
         set_types: dict[str, object] = {},
         set_helpers: dict[str, dict] = {},
-        var_set_elem_type: dict[str, str] = {},
         # Exception handling support (Phase 14)
         _exc_state_type: (object | None) = None,
         _exc_handler_global: (object | None) = None,
@@ -289,19 +282,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # this to emit the correct two-level-namespace dylib ordinal per symbol.
         _clib_symbol_lib: dict[str, str] = {},
         _native_emit_ctx_class: (type | None) = None,
-        # Per-function tracking for borrowed-param promotion: entry-block store instruction
-        # per param (for position_after retain insertion) and set of already-promoted params.
-        # Both are reset at the start of each function/method.
-        _param_store_instr: dict[str, object] = {},
-        _param_promoted: set[str] = set(),
-        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
-        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
-        # (_declared_globals) may rebind a module global. A bare function-scope
-        # assignment to a glob-named variable allocates a function-local
-        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
-        # reset per function.
-        _declared_globals: set[str] = set(),
-        _in_module_scope: bool = False,
+        # TypeBase -> ir.Type lowering memo, keyed by the canonical type key
+        # (TypeBase.mangle). Per LLVM module; a hit implies any collection
+        # helpers for the type were already emitted.
+        _lowered_type_cache: dict[str, ir.Type] = {},
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
@@ -349,15 +333,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # with a variable name during assignment. Set by _codegen_lambda, consumed
     # and cleared by _codegen_assignment.
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
-    def _find_free_vars(body: object, param_names: list[str]) -> list[str];
     # External function support (Phase 0)
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
     ) -> ir.Function;
-
-    def _call_extern(
-        b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
-    ) -> ir.Value;
     # Print support
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
@@ -370,7 +349,32 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _lower_type(t: any) -> (ir.Type | None);
     def _lower_class_type(t: any) -> (ir.Type | None);
     def _lower_function_type(t: any) -> ir.Type;
+    # Canonical type key (TypeBase.mangle) of an expression's checked type.
+    def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Enum class name of an expression's checked type (instance or member).
+    def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native tuple registry key derived from an expression's checked type.
+    def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native set spec key ("i64"/"f64"/"ptr"/...) from a checked set type.
+    def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native dict registry key ("k:v" spec) from a checked dict type.
+    def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native list spec key ("i64"/"f64"/"ptr"/...) from a checked list type.
+    def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Native struct name from a checked instance type (handles T | None).
+    def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Lowered LLVM type of a checked list type's element.
+    def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
+    def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
+    # Resolved callee signature for a call site (checker-stamped fact).
+    def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
+    # Fill omitted trailing params from the resolved callee's defaults.
+    def _fill_default_args(
+        nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
+    ) -> None;
+
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
@@ -400,6 +404,23 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    # One indexed-loop skeleton for every native `for` form (range / list /
+    # dict / dict-items / str); hosts the loop-var RC discipline, body-local
+    # snapshot + back-edge cleanup, break/continue targets, and the owned
+    # collection release.
+    def _codegen_for_indexed(
+        nd: uni.InForStmt,
+        kind: str,
+        collection_val: ir.Value,
+        helpers: (dict | None),
+        var_names: list,
+        var_types: list,
+        rc_vars: bool,
+        coll_release_op: str,
+        range_start: (ir.Value | None) = None,
+        elem_cast: (ir.Type | None) = None
+    ) -> None;
+
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
     def _codegen_match(nd: uni.MatchStmt) -> None;
     def _match_pattern_cond(
@@ -419,7 +440,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
-    def _walk_imported_module(imported_mod: uni.Module) -> None;
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
@@ -429,7 +449,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
-    def _arch_kind(nd: uni.Archetype) -> (str | None);
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
@@ -448,6 +467,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
+    def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
@@ -455,6 +475,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Resolve the member struct names a trigger tag denotes -- a single `Name`,
     # a `|` union, or a `(A, B)` tuple trigger -- filtered to known structs.
     def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    # Member struct names an event ability fires on: checker-resolved
+    # triggers (Ability.event_trigger_type_names) filtered to known
+    # structs, with AST-flattening fallback.
+    def _trigger_struct_names(method: uni.Ability) -> list[str];
     # Validate that every field common to all union members lives at the same
     # index and type; returns the first divergent field name, or None if the
     # members share a consistent layout (so any member's layout is usable).
@@ -564,6 +588,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Phase 5: Inheritance, Vtables, and C3 MRO
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
+    # Central class-model queries (LayoutRegistry is the owner; no copies).
+    def _mro_of(arch_name: str) -> list[str];
+    def _arch_has_vtable(arch_name: str) -> bool;
     def _codegen_virtual_call(
         obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
     ) -> (ir.Value | None);
@@ -572,14 +599,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Phase 6: Complex Chains and Type Inference
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
-    def _peel_list_type(type_node: (object | None)) -> tuple;
-    def _get_list_elem_from_type_node(type_node: (object | None)) -> (str | None);
     def _infer_compr_elem_struct(compr: object) -> (str | None);
-    def _resolve_for_loop_elem_type(
-        coll_name: (str | None), coll_node: (object | None)
-    ) -> (ir.Type | None);
-
-    def _resolve_ptr_elem_cast_type(type_node: (object | None)) -> (ir.Type | None);
     def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     # Phase 7: String Methods and Builtins
     def _codegen_string_index(
@@ -626,63 +646,39 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
-    # Phase 10: Comprehensions
+    # Phase 10: Comprehensions. One unified walker serves list/dict/set:
+    # `kind` selects the element emission, `spec` is the element spec or
+    # dict registry key, `val_expr` is dict-only.
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
-    def _codegen_compr_loops(
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
-    ) -> None;
-
-    def _codegen_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
-    def _codegen_dict_compr_loops(
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str
-    ) -> None;
-
-    def _codegen_dict_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
-    def _codegen_set_compr_loops(
-        comprs: list,
-        idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
+    def _emit_compr_element(
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
     ) -> None;
 
-    def _codegen_set_compr_range_loop(
+    def _codegen_compr_walk(
+        comprs: list,
+        idx: int,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
+    ) -> None;
+
+    def _codegen_compr_range_walk(
         inner: uni.InnerCompr,
         comprs: list,
         idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str,
         conditionals: list
     ) -> None;
     # Phase 11: Global Variables
@@ -722,15 +718,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         elem_type_name: str, elem_type: ir.Type, elem_size: int = 0
     ) -> None;
 
-    def _codegen_set_val(nd: uni.SetVal) -> (ir.Value | None);
-    def _codegen_set_contains(
-        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-    ) -> (ir.Value | None);
+    def _codegen_set_val(
+        nd: uni.SetVal
+    ) -> (ir.Value | None);  # Phase 14: Exception Handling
 
-    def _codegen_set_add(
-        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-    ) -> None;
-    # Phase 14: Exception Handling
+
     def _get_exception_state_type -> ir.Type;
     def _declare_exception_runtime -> None;
     def _emit_exc_push_helper -> None;
@@ -779,6 +771,21 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    # ─── C→Jac callback trampolines for clib vtable structs (#6570) ───
+    # True when a registered clib struct has a function-pointer field.
+    def _clib_struct_has_fn_ptr(name: str) -> bool;
+    # Record clib structs with fn-ptr slots in clib_vtable_structs.
+    def _clib_detect_vtable_structs -> None;
+    # Coerce a value stored into a vtable fn-ptr slot to the slot's C type
+    # (Jac def → trampoline, int 0 → NULL fn ptr, passthrough otherwise).
+    def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Value;
+    # Sign-correct scalar coercion at the C↔Jac trampoline boundary.
+    def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    # Emit (or fetch from cache) the C-ABI wrapper for a Jac def.
+    def _emit_clib_c_trampoline(jac_fn: ir.Function, c_fn_ty: ir.Type) -> ir.Function;
+    # Allocate a clib vtable struct as flat, zeroed, C-owned memory —
+    # no RC header/destructor/type tag (#6571).
+    def _clib_alloc_vtable(name: str) -> ir.Value;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
     # Compute the C in-memory layout of a clib struct: (size, align, scalars)
     # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
@@ -832,10 +839,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Reference counting (Phase RC)
     def _emit_rc_helpers -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
-    def _rc_alloc_typed(
-        size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
-    ) -> ir.Value;
-
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;

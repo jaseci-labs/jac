@@ -124,6 +124,27 @@ def resolve_attr_chain(expr: uni.AtomTrailer) -> list[uni.Symbol] {
     return result;
 }
 
+"""Return the ability declaration a resolved symbol denotes (if any).
+
+The symbol's first definition is either the Ability node itself or the
+ability's name atom (whose parent is the Ability). Single owner of the
+symbol-to-ability mapping: the checker uses it to stamp
+`FuncCall.callee_decl`; backends consume the stamp.
+"""
+def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
+    if sym is None or not sym.defn {
+        return None;
+    }
+    defn_node = sym.defn[0];
+    if isinstance(defn_node, uni.Ability) {
+        return defn_node;
+    }
+    if isinstance(defn_node.parent, uni.Ability) {
+        return defn_node.parent;
+    }
+    return None;
+}
+
 """Get the archetype that owns/defines a symbol (if any)."""
 def symbol_owner_archetype(sym: uni.Symbol) -> (uni.Archetype | None) {
     decl = sym.decl;

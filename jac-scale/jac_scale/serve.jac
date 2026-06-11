@@ -149,6 +149,8 @@ obj JacAPIServerCore {
     def _print_startup_banner(dev: bool, no_client: bool) -> None;
     # Health check
     def register_health_endpoint -> None;
+    # Dev-mode build health (HMR compile status)
+    def register_build_status_endpoint -> None;
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support

@@ -300,6 +300,12 @@ impl JacAPIServerCore.start(
         }
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+    # Back `root.shared`: map the guest user (created above) to its root id.
+    _um = self.user_manager;
+    def _shared_root_id -> (str | None) {
+        return _um.get_root_id(Con.GUEST.value);
+    }
+    Jac.set_shared_root_resolver(_shared_root_id);
     self.setup_emailer();
     self._setup_scheduler();
     self._setup_events();
@@ -501,6 +507,33 @@ impl JacAPIServerCore.register_health_endpoint -> None {
     );
 }
 
+"""Register /__build_status: dev-mode build health from the hot reloader.
+HTTP 200 alone can't tell a clean build from a broken one (compile errors
+still serve the error-overlay page); "unavailable" outside dev mode."""
+impl JacAPIServerCore.register_build_status_endpoint -> None {
+    async def build_status -> dict {
+        import from jaclang.runtimelib.hmr { get_build_status }
+        return get_build_status();
+    }
+
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/__build_status',
+            callback=build_status,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Dev build health',
+            description=(
+                'Hot-reload build status: "ok", "compiling", or "error" '
+                '(with the failing file and message); "unavailable" when '
+                'not running in dev mode.'
+            )
+        )
+    );
+}
+
 """Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }
@@ -591,6 +624,7 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServerCore._register_endpoints -> None {
     # Core endpoints
     self.register_health_endpoint();
+    self.register_build_status_endpoint();
     self.register_auth_endpoints();
     self.register_page_endpoint();
     self.register_client_js_endpoint();
