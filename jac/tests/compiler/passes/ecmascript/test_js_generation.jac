@@ -3,6 +3,7 @@
 Migrated from test_js_generation.py to native Jac test format.
 """
 
+import json;
 import os;
 import subprocess;
 import sys;
@@ -21,6 +22,7 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _js_compile_cache: dict[str, str] = {},
+     _js_production_compile_cache: dict[str, str] = {},
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_js_");
 
 """Write code to a temp .jac file in a dedicated directory (avoids /tmp scan)."""
@@ -33,29 +35,39 @@ def write_temp_jac(code: str) -> str {
     }
 }
 
-"""Compile a Jac fixture to JavaScript and return the emitted source."""
-def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
+"""Resolve a fixture name to an on-disk path."""
+def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
     fixture_path = fixture_name;
     if not Path(fixture_path).exists() and fixture_dir {
         fixture_path = os.path.join(fixture_dir, fixture_name);
     }
+    return fixture_path;
+}
+
+"""Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
+def _fatal_compile_errors(prog: JacProgram) -> list {
+    # Filter out type-checker diagnostics (non-fatal warnings about
+    # Unknown types in client code).  Only fail on parse/compile errors.
+    # issubclass: diagnostics may come from TypeCheckPass itself or its
+    # TypeInferencePass schedule entry.
+    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+    return [
+        e
+        for e in prog.errors_had
+        if not issubclass(e.from_pass, TypeCheckPass)
+    ];
+}
+
+"""Compile a Jac fixture to JavaScript and return the emitted source."""
+def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
+    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
     cache_key = os.path.abspath(fixture_path);
     if cache_key in _js_compile_cache {
         return _js_compile_cache[cache_key];
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=True);
-
-    # Filter out type-checker diagnostics (non-fatal warnings about
-    # Unknown types in client code).  Only fail on parse/compile errors.
-    # issubclass: diagnostics may come from TypeCheckPass itself or its
-    # TypeInferencePass schedule entry.
-    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-    _fatal = [
-        e
-        for e in prog.errors_had
-        if not issubclass(e.from_pass, TypeCheckPass)
-    ];
+    _fatal = _fatal_compile_errors(prog);
     assert not _fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
@@ -74,18 +86,21 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
 
 """Compile a fixture through the normal production codegen path."""
 def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
-    fixture_path = fixture_name;
-    if not Path(fixture_path).exists() and fixture_dir {
-        fixture_path = os.path.join(fixture_dir, fixture_name);
+    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
+    cache_key = os.path.abspath(fixture_path);
+    if cache_key in _js_production_compile_cache {
+        return _js_production_compile_cache[cache_key];
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path);
-    assert not prog.errors_had , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
+    _fatal = _fatal_compile_errors(prog);
+    assert not _fatal , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
     assert ir.gen.js and ir.gen.js.strip() , (
         f"Production JS codegen produced no output for {fixture_name}"
     );
+    _js_production_compile_cache[cache_key] = ir.gen.js;
     return ir.gen.js;
 }
 
@@ -1169,7 +1184,6 @@ test "poly get dispatches through runtime helper for untyped receivers" {
     assert result.returncode == 0 , (
         "poly.get dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     got: dict[str, any] = json.loads(result.stdout.strip());
     assert "hit" in got and got["hit"] == 1 , (
         "poly.get hit must return existing value 1, got " + str(got)
@@ -1208,7 +1222,6 @@ test "poly get dispatches to custom obj method not plain-object bracket" {
     assert result.returncode == 0 , (
         "poly.get custom-obj dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     got: dict[str, any] = json.loads(result.stdout.strip());
     assert "hit" in got and got["hit"] == 42 , (
         "poly.get on custom obj must call the object's .get() method and "
@@ -1251,7 +1264,6 @@ test "poly call dispatches dict/list/set/user methods on untyped receivers" {
     assert result.returncode == 0 , (
         "poly.call dispatch crashed in Node:\nstdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     lines = result.stdout.strip().split("\n");
     got: dict[str, any] = json.loads(lines[0]);
     raised = json.loads(lines[1]);
@@ -1840,7 +1852,6 @@ test "sibling block scopes — try except finally each get their own let" {
 
 
 test "in/not in on unknown-typed containers matches Python semantics" {
-    import json;
     # `opaque()` returns `any`, so the backend cannot statically prove the
     # container types. Membership must still behave like Python: substring
     # search for strings, element search for lists, key search for dicts.
@@ -1878,7 +1889,6 @@ test "in/not in on unknown-typed containers matches Python semantics" {
 
 
 test "cl negative indexing counts from the end like Python (#6320)" {
-    import json;
     # Python/Jac negative indices count from the end. A raw JS subscript
     # `xs[-1]` is `undefined`, silently producing the wrong value.
     jac_code = """
@@ -1931,7 +1941,6 @@ cl def neg_index() -> dict {
 
 
 test "cl collection truthiness matches Python emptiness (#6320)" {
-    import json;
     # JS arrays/objects/Sets are always truthy, so empty-collection guards
     # never short-circuit. Boolean contexts on a collection must test
     # emptiness like Python (empty list/dict/set is falsy; str already agrees).
@@ -2020,7 +2029,6 @@ cl def truthy_probe() -> dict {
 
 
 test "cl negative-index assignment and while-truthiness match Python (#6320)" {
-    import json;
     # Negative-index assignment must write the element counted from the end
     # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
     # guard on a collection must drain like Python rather than loop forever.
@@ -2085,7 +2093,6 @@ cl def probe() -> dict {
 
 
 test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
-    import json;
     # A subscript on an `any`-typed value must remain a faithful superset of a
     # raw `obj[i]`: string keys stay plain member access, a missing key/index
     # yields `undefined` (never throws), and only a possibly-negative numeric
@@ -2139,7 +2146,6 @@ cl def probe(resp: any, xs: any) -> dict {
 
 
 test "isinstance/issubclass against builtin types, user class, and tuples (#6458)" {
-    import json;
     # Regression for jaseci-labs/jaseci#6458. `isinstance(x, str)` (and any
     # other builtin-type check, as used by the shadcn `sidebar` component)
     # crashed ES codegen with a bare `IndexError: list index out of range`:
@@ -2199,7 +2205,6 @@ test "getattr default with or/and emits parenthesized nullish coalescing (#6562)
         "getattr + or/and fixture crashed in Node:\n" + "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
 
-    import json;
     got: dict[str, any] = json.loads(result.stdout.strip());
     expected = {
         "getattr_two_arg_hit": "hi",
@@ -2221,8 +2226,7 @@ test "getattr default with or/and emits parenthesized nullish coalescing (#6562)
         "getattr_alone_hit": "present",
         "getattr_alone_miss": "default",
         "dict_get_poly_hit": "hi",
-        "dict_get_poly_miss": "",
-
+        "dict_get_poly_miss": ""
     };
     for (key, val) in expected.items() {
         assert key in got , f"missing result key {key!r} in {got}";
