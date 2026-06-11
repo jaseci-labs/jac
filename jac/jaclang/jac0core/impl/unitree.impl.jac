@@ -187,8 +187,11 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
 """Check if this node is in a client-side context.
 
         This covers:
+        - Any node in a `.cl.jac` module - the file suffix IS the client
+          marker, so bare top-level constructs (globs, imports, calls) are
+          client context without a redundant `cl` prefix
         - Nodes inside an explicit cl {} block in a .jac file
-        - Nodes inside a function marked with CLIENT context in .cl.jac files
+        - Nodes inside a function marked with CLIENT context
         - Overridden by sv {} blocks (server takes precedence)
 
         Uses single traversal for efficiency since this is called frequently.
@@ -207,6 +210,9 @@ impl UniNode.in_client_context -> bool {
             if (context == CodeContext.CLIENT) {
                 return True;
             }
+        }
+        if isinstance(nd, Module) {
+            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
         }
         nd = nd.parent;
     }
@@ -1618,6 +1624,34 @@ impl Ability.py_resolve_name -> str {
     }
 }
 
+"""Trigger type names from the checker-resolved `event_triggers`.
+
+Each resolved TypeBase is mangled to its canonical key; class-object forms
+(`type[X]`) are unwrapped to `X`, union keys are split on `|`, and names are
+deduped in order. Returns None when the checker recorded no resolution for
+this ability, signalling callers to fall back to flattening the trigger AST.
+Single owner of this derivation: native and ECMAScript OSP emission both
+consume it.
+"""
+impl Ability.event_trigger_type_names -> (list[str] | None) {
+    if self.event_triggers is None {
+        return None;
+    }
+    names: list[str] = [];
+    for t in self.event_triggers {
+        for part in t.mangle().split("|") {
+            name = part.strip();
+            if name.startswith("type[") and name.endswith("]") {
+                name = name[5:-1];
+            }
+            if name and name not in names {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
 impl FuncSignature.postinit -> None {
     self.posonly_params = `list(self.posonly_params);
     self.params = `list(self.params) if self.params else [];
@@ -2077,6 +2111,7 @@ impl YieldExpr.postinit -> None {
 
 impl FuncCall.postinit -> None {
     self.params = `list(self.params) if self.params else [];
+    self.callee_decl = None;
     UniNode.postinit(self);
     Expr.postinit(self);
 }

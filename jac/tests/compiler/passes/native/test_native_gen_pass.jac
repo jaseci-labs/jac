@@ -3008,6 +3008,159 @@ test "fnptr call_via_local stores and calls pointer" {
     assert call_via_local(mul_addr, 6, 7) == 42;
 }
 
+# --- Callable null (`= 0`) field defaults (issue #6569) ---
+test "callable field accepts int 0 default in native (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    op_default = get_func(eng, "op_default_is_null", ctypes.c_int64);
+    assert op_default() == 0;
+    vt_default = get_func(eng, "vt_default_is_null", ctypes.c_int64);
+    assert vt_default() == 0;
+}
+
+test "callable field slot resets to null via int 0 (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    reset = get_func(eng, "op_slot_reset_to_null", ctypes.c_int64, ctypes.c_int64);
+    assert reset(5) == 0;
+}
+
+# --- C→Jac callback trampolines for clib vtable structs (issue #6570) ---
+test "clib vtable slot store emits C-ABI trampoline (issue #6570)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # The Jac def has native signature i64(i64, i64); the slot declares
+    # i32(i32, i32). Storing it must go through a __clibcb trampoline with
+    # the C signature, not a raw bitcast of the Jac function.
+    assert "__clibcb" in llvm_ir_str , "no trampoline emitted for vtable slot";
+    assert 'define internal i32 @"_on_event.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
+    # The trampoline calls back into the Jac function.
+    assert '@"_on_event"' in llvm_ir_str;
+}
+
+test "clib vtable trampolines are cached per (fn, type) pair (issue #6570)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # One store site → exactly one trampoline definition.
+    assert llvm_ir_str.count("define internal i32 @\"_on_event.__clibcb.0\"") == 1;
+    assert "_on_event.__clibcb.1" not in llvm_ir_str;
+}
+
+# --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
+test "clib vtable structs allocate flat without RC header (issue #6571)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # C reads the vtable starting at field 0 (CEF validates struct->size
+    # there) and owns its lifetime, so the instance must be plain zeroed C
+    # memory — no RC header, no destructor, no type tag.
+    assert "clib.vt.raw" in llvm_ir_str , "vtable must allocate through the flat calloc path";
+    assert "__rc_release_event_handler_vt" not in llvm_ir_str , "C-owned vtable struct must not get an RC destructor";
+}
+
+test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
+    import shutil;
+    if not shutil.which("gcc") {
+        import pytest;
+        pytest.skip("gcc not installed");
+    }
+    td = tempfile.mkdtemp();
+    c_src_path = os.path.join(td, "cbtest.c");
+    c_lines = [
+        "typedef struct {",
+        "    long size;",
+        "    int (*on_event)(int, int);",
+        "    void (*on_close)(long);",
+        "} event_handler_vt;",
+        "",
+        "long invoke_event(event_handler_vt* h, int a, int b) {",
+        "    if (h->on_event) { return (long)h->on_event(a, b); }",
+        "    return -1;",
+        "}",
+
+    ];
+    with open(c_src_path, "w") as f {
+        f.write("\n".join(c_lines) + "\n");
+    }
+    lib_path = os.path.join(td, "libcbtest.so");
+    r = subprocess.run(
+        ["gcc", "-shared", "-fPIC", "-o", lib_path, c_src_path],
+        capture_output=True,
+        text=True
+    );
+    assert r.returncode == 0 , f"gcc failed: {r.stderr}";
+    jac_lines = [
+        f'import from "{lib_path}" {{',
+        "    obj event_handler_vt {",
+        "        has size: int = 0,",
+        "            on_event: Callable[[i32, i32], i32] = 0,",
+        "            on_close: Callable[[int], None] = 0;",
+        "    }",
+        "    def invoke_event(h: int, a: i32, b: i32) -> int;",
+        "}",
+        "",
+        "def _on_event(a: int, b: int) -> int {",
+        "    return a * 10 + b;",
+        "}",
+        "",
+        "def run_with_cb(a: int, b: int) -> int {",
+        "    h = event_handler_vt(size=24, on_event=_on_event);",
+        "    return invoke_event(h, a, b);",
+        "}",
+        "",
+        "def run_null(a: int, b: int) -> int {",
+        "    h = event_handler_vt(size=24);",
+        "    return invoke_event(h, a, b);",
+        "}",
+        "",
+        "def make_handler_ptr() -> int {",
+        "    h = event_handler_vt(size=24, on_event=_on_event);",
+        "    return h;",
+        "}",
+        "",
+        "def invoke_after_maker_returns(a: int, b: int) -> int {",
+        "    p = make_handler_ptr();",
+        "    return invoke_event(p, a, b);",
+        "}",
+
+    ];
+    jac_src_path = os.path.join(td, "cb_fixture.na.jac");
+    with open(jac_src_path, "w") as f {
+        f.write("\n".join(jac_lines) + "\n");
+    }
+    prog = JacProgram();
+    ir = prog.compile(jac_src_path);
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors: {errors}";
+    eng = ir.gen.native_engine;
+    assert eng is not None , "No native engine produced";
+    # C calls back into the Jac def via the trampoline: i32 args widen to
+    # the Jac i64 params, the i64 result narrows to the slot's i32.
+    run_cb = get_func(
+        eng, "run_with_cb", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_cb(3, 4) == 34;
+    assert run_cb(0, 0) == 0;
+    # Negative args prove real C-ABI marshalling: the trampoline must
+    # sign-extend the C i32 args into the Jac i64 params (a raw bitcast of
+    # the Jac function leaves the upper 32 bits of the registers undefined).
+    assert run_cb(-3, 4) == -26;
+    assert run_cb(3, -4) == 26;
+    # A defaulted (`= 0`) slot stays NULL — C sees a null fn ptr and skips it.
+    run_null = get_func(
+        eng, "run_null", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_null(3, 4) == -1;
+    # CEF pattern: the vtable is registered by one function and invoked by
+    # the C runtime after that function has returned — the C-owned flat
+    # allocation must outlive the creating scope (issue #6571).
+    invoke_later = get_func(
+        eng,
+        "invoke_after_maker_returns",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    assert invoke_later(5, 6) == 56;
+}
+
 # --- TestCrossModuleGlobInit ---
 test "cross module glob init compiles without errors" {
     # Importing a module with a glob list initializer must compile cleanly.

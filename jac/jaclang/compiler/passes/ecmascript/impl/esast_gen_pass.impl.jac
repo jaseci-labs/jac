@@ -3956,8 +3956,17 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
-    # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
-    if not nd.in_client_context() {
+    # Reactive lowering is for COMPONENT state: `has` declared in a client
+    # def (function component). Archetype fields are plain class fields -
+    # exit_archetype consumes the vars directly - and must not trigger this
+    # handler's side effects (useState/useRef runtime imports, reactive_vars
+    # setter registration). Walk to the nearest owner: an Archetype before
+    # any Ability means a data field, whatever the client context.
+    owner: (uni.UniNode | None) = nd.parent;
+    while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
+        owner = owner.parent;
+    }
+    if isinstance(owner, uni.Archetype) or not nd.in_client_context() {
         nd.gen.es_ast = None;
         return;
     }
@@ -4390,12 +4399,21 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if (nd.name_ref is None) or (owner.name is None) {
         return None;
     }
+    # Prefer the checker-resolved trigger names (central
+    # Ability.event_trigger_type_names: unions split, `type[X]` unwrapped);
+    # fall back to flattening the trigger AST when no resolution was
+    # recorded (e.g. a JIR-loaded tree). Names unknown to the local tag
+    # table (such as `root`) lower to an untyped slot either way.
+    triggers = nd.event_trigger_type_names();
+    if triggers is None {
+        triggers = self._osp_trigger_names(nd.signature.arch_tag_info);
+    }
     return {
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
         "name": nd.name_ref.sym_name,
-        "triggers": self._osp_trigger_names(nd.signature.arch_tag_info)
+        "triggers": triggers
     };
 }
 
@@ -4446,14 +4464,6 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     # archetype that is never spawned locally must not pull in the kernel. The
     # slot body may use `_jac` primitives, so the runtime is still required.
     self.needs_jac_runtime = True;
-    if osp["owner"] not in self._osp_arch_names {
-        self._osp_arch_names.append(osp["owner"]);
-    }
-    for trig in osp["triggers"] {
-        if trig not in self._osp_arch_names {
-            self._osp_arch_names.append(trig);
-        }
-    }
     self._osp_slots.append(osp);
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);

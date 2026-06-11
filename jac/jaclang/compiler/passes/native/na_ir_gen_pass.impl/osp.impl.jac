@@ -264,7 +264,7 @@ impl NaIRGenPass._osp_isa_bases(arch_name: str) -> list[int] {
     if _self_tag is not None {
         bases.append(_self_tag);
     }
-    for anc in self.mro_order.get(arch_name, [arch_name]) {
+    for anc in self._mro_of(arch_name) {
         if (anc != arch_name) and (anc in self.osp_tags) {
             bases.append(self.osp_tags[anc]);
         }
@@ -299,7 +299,7 @@ impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
         }
         # Prefer the checker-resolved trigger types; fall back to flattening
         # the trigger AST when no resolution was recorded.
-        trigs = self._event_trigger_type_names(stmt);
+        trigs = stmt.event_trigger_type_names();
         if trigs is None {
             trigs = self._osp_trigger_names(ev.arch_tag_info)
                 if ev.arch_tag_info is not None

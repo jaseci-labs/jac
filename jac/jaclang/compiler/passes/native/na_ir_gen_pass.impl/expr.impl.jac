@@ -52,11 +52,9 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     } elif isinstance(nd, uni.UnaryExpr) {
         _result = self._codegen_unary(nd);
     } elif isinstance(nd, uni.FuncCall) {
-        _call_result = self._codegen_call(nd);
-        if _call_result is not None and isinstance(_call_result.type, ir.PointerType) {
-            self._mark_owned(_call_result);
-        }
-        _result = _call_result;
+        # Ownership of the pointer result is applied at the dispatch tail
+        # below, from the central invariant.
+        _result = self._codegen_call(nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         _result = self._codegen_atom_trailer(nd);
     } elif isinstance(nd, uni.BoolExpr) {
@@ -140,6 +138,17 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     # allocations without needing a loc parameter threaded through.
     if _result is not None {
         _result.jac_loc = _jac_loc;
+        # The single seam where AST-result ownership is applied: the central
+        # invariant (compiler/ownership.jac) says which expression results
+        # arrive carrying a +1 reference; emission marks exactly those.
+        # Emitter-created temporaries (boxing, coercions, concat buffers)
+        # are marked by their own mechanics at creation.
+        if isinstance(_result.type, ir.PointerType) {
+            import from jaclang.compiler.ownership { Ownership, result_ownership }
+            if result_ownership(nd) == Ownership.OWNED {
+                self._mark_owned(_result);
+            }
+        }
     }
     return _result;
 }
