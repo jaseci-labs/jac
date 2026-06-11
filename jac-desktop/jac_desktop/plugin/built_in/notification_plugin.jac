@@ -10,7 +10,6 @@ Transpiled to dependency-free Python at build time.
 import base64;
 import os;
 import subprocess;
-import sys;
 import from desktop_plugin { PluginError, DesktopPlugin }
 
 
@@ -105,18 +104,5 @@ class NotificationPlugin(DesktopPlugin) {
             raise PluginError("FAILED", f"Notification failed: {e.stderr}");
         }
         return {};
-    }
-
-    def _detect_platform(self: NotificationPlugin) -> str {
-        if sys.platform.startswith("linux") {
-            return "linux";
-        }
-        if sys.platform == "darwin" {
-            return "darwin";
-        }
-        if sys.platform == "win32" {
-            return "windows";
-        }
-        return sys.platform;
     }
 }

@@ -9,7 +9,6 @@ Transpiled to dependency-free Python at build time.
 """
 import base64;
 import subprocess;
-import sys;
 import from desktop_plugin { PluginError, DesktopPlugin }
 
 
@@ -220,18 +219,5 @@ class DialogPlugin(DesktopPlugin) {
         } except subprocess.TimeoutExpired {
             raise PluginError("TIMEOUT", "Dialog timed out");
         }
-    }
-
-    def _detect_platform(self: DialogPlugin) -> str {
-        if sys.platform.startswith("linux") {
-            return "linux";
-        }
-        if sys.platform == "darwin" {
-            return "darwin";
-        }
-        if sys.platform == "win32" {
-            return "windows";
-        }
-        return sys.platform;
     }
 }

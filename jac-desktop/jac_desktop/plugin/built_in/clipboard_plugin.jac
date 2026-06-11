@@ -8,7 +8,6 @@ Reads/writes the system clipboard via platform-native tools:
 Transpiled to dependency-free Python at build time.
 """
 import subprocess;
-import sys;
 import from desktop_plugin { PluginError, DesktopPlugin }
 
 
@@ -133,18 +132,5 @@ class ClipboardPlugin(DesktopPlugin) {
             raise PluginError("FAILED", f"Clipboard write failed: {e.stderr}");
         }
         return {};
-    }
-
-    def _detect_platform(self: ClipboardPlugin) -> str {
-        if sys.platform.startswith("linux") {
-            return "linux";
-        }
-        if sys.platform == "darwin" {
-            return "darwin";
-        }
-        if sys.platform == "win32" {
-            return "windows";
-        }
-        return sys.platform;
     }
 }

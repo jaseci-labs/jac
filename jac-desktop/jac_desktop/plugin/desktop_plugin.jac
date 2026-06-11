@@ -8,6 +8,8 @@ Transpiled to dependency-free Python at build time. Runs in the embedded CPython
 with only the stdlib (no jaclang).
 """
 
+import sys;
+
 """Structured error raised by a plugin when a command fails."""
 class PluginError(Exception) {
     def init(self: PluginError, code: str, message: str) {
@@ -42,5 +44,19 @@ class DesktopPlugin {
         raise PluginError(
             "UNKNOWN_COMMAND", f"Plugin '{self.plugin_name}' has no command '{command}'"
         );
+    }
+
+    """Detect the host OS and return a canonical platform name."""
+    def _detect_platform(self: DesktopPlugin) -> str {
+        if sys.platform.startswith("linux") {
+            return "linux";
+        }
+        if sys.platform == "darwin" {
+            return "darwin";
+        }
+        if sys.platform == "win32" {
+            return "windows";
+        }
+        return sys.platform;
     }
 }
