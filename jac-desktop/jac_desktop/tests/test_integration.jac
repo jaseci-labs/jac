@@ -1169,6 +1169,7 @@ test "build pipeline produces all expected artifacts" {
         expected = [
             "desktop_plugin.py",
             "plugin_host.py",
+            "webview_lib.py",
             "built_in/path_plugin.py",
             "built_in/window_plugin.py",
             "built_in/fs_plugin.py",
@@ -1195,6 +1196,7 @@ test "build pipeline produces all expected artifacts" {
         for mod in [
             "desktop_plugin",
             "plugin_host",
+            "webview_lib",
             "built_in.path_plugin",
             "built_in.window_plugin",
             "built_in.fs_plugin",
