@@ -20,9 +20,21 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.diagnostics { W6001, W6002, W6003, W6004 }
 
-# Statement / expression forms whose PRESENCE disqualifies a module from
-# native auto-promotion (no native lowering exists for them).
-glob NATIVE_DISQUALIFIER_NODES: tuple = (
+# Python stdlib modules the native backend can lower: the allowlist of
+# bare `import X;` modules whose member accesses the native codegen
+# actually intercepts. A native import of anything NOT in this set is
+# rejected (issue #6357) so it fails loudly instead of dropping the
+# import and emitting a silently-wrong binary. This is the extension
+# point for the Python-congruent native stdlib roadmap (issue #6404):
+# list a module here in the SAME change that adds its codegen support.
+# The rejection diagnostic fires from native import processing rather
+# than CapabilityCheckPass because auto-promotion coerces a module to
+# native context AFTER this pass runs; the legality TABLE lives here,
+# the post-coercion enforcement point stays in the backend.
+glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"},
+     # Statement / expression forms whose PRESENCE disqualifies a module from
+     # native auto-promotion (no native lowering exists for them).
+     NATIVE_DISQUALIFIER_NODES: tuple = (
          uni.VisitStmt,
          uni.DisengageStmt,
          uni.ReportStmt,

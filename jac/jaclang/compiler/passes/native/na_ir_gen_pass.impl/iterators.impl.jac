@@ -282,6 +282,22 @@ impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
+    # The checked type of the source expression decides first (a bare i8*
+    # is only a string if the checker says so); the LLVM value shape is the
+    # fallback for expressions the checker left untyped.
+    _checked_list = self._list_spec_of(expr);
+    if _checked_list is not None and _checked_list in self.list_helpers {
+        lt = self.list_types.get(_checked_list);
+        if lt is not None and val.type == lt.as_pointer() {
+            elem_type = self.list_helpers[_checked_list]["elem_type"];
+            return (
+                self._make_list_iter(val, _checked_list, elem_type),
+                _checked_list,
+                elem_type,
+
+            );
+        }
+    }
     for (lk, lt) in self.list_types.items() {
         if val.type == lt.as_pointer() {
             elem_type = self.list_helpers[lk]["elem_type"];

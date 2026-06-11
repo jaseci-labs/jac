@@ -738,6 +738,13 @@ Extracts library paths for loading and forward-declares
 extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
+    # The native-stdlib legality table lives in the capability authority
+    # (Phase 9); this post-coercion point enforces it because
+    # auto-promotion makes imports native-context after CapabilityCheckPass
+    # runs.
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        NATIVE_SUPPORTED_STDLIB
+    }
     # Collect imports from top-level and inside na {} blocks
     imports = [
         s

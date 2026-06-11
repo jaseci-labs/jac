@@ -14,19 +14,6 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091, E9002 }
 
-# ── Python stdlib modules the native backend can lower ────────────────────
-# Allowlist of bare `import X;` modules whose member accesses (`X.attr`,
-# `X.func(...)`) the native codegen actually intercepts and lowers. A native
-# `import` of anything NOT in this set is rejected (issue #6357) so it fails
-# loudly instead of dropping the import and emitting a silently-wrong binary.
-#
-# This is the extension point for the Python-congruent native stdlib roadmap
-# (issue #6404): as each module gains real native lowering (e.g. `math` via
-# libm intercepts + types in na_builtins.pyi), add its name here in the SAME
-# change that adds the codegen support. Only list a module once its members
-# are genuinely lowered — listing it early re-introduces the silent-wrong
-# failure this guard exists to prevent.
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"};
 
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
 # via a None return) because time.sleep legitimately produces a void result.
