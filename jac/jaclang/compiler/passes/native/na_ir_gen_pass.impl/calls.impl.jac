@@ -77,6 +77,28 @@ impl NaIRGenPass._fill_default_args(
     }
 }
 
+"""Evaluate a call node's argument expressions in order, dropping any
+that failed to lower (their own diagnostics already fired)."""
+impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
+    arg_vals: list[ir.Value] = [];
+    for param in (nd.params or []) {
+        v = self._codegen_expr(param);
+        if v is not None {
+            arg_vals.append(v);
+        }
+    }
+    return arg_vals;
+}
+
+"""Take a reference for a slot that is about to own `value`: a BORROWED
+value is retained; an OWNED value's +1 transfers to the slot as-is
+(compiler/ownership.jac invariant). Non-pointer values are untouched."""
+impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
+    if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
+        self._emit_rc_retain(value, op=op, loc=loc);
+    }
+}
+
 """Emit E5090 for a builtin call the native emitter could not lower.
 
 Shared by the multi-arg and single-arg builtin dispatch paths so the

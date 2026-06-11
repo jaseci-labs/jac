@@ -396,7 +396,9 @@ impl NaIRGenPass._codegen_compr_walk(
     # range() is not a real function in native mode - integer fast path.
     if isinstance(collection, uni.FuncCall) {
         call_name = self._get_name(collection.target);
-        if call_name == "range" {
+        # A user-defined `range` shadows the builtin; the checker-stamped
+        # classification decides (Phase 4 fact).
+        if call_name == "range" and collection.call_kind == "builtin" {
             self._codegen_compr_range_walk(
                 inner, comprs, idx, kind, acc, key_expr, val_expr, spec, conditionals
             );

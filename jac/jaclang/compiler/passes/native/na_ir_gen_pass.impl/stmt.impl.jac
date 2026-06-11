@@ -690,9 +690,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     # Handle set() constructor call with type annotation
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
-        if func_name == "set" and nd.type_tag and nd.type_tag.tag {
-            # set() constructor with type annotation - create empty set
-            set_type = self._resolve_jac_type(nd.type_tag.tag);
+        if func_name == "set" and nd.type_tag is not None {
+            # set() constructor with type annotation - create the empty set
+            # from the target's checker-stamped declared type.
+            _set_t0 = nd.target[0]
+                if isinstance(nd.target, (list, tuple))
+                else nd.target;
+            set_type = self._resolve_jac_type(_set_t0);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
@@ -1620,7 +1624,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     # ── range(...) iteration: the loop var IS the index ──
     if isinstance(nd.collection, uni.FuncCall)
-    and self._get_name(nd.collection.target) == "range" {
+    and self._get_name(nd.collection.target) == "range"
+    and nd.collection.call_kind == "builtin" {
         params = nd.collection.params or [];
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;

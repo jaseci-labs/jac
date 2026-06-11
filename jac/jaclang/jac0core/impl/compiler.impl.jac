@@ -793,7 +793,7 @@ impl JacCompiler.compile(
         # Explicit `jac check`: diagnostic-only extras (StaticAnalysis /
         # Portability / Lint) layered on the inference run above. The
         # inference run already surfaced TYPE diagnostics in full mode;
-        # UniTreeEnrichPass is NOT re-run here (it runs exactly once at the
+        # CapabilityCheckPass is NOT re-run here (it runs exactly once at the
         # tail of get_ir_gen_sched — rerunning it mutates AST state that
         # NaIRGenPass and the cross-module linker depend on).
         self.run_schedule(

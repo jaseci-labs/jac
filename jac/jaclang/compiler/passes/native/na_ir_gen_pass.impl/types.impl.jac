@@ -438,7 +438,15 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
     }
-    # Unified path: TypeBase → ir.Type via the central type checker.
+    # Unified path: TypeBase -> ir.Type via the central type checker.
+    _ptb = type_expr?.type;
+    if _ptb is not None and not isinstance(type_expr, uni.Expr) {
+        lowered = self._lower_type(_ptb);
+        if lowered is not None {
+            return lowered;
+        }
+        return ir.IntType(64);
+    }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
             self.emit(

@@ -1041,6 +1041,13 @@ impl EsastGenPass._ability_from_symbol(
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
+    # Checker-stamped resolved callee (FuncCall.callee_decl, the Phase 4
+    # central fact) is the authoritative answer when present. The
+    # symbol/manifest/evaluator paths below remain as fallbacks for
+    # JIR-loaded trees whose stamps are recomputed only on inference.
+    if nd.callee_decl is not None {
+        return nd.callee_decl;
+    }
     if isinstance(nd.target, uni.Name) {
         target_sym = nd.target.sym;
         if not target_sym and nd.target.sym_tab {

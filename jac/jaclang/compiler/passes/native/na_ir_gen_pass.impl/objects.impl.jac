@@ -395,8 +395,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     }
                     seen_fields.add(fname);
                     ftype = ir.IntType(64);
-                    if var.type_tag and var.type_tag.tag {
-                        ftype = self._resolve_jac_type(var.type_tag.tag);
+                    if var.type_tag is not None {
+                        # HasVar.type is checker-stamped; lower it directly.
+                        ftype = self._resolve_jac_type(var);
                         # Track Jac-level type AST for nested type resolution
                         if arch_name not in self.field_type_node {
                             self.field_type_node[arch_name] = {};
@@ -446,11 +447,9 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     # Build parameter types: self pointer + declared params
     param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
-        if p.type_tag and p.type_tag.tag {
-            param_types.append(self._resolve_jac_type(p.type_tag.tag));
-        } else {
-            param_types.append(ir.IntType(64));
-        }
+        param_types.append(
+            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
+        );
     }
     # Return type
     ret_type = self._resolve_jac_type(sig.return_type);
@@ -1016,10 +1015,8 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             # skip if already owned (call result) — field takes over rc=1.
             # C-owned vtable structs have no destructor to balance a retain,
             # so their fields never participate in RC (issue #6571).
-            if isinstance(ftype, ir.PointerType)
-            and not _vt_struct
-            and not self._is_owned(val) {
-                self._emit_rc_retain(
+            if not _vt_struct {
+                self._emit_take_ref(
                     val,
                     op="ctor_field",
                     loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
@@ -1093,10 +1090,8 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
                 # RC: retain pointer defaults stored into struct fields.
                 # skip if already owned (call result) — field takes over rc=1.
                 # C-owned vtable structs never participate in RC (issue #6571).
-                if isinstance(ftype, ir.PointerType)
-                and not _vt_struct
-                and not self._is_owned(val) {
-                    self._emit_rc_retain(
+                if not _vt_struct {
+                    self._emit_take_ref(
                         val,
                         op="ctor_field",
                         loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
@@ -1237,14 +1232,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         and "sys" in self._native_stdlib_modules
     ) {
         if method_name == "exit" {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             return self._emit_sys_exit(arg_vals);
         }
     }
@@ -1302,14 +1290,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
     if target_name == "int" and method_name == "from_bytes" {
-        params = nd.params or [];
-        arg_vals: list[ir.Value] = [];
-        for param in params {
-            v = self._codegen_expr(param);
-            if v is not None {
-                arg_vals.append(v);
-            }
-        }
+        arg_vals = self._codegen_call_args(nd);
         if arg_vals {
             self._ensure_emitters();
             _emitter = self._native_emitters.get("int");
@@ -1323,14 +1304,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     if target_name == "float" and method_name == "fromhex" {
-        params = nd.params or [];
-        arg_vals: list[ir.Value] = [];
-        for param in params {
-            v = self._codegen_expr(param);
-            if v is not None {
-                arg_vals.append(v);
-            }
-        }
+        arg_vals = self._codegen_call_args(nd);
         if arg_vals {
             self._ensure_emitters();
             _emitter = self._native_emitters.get("float");
@@ -1354,14 +1328,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if list_val is not None {
             _shape_spec = self._infer_list_elem_type(list_val);
             elem_type_name = _shape_spec if _shape_spec is not None else list_spec;
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             # A tuple appended/inserted into a list whose boxed element-struct is
             # tracked (a bare `list` seeded with an `any`-containing tuple) must
             # be stored in that exact layout, otherwise the unpack side reads the
@@ -1408,14 +1375,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         elem_type_name = set_spec;
         set_val = self._codegen_expr(trailer.target);
         if set_val is not None {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "set", method_name, set_val, arg_vals, elem_type_name
             );
@@ -1429,14 +1389,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if tuple_type_key is not None {
         tuple_val = self._codegen_expr(trailer.target);
         if tuple_val is not None {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "tuple", method_name, tuple_val, arg_vals, tuple_type_key
             );
@@ -1460,14 +1413,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if dict_type_key is not None {
         dict_val = self._codegen_expr(trailer.target);
         if dict_val is not None {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "dict", method_name, dict_val, arg_vals, dict_type_key
             );
@@ -1480,14 +1426,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name in self._primitive_method_names("int") {
         int_val = self._codegen_expr(trailer.target);
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "int", method_name, int_val, arg_vals, ""
             );
@@ -1500,14 +1439,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name in self._primitive_method_names("float") {
         float_val = self._codegen_expr(trailer.target);
         if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "float", method_name, float_val, arg_vals, ""
             );
@@ -1533,14 +1465,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if self._type_key_of(trailer.target) == "range" {
             rng_val = self._codegen_expr(trailer.target);
             if rng_val is not None {
-                params = nd.params or [];
-                arg_vals: list[ir.Value] = [];
-                for param in params {
-                    v = self._codegen_expr(param);
-                    if v is not None {
-                        arg_vals.append(v);
-                    }
-                }
+                arg_vals = self._codegen_call_args(nd);
                 result = self._dispatch_primitive_method(
                     "range", method_name, rng_val, arg_vals, ""
                 );
@@ -1554,14 +1479,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name in self._primitive_method_names("str") {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
-            params = nd.params or [];
-            arg_vals: list[ir.Value] = [];
-            for param in params {
-                v = self._codegen_expr(param);
-                if v is not None {
-                    arg_vals.append(v);
-                }
-            }
+            arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
                 "str", method_name, str_val, arg_vals, ""
             );
@@ -1586,14 +1504,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if type_name is None {
                 elem_type_name = self._infer_list_elem_type(obj_val);
                 if elem_type_name is not None {
-                    params = nd.params or [];
-                    arg_vals: list[ir.Value] = [];
-                    for param in params {
-                        v = self._codegen_expr(param);
-                        if v is not None {
-                            arg_vals.append(v);
-                        }
-                    }
+                    arg_vals = self._codegen_call_args(nd);
                     if method_name == "append" {
                         self._set_rc_ctx(
                             "append",
@@ -1860,15 +1771,13 @@ impl NaIRGenPass._codegen_field_assign(
     # field takes over the existing rc=1 without an extra increment.
     # C-owned vtable structs never participate in RC (issue #6571).
     if isinstance(ftype, ir.PointerType) and not _vt_struct {
-        if not self._is_owned(value) {
-            self._emit_rc_retain(
-                value,
-                op="field_set",
-                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
-                    if target.loc
-                    else 0}"
-            );
-        }
+        self._emit_take_ref(
+            value,
+            op="field_set",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
+                if target.loc
+                else 0}"
+        );
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         self._emit_rc_release_simple(
             old_field_val,
