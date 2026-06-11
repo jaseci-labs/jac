@@ -7,6 +7,7 @@ Shows native OS dialogs (open file, save file, message) via platform tools:
 
 Transpiled to dependency-free Python at build time.
 """
+import base64;
 import subprocess;
 import sys;
 import from desktop_plugin { PluginError, DesktopPlugin }
@@ -40,6 +41,21 @@ class DialogPlugin(DesktopPlugin) {
         );
     }
 
+    def _escape_applescript(self: DialogPlugin, s: str) -> str {
+        return s.replace("\\", "\\\\").replace('"', '\\"');
+    }
+
+    def _escape_powershell(self: DialogPlugin, s: str) -> str {
+        return s.replace("'", "''");
+    }
+
+    def _run_powershell(self: DialogPlugin, ps: str) {
+        encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
+        return subprocess.run(
+            ["powershell", "-EncodedCommand", encoded], capture_output=True, timeout=60
+        );
+    }
+
     def _open_file(self: DialogPlugin, args: dict) -> dict {
         platform = self._detect_platform();
         title = args.get("title", "Open File");
@@ -62,7 +78,8 @@ class DialogPlugin(DesktopPlugin) {
                 };
             }
             if platform == "darwin" {
-                script = f'POSIX path of (choose file with prompt "{title}")';
+                escaped_title = self._escape_applescript(title);
+                script = f'POSIX path of (choose file with prompt "{escaped_title}")';
                 result = subprocess.run(
                     ["osascript", "-e", script], capture_output=True, timeout=60
                 );
@@ -73,15 +90,14 @@ class DialogPlugin(DesktopPlugin) {
                 return {"canceled": False, "path": path};
             }
             if platform == "windows" {
+                escaped_title = self._escape_powershell(title);
                 ps = (
                     "Add-Type -AssemblyName System.Windows.Forms;"
                     "$d = New-Object System.Windows.Forms.OpenFileDialog;"
-                    f"$d.Title = '{title}';"
+                    f"$d.Title = '{escaped_title}';"
                     "if ($d.ShowDialog() -eq 'OK') { $d.FileName } else { '' }"
                 );
-                result = subprocess.run(
-                    ["powershell", "-Command", ps], capture_output=True, timeout=60
-                );
+                result = self._run_powershell(ps);
                 path = result.stdout.decode("utf-8").strip();
                 return {"canceled": path == "", "path": path};
             }
@@ -113,9 +129,11 @@ class DialogPlugin(DesktopPlugin) {
                 };
             }
             if platform == "darwin" {
-                script = f'POSIX path of (choose file name with prompt "{title}")';
+                escaped_title = self._escape_applescript(title);
+                script = f'POSIX path of (choose file name with prompt "{escaped_title}")';
                 if default_name {
-                    script = f'POSIX path of (choose file name with prompt "{title}" default name "{default_name}")';
+                    escaped_default = self._escape_applescript(default_name);
+                    script = f'POSIX path of (choose file name with prompt "{escaped_title}" default name "{escaped_default}")';
                 }
                 result = subprocess.run(
                     ["osascript", "-e", script], capture_output=True, timeout=60
@@ -129,15 +147,14 @@ class DialogPlugin(DesktopPlugin) {
                 };
             }
             if platform == "windows" {
+                escaped_title = self._escape_powershell(title);
                 ps = (
                     "Add-Type -AssemblyName System.Windows.Forms;"
                     "$d = New-Object System.Windows.Forms.SaveFileDialog;"
-                    f"$d.Title = '{title}';"
+                    f"$d.Title = '{escaped_title}';"
                     "if ($d.ShowDialog() -eq 'OK') { $d.FileName } else { '' }"
                 );
-                result = subprocess.run(
-                    ["powershell", "-Command", ps], capture_output=True, timeout=60
-                );
+                result = self._run_powershell(ps);
                 path = result.stdout.decode("utf-8").strip();
                 return {"canceled": path == "", "path": path};
             }
@@ -173,7 +190,9 @@ class DialogPlugin(DesktopPlugin) {
                 } elif kind == "error" {
                     icon = "stop";
                 }
-                script = f'display dialog "{body}" with title "{title}" buttons {{"OK"}} default button "OK" with icon {icon}';
+                escaped_body = self._escape_applescript(body);
+                escaped_title = self._escape_applescript(title);
+                script = f'display dialog "{escaped_body}" with title "{escaped_title}" buttons {{"OK"}} default button "OK" with icon {icon}';
                 subprocess.run(
                     ["osascript", "-e", script], capture_output=True, timeout=60
                 );
@@ -186,13 +205,13 @@ class DialogPlugin(DesktopPlugin) {
                 } elif kind == "error" {
                     icon_flag = "Error";
                 }
+                escaped_body = self._escape_powershell(body);
+                escaped_title = self._escape_powershell(title);
                 ps = (
                     "Add-Type -AssemblyName System.Windows.Forms;"
-                    f'[System.Windows.Forms.MessageBox]::Show("{body}", "{title}", "OK", "{icon_flag}")'
+                    f"[System.Windows.Forms.MessageBox]::Show('{escaped_body}', '{escaped_title}', 'OK', '{icon_flag}')"
                 );
-                subprocess.run(
-                    ["powershell", "-Command", ps], capture_output=True, timeout=60
-                );
+                self._run_powershell(ps);
                 return {};
             }
             raise PluginError("UNSUPPORTED", f"Platform '{platform}' not supported");

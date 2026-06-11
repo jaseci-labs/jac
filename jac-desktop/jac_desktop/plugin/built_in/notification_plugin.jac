@@ -7,6 +7,7 @@ Sends desktop notifications via platform-native tools:
 
 Transpiled to dependency-free Python at build time.
 """
+import base64;
 import os;
 import subprocess;
 import sys;
@@ -36,6 +37,24 @@ class NotificationPlugin(DesktopPlugin) {
         );
     }
 
+    def _escape_applescript(self: NotificationPlugin, s: str) -> str {
+        return s.replace("\\", "\\\\").replace('"', '\\"');
+    }
+
+    def _escape_powershell(self: NotificationPlugin, s: str) -> str {
+        return s.replace("'", "''");
+    }
+
+    def _run_powershell(self: NotificationPlugin, ps: str) {
+        encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
+        return subprocess.run(
+            ["powershell", "-EncodedCommand", encoded],
+            check=True,
+            capture_output=True,
+            timeout=10
+        );
+    }
+
     def _send(self: NotificationPlugin, args: dict) -> dict {
         title = args.get("title", "");
         body = args.get("body", "");
@@ -51,7 +70,9 @@ class NotificationPlugin(DesktopPlugin) {
                 }
                 subprocess.run(cmd, check=True, capture_output=True, timeout=5);
             } elif platform == "darwin" {
-                script = f'display notification "{body}" with title "{title}"';
+                escaped_body = self._escape_applescript(body);
+                escaped_title = self._escape_applescript(title);
+                script = f'display notification "{escaped_body}" with title "{escaped_title}"';
                 subprocess.run(
                     ["osascript", "-e", script],
                     check=True,
@@ -59,19 +80,16 @@ class NotificationPlugin(DesktopPlugin) {
                     timeout=5
                 );
             } elif platform == "windows" {
+                escaped_title = self._escape_powershell(title);
+                escaped_body = self._escape_powershell(body);
                 ps_script = (
-                    f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms");'
-                    f'$n = New-Object System.Windows.Forms.NotifyIcon;'
-                    f'$n.Icon = [System.Drawing.SystemIcons]::Information;'
-                    f'$n.Visible = $true;'
-                    f'$n.ShowBalloonTip(5000, "{title}", "{body}", "Info")'
+                    "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
+                    "$n = New-Object System.Windows.Forms.NotifyIcon;"
+                    "$n.Icon = [System.Drawing.SystemIcons]::Information;"
+                    "$n.Visible = $true;"
+                    f"$n.ShowBalloonTip(5000, '{escaped_title}', '{escaped_body}', 'Info')"
                 );
-                subprocess.run(
-                    ["powershell", "-Command", ps_script],
-                    check=True,
-                    capture_output=True,
-                    timeout=10
-                );
+                self._run_powershell(ps_script);
             } else {
                 raise PluginError(
                     "UNSUPPORTED", f"Platform '{platform}' not supported"
