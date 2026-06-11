@@ -128,50 +128,11 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             }
         }
     }
-    # Pass 3.1: Forward-declare methods from non-primary ancestors (for re-compilation)
-    # Only for methods NOT already provided by own definition or primary ancestor chain
+    # Pass 3.1: Forward-declare methods from non-primary ancestors (for
+    # re-compilation); only methods NOT already provided by the own
+    # definition or the primary ancestor chain.
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        mro = self._mro_of(arch_name);
-        if len(mro) < 2 {
-            continue;
-        }
-        # Collect methods already provided by own + primary ancestors
-        import from jaclang.compiler.symbol_utils { collect_method_names }
-        provided_methods = collect_method_names(arch);
-        for anc in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, anc) {
-                anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None {
-                    provided_methods.update(collect_method_names(anc_arch));
-                }
-            }
-        }
-        for ancestor_name in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
-                continue;
-            }
-            ancestor_arch = self.arch_ast_map.get(ancestor_name);
-            if ancestor_arch is None or ancestor_arch.body is None {
-                continue;
-            }
-            for stmt in ancestor_arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
-                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                        if method_name is not None
-                        and method_name not in provided_methods {
-                            full_name = f"{arch_name}.{method_name}";
-                            if full_name not in self.method_funcs {
-                                self._forward_declare_method(arch_name, stmt);
-                            }
-                            provided_methods.add(method_name);
-                        }
-                    }
-                }
-            }
-        }
+        self._visit_nonprimary_ancestor_methods(arch, declare=True);
     }
     # Pass 3.5: Build vtable layouts (topological order via MRO)
     for topo_name in topo_order {
@@ -271,53 +232,67 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 5.1: Re-compile non-primary ancestor methods against child struct layout
     # Only for methods that are NOT already provided by an earlier MRO class
+    # Compile only non-primary ancestor methods NOT already provided by the
+    # own definition or the primary ancestor chain (same walk as Pass 3.1,
+    # body-emission mode).
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        mro = self._mro_of(arch_name);
-        if len(mro) < 2 {
+        self._visit_nonprimary_ancestor_methods(arch, declare=False);
+    }
+    # Pass 6: Generate wrapper functions for inherited methods
+    self._generate_inherited_method_wrappers();
+}
+
+"""Walk an archetype's non-primary ancestors and visit each method not
+already provided by the own definition or the primary ancestor chain:
+forward-declare them (declare=True, registration pass) or emit their
+bodies (declare=False, re-compilation pass). One walk serves both
+passes; primary-chain methods are inherited structurally and need no
+per-subclass copy."""
+impl NaIRGenPass._visit_nonprimary_ancestor_methods(
+    arch: uni.Archetype, declare: bool
+) -> None {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    import from jaclang.compiler.symbol_utils { collect_method_names }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
+    arch_name = arch.name.value if arch.name else "unknown";
+    mro = self._mro_of(arch_name);
+    if len(mro) < 2 {
+        return;
+    }
+    provided_methods = collect_method_names(arch);
+    for anc in mro[1:] {
+        if layout_reg.is_primary_ancestor(arch_name, anc) {
+            anc_arch = self.arch_ast_map.get(anc);
+            if anc_arch is not None {
+                provided_methods.update(collect_method_names(anc_arch));
+            }
+        }
+    }
+    for ancestor_name in mro[1:] {
+        if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
             continue;
         }
-        # Collect methods provided by the child's own definition + primary ancestors
-        # (these will be handled by own codegen or bitcast wrappers in Pass 6)
-        import from jaclang.compiler.symbol_utils { collect_method_names }
-        provided_methods = collect_method_names(arch);
-        for anc in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, anc) {
-                anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None {
-                    provided_methods.update(collect_method_names(anc_arch));
-                }
-            }
+        ancestor_arch = self.arch_ast_map.get(ancestor_name);
+        if ancestor_arch is None or ancestor_arch.body is None {
+            continue;
         }
-        # Now re-compile only non-primary ancestor methods NOT already provided
-        for ancestor_name in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
-                continue;
-            }
-            ancestor_arch = self.arch_ast_map.get(ancestor_name);
-            if ancestor_arch is None or ancestor_arch.body is None {
-                continue;
-            }
-            for stmt in ancestor_arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
-                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                        if method_name is not None
-                        and method_name not in provided_methods {
-                            full_name = f"{arch_name}.{method_name}";
-                            if full_name in self.method_funcs {
-                                self._codegen_method(arch_name, stmt);
-                            }
-                            provided_methods.add(method_name);
-                        }
+        for stmt in ancestor_arch.body {
+            if isinstance(stmt, uni.Ability)
+            and stmt.signature is not None
+            and isinstance(stmt.signature, uni.FuncSignature) {
+                method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
+                if method_name is not None and method_name not in provided_methods {
+                    full_name = f"{arch_name}.{method_name}";
+                    if declare and full_name not in self.method_funcs {
+                        self._forward_declare_method(arch_name, stmt);
+                    } elif not declare and full_name in self.method_funcs {
+                        self._codegen_method(arch_name, stmt);
                     }
+                    provided_methods.add(method_name);
                 }
             }
         }
     }
-    # Pass 6: Generate wrapper functions for inherited methods
-    self._generate_inherited_method_wrappers();
 }
 
 """Register a struct type — define its field layout from has declarations."""
