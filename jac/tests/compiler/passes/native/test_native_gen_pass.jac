@@ -3044,6 +3044,19 @@ test "clib vtable trampolines are cached per (fn, type) pair (issue #6570)" {
     assert "_on_event.__clibcb.1" not in llvm_ir_str;
 }
 
+# --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
+test "clib vtable structs allocate flat without RC header (issue #6571)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # C reads the vtable starting at field 0 (CEF validates struct->size
+    # there) and owns its lifetime, so the instance must be plain zeroed C
+    # memory — no RC header, no destructor, no type tag.
+    assert "clib.vt.raw" in llvm_ir_str ,
+        "vtable must allocate through the flat calloc path";
+    assert "__rc_release_event_handler_vt" not in llvm_ir_str ,
+        "C-owned vtable struct must not get an RC destructor";
+}
+
 test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
     import shutil;
     if not shutil.which("gcc") {
@@ -3098,7 +3111,16 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
         "    h = event_handler_vt(size=24);",
         "    return invoke_event(h, a, b);",
         "}",
-
+        "",
+        "def make_handler_ptr() -> int {",
+        "    h = event_handler_vt(size=24, on_event=_on_event);",
+        "    return h;",
+        "}",
+        "",
+        "def invoke_after_maker_returns(a: int, b: int) -> int {",
+        "    p = make_handler_ptr();",
+        "    return invoke_event(p, a, b);",
+        "}",
     ];
     jac_src_path = os.path.join(td, "cb_fixture.na.jac");
     with open(jac_src_path, "w") as f {
@@ -3127,6 +3149,17 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
         eng, "run_null", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
     assert run_null(3, 4) == -1;
+    # CEF pattern: the vtable is registered by one function and invoked by
+    # the C runtime after that function has returned — the C-owned flat
+    # allocation must outlive the creating scope (issue #6571).
+    invoke_later = get_func(
+        eng,
+        "invoke_after_maker_returns",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    assert invoke_later(5, 6) == 56;
 }
 
 # --- TestCrossModuleGlobInit ---

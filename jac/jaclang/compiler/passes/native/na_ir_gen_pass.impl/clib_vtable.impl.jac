@@ -135,3 +135,38 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     self.clib_trampoline_funcs[key] = tramp;
     return tramp;
 }
+
+"""Allocate a clib vtable struct as plain C memory (issue #6571).
+
+C vtable structs are read by the C runtime starting at field 0 (CEF
+validates `struct->size` there) and live as long as the C side holds
+them, so the instance must be flat C data: no RC header at negative
+offsets, no destructor, no type tag, and a lifetime Jac never reclaims.
+`calloc` gives a zero-initialized block (unset fn-ptr slots are NULL C
+function pointers) on the heap, so the address stays valid after the
+creating function returns — vtables registered with `cef_initialize()`
+&co. are invoked long after the registering scope is gone. Ownership
+belongs to the C library (CEF vtables embed their own ref-counting via
+`cef_base_ref_counted_t`); Jac intentionally never frees the block.
+
+The allocation uses the C-laid-out type from `_clib_c_type` so nested
+clib structs reserve their inlined (by-value) size, then views the block
+through the Jac struct type for field access.
+"""
+impl NaIRGenPass._clib_alloc_vtable(name: str) -> ir.Value {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
+    ct = self._clib_c_type(name);
+    null_ptr = ir.Constant(ct.as_pointer(), None);
+    size_gep = self.builder.gep(
+        null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.vt.sizeof.gep"
+    );
+    size = self.builder.ptrtoint(size_gep, i64, name="clib.vt.sizeof");
+    raw = self.builder.call(
+        calloc_fn, [ir.Constant(i64, 1), size], name="clib.vt.raw"
+    );
+    return self.builder.bitcast(
+        raw, self.struct_types[name].as_pointer(), name="clib.vt.ptr"
+    );
+}

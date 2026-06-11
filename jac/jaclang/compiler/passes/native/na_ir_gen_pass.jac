@@ -765,6 +765,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
     # Emit (or fetch from cache) the C-ABI wrapper for a Jac def.
     def _emit_clib_c_trampoline(jac_fn: ir.Function, c_fn_ty: ir.Type) -> ir.Function;
+    # Allocate a clib vtable struct as flat, zeroed, C-owned memory —
+    # no RC header/destructor/type tag (#6571).
+    def _clib_alloc_vtable(name: str) -> ir.Value;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
     # Compute the C in-memory layout of a clib struct: (size, align, scalars)
     # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
