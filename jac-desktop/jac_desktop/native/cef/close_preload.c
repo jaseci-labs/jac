@@ -10,6 +10,13 @@ int close(int fd) {
     static int (*real_close)(int);
     if (!real_close) {
         real_close = (int (*)(int))dlsym(RTLD_NEXT, "close");
+        if (!real_close) {
+            void* libc = dlopen("libc.so.6", RTLD_NOW | RTLD_NOLOAD);
+            if (libc) {
+                real_close = (int (*)(int))dlsym(libc, "close");
+                dlclose(libc);
+            }
+        }
     }
     return real_close ? real_close(fd) : -1;
 }
