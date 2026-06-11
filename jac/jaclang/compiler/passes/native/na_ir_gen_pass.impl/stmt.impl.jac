@@ -1624,7 +1624,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     # ── range(...) iteration: the loop var IS the index ──
     if isinstance(nd.collection, uni.FuncCall)
-    and self._get_name(nd.collection.target) == "range" {
+    and self._get_name(nd.collection.target) == "range"
+    and nd.collection.call_kind == "builtin" {
         params = nd.collection.params or [];
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;
