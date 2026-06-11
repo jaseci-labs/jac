@@ -275,7 +275,7 @@ def _generate_host_source(
         "    d = PyModule_GetDict(main_mod);\n"
         "    port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
         "    # Wire up plugin host dispatch pointer\n"
-        "    _PH_DISPATCH = PyRun_String(\"id(_dispatch_fn)\", PY_EVAL, d, d);\n"
+        "    _PH_DISPATCH = PyRun_String(\"_dispatch_fn\", PY_EVAL, d, d);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    wv = new_webview(False);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
@@ -350,20 +350,27 @@ impl NativeDesktopTarget.build(
                 [_jac_bin(), "jac2py", str(jac_file)], capture_output=True, text=True
             );
             if res.returncode != 0 or not res.stdout.strip() {
-                # jac2py silently fails on some files (e.g. `import from pathlib
-                # { Path }` or `import fnmatch` triggers a transpiler edge case).
-                # Fall back to a hand-transpiled .py companion if one exists.
-                companion = jac_file.with_suffix(".py");
-                if companion.exists() {
-                    console.print(
-                        f"    ⚠ jac2py failed for {rel}, using companion .py",
-                        style="yellow"
-                    );
-                    res_stdout = companion.read_text();
-                } else {
+                # jac2py can fail on some files (e.g. JoinedStr ValueError
+                # from pyast_gen_pass — tracked in jaseci-labs/jaseci#6564).
+                # Safe fallback: jac0.compile_jac() uses a simpler transpilation
+                # path that handles these cases correctly. Once the upstream
+                # JoinedStr bug is fixed, this fallback can be removed.
+                import jaclang.jac0 as jac0;
+                console.print(
+                    f"    ⚠ jac2py failed for {rel}, trying jac0 fallback",
+                    style="yellow"
+                );
+                try {
+                    res_stdout = jac0.compile_jac(jac_file.read_text());
+                    if not res_stdout or not res_stdout.strip() {
+                        raise RuntimeError("jac0 produced empty output");
+                    }
+                } except Exception as e {
                     raise RuntimeError(
-                        f"Plugin transpile failed: {rel} (no companion .py fallback)\n"
-                        f"jac2py stderr: {res.stderr or '(empty)'}"
+                        f"Plugin transpile failed: {rel} "
+                        f"(both jac2py and jac0 failed)\n"
+                        f"jac2py stderr: {res.stderr or '(empty)'}\n"
+                        f"jac0 error: {e}"
                     );
                 }
             } else {

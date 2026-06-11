@@ -24,13 +24,15 @@ class ShellPlugin(DesktopPlugin) {
             config = {};
         }
         self._allow: list = config.get("allow", []);
+    }
 
     def handle(self: ShellPlugin, command: str, args: dict) -> dict {
         if command == "exec" {
             return self._exec(args);
         }
-        raise PluginError("UNKNOWN_COMMAND",
-            f"Plugin 'jac.shell' has no command '{command}'");
+        raise PluginError(
+            "UNKNOWN_COMMAND", f"Plugin 'jac.shell' has no command '{command}'"
+        );
     }
 
     def _exec(self: ShellPlugin, args: dict) -> dict {
@@ -47,8 +49,9 @@ class ShellPlugin(DesktopPlugin) {
             }
         }
         if not allowed {
-            raise PluginError("FORBIDDEN",
-                f"Command '{cmd}' is not in the allowed list.");
+            raise PluginError(
+                "FORBIDDEN", f"Command '{cmd}' is not in the allowed list."
+            );
         }
         timeout = int(args.get("timeout", 30));
         cwd = args.get("cwd") or None;
@@ -67,8 +70,7 @@ class ShellPlugin(DesktopPlugin) {
                 "stderr": result.stderr
             };
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT",
-                f"Command timed out after {timeout}s: {cmd}");
+            raise PluginError("TIMEOUT", f"Command timed out after {timeout}s: {cmd}");
         }
     }
 }

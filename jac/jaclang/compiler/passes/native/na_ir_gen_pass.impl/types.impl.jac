@@ -433,7 +433,43 @@ An annotation that reaches codegen without a `.type` is an E9002 ICE: the
 typed-tree contract (Phase 0) guarantees inference ran, so a missing type
 is a pipeline bug, never a user error. A present-but-unlowerable type still
 defaults to i64 (capability gap, E5090 territory -- tightened separately).
+
+The exception is clib-import annotations (parameter types on `import from
+\"lib\" { def ...; }`). The type checker skips these nodes entirely, so their
+`.type` is always None. Rather than forcing the checker to process C-FFI
+declarations, the codegen falls back to `_resolve_primitive_name`, which maps
+raw primitive type names (int, i32, f64, str, …) directly to LLVM IR types.
 """
+# Primitive type name → LLVM IR type.  Used as a fallback when the type
+# checker did not stamp `.type` on an annotation (e.g. clib import params).
+def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Name) {
+        return None;
+    }
+    name = expr.value;
+    if not name {
+        return None;
+    }
+    _m: dict = {
+        'int': ir.IntType(64),
+        'i64': ir.IntType(64),
+        'i32': ir.IntType(32),
+        'i16': ir.IntType(16),
+        'i8': ir.IntType(8),
+        'bool': ir.IntType(1),
+        'f64': ir.DoubleType(),
+        'f32': ir.FloatType(),
+        'void': ir.VoidType(),
+        'None': ir.VoidType(),
+        'str': ir.IntType(8).as_pointer(),
+
+    };
+    if name in _m {
+        return _m[name];
+    }
+    return None;
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
@@ -449,6 +485,15 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
+            # Clib import annotations are not type-checked (the checker
+            # skips import-from nodes with clib_decls).  Fall back to
+            # resolving the raw Name against the primitive type table so
+            # that `def sqrt(x: f64) -> f64;` still produces the correct
+            # IR types without requiring a type-checker stamp.
+            _prim = self._resolve_primitive_name(type_expr);
+            if _prim is not None {
+                return _prim;
+            }
             self.emit(
                 E9002,
                 node_override=type_expr,

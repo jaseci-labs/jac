@@ -3,7 +3,7 @@
 Exercises the full build pipeline and Python dispatch roundtrip without
 requiring a webview or display. Covers:
 
-  1. Plugin transpilation: all .jac -> .py (with companion fallback)
+  1. Plugin transpilation: all .jac -> .py (with jac0 fallback)
   2. Generated host source validity
   3. Full Python dispatch: import real plugins, register, dispatch commands
   4. Config -> plugin registration (TOML -> enabled/disabled)
@@ -62,7 +62,7 @@ def _jac2py(jac_file: Path) -> tuple {
 
 """Transpile all plugin .jac files into a temp dir, returning (dir, results).
 
-results is a dict mapping relative path -> {ok, used_companion, error}.
+results is a dict mapping relative path -> {ok, used_jac0, error}.
 """
 def _transpile_all_plugins -> tuple {
     tmp = tempfile.mkdtemp();
@@ -78,21 +78,31 @@ def _transpile_all_plugins -> tuple {
             with open(target, "w") as f {
                 f.write(stdout);
             }
-            results[rel] = {"ok": True, "used_companion": False, "error": None};
+            results[rel] = {"ok": True, "used_jac0": False, "error": None};
         } else {
-            companion = jac_file.with_suffix(".py");
-            if companion.exists() {
-                shutil.copy2(str(companion), target);
-                results[rel] = {
-                    "ok": True,
-                    "used_companion": True,
-                    "error": stderr or "(empty output)"
-                };
-            } else {
+            # Safe fallback: jac0.compile_jac() uses a simpler transpilation
+            # path that handles f-strings the full pipeline can't (upstream bug
+            # jaseci-labs/jaseci#6564). Remove once fixed.
+            import jaclang.jac0 as jac0;
+            try {
+                jac0_out = jac0.compile_jac(jac_file.read_text());
+                if jac0_out and jac0_out.strip() {
+                    with open(target, "w") as f {
+                        f.write(jac0_out);
+                    }
+                    results[rel] = {"ok": True, "used_jac0": True, "error": None};
+                } else {
+                    results[rel] = {
+                        "ok": False,
+                        "used_jac0": False,
+                        "error": stderr or "(empty output from both jac2py and jac0)"
+                    };
+                }
+            } except Exception as e {
                 results[rel] = {
                     "ok": False,
-                    "used_companion": False,
-                    "error": stderr or "(empty output)"
+                    "used_jac0": False,
+                    "error": f"{stderr or '(empty)'} | jac0: {e}"
                 };
             }
         }
@@ -138,19 +148,18 @@ def _plugin_mod_names -> list {
     ];
 }
 
-"""Import a plugin module from its .jac or companion .py source.
+"""Import a plugin module from its .jac source.
 
-The Jac meta-importer fails on some .jac files (fs_plugin, shell_plugin,
-dialog_plugin) that have companion .py fallbacks. This function handles
+The Jac meta-importer may fail on some .jac files. This function handles
 both paths: try normal import first (works for compiled .jac modules),
-then fall back to explicit .py loading.
+then fall back to loading the transpiled .py directly.
 """
 def _import_plugin(mod_name: str) -> object {
     import importlib;
     try {
         return importlib.import_module(mod_name);
     } except Exception {
-        # Fall back to loading companion .py directly
+        # Fall back to loading transpiled .py directly
         import importlib.util;
         parts = mod_name.split(".");
         # e.g. "built_in.shell_plugin" -> "built_in/shell_plugin.py"
@@ -201,8 +210,8 @@ def _get_generate_host_source -> object {
 # ---------------------------------------------------------------------------
 # 1. Plugin transpilation
 # ---------------------------------------------------------------------------
-"""Every plugin .jac file transpiles (or has a companion .py fallback)."""
-test "all plugin files transpile or have companion fallback" {
+"""Every plugin .jac file transpiles (via jac2py or jac0 fallback)."""
+test "all plugin files transpile or have jac0 fallback" {
     (tmp, results) = _transpile_all_plugins();
     try {
         failures = [
@@ -211,7 +220,7 @@ test "all plugin files transpile or have companion fallback" {
             if not r[1]["ok"]
         ];
         assert len(failures) == 0 , (
-            "Some plugins failed to transpile and have no companion:\n" + "\n".join(
+            "Some plugins failed to transpile:\n" + "\n".join(
                 [f"  {r[0]}: {r[1]['error']}" for r in failures]
             )
         );
@@ -236,7 +245,7 @@ test "transpiled plugin files are importable Python" {
             import built_in.notification_plugin;
             import built_in.clipboard_plugin;
             _import_plugin("built_in.shell_plugin");
-            # fs_plugin, dialog_plugin, window_plugin have companion .py
+            # fs_plugin, dialog_plugin, shell_plugin transpile via jac0 fallback
             _FsPlugin = _get_fs_plugin_class();
             _try_import("built_in.dialog_plugin");
             _try_import("built_in.window_plugin");

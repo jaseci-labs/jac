@@ -15,11 +15,7 @@ import from built_in.path_plugin { PathPlugin }
 
 """Filesystem operations with allow-list enforcement."""
 class FsPlugin(DesktopPlugin) {
-    def init(
-        self: FsPlugin,
-        config: dict,
-        path_plugin: PathPlugin
-    ) {
+    def init(self: FsPlugin, config: dict, path_plugin: PathPlugin) {
         super.init("jac.fs");
         # Normalize non-dict config (e.g. `fs = true`) to empty dict.
         if not isinstance(config, dict) {
@@ -55,8 +51,9 @@ class FsPlugin(DesktopPlugin) {
         if command == "stat" {
             return self._stat(args);
         }
-        raise PluginError("UNKNOWN_COMMAND",
-            f"Plugin 'jac.fs' has no command '{command}'");
+        raise PluginError(
+            "UNKNOWN_COMMAND", f"Plugin 'jac.fs' has no command '{command}'"
+        );
     }
 
     def _read_file(self: FsPlugin, args: dict) -> dict {
@@ -94,12 +91,14 @@ class FsPlugin(DesktopPlugin) {
         }
         entries = [];
         for entry in sorted(path.iterdir()) {
-            entries.append({
-                "name": entry.name,
-                "is_dir": entry.is_dir(),
-                "is_file": entry.is_file(),
-                "size": entry.stat().st_size if entry.is_file() else 0
-            });
+            entries.append(
+                {
+                    "name": entry.name,
+                    "is_dir": entry.is_dir(),
+                    "is_file": entry.is_file(),
+                    "size": entry.stat().st_size if entry.is_file() else 0
+                }
+            );
         }
         return {"entries": entries};
     }
@@ -152,6 +151,7 @@ class FsPlugin(DesktopPlugin) {
             raise PluginError("INVALID_ARGS", "'path' is required");
         }
         return Path(raw).expanduser().resolve();
+    }
 
     """Resolve allow-list pattern entries ($HOME, $APP_DATA, etc.)."""
     def _resolve_pattern(self: FsPlugin, pattern: str) -> str {
@@ -169,13 +169,16 @@ class FsPlugin(DesktopPlugin) {
             return str(Path(base) / pattern[10:]);
         }
         return str(Path(pattern).expanduser().resolve());
+    }
 
     """Check that a resolved path is within an allowed list."""
     def _check_allowed(self: FsPlugin, path: Path, mode: str) -> None {
         allowed = self._resolved_read if mode == "read" else self._resolved_write;
         if not allowed {
-            raise PluginError("FORBIDDEN",
-                f"No {mode} paths are allowed. Configure allow_{mode} in jac.toml.");
+            raise PluginError(
+                "FORBIDDEN",
+                f"No {mode} paths are allowed. Configure allow_{mode} in jac.toml."
+            );
         }
         path_str = str(path);
         for prefix in allowed {
@@ -183,7 +186,8 @@ class FsPlugin(DesktopPlugin) {
                 return;
             }
         }
-        raise PluginError("FORBIDDEN",
-            f"Path '{path}' is outside the allowed {mode} directories.");
+        raise PluginError(
+            "FORBIDDEN", f"Path '{path}' is outside the allowed {mode} directories."
+        );
     }
 }
