@@ -226,14 +226,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
         # injection in exit_module. `_osp_slots` collects one record per OSP
         # ability: {owner, kind, name, trigger_names (list, empty = untyped),
-        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
-        # archetypes that need a compile-time type tag.
+        # is_entry}.
         needs_osp_kernel: bool = False,
         # Set when a connect op / edge ref is lowered: pulls in the cl OSP graph
         # runtime (`__ospConn` / `__ospRefs`).
         needs_osp_graph: bool = False,
         _osp_slots: list[dict] = [],
-        _osp_arch_names: list[str] = [],
         # Memoized {archetype name -> kind} for every local walker/node/edge in a
         # module that has local OSP (any event ability). Includes edge types with
         # no abilities (e.g. used only in connects/refs) so they still get a type

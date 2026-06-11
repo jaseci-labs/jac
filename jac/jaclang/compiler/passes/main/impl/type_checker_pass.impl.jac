@@ -155,12 +155,23 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
 
 """Handle the function call node."""
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
-    import from jaclang.compiler.symbol_utils { classify_call }
+    import from jaclang.compiler.symbol_utils {
+        classify_call,
+        ability_of_symbol,
+        resolve_expr_symbol
+    }
     self.evaluator.get_type_of_expression(nd);
 
     # Stamp the call-site classification on the tree so backends dispatch
     # on a stored fact instead of re-classifying at emission time.
     nd.call_kind = classify_call(nd).value;
+
+    # Stamp the resolved callee declaration (Phase 4, analysis
+    # centralization): backends read the resolved signature (parameters,
+    # default-arg exprs) off the call node instead of keeping name-keyed
+    # AST-signature caches. The expression evaluation above has already
+    # populated `.sym` on the target, so this is a pure stamped-fact read.
+    nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
 
     # Validate TypeVar usage in runtime context (e.g., list[T]())
     # Pyright: Type variable "T" has no meaning in this context
@@ -1163,9 +1174,14 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         # and `(spawn W).reports` (read side) share a single element type.
         self._check_walker_reports_shape(nd, declared_type);
         # If there's an initializer, check that its type is compatible
-        # with the declared type (e.g., bad1: int = unknown_val;).
+        # with the declared type (e.g., bad1: int = unknown_val;). The
+        # declared type flows as the expected type so empty collection
+        # literal defaults (`has xs: list[str] = []`) are stamped with the
+        # declared element type (bidirectional inference).
         if nd.value is not None and nd.type is not None {
-            right_type = self.evaluator.get_type_of_expression(nd.value);
+            right_type = self.evaluator.get_type_of_expression(
+                nd.value, expected_type=nd.type
+            );
             if not self.evaluator.assign_type(
                 right_type, nd.type, strict=self.evaluator._is_strict_site(nd)
             ) {

@@ -12,6 +12,26 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     # Evaluate all elements
     elem_vals: list[ir.Value] = [];
     elem_types: list[ir.Type] = [];
+    # Return-position fact read off the tree (replaces the old
+    # _return_tuple_ctx emission flag threaded through _codegen_return).
+    # The ReturnStmt must be reachable through TupleVal ancestors ONLY:
+    # the returned value is this tuple (possibly via tuple nesting). A
+    # tuple that is a call argument or a list element inside a return
+    # (`return f((a, b))`, `return [(a, b)]`) is NOT the returned value -
+    # its consumer owns the element discipline, and retaining here would
+    # leak one reference per borrowed element.
+    _in_return = False;
+    _anc = nd.parent;
+    while _anc is not None {
+        if isinstance(_anc, uni.ReturnStmt) {
+            _in_return = True;
+            break;
+        }
+        if not isinstance(_anc, uni.TupleVal) {
+            break;
+        }
+        _anc = _anc.parent;
+    }
     for val in nd.values {
         v = self._codegen_expr(val);
         if v is None {
@@ -25,9 +45,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         # their single ref into the tuple, and owned temporaries already hold a
         # ref that scope cleanup leaves alone.
         if (
-            self._return_tuple_ctx
-            and isinstance(v.type, ir.PointerType)
-            and not self._is_owned(v)
+            _in_return and isinstance(v.type, ir.PointerType) and not self._is_owned(v)
         ) {
             is_named_local = isinstance(val, uni.Name)
             and val.sym_name in self.local_vars

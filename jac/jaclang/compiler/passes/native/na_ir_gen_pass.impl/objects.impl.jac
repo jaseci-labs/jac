@@ -59,32 +59,14 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     # Pass 1.6: assign OSP type-tags (issue #6146) before struct bodies are
     # laid out, so OSP archetypes reserve their `__type_tag` field.
     self._register_osp_tags(archetypes);
-    # Pass 1.5 + 1.7: Read class hierarchy and MRO from centralized LayoutRegistry
+    # Pass 1.5: record the AST handle per native archetype. Hierarchy, MRO,
+    # and vtable-need are NOT copied: the central LayoutRegistry is queried
+    # directly (_mro_of / _arch_has_vtable) wherever they are needed.
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         self.arch_ast_map[arch_name] = arch;
-        parents = layout_reg.class_parents.get(arch_name, []);
-        # Filter to only include native parents (those with struct types)
-        native_parents = [
-            p
-            for p in parents
-            if p in self.struct_types
-        ];
-        if native_parents {
-            self.class_parents[arch_name] = native_parents;
-            self.class_hierarchy[arch_name] = native_parents[0];
-        }
-        self.mro_order[arch_name] = layout_reg.get_mro(arch_name);
-    }
-    # Determine which classes need vtables from LayoutRegistry
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        arch_layout = layout_reg.get_layout(arch_name);
-        if arch_layout is not None and arch_layout.has_vtable {
-            self.has_vtable[arch_name] = True;
-        }
     }
     # Pass 2: Define struct bodies in topological order from LayoutRegistry
     topo_order = layout_reg.get_topo_order();
@@ -146,54 +128,15 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             }
         }
     }
-    # Pass 3.1: Forward-declare methods from non-primary ancestors (for re-compilation)
-    # Only for methods NOT already provided by own definition or primary ancestor chain
+    # Pass 3.1: Forward-declare methods from non-primary ancestors (for
+    # re-compilation); only methods NOT already provided by the own
+    # definition or the primary ancestor chain.
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        mro = self.mro_order.get(arch_name, [arch_name]);
-        if len(mro) < 2 {
-            continue;
-        }
-        # Collect methods already provided by own + primary ancestors
-        import from jaclang.compiler.symbol_utils { collect_method_names }
-        provided_methods = collect_method_names(arch);
-        for anc in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, anc) {
-                anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None {
-                    provided_methods.update(collect_method_names(anc_arch));
-                }
-            }
-        }
-        for ancestor_name in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
-                continue;
-            }
-            ancestor_arch = self.arch_ast_map.get(ancestor_name);
-            if ancestor_arch is None or ancestor_arch.body is None {
-                continue;
-            }
-            for stmt in ancestor_arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
-                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                        if method_name is not None
-                        and method_name not in provided_methods {
-                            full_name = f"{arch_name}.{method_name}";
-                            if full_name not in self.method_funcs {
-                                self._forward_declare_method(arch_name, stmt);
-                            }
-                            provided_methods.add(method_name);
-                        }
-                    }
-                }
-            }
-        }
+        self._visit_nonprimary_ancestor_methods(arch, declare=True);
     }
     # Pass 3.5: Build vtable layouts (topological order via MRO)
     for topo_name in topo_order {
-        if topo_name in self.has_vtable {
+        if self._arch_has_vtable(topo_name) {
             self._build_vtable(topo_name);
         }
     }
@@ -205,7 +148,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         for method_name in layout {
             # Find the class that defines this method (walk MRO)
             defining_class: (str | None) = None;
-            base_mro = self.mro_order.get(base_name, [base_name]);
+            base_mro = self._mro_of(base_name);
             for check in base_mro {
                 if f"{check}.{method_name}" in self.method_funcs {
                     defining_class = check;
@@ -217,9 +160,9 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             }
             # Check if any child class overrides this method
             overridden = False;
-            for (child_name, child_parents) in self.class_parents.items() {
+            for child_name in self.arch_ast_map {
                 # Is base_name an ancestor of child_name?
-                child_mro = self.mro_order.get(child_name, [child_name]);
+                child_mro = self._mro_of(child_name);
                 if base_name not in child_mro {
                     continue;
                 }
@@ -254,8 +197,11 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         }
     }
     # Pass 4: Emit vtable globals
-    for arch_name in self.has_vtable {
-        self._emit_vtable_global(arch_name);
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        if self._arch_has_vtable(arch_name) {
+            self._emit_vtable_global(arch_name);
+        }
     }
     # Pass 4.5: Forward-declare free functions (must happen before method bodies)
     self._forward_declare_functions(module);
@@ -286,53 +232,67 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 5.1: Re-compile non-primary ancestor methods against child struct layout
     # Only for methods that are NOT already provided by an earlier MRO class
+    # Compile only non-primary ancestor methods NOT already provided by the
+    # own definition or the primary ancestor chain (same walk as Pass 3.1,
+    # body-emission mode).
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        mro = self.mro_order.get(arch_name, [arch_name]);
-        if len(mro) < 2 {
+        self._visit_nonprimary_ancestor_methods(arch, declare=False);
+    }
+    # Pass 6: Generate wrapper functions for inherited methods
+    self._generate_inherited_method_wrappers();
+}
+
+"""Walk an archetype's non-primary ancestors and visit each method not
+already provided by the own definition or the primary ancestor chain:
+forward-declare them (declare=True, registration pass) or emit their
+bodies (declare=False, re-compilation pass). One walk serves both
+passes; primary-chain methods are inherited structurally and need no
+per-subclass copy."""
+impl NaIRGenPass._visit_nonprimary_ancestor_methods(
+    arch: uni.Archetype, declare: bool
+) -> None {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    import from jaclang.compiler.symbol_utils { collect_method_names }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
+    arch_name = arch.name.value if arch.name else "unknown";
+    mro = self._mro_of(arch_name);
+    if len(mro) < 2 {
+        return;
+    }
+    provided_methods = collect_method_names(arch);
+    for anc in mro[1:] {
+        if layout_reg.is_primary_ancestor(arch_name, anc) {
+            anc_arch = self.arch_ast_map.get(anc);
+            if anc_arch is not None {
+                provided_methods.update(collect_method_names(anc_arch));
+            }
+        }
+    }
+    for ancestor_name in mro[1:] {
+        if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
             continue;
         }
-        # Collect methods provided by the child's own definition + primary ancestors
-        # (these will be handled by own codegen or bitcast wrappers in Pass 6)
-        import from jaclang.compiler.symbol_utils { collect_method_names }
-        provided_methods = collect_method_names(arch);
-        for anc in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, anc) {
-                anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None {
-                    provided_methods.update(collect_method_names(anc_arch));
-                }
-            }
+        ancestor_arch = self.arch_ast_map.get(ancestor_name);
+        if ancestor_arch is None or ancestor_arch.body is None {
+            continue;
         }
-        # Now re-compile only non-primary ancestor methods NOT already provided
-        for ancestor_name in mro[1:] {
-            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
-                continue;
-            }
-            ancestor_arch = self.arch_ast_map.get(ancestor_name);
-            if ancestor_arch is None or ancestor_arch.body is None {
-                continue;
-            }
-            for stmt in ancestor_arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
-                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                        if method_name is not None
-                        and method_name not in provided_methods {
-                            full_name = f"{arch_name}.{method_name}";
-                            if full_name in self.method_funcs {
-                                self._codegen_method(arch_name, stmt);
-                            }
-                            provided_methods.add(method_name);
-                        }
+        for stmt in ancestor_arch.body {
+            if isinstance(stmt, uni.Ability)
+            and stmt.signature is not None
+            and isinstance(stmt.signature, uni.FuncSignature) {
+                method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
+                if method_name is not None and method_name not in provided_methods {
+                    full_name = f"{arch_name}.{method_name}";
+                    if declare and full_name not in self.method_funcs {
+                        self._forward_declare_method(arch_name, stmt);
+                    } elif not declare and full_name in self.method_funcs {
+                        self._codegen_method(arch_name, stmt);
                     }
+                    provided_methods.add(method_name);
                 }
             }
         }
     }
-    # Pass 6: Generate wrapper functions for inherited methods
-    self._generate_inherited_method_wrappers();
 }
 
 """Register a struct type — define its field layout from has declarations."""
@@ -342,7 +302,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if struct_type is None {
         return;
     }
-    needs_vtable = arch_name in self.has_vtable;
+    needs_vtable = self._arch_has_vtable(arch_name);
     is_osp = arch_name in self.osp_arch_kind;
     # Collect fields
     field_types: list[ir.Type] = [];
@@ -361,7 +321,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         self.osp_type_tag_field[arch_name] = len(field_types) - 1;
     }
     # Flatten fields from all ancestors in MRO order (diamond dedup by name)
-    mro = self.mro_order.get(arch_name, [arch_name]);
+    mro = self._mro_of(arch_name);
     seen_fields: set[str] = set();
     # Built-in walker `reports` list at a uniform field index 2 (vtable@0,
     # __type_tag@1). The kernel's on_complete delivers `scope.reports` here at
@@ -506,8 +466,6 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
-    # Store AST signature for return type propagation in method calls
-    self.method_ast_sigs[full_name] = sig;
 }
 
 """Generate LLVM IR for a method body."""
@@ -529,12 +487,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.param_vars = set();
     self.var_list_elem_struct = {};
     # Reset per-function borrowed-param promotion state.
-    saved_param_store_instr = self._param_store_instr;
-    saved_param_promoted = self._param_promoted;
     saved_self_arch = self._self_arch;
     self._self_arch = arch_name;
-    self._param_store_instr = {};
-    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -545,14 +499,20 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.local_vars["self"] = self_alloca;
     # Store other parameters
     sig = method.signature;
+    import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i + 1];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        _store_instr = self.builder.store(arg_val, alloca);
+        self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
-        self.param_vars.add(param_name);
-        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
+        # Rebound borrowed param: owned from birth (see _codegen_ability).
+        if isinstance(arg_val.type, ir.PointerType)
+        and param_plainly_rebound(p.name.sym if p.name else None) {
+            self._emit_rc_retain(arg_val, op="param_promote", loc=full_name);
+        } else {
+            self.param_vars.add(param_name);
+        }
     }
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
     body = ModuleCodegenPass.unwrap_body(method);
@@ -583,8 +543,6 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self._param_store_instr = saved_param_store_instr;
-    self._param_promoted = saved_param_promoted;
     self._self_arch = saved_self_arch;
 }
 
@@ -602,16 +560,12 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_param_store_instr = self._param_store_instr;
-    saved_param_promoted = self._param_promoted;
     saved_self_arch = self._self_arch;
     self._self_arch = arch_name;
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_list_elem_struct = {};
-    self._param_store_instr = {};
-    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -642,8 +596,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self._param_store_instr = saved_param_store_instr;
-    self._param_promoted = saved_param_promoted;
     self._self_arch = saved_self_arch;
 }
 
@@ -688,40 +640,15 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     return out;
 }
 
-"""Trigger type names from the checker's `Ability.event_triggers`.
-
-Each resolved TypeBase is mangled to its canonical key; class-object forms
-(`type[X]`) are unwrapped to `X` and union keys are split on `|`. Returns
-None when the checker recorded no resolution for this ability, signalling
-callers to fall back to flattening the trigger AST.
-"""
-impl NaIRGenPass._event_trigger_type_names(method: uni.Ability) -> (list[str] | None) {
-    if method.event_triggers is None {
-        return None;
-    }
-    names: list[str] = [];
-    for t in method.event_triggers {
-        for part in t.mangle().split("|") {
-            name = part.strip();
-            if name.startswith("type[") and name.endswith("]") {
-                name = name[5:-1];
-            }
-            if name and name not in names {
-                names.append(name);
-            }
-        }
-    }
-    return names;
-}
-
 """Member struct names an event ability fires on.
 
-Prefers the checker-resolved `Ability.event_triggers` filtered to known
-structs; falls back to flattening the trigger AST (`_trigger_member_structs`)
-when the checker left no resolution.
+Prefers the checker-resolved `Ability.event_triggers` (via the central
+`Ability.event_trigger_type_names`) filtered to known structs; falls back
+to flattening the trigger AST (`_trigger_member_structs`) when the checker
+left no resolution.
 """
 impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
-    names = self._event_trigger_type_names(method);
+    names = method.event_trigger_type_names();
     if names is None {
         sig = method.signature;
         tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
@@ -732,6 +659,27 @@ impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
         for nm in names
         if nm in self.struct_types
     ];
+}
+
+"""MRO for an archetype, queried from the central LayoutRegistry (the
+single owner of hierarchy facts); [name] when the registry knows nothing
+about the name (primitives, foreign names)."""
+impl NaIRGenPass._mro_of(arch_name: str) -> list[str] {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    mro = get_layout_registry(self.ir_in, self.prog).get_mro(arch_name);
+    return mro or [arch_name];
+}
+
+"""Whether a NATIVE archetype needs a vtable, queried from the central
+LayoutRegistry. Restricted to archetypes this module lowered to structs so
+non-native archetypes the registry knows about never gain emission here."""
+impl NaIRGenPass._arch_has_vtable(arch_name: str) -> bool {
+    if arch_name not in self.struct_types {
+        return False;
+    }
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.has_vtable;
 }
 
 """Find a field whose layout diverges across union trigger members.
@@ -826,16 +774,12 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
     saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_param_store_instr = self._param_store_instr;
-    saved_param_promoted = self._param_promoted;
     saved_self_arch = self._self_arch;
     self._self_arch = arch_name;
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
     self.var_list_elem_struct = {};
-    self._param_store_instr = {};
-    self._param_promoted = set();
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
     );
@@ -881,8 +825,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
     self.var_list_elem_struct = saved_list_elem_struct;
-    self._param_store_instr = saved_param_store_instr;
-    self._param_promoted = saved_param_promoted;
     self._self_arch = saved_self_arch;
 }
 
@@ -894,44 +836,55 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     struct_type = self.struct_types[type_name];
     struct_ptr_type = struct_type.as_pointer();
-    # Compute sizeof using GEP-from-null trick
-    null_ptr = ir.Constant(struct_ptr_type, None);
-    size_gep = self.builder.gep(
-        null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
-    );
-    size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
-    # Allocate via rc_alloc (RC-managed)
-    _inst_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-        if nd.loc
-        else 0}";
-    raw_ptr = self._rc_call_with_ctx(
-        self.rc_alloc_fn, [size], op="new", loc=_inst_loc, name="raw.ptr"
-    );
-    obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
-    # Store the typed destructor function pointer at obj_ptr - 8
-    # so __rc_release_simple dispatches to it when refcount hits zero.
-    self._emit_struct_release_fn(type_name);
-    _dtor_fn_s = self.struct_release_fns.get(type_name);
-    if _dtor_fn_s is not None {
-        _i8p_s = ir.IntType(8).as_pointer();
-        _i64_s = ir.IntType(64);
-        _i64p_s = _i64_s.as_pointer();
-        _raw_s = self.builder.bitcast(obj_ptr, _i8p_s, name="obj_raw_s");
-        _dtor_slot_s = self.builder.gep(
-            _raw_s, [ir.Constant(_i64_s, -8)], name="obj_dtor_slot"
+    # Clib vtable structs are plain C data handed to the C runtime: C reads
+    # them starting at field 0 and owns their lifetime, so they allocate
+    # flat (zeroed, C layout, no RC header/destructor/type tag) — see
+    # _clib_alloc_vtable (issue #6571).
+    _vt_struct = type_name in self.clib_vtable_structs;
+    if _vt_struct {
+        obj_ptr = self._clib_alloc_vtable(type_name);
+    } else {
+        # Compute sizeof using GEP-from-null trick
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
         );
-        _dtor_slot_i64_s = self.builder.bitcast(
-            _dtor_slot_s, _i64p_s, name="obj_dtor_i64p"
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        # Allocate via rc_alloc (RC-managed)
+        _inst_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
+            else 0}";
+        raw_ptr = self._rc_call_with_ctx(
+            self.rc_alloc_fn, [size], op="new", loc=_inst_loc, name="raw.ptr"
         );
-        _dtor_i64_s = self.builder.ptrtoint(_dtor_fn_s, _i64_s, name="obj_dtor_i64");
-        self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
-    }
-    # Set type tag in header (ptr-24) so RC debug log shows the type name.
-    if self.rc_set_type_fn is not None {
-        _obj_i8 = self.builder.bitcast(
-            obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
-        );
-        self._emit_set_type_tag(self.builder, _obj_i8, type_name);
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        # Store the typed destructor function pointer at obj_ptr - 8
+        # so __rc_release_simple dispatches to it when refcount hits zero.
+        self._emit_struct_release_fn(type_name);
+        _dtor_fn_s = self.struct_release_fns.get(type_name);
+        if _dtor_fn_s is not None {
+            _i8p_s = ir.IntType(8).as_pointer();
+            _i64_s = ir.IntType(64);
+            _i64p_s = _i64_s.as_pointer();
+            _raw_s = self.builder.bitcast(obj_ptr, _i8p_s, name="obj_raw_s");
+            _dtor_slot_s = self.builder.gep(
+                _raw_s, [ir.Constant(_i64_s, -8)], name="obj_dtor_slot"
+            );
+            _dtor_slot_i64_s = self.builder.bitcast(
+                _dtor_slot_s, _i64p_s, name="obj_dtor_i64p"
+            );
+            _dtor_i64_s = self.builder.ptrtoint(
+                _dtor_fn_s, _i64_s, name="obj_dtor_i64"
+            );
+            self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
+        }
+        # Set type tag in header (ptr-24) so RC debug log shows the type name.
+        if self.rc_set_type_fn is not None {
+            _obj_i8 = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8, type_name);
+        }
     }
     # Store vtable pointer if class has vtable
     if type_name in self.vtable_globals {
@@ -1044,12 +997,28 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
-            # _coerce_type propagates is_owned across bitcasts so checking val
-            # post-coerce is sufficient.
-            val = self._coerce_type(val, ftype);
+            # Clib vtable fn-ptr slots hold C function pointers (a NULL
+            # default or a Jac def behind a C-ABI trampoline) — code
+            # addresses, never RC objects (issue #6570).
+            _is_clib_cb = (
+                type_name in self.clib_vtable_structs
+                and isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType)
+            );
+            if _is_clib_cb {
+                val = self._clib_coerce_callback(val, ftype);
+            } else {
+                # _coerce_type propagates is_owned across bitcasts so checking
+                # val post-coerce is sufficient.
+                val = self._coerce_type(val, ftype);
+            }
             # RC: retain pointer values stored into struct fields.
             # skip if already owned (call result) — field takes over rc=1.
-            if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+            # C-owned vtable structs have no destructor to balance a retain,
+            # so their fields never participate in RC (issue #6571).
+            if isinstance(ftype, ir.PointerType)
+            and not _vt_struct
+            and not self._is_owned(val) {
                 self._emit_rc_retain(
                     val,
                     op="ctor_field",
@@ -1070,39 +1039,10 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
-            # Set _list_type_hint from the field's IR type so that an empty list
-            # literal `[]` creates the correct List variant (List.ptr / List.i64 /
-            # List.f64) with the right dtor.  We extract the elem key directly from
-            # the IdentifiedStructType name (e.g. "List.ptr" → "ptr") so this works
-            # even before _emit_list_helpers has been called for that variant.
-            _saved_hint_d = self._list_type_hint;
-            ftype_probe_d = field_types.get(fname);
-            if ftype_probe_d is not None
-            and isinstance(ftype_probe_d, ir.PointerType) {
-                _inner_d = ftype_probe_d.pointee;
-                if _inner_d?.name and _inner_d.name.startswith("List.") {
-                    _ek_d = _inner_d.name[5:];
-                    if _ek_d not in self.list_helpers {
-                        if _ek_d == "ptr" {
-                            self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
-                        } elif _ek_d == "f64" {
-                            self._emit_list_helpers("f64", ir.DoubleType());
-                        } else {
-                            self._emit_list_helpers("i64", ir.IntType(64));
-                        }
-                    }
-                    self._list_type_hint = _ek_d;
-                } else {
-                    for (_ek_d2, _lt_d2) in self.list_types.items() {
-                        if ftype_probe_d == _lt_d2.as_pointer() {
-                            self._list_type_hint = _ek_d2;
-                            break;
-                        }
-                    }
-                }
-            }
+            # An empty collection literal default types itself: the checker
+            # stamps it with the declared field type (bidirectional
+            # inference), and the literal codegen emits the right variant.
             val = self._codegen_expr(default_expr);
-            self._list_type_hint = _saved_hint_d;
             # Empty dict/list default returns None — fall back to helpers["new"].
             if val is None {
                 ftype_probe = field_types.get(fname);
@@ -1137,10 +1077,25 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             if val is not None {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
-                val = self._coerce_type(val, ftype);
+                # Clib vtable fn-ptr slots: `= 0` defaults lower to a NULL C
+                # function pointer; a Jac def default goes through a C-ABI
+                # trampoline (issue #6570). Never RC-retained.
+                _is_clib_cb_d = (
+                    type_name in self.clib_vtable_structs
+                    and isinstance(ftype, ir.PointerType)
+                    and isinstance(ftype.pointee, ir.FunctionType)
+                );
+                if _is_clib_cb_d {
+                    val = self._clib_coerce_callback(val, ftype);
+                } else {
+                    val = self._coerce_type(val, ftype);
+                }
                 # RC: retain pointer defaults stored into struct fields.
                 # skip if already owned (call result) — field takes over rc=1.
-                if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+                # C-owned vtable structs never participate in RC (issue #6571).
+                if isinstance(ftype, ir.PointerType)
+                and not _vt_struct
+                and not self._is_owned(val) {
                     self._emit_rc_retain(
                         val,
                         op="ctor_field",
@@ -1664,7 +1619,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Find method: walk MRO
     func = None;
     full_name = "";
-    for check_name in self.mro_order.get(type_name, [type_name]) {
+    for check_name in self._mro_of(type_name) {
         full_name = f"{check_name}.{method_name}";
         if full_name in self.method_funcs {
             func = self.method_funcs[full_name];
@@ -1700,40 +1655,18 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             args.append(val);
         }
     }
-    # Fill in missing optional parameters with their AST default values
-    if full_name in self.method_ast_sigs and len(args) < len(func.args) {
-        sig_params = self.method_ast_sigs[full_name].get_parameters();
-        provided_count = len(args) - 1;  # exclude self
-        for pix in range(provided_count, len(sig_params)) {
-            p = sig_params[pix];
-            if pix < len(sig_params) {
-                expected_type = func.args[len(args)].type
-                    if len(args) < len(func.args)
-                    else ir.IntType(64);
-                if p.value is not None {
-                    dval = self._codegen_expr(p.value);
-                    if dval is not None {
-                        args.append(self._coerce_type(dval, expected_type));
-                    } else {
-                        args.append(ir.Constant(expected_type, 0));
-                    }
-                } else {
-                    args.append(ir.Constant(expected_type, 0));
-                }
-            }
-        }
-    }
+    # Fill in missing optional parameters with the resolved callee's
+    # default-value exprs (checker-stamped fact, not a name-keyed cache)
+    self._fill_default_args(nd, func, args, skip_self=True);
     # Virtual dispatch if type has vtable
-    if type_name in self.has_vtable {
+    if self._arch_has_vtable(type_name) {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
             if isinstance(func.return_value.type, ir.VoidType) {
                 return ir.Constant(ir.IntType(64), 0);
             }
-            # every pointer returned by a virtual method is owned.
-            if isinstance(result.type, ir.PointerType) {
-                self._mark_owned(result);
-            }
+            # Pointer results carry +1; ownership applied at the
+            # _codegen_expr seam (compiler/ownership.jac).
             return result;
         }
     }
@@ -1751,10 +1684,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
     }
-    # every pointer returned by a method is owned. Skip RETAIN on assign.
-    if isinstance(result.type, ir.PointerType) {
-        self._mark_owned(result);
-    }
+    # Pointer results carry +1; ownership applied at the _codegen_expr
+    # seam (compiler/ownership.jac).
     return result;
 }
 
@@ -1905,7 +1836,20 @@ impl NaIRGenPass._codegen_field_assign(
     field_types = self.struct_field_types.get(type_name);
     idx = field_indices[field_name];
     ftype = field_types[field_name];
-    value = self._coerce_type(value, ftype);
+    # Clib vtable fn-ptr slots hold C function pointers (NULL or a Jac def
+    # behind a C-ABI trampoline) — code addresses, never RC objects, so
+    # the retain/release discipline below does not apply (issue #6570).
+    _vt_struct = type_name in self.clib_vtable_structs;
+    _is_clib_cb = (
+        _vt_struct
+        and isinstance(ftype, ir.PointerType)
+        and isinstance(ftype.pointee, ir.FunctionType)
+    );
+    if _is_clib_cb {
+        value = self._clib_coerce_callback(value, ftype);
+    } else {
+        value = self._coerce_type(value, ftype);
+    }
     field_ptr = self.builder.gep(
         obj_val,
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -1914,7 +1858,8 @@ impl NaIRGenPass._codegen_field_assign(
     # RC: retain new value and release old value for pointer fields.
     # skip retain if value is already owned (function call result) — the
     # field takes over the existing rc=1 without an extra increment.
-    if isinstance(ftype, ir.PointerType) {
+    # C-owned vtable structs never participate in RC (issue #6571).
+    if isinstance(ftype, ir.PointerType) and not _vt_struct {
         if not self._is_owned(value) {
             self._emit_rc_retain(
                 value,

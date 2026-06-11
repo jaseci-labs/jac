@@ -1918,63 +1918,6 @@ impl NaIRGenPass._infer_list_elem_type(val: ir.Value) -> (str | None) {
     return None;
 }
 
-"""Peel one layer from a list type annotation: list[T] → (T_node, T_llvm_type, T_elem_type_name).
-For list[list[int]], returns (ast_node_for_list[int], List.i64*, 'ptr').
-For list[Piece|None], returns (ast_node_for_Piece|None, Piece*, 'ptr').
-For list[int], returns (ast_node_for_int, i64, 'i64').
-Returns (None, None, None) if not a list type."""
-impl NaIRGenPass._peel_list_type(type_node: (object | None)) -> tuple {
-    if type_node is None {
-        return (None, None, None);
-    }
-    # Handle union: T | None → peel T
-    if isinstance(type_node, uni.BinaryExpr) {
-        op_val = getattr(type_node.op, 'value', '');
-        if op_val == "|" {
-            return self._peel_list_type(type_node.left);
-        }
-    }
-    # Handle list[T] → return (T_node, resolve(T))
-    if isinstance(type_node, uni.AtomTrailer) and not type_node.is_attr {
-        target_name = self._get_name(type_node.target);
-        if target_name == "list" {
-            if type_node?.right and type_node.right?.slices {
-                slices = type_node.right.slices or [];
-                if slices {
-                    elem_node = slices[0];
-                    if elem_node?.start and elem_node.start is not None {
-                        inner = elem_node.start;
-                    } else {
-                        inner = elem_node;
-                    }
-                    inner_type = self._resolve_jac_type(inner);
-                    inner_elem_name = "i64";
-                    if isinstance(inner_type, ir.DoubleType) {
-                        inner_elem_name = "f64";
-                    } elif isinstance(inner_type, ir.PointerType) {
-                        inner_elem_name = "ptr";
-                    } elif self?.jacval_type and inner_type == self.jacval_type {
-                        # `list[any]` slots hold boxed JacVal structs; key them
-                        # distinctly from `i64` (see _codegen_list_val).
-                        inner_elem_name = "jacval";
-                    }
-                    return (inner, inner_type, inner_elem_name);
-                }
-            }
-        }
-    }
-    return (None, None, None);
-}
-
-"""Get the list element type name from a Jac type annotation AST node.
-Returns the elem_type_name string ('i64', 'f64', 'ptr') or None."""
-impl NaIRGenPass._get_list_elem_from_type_node(
-    type_node: (object | None)
-) -> (str | None) {
-    (inner, inner_type, elem_name) = self._peel_list_type(type_node);
-    return elem_name;
-}
-
 """Infer the struct type name of a comprehension loop variable from its collection.
 For `for m in piece.raw_moves(self)`, returns 'Move' from the checked type of the
 collection expression (`list[Move]`, or `list[Move | None]` via the struct member).
@@ -1996,15 +1939,5 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
         }
     }
     return None;
-}
-
-"""Resolve the LLVM type of elements in a ptr list for a for-loop variable.
-Uses the checked type of the collection expression to determine what i8*
-elements should be bitcast to."""
-impl NaIRGenPass._resolve_for_loop_elem_type(
-    coll_name: (str | None), coll_node: (object | None)
-) -> (ir.Type | None) {
-    # Element type comes from the checked type of the collection expression.
-    return self._list_elem_llvm_of(coll_node);
 }
 # ─── Phase 7: String Methods and Builtins ─────────────────────

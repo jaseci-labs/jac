@@ -649,6 +649,9 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
 
     def get_pos_argc_range -> tuple[(int, int)];
     def py_resolve_name -> str;
+    # Checker-resolved trigger type names as canonical mangled keys; None
+    # when unresolved (callers fall back to flattening the trigger AST).
+    def event_trigger_type_names -> (list[str] | None);
 }
 
 """FuncSignature node type for Jac Ast."""
@@ -1151,7 +1154,15 @@ obj FuncCall(Expr) {
         # symbol_utils.classify_call. None on nodes synthesized after
         # checking (e.g. desugared pipe-forward); backends classify those
         # on the spot.
-        call_kind: (str | None) = None;
+        call_kind: (str | None) = None,
+        # Resolved callee declaration, stamped by TypeCheckPass at
+        # resolution time (symbol_utils.ability_of_symbol). Backends read
+        # the resolved signature (parameters, default-arg exprs) off this
+        # instead of keeping name-keyed AST-signature caches. Like
+        # `Expr.type`, this is never serialized to JIR - TypeInferencePass
+        # restamps it on load. None for builtins, unresolved targets, and
+        # nodes synthesized after checking.
+        callee_decl: (Ability | None) by postinit;
 
     def postinit -> None;
 }
