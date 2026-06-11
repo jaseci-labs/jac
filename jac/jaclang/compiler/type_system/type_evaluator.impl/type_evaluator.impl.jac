@@ -3294,6 +3294,18 @@ impl TypeEvaluator.assign_type(
                 }
             }
         }
+        # int → function reference: in native code a function value is a
+        # 64-bit pointer, so an integer may initialize a Callable slot —
+        # typically the literal 0 for a C NULL function pointer in clib
+        # vtable struct fields (e.g. CEF/libuv callback slots). Mirrors the
+        # function → int rule below and is gated to native modules so
+        # regular Jac keeps its function/int distinction.
+        if isinstance(src_type, types.ClassType)
+        and src_type.is_class_instance()
+        and src_type.is_builtin("int")
+        and self._in_native_context() {
+            return True;
+        }
     }
     # Source is FunctionType assigned to a different type
     if isinstance(src_type, types.FunctionType) {

@@ -836,44 +836,55 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     struct_type = self.struct_types[type_name];
     struct_ptr_type = struct_type.as_pointer();
-    # Compute sizeof using GEP-from-null trick
-    null_ptr = ir.Constant(struct_ptr_type, None);
-    size_gep = self.builder.gep(
-        null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
-    );
-    size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
-    # Allocate via rc_alloc (RC-managed)
-    _inst_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-        if nd.loc
-        else 0}";
-    raw_ptr = self._rc_call_with_ctx(
-        self.rc_alloc_fn, [size], op="new", loc=_inst_loc, name="raw.ptr"
-    );
-    obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
-    # Store the typed destructor function pointer at obj_ptr - 8
-    # so __rc_release_simple dispatches to it when refcount hits zero.
-    self._emit_struct_release_fn(type_name);
-    _dtor_fn_s = self.struct_release_fns.get(type_name);
-    if _dtor_fn_s is not None {
-        _i8p_s = ir.IntType(8).as_pointer();
-        _i64_s = ir.IntType(64);
-        _i64p_s = _i64_s.as_pointer();
-        _raw_s = self.builder.bitcast(obj_ptr, _i8p_s, name="obj_raw_s");
-        _dtor_slot_s = self.builder.gep(
-            _raw_s, [ir.Constant(_i64_s, -8)], name="obj_dtor_slot"
+    # Clib vtable structs are plain C data handed to the C runtime: C reads
+    # them starting at field 0 and owns their lifetime, so they allocate
+    # flat (zeroed, C layout, no RC header/destructor/type tag) — see
+    # _clib_alloc_vtable (issue #6571).
+    _vt_struct = type_name in self.clib_vtable_structs;
+    if _vt_struct {
+        obj_ptr = self._clib_alloc_vtable(type_name);
+    } else {
+        # Compute sizeof using GEP-from-null trick
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
         );
-        _dtor_slot_i64_s = self.builder.bitcast(
-            _dtor_slot_s, _i64p_s, name="obj_dtor_i64p"
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        # Allocate via rc_alloc (RC-managed)
+        _inst_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
+            else 0}";
+        raw_ptr = self._rc_call_with_ctx(
+            self.rc_alloc_fn, [size], op="new", loc=_inst_loc, name="raw.ptr"
         );
-        _dtor_i64_s = self.builder.ptrtoint(_dtor_fn_s, _i64_s, name="obj_dtor_i64");
-        self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
-    }
-    # Set type tag in header (ptr-24) so RC debug log shows the type name.
-    if self.rc_set_type_fn is not None {
-        _obj_i8 = self.builder.bitcast(
-            obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
-        );
-        self._emit_set_type_tag(self.builder, _obj_i8, type_name);
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        # Store the typed destructor function pointer at obj_ptr - 8
+        # so __rc_release_simple dispatches to it when refcount hits zero.
+        self._emit_struct_release_fn(type_name);
+        _dtor_fn_s = self.struct_release_fns.get(type_name);
+        if _dtor_fn_s is not None {
+            _i8p_s = ir.IntType(8).as_pointer();
+            _i64_s = ir.IntType(64);
+            _i64p_s = _i64_s.as_pointer();
+            _raw_s = self.builder.bitcast(obj_ptr, _i8p_s, name="obj_raw_s");
+            _dtor_slot_s = self.builder.gep(
+                _raw_s, [ir.Constant(_i64_s, -8)], name="obj_dtor_slot"
+            );
+            _dtor_slot_i64_s = self.builder.bitcast(
+                _dtor_slot_s, _i64p_s, name="obj_dtor_i64p"
+            );
+            _dtor_i64_s = self.builder.ptrtoint(
+                _dtor_fn_s, _i64_s, name="obj_dtor_i64"
+            );
+            self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
+        }
+        # Set type tag in header (ptr-24) so RC debug log shows the type name.
+        if self.rc_set_type_fn is not None {
+            _obj_i8 = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8, type_name);
+        }
     }
     # Store vtable pointer if class has vtable
     if type_name in self.vtable_globals {
@@ -986,12 +997,28 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
-            # _coerce_type propagates is_owned across bitcasts so checking val
-            # post-coerce is sufficient.
-            val = self._coerce_type(val, ftype);
+            # Clib vtable fn-ptr slots hold C function pointers (a NULL
+            # default or a Jac def behind a C-ABI trampoline) — code
+            # addresses, never RC objects (issue #6570).
+            _is_clib_cb = (
+                type_name in self.clib_vtable_structs
+                and isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType)
+            );
+            if _is_clib_cb {
+                val = self._clib_coerce_callback(val, ftype);
+            } else {
+                # _coerce_type propagates is_owned across bitcasts so checking
+                # val post-coerce is sufficient.
+                val = self._coerce_type(val, ftype);
+            }
             # RC: retain pointer values stored into struct fields.
             # skip if already owned (call result) — field takes over rc=1.
-            if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+            # C-owned vtable structs have no destructor to balance a retain,
+            # so their fields never participate in RC (issue #6571).
+            if isinstance(ftype, ir.PointerType)
+            and not _vt_struct
+            and not self._is_owned(val) {
                 self._emit_rc_retain(
                     val,
                     op="ctor_field",
@@ -1050,10 +1077,25 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             if val is not None {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
-                val = self._coerce_type(val, ftype);
+                # Clib vtable fn-ptr slots: `= 0` defaults lower to a NULL C
+                # function pointer; a Jac def default goes through a C-ABI
+                # trampoline (issue #6570). Never RC-retained.
+                _is_clib_cb_d = (
+                    type_name in self.clib_vtable_structs
+                    and isinstance(ftype, ir.PointerType)
+                    and isinstance(ftype.pointee, ir.FunctionType)
+                );
+                if _is_clib_cb_d {
+                    val = self._clib_coerce_callback(val, ftype);
+                } else {
+                    val = self._coerce_type(val, ftype);
+                }
                 # RC: retain pointer defaults stored into struct fields.
                 # skip if already owned (call result) — field takes over rc=1.
-                if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+                # C-owned vtable structs never participate in RC (issue #6571).
+                if isinstance(ftype, ir.PointerType)
+                and not _vt_struct
+                and not self._is_owned(val) {
                     self._emit_rc_retain(
                         val,
                         op="ctor_field",
@@ -1794,7 +1836,20 @@ impl NaIRGenPass._codegen_field_assign(
     field_types = self.struct_field_types.get(type_name);
     idx = field_indices[field_name];
     ftype = field_types[field_name];
-    value = self._coerce_type(value, ftype);
+    # Clib vtable fn-ptr slots hold C function pointers (NULL or a Jac def
+    # behind a C-ABI trampoline) — code addresses, never RC objects, so
+    # the retain/release discipline below does not apply (issue #6570).
+    _vt_struct = type_name in self.clib_vtable_structs;
+    _is_clib_cb = (
+        _vt_struct
+        and isinstance(ftype, ir.PointerType)
+        and isinstance(ftype.pointee, ir.FunctionType)
+    );
+    if _is_clib_cb {
+        value = self._clib_coerce_callback(value, ftype);
+    } else {
+        value = self._coerce_type(value, ftype);
+    }
     field_ptr = self.builder.gep(
         obj_val,
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -1803,7 +1858,8 @@ impl NaIRGenPass._codegen_field_assign(
     # RC: retain new value and release old value for pointer fields.
     # skip retain if value is already owned (function call result) — the
     # field takes over the existing rc=1 without an extra increment.
-    if isinstance(ftype, ir.PointerType) {
+    # C-owned vtable structs never participate in RC (issue #6571).
+    if isinstance(ftype, ir.PointerType) and not _vt_struct {
         if not self._is_owned(value) {
             self._emit_rc_retain(
                 value,

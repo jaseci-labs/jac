@@ -880,6 +880,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
+        # Pass 1.75: record vtable structs (fn-ptr slots) so stores into
+        # them route through C→Jac callback trampolines (issue #6570).
+        self._clib_detect_vtable_structs();
         # Pass 2: Forward-declare extern functions (with value types for clib structs)
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
