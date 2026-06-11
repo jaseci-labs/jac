@@ -4,6 +4,7 @@ Coordinates file watching and module reloading for development workflow.
 Uses AST-based classification to determine client vs server declarations.
 """
 
+import threading;
 import from enum { StrEnum }
 import from pathlib { Path }
 import from typing { Callable }
@@ -33,8 +34,9 @@ obj HotReloader {
         _build_error_file: str = "",
         _build_error: str = "";
 
-    # The running reloader, so servers can serve build status without wiring.
-    static has _active: any = None;
+    # The running reloader (so servers can serve build status without wiring)
+    static has _active: any = None,
+        _build_lock: any = threading.Lock();
 
     def start -> None;
     def stop -> None;

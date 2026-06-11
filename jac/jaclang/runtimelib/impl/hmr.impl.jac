@@ -45,24 +45,30 @@ impl HotReloader.stop -> None {
 
 """Build-health snapshot served over HTTP (see get_build_status)."""
 impl HotReloader.build_status -> dict {
-    error = {"file": self._build_error_file, "message": self._build_error}
-        if self._build_status is BuildStatus.ERROR
-        else None;
-    return {"status": self._build_status.value, "error": error};
+    with HotReloader._build_lock {
+        error = {"file": self._build_error_file, "message": self._build_error}
+            if self._build_status is BuildStatus.ERROR
+            else None;
+        return {"status": self._build_status.value, "error": error};
+    }
 }
 
 """Mark the build healthy and clear any recorded error."""
 impl HotReloader.record_ok -> None {
-    self._build_status = BuildStatus.OK;
-    self._build_error_file = "";
-    self._build_error = "";
+    with HotReloader._build_lock {
+        self._build_status = BuildStatus.OK;
+        self._build_error_file = "";
+        self._build_error = "";
+    }
 }
 
 """Mark the build broken with the failing file and message."""
 impl HotReloader.record_error(file_path: str, message: str) -> None {
-    self._build_status = BuildStatus.ERROR;
-    self._build_error_file = file_path;
-    self._build_error = message;
+    with HotReloader._build_lock {
+        self._build_status = BuildStatus.ERROR;
+        self._build_error_file = file_path;
+        self._build_error = message;
+    }
 }
 
 impl get_build_status -> dict {
@@ -84,8 +90,16 @@ impl HotReloader.on_file_change(event: any) -> None {
 
 """Process a file change, tracking build health across the rebuild."""
 impl HotReloader._process_change(file_path: str) -> None {
-    self._build_status = BuildStatus.COMPILING;
-    self._dispatch_change(file_path);
+    with HotReloader._build_lock {
+        self._build_status = BuildStatus.COMPILING;
+    }
+    try {
+        self._dispatch_change(file_path);
+    } except Exception as e {
+        # An uncaught dispatch failure must not leave the status stuck at COMPILING.
+        self.record_error(file_path, f"{type(e).__name__}: {e}");
+        raise;
+    }
     # Still COMPILING means no error path fired -> the build is good.
     if self._build_status is BuildStatus.COMPILING {
         self.record_ok();
