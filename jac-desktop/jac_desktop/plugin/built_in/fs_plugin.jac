@@ -144,7 +144,15 @@ obj FsPlugin(DesktopPlugin) {
         if not path.exists() {
             raise PluginError("NOT_FOUND", f"Path not found: {path}");
         }
-        st = path.stat();
+        try {
+            st = path.stat();
+        } except FileNotFoundError {
+            raise PluginError("NOT_FOUND", f"Path not found: {path}");
+        } except PermissionError {
+            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+        } except OSError as e {
+            raise PluginError("FAILED", f"Failed to stat path: {path}: {e}");
+        }
         return {
             "size": st.st_size,
             "is_dir": stat.S_ISDIR(st.st_mode),
