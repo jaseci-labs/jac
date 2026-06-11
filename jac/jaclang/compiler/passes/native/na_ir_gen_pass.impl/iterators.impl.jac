@@ -306,6 +306,12 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
     if isinstance(expr, uni.FuncCall) {
         cname = self._get_name(expr.target);
         params = expr.params or [];
+        # Respect user shadowing: only builtin-classified calls are
+        # adapter forms (checker-stamped call_kind, Phase 4 fact).
+        if cname in ("map", "filter", "enumerate", "zip", "iter")
+        and expr.call_kind != "builtin" {
+            cname = None;
+        }
         if cname == "map" and len(params) == 2 {
             fn = self.func_symtab.get(self._get_name(params[0]));
             up = self._build_iter_from_expr(params[1]);
@@ -581,6 +587,13 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self._ensure_iter_types();
     cname = self._get_name(coll.target);
     if cname not in ["map", "filter", "enumerate", "zip", "iter"] {
+        return False;
+    }
+    # A user-defined function named map/filter/... shadows the builtin;
+    # the checker-stamped classification (Phase 4 fact) decides, so the
+    # iterator protocol only claims genuine builtin adapter calls. For-loop
+    # collections are source nodes, so the stamp is always present.
+    if coll.call_kind != "builtin" {
         return False;
     }
     built = self._build_iter_from_expr(coll);
