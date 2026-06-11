@@ -13,7 +13,9 @@ import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
+import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.modresolver { convert_to_js_import_path }
+import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.program { JacProgram }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -45,12 +47,11 @@ def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
 }
 
 """Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
-def _fatal_compile_errors(prog: JacProgram) -> list {
+def _fatal_compile_errors(prog: JacProgram) -> list[Alert] {
     # Filter out type-checker diagnostics (non-fatal warnings about
     # Unknown types in client code).  Only fail on parse/compile errors.
     # issubclass: diagnostics may come from TypeCheckPass itself or its
     # TypeInferencePass schedule entry.
-    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
     return [
         e
         for e in prog.errors_had
