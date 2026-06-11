@@ -395,8 +395,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     }
                     seen_fields.add(fname);
                     ftype = ir.IntType(64);
-                    if var.type_tag and var.type_tag.tag {
-                        ftype = self._resolve_jac_type(var.type_tag.tag);
+                    if var.type_tag is not None {
+                        # HasVar.type is checker-stamped; lower it directly.
+                        ftype = self._resolve_jac_type(var);
                         # Track Jac-level type AST for nested type resolution
                         if arch_name not in self.field_type_node {
                             self.field_type_node[arch_name] = {};

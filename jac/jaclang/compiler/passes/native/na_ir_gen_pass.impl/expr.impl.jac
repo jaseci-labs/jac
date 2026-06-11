@@ -193,11 +193,9 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if sig is not None and sig.params {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
-            # Pass the annotation Expr inside the SubTag (not the SubTag
-            # wrapper); SubTag has no `.type`, so the unified-path lowering
-            # in _resolve_jac_type only kicks in when given .tag.
-            p_type = self._resolve_jac_type(p.type_tag.tag)
-                if p?.type_tag and p.type_tag and p.type_tag?.tag
+            # ParamVar.type is checker-stamped; lower it directly.
+            p_type = self._resolve_jac_type(p)
+                if p?.type_tag and p.type_tag is not None
                 else ir.IntType(64);
             param_types.append(p_type);
             param_names.append(p_name);
