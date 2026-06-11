@@ -370,6 +370,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _resolve_type_str(type_name: str) -> ir.Type;
     # Resolved callee signature for a call site (checker-stamped fact).
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
+    # Evaluate a call's argument expressions (drops failed lowers).
+    def _codegen_call_args(nd: uni.FuncCall) -> list;
+    # Take a reference for a slot about to own `value` (retain if borrowed).
+    def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
     # Fill omitted trailing params from the resolved callee's defaults.
     def _fill_default_args(
         nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
