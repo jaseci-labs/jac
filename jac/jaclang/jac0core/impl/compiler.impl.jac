@@ -195,13 +195,24 @@ impl JacCompiler.get_bytecode(
     if is_internal {
         setup_progress.on_internal_compile(full_target);
     }
-    # Skip type checking when the type check infrastructure is not yet
-    # available. This happens during bootstrap: TypeCheckPass and
-    # TypeEvaluator are themselves internal modules that need compilation,
-    # so attempting to type-check before they're ready causes circular
-    # imports. Once bootstrap completes, all modules get type-checked.
+    # Full type checking here is for INTERNAL (jaclang.*) modules only: the
+    # compiler's own code is held to full type discipline post-bootstrap
+    # (compile() skips inference for internal modules mid-bootstrap, so this
+    # is where they get typed). It must wait until the type check
+    # infrastructure is available — TypeCheckPass and TypeEvaluator are
+    # themselves internal modules, and type-checking before they're ready
+    # causes circular imports.
+    #
+    # USER modules loaded at runtime must NOT have full diagnostics forced
+    # on them: their compile() already runs gated inference (typed-tree
+    # contract), and surfacing checker diagnostics belongs to explicit
+    # `jac check` / options.type_check (plus the native-context gate).
+    # Forcing it here would make `jac run`/`jac start` of a plain sv/cl app
+    # fail on checker false positives whenever the module cache is cold and
+    # the type system happens to be loaded (#6262).
     can_typecheck = (
-        'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
+        is_internal
+        and 'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
         and 'jaclang.compiler.type_system.type_evaluator' in sys.modules
         and hasattr(
             sys.modules['jaclang.compiler.passes.main.type_checker_pass'],
@@ -665,31 +676,35 @@ impl JacCompiler.compile(
         actual_program, cur_mod_path
     );
     had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
-    # Native-compiled modules consume the central type checker's results:
-    # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
-    # parallel AST type resolver. Run the type-check schedule for any .na.jac
-    # module (or auto-promoted .jac) even when options.type_check is off, so
-    # codegen has a single semantic source of truth. This covers transitive
-    # imports too: when one .na.jac imports another, the nested compile gets
-    # its own TypeCheckPass run, so cross-module annotations land with
-    # `.type` populated.
-    run_type_check = options.type_check;
-    if not run_type_check {
-        # A module is native-compiled if it is a .na.jac file (whole module
-        # in native context), contains any `na { ... }` block (a .jac file
-        # with embedded native code), or is being auto-promoted to native in
-        # this program (the nacompile / `jac run --autonative` path sets
-        # `_auto_promote_native` on the program before compile). All three
-        # cases require Expr.type populated on annotations so NaIRGenPass
-        # can lower them via _lower_type. Plain .jac modules with no native
-        # surface follow the explicit `options.type_check` contract.
-        #
-        # Includes the symtab_ir_only path: when TypeEvaluator imports a
-        # .na.jac module to resolve a cross-module symbol, it compiles with
-        # symtab_ir_only=True and no codegen. We still want TypeCheckPass to
-        # run so the imported module's annotations land with .type populated,
-        # because a later NaIRGenPass walk for native cross-module linking
-        # will lower those annotations.
+    # Typed-tree contract: type inference runs for every codegen-bearing
+    # compile — sv / cl / na backends are all consumers of Expr.type, never
+    # re-derivers. TypeCheckPass gates its own diagnostic emission (full for
+    # `jac check` / options.type_check and for native-context modules per
+    # #6049; suppressed for plain inference runs per #6262), so inference
+    # here never leaks diagnostics into builds that didn't ask for them.
+    # This covers transitive imports too: a nested compile that reaches its
+    # own codegen gets its own inference run first.
+    #
+    # Auxiliary no-codegen compiles (symtab_ir_only provider resolutions,
+    # no_cgen boundary/import walks) skip inference UNLESS the module is
+    # native-flavored: those lightweight compiles run while an outer pass is
+    # mid-analysis (the evaluator pulls their facts on demand), and forcing
+    # inference there recurses the whole import graph through TypeCheckPass.
+    # The native exception preserves the cross-module native linker contract:
+    # it lowers a provider module's annotations via Expr.type, so native
+    # modules get inference even on the lightweight paths.
+    # Internal (jaclang.*) modules also follow the explicit options.type_check
+    # contract instead of the unconditional one: the compiler's own modules
+    # ARE the type system, so inference during their bootstrap compiles hits
+    # partially initialized evaluator dependencies (type_registry et al.).
+    # They still get fully typed post-bootstrap — get_bytecode tier-3 passes
+    # type_check=True for every internal cache-miss compile (`can_typecheck`).
+    is_internal = (
+        self._internal_program is not None and actual_program is self._internal_program
+    );
+    run_inference = options.type_check
+    or (not options.no_cgen and not options.symtab_ir_only and not is_internal);
+    if not run_inference {
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
         is_native_mod = bool(mp) and mp.endswith('.na.jac');
         if not is_native_mod and mod_targ?.body {
@@ -708,40 +723,83 @@ impl JacCompiler.compile(
         ) {
             is_native_mod = True;
         }
-        if is_native_mod {
-            run_type_check = True;
-        }
-        # NOTE: client (.cl.jac) modules are deliberately NOT force-type-checked
-        # here. Unlike the native path -- where NaIRGenPass hard-depends on
-        # `Expr.type` to lower annotations -- BoundaryAnalysisPass derives every
-        # cross-boundary fact (server_exports_to_client bindings, func_access,
-        # boundary types) from the AST + symbol table alone: it reads raw
-        # annotation ASTs (`type_tag.tag`) and access tokens, never resolved
-        # `.type`. Forcing type-check on .cl.jac bought no boundary fidelity and
-        # surfaced type-checker false positives on idiomatic client code
-        # (untyped-prop access, Any-typed event handlers, kwargs override);
-        # see #6262. Plain .jac/.cl.jac modules follow the explicit
-        # `options.type_check` contract.
+        run_inference = is_native_mod;
     }
-    if run_type_check {
-        # Explicit `jac check` (options.type_check=True) runs the full
-        # schedule — TypeCheckPass + StaticAnalysis + Portability + the
-        # enrich-pass-second-pass + Lint.
-        #
-        # The implicit native run (.na.jac trigger) only needs Expr.type
-        # populated for NaIRGenPass, so it runs the inference-only schedule
-        # (TypeCheckPass alone). Rerunning UniTreeEnrichPass / Portability /
-        # Lint mutates AST state that NaIRGenPass and the cross-module linker
-        # depend on. Diagnostics from this run are kept: native code is held
-        # to the same type discipline as the rest of Jac (#6049).
-        implicit_native = not options.type_check;
-        passes = get_native_inference_sched()
-            if implicit_native
-            else get_type_check_sched();
+    if run_inference {
+        mod_targ._inference_started = True;
+        # Diagnostic-mode intent must ride on the module, not on the
+        # program's ambient _compile_options: creating the TypeEvaluator
+        # inside TypeCheckPass.before_pass triggers nested compiles (stub
+        # prefetch, builtin imports) that each overwrite
+        # prog._compile_options with their own (non-check) options before
+        # the pass reads its diagnostic gate. See before_pass.
+        mod_targ._type_check_requested = bool(options.type_check);
+        try {
+            self.run_schedule(
+                mod=mod_targ,
+                target_program=actual_program,
+                passes=get_inference_sched(),
+                cancel_token=options.cancel_token
+            );
+        } except Exception {
+            # A partial inference run must not satisfy the dep-sweep guard:
+            # the module would be skipped on retry with an incompletely
+            # typed tree and no E9002 to catch it.
+            mod_targ._inference_started = False;
+            raise;
+        }
+        # JIR-loaded dependency modules arrive untyped (Expr.type is not
+        # serialized), while a freshly compiled dep is typed by its own
+        # nested compile. Native cross-module codegen lowers dep-module
+        # annotations through Expr.type, so the typed-tree contract must
+        # hold for every native module in the program regardless of how it
+        # was loaded. The _inference_started flag (set before each run)
+        # breaks the cycle where inferring a dep makes the evaluator
+        # compile a sibling, whose own dep sweep would re-infer modules
+        # already mid-inference.
+        for dep_mod in list(actual_program.mod.hub.values()) {
+            if (dep_mod is mod_targ) or dep_mod?._inference_started {
+                continue;
+            }
+            dep_path = dep_mod.loc.mod_path if dep_mod?.loc else '';
+            if dep_path.endswith('.na.jac') {
+                dep_mod._inference_started = True;
+                # Quiet run: populate types only. A JIR-loaded tree's
+                # cross-module link state is degraded versus a fresh
+                # front-end run, so full checking here would emit false
+                # positives; diagnostics belong to each module's own
+                # entry compile.
+                dep_mod._inference_quiet = True;
+                try {
+                    self.run_schedule(
+                        mod=dep_mod,
+                        target_program=actual_program,
+                        passes=get_inference_sched(),
+                        cancel_token=options.cancel_token
+                    );
+                } except Exception {
+                    dep_mod._inference_started = False;
+                    raise;
+                } finally {
+                    # A leaked quiet flag would silently suppress every
+                    # diagnostic from this module's own entry compile later
+                    # in the same process.
+                    dep_mod._inference_quiet = False;
+                }
+            }
+        }
+    }
+    if options.type_check {
+        # Explicit `jac check`: diagnostic-only extras (StaticAnalysis /
+        # Portability / Lint) layered on the inference run above. The
+        # inference run already surfaced TYPE diagnostics in full mode;
+        # UniTreeEnrichPass is NOT re-run here (it runs exactly once at the
+        # tail of get_ir_gen_sched — rerunning it mutates AST state that
+        # NaIRGenPass and the cross-module linker depend on).
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=passes,
+            passes=get_type_check_sched(),
             cancel_token=options.cancel_token
         );
     }

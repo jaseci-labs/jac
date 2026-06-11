@@ -110,18 +110,6 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
     }
 }
 
-"""Archetype kind for OSP purposes: "walker" / "node" / "edge", else None."""
-impl NaIRGenPass._arch_kind(nd: uni.Archetype) -> (str | None) {
-    if nd.arch_type is None {
-        return None;
-    }
-    kind = nd.arch_type.value;
-    if kind in ("walker", "node", "edge") {
-        return kind;
-    }
-    return None;
-}
-
 """Assign a stable int type-tag to every walker/node/edge archetype, but only
 when the program actually participates in OSP (some walker/node/edge declares an
 event ability `can ... with T entry/exit`). Edges referenced only in
@@ -132,7 +120,7 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
     osp_arches: list[uni.Archetype] = [];
     has_osp = False;
     for arch in archetypes {
-        kind = self._arch_kind(arch);
+        kind = arch.arch_kind;
         if kind is None {
             continue;
         }
@@ -152,7 +140,7 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
     for arch in osp_arches {
         name = arch.name.value if arch.name else None;
         if (name is not None) and (name not in self.osp_tags) {
-            self.osp_arch_kind[name] = self._arch_kind(arch);
+            self.osp_arch_kind[name] = arch.arch_kind;
             self.osp_tags[name] = len(self.osp_tags);
         }
     }
@@ -276,7 +264,7 @@ impl NaIRGenPass._osp_isa_bases(arch_name: str) -> list[int] {
     if _self_tag is not None {
         bases.append(_self_tag);
     }
-    for anc in self.mro_order.get(arch_name, [arch_name]) {
+    for anc in self._mro_of(arch_name) {
         if (anc != arch_name) and (anc in self.osp_tags) {
             bases.append(self.osp_tags[anc]);
         }
@@ -309,9 +297,14 @@ impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
         if thunk is None {
             continue;
         }
-        trigs = self._osp_trigger_names(ev.arch_tag_info)
-            if ev.arch_tag_info is not None
-            else [];
+        # Prefer the checker-resolved trigger types; fall back to flattening
+        # the trigger AST when no resolution was recorded.
+        trigs = stmt.event_trigger_type_names();
+        if trigs is None {
+            trigs = self._osp_trigger_names(ev.arch_tag_info)
+                if ev.arch_tag_info is not None
+                else [];
+        }
         if not trigs {
             slots.append((-1, thunk));
         } else {

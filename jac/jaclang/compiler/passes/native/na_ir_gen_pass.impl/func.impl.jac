@@ -49,8 +49,25 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.func_symtab[name] = func;
     # Store line info for use when the body is generated (codegen_ability)
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
-    # Store AST signature for return type propagation in for-loops
-    self.method_ast_sigs[name] = sig;
+    # Interop-marshalling return facts, recorded while the declaration is
+    # in hand (replacing the deleted name-keyed AST-signature cache):
+    # tuple-element struct hints, and the union-peeled return annotation
+    # name for enum-return recovery. Consumed by build_interop_layout.
+    if sig.return_type is not None {
+        hints = self._extract_tuple_struct_hints(sig.return_type);
+        if hints {
+            self.func_ret_tuple_hints[name] = hints;
+        }
+        _rt = sig.return_type;
+        # Peel `T | None` (and general unions) to the first member.
+        if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+            _rt = _rt.left;
+        }
+        _rname = self._get_name(_rt);
+        if _rname is not None {
+            self.func_ret_ann_name[name] = _rname;
+        }
+    }
     self.has_native_code = True;
 }
 
@@ -286,69 +303,31 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    # Reset per-function borrowed-param promotion state (see _codegen_assignment).
-    self._param_store_instr = {};
-    self._param_promoted = set();
-    # Reset per-function global-scoping state. Inside an ability a bare
-    # assignment to a glob-named var is a local unless a `global x;` declares
-    # it — see GlobalStmt handling and _codegen_assignment.
-    self._declared_globals = set();
-    self._in_module_scope = False;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
     );
     # Store parameters as local variables (alloca + store pattern)
     sig = (nd).signature;
+    import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        _store_instr = self.builder.store(arg_val, alloca);
+        self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
-        self.param_vars.add(param_name);
-        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
-        # Track type annotations for parameters
-        if p.type_tag and p.type_tag.tag {
-            self.var_type_node[param_name] = p.type_tag.tag;
-            for (ename, ltype) in self.list_types.items() {
-                if arg_val.type == ltype.as_pointer() {
-                    self.var_list_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Track dict type for dict parameters
-            for (dkey, dtype) in self.dict_types.items() {
-                if arg_val.type == dtype.as_pointer() {
-                    self.var_dict_type[param_name] = dkey;
-                    break;
-                }
-            }
-            # Track set element type for set parameters
-            for (ename, stype) in self.set_types.items() {
-                if arg_val.type == stype.as_pointer() {
-                    self.var_set_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Track struct types (including union T | None)
-            tag_name = self._get_name(p.type_tag.tag);
-            tag_node = p.type_tag.tag;
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_name] = tag_name;
-            }
-            # Track enum type for enum-typed parameters
-            if tag_name is not None and tag_name in self.enum_types {
-                self.var_enum_type[param_name] = tag_name;
-            }
+        # A borrowed param rebound by a plain assignment somewhere in the
+        # body owns its slot from birth (central analysis fact,
+        # compiler/ownership.jac): take one entry-block +1 so every
+        # overwrite-release stays balanced, and leave it out of param_vars
+        # so scope exits release it on ALL paths - including early returns
+        # emitted before the rebinding statement, which the old lazy
+        # promote-at-first-reassignment scheme leaked.
+        if isinstance(arg_val.type, ir.PointerType)
+        and param_plainly_rebound(p.name.sym if p.name else None) {
+            self._emit_rc_retain(arg_val, op="param_promote", loc=name);
+        } else {
+            self.param_vars.add(param_name);
         }
     }
     # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
@@ -437,9 +416,15 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         ret_type = self._resolve_jac_type(sig.return_type);
     }
     body = ModuleCodegenPass.unwrap_body(nd);
-    # Reject closures over enclosing locals (see docstring): _find_free_vars
-    # only reports names bound in the current (enclosing) local scope.
-    free_vars = self._find_free_vars(body, param_names);
+    # Reject closures over enclosing locals (see docstring). Free variables
+    # come from the symbol-table-derived capture fact; the `local_vars`
+    # filter keeps only names bound to live allocas in the enclosing
+    # function (excluding e.g. sibling nested functions in func_symtab).
+    free_vars = [
+        s.sym_name
+        for s in nd.get_enclosing_captures()
+        if s.sym_name in self.local_vars
+    ];
     if free_vars {
         self.emit(
             E5090,
@@ -467,36 +452,16 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_var_map = self.type_var_map;
-    saved_var_type_node = self.var_type_node;
-    saved_var_list = self.var_list_elem_type;
     saved_var_list_struct = self.var_list_elem_struct;
-    saved_var_dict = self.var_dict_type;
-    saved_var_set = self.var_set_elem_type;
-    saved_var_enum = self.var_enum_type;
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.param_vars = set();
-    self.type_var_map = {};
-    self.var_type_node = {};
-    self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    self.var_enum_type = {};
     for (i, arg) in enumerate(fn.args) {
         alloca = self._entry_alloca(arg.type, param_names[i]);
         self.builder.store(arg, alloca);
         self.local_vars[param_names[i]] = alloca;
         self.param_vars.add(param_names[i]);
-        sigp = sig_params[i];
-        if sigp?.type_tag and sigp.type_tag and sigp.type_tag?.tag {
-            self.var_type_node[param_names[i]] = sigp.type_tag.tag;
-            tag_name = self._get_name(sigp.type_tag.tag);
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_names[i]] = tag_name;
-            }
-        }
     }
     if body is not None {
         self._codegen_body(body);
@@ -518,13 +483,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_var_map;
-    self.var_type_node = saved_var_type_node;
-    self.var_list_elem_type = saved_var_list;
     self.var_list_elem_struct = saved_var_list_struct;
-    self.var_dict_type = saved_var_dict;
-    self.var_set_elem_type = saved_var_set;
-    self.var_enum_type = saved_var_enum;
     nd.gen.llvm_ir = fn;
 }
 
@@ -615,12 +574,6 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    # Module-level code: an assignment to a glob is a genuine global store
-    # (module scope == global scope, as in CPython).
-    self._declared_globals = set();
-    self._in_module_scope = True;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     entry_line = nd.loc.first_line if nd.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);

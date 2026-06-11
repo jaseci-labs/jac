@@ -263,9 +263,7 @@ impl NaIRGenPass._export_native_layout -> None {
             );
         }
         layout.structs[arch_name] = NativeStructLayout(
-            name=arch_name,
-            fields=fields,
-            has_vtable=self.has_vtable.get(arch_name, False)
+            name=arch_name, fields=fields, has_vtable=self._arch_has_vtable(arch_name)
         );
     }
     # Enums
@@ -307,20 +305,14 @@ impl NaIRGenPass._export_native_layout -> None {
                     if func.function_type.return_type.pointee == ttype {
                         ret_tuple = layout.tuples.get(tkey);
                         if ret_tuple is not None {
-                            sig = self.method_ast_sigs.get(fname);
-                            if sig and sig.return_type {
-                                hints = self._extract_tuple_struct_hints(
-                                    sig.return_type
+                            hints = self.func_ret_tuple_hints.get(fname);
+                            if hints and len(hints) == len(ret_tuple.element_types) {
+                                ret_tuple = NativeTupleLayout(
+                                    key=ret_tuple.key,
+                                    element_types=ret_tuple.element_types,
+                                    element_struct_hints=hints
                                 );
-                                if hints
-                                and len(hints) == len(ret_tuple.element_types) {
-                                    ret_tuple = NativeTupleLayout(
-                                        key=ret_tuple.key,
-                                        element_types=ret_tuple.element_types,
-                                        element_struct_hints=hints
-                                    );
-                                    layout.tuples[tkey] = ret_tuple;
-                                }
+                                layout.tuples[tkey] = ret_tuple;
                             }
                         }
                         break;
@@ -328,23 +320,14 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
-        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
-        # the enum name from the AST sig so the marshaller maps the ordinal back
-        # to the Python enum member.
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`);
+        # recover the enum name from the declaration-time return fact so the
+        # marshaller maps the ordinal back to the Python enum member.
         ret_enum: (str | None) = None;
         if ret_type == "i64" {
-            _fsig = self.method_ast_sigs.get(fname);
-            if _fsig and _fsig.return_type {
-                _rt = _fsig.return_type;
-                # Peel `T | None` (and general unions) to the first member.
-                if isinstance(_rt, uni.BinaryExpr)
-                and getattr(_rt.op, 'value', '') == "|" {
-                    _rt = _rt.left;
-                }
-                _rname = self._get_name(_rt);
-                if _rname is not None and _rname in self.enum_types {
-                    ret_enum = _rname;
-                }
+            _rname = self.func_ret_ann_name.get(fname);
+            if _rname is not None and _rname in self.enum_types {
+                ret_enum = _rname;
             }
         }
         layout.functions[fname] = NativeFuncLayout(
@@ -591,14 +574,6 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     return mod_name;
 }
 
-"""Walk an imported module's AST and register all type declarations."""
-impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
-    # Full walk (types + abilities) — kept for any direct callers.
-    self._walk_imported_module_type_names(imported_mod);
-    self._walk_imported_module_types(imported_mod);
-    self._walk_imported_module_abilities(imported_mod);
-}
-
 """Phase-1a walk: register struct names only (empty identified types, no bodies)."""
 impl NaIRGenPass._walk_imported_module_type_names(imported_mod: uni.Module) -> None {
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
@@ -726,9 +701,6 @@ impl NaIRGenPass._register_imported_globals(
             var_type: ir.Type = ir.IntType(64);
             if assign.type_tag and assign.type_tag.tag {
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
-                # Track type annotation node for chained subscript+field access
-                # e.g. ITEMS[i].field chains need the list[Outer] node to bitcast
-                self.var_type_node[var_name] = assign.type_tag.tag;
             }
             global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
             global_var.linkage = "external";
@@ -737,24 +709,6 @@ impl NaIRGenPass._register_imported_globals(
             # Record origin so dup-error messages can name the source module
             if source_path {
                 self._global_origins[var_name] = source_path;
-            }
-            # Track list element types for imported list globals
-            if isinstance(var_type, ir.PointerType) {
-                for (ename, ltype) in self.list_types.items() {
-                    if var_type == ltype.as_pointer() {
-                        self.var_list_elem_type[var_name] = ename;
-                        break;
-                    }
-                }
-            }
-            # Track dict types for imported dict globals
-            if isinstance(var_type, ir.PointerType) {
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if var_type == dtype.as_pointer() {
-                        self.var_dict_type[var_name] = dict_key;
-                        break;
-                    }
-                }
             }
             self.has_native_code = True;
         }
@@ -926,6 +880,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
+        # Pass 1.75: record vtable structs (fn-ptr slots) so stores into
+        # them route through C→Jac callback trampolines (issue #6570).
+        self._clib_detect_vtable_structs();
         # Pass 2: Forward-declare extern functions (with value types for clib structs)
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {

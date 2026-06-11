@@ -86,7 +86,14 @@ glob plugin_manager = plugin.PluginManager('jac'),
      # poison a live ctx. Live behavior always follows the ctx; these
      # values are only consulted during ctx construction.
      _default_base_path_dir: list = [os.getcwd()],
-     _default_full_target_path: list = [None];
+     _default_full_target_path: list = [None],
+     # Shared-root resolver seed. Slot 0 holds the callable an API server
+     # registers at startup to map the internal guest user to its root id;
+     # slot 1 caches the resolved id (root ids are stable per deployment).
+     # When no resolver is registered (CLI, scripts, embedders) `root.shared`
+     # falls back to the current context's root — in those single-user
+     # contexts the caller IS the shared graph's owner.
+     _shared_root_resolver: list = [None, None];
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -1115,6 +1122,29 @@ class JacRuntime(JacRuntimeInterface) {
         Mutates only the seed — already-constructed contexts are unaffected.
         """
     static def set_full_target_path(target_path: (str | None)) -> None;
+
+    """Return the deployment's shared root — the root every unauthenticated
+    request runs on (surfaced in Jac as `root.shared`). Resolution goes
+    through the resolver an API server registered at startup; when none is
+    registered (CLI, scripts, embedders) the current context's root is
+    returned, since single-user contexts have no separate shared graph.
+
+    Default policy: the shared root is a commons — its `access.all` is
+    floored to CONNECT on access, so every user can read it and attach to
+    it without app-side arming. Nodes users hang on the shared graph stay
+    owned by their author and closed until the author grants. Apps may
+    lower the root's level explicitly (any level other than NO_ACCESS is
+    respected, e.g. ReadPerm for a read-only commons).
+    """
+    static def get_shared_root -> Root;
+
+    """Register (or clear, with None) the callable that maps the internal
+    guest user to its root id (the shared root). API servers call this at
+    startup; replacing the resolver invalidates the cached id.
+    """
+    static def set_shared_root_resolver(
+        resolver: (Callable[([], (str | None))] | None)
+    ) -> None;
 
     """Install the process-global execution context for CLI and other
     non-server callers. Server request paths use `push_request_context`

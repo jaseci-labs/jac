@@ -22,24 +22,6 @@ impl NaIRGenPass._get_or_declare_extern(
     return func;
 }
 
-"""Call an extern function with automatic argument coercion.
-Handles type mismatches between internal callers (using i8*) and user-
-declared C functions (using i64), or vice versa.  Uses _coerce_type for
-ptrtoint / inttoptr / bitcast as needed."""
-impl NaIRGenPass._call_extern(
-    b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
-) -> ir.Value {
-    coerced: list[ir.Value] = [];
-    for (i, arg) in enumerate(args) {
-        if i < len(func.args) and arg.type != func.args[i].type {
-            coerced.append(self._coerce_type(arg, func.args[i].type));
-        } else {
-            coerced.append(arg);
-        }
-    }
-    return b.call(func, coerced, name=name);
-}
-
 # ─── Print Support ───────────────────────────────────────────
 """Get or create the printf external function declaration."""
 impl NaIRGenPass._get_printf -> ir.Function {

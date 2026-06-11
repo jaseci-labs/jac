@@ -48,11 +48,13 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
 
     # Filter out type-checker diagnostics (non-fatal warnings about
     # Unknown types in client code).  Only fail on parse/compile errors.
+    # issubclass: diagnostics may come from TypeCheckPass itself or its
+    # TypeInferencePass schedule entry.
     import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
     _fatal = [
         e
         for e in prog.errors_had
-        if e.from_pass is not TypeCheckPass
+        if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not _fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
