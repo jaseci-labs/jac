@@ -332,15 +332,13 @@ impl _run_harness(
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
         if "@jac/runtime" in imports {
-            import from jaclang.runtimelib.client_surface { with_runtime_globals }
-            import from jaclang.compiler.passes.ecmascript.backends.registry {
-                resolve_active_backend
+            import from jaclang.runtimelib.client_surface {
+                prepend_active_runtime_globals
             }
-            backend = resolve_active_backend();
             runtime_js = _compile_runtime_js();
             # Add the runtime-global import the compiler relies on, the same way
             # every bundle path does -- so `root spawn` / JSX resolve here too.
-            module_js = with_runtime_globals(module_js, backend);
+            module_js = prepend_active_runtime_globals(module_js);
             # Point the `@jac/runtime` specifier at the runtime we just compiled
             # alongside the harness (both quote styles the codegen may emit).
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');

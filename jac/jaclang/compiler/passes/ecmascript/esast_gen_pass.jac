@@ -391,7 +391,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         acc_name: str, value: es.Expression, anchor: uni.UniNode
     ) -> es.ExpressionStatement;
 
-    """Build `<>{children...}</>` as a `__jacJsx(null, {}, [children])` call."""
+    """Build `<>{children...}</>` as a backend JSX-factory fragment call."""
     def _jsx_fragment(
         children: list[es.Expression], anchor: uni.UniNode
     ) -> es.CallExpression;

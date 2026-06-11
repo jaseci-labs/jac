@@ -47,18 +47,32 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
 
 """Module the compiler imports `name` from.
 
-When `backend` is provided, delegates to the backend's `import_source`. Otherwise
-falls back to the hard-coded React surface for backward compatibility.
+When `backend` is provided, delegates to the backend's `import_source`. Falls
+back to the hard-coded React surface when the backend stub is not yet wired.
 """
 def runtime_import_source(name: str, backend: (object | None) = None) -> str {
     if backend is not None {
-        return backend.import_source(name);
+        src = backend.import_source(name);
+        if isinstance(src, str) and src {
+            return src;
+        }
     }
     sym = runtime_symbol(name);
     if sym is not None {
         return sym.source;
     }
     return "@jac/runtime";
+}
+
+"""JSX factory identifier for `backend`, defaulting to React's `__jacJsx`."""
+def backend_jsx_factory_name(backend: (object | None) = None) -> str {
+    if backend is not None {
+        name = backend.jsx_factory_name();
+        if isinstance(name, str) and name {
+            return name;
+        }
+    }
+    return "__jacJsx";
 }
 
 """The single import statement bundle paths prepend for bare globals.
@@ -68,9 +82,11 @@ When `backend` is provided, uses the backend's `required_globals` and
 """
 def prepended_runtime_import(backend: (object | None) = None) -> str {
     if backend is not None {
-        names = backend.required_globals;
-        src = backend.runtime_module;
-        return 'import {' + ", ".join(names) + '} from "' + src + '";';
+        names = backend.required_globals();
+        src = backend.runtime_module();
+        if (isinstance(names, list) and names and isinstance(src, str) and src) {
+            return 'import {' + ", ".join(names) + '} from "' + src + '";';
+        }
     }
     names = [
         sym.name
@@ -89,7 +105,7 @@ globals, and is idempotent.
 def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
     # The runtime module defines the JSX factory; importing it there is circular.
     # Detect the factory function signature so any backend's runtime is recognised.
-    factory_name = backend.jsx_factory_name if (backend is not None) else "__jacJsx";
+    factory_name = backend_jsx_factory_name(backend);
     if f"function {factory_name}(" in js_code {
         return js_code;
     }

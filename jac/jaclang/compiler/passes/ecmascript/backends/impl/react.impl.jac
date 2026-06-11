@@ -51,7 +51,7 @@ impl ReactBackend._get_setter_name(var_name: str) -> str {
 """Build `<>{children...}</>` — a fragment `<factory>(null, {}, [children])`."""
 impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpression {
     return es.CallExpression(
-        callee=es.Identifier(name=self.jsx_factory_name),
+        callee=es.Identifier(name=self.jsx_factory_name()),
         arguments=[
             es.Literal(value=None),
             es.ObjectExpression(properties=[]),
@@ -155,7 +155,7 @@ impl ReactBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
         computed=False
     );
     wrapper = es.CallExpression(
-        callee=es.Identifier(name=self.jsx_factory_name),
+        callee=es.Identifier(name=self.jsx_factory_name()),
         arguments=[
             es.Identifier(name='JacAwaiting'),
             es.ObjectExpression(properties=[fallback_prop]),
@@ -172,7 +172,7 @@ impl ReactBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
             computed=False
         );
         wrapper = es.CallExpression(
-            callee=es.Identifier(name=self.jsx_factory_name),
+            callee=es.Identifier(name=self.jsx_factory_name()),
             arguments=[
                 es.Identifier(name='JacClientErrorBoundary'),
                 es.ObjectExpression(properties=[eb_fallback_prop]),

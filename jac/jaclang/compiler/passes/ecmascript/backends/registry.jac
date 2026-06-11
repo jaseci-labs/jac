@@ -7,7 +7,7 @@ import from jaclang.jac0core.diagnostics { E5081 }
 # bootstrap without triggering compilation of concrete backends.
 glob _BACKENDS: dict[str, FrameworkBackend] = {};
 
-"""Return a FrameworkBackend for `framework`, or raise E5081 if unknown."""
+"""Return a FrameworkBackend for `framework`, or raise ValueError with an E5081 message if unknown."""
 def resolve_framework_backend(framework: str) -> FrameworkBackend {
     backend = _BACKENDS.get(framework);
     if backend is not None {

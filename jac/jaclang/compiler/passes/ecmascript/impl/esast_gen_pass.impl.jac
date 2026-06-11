@@ -3861,8 +3861,9 @@ impl EsastGenPass._view_push_stmt(
 impl EsastGenPass._jsx_fragment(
     children: list[es.Expression], anchor: uni.UniNode
 ) -> es.CallExpression {
+    import from jaclang.runtimelib.client_surface { backend_jsx_factory_name }
     self._ensure_backend();
-    factory_name = self.backend.jsx_factory_name;
+    factory_name = backend_jsx_factory_name(self.backend);
     return self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name=factory_name), jac_node=anchor),
@@ -3999,11 +4000,12 @@ impl EsastGenPass._register_jac_runtime_import -> None {
 The active backend decides the import source for each symbol. Only
 `@jac/runtime` symbols register the runtime for inlining."""
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+    import from jaclang.runtimelib.client_surface { runtime_import_source }
     self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = self.backend.import_source(name);
+    src = runtime_import_source(name, self.backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)

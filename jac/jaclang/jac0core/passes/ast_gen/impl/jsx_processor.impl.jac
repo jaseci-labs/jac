@@ -122,13 +122,8 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         es.ArrayExpression(elements=children_elements), jac_node=nd
     );
     self.pass_ref._ensure_backend();
-    factory_name = "__jacJsx";
-    if self.pass_ref.backend is not None {
-        name = self.pass_ref.backend.jsx_factory_name;
-        if isinstance(name, str) and name {
-            factory_name = name;
-        }
-    }
+    import from jaclang.runtimelib.client_surface { backend_jsx_factory_name }
+    factory_name = backend_jsx_factory_name(self.pass_ref.backend);
     call_expr = self.pass_ref.sync_loc(
         es.CallExpression(
             callee=self.pass_ref.sync_loc(

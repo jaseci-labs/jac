@@ -13,7 +13,7 @@ import type from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
 """Generate ESTree structures for JSX nodes."""
 class EsJsxProcessor {
     def init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None;
-    """Process JSX element into __jacJsx(tag, props, children) call."""
+    """Process JSX element into the active backend's JSX factory call."""
     def element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression;
 
     """Process JSX element name."""
