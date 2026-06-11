@@ -32,6 +32,7 @@ jac_desktop = [
     "native/webview/README.md",
     "native/cef/cef.na.jac",
     "native/cef/cef_dispatch.c",
+    "native/cef/close_preload.c",
     "native/cef/build_cef_dispatch.sh",
     "native/cef/fetch_libcef.sh",
     "native/cef/README.md",

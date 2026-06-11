@@ -64,13 +64,14 @@ def _find_webview_dir -> Path {
 
 """Resolve the jac CLI for nacompile."""
 def _jac_bin -> str {
-    found = shutil.which("jac");
-    if found {
-        return found;
-    }
+    # Prefer jac beside the running interpreter (editable venv installs).
     cand = Path(os.path.dirname(os.sys.executable)) / "jac";
     if cand.exists() {
         return str(cand);
+    }
+    found = shutil.which("jac");
+    if found {
+        return found;
     }
     raise RuntimeError("jac CLI not found on PATH.");
 }
@@ -346,41 +347,16 @@ impl CefDesktopTarget.build(
             "Re-run jac_desktop/native/cef/build_cef_dispatch.sh."
         );
     }
-    host_obj = out_dir / "host.o";
     nacompile_env = dict(os.environ);
-    nacompile_env["JAC_EMIT_OBJECT_PATH"] = str(host_obj);
+    nacompile_env["JAC_CRT_OBJECTS"] = str(close_preload);
     console.print("  Compiling CEF native host (jac nacompile)...", style="muted");
     res = subprocess.run(
         [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name],
         cwd=str(out_dir),
         env=nacompile_env,
     );
-    if res.returncode != 0 or not host_obj.exists() {
+    if res.returncode != 0 {
         raise RuntimeError("CEF native host compilation failed.");
-    }
-    # gcc relink: export close() for libcef zygote (chromiumembedded/cef#4066).
-    console.print("  Relinking CEF host with gcc (--export-dynamic)...", style="muted");
-    relink = subprocess.run(
-        [
-            "gcc",
-            "-o",
-            app_name,
-            str(host_obj),
-            str(close_preload),
-            f"-L{out_dir}",
-            "-lcef_dispatch",
-            "-lcef",
-            libpy,
-            "-ldl",
-            "-lm",
-            "-Wl,-rpath,$ORIGIN",
-            "-Wl,--export-dynamic",
-
-        ],
-        cwd=str(out_dir),
-    );
-    if relink.returncode != 0 {
-        raise RuntimeError("CEF host gcc relink failed.");
     }
     binary = out_dir / app_name;
     console.print(f"\n✅ CEF desktop app built: {binary}", style="bold green");

@@ -36,4 +36,11 @@ gcc -shared -fPIC -Wl,-soname,libcef_dispatch.so \
     -o "$SO"
 
 echo ">> built: $SO ($(stat -c%s "$SO") bytes)"
+
+# Relocatable object linked into nacompile hosts so libcef.so can resolve close()
+# via dlsym(RTLD_NEXT). See close_preload.c and chromiumembedded/cef#4066.
+CLOSE_OBJ="$BUILD_DIR/close_preload.o"
+echo ">> compiling close_preload.o (CEF host CRT)"
+gcc -std=c11 -DNDEBUG -fPIC -O2 -Wall -Wextra -c "$HERE/close_preload.c" -o "$CLOSE_OBJ"
+
 echo "OK."
