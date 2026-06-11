@@ -11,7 +11,11 @@ import tempfile;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator, es_to_js }
+import from jaclang.compiler.passes.ecmascript.primitives_es {
+    ESDictEmitter,
+    ESEmitCtx
+}
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.modresolver { convert_to_js_import_path }
@@ -2227,7 +2231,10 @@ test "getattr default with or/and emits parenthesized nullish coalescing (#6562)
         "getattr_alone_hit": "present",
         "getattr_alone_miss": "default",
         "dict_get_poly_hit": "hi",
-        "dict_get_poly_miss": ""
+        "dict_get_poly_miss": "",
+        "dict_get_one_arg_hit": "hi",
+        "dict_get_one_arg_miss": "",
+        "dict_get_one_arg_falsy": ""
     };
     for (key, val) in expected.items() {
         assert key in got , f"missing result key {key!r} in {got}";
@@ -2237,6 +2244,19 @@ test "getattr default with or/and emits parenthesized nullish coalescing (#6562)
     }
 
     assert_balanced_syntax(js_code, fixture);
+}
+
+test "ESDictEmitter.emit_get parenthesizes ?? for 1- and 2-arg forms (#6562)" {
+    emitter = ESDictEmitter();
+    ctx = ESEmitCtx(unparser=JSCodeGenerator());
+    one_arg = emitter.emit_get(ctx, "d", ['"k"']);
+    two_arg = emitter.emit_get(ctx, "d", ['"k"', '""']);
+    assert one_arg == '(d["k"] ?? undefined)' , (
+        "1-arg emit_get must wrap ?? in parens; got " + str(one_arg)
+    );
+    assert two_arg == '(d["k"] ?? "")' , (
+        "2-arg emit_get must wrap ?? in parens; got " + str(two_arg)
+    );
 }
 
 test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {

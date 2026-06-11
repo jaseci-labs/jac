@@ -1,8 +1,9 @@
 """Fixture: ?? lowering combined with or/and must emit valid JS.
 
-`getattr(obj, key, default)` lowers to `(obj[key] ?? default)`. When that
-result flows into Jac `or` / `and`, the parenthesized ?? subexpression must
-stay grouped — unparenthesized ?? mixed with ||/&& is a SyntaxError.
+`getattr(obj, key, default)` lowers to `(obj[key] ?? default)` and one-arg
+`dict.get(key)` lowers to `(obj[key] ?? undefined)`. When those results flow
+into Jac `or` / `and`, the parenthesized ?? subexpression must stay grouped
+— unparenthesized ?? mixed with ||/&& is a SyntaxError.
 """
 
 cl def getattr_two_arg_or_empty(o: object) -> str {
@@ -41,6 +42,10 @@ cl def dict_get_or_empty(d: dict) -> str {
     return d.get("k", "") or "";
 }
 
+cl def dict_get_one_arg_or_empty(d: dict) -> str {
+    return d.get("k") or "";
+}
+
 cl def test_nullish_logical_precedence_cases() -> dict {
     return {
         "getattr_two_arg_hit": getattr_two_arg_or_empty({"k": "hi"}),
@@ -63,5 +68,8 @@ cl def test_nullish_logical_precedence_cases() -> dict {
         "getattr_alone_miss": getattr_alone({}),
         "dict_get_poly_hit": dict_get_or_empty({"k": "hi"}),
         "dict_get_poly_miss": dict_get_or_empty({}),
+        "dict_get_one_arg_hit": dict_get_one_arg_or_empty({"k": "hi"}),
+        "dict_get_one_arg_miss": dict_get_one_arg_or_empty({}),
+        "dict_get_one_arg_falsy": dict_get_one_arg_or_empty({"k": ""}),
     };
 }

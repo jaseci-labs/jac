@@ -1241,7 +1241,7 @@ impl ESDictEmitter.emit_get(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
-        return target + "[" + args[0] + "] ?? undefined";
+        return "(" + target + "[" + args[0] + "] ?? undefined)";
     }
     return "(" + target + "[" + args[0] + "] ?? " + args[1] + ")";
 }
