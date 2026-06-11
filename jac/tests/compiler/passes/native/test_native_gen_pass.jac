@@ -3008,6 +3008,21 @@ test "fnptr call_via_local stores and calls pointer" {
     assert call_via_local(mul_addr, 6, 7) == 42;
 }
 
+# --- Callable null (`= 0`) field defaults (issue #6569) ---
+test "callable field accepts int 0 default in native (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    op_default = get_func(eng, "op_default_is_null", ctypes.c_int64);
+    assert op_default() == 0;
+    vt_default = get_func(eng, "vt_default_is_null", ctypes.c_int64);
+    assert vt_default() == 0;
+}
+
+test "callable field slot resets to null via int 0 (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    reset = get_func(eng, "op_slot_reset_to_null", ctypes.c_int64, ctypes.c_int64);
+    assert reset(5) == 0;
+}
+
 # --- TestCrossModuleGlobInit ---
 test "cross module glob init compiles without errors" {
     # Importing a module with a glob list initializer must compile cleanly.
