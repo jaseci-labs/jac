@@ -107,11 +107,11 @@ graph TD
         FE5[SemDefMatchPass]
         FE6[CFGBuildPass]
         FE7[MTIRGenPass]
-        FE8[UniTreeEnrichPass]
+        FE8[CapabilityCheckPass]
     end
 
     FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8
-    FE8 --> TYPECK["Type Check<br/>TypeCheckPass / StaticAnalysisPass / PortabilityCheckPass"]
+    FE8 --> TYPECK["Type Check<br/>TypeCheckPass / StaticAnalysisPass / PortabilityWarnPass"]
     TYPECK --> INTEROP["InteropAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[PyastGenPass + PyBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
@@ -192,14 +192,68 @@ These passes run regardless of codespace and are collected by
 | `SemDefMatchPass` | [`compiler/passes/main/sem_def_match_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/sem_def_match_pass.jac) | Matches `sem` blocks to definitions for `by llm` |
 | `CFGBuildPass` | [`compiler/passes/main/cfg_build_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/cfg_build_pass.jac) | Builds control-flow graphs |
 | `MTIRGenPass` | [`compiler/passes/main/mtir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/mtir_gen_pass.jac) | Generates Meaning-Typed IR for `by llm` calls |
-| `UniTreeEnrichPass` | [`compiler/passes/main/unitree_enrich_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/unitree_enrich_pass.jac) | Annotates the tree with derived data needed by later passes |
+| `CapabilityCheckPass` | [`compiler/passes/main/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/capability_check_pass.jac) | Stamps capability/portability facts (native auto-promotion eligibility) on module nodes |
 | `TypeCheckPass` | [`compiler/passes/main/type_checker_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/type_checker_pass.jac) | Static type checking against the type registry |
-| `PortabilityCheckPass` | [`compiler/passes/main/portability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/portability_check_pass.jac) | Validates that types and ops used in `cl` / `na` regions exist in the target backend |
+| `PortabilityWarnPass` | [`compiler/passes/main/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/capability_check_pass.jac) | Emits portability warnings (W6001-W6004) for JS-idiom violations; diagnostic-only, runs in the check-extras schedule |
 
 The pipeline uses a **re-entrancy guard** (`_ir_sched_loading`,
 `_codegen_sched_loading`, `_typecheck_sched_loading`) so that compiling the
 compiler's own pass modules degrades gracefully to the bootstrap subset
 instead of recursing forever.
+
+---
+
+## One Owner Per Analysis: The Analysis Contract
+
+Every semantic fact about a Jac program is computed exactly once, by the
+central analysis pipeline, and recorded on the unitree or in a registry
+hanging off it. The backends are pure consumers: they read annotations
+and emit target code. The contract (tracked in jaseci-labs/jaseci#6542):
+
+1. **Single owner.** For every analysis there is one pass or module that
+   computes it. A second implementation - even a "cheap local check" -
+   is a defect.
+2. **No fallbacks.** When a backend needs a fact and the annotation is
+   absent, that is an internal-contract diagnostic (E9002), never a
+   silent default.
+3. **The unitree is the program.** Semantic facts live on nodes
+   (annotate, never mutate surface syntax - the formatter/LSP fidelity
+   constraint stands).
+4. **Analysis before codegen.** Codegen passes may not invoke the type
+   evaluator, walk annotation ASTs, or run symbol-table lookups; they
+   read stamped facts and registries. `tests/compiler/test_backend_purity.jac`
+   enforces this mechanically with a ratcheting allowlist.
+5. **Tighten semantics where it simplifies.** Where backends used to
+   guess independently, the semantic is defined once centrally and all
+   backends hold to it (e.g. user-shadowed builtins are decided by the
+   stamped call classification everywhere).
+6. **Representation growth is cached growth.** New unitree fields are
+   either serialized through the JIR registry with a format bump, or
+   documented recompute-on-load (`by postinit` fields like `Expr.type`).
+
+### The authority map
+
+| Fact | Owner | Stamped/queried as |
+|------|-------|--------------------|
+| Expression types | TypeCheckPass / TypeEvaluator | `Expr.type` (recompute-on-load) |
+| Symbol storage class, rebinding | Symbol tables | `Symbol.storage`, `NameAtom.binds_new_var`, defn/uses |
+| Call classification | `symbol_utils.classify_call` via checker | `FuncCall.call_kind` |
+| Resolved callee | `symbol_utils.ability_of_symbol` via checker | `FuncCall.callee_decl` (recompute-on-load) |
+| OSP archetype kind / event triggers | checker + unitree getters | `Archetype.arch_kind`, `Ability.event_triggers`, `Ability.event_trigger_type_names()` |
+| Closure captures | scope tables | `UniScopeNode.get_enclosing_captures`, `LambdaExpr.captures` |
+| Class hierarchy, MRO, vtable need | `LayoutPass` / `LayoutRegistry` | `get_layout_registry(module)` queries (no copies) |
+| Result ownership (+1 transfer) | `compiler/ownership.jac` | `result_ownership(expr)`, applied at one emission seam |
+| Borrowed-param promotion | `compiler/ownership.jac` | `param_plainly_rebound(sym)`, entry-block retain |
+| Loop-exit release lists | `compiler/ownership.jac` | `loop_body_locals(body)` |
+| Capability / portability | `capability_check_pass.jac` | declarative disqualifier + stdlib tables, W6001-W6004 |
+| Foreign ABI classification | `compiler/targets/abi.jac` | `classify_struct(size, align, scalars, triple)` (pure, unit-tested) |
+
+What stays per-backend by design: target IR construction and emission,
+runtime libraries, backend-idiomatic lowering choices, emitter-created
+temporaries (boxing, coercion buffers - their bookkeeping is driven by
+the central classification of their source expressions), and
+annotation-surface-shape decisions (what the user literally wrote,
+which stamped types deliberately erase).
 
 ---
 

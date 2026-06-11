@@ -49,6 +49,13 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"}
 
      );
 
+"""Classify a plain `import X;` item for the native pathway: returns
+(dotted_name, supported). `supported` is True exactly when the name is
+in NATIVE_SUPPORTED_STDLIB; a (name, False) result in native context is
+the E5090 rejection case (enforced post-coercion - see the table
+comment above)."""
+def classify_native_import(item: uni.UniNode) -> tuple;
+
 """Whether a module is eligible for native auto-promotion: it must have a
 `with entry` block and contain none of the disqualifying constructs (no
 OSP archetypes, no async or event abilities, none of the node forms in

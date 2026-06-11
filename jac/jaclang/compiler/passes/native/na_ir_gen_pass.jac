@@ -860,7 +860,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
     ) -> None;
 
-    def _emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None;
+    def _emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None;
     def _set_rc_ctx(op: str, loc: str) -> None;
     def _clear_rc_ctx -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;

@@ -666,26 +666,27 @@ impl NaIRGenPass._emit_scope_cleanup(
 }
 
 """Release pointer-typed locals introduced inside a loop body and null
-their alloca slots.  Called before back-edge / continue / break branches
-so an early `return` from a later iteration cannot leak the previous
-iteration's value held in a still-live alloca.
+their alloca slots. Called before back-edge branches so an early
+`return` from a later iteration cannot leak the previous iteration's
+value held in a still-live alloca.
 
-`saved_locals` is the snapshot of `self.local_vars.keys()` taken before
-the loop body was codegen'd — any local present now but not in the
-snapshot was declared inside the body.
+`body_locals` is the central release list (ownership.loop_body_locals):
+names first bound inside the body. The emission-side filters stay here:
+only pointer-typed slots that were actually allocated participate, and
+raw-pointer exemptions recorded during body emission are honored.
 """
-impl NaIRGenPass._emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None {
+impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None {
     if self._builder is None or self._builder.block.is_terminated {
         return;
     }
-    for var_name in list(self.local_vars.keys()) {
-        if var_name in saved_locals {
-            continue;
-        }
+    for var_name in body_locals {
         if var_name == "self" or var_name in self.param_vars {
             continue;
         }
-        alloca = self.local_vars[var_name];
+        alloca = self.local_vars.get(var_name);
+        if alloca is None {
+            continue;
+        }
         if (
             isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.type.pointee, ir.PointerType)

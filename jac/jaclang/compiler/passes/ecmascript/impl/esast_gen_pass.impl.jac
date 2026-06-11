@@ -1049,11 +1049,10 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
         return nd.callee_decl;
     }
     if isinstance(nd.target, uni.Name) {
-        target_sym = nd.target.sym;
-        if not target_sym and nd.target.sym_tab {
-            target_sym = nd.target.sym_tab.lookup(nd.target.sym_name, deep=True);
-        }
-        ability_node = self._ability_from_symbol(target_sym);
+        # No re-resolution fallbacks: the checker-stamped callee_decl above
+        # and the stored .sym are the facts; a missing stamp means no
+        # statically-known ability (the no-fallback contract of #6542).
+        ability_node = self._ability_from_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
         }
@@ -1069,19 +1068,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
-        target_sym = nd.target.right.sym;
-        if not target_sym {
-            try {
-                _te = self.prog.get_type_evaluator();
-                if _te {
-                    _te.get_type_of_expression(nd.target);
-                    target_sym = nd.target.right.sym;
-                }
-            } except Exception {
-                target_sym = None;
-            }
-        }
-        return self._ability_from_symbol(target_sym);
+        return self._ability_from_symbol(nd.target.right.sym);
     }
     return None;
 }

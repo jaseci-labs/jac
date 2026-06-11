@@ -83,6 +83,18 @@ glob JS_GLOBALS: dict[str, str] = {
      };
 
 
+impl classify_native_import(item: uni.UniNode) -> tuple {
+    mod_name: (str | None) = None;
+    if isinstance(item, uni.ModulePath) and item.path {
+        parts = [];
+        for pseg in item.path {
+            parts.append(pseg.value if isinstance(pseg, uni.Name) else str(pseg));
+        }
+        mod_name = ".".join(parts);
+    }
+    return (mod_name, mod_name is not None and mod_name in NATIVE_SUPPORTED_STDLIB);
+}
+
 impl module_native_compat(mod: uni.Module) -> bool {
     scan_mods = [mod] + list(mod.impl_mod) + list(mod.test_mod) + list(mod.variant_mod);
     has_entry = False;

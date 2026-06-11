@@ -78,6 +78,38 @@ def param_plainly_rebound(sym: (uni.Symbol | None)) -> bool {
     return False;
 }
 
+"""Names first bound inside a loop body, in source order.
+
+THE loop-exit release list (Phase 7): a local whose first binding sits
+inside the body holds a fresh value each iteration, so the back edge
+must release it (and null its slot) or a later early return leaks the
+previous iteration's value. A name is a first binding exactly when it
+IS its symbol's first definition entry; names bound before the loop and
+merely reassigned inside keep their assignment-site release discipline
+and are not listed. Backends apply their own representation filters
+(pointer-typed slots only) when consuming the list.
+"""
+def loop_body_locals(body: (list | tuple | None)) -> list[str] {
+    out: list[str] = [];
+    seen: set[str] = set();
+    if not body {
+        return out;
+    }
+    for stmt in body {
+        for nm in stmt.get_all_sub_nodes(typ=uni.Name, brute_force=True) {
+            sym = nm.sym;
+            if sym is None or not sym.defn {
+                continue;
+            }
+            if sym.defn[0] is nm and nm.sym_name not in seen {
+                seen.add(nm.sym_name);
+                out.append(nm.sym_name);
+            }
+        }
+    }
+    return out;
+}
+
 """Classify an expression's result ownership (see module docstring).
 
 Pure function of expression shape: SetCompr/GenCompr are covered by the

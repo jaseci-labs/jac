@@ -433,7 +433,10 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     # across iterations).  Without this, an early `return` in a later
     # iteration that occurs before a body-declared local's source-order
     # declaration would leak the previous iteration's value.
-    _while_saved_locals = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _while_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -441,7 +444,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
         _while_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
             if nd.loc
             else 0}";
-        self._emit_loop_iter_cleanup(_while_saved_locals, loc=_while_loc);
+        self._emit_loop_iter_cleanup(_while_body_locals, loc=_while_loc);
         self.builder.branch(cond_bb);
     }
     self.loop_stack.pop();
@@ -489,7 +492,10 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     # Body block — continue lands on the step block so the counter advances.
     self.loop_stack.append((step_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    _saved_locals = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _saved_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -1920,7 +1926,10 @@ impl NaIRGenPass._codegen_for_indexed(
             return;
         }
     }
-    _for_saved = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _for_saved = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
