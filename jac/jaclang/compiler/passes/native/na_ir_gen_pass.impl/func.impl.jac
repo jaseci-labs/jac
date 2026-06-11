@@ -382,6 +382,89 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     self._builder = None;
 }
 
+"""Lower a test block to a zero-argument native function.
+
+The function returns i8*: null means the test passed, a non-null pointer is
+a static failure message. The body runs under an implicit exception handler
+(the same setjmp/longjmp machinery as try/except) so a failing assert or any
+uncaught runtime raise fails THIS test instead of hitting the no-handler
+abort() path and killing the host test runner.
+"""
+impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
+    import from jaclang.jac0core.codeinfo { native_test_symbol }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    test_name = nd.name.sym_name;
+    line = nd.loc.first_line if nd.loc else 0;
+    symbol = native_test_symbol(test_name, line);
+    fnty = ir.FunctionType(i8p, []);
+    func = ir.Function(self.llvm_module, fnty, name=symbol);
+    # Locals must survive the setjmp/longjmp round trip (same rationale as
+    # _codegen_try): without optnone, mem2reg promotes them to registers and
+    # values written between setjmp and the raise are lost.
+    func.attributes.add("optnone");
+    func.attributes.add("noinline");
+    entry_bb = func.append_basic_block(name="entry");
+    body_bb = func.append_basic_block(name="test.body");
+    success_bb = func.append_basic_block(name="test.success");
+    fail_bb = func.append_basic_block(name="test.fail");
+    self._builder = ir.IRBuilder(entry_bb);
+    self.local_vars = {};
+    saved_param_vars = self.param_vars;
+    self.param_vars = set();
+    self._attach_di_subprogram(func, symbol, line);
+    # ── entry: install the implicit handler ──
+    exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
+    self.builder.call(self._exc_push_fn, [exc_state]);
+    env_ptr = self.builder.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
+    );
+    env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
+    setjmp_fn = self.extern_funcs["setjmp"];
+    setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
+    is_exception = self.builder.icmp_signed(
+        "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
+    );
+    self.builder.cbranch(is_exception, fail_bb, body_bb);
+    # ── test.body ──
+    self.builder.position_at_end(body_bb);
+    self._codegen_body(nd.body);
+    if not self.builder.block.is_terminated {
+        self.builder.branch(success_bb);
+    }
+    # ── test.success: pop handler, release locals, return null (pass) ──
+    self.builder.position_at_end(success_bb);
+    self.builder.call(self._exc_pop_fn, []);
+    _tc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+    self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
+    self.builder.ret(ir.Constant(i8p, None));
+    # ── test.fail: pop handler, return the exception message (fail) ──
+    # Locals are deliberately not released here: the longjmp skipped an
+    # unknown suffix of the body, so slot states can't be trusted. Leaking
+    # on a failing test is acceptable in a test-runner process.
+    self.builder.position_at_end(fail_bb);
+    self.builder.call(self._exc_pop_fn, []);
+    exc_obj_ptr = self.builder.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
+    );
+    exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
+    self.builder.ret(exc_msg);
+    self._finalize_di_locations(func, line);
+    self.param_vars = saved_param_vars;
+    self._builder = None;
+    desc = nd.description.lit_value if nd.description else "";
+    self.native_tests.append((test_name, symbol, desc, line));
+    self.has_native_code = True;
+    # Mark the node native so PyastGenPass.exit_test emits the host-side shim
+    # instead of a Python lowering of the body. Top-level tests in a .na.jac
+    # are already coerced; this matters for tests inside inline na {} blocks,
+    # whose code_context still carries the SERVER default.
+    nd.code_context = CodeContext.NATIVE;
+}
+
 """Generate a nested function definition (a `def` inside another function).
 
 The inner function is lifted to a uniquely-named private LLVM function and

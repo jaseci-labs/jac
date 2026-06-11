@@ -994,6 +994,11 @@ impl JacBasics.run_test(
             mod_name = mod_name[:-4];
             if mod_name.endswith('.test') {
                 mod_name = mod_name[:-5];
+            } elif mod_name.endswith('.na') or mod_name.endswith('.sv') {
+                # Compound codespace suffix: foo.na.jac imports as module
+                # 'foo' (the importer resolves the stem back to the file);
+                # leaving the '.na' makes jac_import read it as a package path.
+                mod_name = mod_name[:-3];
             }
             JacTestCheck.reset();
             JacRuntimeInterface.jac_import(target=mod_name, base_path=base);
@@ -1053,8 +1058,13 @@ impl JacBasics.run_test(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
                     );
                     JacTestCheck.reset();
+                    mod_target = file[:-4];
+                    if mod_target.endswith('.na') or mod_target.endswith('.sv') {
+                        # Compound codespace suffix (see single-file branch).
+                        mod_target = mod_target[:-3];
+                    }
                     JacRuntimeInterface.jac_import(
-                        target=file[:-4], base_path=root_dir
+                        target=mod_target, base_path=root_dir
                     );
                     JacTestCheck.run_test(
                         xit, maxfail, verbose, os.path.abspath(file), func_name

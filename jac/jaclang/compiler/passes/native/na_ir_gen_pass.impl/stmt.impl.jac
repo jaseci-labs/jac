@@ -104,7 +104,18 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             cond_bool = self._to_bool(cond);
             # assert fires when condition is FALSE
             is_false = self.builder.not_(cond_bool, name="assert.fail");
-            self._emit_runtime_raise(is_false, "AssertionError", "assertion failed");
+            # Stamp the source location (and any literal message) into the
+            # raise so the failure points at the assert site; messages are
+            # deduplicated globals, so unique strings cost one constant each.
+            _a_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+            _a_line = nd.loc.first_line if nd.loc else 0;
+            _a_text = "assertion failed";
+            if isinstance(nd.error_msg, uni.String) {
+                _a_text = nd.error_msg.lit_value;
+            }
+            self._emit_runtime_raise(
+                is_false, "AssertionError", f"{_a_text} at {_a_path}:{_a_line}"
+            );
         }
     } elif isinstance(nd, uni.DeleteStmt) {
         # del d[k]  →  d.remove(k)

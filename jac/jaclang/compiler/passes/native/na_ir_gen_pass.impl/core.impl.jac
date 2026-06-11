@@ -138,6 +138,8 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
             self._codegen_entry(stmt);
+        } elif isinstance(stmt, uni.Test) {
+            self._codegen_test(stmt);
         }
     }
     # Store LLVM module on AST
@@ -226,7 +228,8 @@ impl NaIRGenPass._export_native_layout -> None {
         NativeFieldInfo,
         NativeEnumLayout,
         NativeFuncLayout,
-        NativeTupleLayout
+        NativeTupleLayout,
+        NativeTestLayout
     }
     layout = NativeModuleLayout();
     # Structs
@@ -365,6 +368,12 @@ impl NaIRGenPass._export_native_layout -> None {
     # List element types
     for (ename, ltype) in self.list_types.items() {
         layout.list_elem_types[f"List.{ename}"] = ename;
+    }
+    # Test blocks
+    for (tname, tsymbol, tdesc, tline) in self.native_tests {
+        layout.tests.append(
+            NativeTestLayout(name=tname, symbol=tsymbol, description=tdesc, line=tline)
+        );
     }
     self.ir_in.gen.native_layout = layout;
 }

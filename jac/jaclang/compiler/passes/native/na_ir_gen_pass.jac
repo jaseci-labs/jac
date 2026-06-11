@@ -101,6 +101,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
         has_native_code: bool = False,
+        # Test blocks lowered to native functions: (name, symbol, description,
+        # line) tuples, exported as NativeTestLayout entries in the layout.
+        native_tests: list = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         # External function cache (Phase 0)
         extern_funcs: dict[str, ir.Function] = {},
@@ -290,6 +293,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
+    # Test block - lowered to a zero-arg native fn returning i8* (null = pass)
+    def _codegen_test(nd: uni.Test) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
