@@ -1563,7 +1563,7 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
 impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Iterator protocol (#6403): map/filter/enumerate/zip/iter collections are
     # driven through first-class JacIter objects. Container collections (plain
-    # list/str/dict/range) fall through to the fast paths below.
+    # list/str/dict/range) fall through to the indexed skeleton below.
     if self._try_iter_protocol_for(nd) {
         return;
     }
@@ -1572,8 +1572,41 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # entire loop body without a word (the #6470 class). Emit E5090 at each
     # dead-end unless a deeper diagnostic already fired.
     _for_errs0 = len(self.errors_had);
-    # Extract loop variable name
     loop_var_name = self._get_name(nd.target);
+    # ── Dict .items() iteration: for (k, v) in d.items() ──
+    # Matched structurally (tuple target + .items() on a checked dict);
+    # the single-name guard below never applies to this form.
+    if isinstance(nd.target, uni.TupleVal)
+    and isinstance(nd.collection, uni.FuncCall)
+    and isinstance(nd.collection.target, uni.AtomTrailer)
+    and nd.collection.target.is_attr
+    and self._get_name(nd.collection.target.right) == "items" {
+        items_dict_key = self._dict_key_of(nd.collection.target.target);
+        helpers = self.dict_helpers.get(items_dict_key)
+            if items_dict_key is not None
+            else None;
+        unpack_targets = nd.target.values or [];
+        if helpers is not None and len(unpack_targets) == 2 {
+            key_var_name = self._get_name(unpack_targets[0]);
+            val_var_name = self._get_name(unpack_targets[1]);
+            if key_var_name is not None and val_var_name is not None {
+                collection_val = self._codegen_expr(nd.collection.target.target);
+                if collection_val is not None {
+                    self._codegen_for_indexed(
+                        nd,
+                        kind="items",
+                        collection_val=collection_val,
+                        helpers=helpers,
+                        var_names=[key_var_name, val_var_name],
+                        var_types=[helpers["key_type"], helpers["val_type"]],
+                        rc_vars=False,
+                        coll_release_op="fori_coll"
+                    );
+                    return;
+                }
+            }
+        }
+    }
     if loop_var_name is None {
         if len(self.errors_had) == _for_errs0 {
             self.emit(
@@ -1585,341 +1618,85 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
-    _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
-        if nd.loc
-        else 0}";
-    # Detect range() calls
-    start_val: (ir.Value | None) = None;
-    stop_val: (ir.Value | None) = None;
-    if isinstance(nd.collection, uni.FuncCall) {
-        call_name = self._get_name(nd.collection.target);
-        if call_name == "range" {
-            params = nd.collection.params or [];
-            if len(params) == 1 {
-                start_val = ir.Constant(ir.IntType(64), 0);
-                stop_val = self._codegen_expr(params[0]);
-            } elif len(params) >= 2 {
-                start_val = self._codegen_expr(params[0]);
-                stop_val = self._codegen_expr(params[1]);
-            }
+    # ── range(...) iteration: the loop var IS the index ──
+    if isinstance(nd.collection, uni.FuncCall)
+    and self._get_name(nd.collection.target) == "range" {
+        params = nd.collection.params or [];
+        start_val: (ir.Value | None) = None;
+        stop_val: (ir.Value | None) = None;
+        if len(params) == 1 {
+            start_val = ir.Constant(ir.IntType(64), 0);
+            stop_val = self._codegen_expr(params[0]);
+        } elif len(params) >= 2 {
+            start_val = self._codegen_expr(params[0]);
+            stop_val = self._codegen_expr(params[1]);
         }
-    }
-    if start_val is not None and stop_val is not None {
-        # Range-based for loop
-        start_val = self._coerce_type(start_val, ir.IntType(64));
-        stop_val = self._coerce_type(stop_val, ir.IntType(64));
-        alloca = self._entry_alloca(ir.IntType(64), loop_var_name);
-        self.builder.store(start_val, alloca);
-        self.local_vars[loop_var_name] = alloca;
-        func = self.builder.function;
-        cond_bb = func.append_basic_block(name="for.cond");
-        body_bb = func.append_basic_block(name="for.body");
-        incr_bb = func.append_basic_block(name="for.incr");
-        end_bb = func.append_basic_block(name="for.end");
-        self.builder.branch(cond_bb);
-        self.builder.position_at_end(cond_bb);
-        i_val = self.builder.load(alloca, name=loop_var_name);
-        cmp = self.builder.icmp_signed("<", i_val, stop_val, name="for.cmp");
-        self.builder.cbranch(cmp, body_bb, end_bb);
-        self.loop_stack.append((incr_bb, end_bb));
-        self.builder.position_at_end(body_bb);
-        _for_saved = set(self.local_vars.keys());
-        if isinstance(nd.body, (list, tuple)) {
-            self._codegen_body(nd.body);
-        }
-        if not self.builder.block.is_terminated {
-            self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
-            self.builder.branch(incr_bb);
-        }
-        self.loop_stack.pop();
-        self.builder.position_at_end(incr_bb);
-        i_cur = self.builder.load(alloca, name="for.cur");
-        i_next = self.builder.add(
-            i_cur, ir.Constant(ir.IntType(64), 1), name="for.next"
-        );
-        self.builder.store(i_next, alloca);
-        self.builder.branch(cond_bb);
-        self.builder.position_at_end(end_bb);
-        return;
-    }
-    # ── Dict .items() iteration: for (k, v) in d.items() ──
-    if isinstance(nd.target, uni.TupleVal)
-    and isinstance(nd.collection, uni.FuncCall) {
-        coll_call = nd.collection;
-        if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
-            items_method = self._get_name(coll_call.target.right);
-            items_dict_key = (
-                self._dict_key_of(coll_call.target.target)
-                    if items_method == "items"
-                    else None
+        if start_val is not None and stop_val is not None {
+            self._codegen_for_indexed(
+                nd,
+                kind="range",
+                collection_val=self._coerce_type(stop_val, ir.IntType(64)),
+                helpers=None,
+                var_names=[loop_var_name],
+                var_types=[ir.IntType(64)],
+                rc_vars=False,
+                coll_release_op="",
+                range_start=self._coerce_type(start_val, ir.IntType(64))
             );
-            if items_dict_key is not None {
-                dict_type_key = items_dict_key;
-                helpers = self.dict_helpers.get(dict_type_key);
-                unpack_targets = nd.target.values or [];
-                if helpers is not None and len(unpack_targets) == 2 {
-                    key_var_name = self._get_name(unpack_targets[0]);
-                    val_var_name = self._get_name(unpack_targets[1]);
-                    if key_var_name is not None and val_var_name is not None {
-                        collection_val = self._codegen_expr(coll_call.target.target);
-                        if collection_val is not None {
-                            i64 = ir.IntType(64);
-                            key_type = helpers["key_type"];
-                            val_type = helpers["val_type"];
-                            len_val = self.builder.call(
-                                helpers["len"], [collection_val], name="fori.len"
-                            );
-                            idx_alloca = self._entry_alloca(i64, "fori.idx");
-                            self.builder.store(ir.Constant(i64, 0), idx_alloca);
-                            key_alloca = self._entry_alloca(key_type, key_var_name);
-                            val_alloca = self._entry_alloca(val_type, val_var_name);
-                            self.local_vars[key_var_name] = key_alloca;
-                            self.local_vars[val_var_name] = val_alloca;
-                            func = self.builder.function;
-                            cond_bb = func.append_basic_block(name="fori.cond");
-                            body_bb = func.append_basic_block(name="fori.body");
-                            incr_bb = func.append_basic_block(name="fori.incr");
-                            end_bb = func.append_basic_block(name="fori.end");
-                            self.builder.branch(cond_bb);
-                            self.builder.position_at_end(cond_bb);
-                            cur_idx = self.builder.load(
-                                idx_alloca, name="fori.cur.idx"
-                            );
-                            cmp = self.builder.icmp_signed(
-                                "<", cur_idx, len_val, name="fori.cmp"
-                            );
-                            self.builder.cbranch(cmp, body_bb, end_bb);
-                            self.loop_stack.append((incr_bb, end_bb));
-                            self.builder.position_at_end(body_bb);
-                            body_idx = self.builder.load(
-                                idx_alloca, name="fori.body.idx"
-                            );
-                            key_val = self.builder.call(
-                                helpers["get_key"],
-                                [collection_val, body_idx],
-                                name="fori.key"
-                            );
-                            val_val = self.builder.call(
-                                helpers["get_val"],
-                                [collection_val, body_idx],
-                                name="fori.val"
-                            );
-                            self.builder.store(key_val, key_alloca);
-                            self.builder.store(val_val, val_alloca);
-                            _for_saved = set(self.local_vars.keys());
-                            if isinstance(nd.body, (list, tuple)) {
-                                self._codegen_body(nd.body);
-                            }
-                            if not self.builder.block.is_terminated {
-                                self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
-                                self.builder.branch(incr_bb);
-                            }
-                            self.loop_stack.pop();
-                            self.builder.position_at_end(incr_bb);
-                            inc_idx = self.builder.load(
-                                idx_alloca, name="fori.inc.idx"
-                            );
-                            next_idx = self.builder.add(
-                                inc_idx, ir.Constant(i64, 1), name="fori.next.idx"
-                            );
-                            self.builder.store(next_idx, idx_alloca);
-                            self.builder.branch(cond_bb);
-                            self.builder.position_at_end(end_bb);
-                            return;
-                        }
-                    }
-                }
-            }
+            return;
         }
     }
     # ── Evaluate the collection expression AT MOST ONCE ──
     # Re-calling _codegen_expr(nd.collection) re-emits its side effects: for a
     # call like `for x in obj.method()` each re-eval invokes the method again,
-    # doing the work N times AND leaking the unused results. We evaluate here a
-    # single time (a collection literal types itself from its own checked
-    # type) and reuse `_coll_memo` in the dict / string / set / list paths
-    # below.
+    # doing the work N times AND leaking the unused results.
     coll_name = self._get_name(nd.collection);
     _coll_memo: (ir.Value | None) = self._codegen_expr(nd.collection);
-    # ── Dict iteration: for k in dict ──
-    # Dict-ness comes from the checked type of the collection expression.
+    # ── Dict iteration: for k in dict ── (dict-ness from the checked type,
+    # with an LLVM-shape fallback for untracked field access)
     dict_type_key: (str | None) = self._dict_key_of(nd.collection);
-    # Fallback: for field access (e.g. c.props) where coll_name is None or not
-    # tracked, infer the dict type from the evaluated value's LLVM type.
-    _ford_coll_val: (ir.Value | None) = _coll_memo;
-    if dict_type_key is None and _ford_coll_val is not None {
-        dict_info = self._infer_dict_type(_ford_coll_val);
+    if dict_type_key is None and _coll_memo is not None {
+        dict_info = self._infer_dict_type(_coll_memo);
         if dict_info is not None {
             dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
         }
     }
     if dict_type_key is not None {
-        # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
-        if helpers is not None {
-            collection_val = _coll_memo;
-            if collection_val is not None {
-                i64 = ir.IntType(64);
-                key_type = helpers["key_type"];
-                # Get dict length
-                len_val = self.builder.call(
-                    helpers["len"], [collection_val], name="ford.len"
-                );
-                # Allocate loop index
-                idx_alloca = self._entry_alloca(i64, "ford.idx");
-                self.builder.store(ir.Constant(i64, 0), idx_alloca);
-                # Allocate loop variable (key)
-                loop_alloca = self._entry_alloca(key_type, loop_var_name);
-                # Null-initialize so cleanup __rc_release_simple null-check is
-                # safe when the loop body never executes (empty dict) and so
-                # the old-value release inside the loop body is a no-op on the
-                # first iteration.
-                if isinstance(key_type, ir.PointerType) {
-                    self.builder.store(ir.Constant(key_type, None), loop_alloca);
-                }
-                self.local_vars[loop_var_name] = loop_alloca;
-                func = self.builder.function;
-                cond_bb = func.append_basic_block(name="ford.cond");
-                body_bb = func.append_basic_block(name="ford.body");
-                incr_bb = func.append_basic_block(name="ford.incr");
-                end_bb = func.append_basic_block(name="ford.end");
-                self.builder.branch(cond_bb);
-                # Condition: idx < len
-                self.builder.position_at_end(cond_bb);
-                cur_idx = self.builder.load(idx_alloca, name="ford.cur.idx");
-                cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="ford.cmp");
-                self.builder.cbranch(cmp, body_bb, end_bb);
-                # Body: load key at index, store in loop var, execute body
-                self.loop_stack.append((incr_bb, end_bb));
-                self.builder.position_at_end(body_bb);
-                body_idx = self.builder.load(idx_alloca, name="ford.body.idx");
-                key_val = self.builder.call(
-                    helpers["get_key"], [collection_val, body_idx], name="ford.key"
-                );
-                # For pointer-typed keys: release the old value (null on first
-                # iteration → no-op) and retain the new key so that scope
-                # cleanup's __rc_release_simple call is balanced.
-                # Without this, the last key in the dict would be double-freed:
-                # once by the dict's own destructor and once by scope cleanup.
-                if isinstance(key_type, ir.PointerType) {
-                    old_key_val = self.builder.load(loop_alloca, name="ford.old");
-                    self._emit_rc_release_simple(
-                        old_key_val,
-                        op="ford_key",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
-                    self._emit_rc_retain(
-                        key_val,
-                        op="ford_key",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
-                }
-                self.builder.store(key_val, loop_alloca);
-                _for_saved = set(self.local_vars.keys());
-                if isinstance(nd.body, (list, tuple)) {
-                    self._codegen_body(nd.body);
-                }
-                if not self.builder.block.is_terminated {
-                    self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
-                    self.builder.branch(incr_bb);
-                }
-                self.loop_stack.pop();
-                # Increment: idx = idx + 1
-                self.builder.position_at_end(incr_bb);
-                inc_idx = self.builder.load(idx_alloca, name="ford.inc.idx");
-                next_idx = self.builder.add(
-                    inc_idx, ir.Constant(i64, 1), name="ford.next.idx"
-                );
-                self.builder.store(next_idx, idx_alloca);
-                self.builder.branch(cond_bb);
-                # Continue after loop
-                self.builder.position_at_end(end_bb);
-                # Release the collection if it was an owned temporary
-                # (e.g. `for k in make_dict()`); a named var is borrowed.
-                if isinstance(collection_val.type, ir.PointerType)
-                and self._is_owned(collection_val) {
-                    self._emit_rc_release_simple(
-                        collection_val, op="ford_coll", loc=_for_loc
-                    );
-                }
-                return;
-            }
-        }
-    }
-    # ── String iteration: for c in str ──
-    # Must be checked before the list path: a raw `i8*` string would otherwise
-    # be misclassified as a `list[ptr]` and hit a type-mismatch when calling
-    # the List.ptr helpers.
-    is_list_coll = self._list_spec_of(nd.collection) is not None;
-    is_dict_coll = self._dict_key_of(nd.collection) is not None;
-    if not is_list_coll and not is_dict_coll {
-        str_coll_val = _coll_memo;
-        i8p_s = ir.IntType(8).as_pointer();
-        if str_coll_val is not None and str_coll_val.type == i8p_s {
-            i64 = ir.IntType(64);
-            strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p_s]);
-            str_len = self.builder.call(strlen_fn, [str_coll_val], name="fors.len");
-            idx_alloca = self._entry_alloca(i64, "fors.idx");
-            self.builder.store(ir.Constant(i64, 0), idx_alloca);
-            loop_alloca = self._entry_alloca(i8p_s, loop_var_name);
-            # Zero-initialize so __rc_release_simple null-check is safe when
-            # the loop body never executes (e.g. iterating an empty string).
-            self.builder.store(ir.Constant(i8p_s, None), loop_alloca);
-            self.local_vars[loop_var_name] = loop_alloca;
-            func = self.builder.function;
-            cond_bb = func.append_basic_block(name="fors.cond");
-            body_bb = func.append_basic_block(name="fors.body");
-            incr_bb = func.append_basic_block(name="fors.incr");
-            end_bb = func.append_basic_block(name="fors.end");
-            self.builder.branch(cond_bb);
-            self.builder.position_at_end(cond_bb);
-            cur_idx = self.builder.load(idx_alloca, name="fors.cur.idx");
-            cmp = self.builder.icmp_signed("<", cur_idx, str_len, name="fors.cmp");
-            self.builder.cbranch(cmp, body_bb, end_bb);
-            self.loop_stack.append((incr_bb, end_bb));
-            self.builder.position_at_end(body_bb);
-            body_idx = self.builder.load(idx_alloca, name="fors.body.idx");
-            char_str = self._codegen_string_index(str_coll_val, body_idx);
-            if char_str is not None {
-                self.builder.store(char_str, loop_alloca);
-            }
-            _for_saved = set(self.local_vars.keys());
-            if isinstance(nd.body, (list, tuple)) {
-                self._codegen_body(nd.body);
-            }
-            if not self.builder.block.is_terminated {
-                self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
-                self.builder.branch(incr_bb);
-            }
-            self.loop_stack.pop();
-            self.builder.position_at_end(incr_bb);
-            inc_idx = self.builder.load(idx_alloca, name="fors.inc.idx");
-            next_idx = self.builder.add(
-                inc_idx, ir.Constant(i64, 1), name="fors.next.idx"
+        if helpers is not None and _coll_memo is not None {
+            self._codegen_for_indexed(
+                nd,
+                kind="dict",
+                collection_val=_coll_memo,
+                helpers=helpers,
+                var_names=[loop_var_name],
+                var_types=[helpers["key_type"]],
+                rc_vars=True,
+                coll_release_op="ford_coll"
             );
-            self.builder.store(next_idx, idx_alloca);
-            self.builder.branch(cond_bb);
-            self.builder.position_at_end(end_bb);
-            # Release the collection if it was an owned temporary string.
-            if isinstance(str_coll_val.type, ir.PointerType)
-            and self._is_owned(str_coll_val) {
-                self._emit_rc_release_simple(
-                    str_coll_val, op="fors_coll", loc=_for_loc
-                );
-            }
             return;
         }
     }
+    # ── String iteration: for c in s ── (before the list path: a raw i8*
+    # would otherwise be misclassified as list[ptr])
+    if self._list_spec_of(nd.collection) is None
+    and self._dict_key_of(nd.collection) is None
+    and _coll_memo is not None
+    and _coll_memo.type == ir.IntType(8).as_pointer() {
+        self._codegen_for_indexed(
+            nd,
+            kind="str",
+            collection_val=_coll_memo,
+            helpers=None,
+            var_names=[loop_var_name],
+            var_types=[ir.IntType(8).as_pointer()],
+            rc_vars=False,
+            coll_release_op="fors_coll"
+        );
+        return;
+    }
     # ── List iteration: for x in items ──
-    # Reuse the single evaluation captured at the top of this function
-    # (see `_coll_memo`); re-evaluating would re-run the collection
-    # expression's side effects and leak the extra results.
-    collection_val = _coll_memo;
-    if collection_val is None {
+    if _coll_memo is None {
         if len(self.errors_had) == _for_errs0 {
             self.emit(
                 E5090,
@@ -1930,18 +1707,16 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
-    # Determine element type of the list from the value's LLVM shape
-    elem_type_name: (str | None) = self._infer_list_elem_type(collection_val);
-    # Fallback: the checked element type of the collection expression
+    # Element type: LLVM value shape, then the checked element type, then
+    # ptr for unknown non-set pointers.
+    elem_type_name: (str | None) = self._infer_list_elem_type(_coll_memo);
     if elem_type_name is None {
         elem_type_name = self._elem_spec_of(nd.collection);
     }
-    # Fallback: if still None and collection is a list ptr, assume ptr elements.
-    # Skip if collection is a set type (sets use different helpers).
-    if elem_type_name is None and isinstance(collection_val.type, ir.PointerType) {
+    if elem_type_name is None and isinstance(_coll_memo.type, ir.PointerType) {
         is_set = False;
         for (sname, stype) in self.set_types.items() {
-            if collection_val.type == stype.as_pointer() {
+            if _coll_memo.type == stype.as_pointer() {
                 is_set = True;
                 break;
             }
@@ -1950,8 +1725,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             elem_type_name = "ptr";
         }
     }
-    if elem_type_name is None or self.list_helpers.get(elem_type_name) is None {
-        # Iterating a value whose native element type / list helpers couldn't be
+    helpers = self.list_helpers.get(elem_type_name) if elem_type_name else None;
+    if helpers is None {
+        # Iterable whose native element type / list helpers couldn't be
         # resolved: don't drop the loop body silently (#6470 class).
         if len(self.errors_had) == _for_errs0 {
             self.emit(
@@ -1963,15 +1739,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
-    helpers = self.list_helpers.get(elem_type_name);
-    i64 = ir.IntType(64);
-    # Get list length
-    len_val = self.builder.call(helpers["len"], [collection_val], name="forl.len");
-    # Allocate loop index
-    idx_alloca = self._entry_alloca(i64, "forl.idx");
-    self.builder.store(ir.Constant(i64, 0), idx_alloca);
-    # Resolve actual element type for ptr lists (before allocating loop var)
-    # from the checked type of the collection expression.
+    # Resolve the inner element type for ptr lists from the checked type.
     actual_elem_type = helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
     if elem_type_name == "ptr" {
@@ -1983,94 +1751,160 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             actual_elem_type = inner_type;
         }
     }
-    # Allocate loop variable with resolved element type.
-    # If this variable name was already used by a prior for-loop in the same
-    # function (e.g. two consecutive loops both named `m`), reuse the existing
-    # alloca instead of creating a new one.  A fresh alloca would be orphaned:
-    # scope_exit only sees local_vars["m"] → the new alloca, so the retained
-    # reference left in the old alloca would never be released.
-    _forl_existing = self.local_vars.get(loop_var_name);
-    _forl_reuse = (
-        _forl_existing is not None
-        and isinstance(_forl_existing.type, ir.PointerType)
-        and _forl_existing.type.pointee == actual_elem_type
+    self._codegen_for_indexed(
+        nd,
+        kind="list",
+        collection_val=_coll_memo,
+        helpers=helpers,
+        var_names=[loop_var_name],
+        var_types=[actual_elem_type],
+        rc_vars=True,
+        coll_release_op="forl_coll",
+        elem_cast=inner_type
     );
-    if _forl_reuse {
-        loop_alloca = _forl_existing;
+}
+
+"""One indexed-loop skeleton for every native `for` form.
+
+`kind` selects the per-iteration element fetch: "range" (the loop var is
+the index itself; `collection_val` is the stop value and `range_start`
+the initial value), "list" (helpers.get, optional `elem_cast` to the
+checked inner type), "dict" (helpers.get_key), "items" (helpers.get_key
++ get_val into two loop vars), "str" (fresh one-char string per index).
+`rc_vars` enables the pointer loop-variable discipline (entry null-init,
+pre-loop reset of a reused alloca, release-old/retain-new per iteration)
+so scope-exit releases stay balanced. The loop-body locals snapshot and
+back-edge release (`_emit_loop_iter_cleanup`), break/continue targets
+(`loop_stack`), and the owned-temporary collection release at loop end
+all live HERE - one emission home instead of one copy per iteration
+form."""
+impl NaIRGenPass._codegen_for_indexed(
+    nd: uni.InForStmt,
+    kind: str,
+    collection_val: ir.Value,
+    helpers: (dict | None),
+    var_names: list,
+    var_types: list,
+    rc_vars: bool,
+    coll_release_op: str,
+    range_start: (ir.Value | None) = None,
+    elem_cast: (ir.Type | None) = None
+) -> None {
+    i64 = ir.IntType(64);
+    _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        if nd.loc
+        else 0}";
+    _rc_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    # Loop bound and index. For range, the loop variable doubles as the
+    # index and counts from range_start to collection_val (the stop).
+    if kind == "range" {
+        len_val = collection_val;
+        idx_alloca = self._entry_alloca(i64, var_names[0]);
+        self.builder.store(range_start, idx_alloca);
+        self.local_vars[var_names[0]] = idx_alloca;
+        allocas = [idx_alloca];
     } else {
-        loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
-    }
-    if isinstance(actual_elem_type, ir.PointerType) {
-        null_const = ir.Constant(actual_elem_type, None);
-        if not _forl_reuse {
-            # Fresh alloca: null-initialize IN THE FUNCTION ENTRY BLOCK so the
-            # alloca is always null on the very first call (safe even when the
-            # loop is inside a conditional or nested inside an outer loop).
-            _forl_saved_block = self.builder.block;
-            self.builder.position_after(loop_alloca);
-            self.builder.store(null_const, loop_alloca);
-            self.builder.position_at_end(_forl_saved_block);
+        if kind == "str" {
+            strlen_fn = self._get_or_declare_extern(
+                "strlen", i64, [ir.IntType(8).as_pointer()]
+            );
+            len_val = self.builder.call(strlen_fn, [collection_val], name="for.len");
+        } else {
+            len_val = self.builder.call(
+                helpers["len"], [collection_val], name="for.len"
+            );
         }
-        # At the loop-setup site: release whatever the alloca holds from the
-        # previous outer-loop iteration (or previous for-loop using this var),
-        # then reset to null.
-        # First iteration of first loop: releases null (no-op).
-        # Subsequent iterations or reused-variable second loop:
-        # releases the last element retained by the previous loop run.
-        _forl_pre_old = self.builder.load(loop_alloca, name="forl.pre.old");
-        self._emit_rc_release_simple(
-            _forl_pre_old,
-            op="forl_reset",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                if nd.loc
-                else 0}"
-        );
-        self.builder.store(null_const, loop_alloca);
+        idx_alloca = self._entry_alloca(i64, "for.idx");
+        self.builder.store(ir.Constant(i64, 0), idx_alloca);
+        allocas = [];
+        for (vi, vname) in enumerate(var_names) {
+            vtype = var_types[vi];
+            # Reuse a prior alloca of the same shape (two consecutive loops
+            # over the same name): a fresh one would be orphaned - scope
+            # exit only sees local_vars[name], so the reference retained in
+            # the old alloca would never be released.
+            _existing = self.local_vars.get(vname);
+            _reuse = (
+                _existing is not None
+                and isinstance(_existing.type, ir.PointerType)
+                and _existing.type.pointee == vtype
+            );
+            alloca = _existing if _reuse else self._entry_alloca(vtype, vname);
+            if isinstance(vtype, ir.PointerType) and (rc_vars or kind == "str") {
+                null_const = ir.Constant(vtype, None);
+                if not _reuse {
+                    # Null-init IN THE ENTRY BLOCK so release-old is a no-op
+                    # on the first iteration and scope exit is safe when the
+                    # body never runs.
+                    _saved_block = self.builder.block;
+                    self.builder.position_after(alloca);
+                    self.builder.store(null_const, alloca);
+                    self.builder.position_at_end(_saved_block);
+                }
+                if rc_vars {
+                    # Release whatever the alloca holds from a previous outer
+                    # iteration or a previous loop reusing this name, then
+                    # reset to null (first run releases null - no-op).
+                    _pre_old = self.builder.load(alloca, name="for.pre.old");
+                    self._emit_rc_release_simple(_pre_old, op="for_reset", loc=_rc_loc);
+                    self.builder.store(null_const, alloca);
+                }
+            }
+            self.local_vars[vname] = alloca;
+            allocas.append(alloca);
+        }
     }
-    self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
-    cond_bb = func.append_basic_block(name="forl.cond");
-    body_bb = func.append_basic_block(name="forl.body");
-    incr_bb = func.append_basic_block(name="forl.incr");
-    end_bb = func.append_basic_block(name="forl.end");
+    cond_bb = func.append_basic_block(name="for.cond");
+    body_bb = func.append_basic_block(name="for.body");
+    incr_bb = func.append_basic_block(name="for.incr");
+    end_bb = func.append_basic_block(name="for.end");
     self.builder.branch(cond_bb);
-    # Condition: idx < len
     self.builder.position_at_end(cond_bb);
-    cur_idx = self.builder.load(idx_alloca, name="forl.cur.idx");
-    cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="forl.cmp");
+    cur_idx = self.builder.load(idx_alloca, name="for.cur.idx");
+    cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="for.cmp");
     self.builder.cbranch(cmp, body_bb, end_bb);
-    # Body: load element, store in loop var, execute body
     self.loop_stack.append((incr_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    body_idx = self.builder.load(idx_alloca, name="forl.body.idx");
-    elem_val = self.builder.call(
-        helpers["get"], [collection_val, body_idx], name="forl.elem"
-    );
-    # Bitcast ptr elements to the correct inner type if resolved
-    if inner_type is not None {
-        elem_val = self.builder.bitcast(elem_val, inner_type, name="forl.cast");
+    # Per-kind element fetch into the loop variable(s).
+    if kind != "range" {
+        body_idx = self.builder.load(idx_alloca, name="for.body.idx");
+        if kind == "items" {
+            key_val = self.builder.call(
+                helpers["get_key"], [collection_val, body_idx], name="for.key"
+            );
+            val_val = self.builder.call(
+                helpers["get_val"], [collection_val, body_idx], name="for.val"
+            );
+            self.builder.store(key_val, allocas[0]);
+            self.builder.store(val_val, allocas[1]);
+        } elif kind == "str" {
+            char_str = self._codegen_string_index(collection_val, body_idx);
+            if char_str is not None {
+                self.builder.store(char_str, allocas[0]);
+            }
+        } else {
+            fetch_fn = helpers["get"] if kind == "list" else helpers["get_key"];
+            elem_val = self.builder.call(
+                fetch_fn, [collection_val, body_idx], name="for.elem"
+            );
+            if elem_cast is not None {
+                elem_val = self.builder.bitcast(elem_val, elem_cast, name="for.cast");
+            }
+            # Pointer loop var: release the old value (null on first
+            # iteration) and retain the new one so scope-exit's release
+            # stays balanced - without this the last element would be
+            # double-freed (container destructor + scope cleanup).
+            if rc_vars and isinstance(var_types[0], ir.PointerType) {
+                old_val = self.builder.load(allocas[0], name="for.old");
+                self._emit_rc_release_simple(old_val, op="for_elem", loc=_rc_loc);
+                self._emit_rc_retain(elem_val, op="for_elem", loc=_rc_loc);
+            }
+            self.builder.store(elem_val, allocas[0]);
+        }
     }
-    # For pointer-typed loop variables: release the old value (null on first
-    # iteration → no-op) and retain the new element so that the scope
-    # cleanup's __rc_release_simple call is balanced.
-    if isinstance(actual_elem_type, ir.PointerType) {
-        old_loop_val = self.builder.load(loop_alloca, name="forl.old");
-        self._emit_rc_release_simple(
-            old_loop_val,
-            op="forl_elem",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                if nd.loc
-                else 0}"
-        );
-        self._emit_rc_retain(
-            elem_val,
-            op="forl_elem",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                if nd.loc
-                else 0}"
-        );
-    }
-    self.builder.store(elem_val, loop_alloca);
     _for_saved = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
@@ -2080,23 +1914,19 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         self.builder.branch(incr_bb);
     }
     self.loop_stack.pop();
-    # Increment: idx = idx + 1
     self.builder.position_at_end(incr_bb);
-    inc_idx = self.builder.load(idx_alloca, name="forl.inc.idx");
-    next_idx = self.builder.add(inc_idx, ir.Constant(i64, 1), name="forl.next.idx");
+    inc_idx = self.builder.load(idx_alloca, name="for.inc.idx");
+    next_idx = self.builder.add(inc_idx, ir.Constant(i64, 1), name="for.next.idx");
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);
-    # Continue after loop
     self.builder.position_at_end(end_bb);
-    # If the collection was an owned temporary (e.g. a call result like
-    # `for x in obj.method()` or a literal), the loop consumed the only
-    # reference to it — release it now that iteration is done. A named
-    # variable / field load is borrowed (is_owned False) and must NOT be
-    # released here; its owner frees it. Mirrors the list-comprehension
-    # path in comprehensions.impl.jac.
-    if isinstance(collection_val.type, ir.PointerType)
+    # An owned temporary collection (call result, literal) was consumed by
+    # the loop - release it. A named variable / field load is borrowed and
+    # its owner frees it.
+    if coll_release_op
+    and isinstance(collection_val.type, ir.PointerType)
     and self._is_owned(collection_val) {
-        self._emit_rc_release_simple(collection_val, op="forl_coll", loc=_for_loc);
+        self._emit_rc_release_simple(collection_val, op=coll_release_op, loc=_for_loc);
     }
 }
 # ─── Phase 1: Ternary If-Else Expression ─────────────────────

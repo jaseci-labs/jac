@@ -400,6 +400,23 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    # One indexed-loop skeleton for every native `for` form (range / list /
+    # dict / dict-items / str); hosts the loop-var RC discipline, body-local
+    # snapshot + back-edge cleanup, break/continue targets, and the owned
+    # collection release.
+    def _codegen_for_indexed(
+        nd: uni.InForStmt,
+        kind: str,
+        collection_val: ir.Value,
+        helpers: (dict | None),
+        var_names: list,
+        var_types: list,
+        rc_vars: bool,
+        coll_release_op: str,
+        range_start: (ir.Value | None) = None,
+        elem_cast: (ir.Type | None) = None
+    ) -> None;
+
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
     def _codegen_match(nd: uni.MatchStmt) -> None;
     def _match_pattern_cond(
