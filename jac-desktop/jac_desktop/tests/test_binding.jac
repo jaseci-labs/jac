@@ -144,19 +144,16 @@ test "embedded-python host compiles and links libpython" {
 }
 
 """The embedded-CPython CEF host (desktop-cef runtime model) links both libs."""
-test "cef embedded-python host compiles and links libcef_shim and libpython" {
+test "cef embedded-python host compiles and links libcef_dispatch and libpython" {
     soname = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
     stem = soname.split(".so")[0].encode();
     src = (
         "import sys;\n"
-        "import from cef_shim {\n"
-        "    def jac_cef_execute_process() -> i32;\n"
-        "    def jac_cef_initialize(cache_path: str, no_sandbox: i32) -> i32;\n"
-        "    def jac_cef_shutdown -> None;\n"
-        "    def jac_cef_run_message_loop -> None;\n"
-        "    def jac_cef_create_browser(\n"
-        "        url: str, title: str, width: i32, height: i32\n"
-        "    ) -> int;\n"
+        "import from cef {\n"
+        "    cef_execute_subprocess,\n"
+        "    cef_queue_browser,\n"
+        "    cef_startup,\n"
+        "    cef_cleanup,\n"
         "}\n"
         f'import from "{soname}" {{\n'
         "    def Py_Initialize() -> None;\n"
@@ -164,27 +161,27 @@ test "cef embedded-python host compiles and links libcef_shim and libpython" {
         "    def PyRun_SimpleString(cmd: str) -> i32;\n"
         "}\n"
         "with entry {\n"
-        "    code: i32 = jac_cef_execute_process();\n"
+        "    code: i32 = cef_execute_subprocess();\n"
         "    if code >= 0 { sys.exit(code); }\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(\"pass\");\n"
-        "    jac_cef_create_browser(\"about:blank\", \"t\", 640, 480);\n"
-        '    rc: i32 = jac_cef_initialize("", 1);\n'
+        "    cef_queue_browser(\"about:blank\", \"t\", 640, 480);\n"
+        '    rc: i32 = cef_startup("", 1);\n'
         "    if rc != 1 { sys.exit(1); }\n"
         "    Py_Finalize();\n"
-        "    jac_cef_shutdown();\n"
+        "    cef_cleanup();\n"
         "}\n"
     );
     (rc, err, data) = _compile_cef_host(src);
     assert rc == 0 , f"cef embedded-python host failed to compile:\n{err}";
     assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
-    assert b"libcef_shim.so" in data , "binary must link libcef_shim.so";
+    assert b"libcef_dispatch.so" in data , "binary must link libcef_dispatch.so";
     assert stem in data , "binary must link the libpython soname";
     assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
 }
 
-"""A host that uses the CefBrowser API links libcef_shim.so via $ORIGIN."""
-test "cef binding host compiles and links libcef_shim.so" {
+"""A host that uses the CefBrowser API links libcef_dispatch.so via $ORIGIN."""
+test "cef binding host compiles and links libcef_dispatch.so" {
     src = (
         "import from cef { CefBrowser, new_cef_browser, cef_cleanup }\n"
         "with entry {\n"
@@ -198,6 +195,6 @@ test "cef binding host compiles and links libcef_shim.so" {
     (rc, err, data) = _compile_cef_host(src);
     assert rc == 0 , f"cef binding host failed to compile:\n{err}";
     assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
-    assert b"libcef_shim.so" in data , "binary must link libcef_shim.so";
+    assert b"libcef_dispatch.so" in data , "binary must link libcef_dispatch.so";
     assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
 }

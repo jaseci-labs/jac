@@ -98,18 +98,18 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
     return dist;
 }
 
-"""Ensure libcef_shim.so exists beside the binding (build it on first use)."""
-def _ensure_libcef_shim(cef_dir: Path) -> Path {
-    lib = cef_dir / "libcef_shim.so";
+"""Ensure libcef_dispatch.so exists beside the binding (build it on first use)."""
+def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
+    lib = cef_dir / "libcef_dispatch.so";
     if lib.exists() {
         return lib;
     }
     _ensure_cef_dist(cef_dir);
-    console.print("  Building libcef_shim.so (one-time)...", style="muted");
-    res = subprocess.run([str(cef_dir / "build_cef_shim.sh")]);
+    console.print("  Building libcef_dispatch.so (one-time)...", style="muted");
+    res = subprocess.run([str(cef_dir / "build_cef_dispatch.sh")]);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
-            "Failed to build libcef_shim.so. "
+            "Failed to build libcef_dispatch.so. "
             "See jac_desktop/native/cef/README.md for prerequisites."
         );
     }
@@ -120,17 +120,17 @@ def _ensure_libcef_shim(cef_dir: Path) -> Path {
 `dist/` on loopback through the OAuth/session broker, and render it in CEF.
 
 Mirrors the native target host (`native_desktop_target.impl.jac`) but swaps
-the renderer FFI for `cef_shim` and adds CEF subprocess handling.
+the renderer FFI for `cef.na.jac` and adds CEF subprocess handling.
 
-Lifecycle order (must match `cef_shim.c`):
-  1. jac_cef_execute_process() — exit early in CEF subprocesses
+Lifecycle order (must match `cef.na.jac`):
+  1. cef_execute_subprocess() — exit early in CEF subprocesses
   2. Py_Initialize + loopback server (URL ready before CEF UI thread runs)
-  3. jac_cef_create_browser() — queues pending browser
-  4. jac_cef_initialize() — on_context_initialized creates the window
-  5. jac_cef_run_message_loop() with GIL released
+  3. cef_queue_browser() — queues pending browser
+  4. cef_startup() — on_context_initialized creates the window
+  5. cef_run_loop() with GIL released
 
 Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
-the shim's on_context_created handler, not in this host.
+cef.na.jac's on_context_created handler, not in this host.
 """
 def _generate_host_source(
     libpy: str, title: str, width: int, height: int, app_name: str, cache_path: str,
@@ -167,14 +167,12 @@ def _generate_host_source(
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
         "import sys;\n"
-        "import from cef_shim {\n"
-        "    def jac_cef_execute_process() -> i32;\n"
-        "    def jac_cef_initialize(cache_path: str, no_sandbox: i32) -> i32;\n"
-        "    def jac_cef_shutdown -> None;\n"
-        "    def jac_cef_run_message_loop -> None;\n"
-        "    def jac_cef_create_browser(\n"
-        "        url: str, title: str, width: i32, height: i32\n"
-        "    ) -> int;\n"
+        "import from cef {\n"
+        "    cef_execute_subprocess,\n"
+        "    cef_queue_browser,\n"
+        "    cef_startup,\n"
+        "    cef_run_loop,\n"
+        "    cef_cleanup,\n"
         "}\n"
         f'import from "{libpy}" {{\n'
         "    def Py_Initialize() -> None;\n"
@@ -190,7 +188,7 @@ def _generate_host_source(
         "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
         "with entry {\n"
-        "    code: i32 = jac_cef_execute_process();\n"
+        "    code: i32 = cef_execute_subprocess();\n"
         "    if code >= 0 {\n"
         "        sys.exit(code);\n"
         "    }\n"
@@ -200,22 +198,20 @@ def _generate_host_source(
         "    d = PyModule_GetDict(main_mod);\n"
         '    port = PyLong_AsLong(PyRun_String("_port", PY_EVAL, d, d));\n'
         "    url = f\"http://127.0.0.1:{port}/\";\n"
-        "    jac_cef_create_browser(\n"
+        "    cef_queue_browser(\n"
         "        url,\n"
         f"        {json.dumps(title, ensure_ascii=False)},\n"
         f"        {width}, {height}\n"
         "    );\n"
-        f"    rc: i32 = jac_cef_initialize({json.dumps(
-            cache_path, ensure_ascii=False
-        )}, 1);\n"
+        f"    rc: i32 = cef_startup({json.dumps(cache_path, ensure_ascii=False)}, 1);\n"
         "    if rc != 1 {\n"
         "        sys.exit(1);\n"
         "    }\n"
         "    ts = PyEval_SaveThread();\n"
-        "    jac_cef_run_message_loop();\n"
+        "    cef_run_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
         "    Py_Finalize();\n"
-        "    jac_cef_shutdown();\n"
+        "    cef_cleanup();\n"
         "}\n"
     );
 }
@@ -309,11 +305,12 @@ impl CefDesktopTarget.build(
     # 4. Stage the served bundle + the CEF binding + the CEF runtime.
     shutil.copytree(dist_dir, out_dir / "dist");
 
-    # CEF shim (built on first use against the staged CEF dist).
+    # CEF binding + dispatch helper (built on first use against the staged CEF dist).
     cef_dir = _find_cef_dir();
     cef_dist = _ensure_cef_dist(cef_dir);
-    libcef_shim = _ensure_libcef_shim(cef_dir);
-    shutil.copy2(libcef_shim, out_dir / "libcef_shim.so");
+    libcef_dispatch = _ensure_libcef_dispatch(cef_dir);
+    shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
+    shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
 
     # CEF runtime bundle (libcef.so + resources).
     _stage_cef_runtime(cef_dist, out_dir);

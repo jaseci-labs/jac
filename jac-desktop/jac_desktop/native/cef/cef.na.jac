@@ -401,6 +401,38 @@ obj:pub CefBrowser {
     def destroy { }
 }
 
+"""Run CEF subprocess dispatch; return exit code (>= 0) or -1 for main process."""
+def:pub cef_execute_subprocess -> i32 {
+    _init_vtables();
+    main_args = cef_dispatch_main_args_create();
+    return cef_execute_process(main_args, g_app, 0);
+}
+
+"""Queue a browser window to open on on_context_initialized (before initialize)."""
+def:pub cef_queue_browser(url: str, title: str, width: int, height: int) {
+    g_pending_url = url;
+    g_pending_title = title;
+    g_pending_width = width;
+    g_pending_height = height;
+    g_browser_pending = 1;
+}
+
+"""Initialize CEF on the main process; returns 1 on success."""
+def:pub cef_startup(cache_path: str, no_sandbox: int) -> i32 {
+    main_args = cef_dispatch_main_args_create();
+    exe_dir: str = cef_dispatch_get_exe_dir();
+    locales_dir: str = f"{exe_dir}/locales";
+    settings = cef_dispatch_settings_create(
+        no_sandbox, cache_path, exe_dir, locales_dir,
+    );
+    return cef_initialize(main_args, settings, g_app, 0);
+}
+
+"""Run the CEF UI message loop (blocks until quit)."""
+def:pub cef_run_loop {
+    cef_run_message_loop();
+}
+
 """Bootstrap CEF, initialize, and open a browser window."""
 def:pub new_cef_browser(
     url: str,
@@ -410,23 +442,12 @@ def:pub new_cef_browser(
     cache_path: str = "",
     no_sandbox: int = 1,
 ) -> CefBrowser {
-    _init_vtables();
-    main_args = cef_dispatch_main_args_create();
-    code: i32 = cef_execute_process(main_args, g_app, 0);
+    code: i32 = cef_execute_subprocess();
     if code >= 0 {
         return CefBrowser(browser_handle=0);
     }
-    g_pending_url = url;
-    g_pending_title = title;
-    g_pending_width = width;
-    g_pending_height = height;
-    g_browser_pending = 1;
-    exe_dir: str = cef_dispatch_get_exe_dir();
-    locales_dir: str = f"{exe_dir}/locales";
-    settings = cef_dispatch_settings_create(
-        no_sandbox, cache_path, exe_dir, locales_dir,
-    );
-    rc: i32 = cef_initialize(main_args, settings, g_app, 0);
+    cef_queue_browser(url, title, width, height);
+    rc: i32 = cef_startup(cache_path, no_sandbox);
     if rc != 1 {
         return CefBrowser(browser_handle=0);
     }

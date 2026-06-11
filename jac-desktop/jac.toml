@@ -31,8 +31,8 @@ jac_desktop = [
     "native/webview/install_webkit_deps.sh",
     "native/webview/README.md",
     "native/cef/cef.na.jac",
-    "native/cef/cef_shim.c",
-    "native/cef/build_cef_shim.sh",
+    "native/cef/cef_dispatch.c",
+    "native/cef/build_cef_dispatch.sh",
     "native/cef/fetch_libcef.sh",
     "native/cef/README.md",
 ]

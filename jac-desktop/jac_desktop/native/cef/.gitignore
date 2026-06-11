@@ -1,7 +1,7 @@
 # CEF binary distribution + SDK headers - regenerate with fetch_libcef.sh
 cef_dist/
 cef_headers/
-libcef_shim.so
+libcef_dispatch.so
 # Local dev spike binaries (not shipped)
 test_sizes
 test_shim
