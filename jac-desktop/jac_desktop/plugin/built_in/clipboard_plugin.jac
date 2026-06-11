@@ -30,9 +30,7 @@ class ClipboardPlugin(DesktopPlugin) {
         if command == "write" {
             return self._write(args);
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.clipboard' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     def _read(self: ClipboardPlugin) -> dict {

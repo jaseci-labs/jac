@@ -30,9 +30,7 @@ class NotificationPlugin(OsPlugin) {
         if command == "send" {
             return self._send(args);
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.notification' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     def _send(self: NotificationPlugin, args: dict) -> dict {

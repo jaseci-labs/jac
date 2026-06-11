@@ -34,9 +34,7 @@ class DialogPlugin(OsPlugin) {
         if command == "message" {
             return self._message(args);
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.dialog' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     def _open_file(self: DialogPlugin, args: dict) -> dict {

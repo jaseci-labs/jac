@@ -51,9 +51,7 @@ class FsPlugin(DesktopPlugin) {
         if command == "stat" {
             return self._stat(args);
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.fs' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     def _read_file(self: FsPlugin, args: dict) -> dict {

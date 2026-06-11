@@ -63,9 +63,7 @@ class PathPlugin(DesktopPlugin) {
             }
             return {"path": str(Path(p).expanduser().resolve())};
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.path' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     """Resolve an XDG directory with fallback."""

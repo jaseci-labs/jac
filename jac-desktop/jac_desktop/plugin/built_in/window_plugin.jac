@@ -61,8 +61,6 @@ class WindowPlugin(DesktopPlugin) {
             self._wv.webview_eval(self._handle, js.encode("utf-8"));
             return {};
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.window' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 }

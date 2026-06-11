@@ -30,9 +30,7 @@ class ShellPlugin(DesktopPlugin) {
         if command == "exec" {
             return self._exec(args);
         }
-        raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin 'jac.shell' has no command '{command}'"
-        );
+        return super.handle(command, args);
     }
 
     def _exec(self: ShellPlugin, args: dict) -> dict {
