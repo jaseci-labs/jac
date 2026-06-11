@@ -8,6 +8,8 @@ Transpiled to dependency-free Python at build time. Runs in the embedded CPython
 with only the stdlib (no jaclang).
 """
 import json;
+import os;
+import sys;
 import ctypes;
 import from pathlib { Path }
 import from desktop_plugin { PluginError, DesktopPlugin }
@@ -21,7 +23,6 @@ resolving sys.argv[0] on macOS/Windows. Works inside embedded CPython where
 __main__.__file__ is unset but sys.argv[0] is still the host binary.
 """
 def _binary_dir -> str {
-    import os, sys;
     if os.path.isfile("/proc/self/exe") {
         return os.path.dirname(os.path.realpath("/proc/self/exe"));
     }
@@ -51,7 +52,6 @@ obj PluginHost {
     """
     def setup(wv_handle: int) {
         self._wv_handle = wv_handle;
-        import os;
         exe_dir = _binary_dir();
         lib_name = libwebview_name();
         lib_path = os.path.join(exe_dir, lib_name);
