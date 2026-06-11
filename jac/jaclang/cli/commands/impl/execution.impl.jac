@@ -407,6 +407,10 @@ impl start(
                 console.print("  ✔ Initial client compilation completed");
             } except Exception as e {
                 console.error(f"Warning: Initial client compilation failed: {e}");
+                # A server that comes up broken must not report ok via /__build_status.
+                if hot_reloader {
+                    hot_reloader.record_error(str(filename), str(e));
+                }
             }
             vite_process = _start_vite_dev_server(base, vite_port, server.port);
         }

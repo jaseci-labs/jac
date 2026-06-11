@@ -1817,6 +1817,14 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 }
                 return;
             }
+            if (path == '/__build_status') {
+                # Dev-mode build health for external tooling — HTTP 200 alone
+                # can't tell a clean build from a broken one (compile errors
+                # still serve the error-overlay page).
+                import from jaclang.runtimelib.hmr { get_build_status }
+                Jac.send_json(self, 200, get_build_status());
+                return;
+            }
             is_static_path = path.startswith('/static/');
             import from jaclang.project.config { get_config }
 
