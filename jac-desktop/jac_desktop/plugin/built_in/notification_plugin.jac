@@ -69,7 +69,7 @@ obj NotificationPlugin(OsPlugin) {
                     "$n.Visible = $true;"
                     f"$n.ShowBalloonTip(5000, '{escaped_title}', '{escaped_body}', 'Info')"
                 );
-                self._run_powershell(ps_script, timeout=10, check=True);
+                self._run_powershell(ps_script, timeout=10);
             } else {
                 raise PluginError(
                     "UNSUPPORTED", f"Platform '{platform}' not supported"
