@@ -170,7 +170,11 @@ impl run_tui_session(req: object) -> int {
         ink_compile_dir = super_pkg / "ink_compile";
         compile_jac = ink_compile_dir / "compile.jac";
         bundle_patch_jac = ink_compile_dir / "bundle_patch.jac";
+        ink_jac_toml = ink_dir / "jac.toml";
         sources = [ink_source, compile_jac, bundle_patch_jac];
+        if ink_jac_toml.is_file() {
+            sources.append(ink_jac_toml);
+        }
         need_compile = not runner_mjs.is_file();
         if not need_compile {
             runner_mtime = runner_mjs.stat().st_mtime;
@@ -194,9 +198,24 @@ impl run_tui_session(req: object) -> int {
             }
         }
 
+        pkg_json = ink_out / "package.json";
         node_modules = ink_out / "node_modules";
-        if not node_modules.is_dir() {
-            console.print("  installing Ink dependencies (first run)…", style="muted");
+        first_install = not node_modules.is_dir();
+        need_install = first_install;
+        if not need_install and pkg_json.is_file() {
+            if need_compile
+            or pkg_json.stat().st_mtime > node_modules.stat().st_mtime {
+                need_install = True;
+            }
+        }
+        if need_install {
+            if first_install {
+                console.print(
+                    "  installing Ink dependencies (first run)…", style="muted"
+                );
+            } else {
+                console.print("  syncing Ink dependencies…", style="muted");
+            }
             if shutil.which("npm") is None {
                 console.error(
                     "`jac ai --tui` requires npm for Ink dependencies",
