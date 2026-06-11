@@ -8,7 +8,10 @@ Transpiled to dependency-free Python at build time. Runs in the embedded CPython
 with only the stdlib (no jaclang).
 """
 
+import base64;
+import subprocess;
 import sys;
+import ctypes;
 
 """Structured error raised by a plugin when a command fails."""
 class PluginError(Exception) {
@@ -35,9 +38,7 @@ class DesktopPlugin {
     Default is a no-op; override in plugins that need to call back into libwebview
     (e.g. WindowPlugin). Called by PluginHost.setup() once the webview exists.
     """
-    def setup(self: DesktopPlugin, wv_handle: int, wv_lib) {
-        pass;
-    }
+    def setup(self: DesktopPlugin, wv_handle: int, wv_lib: ctypes.CDLL) { }
 
     """Handle a command from JS. Returns a dict result or raises PluginError."""
     def handle(self: DesktopPlugin, command: str, args: dict) -> dict {
@@ -58,5 +59,33 @@ class DesktopPlugin {
             return "windows";
         }
         return sys.platform;
+    }
+}
+
+
+"""Base for plugins that invoke OS-native tools (AppleScript, PowerShell, etc.).
+
+Subclasses get platform detection from DesktopPlugin plus shared helpers for
+escaping and running shell commands on macOS and Windows.
+"""
+class OsPlugin(DesktopPlugin) {
+    def _escape_applescript(self: OsPlugin, s: str) -> str {
+        return s.replace("\\", "\\\\").replace('"', '\\"');
+    }
+
+    def _escape_powershell(self: OsPlugin, s: str) -> str {
+        return s.replace("'", "''");
+    }
+
+    def _run_powershell(
+        self: OsPlugin, ps: str, timeout: int = 60, check: bool = False
+    ) {
+        encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
+        return subprocess.run(
+            ["powershell", "-EncodedCommand", encoded],
+            check=check,
+            capture_output=True,
+            timeout=timeout
+        );
     }
 }

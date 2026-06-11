@@ -7,14 +7,13 @@ Sends desktop notifications via platform-native tools:
 
 Transpiled to dependency-free Python at build time.
 """
-import base64;
 import os;
 import subprocess;
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, OsPlugin }
 
 
 """Desktop notification capability via platform tools."""
-class NotificationPlugin(DesktopPlugin) {
+class NotificationPlugin(OsPlugin) {
     def init(self: NotificationPlugin, config: dict) {
         super.init("jac.notification");
         # If this plugin is instantiated at all, it's enabled.
@@ -33,24 +32,6 @@ class NotificationPlugin(DesktopPlugin) {
         }
         raise PluginError(
             "UNKNOWN_COMMAND", f"Plugin 'jac.notification' has no command '{command}'"
-        );
-    }
-
-    def _escape_applescript(self: NotificationPlugin, s: str) -> str {
-        return s.replace("\\", "\\\\").replace('"', '\\"');
-    }
-
-    def _escape_powershell(self: NotificationPlugin, s: str) -> str {
-        return s.replace("'", "''");
-    }
-
-    def _run_powershell(self: NotificationPlugin, ps: str) {
-        encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
-        return subprocess.run(
-            ["powershell", "-EncodedCommand", encoded],
-            check=True,
-            capture_output=True,
-            timeout=10
         );
     }
 
@@ -88,7 +69,7 @@ class NotificationPlugin(DesktopPlugin) {
                     "$n.Visible = $true;"
                     f"$n.ShowBalloonTip(5000, '{escaped_title}', '{escaped_body}', 'Info')"
                 );
-                self._run_powershell(ps_script);
+                self._run_powershell(ps_script, timeout=10, check=True);
             } else {
                 raise PluginError(
                     "UNSUPPORTED", f"Platform '{platform}' not supported"

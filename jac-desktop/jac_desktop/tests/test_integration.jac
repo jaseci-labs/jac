@@ -148,6 +148,19 @@ def _plugin_mod_names -> list {
     ];
 }
 
+"""Run a function with the plugin source directory on sys.path, restoring it after."""
+def _with_plugins(fn: callable) {
+    import sys;
+    saved_path = sys.path[:];
+    sys.path.insert(0, str(_plugin_src_dir()));
+    try {
+        fn();
+    } finally {
+        sys.path[:] = saved_path;
+    }
+}
+
+
 """Import a plugin module from its .jac source.
 
 The Jac meta-importer may fail on some .jac files. This function handles
@@ -268,203 +281,182 @@ test "transpiled plugin files are importable Python" {
 # ---------------------------------------------------------------------------
 """PathPlugin dispatch roundtrip: resolve home directory."""
 test "path plugin dispatch roundtrip" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        host = plugin_host.PluginHost();
-        host.register("jac.path", built_in.path_plugin.PathPlugin());
-        resp = json.loads(
-            host.dispatch(
-                json.dumps({"plugin": "jac.path", "command": "home", "args": {}})
-            )
-        );
-        assert resp["ok"] == True;
-        assert "path" in resp["data"];
-        assert len(resp["data"]["path"]) > 0;
-        # Verify it's an absolute path
-        assert resp["data"]["path"].startswith("/");
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps({"plugin": "jac.path", "command": "home", "args": {}})
+                )
+            );
+            assert resp["ok"] == True;
+            assert "path" in resp["data"];
+            assert len(resp["data"]["path"]) > 0;
+            # Verify it's an absolute path
+            assert resp["data"]["path"].startswith("/");
+        }
+    );
 }
 
 """PathPlugin dispatch roundtrip: separator command."""
 test "path plugin separator command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        host = plugin_host.PluginHost();
-        host.register("jac.path", built_in.path_plugin.PathPlugin());
-        resp = json.loads(
-            host.dispatch(
-                json.dumps({"plugin": "jac.path", "command": "separator", "args": {}})
-            )
-        );
-        assert resp["ok"] == True;
-        assert resp["data"]["separator"] == os.sep;
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {"plugin": "jac.path", "command": "separator", "args": {}}
+                    )
+                )
+            );
+            assert resp["ok"] == True;
+            assert resp["data"]["separator"] == os.sep;
+        }
+    );
 }
 
 """PathPlugin dispatch roundtrip: resolve command."""
 test "path plugin resolve command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        host = plugin_host.PluginHost();
-        host.register("jac.path", built_in.path_plugin.PathPlugin());
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.path",
-                        "command": "resolve",
-                        "args": {"path": "~/.."}
-                    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.path",
+                            "command": "resolve",
+                            "args": {"path": "~/.."}
+                        }
+                    )
                 )
-            )
-        );
-        assert resp["ok"] == True;
-        assert resp["data"]["path"] == str(Path.home().parent);
-    } finally {
-        sys.path[:] = saved_path;
-    }
+            );
+            assert resp["ok"] == True;
+            assert resp["data"]["path"] == str(Path.home().parent);
+        }
+    );
 }
 
 """PathPlugin returns temp directory."""
 test "path plugin temp command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        host = plugin_host.PluginHost();
-        host.register("jac.path", built_in.path_plugin.PathPlugin());
-        resp = json.loads(
-            host.dispatch(
-                json.dumps({"plugin": "jac.path", "command": "temp", "args": {}})
-            )
-        );
-        assert resp["ok"] == True;
-        assert len(resp["data"]["path"]) > 0;
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps({"plugin": "jac.path", "command": "temp", "args": {}})
+                )
+            );
+            assert resp["ok"] == True;
+            assert len(resp["data"]["path"]) > 0;
+        }
+    );
 }
 
 """PathPlugin returns data directory."""
 test "path plugin data command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        host = plugin_host.PluginHost();
-        host.register("jac.path", built_in.path_plugin.PathPlugin());
-        resp = json.loads(
-            host.dispatch(
-                json.dumps({"plugin": "jac.path", "command": "data", "args": {}})
-            )
-        );
-        assert resp["ok"] == True;
-        assert "path" in resp["data"];
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps({"plugin": "jac.path", "command": "data", "args": {}})
+                )
+            );
+            assert resp["ok"] == True;
+            assert "path" in resp["data"];
+        }
+    );
 }
 
 """ShellPlugin deny-all: exec is blocked when no allow list configured."""
 test "shell plugin denies all commands by default" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        _ShellPlugin = _get_shell_plugin_class();
-        host = plugin_host.PluginHost();
-        host.register("jac.shell", _ShellPlugin({}));
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.shell",
-                        "command": "exec",
-                        "args": {"command": "echo hello"}
-                    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            _ShellPlugin = _get_shell_plugin_class();
+            host = plugin_host.PluginHost();
+            host.register("jac.shell", _ShellPlugin({}));
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "echo hello"}
+                        }
+                    )
                 )
-            )
-        );
-        assert resp["ok"] == False;
-        assert resp["error"]["code"] == "FORBIDDEN";
-    } finally {
-        sys.path[:] = saved_path;
-    }
+            );
+            assert resp["ok"] == False;
+            assert resp["error"]["code"] == "FORBIDDEN";
+        }
+    );
 }
 
 """ShellPlugin allow-list: matching commands execute, non-matching are blocked."""
 test "shell plugin allow-list matching" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        _ShellPlugin = _get_shell_plugin_class();
-        config = {"allow": ["echo *", "ls *"]};
-        host = plugin_host.PluginHost();
-        host.register("jac.shell", _ShellPlugin(config));
-
-        # Matching command should succeed
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.shell",
-                        "command": "exec",
-                        "args": {"command": "echo hello"}
-                    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            _ShellPlugin = _get_shell_plugin_class();
+            config = {"allow": ["echo *", "ls *"]};
+            host = plugin_host.PluginHost();
+            host.register("jac.shell", _ShellPlugin(config));
+            # Matching command should succeed
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "echo hello"}
+                        }
+                    )
                 )
-            )
-        );
-        assert resp["ok"] == True;
-        assert resp["data"]["exit_code"] == 0;
-        assert "hello" in resp["data"]["stdout"];
-
-        # Non-matching command should be blocked
-        resp2 = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.shell",
-                        "command": "exec",
-                        "args": {"command": "rm -rf /tmp/something"}
-                    }
+            );
+            assert resp["ok"] == True;
+            assert resp["data"]["exit_code"] == 0;
+            assert "hello" in resp["data"]["stdout"];
+            # Non-matching command should be blocked
+            resp2 = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "rm -rf /tmp/something"}
+                        }
+                    )
                 )
-            )
-        );
-        assert resp2["ok"] == False;
-        assert resp2["error"]["code"] == "FORBIDDEN";
-    } finally {
-        sys.path[:] = saved_path;
-    }
+            );
+            assert resp2["ok"] == False;
+            assert resp2["error"]["code"] == "FORBIDDEN";
+        }
+    );
 }
 
 
@@ -473,94 +465,17 @@ test "shell plugin allow-list matching" {
 # ---------------------------------------------------------------------------
 """FsPlugin blocks reads when no allow_read is configured."""
 test "fs plugin blocks reads with empty allow list" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-        host = plugin_host.PluginHost();
-        path_p = built_in.path_plugin.PathPlugin();
-        host.register("jac.path", path_p);
-        # No allow_read entries
-        fs_p = _FsPlugin({}, path_p);
-        host.register("jac.fs", fs_p);
-
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.fs",
-                        "command": "read_file",
-                        "args": {"path": "/etc/hostname"}
-                    }
-                )
-            )
-        );
-        assert resp["ok"] == False;
-        assert resp["error"]["code"] == "FORBIDDEN";
-    } finally {
-        sys.path[:] = saved_path;
-    }
-}
-
-"""FsPlugin enforces allow_read for paths inside the allow list."""
-test "fs plugin allows reads within allowed paths" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-
-        with tempfile.TemporaryDirectory() as td {
-            # Create a test file inside the allowed dir
-            test_file = Path(td) / "test.txt";
-            test_file.write_text("hello from integration test");
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
             host = plugin_host.PluginHost();
             path_p = built_in.path_plugin.PathPlugin();
             host.register("jac.path", path_p);
-            fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
-            host.register("jac.fs", fs_p);
-            resp = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "read_file",
-                            "args": {"path": str(test_file)}
-                        }
-                    )
-                )
-            );
-            assert resp["ok"] == True;
-            assert resp["data"]["content"] == "hello from integration test";
-        }
-    } finally {
-        sys.path[:] = saved_path;
-    }
-}
-
-"""FsPlugin blocks reads outside the allowed directory."""
-test "fs plugin blocks reads outside allowed paths" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-
-        with tempfile.TemporaryDirectory() as td {
-            host = plugin_host.PluginHost();
-            path_p = built_in.path_plugin.PathPlugin();
-            host.register("jac.path", path_p);
-            fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+            # No allow_read entries
+            fs_p = _FsPlugin({}, path_p);
             host.register("jac.fs", fs_p);
             resp = json.loads(
                 host.dispatch(
@@ -576,159 +491,212 @@ test "fs plugin blocks reads outside allowed paths" {
             assert resp["ok"] == False;
             assert resp["error"]["code"] == "FORBIDDEN";
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
+}
+
+"""FsPlugin enforces allow_read for paths inside the allow list."""
+test "fs plugin allows reads within allowed paths" {
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
+            with tempfile.TemporaryDirectory() as td {
+                # Create a test file inside the allowed dir
+                test_file = Path(td) / "test.txt";
+                test_file.write_text("hello from integration test");
+                host = plugin_host.PluginHost();
+                path_p = built_in.path_plugin.PathPlugin();
+                host.register("jac.path", path_p);
+                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                host.register("jac.fs", fs_p);
+                resp = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "read_file",
+                                "args": {"path": str(test_file)}
+                            }
+                        )
+                    )
+                );
+                assert resp["ok"] == True;
+                assert resp["data"]["content"] == "hello from integration test";
+            }
+        }
+    );
+}
+
+"""FsPlugin blocks reads outside the allowed directory."""
+test "fs plugin blocks reads outside allowed paths" {
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
+            with tempfile.TemporaryDirectory() as td {
+                host = plugin_host.PluginHost();
+                path_p = built_in.path_plugin.PathPlugin();
+                host.register("jac.path", path_p);
+                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                host.register("jac.fs", fs_p);
+                resp = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "read_file",
+                                "args": {"path": "/etc/hostname"}
+                            }
+                        )
+                    )
+                );
+                assert resp["ok"] == False;
+                assert resp["error"]["code"] == "FORBIDDEN";
+            }
+        }
+    );
 }
 
 """FsPlugin write + read roundtrip inside an allowed directory."""
 test "fs plugin write and read roundtrip" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-
-        with tempfile.TemporaryDirectory() as td {
-            host = plugin_host.PluginHost();
-            path_p = built_in.path_plugin.PathPlugin();
-            host.register("jac.path", path_p);
-            fs_p = _FsPlugin(
-                {"allow_read": [str(td)], "allow_write": [str(td)]}, path_p
-            );
-            host.register("jac.fs", fs_p);
-            # Write a file
-            write_resp = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "write_file",
-                            "args": {
-                                "path": str(Path(td) / "subdir" / "test.txt"),
-                                "content": "integration test content"
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
+            with tempfile.TemporaryDirectory() as td {
+                host = plugin_host.PluginHost();
+                path_p = built_in.path_plugin.PathPlugin();
+                host.register("jac.path", path_p);
+                fs_p = _FsPlugin(
+                    {"allow_read": [str(td)], "allow_write": [str(td)]}, path_p
+                );
+                host.register("jac.fs", fs_p);
+                # Write a file
+                write_resp = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "write_file",
+                                "args": {
+                                    "path": str(Path(td) / "subdir" / "test.txt"),
+                                    "content": "integration test content"
+                                }
                             }
-                        }
+                        )
                     )
-                )
-            );
-            assert write_resp["ok"] == True;
-            # Read it back
-            read_resp = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "read_file",
-                            "args": {"path": str(Path(td) / "subdir" / "test.txt")}
-                        }
+                );
+                assert write_resp["ok"] == True;
+                # Read it back
+                read_resp = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "read_file",
+                                "args": {"path": str(Path(td) / "subdir" / "test.txt")}
+                            }
+                        )
                     )
-                )
-            );
-            assert read_resp["ok"] == True;
-            assert read_resp["data"]["content"] == "integration test content";
+                );
+                assert read_resp["ok"] == True;
+                assert read_resp["data"]["content"] == "integration test content";
+            }
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
 }
 
 """FsPlugin exists command works within allowed paths."""
 test "fs plugin exists command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-
-        with tempfile.TemporaryDirectory() as td {
-            test_file = Path(td) / "exists_test.txt";
-            test_file.write_text("data");
-            host = plugin_host.PluginHost();
-            path_p = built_in.path_plugin.PathPlugin();
-            host.register("jac.path", path_p);
-            fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
-            host.register("jac.fs", fs_p);
-            # Existing file
-            resp1 = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "exists",
-                            "args": {"path": str(test_file)}
-                        }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
+            with tempfile.TemporaryDirectory() as td {
+                test_file = Path(td) / "exists_test.txt";
+                test_file.write_text("data");
+                host = plugin_host.PluginHost();
+                path_p = built_in.path_plugin.PathPlugin();
+                host.register("jac.path", path_p);
+                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                host.register("jac.fs", fs_p);
+                # Existing file
+                resp1 = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "exists",
+                                "args": {"path": str(test_file)}
+                            }
+                        )
                     )
-                )
-            );
-            assert resp1["ok"] == True;
-            assert resp1["data"]["exists"] == True;
-            # Non-existing file
-            resp2 = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "exists",
-                            "args": {"path": str(Path(td) / "nope.txt")}
-                        }
+                );
+                assert resp1["ok"] == True;
+                assert resp1["data"]["exists"] == True;
+                # Non-existing file
+                resp2 = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "exists",
+                                "args": {"path": str(Path(td) / "nope.txt")}
+                            }
+                        )
                     )
-                )
-            );
-            assert resp2["ok"] == True;
-            assert resp2["data"]["exists"] == False;
+                );
+                assert resp2["ok"] == True;
+                assert resp2["data"]["exists"] == False;
+            }
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
 }
 
 """FsPlugin list_dir returns entries."""
 test "fs plugin list_dir command" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.path_plugin;
-        _FsPlugin = _get_fs_plugin_class();
-
-        with tempfile.TemporaryDirectory() as td {
-            # Create some files
-            (Path(td) / "a.txt").write_text("aaa");
-            (Path(td) / "b.txt").write_text("bbb");
-            host = plugin_host.PluginHost();
-            path_p = built_in.path_plugin.PathPlugin();
-            host.register("jac.path", path_p);
-            fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
-            host.register("jac.fs", fs_p);
-            resp = json.loads(
-                host.dispatch(
-                    json.dumps(
-                        {
-                            "plugin": "jac.fs",
-                            "command": "list_dir",
-                            "args": {"path": str(td)}
-                        }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.path_plugin;
+            _FsPlugin = _get_fs_plugin_class();
+            with tempfile.TemporaryDirectory() as td {
+                # Create some files
+                (Path(td) / "a.txt").write_text("aaa");
+                (Path(td) / "b.txt").write_text("bbb");
+                host = plugin_host.PluginHost();
+                path_p = built_in.path_plugin.PathPlugin();
+                host.register("jac.path", path_p);
+                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                host.register("jac.fs", fs_p);
+                resp = json.loads(
+                    host.dispatch(
+                        json.dumps(
+                            {
+                                "plugin": "jac.fs",
+                                "command": "list_dir",
+                                "args": {"path": str(td)}
+                            }
+                        )
                     )
-                )
-            );
-            assert resp["ok"] == True;
-            assert len(resp["data"]["entries"]) == 2;
-            names = [e["name"] for e in resp["data"]["entries"]];
-            assert "a.txt" in names;
-            assert "b.txt" in names;
+                );
+                assert resp["ok"] == True;
+                assert len(resp["data"]["entries"]) == 2;
+                names = [e["name"] for e in resp["data"]["entries"]];
+                assert "a.txt" in names;
+                assert "b.txt" in names;
+            }
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
 }
 
 
@@ -737,100 +705,96 @@ test "fs plugin list_dir command" {
 # ---------------------------------------------------------------------------
 """NotificationPlugin handles `notification = true` (not a dict)."""
 test "notification plugin accepts true config" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.notification_plugin;
-        host = plugin_host.PluginHost();
-        # Config is True (from `notification = true` in TOML)
-        host.register(
-            "jac.notification", built_in.notification_plugin.NotificationPlugin(True)
-        );
-        # send should attempt (and likely fail in CI, but the plugin should
-        # not reject the config)
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.notification",
-                        "command": "send",
-                        "args": {"title": "Test", "body": "Body"}
-                    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.notification_plugin;
+            host = plugin_host.PluginHost();
+            # Config is True (from `notification = true` in TOML)
+            host.register(
+                "jac.notification",
+                built_in.notification_plugin.NotificationPlugin(True)
+            );
+            # send should attempt (and likely fail in CI, but the plugin should
+            # not reject the config)
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.notification",
+                            "command": "send",
+                            "args": {"title": "Test", "body": "Body"}
+                        }
+                    )
                 )
-            )
-        );
-        # In CI, notify-send probably fails with UNAVAILABLE, but NOT
-        # FORBIDDEN (which would mean config was misread).
-        if not resp["ok"] {
-            assert resp["error"]["code"] != "FORBIDDEN";
+            );
+            # In CI, notify-send probably fails with UNAVAILABLE, but NOT
+            # FORBIDDEN (which would mean config was misread).
+            if not resp["ok"] {
+                assert resp["error"]["code"] != "FORBIDDEN";
+            }
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
 }
 
 """ClipboardPlugin handles `clipboard = true` and denies write by default."""
 test "clipboard plugin accepts true config with defaults" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.clipboard_plugin;
-        host = plugin_host.PluginHost();
-        # Config is True -> normalized to {} -> defaults to allow both
-        host.register("jac.clipboard", built_in.clipboard_plugin.ClipboardPlugin(True));
-        # Write should attempt (may fail with UNAVAILABLE in CI, but not
-        # FORBIDDEN)
-        resp = json.loads(
-            host.dispatch(
-                json.dumps(
-                    {
-                        "plugin": "jac.clipboard",
-                        "command": "write",
-                        "args": {"text": "hello"}
-                    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.clipboard_plugin;
+            host = plugin_host.PluginHost();
+            # Config is True -> normalized to {} -> defaults to allow both
+            host.register(
+                "jac.clipboard", built_in.clipboard_plugin.ClipboardPlugin(True)
+            );
+            # Write should attempt (may fail with UNAVAILABLE in CI, but not
+            # FORBIDDEN)
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.clipboard",
+                            "command": "write",
+                            "args": {"text": "hello"}
+                        }
+                    )
                 )
-            )
-        );
-        if not resp["ok"] {
-            assert resp["error"]["code"] != "FORBIDDEN";
+            );
+            if not resp["ok"] {
+                assert resp["error"]["code"] != "FORBIDDEN";
+            }
         }
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    );
 }
 
 """ClipboardPlugin respects allow_read=false."""
 test "clipboard plugin blocks read when allow_read is false" {
-    import sys;
-    saved_path = sys.path[:];
-    sys.path.insert(0, str(_plugin_src_dir()));
-    try {
-        import desktop_plugin;
-        import plugin_host;
-        import built_in.clipboard_plugin;
-        host = plugin_host.PluginHost();
-        host.register(
-            "jac.clipboard",
-            built_in.clipboard_plugin.ClipboardPlugin(
-                {"allow_read": False, "allow_write": True}
-            )
-        );
-        resp = json.loads(
-            host.dispatch(
-                json.dumps({"plugin": "jac.clipboard", "command": "read", "args": {}})
-            )
-        );
-        assert resp["ok"] == False;
-        assert resp["error"]["code"] == "FORBIDDEN";
-    } finally {
-        sys.path[:] = saved_path;
-    }
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            import built_in.clipboard_plugin;
+            host = plugin_host.PluginHost();
+            host.register(
+                "jac.clipboard",
+                built_in.clipboard_plugin.ClipboardPlugin(
+                    {"allow_read": False, "allow_write": True}
+                )
+            );
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {"plugin": "jac.clipboard", "command": "read", "args": {}}
+                    )
+                )
+            );
+            assert resp["ok"] == False;
+            assert resp["error"]["code"] == "FORBIDDEN";
+        }
+    );
 }
 
 

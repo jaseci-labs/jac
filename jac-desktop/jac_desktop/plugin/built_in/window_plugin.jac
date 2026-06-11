@@ -18,7 +18,7 @@ class WindowPlugin(DesktopPlugin) {
     }
 
     """Late-bind the real webview handle and lib after native webview creation."""
-    def setup(self: WindowPlugin, wv_handle: int, wv_lib) {
+    def setup(self: WindowPlugin, wv_handle: int, wv_lib: ctypes.CDLL) {
         self._handle = wv_handle;
         self._wv = wv_lib;
     }

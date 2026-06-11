@@ -8,6 +8,7 @@ import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
+import from jac_desktop.plugin.webview_lib { libwebview_name }
 
 """Locate the shipped native/webview assets (binding + build tooling).
 
@@ -59,18 +60,6 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
         );
     }
     return lib;
-}
-
-"""Platform-correct libwebview filename for the build output directory."""
-def _libwebview_name_build -> str {
-    import sys;
-    if sys.platform == "darwin" {
-        return "libwebview.dylib";
-    }
-    if sys.platform == "win32" {
-        return "webview.dll";
-    }
-    return "libwebview.so";
 }
 
 """Generate the native host source: embed CPython, serve `dist/` (resolved next
@@ -342,7 +331,7 @@ impl NativeDesktopTarget.build(
     shutil.copytree(dist_dir, out_dir / "dist");
     webview_dir = _find_webview_dir();
     lib = _ensure_libwebview(webview_dir);
-    out_lib_name = _libwebview_name_build();
+    out_lib_name = libwebview_name();
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 

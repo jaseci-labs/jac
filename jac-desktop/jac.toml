@@ -8,7 +8,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["jac", "jaclang", "jaseci", "desktop", "webview", "native"]
 requires-python = ">=3.12"
-entry-point = "jac_desktop/plugin.jac"
+entry-point = "jac_desktop/plugin/__init__.jac"
 
 [project.urls]
 repository = "https://github.com/jaseci-labs/jaseci"

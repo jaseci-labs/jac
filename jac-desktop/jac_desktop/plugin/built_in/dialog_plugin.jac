@@ -7,13 +7,12 @@ Shows native OS dialogs (open file, save file, message) via platform tools:
 
 Transpiled to dependency-free Python at build time.
 """
-import base64;
 import subprocess;
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, OsPlugin }
 
 
 """Native dialog capability via platform tools."""
-class DialogPlugin(DesktopPlugin) {
+class DialogPlugin(OsPlugin) {
     def init(self: DialogPlugin, config: dict) {
         super.init("jac.dialog");
         # If this plugin is instantiated at all, it's enabled.
@@ -37,21 +36,6 @@ class DialogPlugin(DesktopPlugin) {
         }
         raise PluginError(
             "UNKNOWN_COMMAND", f"Plugin 'jac.dialog' has no command '{command}'"
-        );
-    }
-
-    def _escape_applescript(self: DialogPlugin, s: str) -> str {
-        return s.replace("\\", "\\\\").replace('"', '\\"');
-    }
-
-    def _escape_powershell(self: DialogPlugin, s: str) -> str {
-        return s.replace("'", "''");
-    }
-
-    def _run_powershell(self: DialogPlugin, ps: str) {
-        encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
-        return subprocess.run(
-            ["powershell", "-EncodedCommand", encoded], capture_output=True, timeout=60
         );
     }
 

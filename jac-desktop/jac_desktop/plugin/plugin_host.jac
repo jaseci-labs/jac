@@ -11,6 +11,7 @@ import json;
 import ctypes;
 import from pathlib { Path }
 import from desktop_plugin { PluginError, DesktopPlugin }
+import from webview_lib { libwebview_name }
 
 
 """Return the directory containing the running binary, cross-platform.
@@ -27,19 +28,6 @@ def _binary_dir -> str {
     # macOS / Windows: sys.argv[0] is the binary path set by the native host.
     return os.path.dirname(os.path.abspath(sys.argv[0]));
 }
-
-"""Return the platform-correct libwebview filename."""
-def _libwebview_name -> str {
-    import sys;
-    if sys.platform == "darwin" {
-        return "libwebview.dylib";
-    }
-    if sys.platform == "win32" {
-        return "webview.dll";
-    }
-    return "libwebview.so";
-}
-
 
 """Plugin host: registry, dispatch, emit."""
 class PluginHost {
@@ -67,7 +55,7 @@ class PluginHost {
         self._wv_handle = wv_handle;
         import os;
         exe_dir = _binary_dir();
-        lib_name = _libwebview_name();
+        lib_name = libwebview_name();
         lib_path = os.path.join(exe_dir, lib_name);
         self._wv_lib = ctypes.CDLL(lib_path);
         # Propagate to all registered plugins so they can call into libwebview.

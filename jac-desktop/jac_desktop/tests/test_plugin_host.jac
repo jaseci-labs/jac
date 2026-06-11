@@ -9,23 +9,28 @@ import from plugin_host { PluginHost }
 
 
 """A mock plugin that records calls and returns configurable results."""
-class MockPlugin(DesktopPlugin) {
-    def init(self: MockPlugin, name: str = "mock") {
+obj MockPlugin(DesktopPlugin) {
+    has calls: list,
+        _responses: dict;
+
+    def init(name: str = "mock") {
         super.init(name);
-        self.calls: list = [];
-        self._responses: dict = {};
+        self.calls = [];
+        self._responses = {};
     }
 
-    def set_response(self: MockPlugin, command: str, result: dict) -> None {
+    def set_response(command: str, result: dict) {
         self._responses[command] = result;
+    }
 
-    def handle(self: MockPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         self.calls.append({"command": command, "args": args});
         if command in self._responses {
             return self._responses[command];
         }
-        raise PluginError("UNKNOWN_COMMAND",
-            f"Plugin '{self.plugin_name}' has no command '{command}'");
+        raise PluginError(
+            "UNKNOWN_COMMAND", f"Plugin '{self.plugin_name}' has no command '{command}'"
+        );
     }
 }
 
@@ -39,9 +44,11 @@ test "dispatch routes to correct plugin" {
     host.register("foo", foo);
     host.register("bar", bar);
 
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "bar", "command": "ping", "args": {"x": 1}
-    })));
+    result = json.loads(
+        host.dispatch(
+            json.dumps({"plugin": "bar", "command": "ping", "args": {"x": 1}})
+        )
+    );
     assert result["ok"] == True;
     assert result["data"]["result"] == "pong";
     assert len(bar.calls) == 1;
@@ -52,9 +59,9 @@ test "dispatch routes to correct plugin" {
 """Dispatch returns PLUGIN_NOT_FOUND for unregistered plugin."""
 test "dispatch returns PLUGIN_NOT_FOUND for unknown plugin" {
     host = PluginHost();
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "nonexistent", "command": "x", "args": {}
-    })));
+    result = json.loads(
+        host.dispatch(json.dumps({"plugin": "nonexistent", "command": "x", "args": {}}))
+    );
     assert result["ok"] == False;
     assert result["error"]["code"] == "PLUGIN_NOT_FOUND";
 }
@@ -65,9 +72,11 @@ test "dispatch returns error for unhandled command" {
     mock = MockPlugin("test");
     host.register("test", mock);
 
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "test", "command": "unhandled", "args": {}
-    })));
+    result = json.loads(
+        host.dispatch(
+            json.dumps({"plugin": "test", "command": "unhandled", "args": {}})
+        )
+    );
     assert result["ok"] == False;
     assert result["error"]["code"] == "UNKNOWN_COMMAND";
 }
@@ -76,17 +85,20 @@ test "dispatch returns error for unhandled command" {
 test "dispatch catches PluginError" {
     host = PluginHost();
 
-    class FailPlugin(DesktopPlugin) {
-        def init(self: FailPlugin) { super.init("fail"); }
-        def handle(self: FailPlugin, command: str, args: dict) -> dict {
+    obj FailPlugin(DesktopPlugin) {
+        def init {
+            super.init("fail");
+        }
+
+        def handle(command: str, args: dict) -> dict {
             raise PluginError("FORBIDDEN", "Access denied");
         }
     }
 
     host.register("fail", FailPlugin());
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "fail", "command": "do_it", "args": {}
-    })));
+    result = json.loads(
+        host.dispatch(json.dumps({"plugin": "fail", "command": "do_it", "args": {}}))
+    );
     assert result["ok"] == False;
     assert result["error"]["code"] == "FORBIDDEN";
     assert result["error"]["message"] == "Access denied";
@@ -96,17 +108,20 @@ test "dispatch catches PluginError" {
 test "dispatch catches unexpected exceptions" {
     host = PluginHost();
 
-    class CrashPlugin(DesktopPlugin) {
-        def init(self: CrashPlugin) { super.init("crash"); }
-        def handle(self: CrashPlugin, command: str, args: dict) -> dict {
+    obj CrashPlugin(DesktopPlugin) {
+        def init {
+            super.init("crash");
+        }
+
+        def handle(command: str, args: dict) -> dict {
             raise RuntimeError("boom");
         }
     }
 
     host.register("crash", CrashPlugin());
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "crash", "command": "explode", "args": {}
-    })));
+    result = json.loads(
+        host.dispatch(json.dumps({"plugin": "crash", "command": "explode", "args": {}}))
+    );
     assert result["ok"] == False;
     assert result["error"]["code"] == "INTERNAL_ERROR";
     assert "boom" in result["error"]["message"];
@@ -118,9 +133,11 @@ test "dispatch passes args correctly" {
     mock = MockPlugin("test");
     host.register("test", mock);
 
-    host.dispatch(json.dumps({
-        "plugin": "test", "command": "do", "args": {"path": "/tmp", "flag": True}
-    }));
+    host.dispatch(
+        json.dumps(
+            {"plugin": "test", "command": "do", "args": {"path": "/tmp", "flag": True}}
+        )
+    );
     assert mock.calls[0]["args"]["path"] == "/tmp";
     assert mock.calls[0]["args"]["flag"] == True;
 }
@@ -156,9 +173,9 @@ test "mock plugin returns configured responses" {
     mock.set_response("hello", {"greeting": "world"});
     host.register("test", mock);
 
-    result = json.loads(host.dispatch(json.dumps({
-        "plugin": "test", "command": "hello", "args": {}
-    })));
+    result = json.loads(
+        host.dispatch(json.dumps({"plugin": "test", "command": "hello", "args": {}}))
+    );
     assert result["ok"] == True;
     assert result["data"]["greeting"] == "world";
 }
