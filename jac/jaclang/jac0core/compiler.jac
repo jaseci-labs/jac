@@ -119,13 +119,19 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-"""Type checking schedule.
+"""Check-extras schedule (`jac check`).
+
+    Diagnostic-only passes layered on top of the unconditional inference
+    run (get_inference_sched), which has already populated Expr.type and
+    surfaced type diagnostics in full-diagnostic mode. TypeCheckPass is NOT
+    repeated here, and UniTreeEnrichPass is not re-run — it runs exactly
+    once at the tail of get_ir_gen_sched (rerunning it mutates AST state
+    that NaIRGenPass and the cross-module linker depend on).
 
     Same re-entrancy guard as get_ir_gen_sched: when compiling the
-    pass modules that this schedule depends on (TypeCheckPass, etc.),
-    importing them would trigger recursive compilation. The guard
-    detects this and returns an empty schedule, skipping type checking
-    for only those bootstrap modules.
+    pass modules that this schedule depends on, importing them would
+    trigger recursive compilation. The guard detects this and returns an
+    empty schedule, skipping these extras for only those bootstrap modules.
     """
 def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     global _typecheck_sched_loading;
@@ -134,24 +140,14 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
     _typecheck_sched_loading = True;
     try {
-        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
         import from jaclang.compiler.passes.main.portability_check_pass {
             PortabilityCheckPass
         }
-        import from jaclang.compiler.passes.main.unitree_enrich_pass {
-            UniTreeEnrichPass
-        }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-        return [
-            TypeCheckPass,
-            StaticAnalysisPass,
-            PortabilityCheckPass,
-            UniTreeEnrichPass,
-            JacLintCheckPass
-        ];
+        return [StaticAnalysisPass, PortabilityCheckPass, JacLintCheckPass];
     } except ImportError {
         return [];
     } finally {
@@ -159,27 +155,54 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-"""Inference-only schedule for native compilation.
+"""Type-inference schedule: the typed-tree contract.
 
-    The native backend (NaIRGenPass) lowers Expr.type into ir.Type instead
-    of re-deriving structure from annotation AST, so it needs the central
-    TypeEvaluator to have populated Expr.type before codegen. This schedule
-    runs only TypeCheckPass — the diagnostic-emitting passes (Static /
-    Portability / Lint) and the duplicate UniTreeEnrichPass (already run at
-    the tail of get_ir_gen_sched) are intentionally omitted: rerunning them
-    mutates AST state that NaIRGenPass and the cross-module linker depend on.
+    Runs TypeInferencePass (a TypeCheckPass subclass) for every full
+    compile, regardless of backend or context, so `Expr.type` is populated
+    before any codegen runs — sv, cl, and na are all consumers of the same
+    centrally computed types. Type *inference* is unconditional; type
+    *diagnostics* are mode-gated inside the pass itself: full diagnostics
+    when the compile asked for type
+    checking (`jac check` / options.type_check) or when the module is
+    native-context (#6049 native type discipline), suppressed otherwise so
+    checker false positives never leak into plain sv/cl builds (#6262).
+    ICE-category diagnostics are never suppressed.
 
     Same re-entrancy guard as get_type_check_sched.
     """
-def get_native_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     global _typecheck_sched_loading;
     if _typecheck_sched_loading {
         return [];
     }
     _typecheck_sched_loading = True;
     try {
-        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-        return [TypeCheckPass];
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeInferencePass }
+        # TypeInferencePass.before_pass needs a fully initialized
+        # TypeEvaluator. During bootstrap the evaluator module may be
+        # mid-import (partially initialized) while one of its own
+        # dependencies compiles — this import raises ImportError in that
+        # window, correctly skipping inference for only those bootstrap
+        # modules.
+        import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
+        # The evaluator hard-requires the vendored typeshed stubs
+        # (builtins.pyi et al. — see TypeEvaluator._load_stub_module).
+        # Environments without the typeshed submodule (bare clones,
+        # slim docker images, pre-commit.ci) must keep compiling like
+        # pre-typed-tree jaclang: skip inference instead of failing
+        # every compile with FileNotFoundError.
+        stub_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'vendor',
+            'typeshed',
+            'stdlib',
+            'builtins.pyi'
+        );
+        if not os.path.exists(stub_path) {
+            return [];
+        }
+        return [TypeInferencePass];
     } except ImportError {
         return [];
     } finally {

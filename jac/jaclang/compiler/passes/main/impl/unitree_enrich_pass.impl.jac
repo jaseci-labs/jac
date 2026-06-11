@@ -6,29 +6,11 @@ impl UniTreeEnrichPass.before_pass -> None {
 }
 
 
-impl UniTreeEnrichPass.enter_name(nd: uni.Name) -> None {
-    if nd?.js_decl_kind is not None {
-        return;
-    }
-    if nd.name_of is nd {
-        parent = nd.parent;
-        try {
-            if isinstance(parent, uni.ParamVar) {
-                nd.js_decl_kind = "param";
-                return;
-            }
-        } except Exception {
-            pass;
-        }
-        nd.js_decl_kind = "let";
-    }
-}
-
-
 impl UniTreeEnrichPass.enter_archetype(nd: uni.Archetype) -> None {
     if not self._native_has_disqualifier {
-        arch_val = nd.arch_type.value if nd.arch_type else "";
-        if arch_val in ("node", "edge", "walker") {
+        # arch_kind is None for plain obj/class archetypes; any OSP
+        # archetype (node/edge/walker) disqualifies native promotion.
+        if nd.arch_kind is not None {
             self._native_has_disqualifier = True;
         }
     }

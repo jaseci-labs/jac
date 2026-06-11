@@ -23,9 +23,6 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             var_type: ir.Type = ir.IntType(64);  # Default to i64
             if assign.type_tag and assign.type_tag.tag {
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
-                # Track type annotation node for chained subscript+field access
-                # e.g. TABLE[i].field chains need the list[T] node to bitcast
-                self.var_type_node[var_name] = assign.type_tag.tag;
             } elif assign.value is not None {
                 # Infer type from initializer (e.g., glob game = Game())
                 inferred = self._infer_global_init_type(assign.value);
@@ -85,24 +82,6 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             self._global_origins[var_name] = self.ir_in.loc.mod_path
                 if self.ir_in?.loc
                 else "(current module)";
-            # Track list element types for global lists
-            if isinstance(var_type, ir.PointerType) {
-                for (ename, ltype) in self.list_types.items() {
-                    if var_type == ltype.as_pointer() {
-                        self.var_list_elem_type[var_name] = ename;
-                        break;
-                    }
-                }
-            }
-            # Track dict types for global dicts
-            if isinstance(var_type, ir.PointerType) {
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if var_type == dtype.as_pointer() {
-                        self.var_dict_type[var_name] = dict_key;
-                        break;
-                    }
-                }
-            }
             self.has_native_code = True;
             # Save assignment node for runtime initialization
             # (skip if already initialized with a compile-time constant)
