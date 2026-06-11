@@ -72,9 +72,9 @@ def is_allowed_key(key: str, prefixes: list) -> bool {
 Returns {name, value, shown, source}. `shown` True only when allowed AND
 the value is a literal (source == ''). secretRef/configMapRef/fieldRef
 entries (source != '') always render `(from <source>)`, never the value."""
-def redact_entry(entry: dict, prefixes: list) -> dict {
-    name = _s(entry.get("name"));
-    source = _s(entry.get("source"));
+def redact_entry(item: dict, prefixes: list) -> dict {
+    name = _s(item.get("name"));
+    source = _s(item.get("source"));
     if source {
         return {
             "name": name,
@@ -86,7 +86,7 @@ def redact_entry(entry: dict, prefixes: list) -> dict {
     if is_allowed_key(name, prefixes) {
         return {
             "name": name,
-            "value": _s(entry.get("value")),
+            "value": _s(item.get("value")),
             "shown": True,
             "source": ""
         };
