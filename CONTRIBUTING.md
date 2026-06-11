@@ -165,7 +165,7 @@ Releasing new versions to PyPI is a two-step process using GitHub Actions.
    - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jac-desktop`, `jaseci`
 4. Click **Run workflow**
 5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
-6. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach to the PR. _(Permanent fix: author the PR with a GitHub App / PAT token instead.)_
+6. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach to the PR. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 7. Once the checks attach, enable **auto-merge** on the PR
 8. When CI passes, the PR auto-merges to `main` (or **approve and merge** it manually)
 
