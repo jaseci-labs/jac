@@ -4,6 +4,7 @@
 impl DeclImplMatchPass.transform(
     self: DeclImplMatchPass, ir_in: uni.Module
 ) -> uni.Module {
+    self._e2026_reported = set();
     self.cur_node = ir_in;
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
     for impl_module in ir_in.impl_mod {
@@ -248,13 +249,19 @@ impl DeclImplMatchPass.connect_impls(
             }
             decl_node = self.defn_lookup(lookup);
             if (
-                decl_node
-                and isinstance(decl_node.name_of, uni.AstImplNeedingNode)
-                and decl_node.name_of.needs_impl
-                and not decl_node.name_of.body
+                not decl_node
+                or not isinstance(decl_node.name_of, uni.AstImplNeedingNode)
+                or decl_node.name_of.body
             ) {
-                self.emit(E2026, node_override=sym.decl.name_of, name=sym.sym_name);
+                continue;
             }
+            bare_node = sym.decl.name_of;
+            node_key = id(bare_node);
+            if node_key in self._e2026_reported {
+                continue;
+            }
+            self._e2026_reported.add(node_key);
+            self.emit(E2026, node_override=bare_node, name=sym.sym_name);
         }
     }
     for source_scope in source_sym_tab.kid_scope {

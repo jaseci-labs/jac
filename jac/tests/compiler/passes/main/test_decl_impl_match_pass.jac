@@ -356,3 +356,19 @@ test "E2026 bare re-declaring def in .impl.jac" {
     assert "Definition 'foo' in .impl.jac file is not linked" in errors_output;
     assert "Use an `impl` block" in errors_output;
 }
+
+test "E2026 bare redecl emits once across cross-variant connect_impls" {
+    head_path = os.path.join(FIXTURES, "bare_redecl_cross_variant", "mymod.jac");
+    (out := JacProgram()).compile(head_path);
+
+    e2026_errors = [
+        e
+        for e in out.errors_had
+        if "E2026" in e.pretty_print()
+    ];
+    assert len(e2026_errors) == 1 , (
+        f"Expected 1 E2026 error across primary and variant stubs, got {len(
+            e2026_errors
+        )}"
+    );
+}
