@@ -12,8 +12,10 @@ import from desktop_plugin { PluginError, OsPlugin }
 
 
 """Native dialog capability via platform tools."""
-class DialogPlugin(OsPlugin) {
-    def init(self: DialogPlugin, config: dict) {
+obj DialogPlugin(OsPlugin) {
+    has _enabled: bool = True;
+
+    def init(config: dict) {
         super.init("jac.dialog");
         # If this plugin is instantiated at all, it's enabled.
         # config may be True (from `dialog = true`), {} (from empty
@@ -21,7 +23,7 @@ class DialogPlugin(OsPlugin) {
         self._enabled = config is not False;
     }
 
-    def handle(self: DialogPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if not self._enabled {
             raise PluginError("FORBIDDEN", "Dialogs are not enabled.");
         }
@@ -37,7 +39,7 @@ class DialogPlugin(OsPlugin) {
         return super.handle(command, args);
     }
 
-    def _open_file(self: DialogPlugin, args: dict) -> dict {
+    def _open_file(args: dict) -> dict {
         platform = self._detect_platform();
         title = args.get("title", "Open File");
         filters = args.get("filters", []);
@@ -90,7 +92,7 @@ class DialogPlugin(OsPlugin) {
         }
     }
 
-    def _save_file(self: DialogPlugin, args: dict) -> dict {
+    def _save_file(args: dict) -> dict {
         platform = self._detect_platform();
         title = args.get("title", "Save File");
         default_name = args.get("default_name", "");
@@ -147,7 +149,7 @@ class DialogPlugin(OsPlugin) {
         }
     }
 
-    def _message(self: DialogPlugin, args: dict) -> dict {
+    def _message(args: dict) -> dict {
         platform = self._detect_platform();
         title = args.get("title", "Message");
         body = args.get("body", "");

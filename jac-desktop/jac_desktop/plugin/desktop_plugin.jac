@@ -14,11 +14,14 @@ import sys;
 import ctypes;
 
 """Structured error raised by a plugin when a command fails."""
-class PluginError(Exception) {
-    def init(self: PluginError, code: str, message: str) {
+obj PluginError(Exception) {
+    has code: str,
+        message: str;
+
+    def init(code: str, message: str) {
         self.code = code;
         self.message = message;
-        super.init(f"[{code}] {message}");
+        Exception.__init__(self, f"[{code}] {message}");
     }
 }
 
@@ -28,27 +31,25 @@ class PluginError(Exception) {
 Subclasses override handle(command, args) to implement their commands.
 The plugin_host dispatches requests to the correct plugin by plugin_name.
 """
-class DesktopPlugin {
-    def init(self: DesktopPlugin, plugin_name: str) {
-        self.plugin_name = plugin_name;
-    }
+obj DesktopPlugin {
+    has plugin_name: str;
 
     """Receive the live webview handle and ctypes lib after the native webview is created.
 
     Default is a no-op; override in plugins that need to call back into libwebview
     (e.g. WindowPlugin). Called by PluginHost.setup() once the webview exists.
     """
-    def setup(self: DesktopPlugin, wv_handle: int, wv_lib: ctypes.CDLL) { }
+    def setup(wv_handle: int, wv_lib: ctypes.CDLL) { }
 
     """Handle a command from JS. Returns a dict result or raises PluginError."""
-    def handle(self: DesktopPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         raise PluginError(
             "UNKNOWN_COMMAND", f"Plugin '{self.plugin_name}' has no command '{command}'"
         );
     }
 
     """Detect the host OS and return a canonical platform name."""
-    def _detect_platform(self: DesktopPlugin) -> str {
+    def _detect_platform -> str {
         if sys.platform.startswith("linux") {
             return "linux";
         }
@@ -68,18 +69,16 @@ class DesktopPlugin {
 Subclasses get platform detection from DesktopPlugin plus shared helpers for
 escaping and running shell commands on macOS and Windows.
 """
-class OsPlugin(DesktopPlugin) {
-    def _escape_applescript(self: OsPlugin, s: str) -> str {
+obj OsPlugin(DesktopPlugin) {
+    def _escape_applescript(s: str) -> str {
         return s.replace("\\", "\\\\").replace('"', '\\"');
     }
 
-    def _escape_powershell(self: OsPlugin, s: str) -> str {
+    def _escape_powershell(s: str) -> str {
         return s.replace("'", "''");
     }
 
-    def _run_powershell(
-        self: OsPlugin, ps: str, timeout: int = 60, check: bool = False
-    ) {
+    def _run_powershell(ps: str, timeout: int = 60, check: bool = False) {
         encoded = base64.b64encode(ps.encode("utf-16-le")).decode("ascii");
         return subprocess.run(
             ["powershell", "-EncodedCommand", encoded],

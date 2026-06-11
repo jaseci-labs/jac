@@ -30,15 +30,13 @@ def _binary_dir -> str {
 }
 
 """Plugin host: registry, dispatch, emit."""
-class PluginHost {
-    def init(self: PluginHost) {
-        self.plugins: dict = {};
-        self._wv_handle: int = 0;
-        self._wv_lib = None;  # ctypes.CDLL once setup() is called
-    }
+obj PluginHost {
+    has plugins: dict = {},
+        _wv_handle: int = 0,
+        _wv_lib: ctypes.CDLL | None = None;
 
     """Register a plugin under the given name (e.g. 'jac.fs')."""
-    def register(self: PluginHost, name: str, plugin: DesktopPlugin) {
+    def register(name: str, plugin: DesktopPlugin) {
         self.plugins[name] = plugin;
     }
 
@@ -51,7 +49,7 @@ class PluginHost {
     Also propagates the handle and lib to any registered plugin that overrides
     setup() (e.g. WindowPlugin).
     """
-    def setup(self: PluginHost, wv_handle: int) {
+    def setup(wv_handle: int) {
         self._wv_handle = wv_handle;
         import os;
         exe_dir = _binary_dir();
@@ -70,7 +68,7 @@ class PluginHost {
     Returns a JSON string: {"ok": true, "data": ...} or
     {"ok": false, "error": {"code": ..., "message": ...}}.
     """
-    def dispatch(self: PluginHost, req_json: str) -> str {
+    def dispatch(req_json: str) -> str {
         try {
             req = json.loads(req_json);
             name = req.get("plugin", "");
@@ -105,7 +103,7 @@ class PluginHost {
     Calls window.__jac.__emit__(event, payload) in the webview.
     Uses json.dumps for both event and payload to prevent injection.
     """
-    def emit(self: PluginHost, event: str, payload: dict) -> None {
+    def emit(event: str, payload: dict) -> None {
         if self._wv_lib is None or self._wv_handle == 0 {
             return;
         }

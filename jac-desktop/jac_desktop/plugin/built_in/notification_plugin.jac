@@ -13,8 +13,10 @@ import from desktop_plugin { PluginError, OsPlugin }
 
 
 """Desktop notification capability via platform tools."""
-class NotificationPlugin(OsPlugin) {
-    def init(self: NotificationPlugin, config: dict) {
+obj NotificationPlugin(OsPlugin) {
+    has _enabled: bool = True;
+
+    def init(config: dict) {
         super.init("jac.notification");
         # If this plugin is instantiated at all, it's enabled.
         # config may be True (from `notification = true` in TOML),
@@ -23,7 +25,7 @@ class NotificationPlugin(OsPlugin) {
         self._enabled = config is not False;
     }
 
-    def handle(self: NotificationPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if not self._enabled {
             raise PluginError("FORBIDDEN", "Notifications are not enabled.");
         }
@@ -33,7 +35,7 @@ class NotificationPlugin(OsPlugin) {
         return super.handle(command, args);
     }
 
-    def _send(self: NotificationPlugin, args: dict) -> dict {
+    def _send(args: dict) -> dict {
         title = args.get("title", "");
         body = args.get("body", "");
         if not title {

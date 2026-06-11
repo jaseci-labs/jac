@@ -276,6 +276,13 @@ stdlib only (no jaclang dependency at runtime).
 
 Controls the native window. Calls back into libwebview via ctypes:
 
+| Command | Args | Description |
+|---|---|---|
+| `set_title` | `title` | Set the window title |
+| `set_size` | `width`, `height`, `hint?` | Resize the window |
+| `fullscreen` | (none) | Enter fullscreen (hint=3) |
+| `terminate` | (none) | Close the window |
+
 ```python
 class WindowPlugin(DesktopPlugin):
     def __init__(self, wv_handle, wv_lib):
@@ -291,8 +298,15 @@ class WindowPlugin(DesktopPlugin):
                 self._handle, args["width"], args["height"], args.get("hint", 0)
             )
             return {}
-        # minimize, maximize, fullscreen, close...
+        # fullscreen, terminate...
 ```
+
+**`webview_eval` is not exposed to JS.** `libwebview.webview_eval()` runs
+arbitrary JavaScript in the webview context and is therefore high-risk. The only
+call site is `PluginHost.emit()`, which evaluates a fixed template
+(`window.__jac.__emit__(...)`) with `json.dumps`-escaped arguments. Apps cannot
+invoke arbitrary eval via `window.__jac.invoke()`; page JS can already run code
+directly in the webview without going through IPC.
 
 ### `path_plugin.jac`
 
@@ -569,5 +583,6 @@ Wire the transpile loop, CPython bootstrap extension, and host generator changes
 | ctypes → libwebview for WindowPlugin + emit | **Medium** | Already-loaded DSO, opaque handle valid across contexts. Test early (Step 5). |
 | Path traversal in FsPlugin | **Medium** | Canonicalize + `resolve()` before allow-list check. Test with symlinks. |
 | JSON injection in `emit()` | **Low** | Use `json.dumps()` for event name and payload, never string concat. |
+| Arbitrary `webview_eval` via IPC | **High** | Not exposed. `webview_eval` is host-internal only (`emit()`). Window plugin does not offer an `eval` command. |
 | Generated host complexity growth | **Low** | Native shim stays thin (~20 lines). All logic in Python. |
 | Regression: existing bootstrap flags | **Low** | JS SDK sets `window.__JAC_DESKTOP__` and `window.__JAC_BROKER__`. Test it. |

@@ -12,8 +12,11 @@ import from desktop_plugin { PluginError, DesktopPlugin }
 
 
 """System clipboard read/write via platform tools."""
-class ClipboardPlugin(DesktopPlugin) {
-    def init(self: ClipboardPlugin, config: dict) {
+obj ClipboardPlugin(DesktopPlugin) {
+    has _allow_read: bool = True,
+        _allow_write: bool = True;
+
+    def init(config: dict) {
         super.init("jac.clipboard");
         # Normalize non-dict config (e.g. `clipboard = true`) to empty dict.
         if not isinstance(config, dict) {
@@ -23,7 +26,7 @@ class ClipboardPlugin(DesktopPlugin) {
         self._allow_write = bool(config.get("allow_write", True));
     }
 
-    def handle(self: ClipboardPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if command == "read" {
             return self._read();
         }
@@ -33,7 +36,7 @@ class ClipboardPlugin(DesktopPlugin) {
         return super.handle(command, args);
     }
 
-    def _read(self: ClipboardPlugin) -> dict {
+    def _read -> dict {
         if not self._allow_read {
             raise PluginError("FORBIDDEN", "Clipboard read is not allowed.");
         }
@@ -76,7 +79,7 @@ class ClipboardPlugin(DesktopPlugin) {
         }
     }
 
-    def _write(self: ClipboardPlugin, args: dict) -> dict {
+    def _write(args: dict) -> dict {
         if not self._allow_write {
             raise PluginError("FORBIDDEN", "Clipboard write is not allowed.");
         }

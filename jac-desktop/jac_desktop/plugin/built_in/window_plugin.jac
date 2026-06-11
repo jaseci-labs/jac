@@ -10,20 +10,23 @@ import from desktop_plugin { PluginError, DesktopPlugin }
 
 
 """Controls the native webview window via ctypes -> libwebview."""
-class WindowPlugin(DesktopPlugin) {
-    def init(self: WindowPlugin, wv_handle: int, wv_lib: ctypes.CDLL) {
+obj WindowPlugin(DesktopPlugin) {
+    has _wv: ctypes.CDLL,
+        _handle: int = 0;
+
+    def init(wv_handle: int, wv_lib: ctypes.CDLL) {
         super.init("jac.window");
-        self._wv = wv_lib;
         self._handle = wv_handle;
+        self._wv = wv_lib;
     }
 
     """Late-bind the real webview handle and lib after native webview creation."""
-    def setup(self: WindowPlugin, wv_handle: int, wv_lib: ctypes.CDLL) {
+    def setup(wv_handle: int, wv_lib: ctypes.CDLL) {
         self._handle = wv_handle;
         self._wv = wv_lib;
     }
 
-    def handle(self: WindowPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if command == "set_title" {
             title = args.get("title", "");
             if not title {
@@ -51,14 +54,6 @@ class WindowPlugin(DesktopPlugin) {
         }
         if command == "terminate" {
             self._wv.webview_terminate(self._handle);
-            return {};
-        }
-        if command == "eval" {
-            js = args.get("js", "");
-            if not js {
-                raise PluginError("INVALID_ARGS", "'js' is required for 'eval'");
-            }
-            self._wv.webview_eval(self._handle, js.encode("utf-8"));
             return {};
         }
         return super.handle(command, args);

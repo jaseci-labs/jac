@@ -14,22 +14,28 @@ import from built_in.path_plugin { PathPlugin }
 
 
 """Filesystem operations with allow-list enforcement."""
-class FsPlugin(DesktopPlugin) {
-    def init(self: FsPlugin, config: dict, path_plugin: PathPlugin) {
+obj FsPlugin(DesktopPlugin) {
+    has _allow_read: list = [],
+        _allow_write: list = [],
+        _path_plugin: PathPlugin,
+        _resolved_read: list = [],
+        _resolved_write: list = [];
+
+    def init(config: dict, path_plugin: PathPlugin) {
         super.init("jac.fs");
         # Normalize non-dict config (e.g. `fs = true`) to empty dict.
         if not isinstance(config, dict) {
             config = {};
         }
-        self._allow_read: list = config.get("allow_read", []);
-        self._allow_write: list = config.get("allow_write", []);
+        self._allow_read = config.get("allow_read", []);
+        self._allow_write = config.get("allow_write", []);
         self._path_plugin = path_plugin;
         # Pre-resolve allow-list entries ($HOME, $APP_DATA etc.)
         self._resolved_read = [self._resolve_pattern(p) for p in self._allow_read];
         self._resolved_write = [self._resolve_pattern(p) for p in self._allow_write];
     }
 
-    def handle(self: FsPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if command == "read_file" {
             return self._read_file(args);
         }
@@ -54,7 +60,7 @@ class FsPlugin(DesktopPlugin) {
         return super.handle(command, args);
     }
 
-    def _read_file(self: FsPlugin, args: dict) -> dict {
+    def _read_file(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "read");
         encoding = args.get("encoding", "utf-8");
@@ -68,7 +74,7 @@ class FsPlugin(DesktopPlugin) {
         return {"content": content};
     }
 
-    def _write_file(self: FsPlugin, args: dict) -> dict {
+    def _write_file(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         content = args.get("content", "");
         self._check_allowed(path, "write");
@@ -81,7 +87,7 @@ class FsPlugin(DesktopPlugin) {
         return {};
     }
 
-    def _list_dir(self: FsPlugin, args: dict) -> dict {
+    def _list_dir(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "read");
         if not path.is_dir() {
@@ -101,14 +107,14 @@ class FsPlugin(DesktopPlugin) {
         return {"entries": entries};
     }
 
-    def _mkdir(self: FsPlugin, args: dict) -> dict {
+    def _mkdir(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "write");
         path.mkdir(parents=True, exist_ok=True);
         return {};
     }
 
-    def _remove(self: FsPlugin, args: dict) -> dict {
+    def _remove(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "write");
         if path.is_dir() {
@@ -120,7 +126,7 @@ class FsPlugin(DesktopPlugin) {
         return {};
     }
 
-    def _exists(self: FsPlugin, args: dict) -> dict {
+    def _exists(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         # Allow exists check without full read permission — just check the
         # path is within a readable root so we don't leak arbitrary FS info.
@@ -128,7 +134,7 @@ class FsPlugin(DesktopPlugin) {
         return {"exists": path.exists()};
     }
 
-    def _stat(self: FsPlugin, args: dict) -> dict {
+    def _stat(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "read");
         if not path.exists() {
@@ -144,7 +150,7 @@ class FsPlugin(DesktopPlugin) {
     }
 
     """Resolve a user-provided path string to an absolute canonical Path."""
-    def _resolve_path(self: FsPlugin, raw: str) -> Path {
+    def _resolve_path(raw: str) -> Path {
         if not raw {
             raise PluginError("INVALID_ARGS", "'path' is required");
         }
@@ -152,7 +158,7 @@ class FsPlugin(DesktopPlugin) {
     }
 
     """Resolve allow-list pattern entries ($HOME, $APP_DATA, etc.)."""
-    def _resolve_pattern(self: FsPlugin, pattern: str) -> str {
+    def _resolve_pattern(pattern: str) -> str {
         if pattern == "$HOME" {
             return str(Path.home());
         }
@@ -170,7 +176,7 @@ class FsPlugin(DesktopPlugin) {
     }
 
     """Check that a resolved path is within an allowed list."""
-    def _check_allowed(self: FsPlugin, path: Path, mode: str) -> None {
+    def _check_allowed(path: Path, mode: str) -> None {
         allowed = self._resolved_read if mode == "read" else self._resolved_write;
         if not allowed {
             raise PluginError(

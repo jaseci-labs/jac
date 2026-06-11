@@ -12,12 +12,12 @@ import from desktop_plugin { PluginError, DesktopPlugin }
 
 
 """Provides OS path resolution for standard directories."""
-class PathPlugin(DesktopPlugin) {
-    def init(self: PathPlugin) {
+obj PathPlugin(DesktopPlugin) {
+    def init {
         super.init("jac.path");
     }
 
-    def handle(self: PathPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if command == "home" {
             return {"path": str(Path.home())};
         }
@@ -67,7 +67,7 @@ class PathPlugin(DesktopPlugin) {
     }
 
     """Resolve an XDG directory with fallback."""
-    def _resolve_xdg(self: PathPlugin, env_var: str, fallback: str) -> str {
+    def _resolve_xdg(env_var: str, fallback: str) -> str {
         val = os.environ.get(env_var);
         if val {
             return str(Path(val).expanduser().resolve());

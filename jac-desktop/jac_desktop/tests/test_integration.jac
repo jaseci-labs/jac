@@ -8,7 +8,7 @@ requiring a webview or display. Covers:
   3. Full Python dispatch: import real plugins, register, dispatch commands
   4. Config -> plugin registration (TOML -> enabled/disabled)
   5. FsPlugin security: allow-list enforcement, path traversal prevention
-  6. ShellPlugin security: deny-all default, glob matching
+  6. ShellPlugin security: deny-all default, glob matching, no shell injection
   7. JS SDK injection snippet validity
   8. Generated CPython bootstrap correctness
 """
@@ -455,6 +455,40 @@ test "shell plugin allow-list matching" {
             );
             assert resp2["ok"] == False;
             assert resp2["error"]["code"] == "FORBIDDEN";
+        }
+    );
+}
+
+"""ShellPlugin blocks shell injection via glob-matched command strings."""
+test "shell plugin rejects shell injection in allowed commands" {
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            _ShellPlugin = _get_shell_plugin_class();
+            config = {"allow": ["echo *"]};
+            host = plugin_host.PluginHost();
+            host.register("jac.shell", _ShellPlugin(config));
+            marker = "/tmp/jac_shell_injection_test";
+            with open(marker, "w") as f {
+                f.write("probe");
+            }
+            # shell=True + fnmatch on full string would run rm; argv + shell=False must not.
+            resp = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": f"echo hello; rm -f {marker}"}
+                        }
+                    )
+                )
+            );
+            assert resp["ok"] == True;
+            assert "hello" in resp["data"]["stdout"];
+            assert os.path.exists(marker);
+            os.remove(marker);
         }
     );
 }

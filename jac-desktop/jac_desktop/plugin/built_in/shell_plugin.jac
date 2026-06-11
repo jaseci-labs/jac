@@ -6,57 +6,75 @@ allowed in jac.toml via glob patterns:
   [plugins.desktop.plugins.shell]
   allow = ["git *", "jac *"]
 
-Each command is matched against the allow list before execution.
+The executable name (first token) is matched against the allow list before
+execution. Commands run without a shell to prevent operator injection.
 
 Transpiled to dependency-free Python at build time.
 """
 import fnmatch;
+import shlex;
 import subprocess;
 import from desktop_plugin { PluginError, DesktopPlugin }
 
 
 """Shell command execution with glob-based allow-list."""
-class ShellPlugin(DesktopPlugin) {
-    def init(self: ShellPlugin, config: dict) {
+obj ShellPlugin(DesktopPlugin) {
+    has _allow: list = [];
+
+    def init(config: dict) {
         super.init("jac.shell");
         # Normalize non-dict config (e.g. `shell = true`) to empty dict.
         if not isinstance(config, dict) {
             config = {};
         }
-        self._allow: list = config.get("allow", []);
+        self._allow = config.get("allow", []);
     }
 
-    def handle(self: ShellPlugin, command: str, args: dict) -> dict {
+    def handle(command: str, args: dict) -> dict {
         if command == "exec" {
             return self._exec(args);
         }
         return super.handle(command, args);
     }
 
-    def _exec(self: ShellPlugin, args: dict) -> dict {
+    def _exec(args: dict) -> dict {
         cmd = args.get("command", "");
         if not cmd {
             raise PluginError("INVALID_ARGS", "'command' is required for 'exec'");
         }
-        # Check against allow list
+        try {
+            argv = shlex.split(cmd);
+        } except ValueError as e {
+            raise PluginError("INVALID_ARGS", f"Invalid command: {e}");
+        }
+        if not argv {
+            raise PluginError("INVALID_ARGS", "'command' must not be empty");
+        }
+        cmd_name = argv[0];
+        # Match only the executable name against each pattern's first token.
+        # Full-string fnmatch is unsafe because * matches shell metacharacters.
         allowed = False;
         for pattern in self._allow {
-            if fnmatch.fnmatch(cmd, pattern) {
+            pattern_argv = shlex.split(pattern);
+            if not pattern_argv {
+                continue;
+            }
+            if fnmatch.fnmatch(cmd_name, pattern_argv[0]) {
                 allowed = True;
                 break;
             }
         }
         if not allowed {
             raise PluginError(
-                "FORBIDDEN", f"Command '{cmd}' is not in the allowed list."
+                "FORBIDDEN", f"Command '{cmd_name}' is not in the allowed list."
             );
         }
         timeout = int(args.get("timeout", 30));
         cwd = args.get("cwd") or None;
         try {
             result = subprocess.run(
-                cmd,
-                shell=True,
+                argv,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
