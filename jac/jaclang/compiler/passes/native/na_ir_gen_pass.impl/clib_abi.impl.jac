@@ -23,44 +23,19 @@ Returns (size, align, scalars) where scalars is a flat list of
 layout matches the C ABI rather than the Jac pointer-nested representation.
 """
 impl NaIRGenPass._clib_struct_layout(name: str) -> tuple {
-    indices = self.struct_field_indices.get(name, {});
-    ftypes = self.struct_field_types.get(name, {});
-    fnodes = self.field_type_node.get(name, {});
-    idx_to_name: dict[(int, str)] = {};
-    for (fn, ix) in indices.items() {
-        idx_to_name[ix] = fn;
+    # The C layout is the foreign declaration model's job (Phase 8); the
+    # pass only supplies its module universe (entry + transitive native
+    # imports, assembled in _register_imported_struct_types).
+    import from jaclang.compiler.targets.foreign {
+        collect_foreign_structs,
+        foreign_struct_layout
     }
-    offset = 0;
-    max_align = 1;
-    scalars: list = [];
-    for ix in sorted(idx_to_name.keys()) {
-        fn = idx_to_name[ix];
-        tname: (str | None) = None;
-        if fn in fnodes {
-            tname = self._get_name(fnodes[fn]);
-        }
-        if tname is not None and tname in self.clib_struct_names {
-            (sz, al, subs) = self._clib_struct_layout(tname);
-        } else {
-            import from jaclang.compiler.targets.abi { scalar_layout }
-            (sz, al, subs) = scalar_layout(ftypes.get(fn));
-        }
-        if al > 0 and (offset % al) != 0 {
-            offset += al - (offset % al);
-        }
-        for (so, isf, b) in subs {
-            scalars.append((offset + so, isf, b));
-        }
-        offset += sz;
-        if al > max_align {
-            max_align = al;
-        }
+    if self._foreign_structs is None {
+        self._foreign_structs = collect_foreign_structs(
+            [self.ir_in] + self._foreign_modules
+        );
     }
-    size = offset;
-    if max_align > 0 and (size % max_align) != 0 {
-        size += max_align - (size % max_align);
-    }
-    return (size, max_align, scalars);
+    return foreign_struct_layout(self._foreign_structs, name);
 }
 
 """Classify a clib struct for the active target's C ABI.

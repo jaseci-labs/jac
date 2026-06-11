@@ -524,6 +524,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     # Store transitive source strings on the manifest so _codegen_entry can
     # emit __jac_glob_init_<safe_name>() calls for ALL linked modules.
+    # Hand the module universe to the foreign declaration model (Phase 8).
+    self._foreign_modules = [m for (_s, m) in imported_mods];
+
     for (src_mod_str, _) in imported_mods {
         if src_mod_str not in manifest.native_transitive_sources {
             manifest.native_transitive_sources.append(src_mod_str);

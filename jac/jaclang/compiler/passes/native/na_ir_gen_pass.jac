@@ -107,6 +107,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Foreign declaration model (Phase 8): module universe for the
+        # central collector, and its memoized result.
+        _foreign_modules: list = [],
+        _foreign_structs: (dict | None) = None,
         # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
         # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
         # single source of truth for how a foreign call is marshalled — it
