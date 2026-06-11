@@ -1204,7 +1204,7 @@ impl ViteBundler.start_dev_server(
         config_rel = dev_config;
     }
     command = _build_vite_dev_command(config_rel, port, host=host);
-    # Fallback; the output-capture path overwrites this with the bound port.
+    # Fallback; only the output-capture path overwrites this with the bound port.
     self.dev_server_port = port;
     (build_dir / '.dev-port').unlink(missing_ok=True);
     if suppress_initial_output {

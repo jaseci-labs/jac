@@ -417,7 +417,7 @@ impl start(
     }
     # Vite starts after the API's port is known so the proxy is wired right;
     # skip= keeps Vite off that port (on_ready fires before the API binds).
-    def _announce_ready(actual_port: int) -> None {
+    def _announce_ready(actual_port: int) {
         primary_port = actual_port;
         if dev and not no_client {
             free_vite_port = _find_free_port(vite_port, skip=actual_port);
@@ -630,7 +630,11 @@ def _find_free_port(start: int, skip: int = 0) -> int {
         }
         candidate += 1;
     }
-    return start;
+    console.warning(
+        f"[Vite] No free port found in {start}-{start + 49}; falling back."
+    );
+    # Never hand back `skip` — Vite would steal the API's not-yet-bound port.
+    return start if start != skip else start + 50;
 }
 
 """Start Vite dev server for HMR mode. Returns (process, bound_port)."""
