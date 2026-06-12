@@ -10,6 +10,28 @@ import from typing { Optional }
 import from jaclang.cli.console { console }
 import from jac_desktop.plugin.webview_lib { libwebview_name }
 
+"""Read lines from a file between start_marker and end_marker (exclusive).
+
+Used to extract the bridge code from plugin_bridge.na.jac so that file is
+the single source of truth — no hand-synced duplication."""
+def _read_between(path: Path, start_marker: str, end_marker: str) -> str {
+    lines = path.read_text().splitlines(True);
+    capturing = False;
+    result: list = [];
+    for line in lines {
+        if not capturing {
+            if line.rstrip() == start_marker {
+                capturing = True;
+            }
+        } elif line.rstrip() == end_marker {
+            break;
+        } else {
+            result.append(line);
+        }
+    }
+    return "".join(result);
+}
+
 """Locate the shipped native/webview assets (binding + build tooling).
 
 native/webview lives inside this package, two dirs up from this targets module
@@ -127,8 +149,18 @@ def _generate_host_source(
     );
     # --- Plugin IPC bootstrap (embedded CPython) ---
     # Import plugin modules, register enabled plugins, expose dispatch.
-    # Plugin configs are baked at build time as Python literals.
+    # The registry (registry.jac) is the single source of truth for which
+    # modules to load and how to register them. The import loop still runs as
+    # strings (embedded CPython has no jaclang), but it now derives the module
+    # list from the same BUILTIN_PLUGINS array that drives registration.
+    # Order is load order. `registry` imports every `built_in.*` plugin at
+    # module scope, so it MUST come last: in the embedded CPython `built_in`
+    # is a bare ModuleType (not a real package), so `from built_in.x import Y`
+    # only resolves once `built_in.x` is already in sys.modules. Loading
+    # registry before the built_in modules raises ModuleNotFoundError and
+    # crashes the whole plugin bootstrap (dispatch then never gets defined).
     _plugin_mods = [
+        "manifest",
         "desktop_plugin",
         "webview_lib",
         "plugin_host",
@@ -138,7 +170,8 @@ def _generate_host_source(
         "built_in.notification_plugin",
         "built_in.clipboard_plugin",
         "built_in.dialog_plugin",
-        "built_in.shell_plugin"
+        "built_in.shell_plugin",
+        "registry"
     ];
     # Build plugin bootstrap as string concat (not Jac f-strings with nested
     # quotes — those lower to broken Python like
@@ -166,54 +199,12 @@ def _generate_host_source(
             );
         }
     }
-    # Build plugin host + register enabled plugins
+    # Build plugin host using registry bootstrap_plugins().
+    # This replaces seven hand-written registration blocks with a single call.
     _pc = plugin_configs;  # baked at build time
-    plugin_py += (
-        "_DP = sys.modules['desktop_plugin']\n"
-        "_PH = sys.modules['plugin_host']\n"
-        "_host = _PH.PluginHost()\n"
-        "_path = sys.modules['built_in.path_plugin'].PathPlugin()\n"
-    );
-    # Register plugins based on config (baked literals)
     plugin_py += f"_pc = {repr(_pc)}\n";
     plugin_py += (
-        "if _pc.get('path', False):\n" "    _host.register('jac.path', _path)\n"
-    );
-    plugin_py += (
-        "if _pc.get('window', False):\n"
-        "    _wp = sys.modules['built_in.window_plugin'].WindowPlugin(0, None)\n"
-        "    _host.register('jac.window', _wp)\n"
-    );
-    plugin_py += (
-        "if _pc.get('fs', False):\n"
-        "    _fs_cfg = _pc['fs'] if isinstance(_pc['fs'], dict) else True\n"
-        "    _fp = sys.modules['built_in.fs_plugin'].FsPlugin(_fs_cfg, _path)\n"
-        "    _host.register('jac.fs', _fp)\n"
-    );
-    plugin_py += (
-        "if _pc.get('notification', False):\n"
-        "    _np = sys.modules['built_in.notification_plugin'].NotificationPlugin(_pc['notification'])\n"
-        "    _host.register('jac.notification', _np)\n"
-    );
-    plugin_py += (
-        "if _pc.get('clipboard', False):\n"
-        "    _cb_cfg = _pc['clipboard'] if isinstance(_pc['clipboard'], dict) else True\n"
-        "    _cp = sys.modules['built_in.clipboard_plugin'].ClipboardPlugin(_cb_cfg)\n"
-        "    _host.register('jac.clipboard', _cp)\n"
-    );
-    plugin_py += (
-        "if _pc.get('dialog', False):\n"
-        "    _dp = sys.modules['built_in.dialog_plugin'].DialogPlugin(_pc['dialog'])\n"
-        "    _host.register('jac.dialog', _dp)\n"
-    );
-    plugin_py += (
-        "if _pc.get('shell', False):\n"
-        "    _sh_cfg = _pc['shell'] if isinstance(_pc['shell'], dict) else True\n"
-        "    _sp = sys.modules['built_in.shell_plugin'].ShellPlugin(_sh_cfg)\n"
-        "    _host.register('jac.shell', _sp)\n"
-    );
-    plugin_py += (
-        "# Expose dispatch callable and plugin host for the native shim\n"
+        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
         "_dispatch_fn = _host.dispatch\n"
     );
     serve_py = serve_py + "\n" + plugin_py;
@@ -246,9 +237,14 @@ def _generate_host_source(
         "})();"
     );
     # --- Generated host source ---
-    # The plugin bridge is inlined directly into the host (nacompile does not
-    # support string-literal imports between .na.jac files). The ~20-line bridge
-    # handles: inttoptr coercion, GIL management, CPython dispatch, webview_return.
+    # The plugin bridge is extracted from plugin_bridge.na.jac between
+    # BRIDGE START / BRIDGE END markers — that file is the single source.
+    webview_dir = _find_webview_dir();
+    bridge_src = _read_between(
+        webview_dir.parent / "plugin_bridge.na.jac",
+        "# --- BRIDGE START ---",
+        "# --- BRIDGE END ---"
+    );
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
@@ -272,34 +268,9 @@ def _generate_host_source(
         "}\n"
         "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
-        f"glob BOOTSTRAP_JS: str = {json.dumps(js_sdk, ensure_ascii=False)};\n"
-        # --- Inlined plugin bridge (see native/plugin_bridge.na.jac for docs) ---
-        "glob _PH_DISPATCH: int = 0;\n"
-        "def _jac_invoke_handler(id: int, req: int, wv_handle: int) -> None {\n"
-        "    req_str: str = req;\n"
-        "    gstate = PyGILState_Ensure();\n"
-        "    py_req = PyUnicode_FromString(req_str);\n"
-        "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
-        "    if py_result == 0 {\n"
-        "        Py_DecRef(py_req);\n"
-        "        PyGILState_Release(gstate);\n"
-        '        respond(wv_handle, id, "{\\"ok\\":false,\\"error\\":{\\"code\\":\\"DISPATCH_CRASHED\\"}}");\n'
-        "        return;\n"
-        "    }\n"
-        "    result_str = PyUnicode_AsUTF8(py_result);\n"
-        "    Py_DecRef(py_req);\n"
-        "    Py_DecRef(py_result);\n"
-        "    PyGILState_Release(gstate);\n"
-        "    respond(wv_handle, id, result_str);\n"
-        "}\n"
-        # nacompile cannot lower wv.get_handle() inside an f-string for
-        # PyRun_SimpleString; passing the int through a native helper works.
-        "def _stash_wv_in_python(h: int) -> None {\n"
-        "    PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
-        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
-        "}\n"
-        # --- End inlined plugin bridge ---
-        "with entry {\n"
+        f"glob BOOTSTRAP_JS: str = {json.dumps(
+            js_sdk, ensure_ascii=False
+        )};\n" + bridge_src + "with entry {\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(SERVE_PY);\n"
         "    main_mod = PyImport_AddModule(\"__main__\");\n"

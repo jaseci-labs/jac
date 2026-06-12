@@ -2,12 +2,8 @@
 
 This file is **not** compiled by nacompile. The bridge is inlined into the
 generated host source by ``_generate_host_source()`` in
-``native_desktop_target.impl.jac``. Keep this file in sync with that inline
-block — it documents the ~20 lines that handle:
-  - inttoptr coercion (C string pointer -> Jac str)
-  - GIL management (PyGILState_Ensure / Release)
-  - CPython function call (PyObject_CallOneArg)
-  - webview_return with the result
+``native_desktop_target.impl.jac``, extracted between the BRIDGE START /
+BRIDGE END markers. This file is the single authoritative copy.
 
 The free function pattern (not a bound method) is confirmed by test_binding.jac.
 """
@@ -21,7 +17,7 @@ import from "<libpy>" {
     ) -> str;  def Py_DecRef(pyobj: int) -> None;
 }
 
-# PyObject* to plugin_host.dispatch, set during CPython bootstrap
+# --- BRIDGE START ---
 glob _PH_DISPATCH: int = 0;
 
 def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
@@ -43,3 +39,11 @@ def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
     PyGILState_Release(gstate);
     respond(wv_handle, id, result_str);
 }
+
+# nacompile cannot lower wv.get_handle() inside an f-string for
+# PyRun_SimpleString; passing the int through a native helper works.
+def _stash_wv_in_python(h: int) {
+    PyRun_SimpleString(f"_wv_handle = {h}");
+    PyRun_SimpleString("_host.setup(_wv_handle)");
+}
+# --- BRIDGE END ---
