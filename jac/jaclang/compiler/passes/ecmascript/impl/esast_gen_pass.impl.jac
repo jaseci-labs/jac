@@ -6464,8 +6464,11 @@ impl EsastGenPass._resolve_spawn_walker(
     if not isinstance(stripped_node, uni.FuncCall) {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
-    target_symbol = resolve_expr_symbol(stripped_node.target, self.get_main_mod());
+    # Checker-stamped symbol (Phase 2 contract); the name-based fallback
+    # below already covers sv-imported walkers the checker could not bind.
+    target_symbol = stripped_node.target.sym
+        if isinstance(stripped_node.target, uni.AtomExpr)
+        else None;
     # If symbol is found and is a walker, use it
     if target_symbol and (target_symbol.sym_type == SymbolType.WALKER_ARCH) {
         walker_name = target_symbol.sym_name;
