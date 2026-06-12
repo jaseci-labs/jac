@@ -204,3 +204,121 @@ def classify_struct(size: int, align: int, scalars: list, triple: str) -> dict {
     }
     return classify_struct_sysv(size, align, scalars);
 }
+
+"""Marshalling plan for a foreign function: the single decision of HOW a
+declared C signature crosses the call boundary on the active target.
+
+Inputs are declaration-surface facts only: the foreign struct model
+(targets.foreign.collect_foreign_structs), the declared
+(param_name, type_name) pairs in order, the declared return type name,
+and the target triple. Returns None when no by-value foreign struct is
+involved - pure-scalar foreign functions (sqrt, strlen, calloc, ...)
+keep the backend's legacy declaration path, which also handles reuse of
+the compiler's canonical extern declarations.
+
+The returned dict is the stored call plan:
+
+  - "params": one entry per declared parameter, in order:
+      {"kind": "scalar",     "pname", "tname", "argpos"}
+      {"kind": "struct_mem", "pname", "sname", "align", "byval", "argpos"}
+      {"kind": "struct_reg", "pname", "sname", "coerce", "safe", "argpos"}
+  - "ret": {"kind": "scalar"} | {"kind": "sret", "sname", "align"}
+           | {"kind": "struct_reg", "sname", "coerce", "safe"}
+  - "sret": True when the return is MEMORY class; the hidden sret pointer
+    is argument 0 and every parameter "argpos" is already shifted by one
+  - "sig": the expanded LLVM argument slots, one per actual argument:
+      ("sretptr", sname) | ("structptr", sname) | ("coerce", ir.Type)
+      | ("scalar", param_index)
+    Struct pointer slots are left symbolic: identified struct types are
+    LLVM-module-context-bound, so the backend materializes them. Scalar
+    slots reference the declared parameter by index for the same reason
+    (scalar lowering consults the checker-typed annotation).
+  - "sig_ret": ("void",) | ("coerce", [pieces]) | ("scalar",)
+"""
+def classify_foreign_fn(
+    structs: dict, params: list, ret_tname: (str | None), triple: str
+) -> (dict | None) {
+    import from jaclang.compiler.targets.foreign { foreign_struct_layout }
+    has_struct = ret_tname is not None and ret_tname in structs;
+    for (_pn, _tn) in params {
+        if _tn is not None and _tn in structs {
+            has_struct = True;
+        }
+    }
+    if not has_struct {
+        return None;
+    }
+    sig: list = [];
+    param_plan: list = [];
+    for (i, (pname, tname)) in enumerate(params) {
+        pn = pname or f"arg{i}";
+        if tname is not None and tname in structs {
+            (sz, al, leaves) = foreign_struct_layout(structs, tname);
+            cls = classify_struct(sz, al, leaves, triple);
+            if cls["memory"] {
+                param_plan.append(
+                    {
+                        "kind": "struct_mem",
+                        "sname": tname,
+                        "pname": pn,
+                        "align": cls["align"],
+                        "byval": cls["byval"],
+                        "argpos": len(sig)
+                    }
+                );
+                sig.append(("structptr", tname));
+            } else {
+                start = len(sig);
+                for ct in cls["coerce"] {
+                    sig.append(("coerce", ct));
+                }
+                param_plan.append(
+                    {
+                        "kind": "struct_reg",
+                        "sname": tname,
+                        "pname": pn,
+                        "coerce": cls["coerce"],
+                        "safe": cls["safe"],
+                        "argpos": start
+                    }
+                );
+            }
+        } else {
+            param_plan.append(
+                {"kind": "scalar", "tname": tname, "pname": pn, "argpos": len(sig)}
+            );
+            sig.append(("scalar", i));
+        }
+    }
+    sret = False;
+    sig_ret: tuple = ("scalar", );
+    ret_plan: dict = {"kind": "scalar"};
+    if ret_tname is not None and ret_tname in structs {
+        (rsz, ral, rleaves) = foreign_struct_layout(structs, ret_tname);
+        rcls = classify_struct(rsz, ral, rleaves, triple);
+        if rcls["memory"] {
+            sret = True;
+            sig_ret = ("void", );
+            sig = [("sretptr", ret_tname)] + sig;
+            for pp in param_plan {
+                pp["argpos"] += 1;
+            }
+            ret_plan = {"kind": "sret", "sname": ret_tname, "align": rcls["align"]};
+        } else {
+            sig_ret = ("coerce", rcls["coerce"]);
+            ret_plan = {
+                "kind": "struct_reg",
+                "sname": ret_tname,
+                "coerce": rcls["coerce"],
+                "safe": rcls["safe"]
+            };
+        }
+    }
+    return {
+        "params": param_plan,
+        "ret": ret_plan,
+        "sret": sret,
+        "sig": sig,
+        "sig_ret": sig_ret
+    };
+}

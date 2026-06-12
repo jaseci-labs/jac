@@ -96,6 +96,30 @@ obj NativeFuncLayout {
         ret_enum_type: (str | None) = None;
 }
 
+"""Layout info for a native test block.
+
+A `test` block in native context lowers to a zero-argument native function
+returning `i8*`: null means the test passed, a non-null pointer is a static
+failure message (the uncaught exception's message).
+"""
+obj NativeTestLayout {
+    has name: str,
+        symbol: str,
+        description: str = "",
+        line: int = 0;
+}
+
+"""Native symbol name for a test block.
+
+Single naming contract shared by NaIRGenPass (which defines the function)
+and PyastGenPass (whose host-side shim looks the address up by name). The
+line number keeps symbols unique when two descriptions derive the same
+identifier.
+"""
+def native_test_symbol(name: str, line: int) -> str {
+    return f"__jac_test_{name}_{line}";
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
@@ -141,7 +165,8 @@ obj NativeModuleLayout {
         functions: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         methods: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         list_elem_types: dict[(str, str)] = field(default_factory=`dict),
-        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict);
+        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict),
+        tests: list[NativeTestLayout] = field(default_factory=`list);
 }
 
 """Metadata for a type (obj, node, enum) that crosses a codespace boundary.
