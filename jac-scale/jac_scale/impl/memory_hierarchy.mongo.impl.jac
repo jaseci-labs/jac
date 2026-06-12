@@ -297,6 +297,7 @@ def _mongo_quarantine(
         backend.collection.delete_one({'_id': id_str});
         if l2 {
             l2.delete(to_uuid(id_str));
+            l2.publish_invalidation(str(to_uuid(id_str)), None);
         }
         # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
         if anchor_type == 'NodeAnchor' {
@@ -345,6 +346,7 @@ def _mongo_quarantine(
                 if l2 {
                     for eid in orphan_edge_ids {
                         l2.delete(to_uuid(eid));
+                        l2.publish_invalidation(str(to_uuid(eid)), None);
                     }
                 }
                 backend.collection.update_many(
@@ -354,6 +356,7 @@ def _mongo_quarantine(
                 if l2 {
                     for nid in affected_node_ids {
                         l2.delete(to_uuid(nid));
+                        l2.publish_invalidation(str(to_uuid(nid)), None);
                     }
                 }
                 logger.info(
@@ -375,6 +378,11 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 """Store a reference to the L2 cache so quarantine operations can invalidate it."""
 impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
     self._l2_ref = cache;
+}
+
+"""Record the owning context's L1 id so this backend's broadcasts self-exclude."""
+impl MongoBackend.set_l1_id(l1_id: str) -> None {
+    self._l1_id = l1_id;
 }
 
 """Check if MongoDB is available and connected."""
@@ -973,6 +981,8 @@ impl MongoBackend._put_node_atomic(
         if self._l2_ref {
             try {
                 self._l2_ref.invalidate(anchor.id);
+                # Evict siblings' stale pre-write edge list cross-pod.
+                self._l2_ref.publish_invalidation(str(anchor.id), self._l1_id);
             } except Exception as inv_err {
                 logger.debug(
                     f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"

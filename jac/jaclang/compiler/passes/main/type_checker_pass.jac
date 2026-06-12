@@ -42,6 +42,15 @@ import from jaclang.jac0core.diagnostics {
     W2014,
     E2015
 }
+# The checker's assignability and call-classification rules consult the type
+# registry mid-check (numeric-kind refinement, CallKind.CLIB). Importing it at
+# module level pins the bootstrap invariant that the registry — a zero-import
+# leaf — is fully compiled before any module runs inference. Without this the
+# registry's compile position is an accident of runtime import discovery:
+# a content change once pushed it AFTER the type-system modules, and
+# bootstrapping those without the registry ballooned the rebuild from ~5.5GB
+# to >10GB of resident memory.
+import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 """Type checker pass for JacLang."""
 class TypeCheckPass(UniPass) {

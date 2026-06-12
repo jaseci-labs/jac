@@ -949,24 +949,28 @@ def analyze(code: str) -> CodeAnalysis by llm;
 
 ### Defining Tools
 
+Describe each tool (and its parameters) with `sem` declarations - docstrings are for human readers and are **not** included in the prompt (see [Semantic Strings](#semantic-strings-semstrings)):
+
 ```jac
-"""Get the current date in YYYY-MM-DD format."""
 def get_date() -> str {
     import from datetime { datetime }
     return datetime.now().strftime("%Y-%m-%d");
 }
+sem get_date = "Get the current date in YYYY-MM-DD format.";
 
-"""Search the database for matching records."""
 def search_db(query: str, limit: int = 10) -> list[dict] {
     # Implementation
     return results;
 }
+sem search_db = "Search the database for matching records.";
+sem search_db.query = "Free-text search query.";
+sem search_db.limit = "Maximum number of records to return.";
 
-"""Send an email notification."""
 def send_email(recipient: str, subject: str, body: str) -> bool {
     # Implementation
     return True;
 }
+sem send_email = "Send an email notification.";
 ```
 
 ### Using Tools
@@ -2424,14 +2428,20 @@ def answer_question(question: str) -> str: ...
 Combine graph traversal with LLM reasoning by using walkers as AI agents:
 
 ```jac
+node Place {
+    has name: str;
+}
+
+def decide_action(goal: str, current: str, memory: list[dict]) -> str by llm();
+sem decide_action = "Given the agent's goal, current location, and memory of past decisions, decide the next action.";
+
 walker AIAgent {
     has goal: str;
-    has memory: list = [];
+    has memory: list[dict] = [];
 
-    can decide with Node entry {
-        context = f"Goal: {self.goal}\nCurrent: {here}\nMemory: {self.memory}";
-        decision = context by llm("Decide next action");
-        self.memory.append({"location": here, "decision": decision});
+    can decide with Place entry {
+        decision = decide_action(self.goal, here.name, self.memory);
+        self.memory.append({"location": here.name, "decision": decision});
         visit [-->];
     }
 }

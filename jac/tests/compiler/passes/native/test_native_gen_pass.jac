@@ -4099,3 +4099,90 @@ test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
     assert self_buf[3] == 12;
 }
+
+# --- TestNativeTestBlocks ---
+test "native test blocks compile to pass/fail functions" {
+    (eng, ir) = compile_native("test_blocks.na.jac");
+    layout = ir.gen.native_layout;
+    assert layout is not None;
+    tests = layout.tests;
+    assert len(tests) == 3 , f"expected 3 test entries in layout, got {len(tests)}";
+    by_name = {t.name: t for t in tests};
+    assert set(by_name.keys()) == {
+        "test_add_works",
+        "test_globals_visible_in_tests",
+        "test_deliberate_failure"
+    };
+    assert by_name["test_add_works"].description == "add works";
+    # Globals must be initialized before tests touch them.
+    glob_init = get_func(eng, "__jac_glob_init", None);
+    glob_init();
+    # Convention: null (None) = pass, static message pointer = fail.
+    passing = get_func(eng, by_name["test_add_works"].symbol, ctypes.c_char_p);
+    assert passing() is None , "passing test returned a failure message";
+    uses_glob = get_func(
+        eng, by_name["test_globals_visible_in_tests"].symbol, ctypes.c_char_p
+    );
+    assert uses_glob() is None , "test reading module globals failed";
+    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
+    msg = failing();
+    assert msg is not None , "failing assert did not produce a message";
+    text = msg.decode("utf-8");
+    assert "assertion failed" in text;
+    # The failing assert sits on line 23 of the fixture; the message must
+    # carry the source location so the host report can point at it.
+    assert "test_blocks.na.jac:23" in text , f"no source location in: {text}";
+}
+
+test "a failing native test must not abort the host process" {
+    # The implicit per-test handler is what stands between a failing assert
+    # and the no-handler abort() path -- calling the failing test twice in
+    # one process proves the handler is popped/re-armed correctly too.
+    (eng, ir) = compile_native("test_blocks.na.jac");
+    by_name = {t.name: t for t in ir.gen.native_layout.tests};
+    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
+    assert failing() is not None;
+    assert failing() is not None;
+}
+
+test "jac test runs .na.jac test blocks end to end" {
+    fixture = os.path.join(FIXTURES, "test_blocks.na.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "Ran 3 tests" in output , (
+        f"expected 3 tests to run.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    assert "FAILED (failures=1)" in output , (
+        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
+    );
+    assert "test_blocks.na.jac:23" in output , (
+        f"failure report must point at the failing assert.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}
+
+test "jac test runs test blocks inside inline na blocks (no false green)" {
+    fixture = os.path.join(FIXTURES, "test_blocks_inline.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "NO TESTS RAN" not in output , "inline na-block tests were silently dropped";
+    assert "Ran 2 tests" in output , (
+        f"expected 2 tests to run.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    assert "FAILED (failures=1)" in output , (
+        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}

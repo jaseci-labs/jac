@@ -241,7 +241,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
-| `-l, --list-jacpacks` | List available jacpack templates | `False` |
+| `-l, --list_jacpacks` | List available jacpack templates | `False` |
 
 **Examples:**
 
@@ -263,7 +263,7 @@ jac create myapp --use ./my-template/
 jac create myapp --use https://example.com/template.jacpack
 
 # List available jacpack templates
-jac create --list-jacpacks
+jac create --list_jacpacks
 
 # Force overwrite existing
 jac create myapp --force
