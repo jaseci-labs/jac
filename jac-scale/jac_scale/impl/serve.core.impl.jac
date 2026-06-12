@@ -644,6 +644,7 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_deploy_health_endpoints();
     self.register_network_endpoints();
     self.register_podenv_endpoints();
+    self.register_events_endpoints();
     # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();

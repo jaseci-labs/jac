@@ -25,3 +25,8 @@ async def:pub getNetwork(token: str) -> dict {
 async def:pub getPodEnv(token: str) -> dict {
     return await get("/admin/ops/podenv", token);
 }
+
+# events + resource pressure.
+async def:pub getEvents(token: str) -> dict {
+    return await get("/admin/ops/events", token);
+}
