@@ -16,7 +16,19 @@ impl EsastGenPass._ensure_backend -> None {
         import from jaclang.compiler.passes.ecmascript.backends.registry {
             resolve_active_backend
         }
-        self.backend = resolve_active_backend();
+        try {
+            self.backend = resolve_active_backend();
+        } except ValueError {
+            import from jaclang.project.config { get_config }
+            import from jaclang.jac0core.diagnostics { E5081 }
+            import from jaclang.compiler.passes.ecmascript.backends.react {
+                ReactBackend
+            }
+            cfg = get_config();
+            fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
+            self.emit(E5081, framework=fw);
+            self.backend = ReactBackend();
+        }
     }
 }
 

@@ -25,7 +25,7 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
         _BACKENDS["preact"] = backend;
         return backend;
     }
-    raise ValueError(E5081.format_message(framework=framework));
+    raise ValueError(f"[{E5081.code}] {E5081.format_message(framework=framework)}");
 }
 
 """Resolve the active FrameworkBackend from the project config.
