@@ -293,8 +293,19 @@ impl run_tui_session(req: object) -> int {
         }
         if server_proc and server_proc.poll() is None {
             try {
-                os.killpg(os.getpgid(server_proc.pid), signal.SIGTERM);
+                if hasattr(os, "killpg") {
+                    os.killpg(os.getpgid(server_proc.pid), signal.SIGTERM);
+                } else {
+                    server_proc.terminate();
+                }
             } except Exception { }
+            try {
+                server_proc.wait(timeout=5);
+            } except Exception {
+                try {
+                    server_proc.kill();
+                } except Exception { }
+            }
         }
     }
 }

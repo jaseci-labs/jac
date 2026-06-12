@@ -872,10 +872,21 @@ impl ProcessTools.stop_server -> str {
 impl ProcessTools._serve_shutdown{
     if self.serve_proc is not None {
         try {
-            os.killpg(os.getpgid(int(self.serve_proc.pid)), int(signal.SIGTERM));
+            if hasattr(os, "killpg") {
+                os.killpg(os.getpgid(int(self.serve_proc.pid)), int(signal.SIGTERM));
+            } else {
+                self.serve_proc.terminate();
+            }
         } except Exception {
             try {
                 self.serve_proc.terminate();
+            } except Exception { }
+        }
+        try {
+            self.serve_proc.wait(timeout=5);
+        } except Exception {
+            try {
+                self.serve_proc.kill();
             } except Exception { }
         }
         self.serve_proc = None;
@@ -3419,8 +3430,19 @@ impl _run_ui_server(r: any) -> int {
             tail = "(no log output)";
         }
         try {
-            os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+            if hasattr(os, "killpg") {
+                os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+            } else {
+                proc.terminate();
+            }
         } except Exception { }
+        try {
+            proc.wait(timeout=5);
+        } except Exception {
+            try {
+                proc.kill();
+            } except Exception { }
+        }
         console.error(f"the UI server did not come up within {int(timeout)}s.\n{tail}");
         return 1;
     }
@@ -3437,8 +3459,19 @@ impl _run_ui_server(r: any) -> int {
         console.print("\n  stopping the UI server…", style="muted");
     }
     try {
-        os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+        if hasattr(os, "killpg") {
+            os.killpg(os.getpgid(int(proc.pid)), int(signal.SIGTERM));
+        } else {
+            proc.terminate();
+        }
     } except Exception { }
+    try {
+        proc.wait(timeout=5);
+    } except Exception {
+        try {
+            proc.kill();
+        } except Exception { }
+    }
     console.print("Bye.");
     return 0;
 }
