@@ -372,16 +372,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             if fname in ancestor_defaults {
                 field_default_map[fname] = ancestor_defaults[fname];
             }
-            # Propagate Jac-level type AST from ancestor
-            if ancestor_name in self.field_type_node
-            and fname in self.field_type_node[ancestor_name] {
-                if arch_name not in self.field_type_node {
-                    self.field_type_node[arch_name] = {};
-                }
-                self.field_type_node[arch_name][fname] = self.field_type_node[
-                    ancestor_name
-                ][fname];
-            }
         }
     }
     # Add own fields from ArchHas nodes
@@ -398,11 +388,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     if var.type_tag is not None {
                         # HasVar.type is checker-stamped; lower it directly.
                         ftype = self._resolve_jac_type(var);
-                        # Track Jac-level type AST for nested type resolution
-                        if arch_name not in self.field_type_node {
-                            self.field_type_node[arch_name] = {};
-                        }
-                        self.field_type_node[arch_name][fname] = var.type_tag.tag;
                         # Track enum-typed fields
                         ftag_name = self._get_name(var.type_tag.tag);
                         if ftag_name is not None and ftag_name in self.enum_types {
