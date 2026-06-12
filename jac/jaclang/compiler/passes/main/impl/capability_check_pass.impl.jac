@@ -99,46 +99,48 @@ impl native_capability_violations(mod: uni.Module) -> list {
     import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
     import from jaclang.jac0core.constant { CodeContext }
     out: list = [];
-    # Non-allowlisted Python imports in native context (issue #6357): the
-    # import would be dropped and member access would lower to garbage, so
-    # reject it loudly. Clib imports (`import from "lib" {...}`) and native
-    # module imports carry from_loc / clib_decls and are legal.
     _stdlib_help: (str | None) = None;
-    for stmt in ModuleCodegenPass.iter_context_stmts(mod) {
-        if not isinstance(stmt, uni.Import) or stmt.clib_decls or not stmt.items {
+    # One NATIVE-context iteration covers both violation families. NOTE:
+    # NATIVE_DISQUALIFIER_NODES is deliberately NOT swept here - it is the
+    # AUTO-PROMOTION eligibility table, conservatively broader than what
+    # explicit na {} / .na.jac code can lower (LambdaExpr and the OSP forms
+    # are auto-promote disqualifiers but natively supported).
+    # Genuinely-unsupported node kinds remain the emitter fallbacks' job
+    # until a dedicated explicit-native rejection table is derived from
+    # them.
+    for stmt in ModuleCodegenPass.iter_context_stmts(mod, CodeContext.NATIVE) {
+        # Non-allowlisted Python imports in native context (issue #6357):
+        # the import would be dropped and member access would lower to
+        # garbage, so reject it loudly. Clib imports
+        # (`import from "lib" {...}`) and native module imports carry
+        # from_loc / clib_decls and are legal.
+        if isinstance(stmt, uni.Import) {
+            if stmt.clib_decls or not stmt.items {
+                continue;
+            }
+            for item in stmt.items {
+                (mod_name, _ok) = classify_native_import(item);
+                if mod_name is not None and not _ok {
+                    if _stdlib_help is None {
+                        _supported_list = ", ".join(
+                            f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
+                        );
+                        _stdlib_help = (
+                            f"Native compilation supports these stdlib imports: "
+                            f"{_supported_list}; C-library imports "
+                            f"(`import from \"lib\" {{...}}`); and other native "
+                            f"(.na.jac) modules (`import from mod {{...}}`). Move "
+                            f"Python-dependent code to a @sv/Python context."
+                        );
+                    }
+                    out.append((item, "Python module import", mod_name, _stdlib_help));
+                }
+            }
             continue;
         }
-        for item in stmt.items {
-            (mod_name, _ok) = classify_native_import(item);
-            if mod_name is not None
-            and not _ok
-            and stmt.code_context == CodeContext.NATIVE {
-                if _stdlib_help is None {
-                    _supported_list = ", ".join(
-                        f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
-                    );
-                    _stdlib_help = (
-                        f"Native compilation supports these stdlib imports: "
-                        f"{_supported_list}; C-library imports "
-                        f"(`import from \"lib\" {{...}}`); and other native "
-                        f"(.na.jac) modules (`import from mod {{...}}`). Move "
-                        f"Python-dependent code to a @sv/Python context."
-                    );
-                }
-                out.append((item, "Python module import", mod_name, _stdlib_help));
-            }
-        }
-    }
-    # Structural match patterns anywhere in native-context statements.
-    # Flagged subtrees are not descended into, so one construct yields one
-    # violation, not a cascade. NOTE: NATIVE_DISQUALIFIER_NODES is
-    # deliberately NOT swept here - it is the AUTO-PROMOTION eligibility
-    # table, conservatively broader than what explicit na {} / .na.jac code
-    # can lower (LambdaExpr and the OSP forms are auto-promote
-    # disqualifiers but natively supported). Genuinely-unsupported node
-    # kinds remain the emitter fallbacks' job until a dedicated
-    # explicit-native rejection table is derived from them.
-    for stmt in ModuleCodegenPass.iter_context_stmts(mod, CodeContext.NATIVE) {
+        # Structural match patterns anywhere in the statement subtree.
+        # Flagged subtrees are not descended into, so one construct yields
+        # one violation, not a cascade.
         work: list = [stmt];
         while work {
             nd = work.pop();
