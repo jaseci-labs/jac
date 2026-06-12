@@ -276,7 +276,7 @@ impl KEDAAutoscaler.destroy{
             name=autoscaler_name
         );
     } except ApiException as e {
-        if e.status != 404 {
+        if e.status not in [404, 422] {
             raise;
         }
     }
