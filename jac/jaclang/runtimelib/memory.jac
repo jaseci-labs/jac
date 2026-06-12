@@ -187,6 +187,12 @@ obj PersistentMemory(Memory) {
 
     """Remove an alias. Returns True if an entry was removed, False otherwise."""
     def remove_alias(old_name: str) -> bool abs;
+
+    """Read-only per-rule drift census: {'archetypes': {owner: {label: count}}, 'unconditional': {owner: [labels]}, 'unresolved': int}; a label at 0 needs no document. Base raises NotImplementedError."""
+    def schema_census -> dict;
+
+    """Eagerly converge every live document to canonical shape (read-repair + strip alias shadows), writing back only changed docs; `dry_run` reports without writing. Returns {'scanned','repaired','clean','errors','dry_run','before','after','error_samples'}. Base raises NotImplementedError."""
+    def schema_migrate(dry_run: bool = False) -> dict;
 }
 
 # =============================================================================
@@ -287,6 +293,8 @@ obj SqliteMemory(PersistentMemory) {
     def list_aliases -> list;
     def add_alias(old_name: str, new_name: str) -> None;
     def remove_alias(old_name: str) -> bool;
+    def schema_census -> dict;
+    def schema_migrate(dry_run: bool = False) -> dict;
     def get_gc -> list[Anchor];
     def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];

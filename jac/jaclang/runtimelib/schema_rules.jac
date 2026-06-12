@@ -127,6 +127,13 @@ a differing shadow loses to the new name and is atticed as
 logged and skipped — it never half-applies."""
 def apply_rules(data: dict, rules: SchemaRules) -> tuple;
 
+# --- Census (retirement gate) --------------------------------------------------
+"""Stable-ordered retirement labels for `rules`: `alias:<stored>-><new>`, `drop:<field>`, `upgrade:<fn>` (was-rules excluded)."""
+def rule_labels(rules: SchemaRules) -> list[str];
+
+"""Labels of the rules still load-bearing on one stored dict: alias key present (drift or shadow), drop field present, or upgrade `when` matches (`when is None` and raising `when` always count)."""
+def census_doc(data: dict, rules: SchemaRules) -> list[str];
+
 # --- Internal -------------------------------------------------------------------
 def _require_collector -> SchemaRules;
 def _owner_key(cls: type) -> str;

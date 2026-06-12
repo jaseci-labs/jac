@@ -261,3 +261,53 @@ impl apply_rules(data: dict, rules: SchemaRules) -> tuple {
     }
     return ((out, steps) if changed else (data, steps));
 }
+
+
+impl rule_labels(rules: SchemaRules) -> list[str] {
+    labels: list[str] = [];
+    for a in rules.aliases {
+        labels.append(f"alias:{a.stored_name}->{a.new_name}");
+    }
+    for d in rules.drops {
+        labels.append(f"drop:{d.field_name}");
+    }
+    for u in rules.upgrades {
+        labels.append(f"upgrade:{getattr(u.fn, '__name__', '<fn>')}");
+    }
+    return labels;
+}
+
+
+impl census_doc(data: dict, rules: SchemaRules) -> list[str] {
+    hits: list[str] = [];
+    # Presence (not the rename trigger): load-bearing while any doc carries
+    # the old key, drift or dual-written shadow alike.
+    for a in rules.aliases {
+        if a.stored_name in data {
+            hits.append(f"alias:{a.stored_name}->{a.new_name}");
+        }
+    }
+    for d in rules.drops {
+        if d.field_name in data {
+            hits.append(f"drop:{d.field_name}");
+        }
+    }
+    for u in rules.upgrades {
+        fn_name = getattr(u.fn, '__name__', '<fn>');
+        # `when is None` (no "done" signal) and a raising `when` both count.
+        fires = True;
+        if u.when is not None {
+            try {
+                if not u.when(dict(data)) {
+                    fires = False;
+                }
+            } except Exception {
+                fires = True;
+            }
+        }
+        if fires {
+            hits.append(f"upgrade:{fn_name}");
+        }
+    }
+    return hits;
+}

@@ -17,6 +17,7 @@ import from pathlib { Path }
 import from typing { cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.memory { PersistentMemory, TieredMemory }
+import jaclang.runtimelib.schema_retire as schema_retire;
 
 
 """Resolve the user's .jac app path.
@@ -379,6 +380,271 @@ def _cmd_schema_rules(app: str) -> int {
 }
 
 
+"""Sum every per-label count for one archetype owner."""
+def _owner_total(buckets: dict) -> int {
+    return sum(buckets.values()) if buckets else 0;
+}
+
+
+def _cmd_migrate(app: str, dry_run: bool) -> int {
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    try {
+        rep = backend.schema_migrate(dry_run=dry_run);
+    } except NotImplementedError as e {
+        console.error("This backend does not support `jac db migrate`.", hint=str(e));
+        return 1;
+    }
+    verb = "Would converge" if rep.get('dry_run') else "Converged";
+    repaired_seg = (
+        ('would_repair' if dry_run else 'repaired') + '=' + str(rep.get('repaired'))
+    );
+    console.print_header("Schema migration" + (" (dry run)" if dry_run else ""));
+    console.info(
+        f"scanned={rep.get('scanned')}   {repaired_seg}   "
+        f"clean={rep.get('clean')}   errors={rep.get('errors')}",
+        emoji=False
+    );
+    before = rep.get('before') or {};
+    after = rep.get('after') or {};
+    rows: list = [];
+    for (owner, labels) in sorted(before.items()) {
+        for (lbl, count) in sorted(labels.items()) {
+            residual = (after.get(owner) or {}).get(lbl, 0);
+            rows.append([owner, lbl, str(count), str(residual)]);
+        }
+    }
+    if rows {
+        console.print_table(
+            headers=["archetype", "rule", verb, "residual"],
+            rows=rows,
+            title="Rules applied"
+        );
+    } else {
+        console.success("Every document is already at the canonical shape.");
+    }
+    samples = rep.get('error_samples') or [];
+    if samples {
+        console.warning(
+            f"{len(samples)} document(s) could not be migrated:", emoji=False
+        );
+        console.print_table(
+            headers=["id", "reason"],
+            rows=[[str(s[0]), str(s[1])[:80]] for s in samples[:20]],
+            title="Migration errors"
+        );
+    }
+    if not dry_run and rep.get('repaired') {
+        console.info(
+            "Run `jac db schema census` to confirm zero residual, then "
+            "`jac db schema retire <Archetype>` to clear the hook from source.",
+            emoji=False
+        );
+    }
+    return 0;
+}
+
+
+def _cmd_schema_census(app: str) -> int {
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    try {
+        census = backend.schema_census();
+    } except NotImplementedError as e {
+        console.error(
+            "This backend does not support `jac db schema census`.", hint=str(e)
+        );
+        return 1;
+    }
+    archetypes = census.get('archetypes') or {};
+    unconditional = census.get('unconditional') or {};
+    console.print_header("Schema drift census");
+    if not archetypes {
+        console.info("No archetype declares a __jac_schema__ hook.");
+        return 0;
+    }
+    rows: list = [];
+    retireable: list = [];
+    for (owner, labels) in sorted(archetypes.items()) {
+        owner_unc = unconditional.get(owner) or [];
+        for (lbl, count) in sorted(labels.items()) {
+            note = "always-on"
+                if lbl in owner_unc
+                else ("RETIREABLE" if count == 0 else "");
+            rows.append([owner, lbl, str(count), note]);
+        }
+        if _owner_total(labels) == 0 and not owner_unc {
+            retireable.append(owner);
+        }
+    }
+    console.print_table(
+        headers=["archetype", "rule", "live docs", "note"], rows=rows, title="Census"
+    );
+    unresolved = census.get('unresolved') or 0;
+    if unresolved {
+        console.warning(
+            f"{unresolved} document(s) have an unresolvable class "
+            "(a class-rename concern — see `jac db recover-all`).",
+            emoji=False
+        );
+    }
+    if retireable {
+        console.success(
+            "Fully migrated (every rule reads 0): " + ", ".join(retireable)
+        );
+        console.info(
+            "Clear each from source with `jac db schema retire <Archetype>`.",
+            emoji=False
+        );
+    } else {
+        console.info(
+            "No archetype is fully migrated yet. Run `jac db migrate` to "
+            "converge stored documents first.",
+            emoji=False
+        );
+    }
+    return 0;
+}
+
+
+"""Census owners matching `query`: an FQN matches exactly, a bare class name
+matches by last segment."""
+def _match_owner(owners: list, query: str) -> list {
+    if '.' in query {
+        return [
+            o
+            for o in owners
+            if o == query
+        ];
+    }
+    return [
+        o
+        for o in owners
+        if o.rsplit('.', 1)[-1] == query
+    ];
+}
+
+
+"""Directory to search for the archetype's `.jac` source — the app's folder."""
+def _app_root(app: str) -> str {
+    p = _resolve_app_path(app);
+    if not p {
+        return os.getcwd();
+    }
+    return os.path.dirname(os.path.abspath(p)) or os.getcwd();
+}
+
+
+def _cmd_schema_retire(app: str, archetype: str, write: bool) -> int {
+    if not archetype {
+        console.error(
+            "Archetype required.",
+            hint="jac db schema retire <module.Class | Class> [--write]"
+        );
+        return 1;
+    }
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    try {
+        census = backend.schema_census();
+    } except NotImplementedError as e {
+        console.error("This backend does not support schema census.", hint=str(e));
+        return 1;
+    }
+    archetypes = census.get('archetypes') or {};
+    unconditional = census.get('unconditional') or {};
+    owners = _match_owner(list(archetypes.keys()), archetype);
+    if not owners {
+        console.error(
+            f"No __jac_schema__ hook found for '{archetype}'.",
+            hint=(
+                "known: " + ", ".join(sorted(archetypes.keys()))
+                    if archetypes
+                    else "no archetype declares a hook"
+            )
+        );
+        return 1;
+    }
+    if len(owners) > 1 {
+        console.error(
+            f"'{archetype}' is ambiguous.", hint="matches: " + ", ".join(sorted(owners))
+        );
+        return 1;
+    }
+    owner = owners[0];
+    labels = archetypes.get(owner) or {};
+    total = _owner_total(labels);
+    owner_unc = unconditional.get(owner) or [];
+    # The safety gate: never delete a rule any live document still needs.
+    if total > 0 or owner_unc {
+        hint = "Run `jac db migrate`, then confirm `jac db schema census` reads 0.";
+        if owner_unc {
+            hint += (
+                " Always-on upgrade(s) " + ", ".join(owner_unc) + " can never auto-retire — they have no `when` to satisfy."
+            );
+        }
+        console.error(
+            f"'{owner}' is not fully migrated "
+            f"({total} live doc(s) still rely on it); refusing to edit source.",
+            hint=hint
+        );
+        return 1;
+    }
+    class_name = owner.rsplit('.', 1)[-1];
+    files = schema_retire.hook_source_files(_app_root(app), class_name);
+    if not files {
+        console.error(
+            f"Census says {owner} is retireable, but no .jac source under "
+            f"{_app_root(app)} declares its hook.",
+            hint="Point at the project with --app, or remove the hook by hand."
+        );
+        return 1;
+    }
+    edited: list = [];
+    for path in files {
+        src = Path(path).read_text(encoding='utf-8');
+        (new_src, removed) = schema_retire.strip_hook_from_source(src, class_name);
+        if not removed {
+            continue;
+        }
+        edited.append(path);
+        console.print_header(("Editing " if write else "Would remove from ") + path);
+        for snip in removed {
+            console.print(snip.rstrip() + "\n");
+        }
+        if write {
+            Path(path).write_text(new_src, encoding='utf-8');
+        }
+    }
+    if not edited {
+        console.warning(
+            f"No removable hook for {class_name} found in source (already retired?).",
+            emoji=False
+        );
+        return 1;
+    }
+    if write {
+        console.success(
+            f"Retired {class_name}.__jac_schema__ from {len(edited)} file(s)."
+        );
+        console.info(
+            "Re-run your tests and redeploy. With the hook gone, dual-write "
+            "stops and no old-shape shadows are written.",
+            emoji=False
+        );
+    } else {
+        console.info("Preview only — re-run with --write to apply.", emoji=False);
+    }
+    return 0;
+}
+
+
 """Entry point — dispatches to the right subcommand."""
 impl db(
     action: str = 'inspect',
@@ -386,10 +652,15 @@ impl db(
     arg1: str = '',
     arg2: str = '',
     limit: int = 50,
+    dry_run: bool = False,
+    write: bool = False,
     app: str = ''
 ) -> int {
     if action == 'inspect' {
         return _cmd_inspect(app);
+    }
+    if action == 'migrate' {
+        return _cmd_migrate(app, dry_run);
     }
     if action == 'quarantine' {
         if sub == 'list' or sub == '' {
@@ -428,7 +699,15 @@ impl db(
         if sub == 'rules' or sub == '' {
             return _cmd_schema_rules(app);
         }
-        console.error(f"Unknown schema sub-action '{sub}'", hint="expected: rules");
+        if sub == 'census' {
+            return _cmd_schema_census(app);
+        }
+        if sub == 'retire' {
+            return _cmd_schema_retire(app, arg1, write);
+        }
+        console.error(
+            f"Unknown schema sub-action '{sub}'", hint="expected: rules, census, retire"
+        );
         return 1;
     }
     console.error(

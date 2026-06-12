@@ -939,6 +939,71 @@ Registered schema drift rules
 
 Useful as a pre-deploy sanity check: it confirms which renames, drops, and upgrade callbacks will apply when old documents load, and which repair mode the process will run under.
 
+### jac db schema census
+
+Count how many **live documents** each drift rule still applies to. Where `schema rules` lists what *could* apply, `census` reports what *actually* still does — the proof gate for retiring a rule.
+
+```bash
+jac db schema census --app app.jac
+```
+
+**Output:**
+
+```
+Schema drift census
+                         Census
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ archetype       ┃ rule                 ┃ live docs ┃ note       ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ __main__.User   │ alias:username->name │ 12        │            │
+│ __main__.User   │ drop:legacy_bio      │ 0         │ RETIREABLE │
+└─────────────────┴──────────────────────┴───────────┴────────────┘
+```
+
+A rule at `0` is dead — no stored document needs it. An unconditional `schema_upgrade` (no `when`) is flagged `always-on`: it can never auto-retire because it has no "done" signal. `unresolved` documents (an unregistered class) are reported separately; those are a class-rename concern for `recover-all`, not field migration.
+
+### jac db migrate
+
+Eagerly converge **every** live document to the current canonical shape. This runs the same repair the runtime applies lazily on read (rename / upgrade / drop-to-attic / backfill), then re-saves the canonical form and **strips dual-written alias shadows** — because running `migrate` is your explicit signal that the rolling deploy has drained, so the old stored keys no longer need to reappear. Only changed documents are rewritten, and a second run is a no-op.
+
+```bash
+jac db migrate --dry-run --app app.jac   # preview: scan + report, no writes
+jac db migrate --app app.jac             # apply
+```
+
+Run `migrate`, then `schema census` to confirm every rule reads `0`. Quarantined rows are out of scope here — use `recover-all` for those.
+
+### jac db schema retire
+
+Once an archetype's rules all read `0`, its `__jac_schema__` hook is dead code. `retire` removes it from your `.jac` source — both the `static def __jac_schema__` declaration and the `impl <Class>.__jac_schema__` block. It **refuses unless the census is zero**, so it can never delete a rule a document still needs. Preview by default; pass `--write` to apply.
+
+```bash
+jac db schema retire __main__.User --app app.jac           # preview the diff
+jac db schema retire __main__.User --write --app app.jac    # apply the edit
+```
+
+The archetype can be given as a fully-qualified `module.Class` or a bare `Class` name (if unambiguous). After writing, re-run your tests and redeploy: with the hook gone, dual-write stops and no further shadows are written.
+
+### Typical migration workflow
+
+```bash
+# 1. See which rules still apply to stored data.
+jac db schema census --app app.jac
+
+# 2. Preview, then converge every document to canonical shape.
+jac db migrate --dry-run --app app.jac
+jac db migrate --app app.jac
+
+# 3. Confirm the census is now zero everywhere.
+jac db schema census --app app.jac
+
+# 4. Delete the now-dead hook from source (preview, then apply).
+jac db schema retire __main__.User --app app.jac
+jac db schema retire __main__.User --write --app app.jac
+```
+
+This is the lifecycle that lets a `__jac_schema__` hook be *temporary*: declare the drift, let lazy repair carry old data forward, then — once `migrate` + `census` prove the database has fully converged — `retire` clears the rule so the code stops carrying history it no longer needs.
+
 ### Typical rescue workflow
 
 ```bash
