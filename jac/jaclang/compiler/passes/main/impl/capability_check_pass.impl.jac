@@ -148,6 +148,11 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 out.append((nd, "match pattern", type(nd).__name__, None));
                 continue;
             }
+            if isinstance(nd, NATIVE_REJECT_NODES) {
+                kind = "expression" if isinstance(nd, uni.Expr) else "statement";
+                out.append((nd, kind, type(nd).__name__, None));
+                continue;
+            }
             for k in nd.kid {
                 work.append(k);
             }
