@@ -904,8 +904,14 @@ test "sync writes endpoint nodes before the edges that reference them" {
     source.edges = [eanch];
     target.edges = [eanch];
 
-    # Adversarial insertion order: eanch sits before its target node.
-    backend._mem_ref = {source.id: source, eanch.id: eanch, target.id: target};
+    # Adversarial recording order: the eanch is recorded before its target
+    # node, and the source's edge-list repair before both. staged() must
+    # reorder regardless of recording order.
+    import from jaclang.runtimelib.changeset { ChangeSet }
+    cs = ChangeSet();
+    cs.record_edge_delta(source, added=[eanch.id], removed=[]);
+    cs.record_create(eanch);
+    cs.record_create(target);
 
     # Record the order in which documents are physically written.
     written: list = [];
@@ -922,7 +928,7 @@ test "sync writes endpoint nodes before the edges that reference them" {
     backend._write_to_db = _rec_write;
     backend._put_node_atomic = _rec_atomic;
 
-    backend.sync();
+    backend.apply(cs);
 
     # Core invariant: replaying the writes in order, every eanch's endpoints are
     # already live when the eanch is written. `source` seeds the set because it

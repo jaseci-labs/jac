@@ -521,9 +521,8 @@ The interface has two groups of methods:
 
 ```jac
 obj PersistentMemory(Memory) {
-    # Storage primitives (existing).
-    def sync -> None abs;
-    def bulk_put(anchors: Iterable[Anchor]) -> None abs;
+    # Storage primitive: flush one unit of work.
+    def apply(changeset: ChangeSet) -> ApplyReport abs;
 
     # Layer 1+2+3 operator surface.
     def inspect_summary -> dict abs;
@@ -536,6 +535,23 @@ obj PersistentMemory(Memory) {
     def remove_alias(old_name: str) -> bool abs;
 }
 ```
+
+**The `apply()` contract.** The runtime accumulates each request's graph
+mutations as typed write intents in a `ChangeSet`
+(`jaclang.runtimelib.changeset`) and hands the whole unit of work to your
+backend in one call. `changeset.staged()` returns the intents bucketed in
+referential-integrity order (node creates, edge creates, edge-list deltas,
+field updates, edge deletes, node deletes) such that truncating the flush at
+any point can only leave an unreferenced document (an orphan), never a
+reference to a missing one. Transactional backends may collapse all stages
+into one transaction; non-transactional backends MUST execute stages in order
+and honor each intent's `depends_on` set (skip intents whose dependencies
+failed, recording them in `ApplyReport.skipped`). Decision logic (what
+changed, access control) runs in the runtime's collect pass before `apply()`
+is called; a backend only executes intents, and performs storage I/O for
+graph mutations nowhere else. `Memory.delete(id)` on a persistent backend
+only forgets backend-local cache state: durable removal happens exclusively
+through a delete intent.
 
 **What each method must do.** See [Persistence & Schema Migration](persistence.md) for the full conceptual model. The contract per method:
 

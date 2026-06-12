@@ -1348,9 +1348,9 @@ test "acommit forwards anchor argument to commit()" {
 
 """Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
 
-After the first acommit() the flag is set True. A second call (the
-middleware's redundant pass) returns immediately — MongoBackend.sync()
-and its O(L1-size) hash computation are skipped entirely.
+After the first acommit() the flag is set True. A second call (e.g. the
+close-time backstop) returns immediately — the collect pass and its
+O(L1-size) hash computation are skipped entirely.
 """
 test "acommit is idempotent — _committed flag prevents second sync pass" {
     import asyncio;
