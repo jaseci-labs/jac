@@ -3,6 +3,51 @@ name: jac-shadcn-blocks
 description: 15 ready-to-use page block implementations for jac-shadcn projects. Copy-adapt these blocks instead of inventing UI from scratch. Load before building any marketing page, dashboard, or auth flow. Pairs with jac-shadcn-components for full component/import/theming reference.
 ---
 
+## Props and children
+
+Declare each prop as a **named, typed parameter**. The type-checker validates every JSX call
+site per attribute.
+
+```jac
+cl {
+    def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
+        return <div className="card">
+            <h2>{title}</h2>
+            <p>{description}</p>
+            {children}
+        </div>;
+    }
+}
+```
+
+`children` is a regular parameter named `children`. Always declare it `children: any = None`
+with a `= None` default - omitting the default makes children a required prop and every
+call-site without nested content fails with `error[E1102]`.
+
+The single-bundle form `def:pub Comp(props: Any)` is allowed but emits `W5015` and disables
+per-prop type checking. Prefer named parameters.
+
+## JSX comments
+
+Use `{#* ... *#}` - Jac's block-comment syntax wrapped in an expression slot. It renders
+nothing and is preserved by `jac format`:
+
+```jac
+return <div>
+    <h1>Hello</h1>
+    {#* TODO: add CTA button here *#}
+    <p>Lead text</p>
+</div>;
+```
+
+Rules:
+
+- `{/* */}` is **not supported** - `/` and `*` parse as Jac operators inside a slot.
+- A `#` outside an expression slot is treated as literal HTML text.
+- `{}` (empty slot) is a parse error - use `{#* note *#}` for a no-op slot.
+
+---
+
 ## Design System Constants
 
 Read this section first. These values must be used consistently across all blocks.
@@ -84,7 +129,8 @@ Content grid below uses `mt-12` (tight) or `mt-16` (spacious).
 | `border-2` for structural layout | `border` (hairline) only | `border-2` is for emphasis, not layout |
 | `className={"base " + extra}` | `className={cn("base", extra)}` | `cn()` runs tailwind-merge deduplication |
 | `py-16`, `px-4` (shorthand) | `pt-16 pb-16`, `pl-4 pr-4` (physical) | Jac codebase styling rule |
-| JSX comments `{/* */}` or `# ...` inside return block | No comments inside JSX | Jac compiler error |
+| `{/* */}` inside JSX | `{#* comment text *#}` | `{/* */}` not supported - `/` and `*` parse as Jac operators inside a slot |
+| `# comment` inside JSX text content | `{#* comment text *#}` | `#` outside an expression slot is literal HTML text |
 | `true`, `false`, `null` (lowercase) | `True`, `False`, `None` | Jac uses Python-style booleans |
 | `className` on any `Sidebar*` component | wrapping `<div>` instead | jac-shadcn className spread bug wipes base styles |
 
@@ -103,7 +149,6 @@ Import path convention: all examples assume the file lives at `components/pages/
 ### `hero_centered`
 
 **Use for:** First section of any marketing or landing page. Default hero - centered text, headline, lead, two CTA buttons, optional product mockup below.
-**Install:** `jac add --shadcn badge button`
 
 ```jac
 cl import from ..ui.badge { Badge }
@@ -112,7 +157,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { ArrowRight01Icon }
 
 cl {
-    def:pub HeroCentered(props: Any) -> JsxElement {
+    def:pub HeroCentered() -> JsxElement {
         return <section className="pt-24 pb-24 sm:pt-32 sm:pb-32">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="mx-auto max-w-3xl text-center">
@@ -148,7 +193,6 @@ cl {
 ### `hero_split`
 
 **Use for:** Landing page with product screenshot on the right. Use when you have a strong product visual. Text left, screenshot right; stacks on mobile.
-**Install:** `jac add --shadcn badge button`
 
 ```jac
 cl import from ..ui.badge { Badge }
@@ -157,7 +201,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { ArrowRight01Icon }
 
 cl {
-    def:pub HeroSplit(props: Any) -> JsxElement {
+    def:pub HeroSplit() -> JsxElement {
         return <section className="pt-24 pb-24 sm:pt-32 sm:pb-32">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="grid grid-cols-1 gap-12 items-center lg:grid-cols-2">
@@ -195,7 +239,6 @@ cl {
 ### `navbar_sticky`
 
 **Use for:** Top of every marketing page. Sticky header with logo, nav links, CTA pair, mobile sheet drawer. App dashboards use `sidebar_nav` instead.
-**Install:** `jac add --shadcn button sheet`
 
 ```jac
 cl import from ..ui.button { Button }
@@ -204,7 +247,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Menu01Icon, Rocket01Icon }
 
 cl {
-    def:pub SiteHeader(props: Any) -> JsxElement {
+    def:pub SiteHeader() -> JsxElement {
         has mobileOpen: bool = False;
         return <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="mx-auto max-w-7xl flex h-16 items-center justify-between pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
@@ -253,7 +296,6 @@ Key gotchas: Use `sticky top-0` not `position: fixed`. Always `z-40`. Frosted gl
 ### `features_grid`
 
 **Use for:** "Features / What you get / Why X" section after the hero. 3-column icon + title + description grid. Reach for this first.
-**Install:** `jac add --shadcn badge` (HugeIcons always `bg-primary/10 text-primary`)
 
 ```jac
 cl import from ..ui.badge { Badge }
@@ -261,7 +303,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { ZapIcon, Shield01Icon, GitBranchIcon }
 
 cl {
-    def:pub FeaturesGrid(props: Any) -> JsxElement {
+    def:pub FeaturesGrid() -> JsxElement {
         return <section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="mx-auto max-w-2xl text-center">
@@ -318,13 +360,12 @@ Icon container rule: always `bg-primary/10 text-primary` - never `bg-primary` (i
 ### `features_alternating`
 
 **Use for:** "How it works" walkthroughs with a screenshot per step. Alternating image/text rows.
-**Install:** `jac add --shadcn badge`
 
 ```jac
 cl import from ..ui.badge { Badge }
 
 cl {
-    def:pub FeaturesAlternating(props: Any) -> JsxElement {
+    def:pub FeaturesAlternating() -> JsxElement {
         return <section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="mx-auto max-w-2xl text-center">
@@ -373,7 +414,6 @@ Note: `lg:order-1` / `lg:order-2` on the second row flips the image to the left 
 ### `pricing_3tier`
 
 **Use for:** Pricing/plans section. 3-tier comparison, center card highlighted as "Most Popular". Conversion-focused.
-**Install:** `jac add --shadcn card button badge`
 
 ```jac
 cl import from ...lib.utils { cn }
@@ -411,7 +451,7 @@ glob _tiers: list = [
 ];
 
 cl {
-    def:pub PricingSection(props: Any) -> JsxElement {
+    def:pub PricingSection() -> JsxElement {
         return <section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="mx-auto max-w-2xl text-center">
@@ -467,7 +507,6 @@ Rules: `flex flex-col` + `flex-1` on `CardContent` keeps CTA buttons aligned at 
 ### `testimonial_grid`
 
 **Use for:** Social proof section between hero and pricing. 3-column card grid of customer quotes.
-**Install:** `jac add --shadcn card avatar badge`
 
 ```jac
 cl import from ..ui.card { Card }
@@ -483,8 +522,8 @@ glob _testimonials: list = [
 ];
 
 cl {
-    def:pub TestimonialGrid(props: Any) -> JsxElement {
-        items = props.items or _testimonials;
+    def:pub TestimonialGrid(items: list = []) -> JsxElement {
+        items = items or _testimonials;
         return <section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="mx-auto max-w-2xl text-center">
@@ -533,14 +572,13 @@ Rules: Stars always `text-primary fill-current` - never `text-yellow-400`. Quote
 ### `faq_accordion`
 
 **Use for:** FAQ section, near the bottom of marketing pages above the final CTA.
-**Install:** `jac add --shadcn accordion badge`
 
 ```jac
 cl import from ..ui.accordion { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
 cl import from ..ui.badge { Badge }
 
 cl {
-    def:pub FaqSection(props: Any) -> JsxElement {
+    def:pub FaqSection() -> JsxElement {
         return <section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
             <div className="mx-auto max-w-3xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <div className="text-center">
@@ -602,7 +640,6 @@ Rules: `max-w-3xl` container (not `max-w-7xl`) - answer lines must not sprawl. `
 ### `cta_centered`
 
 **Use for:** Final conversion section, last block before the footer. Inverted card panel (default) or plain centered.
-**Install:** `jac add --shadcn card button`
 
 ```jac
 cl import from ..ui.card { Card }
@@ -611,7 +648,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { ArrowRight01Icon }
 
 cl {
-    def:pub FinalCta(props: Any) -> JsxElement {
+    def:pub FinalCta() -> JsxElement {
         return <section className="pt-24 pb-24 sm:pt-32 sm:pb-32">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
                 <Card className="overflow-hidden bg-primary text-primary-foreground">
@@ -648,7 +685,6 @@ Rules: Primary CTA on inverted bg = `variant="secondary"` (not `variant="default
 ### `footer_4col`
 
 **Use for:** Bottom of every marketing page. 4-column with logo, social links, 3 nav columns, separator, bottom bar.
-**Install:** `jac add --shadcn button separator`
 
 ```jac
 cl import from ..ui.button { Button }
@@ -659,7 +695,7 @@ cl import from "@hugeicons/core-free-icons" {
 }
 
 cl {
-    def:pub FooterFourColumn(props: Any) -> JsxElement {
+    def:pub FooterFourColumn() -> JsxElement {
         return <footer className="border-t">
             <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8 pt-16 pb-16">
                 <div className="grid gap-8 lg:grid-cols-[2fr_1fr_1fr_1fr]">
@@ -735,7 +771,6 @@ Rules: Logo column is `2fr`, link columns are `1fr` each - use `lg:grid-cols-[2f
 ### `sidebar_nav`
 
 **Use for:** App shell for authenticated product surfaces (dashboards, admin panels, IDEs). NOT for marketing pages.
-**Install:** `jac add --shadcn sidebar card badge separator breadcrumb`
 
 > CRITICAL: NEVER pass `className` to any `Sidebar*` component. jac-shadcn's spread ordering bug wipes base styles. Use a wrapping `<div>` for layout overrides instead.
 
@@ -757,8 +792,7 @@ cl import from "@hugeicons/core-free-icons" {
 }
 
 cl {
-    def:pub AppShell(props: Any) -> JsxElement {
-        has activeRoute: str = props.activeRoute or "overview";
+    def:pub AppShell(activeRoute: str = "overview", children: any = None) -> JsxElement {
 
         navItems = [
             {"id": "overview", "label": "Overview", "icon": DashboardSquare01Icon},
@@ -820,7 +854,7 @@ cl {
                     </Breadcrumb>
                 </header>
                 <main className="flex flex-1 flex-col gap-6 pt-6 pb-6 pl-6 pr-6">
-                    {props.children}
+                    {children}
                 </main>
             </SidebarInset>
         </SidebarProvider>;
@@ -835,7 +869,6 @@ Rules: `SidebarInset` main area uses `pt-6 pb-6 pl-6 pr-6` (tight dashboard rhyt
 ### `stats_row`
 
 **Use for:** KPI metrics row at the top of a dashboard main area. 4 cards in a responsive grid.
-**Install:** `jac add --shadcn card badge`
 
 ```jac
 cl import from ..ui.card { Card, CardHeader, CardTitle, CardDescription, CardContent }
@@ -847,8 +880,8 @@ cl import from "@hugeicons/core-free-icons" {
 }
 
 cl {
-    def:pub StatsGrid(props: Any) -> JsxElement {
-        stats = props.stats or [
+    def:pub StatsGrid(stats: list = []) -> JsxElement {
+        stats = stats or [
             {"label": "Total Revenue", "value": "$45,231.89", "change": "+20.1%", "trend": "up", "icon": DollarCircleIcon, "caption": "vs last month"},
             {"label": "Active Users", "value": "+2,350", "change": "+15.3%", "trend": "up", "icon": UserGroupIcon, "caption": "vs last month"},
             {"label": "Conversion", "value": "3.24%", "change": "-2.1%", "trend": "down", "icon": ChartLineData01Icon, "caption": "vs last month"},
@@ -889,7 +922,6 @@ Rules: Stat numbers always `text-3xl font-semibold tabular-nums` (prevents layou
 ### `data_table_page`
 
 **Use for:** Full-page data list inside an app shell (customers, orders, projects). Sidebar shell with card-wrapped table, search input, status badges, row action menus.
-**Install:** `jac add --shadcn sidebar card table badge button input separator`
 
 ```jac
 cl import from ..ui.sidebar {
@@ -906,9 +938,8 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { UserGroupIcon, Add01Icon, Search01Icon, MoreHorizontalIcon }
 
 cl {
-    def:pub DataTablePage(props: Any) -> JsxElement {
+    def:pub DataTablePage(rows: list = []) -> JsxElement {
         has search: str = "";
-        rows = props.rows or [];
 
         return <SidebarProvider>
             <Sidebar>
@@ -1004,7 +1035,6 @@ Rules: Same `SidebarInset` / `border-b` / `h-14` header pattern as `sidebar_nav`
 ### `empty_state`
 
 **Use for:** Zero-item list views, first-run experiences, failed network requests.
-**Install:** `jac add --shadcn empty button`
 
 ```jac
 cl import from ...ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent }
@@ -1013,8 +1043,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { FolderIcon, PlusSignIcon, Search01Icon, Alert02Icon, RefreshIcon }
 
 cl {
-    def:pub ProjectsEmpty(props: Any) -> JsxElement {
-        onCreate = props.onCreate;
+    def:pub ProjectsEmpty(onCreate: any = None) -> JsxElement {
         return <div className="flex min-h-[400px] items-center justify-center">
             <Empty>
                 <EmptyHeader>
@@ -1036,9 +1065,8 @@ cl {
         </div>;
     }
 
-    def:pub SearchEmpty(props: Any) -> JsxElement {
-        searchTerm = props.searchTerm or "";
-        clearSearch = props.onClear;
+    def:pub SearchEmpty(searchTerm: str = "", onClear: any = None) -> JsxElement {
+        clearSearch = onClear;
         return <div className="flex min-h-[320px] items-center justify-center">
             <Empty>
                 <EmptyHeader>
@@ -1061,8 +1089,8 @@ cl {
         </div>;
     }
 
-    def:pub ErrorEmpty(props: Any) -> JsxElement {
-        retry = props.onRetry;
+    def:pub ErrorEmpty(onRetry: any = None) -> JsxElement {
+        retry = onRetry;
         return <div className="flex min-h-[400px] items-center justify-center">
             <Empty>
                 <EmptyHeader>
@@ -1101,8 +1129,6 @@ Rules: Always use `Empty` + `EmptyHeader` + `EmptyMedia` + `EmptyTitle` + `Empty
 
 For the jac-shadcn auth pattern with `Input`, `Label`/`Field`, `Button`, and error handling, see the `## jac-shadcn form pattern` section in the `jac-cl-auth` skill.
 
-**Install check:** `jac add --shadcn input button card separator field` (button and card are usually already present).
-
 **Key rules for auth pages:**
 
 - Auth pages center a card in `min-h-svh` - NOT a `pt-24` marketing section.
@@ -1122,7 +1148,7 @@ cl import from ..ui.button { Button }
 cl import from ..ui.field { Field, FieldLabel }
 
 cl {
-    def:pub LoginPage(props: Any) -> JsxElement {
+    def:pub LoginPage() -> JsxElement {
         return <div className="flex min-h-svh items-center justify-center pt-12 pb-12 pl-4 pr-4">
             <Card className="w-full max-w-sm">
                 <CardHeader>
@@ -1164,40 +1190,39 @@ For the full auth flow with `jacLogin`, `jacSignup`, async handlers, and 3-step 
 
 ## Block -> Component Mapping Table
 
-UIDesignerAgent: use this table to populate `UISpec.components`. List only primary components - `jac add --shadcn` resolves peer dependencies automatically.
+Primary jac-shadcn components required by each block. `jac add --shadcn` resolves peer
+dependencies automatically so you only need to list the primary ones.
 
-| Block | Primary jac-shadcn components | `jac add --shadcn` command |
-|---|---|---|
-| `hero_centered` | badge, button | `jac add --shadcn badge button` |
-| `hero_split` | badge, button | `jac add --shadcn badge button` |
-| `navbar_sticky` | button, sheet | `jac add --shadcn button sheet` |
-| `features_grid` | badge | `jac add --shadcn badge` |
-| `features_alternating` | badge | `jac add --shadcn badge` |
-| `pricing_3tier` | card, badge, button | `jac add --shadcn card badge button` |
-| `testimonial_grid` | card, avatar, badge | `jac add --shadcn card avatar badge` |
-| `faq_accordion` | accordion, badge | `jac add --shadcn accordion badge` |
-| `cta_centered` | card, button | `jac add --shadcn card button` |
-| `footer_4col` | button, separator | `jac add --shadcn button separator` |
-| `sidebar_nav` | sidebar, separator, breadcrumb | `jac add --shadcn sidebar` (sidebar resolves all peers) |
-| `stats_row` | card, badge | `jac add --shadcn card badge` |
-| `data_table_page` | sidebar, card, table, badge, button, input | `jac add --shadcn sidebar card table badge button input` |
-| `empty_state` | empty, button | `jac add --shadcn empty button` |
-| `auth_card_centered` | card, input, button, field | `jac add --shadcn card input button field` |
+| Block | Primary jac-shadcn components |
+|---|---|
+| `hero_centered` | badge, button |
+| `hero_split` | badge, button |
+| `navbar_sticky` | button, sheet |
+| `features_grid` | badge |
+| `features_alternating` | badge |
+| `pricing_3tier` | card, badge, button |
+| `testimonial_grid` | card, avatar, badge |
+| `faq_accordion` | accordion, badge |
+| `cta_centered` | card, button |
+| `footer_4col` | button, separator |
+| `sidebar_nav` | sidebar, separator, breadcrumb |
+| `stats_row` | card, badge |
+| `data_table_page` | sidebar, card, table, badge, button, input |
+| `empty_state` | empty, button |
+| `auth_card_centered` | card, input, button, field |
 
 ---
 
 ## Typical Component Sets by App Type
 
-Quick-reference for UIDesignerAgent when populating `UISpec.components`.
-
 | App type | Typical blocks | Typical components |
 |---|---|---|
-| `saas` (marketing + app) | navbar, hero, features, pricing, testimonials, faq, cta, footer, sidebar, stats | badge, button, card, sidebar, table, input, avatar, separator, accordion |
-| `dashboard` (app-only) | sidebar, stats, data-table, empty-state | sidebar, card, table, badge, button, input, separator, breadcrumb |
-| `landing` (marketing only) | navbar, hero, features, testimonials, cta, footer | badge, button, card, avatar, separator |
-| `web-app` (auth + pages) | navbar, hero, cta, footer, auth-card, sidebar | button, card, input, field, sidebar, badge |
-| `tool` (focused utility) | navbar, sidebar, stats, data-table, empty-state | sidebar, table, input, badge, button, card |
-| `blog` / `content` | navbar, hero, features, faq, footer | badge, button, card, separator, avatar |
+| SaaS (marketing + app) | navbar, hero, features, pricing, testimonials, faq, cta, footer, sidebar, stats | badge, button, card, sidebar, table, input, avatar, separator, accordion |
+| Dashboard (app-only) | sidebar, stats, data-table, empty-state | sidebar, card, table, badge, button, input, separator, breadcrumb |
+| Landing (marketing only) | navbar, hero, features, testimonials, cta, footer | badge, button, card, avatar, separator |
+| Web app (auth + pages) | navbar, hero, cta, footer, auth-card, sidebar | button, card, input, field, sidebar, badge |
+| Tool (focused utility) | navbar, sidebar, stats, data-table, empty-state | sidebar, table, input, badge, button, card |
+| Blog / content | navbar, hero, features, faq, footer | badge, button, card, separator, avatar |
 
 ---
 
