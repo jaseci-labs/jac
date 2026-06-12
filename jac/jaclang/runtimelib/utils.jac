@@ -80,4 +80,4 @@ def get_name(target_path: (str | None) = None) -> (str | None);
 `target_path` is forwarded to `get_name` to derive the filename; see
 `get_name` for back-compat behavior when omitted.
 """
-def get_db_path(base_path: str, target_path: (str | None) = None) -> (str | None);
+def get_db_path(base_path: str, target_path: (str | None) = None) -> str;

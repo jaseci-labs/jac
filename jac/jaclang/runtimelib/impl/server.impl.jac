@@ -12,8 +12,7 @@ impl UserManager.postinit -> None {
     import sqlite3;
     import threading;
     import from jaclang.runtimelib.utils { get_db_path }
-    self._db_path = get_db_path(self.base_path, target_path=Jac.get_full_target_path())
-    or os.path.join(self.base_path, ".jac", "data", "main.db");
+    self._db_path = get_db_path(self.base_path, target_path=Jac.get_full_target_path());
     os.makedirs(os.path.dirname(self._db_path), exist_ok=True);
     self._conn = None;
     # RLock lets a caller that already holds the lock re-enter it (e.g.
@@ -35,10 +34,11 @@ impl UserManager._create_root_id -> str {
 impl UserManager._root_anchor_exists(root_id: str) -> bool {
     import from uuid { UUID }
     try {
-        anchor = Jac.get_context().mem.get(UUID(root_id));
-    } except Exception {
+        anchor_id = UUID(root_id);
+    } except ValueError {
         return False;
     }
+    anchor = Jac.get_context().mem.get(anchor_id);
     return anchor is not None;
 }
 
@@ -1654,7 +1654,7 @@ impl JacAPIServer.postinit -> None {
         if not _um.user_exists(Con.GUEST.value) {
             _um.create_user(Con.GUEST.value, '__no_password__');
         }
-        return _um.get_root_id(Con.GUEST.value);
+        return _um.ensure_root_id(Con.GUEST.value);
     }
     Jac.set_shared_root_resolver(_shared_root_id);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
