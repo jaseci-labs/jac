@@ -22,6 +22,11 @@ name: Perf Bisect (#6621)
 # a narrower range, e.g. "f856cc7f~1 f856cc7f" to isolate #6536.
 
 on:
+  # TEMPORARY: branch-scoped push trigger so the bisect can run from the PR
+  # branch before merge (workflow_dispatch only works from the default branch).
+  # Remove this `push:` block before marking the PR ready to merge.
+  push:
+    branches: [ci/perf-bisect-6621]
   workflow_dispatch:
     inputs:
       commits:
@@ -106,6 +111,11 @@ jobs:
           set -u
           REPO="$PWD"
           RESULTS="$REPO/perf-bisect-results.tsv"
+          # On a push trigger COMMITS is empty (inputs only exist for dispatch);
+          # fall back to the tightest isolating pair: #6536 and its parent.
+          COMMITS="${COMMITS:-}"
+          [ -z "$COMMITS" ] && COMMITS="f856cc7f~1 f856cc7f"
+          echo "Benchmarking commits: $COMMITS"
           # Modules that only get compiled when the type system is dragged in.
           # Their presence in a plain `jac run` is THE regression signal.
           TS_MARKER='type_system/type_evaluator|passes/main/type_checker_pass'
