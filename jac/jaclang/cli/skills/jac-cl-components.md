@@ -67,6 +67,10 @@ def:pub BookCard(bookId: str, title: str, onDelete: Callable[([str], None)]) -> 
 
 Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`. For an optional callback, type it `Callable[([str], None)] | None` and guard the call: `if onDelete { onDelete(bookId); }`.
 
+**`children` parameter:** always declare it `children: any = None` with `= None` default. Omitting the default makes `children` a required prop - every call site that passes no nested content fails with `error[E1102]`. Use `{children}` in the JSX body to render it.
+
+**`props: Any` bundle:** `def:pub Comp(props: Any)` is allowed but emits `W5015` and disables per-prop type checking. Prefer named typed parameters.
+
 **`{name}` shorthand:** when an attribute's value is a bare variable of the same name, `<BookCard {title} {onDelete} />` expands to `title={title} onDelete={onDelete}`. Pure sugar - the type-checker validates it per-attribute exactly like the explicit form. Distinct from the spread, which forwards a whole object: use `{**props}` (the canonical Jac form) - the JS-idiomatic `{...props}` also works but earns a `W0063` warning ("prefer `{**expr}`").
 
 ## Event types (ambient, no import)
@@ -219,7 +223,7 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
-- **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX.
+- **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX. `{}` (empty slot) is also a parse error - use `{#* note *#}` for a no-op placeholder. A `#` outside an expression slot is treated as **literal HTML text**, not a comment.
 
 ## See also
 

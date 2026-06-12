@@ -70,27 +70,8 @@ def:pub ItemList() -> JsxElement {
 
 ## jac-shadcn project layout
 
-When the project has `components/ui/` (jac-shadcn primitives are pre-installed):
-
-```
-my-app/
-├── components/
-│   ├── ui/                        # primitives - import only, never edit
-│   │   ├── button.cl.jac
-│   │   ├── card.cl.jac
-│   │   └── ...
-│   ├── EventCard.cl.jac           # your composite components
-│   └── pages/
-│       └── EventsPage.cl.jac
-├── hooks/
-│   └── useEvents.cl.jac
-├── styles/                        # jac-shadcn managed - do NOT edit global.css by hand
-│   └── global.css
-└── lib/
-    └── utils.cl.jac               # cn() - always import from here
-```
-
-Load `jac-shadcn-components` for the import patterns and full component selection table.
+When the project has `components/ui/`, those are managed primitives - import only, never edit.
+Load `jac-shadcn-components` for full layout, import paths, and composition rules.
 
 ## Rules
 

@@ -98,3 +98,8 @@ CORRECT:  text-foreground  bg-background  border-border
 
 AVOID:    text-gray-900  bg-white  border-gray-200  #3b82f6
 ```
+
+## See also
+
+- `jac-cl-components` - component shape, `className` prop, event handlers
+- `jac-shadcn-components` - jac-shadcn import paths, `cn()` usage, theming with `jac retheme`

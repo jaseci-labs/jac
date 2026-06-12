@@ -1,6 +1,6 @@
 ---
 name: jac-shadcn-components
-description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml. Pair with jac-cl-components (component shape) and jac-cl-organization (file layout).
+description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`, and `jac-shadcn-blocks` + group files (ready-made page-level blocks). Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml. Pair with jac-cl-components (component shape) and jac-cl-organization (file layout).
 ---
 
 shadcn primitives in Jac are delivered by the **jac-super** plugin. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
@@ -133,7 +133,7 @@ Violations cause accessibility errors or runtime white screens.
 
 ## Styling rules
 
-- **Semantic colors only.** `bg-primary`, `text-muted-foreground`, `border-border`, `bg-card`. Never `bg-blue-500`, `text-gray-600`.
+- **Semantic colors only.** `bg-primary`, `text-muted-foreground`, `border-border`, `bg-card`. Never `bg-blue-500`, `text-gray-600`. Never `opacity-70` to dim text - use `text-muted-foreground` instead (opacity tricks break dark mode).
 - **No `space-x-*` or `space-y-*`.** Use `flex gap-*` or `flex flex-col gap-*`.
 - **Equal width + height → `size-*`.** `size-10` not `w-10 h-10`.
 - **No `dark:` overrides.** CSS variables handle light/dark automatically.
@@ -452,3 +452,7 @@ import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolv
 - `jac-cl-organization` - file layout, hook pattern, when to extract
 - `jac-cl-styling` - conditional classes, cn() usage, semantic color tokens
 - `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac add`/`jac retheme`
+- `jac-shadcn-blocks` - design system constants + anti-patterns + block group index (load first)
+- `jac-shadcn-blocks-marketing` - 8 marketing/landing blocks (hero, features, pricing, FAQ, testimonials, CTA)
+- `jac-shadcn-blocks-app` - 6 app shell blocks (navbar, footer, sidebar, stats, data table, login)
+- `jac-shadcn-blocks-empty` - 3 empty state blocks (no-projects, no-results, error/retry)

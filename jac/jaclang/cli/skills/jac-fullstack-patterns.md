@@ -27,10 +27,9 @@ cl {
 - **Adding a new endpoint is ALWAYS a 2-file change:** the `.sv.jac` service file + the import in `main.jac`. Especially easy to miss when extending a client-only app - no server import block existed before.
 - **In `main.jac`: plain `import from services.X { ... }`** (NEVER `sv import`). Plain = in-process Python import; the endpoint registers at `/function/<name>`.
 - **In `.cl.jac`: `sv import from ..services.X { ... }`** (prefix required). Generates the JS RPC stub. Plain `import from` to a `.sv.jac` fails the Vite build with `Could not resolve "services/X.js"`.
-- **Always `await` `sv import` calls.** Stubs are `async` functions -- calling without `await` assigns a `Promise` instead of the actual data, causing silent runtime failures. `items = await fetch_items()` works; `items = fetch_items()` silently assigns a Promise → runtime crash.
+- **Always `await` sv import calls, always call POSITIONAL not kwargs.** See `jac-cl-components` for caller patterns and examples.
 - **`sv import` in `main.jac` = microservice RPC.** Spawns a separate provider server process; session cookies don't cross → `def:priv` fails with `401 Unauthorized`. Only use for actual microservices.
 - **Import obj/node TYPES alongside functions** in both places. Missing types → server `NameError` at runtime or lost typed attribute access on the client.
-- **Call server endpoints with POSITIONAL args, not kwargs.** `save_profile(name, email)` works; `save_profile(name=name, email=email)` sends empty body → `422 Field required`.
 - **Client entry is `def:pub app()`** - lowercase `app`. Not `App()`, `ClientApp()`. Runtime mounts the literal name.
 - **Global vs scoped CSS:** import app-wide CSS once in `main.jac`'s `cl { }` block (`import ".styles.global.css";` for the Tailwind import and custom CSS variables). For component-specific classes, add a same-basename `Comp.style.css` beside the `.cl.jac` -- it auto-scopes and needs no import. See `jac-cl-styling`.
 - **No CSS reset in Tailwind projects.** `@import "tailwindcss"` includes Preflight which handles baseline normalization. Adding `* { margin: 0; padding: 0; box-sizing: border-box }` overrides Preflight and breaks all spacing utilities (`p-4`, `m-2`, `gap-6`). Plain-CSS-only projects (no Tailwind import) may still use resets.
