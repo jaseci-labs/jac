@@ -714,6 +714,9 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
+    def _loop_exit_narrowed_type(
+        loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
+    ) -> TypeBase | None;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
         target: NarrowingTarget, condition: uni.Expr
