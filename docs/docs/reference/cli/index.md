@@ -241,7 +241,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
-| `-l, --list-jacpacks` | List available jacpack templates | `False` |
+| `-l, --list_jacpacks` | List available jacpack templates | `False` |
 
 **Examples:**
 
@@ -263,7 +263,7 @@ jac create myapp --use ./my-template/
 jac create myapp --use https://example.com/template.jacpack
 
 # List available jacpack templates
-jac create --list-jacpacks
+jac create --list_jacpacks
 
 # Force overwrite existing
 jac create myapp --force
@@ -912,6 +912,32 @@ Or, when some rows are still stuck (often because the class involved isn't cover
 │ 902b14ee… │ deserialize raised: ValueError: bad enum value │
 └───────────┴─────────────────────────────────────────────────┘
 ```
+
+### jac db schema rules
+
+List every registered [`__jac_schema__` drift rule](../persistence.md#declared-drift-rules-__jac_schema__) along with the active `JAC_SCHEMA_REPAIR` mode. The app is imported first (same `--app` / cwd discovery as the other subcommands), which is what runs the `__jac_schema__` hooks and registers the rules.
+
+```bash
+jac db schema rules --app app.jac
+```
+
+**Output:**
+
+```
+Registered schema drift rules
+[INFO] JAC_SCHEMA_REPAIR mode: repair
+                    Rules
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ archetype       ┃ rule    ┃ detail                ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+│ __main__.User   │ was     │ myapp.models.OldUser  │
+│ __main__.User   │ alias   │ username -> name      │
+│ __main__.User   │ drop    │ legacy_bio            │
+│ __main__.User   │ upgrade │ split_tags            │
+└─────────────────┴─────────┴───────────────────────┘
+```
+
+Useful as a pre-deploy sanity check: it confirms which renames, drops, and upgrade callbacks will apply when old documents load, and which repair mode the process will run under.
 
 ### Typical rescue workflow
 

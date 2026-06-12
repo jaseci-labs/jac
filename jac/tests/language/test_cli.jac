@@ -201,6 +201,29 @@ test "jac cli run python file" {
     assert "10" in stdout_value;
 }
 
+test "jac run with no filename reports missing required argument" {
+    env = dict(os.environ);
+    env["PYTHONPATH"] = JAC_ROOT;
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run"],
+        cwd=JAC_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    );
+    combined = result.stdout + result.stderr;
+    assert result.returncode != 0 , (
+        f"Expected non-zero exit for bare jac run; got:\n{combined}"
+    );
+    assert "required: filename" in combined , (
+        f"Expected missing filename error; got:\n{combined}"
+    );
+    assert "NoneType" not in combined , (
+        f"Should not crash with TypeError; got:\n{combined}"
+    );
+}
+
 test "jac run py fstr" {
     captured = io.StringIO();
     old_stdout = sys.stdout;

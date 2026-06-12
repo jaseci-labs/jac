@@ -5192,3 +5192,32 @@ test "spread_with_explicit_kwarg_no_false_positive" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+test "circular_import_preserves_class_identity" {
+    abs_entry = os.path.join(CHECKER_FIXTURES, "circular_import_identity", "entry.jac");
+    rel_entry = os.path.relpath(abs_entry);
+    program = JacProgram();
+    program.compile(rel_entry, type_check=True);
+    assert len(program.errors_had) == 0 , f"Circular import split the class identity, got {len(
+        program.errors_had
+    )} error(s):\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "callable_null_default_rejected_outside_native" {
+    # Issue #6569 allows `Callable[[...], ret] = 0` (a C NULL function
+    # pointer) in native modules only. Regular Jac must keep rejecting it.
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_null_default.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert program.errors_had[0].code.code == "E1001";
+    assert_error_pretty_found(
+        """
+        has fn: Callable[[int], int] = 0;  # <-- Error
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}

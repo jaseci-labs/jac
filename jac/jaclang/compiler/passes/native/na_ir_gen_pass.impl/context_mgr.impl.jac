@@ -73,7 +73,7 @@ impl NaIRGenPass._codegen_with_recursive(
     # Look up __enter__ and __exit__ methods via MRO
     enter_fn: (ir.Function | None) = None;
     exit_fn: (ir.Function | None) = None;
-    for check_name in self.mro_order.get(type_name, [type_name]) {
+    for check_name in self._mro_of(type_name) {
         enter_key = f"{check_name}.__enter__";
         exit_key = f"{check_name}.__exit__";
         if enter_fn is None and enter_key in self.method_funcs {
@@ -116,15 +116,6 @@ impl NaIRGenPass._codegen_with_recursive(
             }
             self.builder.store(enter_result, alloca);
             self.local_vars[alias_name] = alloca;
-            # Track type info for the alias variable
-            if isinstance(enter_result.type, ir.PointerType) {
-                for (sname, stype) in self.struct_types.items() {
-                    if enter_result.type == stype.as_pointer() {
-                        self.type_var_map[alias_name] = sname;
-                        break;
-                    }
-                }
-            }
         }
     }
     # Create basic blocks for body and exit

@@ -314,6 +314,7 @@ test "dev banner headlines vite port not api port" {
         }
         output = captured_output.getvalue();
         assert "Local:     http://localhost:8000/" in output;
-        assert "API:   http://localhost:8001/" in output;
+        assert "App:  http://localhost:8000/" in output;
+        assert "API:  http://localhost:8001/" in output;
     }
 }

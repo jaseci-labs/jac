@@ -22,9 +22,14 @@ This creates a `jac.toml` with default settings. When using `--use client`, the 
 
 ```
 myapp/
-├── main.jac       # Entry point with server and client code
-├── jac.toml       # Project configuration (auto-generated)
-└── styles.css     # Default stylesheet
+├── main.jac                  # Entry point with the client app
+├── jac.toml                  # Project configuration (auto-generated)
+├── components/
+│   └── Button.cl.jac         # Example client component
+├── assets/                   # Static assets
+├── README.md
+├── AGENTS.md                 # Points AI coding agents at `jac guide`
+└── .gitignore
 ```
 
 The auto-generated `jac.toml` for a `--use client` project looks like:
@@ -32,8 +37,17 @@ The auto-generated `jac.toml` for a `--use client` project looks like:
 ```toml
 [project]
 name = "myapp"
-version = "0.0.1"
+version = "1.0.0"
+description = "Jac client application: myapp"
 entry-point = "main.jac"
+
+[dependencies.npm]
+jac-client-node = "1.0.7"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
 ```
 
 You typically don't need to modify this file until you add dependencies or customize settings.

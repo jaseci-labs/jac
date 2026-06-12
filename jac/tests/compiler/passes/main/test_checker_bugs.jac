@@ -32,6 +32,7 @@ Bug index:
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #LOOPNARROW - Loop-assigned Optional local lost `is not None` narrowing after the loop
+  #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
@@ -904,6 +905,15 @@ test "bug_loopnarrow_loop_assigned_narrowing_survives" {
         "Bug #LOOPNARROW: a variable assigned inside a loop must keep its "
         "`is not None` narrowing after the loop, and a read-only loop body must "
         "preserve pre-loop narrowing. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_byte_literal_typed_as_bytes" {
+    program = compile_and_check("checker_bytes_literal.jac");
+    assert program.errors_had == [] , (
+        "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
+        "so it assigns to bytes and concatenates with other bytes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
