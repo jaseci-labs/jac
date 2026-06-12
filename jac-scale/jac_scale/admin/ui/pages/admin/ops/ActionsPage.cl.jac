@@ -1,17 +1,30 @@
 """Controlled Actions page for the Ops Console (V-10, Tier 2).
 
-Four mutating operations, each behind a typed confirmation (you must
-re-type the exact target name before the button arms): rollout-restart and
-scale a deployment, delete a pod, unstick a terminating PVC. Every call is
-admin-gated and audit-logged server-side and needs the
-`ops_console_mutations` RBAC; without it the action returns a 403 detail.
+Service-driven: it loads the live deployments (gateway + every microservice)
+from /admin/ops/deploy, so you act on a real target picked from a list -
+never a blind-typed name. Per service you can rollout-restart or scale; a
+"Restart all services" button rolls the whole app; a pod picker force-
+deletes a single pod; and a PVC field clears stuck finalizers. Every action
+goes through a confirm dialog, and is admin-gated + audit-logged server-side
+behind the `ops_console_mutations` RBAC (a 403 detail shows if it's absent).
 """
 
-cl import from "lucide-react" { Wrench, RotateCw, Scaling, Trash2, Magnet, AlertTriangle }
+cl import from "lucide-react" {
+    Wrench,
+    RotateCw,
+    Scaling,
+    Trash2,
+    Magnet,
+    RefreshCw,
+    AlertTriangle,
+    Layers
+}
 
 cl {
+    import from react { useEffect }
     import from ....context.AuthContext { useAuth }
     import from ....services.opsService {
+        getDeployHealth,
         rolloutRestart,
         scaleDeployment,
         deletePod,
@@ -19,20 +32,48 @@ cl {
     }
 
     def:pub ActionsPage -> JsxElement {
-        has restartTarget: str = "",
-            restartConfirm: str = "",
-            scaleTarget: str = "",
-            scaleReplicas: int = 1,
-            scaleConfirm: str = "",
-            deleteTarget: str = "",
-            deleteConfirm: str = "",
-            unstickTarget: str = "",
-            unstickConfirm: str = "",
-            busy: str = "",
+        has isLoading: bool = False,
+            available: bool = True,
+            detail: str = "",
+            namespace: str = "",
+            deployments: list = [],
+            pods: list = [],
+            selectedPod: str = "",
+            pvcName: str = "",
+            pending: dict = {},
+            pendingReplicas: int = 1,
+            busy: bool = False,
             message: str = "",
-            isError: bool = False;
+            isError: bool = False,
+            loadedOnce: bool = False;
 
         auth = useAuth();
+
+        async def load {
+            isLoading = True;
+            try {
+                result = await getDeployHealth(auth["authToken"]);
+                if result["ok"] and result["data"] {
+                    data = result["data"];
+                    available = data["available"] or False;
+                    detail = data["detail"] or "";
+                    namespace = data["namespace"] or "";
+                    deployments = data["deployments"] or [];
+                    pods = data["pods"] or [];
+                } elif result["error"] {
+                    message = result["error"]["message"] or "Failed to load targets";
+                    isError = True;
+                }
+            } except Exception as e {
+                console.error("actions load error:", e);
+                message = "Error loading targets: " + String(e);
+                isError = True;
+            }
+            isLoading = False;
+            loadedOnce = True;
+        }
+
+        useEffect(lambda { load(); }, []);
 
         def report(result: dict) {
             if result["ok"] and result["data"] {
@@ -47,69 +88,161 @@ cl {
             }
         }
 
-        async def doRestart {
-            busy = "restart";
+        # ---- open the confirm dialog for each action --------------------
+        def askRestart(name: str) {
+            pending = {
+                "kind": "restart",
+                "target": name,
+                "label": "Rollout restart " + name + "?",
+                "danger": False
+            };
+        }
+        def askRestartAll {
+            pending = {
+                "kind": "restart-all",
+                "target": "",
+                "label": "Rollout restart ALL " + String(len(deployments)) + " service(s)?",
+                "danger": True
+            };
+        }
+        def askScale(name: str, desired: int) {
+            pendingReplicas = desired;
+            pending = {
+                "kind": "scale",
+                "target": name,
+                "label": "Scale " + name,
+                "danger": False
+            };
+        }
+        def askDelete {
+            if not selectedPod {
+                return;
+            }
+            pending = {
+                "kind": "delete",
+                "target": selectedPod,
+                "label": "Delete pod " + selectedPod + "?",
+                "danger": True
+            };
+        }
+        def askUnstick {
+            if not pvcName {
+                return;
+            }
+            pending = {
+                "kind": "unstick",
+                "target": pvcName,
+                "label": "Clear finalizers on PVC " + pvcName + "?",
+                "danger": True
+            };
+        }
+        def cancel {
+            pending = {};
+        }
+
+        async def restartAll {
+            okCount = 0;
+            failCount = 0;
+            for d in deployments {
+                try {
+                    r = await rolloutRestart(auth["authToken"], d["name"]);
+                    if r["ok"] {
+                        okCount += 1;
+                    } else {
+                        failCount += 1;
+                    }
+                } except Exception as e {
+                    console.error("restart-all error:", e);
+                    failCount += 1;
+                }
+            }
+            message = "Restarted " + String(okCount) + " service(s)" + (
+                ", " + String(failCount) + " failed"
+                    if failCount > 0
+                    else ""
+            );
+            isError = failCount > 0;
+        }
+
+        async def runPending {
+            kind = pending["kind"];
+            target = pending["target"];
+            pending = {};
+            busy = True;
             message = "";
             try {
-                report(await rolloutRestart(auth["authToken"], restartTarget));
+                if kind == "restart" {
+                    report(await rolloutRestart(auth["authToken"], target));
+                } elif kind == "restart-all" {
+                    await restartAll();
+                } elif kind == "scale" {
+                    report(await scaleDeployment(auth["authToken"], target, pendingReplicas));
+                } elif kind == "delete" {
+                    report(await deletePod(auth["authToken"], target));
+                } elif kind == "unstick" {
+                    report(await unstickPvc(auth["authToken"], target));
+                }
             } except Exception as e {
                 message = "Error: " + String(e);
                 isError = True;
             }
-            busy = "";
+            busy = False;
+            load();
         }
 
-        async def doScale {
-            busy = "scale";
-            message = "";
-            try {
-                report(await scaleDeployment(auth["authToken"], scaleTarget, scaleReplicas));
-            } except Exception as e {
-                message = "Error: " + String(e);
-                isError = True;
+        # ---- helpers (return strings) -----------------------------------
+        def rolloutCls(status: str) -> str {
+            base = "text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded ";
+            if status == "complete" {
+                return base + "bg-success-weak text-success";
             }
-            busy = "";
-        }
-
-        async def doDelete {
-            busy = "delete";
-            message = "";
-            try {
-                report(await deletePod(auth["authToken"], deleteTarget));
-            } except Exception as e {
-                message = "Error: " + String(e);
-                isError = True;
+            if status == "stuck" {
+                return base + "bg-danger-weak text-danger";
             }
-            busy = "";
+            return base + "bg-warning-weak text-warning";
         }
 
-        async def doUnstick {
-            busy = "unstick";
-            message = "";
-            try {
-                report(await unstickPvc(auth["authToken"], unstickTarget));
-            } except Exception as e {
-                message = "Error: " + String(e);
-                isError = True;
-            }
-            busy = "";
-        }
+        btnSm = "inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+        inputCls = "bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg";
 
-        inputCls = "bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg w-full";
-        btnCls = "inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-
+        # ---- render -----------------------------------------------------
         return
             <div className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                    <Wrench className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">Controlled Actions</h1>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                        <Wrench className="w-5 h-5 text-accent"/>
+                        <h1 className="text-lg font-semibold text-fg">
+                            Controlled Actions
+                        </h1>
+                        {<span className="text-xs text-faint">{namespace}</span>
+                            if namespace
+                            else None}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            className={btnSm + " bg-warning-weak text-warning border border-warning/40 hover:bg-warning/10 px-3 py-1.5 text-sm"}
+                            disabled={busy or len(deployments) == 0}
+                            onClick={lambda { askRestartAll(); }}
+                        >
+                            <Layers className="w-3.5 h-3.5"/>
+                            Restart all services
+                        </button>
+                        <button
+                            className={btnSm + " bg-surface-2 text-fg border border-line hover:bg-line px-3 py-1.5 text-sm"}
+                            onClick={lambda { load(); }}
+                        >
+                            <RefreshCw className="w-3.5 h-3.5"/>
+                            Refresh
+                        </button>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-faint">
                     <AlertTriangle className="w-3.5 h-3.5"/>
                     <span>
-                        Mutating + audit-logged. Re-type the exact target name to arm each action. Needs [plugins.scale.kubernetes].ops_console_mutations.
+                        Mutating + audit-logged. Needs [plugins.scale.kubernetes].ops_console_mutations; a 403 means the RBAC isn't bound.
                     </span>
                 </div>
+
                 {<div className={"text-sm rounded-md p-3 border border-line " + (
                     "bg-danger-weak text-danger"
                         if isError
@@ -119,91 +252,178 @@ cl {
                 </div>
                     if message
                     else None}
+                {<div
+                    className="flex items-start gap-2 text-warning text-sm bg-warning-weak border border-line rounded-md p-3"
+                >
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
+                    <span className="text-muted">
+                        Cluster view unavailable: {detail}. Enable [plugins.scale.kubernetes].ops_console (+ ops_console_mutations to act) and redeploy.
+                    </span>
+                </div>
+                    if (loadedOnce and not available)
+                    else None}
+                {<div className="text-faint text-sm">Loading services...</div>
+                    if (isLoading and not loadedOnce)
+                    else None}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div className="rounded-lg border border-line bg-surface p-4 space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
-                            <RotateCw className="w-4 h-4 text-accent"/>
-                            Rollout restart
-                        </div>
-                        <input className={inputCls} placeholder="deployment name (e.g. gateway-deployment)"
-                            value={restartTarget}
-                            onChange={lambda e: any { restartTarget = e.target.value; }}/>
-                        <input className={inputCls} placeholder="re-type name to confirm"
-                            value={restartConfirm}
-                            onChange={lambda e: any { restartConfirm = e.target.value; }}/>
-                        <button
-                            className={btnCls + " bg-surface-2 text-fg border border-line hover:bg-line"}
-                            disabled={busy != "" or not restartTarget or restartConfirm != restartTarget}
-                            onClick={lambda { doRestart(); }}
-                        >
-                            {busy == "restart" and "Restarting..." or "Rollout restart"}
-                        </button>
+                {<div className="space-y-2">
+                    <div className="text-xs uppercase tracking-wide text-faint">
+                        Services ({len(deployments)})
                     </div>
-
-                    <div className="rounded-lg border border-line bg-surface p-4 space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
-                            <Scaling className="w-4 h-4 text-accent"/>
-                            Scale deployment
-                        </div>
-                        <input className={inputCls} placeholder="deployment name"
-                            value={scaleTarget}
-                            onChange={lambda e: any { scaleTarget = e.target.value; }}/>
-                        <input className={inputCls} type="number" min="0" max="50"
-                            value={String(scaleReplicas)}
-                            onChange={lambda e: any { scaleReplicas = Number(e.target.value); }}/>
-                        <input className={inputCls} placeholder="re-type name to confirm"
-                            value={scaleConfirm}
-                            onChange={lambda e: any { scaleConfirm = e.target.value; }}/>
-                        <button
-                            className={btnCls + " bg-surface-2 text-fg border border-line hover:bg-line"}
-                            disabled={busy != "" or not scaleTarget or scaleConfirm != scaleTarget}
-                            onClick={lambda { doScale(); }}
+                    {[
+                        <div
+                            key={d["name"]}
+                            className="flex items-center justify-between rounded-lg border border-line bg-surface p-3 gap-3"
                         >
-                            {busy == "scale" and "Scaling..." or "Scale"}
-                        </button>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-fg truncate">
+                                    {d["name"]}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs text-muted">
+                                        {String(d["ready"])}/{String(d["desired"])} ready
+                                    </span>
+                                    <span className={rolloutCls(d["rollout"]["status"])}>
+                                        {d["rollout"]["status"]}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    className={btnSm + " bg-surface-2 text-fg border border-line hover:bg-line"}
+                                    disabled={busy}
+                                    onClick={lambda { askScale(d["name"], d["desired"]); }}
+                                >
+                                    <Scaling className="w-3.5 h-3.5"/>
+                                    Scale
+                                </button>
+                                <button
+                                    className={btnSm + " bg-surface-2 text-fg border border-line hover:bg-line"}
+                                    disabled={busy}
+                                    onClick={lambda { askRestart(d["name"]); }}
+                                >
+                                    <RotateCw className="w-3.5 h-3.5"/>
+                                    Restart
+                                </button>
+                            </div>
+                        </div> for d in deployments
+                    ]}
+                    {<div className="text-faint text-sm">
+                        No deployments in this namespace.
                     </div>
+                        if (available and loadedOnce and len(deployments) == 0)
+                        else None}
+                </div>
+                    if available
+                    else None}
 
+                {<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
                     <div className="rounded-lg border border-line bg-surface p-4 space-y-2">
                         <div className="flex items-center gap-2 text-sm font-semibold text-fg">
                             <Trash2 className="w-4 h-4 text-danger"/>
-                            Delete pod
+                            Force-delete a pod
                         </div>
-                        <input className={inputCls} placeholder="pod name"
-                            value={deleteTarget}
-                            onChange={lambda e: any { deleteTarget = e.target.value; }}/>
-                        <input className={inputCls} placeholder="re-type name to confirm"
-                            value={deleteConfirm}
-                            onChange={lambda e: any { deleteConfirm = e.target.value; }}/>
-                        <button
-                            className={btnCls + " bg-danger-weak text-danger border border-danger/40 hover:bg-danger/10"}
-                            disabled={busy != "" or not deleteTarget or deleteConfirm != deleteTarget}
-                            onClick={lambda { doDelete(); }}
-                        >
-                            {busy == "delete" and "Deleting..." or "Delete pod"}
-                        </button>
+                        <p className="text-xs text-faint">
+                            Deletes one pod; its controller recreates a fresh replacement.
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={selectedPod}
+                                onChange={lambda e: any { selectedPod = e.target.value; }}
+                                className={inputCls + " flex-1"}
+                            >
+                                <option value="">Select a pod...</option>
+                                {[<option key={p["name"]} value={p["name"]}>{p["name"]}</option> for p in pods]}
+                            </select>
+                            <button
+                                className={btnSm + " bg-danger-weak text-danger border border-danger/40 hover:bg-danger/10 px-3 py-1.5 text-sm"}
+                                disabled={busy or not selectedPod}
+                                onClick={lambda { askDelete(); }}
+                            >
+                                Delete
+                            </button>
+                        </div>
                     </div>
 
                     <div className="rounded-lg border border-line bg-surface p-4 space-y-2">
                         <div className="flex items-center gap-2 text-sm font-semibold text-fg">
                             <Magnet className="w-4 h-4 text-danger"/>
-                            Unstick PVC
+                            Unstick a terminating PVC
                         </div>
-                        <input className={inputCls} placeholder="pvc name"
-                            value={unstickTarget}
-                            onChange={lambda e: any { unstickTarget = e.target.value; }}/>
-                        <input className={inputCls} placeholder="re-type name to confirm"
-                            value={unstickConfirm}
-                            onChange={lambda e: any { unstickConfirm = e.target.value; }}/>
-                        <button
-                            className={btnCls + " bg-danger-weak text-danger border border-danger/40 hover:bg-danger/10"}
-                            disabled={busy != "" or not unstickTarget or unstickConfirm != unstickTarget}
-                            onClick={lambda { doUnstick(); }}
-                        >
-                            {busy == "unstick" and "Clearing..." or "Clear finalizers"}
-                        </button>
+                        <p className="text-xs text-faint">
+                            Clears finalizers on a PVC stuck in Terminating (see Endpoints & Storage for names).
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <input
+                                className={inputCls + " flex-1"}
+                                placeholder="pvc name"
+                                value={pvcName}
+                                onChange={lambda e: any { pvcName = e.target.value; }}
+                            />
+                            <button
+                                className={btnSm + " bg-danger-weak text-danger border border-danger/40 hover:bg-danger/10 px-3 py-1.5 text-sm"}
+                                disabled={busy or not pvcName}
+                                onClick={lambda { askUnstick(); }}
+                            >
+                                Clear
+                            </button>
+                        </div>
                     </div>
                 </div>
+                    if available
+                    else None}
+
+                {<div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                    onClick={cancel}
+                >
+                    <div
+                        className="w-full max-w-md rounded-lg border border-line bg-surface p-5 space-y-4"
+                        onClick={lambda e: any { e.stopPropagation(); }}
+                    >
+                        <div className="flex items-center gap-2">
+                            <AlertTriangle className={"w-5 h-5 " + (
+                                "text-danger" if pending["danger"] else "text-warning"
+                            )}/>
+                            <h2 className="text-sm font-semibold text-fg">
+                                {pending["label"]}
+                            </h2>
+                        </div>
+                        {<div className="space-y-1">
+                            <label className="text-xs text-faint">Replicas</label>
+                            <input
+                                className={inputCls + " w-full"}
+                                type="number"
+                                min="0"
+                                max="50"
+                                value={String(pendingReplicas)}
+                                onChange={lambda e: any { pendingReplicas = Number(e.target.value); }}
+                            />
+                        </div>
+                            if pending["kind"] == "scale"
+                            else None}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                className={btnSm + " bg-surface-2 text-fg border border-line hover:bg-line px-3 py-1.5 text-sm"}
+                                onClick={cancel}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className={btnSm + " px-3 py-1.5 text-sm " + (
+                                    "bg-danger-weak text-danger border border-danger/40 hover:bg-danger/10"
+                                        if pending["danger"]
+                                        else "bg-accent text-accent-fg hover:opacity-90"
+                                )}
+                                onClick={lambda { runPending(); }}
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                    if pending["kind"]
+                    else None}
             </div>;
     }
 }
