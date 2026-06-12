@@ -8,12 +8,32 @@ impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
+    # Register this context's L1 so sibling broadcasts can evict our copies.
+    self._l1_id = new_l1_id();
+    register_l1(self._l1_id, self);
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
     if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
+        # Start the process-wide invalidation listener once.
+        try {
+            db_config = get_scale_config().get_database_config();
+            if db_config.get('redis_l1_invalidation_enabled', True) {
+                ensure_listener(
+                    _process_cache,
+                    cast((str | None), db_config.get('redis_url')),
+                    cast(
+                        str,
+                        db_config.get('redis_l1_invalidation_channel')
+                        or DEFAULT_INVALIDATION_CHANNEL
+                    )
+                );
+            }
+        } except Exception as e {
+            logger.debug(f"L1 invalidation listener init skipped: {e}");
+        }
     } else {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
@@ -26,6 +46,8 @@ impl ScaleTieredMemory.postinit -> None {
         mongo_backend.set_memory_ref(self.__mem__);
         # Give MongoDB access to L2 cache so quarantine ops can invalidate Redis
         mongo_backend.set_cache_ref(self.l2);
+        # Stamp our L1 id so the backend's broadcasts exclude us.
+        mongo_backend.set_l1_id(self._l1_id);
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
         # Show subtle message (optional - uncomment to enable)
@@ -74,10 +96,15 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
             if self.l2 {
                 for mem_anchor in l2_pending {
                     if mem_anchor.id in atomic_ids {
+                        # _put_node_atomic already broadcast for these.
                         continue;
                     }
                     try {
                         self.l2.put(mem_anchor);
+                        # Evict siblings' stale L1 copy after refreshing L2.
+                        cast(RedisBackend, self.l2).publish_invalidation(
+                            str(mem_anchor.id), self._l1_id
+                        );
                     } except Exception as l2_err {
                         logger.warning(f"L2 cache update failed: {l2_err}");
                     }
@@ -94,6 +121,7 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
     l1_misses: list[UUID] = [];
     for id in ids {
+        self._refresh_if_stale(id);
         if (anchor := self.__mem__.get(id)) {
             result[id] = anchor;
         } else {
@@ -171,6 +199,68 @@ impl ScaleTieredMemory.close -> None {
     if self.l2 {
         self.l2.close();
     }
+    # Drop this context's L1 from the invalidation registry.
+    if self._l1_id {
+        deregister_l1(self._l1_id);
+    }
     self.__mem__.clear();
     self.__gc__.clear();
+}
+
+"""If a sibling write flagged `id` stale, drop our copy (only if clean) so the
+next read reloads it; a dirty entry is kept so the in-flight write survives."""
+impl ScaleTieredMemory._refresh_if_stale(id: UUID) -> None {
+    if consume_stale(self._l1_id, id) {
+        existing = self.__mem__.get(id);
+        if existing is not None
+        and existing.persistent
+        and Serializer._compute_hash(existing) == existing.hash {
+            self.__mem__.pop(id, None);
+        }
+    }
+}
+
+impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
+    self._refresh_if_stale(id);
+    return super.get(id);
+}
+
+"""Delegate to get() so find honors lower tiers and stale marks (the inherited
+VolatileMemory.find is L1-only and would miss both)."""
+impl ScaleTieredMemory.find(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                yield anchor;
+            }
+        }
+    }
+}
+
+impl ScaleTieredMemory.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
+        }
+    }
+    return None;
+}
+
+"""L1 scan, snapshotting `__mem__` so iteration is decoupled from concurrent gets."""
+impl ScaleTieredMemory.query(
+    filter: (Callable[[Anchor], bool] | None) = None
+) -> Generator[Anchor, None, None] {
+    for anchor in list(self.__mem__.values()) {
+        if filter is None or filter(anchor) {
+            yield anchor;
+        }
+    }
 }
