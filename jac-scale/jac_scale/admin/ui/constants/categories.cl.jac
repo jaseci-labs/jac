@@ -20,5 +20,6 @@ glob:pub navGroups = [
                  {"id": "traces", "label": "Traces"},
                  {"id": "logs", "label": "Logs"}
              ]
-         }
+         },
+         {"label": "Operations", "items": [{"id": "ops", "label": "Self-Check"}]}
      ];
