@@ -296,13 +296,13 @@ test "DependencyInstaller install_git_package" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
+            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
             specs = installer._make_git_spec(
                 "my-plugin", "https://github.com/user/plugin.git", branch="main"
             );
             result = installer.install_package([specs]);
             assert result is True;
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "git+https://github.com/user/plugin.git@main" in call_args;
         }
     } finally {
@@ -321,12 +321,12 @@ test "DependencyInstaller install_all" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
+            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
             pip_packages = installer.get_pip_package_specs(include_dev=False);
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 1;
+            assert mock_pip.call_count == 3;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -344,12 +344,12 @@ test "DependencyInstaller install_all with dev" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
+            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
             pip_packages = installer.get_pip_package_specs(include_dev=True);
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 1;
+            assert mock_pip.call_count == 3;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -1690,9 +1690,9 @@ test "DependencyInstaller install_flags passed to pip" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
+            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
             installer.install_package(["requests>=2.28.0"]);
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "--no-cache-dir" in call_args;
