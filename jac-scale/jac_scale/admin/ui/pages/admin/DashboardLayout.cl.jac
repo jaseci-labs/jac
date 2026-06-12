@@ -20,6 +20,7 @@ import from "lucide-react" {
     Stethoscope,
     Boxes,
     Network,
+    KeyRound,
     LogOut,
     CircleUserRound,
     Sun,
@@ -46,6 +47,7 @@ import from .logs.LogsPage { LogsPage }
 import from .ops.OpsPage { OpsPage }
 import from .ops.DeployPage { DeployPage }
 import from .ops.NetworkPage { NetworkPage }
+import from .ops.PodEnvPage { PodEnvPage }
 
 # Nav item id -> page component. Keep in sync with navGroups.
 glob PAGE_ROUTES = {
@@ -60,7 +62,8 @@ glob PAGE_ROUTES = {
          "logs": LogsPage,
          "ops": OpsPage,
          "deploy": DeployPage,
-         "network": NetworkPage
+         "network": NetworkPage,
+         "podenv": PodEnvPage
      };
 
 def:pub DashboardLayout -> JsxElement {
@@ -126,7 +129,8 @@ def:pub DashboardLayout -> JsxElement {
         "logs": <ScrollText className={iconCls}/>,
         "ops": <Stethoscope className={iconCls}/>,
         "deploy": <Boxes className={iconCls}/>,
-        "network": <Network className={iconCls}/>
+        "network": <Network className={iconCls}/>,
+        "podenv": <KeyRound className={iconCls}/>
     };
 
     uname = String(auth["currentUsername"] or "");
