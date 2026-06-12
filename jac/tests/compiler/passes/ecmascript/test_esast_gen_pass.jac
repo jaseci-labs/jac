@@ -666,6 +666,29 @@ test "conditional JSX returns still trigger props-destructure lowering" {
     assert len(direct_props) == 2;
 }
 
+test "union JsxElement return type still triggers props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_union_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    error_banner = funcs["ErrorBanner"];
+    assert len(error_banner.params) == 1;
+    assert isinstance(error_banner.params[0], es.Identifier);
+    assert error_banner.params[0].name == "props";
+
+    direct_ret = funcs["direct_call"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+}
+
 test "components with JSX slots compile to function declarations" {
     # `def:pub Name(...) -> JsxElement { return ... }` is the universal
     # component shape. JSX `{...}` slots in child position with statement

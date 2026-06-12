@@ -476,6 +476,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
         nd: uni.FuncCall,

@@ -1073,6 +1073,25 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
+"""Return True when a return-type annotation includes ``JsxElement``.
+
+Recognises a bare ``JsxElement`` name or any ``|``-chained union whose leaf
+members include ``JsxElement`` (e.g. ``JsxElement | None``).
+"""
+impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        return (
+            self._return_type_includes_jsx_element(rt.left)
+            or self._return_type_includes_jsx_element(rt.right)
+        );
+    }
+    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+}
+
 """Return the calling convention a JSX-returning ability expects.
 
 `direct`
@@ -1097,12 +1116,10 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
         sig = ability_node.signature;
         if sig.get_parameters() {
             rt = sig.return_type;
-            # JSX detection relies on the explicit return type annotation
-            # (``-> JsxElement``).  Abilities that return JSX implicitly or
-            # via a wider union type are not recognised as components here.
-            if (
-                rt is not None and isinstance(rt, uni.Name) and rt.value == 'JsxElement'
-            ) {
+            # JSX detection relies on the explicit return type annotation:
+            # a bare ``-> JsxElement`` or a union that includes ``JsxElement``
+            # (e.g. ``-> JsxElement | None``).
+            if rt is not None and self._return_type_includes_jsx_element(rt) {
                 # Runtime helpers (e.g. __jacJsx) are not user components; keep
                 # their original positional ABI so parameter names don't collide
                 # with the synthetic `props` destructuring parameter.
