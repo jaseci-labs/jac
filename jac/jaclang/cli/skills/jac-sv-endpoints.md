@@ -1,9 +1,9 @@
 ---
 name: jac-sv-endpoints
-description: Server endpoints - REST API endpoints (/walker/<name>, /function/<name>), walker:pub, the response envelope, @restspec custom routes/methods, file uploads, typed responses. For any REST consumer, not just the jac client. Load before writing any backend function or walker. Pair with `jac-sv-persistence` (graph queries inside endpoint bodies), `jac-sv-auth` (auth semantics).
+description: Server endpoints - REST API endpoints (/walker/<name>, /function/<name>), walker:pub, the response envelope, @restspec custom routes/methods, file uploads, typed responses. For any REST consumer, not just the jac client. Pair with `jac-sv-persistence` (graph queries), `jac-sv-auth` (auth semantics), `jac-sv-streaming` (SSE).
 ---
 
-A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:priv` / plain `def`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac` or a `.sv.jac` module.
+A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:priv` / plain `def`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac`, a plain `.jac` server module, or a `.sv.jac` module (server is the default context). Streaming endpoints (`-> Generator`, SSE): `jac-sv-streaming`.
 
 Auth/visibility is per-declaration (canonical semantics in `jac-sv-auth`):
 
@@ -124,8 +124,10 @@ S3 backends and `get_url` presigning: `jac-sv-deploy`.
 ## Pitfalls
 
 - Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.
-- Give every endpoint an explicit return type - **the return type IS the wire format**. Returning typed nodes/objs gives the client dot access (`items[0].title`); raw `dict`/`list` loses typing.
+- Give every endpoint an explicit return type - **the return type IS the wire format**. Use typed objs/nodes for domain data (the client gets dot access: `items[0].title`); an ad-hoc `dict` is fine for a one-off payload (`{"liked": True, "likes": ...}`).
+- **`_jac_id` is volatile** - the runtime assigns a fresh one to the walker instance and to every freshly-constructed report obj on every response (persistent node jids are stable). Strip it before hashing, caching, or diffing responses.
+- Mixed visibility in one module is normal design: an anonymous `walker:pub` (public directory, trending) sits next to authenticated plain walkers.
 - Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.
-- **Creating a new `services/X.sv.jac` is always a 2-file change.** The endpoint must ALSO be imported in `main.jac` (`import from services.X { fn, Types }`) or the dispatcher never sees it and calls 404. See `jac-fullstack-patterns`.
+- **404/405 on a new endpoint = nothing references it.** An endpoint a client module reaches via `sv import` self-registers at startup; a top-level entry-module import is needed only when NO client stub references it (raw-fetch streams, REST-only walkers). Full rule: `jac-fullstack-patterns`.
 - `jac start` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); flags use underscores: `--no_client`, not `--no-client`.
 - A `{"detail": "Invalid anchor id ..."}` 500 after editing node schemas = stale persisted anchors. Fix: stop the server, `rm -rf .jac/data/`, restart. Full schema-evolution story: `jac-sv-persistence`.

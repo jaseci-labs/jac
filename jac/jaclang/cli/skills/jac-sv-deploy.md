@@ -7,7 +7,7 @@ Production serving is jac-scale's job: `pip install jac-scale` (or `jac-scale[al
 
 ## jac start
 
-`jac start [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Flags use **underscores**: `--no_client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). For prod, kill Swagger:
+`jac start [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Flags use **underscores**: `--no_client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac start` exits when stdin closes - any backgrounded/daemonized server must be launched with `< /dev/null` (systemd/containers do this for you; shell scripts and CI must do it explicitly). For prod, kill Swagger:
 
 ```toml
 [plugins.scale.server]
