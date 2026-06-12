@@ -1,7 +1,29 @@
 ---
 name: jac-cl-styling
-description: Styling patterns in Jac - Tailwind conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when writing dynamic, theme-aware, or component-scoped styles.
+description: Styling patterns in Jac - Tailwind v4 setup from scratch, conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when adding Tailwind to a project or writing dynamic, theme-aware, or component-scoped styles.
 ---
+
+## Tailwind v4 setup (non-shadcn projects)
+
+jac-shadcn projects ship Tailwind pre-wired - skip this section. For any other client project, three steps:
+
+```bash
+jac add --npm --dev tailwindcss @tailwindcss/vite
+```
+
+```toml
+# jac.toml - registers the Vite plugin
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+```
+
+```css
+/* assets/main.css - the whole entry CSS; no tailwind.config.js needed in v4 */
+@import "tailwindcss";
+```
+
+Then import it once in the app entry: `import "./assets/main.css";` inside the `cl { }` block of `main.jac` (or at the top of the entry `.cl.jac`). Utility classes (`min-h-screen`, `p-8`, `text-3xl`...) now work in any `className`.
 
 ## Scoped CSS (`.style.css` annex)
 
