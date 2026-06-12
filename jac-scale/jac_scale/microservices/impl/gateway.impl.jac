@@ -293,7 +293,13 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user", "/graph"};
+     # Bare (no trailing slash) built-in routes. These exist as exact
+     # paths in the monolith but their `/foo/` prefix sibling would NOT
+     # match them via startswith: "/jobs" does not start with "/jobs/".
+     # - /user, /graph: bare GET views
+     # - /jobs: scheduler POST (create) + GET (list); /jobs/{id} is
+     #   already covered by the "/jobs/" prefix above.
+     _BUILTIN_EXACT: set[str] = {"/user", "/graph", "/jobs"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 
@@ -317,6 +323,16 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
     # isn't set (defensive; shouldn't happen in the dispatcher path).
     trace = get_current_trace() or ensure_trace_id(request.headers.get("X-Trace-Id"));
     fwd["X-Trace-Id"] = trace;
+    # O-02: forward the active SERVER span's W3C `traceparent` so the
+    # downstream hop's span links as our child (same trace id as
+    # X-Trace-Id above). Overwrites any inbound traceparent that was
+    # copied in the loop. No-op when tracing is off and no id is
+    # available (current_traceparent returns None).
+    import from jac_scale.microservices.runtime.tracing { current_traceparent }
+    tp = current_traceparent(trace);
+    if tp {
+        fwd["traceparent"] = tp;
+    }
     return fwd;
 }
 
@@ -637,6 +653,20 @@ impl MicroserviceGateway.setup -> FastAPI {
         )
     );
 
+    # O-02: configure tracing once per process (no-op when disabled /
+    # jac-scale[tracing] absent); the dispatcher opens a span per request.
+    import from jac_scale.microservices.runtime.tracing {
+        install_tracing,
+        start_server_span,
+        end_span
+    }
+    trc_cfg = get_scale_config().get_microservices_config().get("tracing", {});
+    install_tracing(
+        enabled=trc_cfg.get("enabled", False),
+        endpoint=trc_cfg.get("endpoint"),
+        sample_ratio=float(trc_cfg.get("sample_ratio", 1.0))
+    );
+
     @self.app.middleware("http")
     async def dispatcher(request: Request, call_next: object) -> Response {
         path: str = request.url.path;
@@ -648,6 +678,14 @@ impl MicroserviceGateway.setup -> FastAPI {
         # when the request lands on each service.
         trace_id = ensure_trace_id(request.headers.get("X-Trace-Id"));
         tok = set_current_trace(trace_id);
+
+        # O-02: open one SERVER span per request (None when inactive).
+        span = start_server_span(
+            f"{request.method} {path}",
+            trace_id,
+            request.headers.get("traceparent"),
+            {"http.method": request.method, "http.target": path}
+        );
 
         start = time.time();
         svc_label: str = "__unmatched__";
@@ -731,6 +769,11 @@ impl MicroserviceGateway.setup -> FastAPI {
             # Echo trace id so clients can correlate and our e2e can
             # verify end-to-end propagation across the gateway hop.
             resp.headers["X-Trace-Id"] = trace_id;
+            # O-02: record the outcome on the SERVER span.
+            if span is not None {
+                span.set_attribute("http.status_code", resp.status_code);
+                span.set_attribute("jac.service", svc_label);
+            }
             # Prometheus metrics (no-op when prometheus_client absent).
             if gw._metrics_requests is not None {
                 import from jac_scale.microservices.gateway_internals.middleware.metrics {
@@ -748,6 +791,9 @@ impl MicroserviceGateway.setup -> FastAPI {
             }
             return resp;
         } finally {
+            # End the SERVER span (flushes it to the exporter) and clear
+            # the per-request traceparent before resetting the trace ctx.
+            end_span(span);
             reset_current_trace(tok);
         }
     }
@@ -827,7 +873,8 @@ impl MicroserviceGateway.start -> None {
 Creates a `JFastApiServer` instance that *wraps the gateway's existing
 FastAPI app* (instead of constructing a new one), then calls the
 `register_admin_endpoints` (JacAPIServerAdmin) + `register_logs_endpoints`
-(JacAPIServerLogs) methods. They queue JEndPoints via
+(JacAPIServerLogs) + `register_llm_telemetry_endpoints`
+(JacAPIServerLLMTelemetry) methods. They queue JEndPoints via
 `self.server.add_endpoint(...)` which the subsequent
 `self.server.create_server()` materializes into actual FastAPI routes
 on `self.server.app` - same object as `self.app`, so the admin routes
@@ -870,9 +917,16 @@ impl MicroserviceGateway._install_admin_api -> None {
     #    to self.server._endpoints (no FastAPI route is created yet).
     #    register_admin_endpoints comes from JacAPIServerAdmin (A-05c);
     #    register_logs_endpoints from JacAPIServerLogs (A-05a) - the
-    #    /admin/logs/* Loki-query endpoints the in-admin Logs UI hits.
+    #    /admin/logs/* Loki-query endpoints the in-admin Logs UI hits;
+    #    register_llm_telemetry_endpoints from JacAPIServerLLMTelemetry -
+    #    the /admin/llm/telemetry/* endpoints the in-admin LLM metrics UI
+    #    hits. Mirrors the monolith's _register_endpoints (serve.core)
+    #    which calls all three.
     self.register_admin_endpoints();
     self.register_logs_endpoints();
+    self.register_llm_telemetry_endpoints();
+    # /admin/traces/* (Tempo proxy) for the in-admin Traces page.
+    self.register_traces_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()

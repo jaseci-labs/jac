@@ -34,13 +34,13 @@ obj GoogleSSOProvider(SSOProvider) {
     Returns:
         RedirectResponse to Google's OAuth authorization page
     """
-    async def initiate_auth -> Response {
+    async def initiate_auth(state: str | None = None) -> Response {
         if not self._google_sso {
             raise RuntimeError("GoogleSSO not initialized");
         }
 
         with self._google_sso {
-            return await self._google_sso.get_login_redirect();
+            return await self._google_sso.get_login_redirect(state=state);
         }
     }
 

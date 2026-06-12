@@ -34,3 +34,13 @@ na {
         return {"total": w.total};
     }
 }
+
+# --- cl (ECMAScript, in-process via the kernel) ---
+cl {
+    def acc_cl() -> dict[str, any] {
+        w = Acc();
+        w spawn Item(val=10);
+        w spawn Item(val=32);
+        return {"total": w.total};
+    }
+}

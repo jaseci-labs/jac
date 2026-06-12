@@ -1,43 +1,36 @@
 """Reusable button component with variants."""
 
-cl {
-    def:pub Button(
-        children: any,
-        onClick: any = None,
-        variant: str = "primary",
-        size: str = "md",
-        type: str = "button",
-        disabled: bool = False,
-        className: str = ""
-    ) -> JsxElement {
-        baseClass = "font-medium rounded transition";
+def:pub Button(
+    children: any,
+    onClick: any = None,
+    variant: str = "primary",
+    size: str = "md",
+    type: str = "button",
+    disabled: bool = False,
+    className: str = ""
+) -> JsxElement {
+    baseClass = "inline-flex items-center justify-center gap-1.5 font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:cursor-not-allowed";
 
-        sizeClasses = {
-            "sm": "px-2 py-1 text-xs",
-            "md": "px-3 py-1.5 text-xs",
-            "lg": "px-4 py-2 text-sm"
-        };
+    sizeClasses = {
+        "sm": "px-2.5 py-1 text-xs",
+        "md": "px-3 py-1.5 text-xs",
+        "lg": "px-4 py-2 text-sm"
+    };
 
-        variantClasses = {
-            "primary": "bg-orange-500 hover:bg-orange-600 text-white",
-            "secondary": "bg-slate-800 hover:bg-slate-700 text-white",
-            "danger": "bg-red-500/20 hover:bg-red-500/30 text-red-400",
-            "ghost": "text-slate-500 hover:text-white",
-            "link": "text-slate-500 hover:text-white"
-        };
+    variantClasses = {
+        "primary": "bg-accent hover:bg-accent-hover text-accent-fg",
+        "secondary": "bg-surface-2 hover:bg-line text-fg border border-line",
+        "danger": "bg-danger hover:opacity-90 text-white",
+        "ghost": "text-muted hover:text-fg hover:bg-surface-2",
+        "link": "text-accent hover:text-accent-hover"
+    };
 
-        classes = baseClass + " " + (sizeClasses[size] or sizeClasses["md"]) + " " + (
-            variantClasses[variant] or variantClasses["primary"]
-        ) + " " + className;
+    classes = baseClass + " " + (sizeClasses[size] or sizeClasses["md"]) + " " + (
+        variantClasses[variant] or variantClasses["primary"]
+    ) + " " + className;
 
-        return
-            <button
-                type={type}
-                onClick={onClick}
-                disabled={disabled}
-                className={classes}
-            >
-                {children}
-            </button>;
-    }
+    return
+        <button type={type} onClick={onClick} disabled={disabled} className={classes}>
+            {children}
+        </button>;
 }

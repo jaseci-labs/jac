@@ -50,6 +50,7 @@ After `jac create`:
 2. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
 3. `jac install` - run after all jac.toml changes are final
 4. `jac start --dev main.jac` (background, for hot reload). NOT `jac serve` (deprecated).
+5. QA in a headless browser with `jac browse`: `jac browse open localhost:8000`, `jac browse snapshot`, `jac browse click @e5`, `jac browse close`. See `jac-fullstack-patterns` for the full loop.
 
 ## Pitfalls
 

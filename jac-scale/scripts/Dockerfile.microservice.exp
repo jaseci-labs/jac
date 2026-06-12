@@ -5,7 +5,11 @@
 # so a PyPI jac-client crashes against a PR that changes that API.
 # Build context = repo root (set by k8s_microservice_real_e2e.sh).
 
-FROM python:3.12-slim
+# Base image pinned by digest. The floating `python:3.12-slim` tag let the
+# base (and every unpinned transitive dep resolved against it) drift between
+# builds, which silently pushed the gateway pod over its memory limit and
+# turned the K8s e2e solid-red with no diff to point at. Bump deliberately.
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
 
 # BuildKit cache mounts survive flaky PyPI / debian mirrors across CI runs.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -26,7 +30,7 @@ COPY jac-scale /build/jac-scale
 COPY jac-client /build/jac-client
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -e /build/jac \
-    && jac install -e /build/jac-scale --extras deploy data \
+    && jac install -e /build/jac-scale --extras deploy data tracing \
     && jac install -e /build/jac-client
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
@@ -35,6 +39,12 @@ COPY ${PROJECT_PATH} /app
 
 RUN if [ -f jac.toml ]; then jac install || true; fi
 RUN jac --version
+
+# Log the fully-resolved dependency set into the build output. Deps are
+# unpinned (see jac.toml ranges) and re-resolved on every build because the
+# COPY layers above invalidate the install layer per-branch, so this is the
+# only record of what actually shipped in the image when a regression hits.
+RUN pip freeze
 
 # Fail fast if anything resolves to a PyPI install instead of /build/.
 # Use __path__[0] rather than os.path.dirname(__file__) so the check
@@ -45,5 +55,11 @@ locs = {p.__name__: p.__path__[0] for p in (jaclang, jac_scale, jac_client)}; \
 bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
 assert not bad, f'expected local-source install, got PyPI: {bad}'; \
 print('local-source install verified:', locs)"
+
+# Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
+# (12-char git commit SHA, +`-dirty` on uncommitted changes); kept LAST so
+# a changing SHA only rebuilds this tiny build-time layer.
+ARG JAC_BUILD_SHA=unknown
+ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}
 
 EXPOSE 8000

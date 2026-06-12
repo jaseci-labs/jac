@@ -1,7 +1,10 @@
 """Profile tab for Little X."""
 
-sv import from ..server { ProfileView }
+import from .ui.avatar { Avatar, AvatarImage, AvatarFallback }
+import from .ui.button { Button }
+import from .ui.textarea { Textarea }
 import from .TweetCard { TweetCard }
+sv import from ..social_graph { ProfileView }
 
 def:pub ProfileTab(
     myProfile: ProfileView | None,
@@ -26,24 +29,31 @@ def:pub ProfileTab(
         else 0;
     postCount = len(myProfile.tweets) if myProfile and myProfile.tweets else 0;
     myTweets = myProfile.tweets if myProfile and myProfile.tweets else [];
+    initial = displayUsername[0].upper() if displayUsername else "?";
 
     return
         <div>
-            <div className="lx-profile-banner"/>
-            <div className="lx-profile-info">
-                <div className="lx-profile-avatar-wrap">
-                    <img
-                        className="lx-avatar-lg"
-                        src={profileAvatar}
-                        alt={profileUsername}
-                    />
+            <div
+                className="h-36 w-full bg-gradient-to-br from-primary/50 via-primary/20 to-background"
+            />
+            <div className="px-4 pb-3">
+                <div className="-mt-12 flex items-end justify-between">
+                    <Avatar className="size-24 border-4 border-background shadow-lg">
+                        <AvatarImage src={profileAvatar} alt={profileUsername}/>
+                        <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
+                    </Avatar>
                 </div>
-                <div className="lx-profile-display-name">{displayUsername}</div>
-                <div className="lx-profile-handle">{"@" + displayUsername}</div>
+                <div
+                    className="mt-3 font-display text-xl font-extrabold text-foreground"
+                >
+                    {displayUsername}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                    {"@" + displayUsername}
+                </div>
                 {if editingBio {
-                    <div className="lx-bio-edit-wrap">
-                        <textarea
-                            className="lx-bio-input"
+                    <div className="mt-3 flex flex-col gap-2">
+                        <Textarea
                             rows={3}
                             placeholder="Write your bio..."
                             value={bioText}
@@ -51,51 +61,65 @@ def:pub ProfileTab(
                                 e.target.value
                             ); }}
                         />
-                        <div style={{"display": "flex", "gap": "0.5rem"}}>
-                            <button
-                                className="lx-bio-save-btn"
+                        <div className="flex gap-2">
+                            <Button
+                                size="sm"
+                                className="font-semibold"
                                 onClick={lambda { onSaveBio(); }}
                             >
                                 Save
-                            </button>
-                            <button
-                                className="lx-edit-profile-btn"
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
                                 onClick={lambda { onCancelEditBio(); }}
                             >
                                 Cancel
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 } else {
-                    <div className="lx-profile-bio-text">
+                    <p className="mt-3 text-sm text-foreground/90">
                         {myProfile.bio if myProfile and myProfile.bio else "No bio yet"}
-                    </div>
+                    </p>
                 } }
-                <div className="lx-profile-stats">
-                    <div className="lx-profile-stat">
-                        <strong>{str(followingCount)}</strong>
-                        Following
+                <div className="mt-4 flex gap-5 text-sm">
+                    <div className="flex items-center gap-1">
+                        <span className="font-display font-bold text-foreground">
+                            {str(followingCount)}
+                        </span>
+                        <span className="text-muted-foreground">Following</span>
                     </div>
-                    <div className="lx-profile-stat">
-                        <strong>{str(followerCount)}</strong>
-                        {("Follower" if followerCount == 1 else "Followers")}
+                    <div className="flex items-center gap-1">
+                        <span className="font-display font-bold text-foreground">
+                            {str(followerCount)}
+                        </span>
+                        <span className="text-muted-foreground">
+                            {("Follower" if followerCount == 1 else "Followers")}
+                        </span>
                     </div>
-                    <div className="lx-profile-stat">
-                        <strong>{str(postCount)}</strong>
-                        {("Post" if postCount == 1 else "Posts")}
+                    <div className="flex items-center gap-1">
+                        <span className="font-display font-bold text-foreground">
+                            {str(postCount)}
+                        </span>
+                        <span className="text-muted-foreground">
+                            {("Post" if postCount == 1 else "Posts")}
+                        </span>
                     </div>
                 </div>
             </div>
-            {for tweet in myTweets {
-                <TweetCard
-                    key={tweet.id}
-                    {tweet}
-                    myUsername={profileUsername}
-                    {onLike}
-                    {onComment}
-                    {onDelete}
-                    {onRepost}
-                />
-            }}
+            <div className="border-t border-border">
+                {for tweet in myTweets {
+                    <TweetCard
+                        key={tweet.id}
+                        {tweet}
+                        myUsername={profileUsername}
+                        {onLike}
+                        {onComment}
+                        {onDelete}
+                        {onRepost}
+                    />
+                }}
+            </div>
         </div>;
 }

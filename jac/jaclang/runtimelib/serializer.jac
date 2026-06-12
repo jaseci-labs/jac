@@ -10,6 +10,7 @@ import from typing { cast, get_args, get_origin, get_type_hints }
 import from types { NoneType, UnionType }
 import from typing { Union }
 import from uuid { UUID }
+import from jaclang.runtimelib.typecache { get_field_types }
 import from jaclang.jac0core.archetype {
     Anchor,
     NodeAnchor,
@@ -69,6 +70,18 @@ obj Serializer {
     """
     static def fingerprint(cls: type) -> str;
 
+    """Apply declared schema drift rules to a raw stored archetype dict.
+
+    Looks up the MRO-merged `__jac_schema__` rules for `cls` and applies
+    them (renames, upgrade callbacks, drop-attic) to `data`, honoring the
+    JAC_SCHEMA_REPAIR mode (`repair`/`detect`/`off`). Returns
+    (data, applied_steps): with no rules, no matching steps, or a
+    non-`repair` mode, `data` is returned unchanged with an empty list.
+    Called by `_deserialize_archetype` before the field loop, so every
+    persistence backend (SQLite, Mongo, caches) repairs identically.
+    """
+    static def repair(data: dict[str, object], cls: type) -> tuple;
+
     """Best-effort value coercion for Layer 3 schema migration.
 
     Attempts to convert `val` to `target_type` for stored anchor fields
@@ -81,14 +94,6 @@ obj Serializer {
     trying each variant in order.
     """
     static def coerce(val: object, target_type: object) -> tuple;
-
-    """Return a {field_name: resolved_annotation} map for a dataclass.
-
-    Uses typing.get_type_hints for forward-ref resolution, falling back to
-    raw __annotations__ if hints resolution fails (e.g. circular imports).
-    Non-dataclass classes return empty.
-    """
-    static def _get_field_types(cls: type) -> dict[str, object];
 
     """Convert object to JSON-compatible dict.
 

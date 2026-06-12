@@ -5,7 +5,7 @@ import shutil;
 import socket;
 import subprocess;
 import from pathlib { Path }
-import from jac_client.plugin.src.config_loader { JacClientConfig }
+import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
 glob JAC_MOBILE_VITE_PORT_ENV: str = "JAC_MOBILE_VITE_PORT";
 

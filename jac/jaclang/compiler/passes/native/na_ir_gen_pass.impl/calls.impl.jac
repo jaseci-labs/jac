@@ -15,12 +15,119 @@ impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Resolved callee signature for a call site.
+
+Consumes the checker-stamped `FuncCall.callee_decl` (Phase 4, analysis
+centralization). Call nodes synthesized after type checking (desugared
+pipe-forward) carry no stamp; for those the declaration is recovered
+through the target's stored `.sym` - a stamped-fact read, mirroring how
+`call_kind` is classified on the spot for the same nodes.
+"""
+impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) {
+    decl = nd.callee_decl;
+    if decl is None {
+        sym: (uni.Symbol | None) = None;
+        if isinstance(nd.target, uni.AstSymbolNode) {
+            sym = nd.target.sym;
+        } elif isinstance(nd.target, uni.AtomTrailer)
+        and isinstance(nd.target.right, uni.AstSymbolNode) {
+            sym = nd.target.right.sym;
+        }
+        if sym is not None and sym.defn {
+            cand = sym.defn[0];
+            if isinstance(cand, uni.Ability) {
+                decl = cand;
+            } elif isinstance(cand.parent, uni.Ability) {
+                decl = cand.parent;
+            }
+        }
+    }
+    sig = decl.signature if decl is not None else None;
+    return sig if isinstance(sig, uni.FuncSignature) else None;
+}
+
+"""Fill omitted trailing parameters at a call site from the resolved
+callee's default-value expressions (FuncCall.callee_decl, the
+checker-stamped fact). Used by both free-function and method dispatch;
+`skip_self` accounts for the implicit receiver already in `args`."""
+impl NaIRGenPass._fill_default_args(
+    nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
+) -> None {
+    callee_sig = self._callee_sig_of(nd);
+    if callee_sig is None or len(args) >= len(func.args) {
+        return;
+    }
+    sig_params = callee_sig.get_parameters();
+    base = len(args) - 1 if skip_self else len(args);
+    for pix in range(base, len(sig_params)) {
+        expected_type = func.args[len(args)].type
+            if len(args) < len(func.args)
+            else ir.IntType(64);
+        p = sig_params[pix];
+        if p.value is not None {
+            dval = self._codegen_expr(p.value);
+            if dval is not None {
+                args.append(self._coerce_type(dval, expected_type));
+            } else {
+                args.append(ir.Constant(expected_type, 0));
+            }
+        } else {
+            args.append(ir.Constant(expected_type, 0));
+        }
+    }
+}
+
+"""Evaluate a call node's argument expressions in order, dropping any
+that failed to lower (their own diagnostics already fired)."""
+impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
+    arg_vals: list[ir.Value] = [];
+    for param in (nd.params or []) {
+        v = self._codegen_expr(param);
+        if v is not None {
+            arg_vals.append(v);
+        }
+    }
+    return arg_vals;
+}
+
+"""Take a reference for a slot that is about to own `value`: a BORROWED
+value is retained; an OWNED value's +1 transfers to the slot as-is
+(compiler/ownership.jac invariant). Non-pointer values are untouched."""
+impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
+    if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
+        self._emit_rc_retain(value, op=op, loc=loc);
+    }
+}
+
+"""Emit E5090 for a builtin call the native emitter could not lower.
+
+Shared by the multi-arg and single-arg builtin dispatch paths so the
+diagnostic and its guidance stay consistent (issue #6357).
+"""
+impl NaIRGenPass._emit_unsupported_builtin_call(
+    nd: uni.FuncCall, func_name: str
+) -> None {
+    self.emit(
+        E5090,
+        node_override=nd,
+        kind="builtin call",
+        name=func_name,
+        help_text="This builtin is implemented for some argument types but could not be lowered for the argument(s) at this call site (for example `sum`/`min`/`max` over a `range` rather than a list). Restructure to a supported form, or move the code to a @sv/Python context."
+    );
+}
+
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
-    _call_kind = classify_call(nd);
+    # Dispatch on the checker-stamped call classification. Only call nodes
+    # synthesized after type checking (e.g. desugared pipe-forward) lack
+    # the stamp and are classified on the spot.
+    _call_kind = nd.call_kind;
+    if _call_kind is None {
+        import from jaclang.compiler.symbol_utils { classify_call }
+        _call_kind = classify_call(nd).value;
+    }
     # Handle method calls: obj.method(args)
-    if _call_kind == CallKind.METHOD {
+    if _call_kind == "method" {
         return self._codegen_method_call(nd);
     }
     func_name = self._get_name(nd.target);
@@ -28,10 +135,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     # Builtin fast-paths fire only when the call actually resolves to a builtin.
-    # classify_call is shadow-aware, so a user symbol named e.g. `len` is
-    # FUNCTION and falls through to the free-function path below instead of
+    # The classification is shadow-aware, so a user symbol named e.g. `len` is
+    # "function" and falls through to the free-function path below instead of
     # being hijacked by the builtin handling.
-    if _call_kind == CallKind.BUILTIN {
+    if _call_kind == "builtin" {
         # Handle print() specially
         if func_name == "print" {
             return self._emit_print(nd);
@@ -106,24 +213,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if func_name == "len" {
             params_l = nd.params or [];
             if params_l {
-                arg_name = self._get_name(params_l[0]);
                 elem_type_name: (str | None) = None;
-                if arg_name is not None and arg_name in self.var_list_elem_type {
-                    elem_type_name = self.var_list_elem_type[arg_name];
-                }
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
-                    # Check for dict type first
-                    if arg_name is not None and arg_name in self.var_dict_type {
-                        dict_key = self.var_dict_type[arg_name];
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="dict.len"
-                            );
-                        }
-                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {
@@ -135,18 +228,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                                 );
                                 break;
                             }
-                        }
-                    }
-                    # Check for set type
-                    if _len_result is None
-                    and arg_name is not None
-                    and arg_name in self.var_set_elem_type {
-                        set_key = self.var_set_elem_type[arg_name];
-                        helpers = self.set_helpers.get(set_key);
-                        if helpers is not None {
-                            _len_result = self.builder.call(
-                                helpers["len"], [arg_val], name="set.len"
-                            );
                         }
                     }
                     # Check for set type by inferring from value
@@ -365,6 +446,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 if result is not None {
                     return result;
                 }
+                # Builtin recognized with arguments, but the native emitter
+                # could not lower it for these argument types (e.g. `sum`/`min`/
+                # `max` over a `range` rather than a materialized list). Fail
+                # loudly instead of returning None and emitting a binary that
+                # silently prints an empty value (issue #6357).
+                self._emit_unsupported_builtin_call(nd, func_name);
+                return None;
             }
         }
         # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
@@ -407,6 +495,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     if result is not None {
                         return result;
                     }
+                    # Builtin recognized with an argument, but the native
+                    # emitter could not lower it for this argument type. Fail
+                    # loudly rather than silently dropping the value (#6357).
+                    self._emit_unsupported_builtin_call(nd, func_name);
+                    return None;
                 }
             }
         }
@@ -655,14 +748,21 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 return _icall_result;
             }
         }
-        return None;
-    }
-    # Propagate return type hint for for-loop element resolution
-    if func_name in self.method_ast_sigs {
-        fn_sig = self.method_ast_sigs[func_name];
-        if fn_sig?.return_type and fn_sig.return_type is not None {
-            self._last_type_node_hint = fn_sig.return_type;
+        # Nothing resolved this free-function call: not a user function,
+        # struct constructor, interop binding, or callable local. A genuinely
+        # unknown name (typo'd or Python-only function) cannot be lowered to
+        # the native subset -- emit a structured error rather than silently
+        # returning None, which would leave the call site empty and produce a
+        # binary that prints garbage instead of failing the compile (issue
+        # #6357). Builtin-classified names are excluded here: a no-arg
+        # collection constructor like `set()`/`dict()`/`list()` legitimately
+        # reaches this point and is materialized from the assignment's type
+        # annotation; builtin calls that truly cannot be lowered are caught at
+        # their dispatch site above (where the arguments are known).
+        if _call_kind != "builtin" {
+            self.emit(E5090, node_override=nd, kind="function", name=func_name);
         }
+        return None;
     }
     # Build arguments
     args: list[ir.Value] = [];
@@ -673,25 +773,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             args.append(val);
         }
     }
-    # Fill in missing optional parameters with their AST default values
-    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
-        sig_params = self.method_ast_sigs[func_name].get_parameters();
-        for pix in range(len(args), len(sig_params)) {
-            p = sig_params[pix];
-            expected_type = func.args[len(args)].type
-                if len(args) < len(func.args)
-                else ir.IntType(64);
-            if p.value is not None {
-                dval = self._codegen_expr(p.value);
-                if dval is not None {
-                    args.append(self._coerce_type(dval, expected_type));
-                } else {
-                    args.append(ir.Constant(expected_type, 0));
-                }
-            } else {
-                args.append(ir.Constant(expected_type, 0));
-            }
-        }
+    # Fill in missing optional parameters with the resolved callee's
+    # default-value exprs (checker-stamped fact, not a name-keyed cache)
+    self._fill_default_args(nd, func, args, skip_self=False);
+    # Foreign (clib) calls: marshal per the recorded System V ABI plan. This is
+    # the single authority for foreign argument/return lowering — it slices
+    # struct args into register pieces / byval pointers and reconstructs the
+    # return, instead of guessing from LLVM value shapes at the call site.
+    if func_name in self.clib_fn_abi {
+        return self._codegen_clib_call(func, func_name, args);
     }
     # Type coerce arguments
     coerced: list[ir.Value] = [];
@@ -703,6 +793,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    # The callee borrows its arguments (it RETAINs internally any it keeps);
+    # release any owned temporaries we passed so they don't leak (e.g.
+    # `f([(-1,-1), (1,1)])` — the list literal, and any value-tuple boxed by
+    # _coerce_type, are owned temporaries borrowed by the callee).
+    self._release_owned_args(coerced, op="call_arg");
     # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
     if func_name in self.clib_extern_names {
         # Check ABI integer return types first (small structs coerced to int)
@@ -724,12 +819,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # every pointer returned by a user function is owned (either via RETAIN
-    # inside the callee for borrowed refs, or via skip_var donation for named locals).
-    # Mark the call result owned so the caller's assign handler skips an extra RETAIN.
-    if isinstance(result.type, ir.PointerType) {
-        self._mark_owned(result);
-    }
+    # Every pointer returned by a user function carries a +1 (RETAIN inside
+    # the callee for borrowed refs, or skip-var donation for named locals);
+    # ownership is applied at the _codegen_expr seam from the central
+    # invariant (compiler/ownership.jac).
     return result;
 }
 # ─── External Function Support ───────────────────────────────

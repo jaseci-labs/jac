@@ -54,6 +54,7 @@ impl UserManager._ensure_connection -> None {
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if user already exists
         cursor = self._conn.execute(
@@ -85,6 +86,7 @@ impl UserManager.authenticate(
     username: str, password: str
 ) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     with self._lock {
         cursor = self._conn.execute(
@@ -102,6 +104,7 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT username FROM users WHERE token = ?", (token, )
@@ -114,6 +117,7 @@ impl UserManager.validate_token(token: str) -> (str | None) {
 """Get user's root node ID."""
 impl UserManager.get_root_id(username: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT root_id FROM users WHERE username = ?", (username, )
@@ -131,6 +135,7 @@ impl UserManager.aget_root_id(username: str) -> (str | None) {
 """Get user data by username."""
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT token, root_id FROM users WHERE username = ?", (username, )
@@ -146,6 +151,7 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 """Check if a user exists."""
 impl UserManager.user_exists(username: str) -> bool {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT 1 FROM users WHERE username = ?", (username, )
@@ -160,6 +166,7 @@ impl UserManager.update_username(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Check if new username already exists
         cursor = self._conn.execute(
@@ -192,6 +199,7 @@ impl UserManager.update_password(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         # Verify current password
         current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
@@ -622,6 +630,22 @@ impl ModuleIntrospector._extract_access_levels -> None {
     self._walker_access = {};
     mod_path = self._module?.__file__;
     main_mod = Jac.program.find_module(os.path.abspath(mod_path)) if mod_path else None;
+    # A bytecode-only cache hit leaves the entry module out of the hub; compile
+    # it so its access map is available rather than defaulting all to auth.
+    if not main_mod and mod_path {
+        try {
+            main_mod = Jac.program.compile(os.path.abspath(mod_path));
+        } except Exception as e {
+            import logging;
+            logging.getLogger(__name__).warning(
+                "serve: fallback compile of %s failed; access table will be "
+                "empty and endpoints default to auth-required: %s",
+                mod_path,
+                e
+            );
+            main_mod = None;
+        }
+    }
     if not main_mod {
         return;
     }
@@ -656,11 +680,29 @@ impl ModuleIntrospector._extract_access_levels -> None {
             }
         }
     }
+    import from jaclang.jac0core.compiler { get_boundary_analysis_sched }
     for src_mod in sources {
         if not (src_mod and src_mod.gen and src_mod.gen.interop_manifest) {
             continue;
         }
         man = src_mod.gen.interop_manifest;
+        # BoundaryAnalysisPass runs on a compile's entry module, not on the
+        # providers it imports -- so a provider's access map is empty until we
+        # run the pass on it here (a no-op when it declares no endpoints).
+        if not (man.walker_access or man.func_access) {
+            try {
+                Jac.program.run_schedule(src_mod, get_boundary_analysis_sched());
+            } except Exception as e {
+                import logging;
+                logging.getLogger(__name__).warning(
+                    "serve: boundary analysis of %s failed; its imported "
+                    "endpoints will default to auth-required: %s",
+                    src_mod?.loc?.mod_path,
+                    e
+                );
+            }
+            man = src_mod.gen.interop_manifest;
+        }
         for (name, auth) in man.func_access.items() {
             if name not in self._function_access {
                 self._function_access[name] = auth;
@@ -776,7 +818,20 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
             if imported {
                 return getattr(imported[0], name, None);
             }
-        } except Exception {
+        } except Exception as e {
+            # Fail loud: a cross-boundary endpoint whose provider module fails
+            # to import would otherwise vanish from the API with no trace (the
+            # #6507 debugging trap). Surface it on the server log so a broken
+            # module is visible instead of silently dropping its endpoints.
+            import logging;
+            logging.getLogger("jaclang.serve").warning(
+                "cross-boundary endpoint '%s' unavailable: server module %r "
+                "failed to import (%s: %s)",
+                name,
+                src_path,
+                type(e).__name__,
+                e
+            );
             return None;
         }
         return None;
@@ -989,6 +1044,44 @@ impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] 
         self.load();
     }
     return dict(self._client_functions);
+}
+
+"""Resolve which client page should be served at the root path (/).
+
+Honors an explicitly configured base_route_app first. When none is set,
+infers a root page only from an intent-bearing signal: a conventionally
+named entry point (app/index/main/home/root). Returns "" otherwise, leaving
+the root path as the JSON API index.
+
+Inference is deliberately driven by intent, not incidence. A page named by
+convention says "this is the entry point"; an app that merely happens to
+expose one `cl` page (reachable at /cl/<name>) has not asked to become a
+single-page app, and silently promoting it would replace the JSON API index
+and impose the full client build toolchain on an otherwise API-only server.
+To serve a non-conventionally-named page at /, set base_route_app explicitly.
+Name matching is case-insensitive; the first declared spelling wins.
+"""
+impl ModuleIntrospector.resolve_root_app(configured: str = "") -> str {
+    if configured {
+        return configured;
+    }
+    # Client-only `cl` pages have no server-side attribute, so the manifest's
+    # export list (not get_client_functions) is the source of truth here.
+    self.load();
+    names = list(self._client_manifest.get('exports', []));
+    if not names {
+        return "";
+    }
+    by_lower: dict[(str, str)] = {};
+    for n in names {
+        by_lower.setdefault(n.lower(), n);
+    }
+    for candidate in ["app", "index", "main", "home", "root"] {
+        if candidate in by_lower {
+            return by_lower[candidate];
+        }
+    }
+    return "";
 }
 
 """Get callable signature information."""
@@ -1496,6 +1589,16 @@ impl ExecutionHandler.spawn_walker(
 impl JacAPIServer.postinit -> None {
     import from jaclang.runtimelib.scheduler { Scheduler }
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
+    # Back `root.shared`: map the internal guest user to its root id, creating
+    # the guest account on first use (request paths create it lazily too).
+    _um = self.user_manager;
+    def _shared_root_id -> (str | None) {
+        if not _um.user_exists(Con.GUEST.value) {
+            _um.create_user(Con.GUEST.value, '__no_password__');
+        }
+        return _um.get_root_id(Con.GUEST.value);
+    }
+    Jac.set_shared_root_resolver(_shared_root_id);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
         base_path=self.base_path, user_manager=self.user_manager
@@ -1714,6 +1817,14 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 }
                 return;
             }
+            if (path == '/__build_status') {
+                # Dev-mode build health for external tooling — HTTP 200 alone
+                # can't tell a clean build from a broken one (compile errors
+                # still serve the error-overlay page).
+                import from jaclang.runtimelib.hmr { get_build_status }
+                Jac.send_json(self, 200, get_build_status());
+                return;
+            }
             is_static_path = path.startswith('/static/');
             import from jaclang.project.config { get_config }
 
@@ -1849,9 +1960,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/') {
-                base_route_app = config.serve.base_route_app if config else "";
+                configured_root = config.serve.base_route_app if config else "";
+                base_route_app = server.introspector.resolve_root_app(configured_root);
                 if base_route_app {
-                    # Serve the configured base route app at /
+                    # Serve the configured (or inferred) base route app at /
                     query_params = parse_qs(parsed_path.query, keep_blank_values=True);
                     args = {
                         key: values[0] if (len(values) == 1) else values
@@ -1955,7 +2067,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 );
             } else {
                 # SPA catch-all: serve base_route_app for unmatched extensionless paths
-                base_route_app = config.serve.base_route_app if config else "";
+                configured_root = config.serve.base_route_app if config else "";
+                base_route_app = server.introspector.resolve_root_app(configured_root);
                 if base_route_app {
                     self._render_page(base_route_app, {});
                 } else {
@@ -2319,7 +2432,13 @@ impl JacAPIServer.start(
     }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = self.introspector.resolve_root_app(configured_root);
+    if self.server is None {
+        raise RuntimeError(
+            "Cannot start server: no socket was bound (test mode, port=0)"
+        );
+    }
     with self.server as httpd {
         console.print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         console.print(f"Module: {self.module_name}");
@@ -2341,7 +2460,8 @@ impl JacAPIServer.start(
             f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
         );
         if base_route_app {
-            console.print(f'\nBase route (/) configured to serve: {base_route_app}');
+            origin = "configured" if configured_root else "inferred";
+            console.print(f'\nBase route (/) {origin} to serve: {base_route_app}');
         }
         console.print('\nPress Ctrl+C to stop the server');
         # Display bundle error after endpoints if one occurred
@@ -2468,7 +2588,8 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    base_route_app = config.serve.base_route_app if config else "";
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = server.introspector.resolve_root_app(configured_root);
     section('CLIENT PAGES', 'Public');
     if client_exports {
         funcs_list = ', '.join(sorted(client_exports)[:8]);

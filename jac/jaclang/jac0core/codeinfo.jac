@@ -17,7 +17,12 @@ obj ClientManifest {
         globals_values: dict[(str, Any)] = field(default_factory=`dict),
         has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict),
-        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict);
+        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        tests: list[dict[(str, str)]] = field(default_factory=`list),
+        # Absolute paths of server (`sv import`) modules this client file binds
+        # to. A full-stack cl test boots these directly instead of guessing the
+        # backend by filename.
+        server_imports: list[str] = field(default_factory=`list);
 }
 
 """Codespace context for interop bindings."""
@@ -91,6 +96,30 @@ obj NativeFuncLayout {
         ret_enum_type: (str | None) = None;
 }
 
+"""Layout info for a native test block.
+
+A `test` block in native context lowers to a zero-argument native function
+returning `i8*`: null means the test passed, a non-null pointer is a static
+failure message (the uncaught exception's message).
+"""
+obj NativeTestLayout {
+    has name: str,
+        symbol: str,
+        description: str = "",
+        line: int = 0;
+}
+
+"""Native symbol name for a test block.
+
+Single naming contract shared by NaIRGenPass (which defines the function)
+and PyastGenPass (whose host-side shim looks the address up by name). The
+line number keeps symbols unique when two descriptions derive the same
+identifier.
+"""
+def native_test_symbol(name: str, line: int) -> str {
+    return f"__jac_test_{name}_{line}";
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
@@ -136,7 +165,8 @@ obj NativeModuleLayout {
         functions: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         methods: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         list_elem_types: dict[(str, str)] = field(default_factory=`dict),
-        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict);
+        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict),
+        tests: list[NativeTestLayout] = field(default_factory=`list);
 }
 
 """Metadata for a type (obj, node, enum) that crosses a codespace boundary.
@@ -240,7 +270,17 @@ obj CodeGenTarget {
         # Paths to C shared libraries discovered during native compilation.
         # Set by NaIRGenPass._process_clib_imports, consumed by NativeCompilePass
         # and nacompile CLI for transitive .so loading and AOT linking.
-        _clib_paths: list[str] = field(default_factory=`list);
+        _clib_paths: list[str] = field(default_factory=`list),
+        # Maps each clib function's C name to the library it was imported from
+        # (e.g. "InitWindow" -> "libraylib.dylib"). Set by the same pass and
+        # consumed by the nacompile CLI to drive Mach-O two-level dylib ordinals.
+        _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),
+        # Names of `:pub` functions/globals to export across the C ABI when
+        # building a shared library (jac nacompile --shared). Recorded by
+        # NaIRGenPass, propagated across AOT-linked imports by NativeCompilePass,
+        # and consumed by the nacompile CLI + platform linkers to build the
+        # export table (ELF .dynsym / Mach-O export trie / PE export directory).
+        _exported_symbols: list[str] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
 }

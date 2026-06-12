@@ -913,6 +913,32 @@ Or, when some rows are still stuck (often because the class involved isn't cover
 └───────────┴─────────────────────────────────────────────────┘
 ```
 
+### jac db schema rules
+
+List every registered [`__jac_schema__` drift rule](../persistence.md#declared-drift-rules-__jac_schema__) along with the active `JAC_SCHEMA_REPAIR` mode. The app is imported first (same `--app` / cwd discovery as the other subcommands), which is what runs the `__jac_schema__` hooks and registers the rules.
+
+```bash
+jac db schema rules --app app.jac
+```
+
+**Output:**
+
+```
+Registered schema drift rules
+[INFO] JAC_SCHEMA_REPAIR mode: repair
+                    Rules
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ archetype       ┃ rule    ┃ detail                ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+│ __main__.User   │ was     │ myapp.models.OldUser  │
+│ __main__.User   │ alias   │ username -> name      │
+│ __main__.User   │ drop    │ legacy_bio            │
+│ __main__.User   │ upgrade │ split_tags            │
+└─────────────────┴─────────┴───────────────────────┘
+```
+
+Useful as a pre-deploy sanity check: it confirms which renames, drops, and upgrade callbacks will apply when old documents load, and which repair mode the process will run under.
+
 ### Typical rescue workflow
 
 ```bash
@@ -1899,9 +1925,6 @@ For `target=mobile`, `--platform` supports `android`, `ios`, or `all`.
 **Examples:**
 
 ```bash
-# Setup PyTauri desktop scaffold
-jac setup desktop
-
 # Setup Capacitor for mobile builds
 jac setup mobile
 
@@ -1922,27 +1945,12 @@ jac setup mobile --platform all
 | `jac add` | `--npm` | Add npm (client-side) dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
-#### jac desktop
+#### Desktop builds
 
-Manage native Tauri plugins for the current project. Requires `pip install jac-desktop` and `jac setup desktop`.
-
-```bash
-jac desktop plugin list
-jac desktop plugin add dialog fs
-jac desktop plugin remove dialog
-jac desktop plugin sync
-```
-
-| Command | Description |
-|---------|-------------|
-| `jac desktop plugin list` | Show catalog and which plugins are in `[plugins.desktop].tauri_plugins` |
-| `jac desktop plugin add <ids…>` | Add plugin ids, regenerate capabilities, sync npm deps |
-| `jac desktop plugin remove <ids…>` | Remove plugin ids and regenerate |
-| `jac desktop plugin sync` | Idempotent regen after manual `jac.toml` edits |
-
-Updates `capabilities/` and, when `[plugins.desktop].auto_tauri_plugin_npm` is true (default), matching `@tauri-apps/plugin-*` entries in `[dependencies.npm]`. Does not rewrite `src-pytauri/app.py` (stable stub).
-
-See [jac-desktop Reference](../plugins/jac-desktop.md#cli-commands) for command details and configuration.
+The `desktop` client target is provided by `pip install jac-desktop`. There is no
+separate `jac desktop` command and no setup step - build and run with
+`jac build --client desktop` / `jac start --client desktop`. See the
+[jac-desktop Reference](../plugins/jac-desktop.md) for configuration.
 
 ---
 

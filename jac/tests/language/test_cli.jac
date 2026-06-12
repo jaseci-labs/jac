@@ -15,6 +15,7 @@ import jaclang;
 import from jaclang.cli.commands { analysis, execution, project, tools, transform }
 import from jaclang.cli.commands { config as config_cmd }
 import from jaclang.cli.registry { get_registry }
+import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
@@ -42,7 +43,7 @@ def _assert_error_pretty_found(needle: str, haystack: str) {
 }
 
 """Run jac check and return file count."""
-def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
+def _run_jac_check(test_dir: str, ignore_pattern: (list | None) = None) -> int {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -51,7 +52,7 @@ def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
     sys.stderr = captured_stderr;
 
     try {
-        analysis.check([test_dir], ignore=ignore_pattern);
+        analysis.check([test_dir], ignore=ignore_pattern or []);
         stdout = captured_stdout.getvalue();
         stderr = captured_stderr.getvalue();
     } finally {
@@ -198,6 +199,29 @@ test "jac cli run python file" {
     assert "Result: 42" in stdout_value;
     assert "Python execution completed." in stdout_value;
     assert "10" in stdout_value;
+}
+
+test "jac run with no filename reports missing required argument" {
+    env = dict(os.environ);
+    env["PYTHONPATH"] = JAC_ROOT;
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run"],
+        cwd=JAC_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    );
+    combined = result.stdout + result.stderr;
+    assert result.returncode != 0 , (
+        f"Expected non-zero exit for bare jac run; got:\n{combined}"
+    );
+    assert "required: filename" in combined , (
+        f"Expected missing filename error; got:\n{combined}"
+    );
+    assert "NoneType" not in combined , (
+        f"Should not crash with TypeError; got:\n{combined}"
+    );
 }
 
 test "jac run py fstr" {
@@ -482,6 +506,43 @@ test "run test with directory filter" {
     assert "circle" in stdout;
     assert "circle_purfe.test" not in stdout;
     assert "circle_pure.impl" not in stdout;
+}
+
+test "discovery prunes hidden and pycache dirs" {
+    tmp_dir = tempfile.mkdtemp();
+    try {
+        os.makedirs(os.path.join(tmp_dir, ".jac"));
+        os.makedirs(os.path.join(tmp_dir, "__pycache__"));
+        # A real, top-level test that must be discovered and pass.
+        Path(os.path.join(tmp_dir, "good_test.jac")).write_text(
+            'test "good_one" {\n    assert True;\n}\n'
+        );
+        # Failing tests planted inside the build-cache (".jac") and pycache
+        # dirs. The discovery walk must prune these, so they never run.
+        Path(os.path.join(tmp_dir, ".jac", "skip_test.jac")).write_text(
+            'test "pruned_cache" {\n    assert False;\n}\n'
+        );
+        Path(os.path.join(tmp_dir, "__pycache__", "skip_test.jac")).write_text(
+            'test "pruned_pyc" {\n    assert False;\n}\n'
+        );
+        process = subprocess.Popen(
+            ["jac", "test", "-d", tmp_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+        # Top-level test is discovered and runs to a pass.
+        assert "good_test.jac" in combined;
+        assert "Passed successfully." in combined;
+        # Hidden / pycache dirs are pruned: their failing tests never run.
+        assert "skip_test.jac" not in combined;
+        assert "FAILED" not in combined;
+        assert process.returncode == 0;
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
 }
 
 test "run test with filter maxfail" {
@@ -1164,7 +1225,7 @@ test "install editable resolves config from target package when outside project 
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=str(pkg_dir));
+            result = project.install(editable=[[str(pkg_dir)]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
@@ -1200,7 +1261,7 @@ test "install editable resolves config from cwd when given dot path" {
             "jaclang.publish.builder.WheelBuilder.install_editable",
             fake_install_editable
         ) {
-            result = project.install(editable=".");
+            result = project.install(editable=[["."]]);
         }
 
         assert result == 0 , f"Expected success, got exit code {result}";
@@ -1208,6 +1269,105 @@ test "install editable resolves config from cwd when given dot path" {
         assert captured_src_dir[0] == resolved_tmpdir , (
             f"Expected src_dir={resolved_tmpdir}, got {captured_src_dir[0]}"
         );
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install -e accepts space-separated and repeated flag forms" {
+    _tmpdir = tempfile.mkdtemp();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+
+        # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
+        process = subprocess.Popen(
+            [
+                "jac",
+                "install",
+                "-e",
+                str(pkg_a),
+                str(pkg_b),
+                "-e",
+                str(pkg_c),
+                "--dry-run"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+
+        assert process.returncode == 0 , (
+            f"Expected exit 0, got {process.returncode}.\n{combined}"
+        );
+        assert "pkg-a" in combined , f"pkg-a not mentioned in output:\n{combined}";
+        assert "pkg-b" in combined , f"pkg-b not mentioned in output:\n{combined}";
+        assert "pkg-c" in combined , f"pkg-c not mentioned in output:\n{combined}";
+    } finally {
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install -e links all packages for space-separated and repeated flag forms" {
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        pkg_a = (Path(_tmpdir) / "pkg-a").resolve();
+        pkg_b = (Path(_tmpdir) / "pkg-b").resolve();
+        pkg_c = (Path(_tmpdir) / "pkg-c").resolve();
+        pkg_a.mkdir();
+        pkg_b.mkdir();
+        pkg_c.mkdir();
+        (pkg_a / "jac.toml").write_text(
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_b / "jac.toml").write_text(
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        (pkg_c / "jac.toml").write_text(
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+
+        linked: list = [];
+        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+            linked.append(src_dir);
+        }
+
+        with patch(
+            "jaclang.publish.builder.WheelBuilder.install_editable",
+            fake_install_editable
+        ) {
+            # [[pkg_a, pkg_b], [pkg_c]] mirrors: -e pkg_a pkg_b -e pkg_c
+            result = project.install(editable=[[str(pkg_a), str(pkg_b)], [str(pkg_c)]]);
+        }
+
+        assert result == 0 , f"Expected exit 0, got {result}";
+        assert len(linked) == 3 , f"Expected install_editable called 3 times, got {len(
+            linked
+        )}";
+        assert pkg_a in linked , f"pkg-a not linked; linked={linked}";
+        assert pkg_b in linked , f"pkg-b not linked; linked={linked}";
+        assert pkg_c in linked , f"pkg-c not linked; linked={linked}";
     } finally {
         _reset_config();
         os.chdir(original_cwd);
@@ -1880,21 +2040,17 @@ test "jac check nowarn flag suppresses warnings" {
 }
 
 """Run analysis.check with captured stdout/stderr; reset global config after."""
-def _check_captured(paths: list, disable_error_code: list = []) -> tuple[int, str] {
-    captured_stdout = io.StringIO();
-    captured_stderr = io.StringIO();
-    old_stdout = sys.stdout;
-    old_stderr = sys.stderr;
-    sys.stdout = captured_stdout;
-    sys.stderr = captured_stderr;
+def _check_captured(
+    paths: list, disable_error_code: (list | None) = None
+) -> tuple[int, str] {
+    (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
     _reset_config();
     try {
-        result = analysis.check(paths, disable_error_code=disable_error_code);
+        result = analysis.check(paths, disable_error_code=disable_error_code or []);
         combined = captured_stdout.getvalue() + captured_stderr.getvalue();
         return (result, combined);
     } finally {
-        sys.stdout = old_stdout;
-        sys.stderr = old_stderr;
+        _restore_output(old_stdout, old_stderr);
         set_config(None);
         _reset_config();
     }
@@ -1911,7 +2067,7 @@ test "jac check disable_error_code maps to check arg" {
 }
 
 test "jac check disable_error_code resolves kebab alias and comma tokens" {
-    (resolved, unknown) = analysis._resolve_disable_error_codes(
+    (resolved, unknown) = resolve_diagnostic_tokens(
         ["no-print", "E1030,W2001", "e9999", "E9999"]
     );
     assert resolved == ["E3012", "E1030", "W2001"] , (

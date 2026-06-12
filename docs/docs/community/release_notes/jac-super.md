@@ -2,7 +2,33 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.16 (Latest Release)
+## jac-super 0.1.20 (Latest Release)
+
+### New Features
+
+- **Feature: sonner toast component**: The jac-shadcn registry now ships the sonner toast/notification component, installable with `jac add --shadcn sonner`. (jaseci-labs/jaseci#6467)
+
+### Bug Fixes
+
+- **Fix: jac-shadcn projects build out of the box**: `jac create --use jac-shadcn` now wires Tailwind and generates importable, compilable components. (jaseci-labs/jaseci#6461)
+- **Fix: idiomatic `cn(*inputs)` in shadcn scaffold**: now that the client compiler emits rest parameters, the generated `cn` helper uses `cn(*inputs: any)` instead of a 12-positional-argument workaround. (jaseci-labs/jaseci#6466)
+
+### Refactors
+
+- **Refactor: registry components use the bare client form**: jac-shadcn components delivered by `jac add --shadcn` no longer carry redundant `cl` import and block markers. (jaseci-labs/jaseci#6467)
+
+## jac-super 0.1.18
+
+### Bug Fixes
+
+- **Fix: `jac remove --shadcn` resolves the installed filename**: Removal now looks up each component's file via the registry instead of assuming `<name>.cl.jac`, so components whose registry name differs from their file (e.g. `input-otp` installs as `otp-input.cl.jac`) are correctly removed instead of silently no-op'ing.
+
+### Refactors
+
+- **Refactor: shadcn components use idiomatic Jac client style**: All 53 shadcn UI components under `registry/components/ui` were rewritten from JS/React-flavored code to idiomatic Jac client conventions (typed prop bundles spread with `{**x}`, list comprehensions and `{for ... {}}` statement slots over `.map`/`.filter`, `len()`/`isinstance`/f-strings/`is None` over their JS equivalents, and `any` annotations on npm/context-derived values) so the whole set passes `jac check` with zero errors. No runtime behavior change.
+- **Refactor: One-line JSX returns across shadcn components**: Applied the updated formatter, collapsing short `return <Element/>;` statements onto a single line across the shadcn registry UI components.
+
+## jac-super 0.1.16
 
 ### New Features
 

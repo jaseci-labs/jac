@@ -75,10 +75,26 @@ impl EsastGenPass.exit_test(nd: uni.Test) -> None {
     body_stmts = self._prepend_hoisted(nd, body_stmts);
     block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
     func_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
+    # Client tests are emitted async so bodies can `await` the cl->sv fetch
+    # bridge (full-stack tests). The runner's harness awaits every test; a
+    # synchronous body is unaffected by being declared async.
     func_decl = self.sync_loc(
-        es.FunctionDeclaration(id=func_id, params=params, body=block), jac_node=nd
+        es.FunctionDeclaration(id=func_id, params=params, body=block, async_=True),
+        jac_node=nd
     );
     nd.gen.es_ast = func_decl;
+    # Record this test in the client manifest so the cl test runner can
+    # enumerate and invoke it. The emitted JS function stays a plain
+    # top-level declaration; the runner appends a harness that calls it.
+    self.client_manifest.has_client = True;
+    self.client_manifest.tests.append(
+        {
+            'name': nd.name.sym_name,
+            'description': nd.description.lit_value
+                if nd.description
+                else nd.name.sym_name
+        }
+    );
 }
 
 """Process client block (cl { ... })."""
@@ -173,6 +189,28 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     name = name_map.get(nd.sym_name, nd.sym_name);
     identifier = self.sync_loc(es.Identifier(name=name), jac_node=nd);
     nd.gen.es_ast = identifier;
+}
+
+"""Lower a Python builtin type (str, int, list, ...) used as a *value*.
+
+A builtin-type name has no first-class JS counterpart, so when one appears as a
+value -- the 2nd arg of isinstance/issubclass, a member of a tuple of types,
+etc. -- lower it to a string tag carrying its Python type name. The
+`_jac.builtin.isinstance`/`issubclass` runtime helpers interpret these tags
+(via `_jac.poly._typename`). Without this handler the node produced no es_ast
+and was silently dropped from enclosing argument lists, crashing
+`isinstance(x, str)` codegen with a bare IndexError (jaseci-labs/jaseci#6458).
+
+A builtin type in *call* position (`str(x)`, `list(it)`) is dispatched to its
+emitter in `exit_func_call` before this es_ast is consulted, so constructors are
+unaffected.
+"""
+impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
+    type_name = nd.sym_name;
+    tag = self.sync_loc(
+        es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
+    );
+    nd.gen.es_ast = tag;
 }
 
 """Process null/None literal."""
@@ -326,20 +364,32 @@ impl EsastGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
     nd.gen.es_ast = expr;
 }
 
+"""Build a JS string literal from a Jac String node, decoding escapes.
+
+`nd.lit_value` interprets escape sequences (\n, \t, \xNN, ...) and honors raw/
+byte prefixes exactly like the Python/sv target and `_literal_value`, so every
+backend agrees on what the same source token *means* (#6476 item 1). json.dumps
+then re-encodes that decoded value as a JS string literal -- JSON string syntax
+is a subset of ECMAScript string syntax, so the emitted `raw` is always valid JS
+and round-trips control characters, quotes, and backslashes correctly.
+"""
+impl EsastGenPass._str_literal(nd: uni.String) -> es.Literal {
+    decoded = nd.lit_value;
+    if isinstance(decoded, str) {
+        return self.sync_loc(
+            es.Literal(value=decoded, raw=json.dumps(decoded)), jac_node=nd
+        );
+    }
+    # Byte-string literals (b"...") have no JS string equivalent; fall back to
+    # the raw source token (out-of-scope, pre-existing behavior unchanged).
+    raw_token = nd.value;
+    fallback_raw = json.dumps(raw_token) if isinstance(raw_token, str) else None;
+    return self.sync_loc(es.Literal(value=raw_token, raw=fallback_raw), jac_node=nd);
+}
+
 """Process string literal."""
 impl EsastGenPass.exit_string(nd: uni.String) -> None {
-    value = nd.value;
-    if value.startswith(('"""', "'''")) {
-        value = value[3:-3];
-    } elif value.startswith(('"', "'")) {
-        value = value[1:-1];
-    }
-    raw_value = nd.value;
-    if isinstance(value, str) {
-        raw_value = json.dumps(value);
-    }
-    str_lit = self.sync_loc(es.Literal(value=value, raw=raw_value), jac_node=nd);
-    nd.gen.es_ast = str_lit;
+    nd.gen.es_ast = self._str_literal(nd);
 }
 
 """Process multi-string literal."""
@@ -354,16 +404,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             nd.gen.es_ast = string_node.gen.es_ast;
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=string_node.value), jac_node=string_node
-            );
-            nd.gen.es_ast = str_lit;
+            nd.gen.es_ast = self._str_literal(string_node);
         } else {
             nd.gen.es_ast = self.sync_loc(es.Literal(value=''), jac_node=nd);
         }
@@ -374,19 +415,7 @@ impl EsastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
         if string_node.gen.es_ast {
             parts.append(string_node.gen.es_ast);
         } elif isinstance(string_node, uni.String) {
-            value = string_node.value;
-            if value.startswith(('"""', "'''")) {
-                value = value[3:-3];
-            } elif value.startswith(('"', "'")) {
-                value = value[1:-1];
-            }
-            raw_val = json.dumps(value)
-                if isinstance(value, str)
-                else string_node.value;
-            str_lit = self.sync_loc(
-                es.Literal(value=value, raw=raw_val), jac_node=string_node
-            );
-            parts.append(str_lit);
+            parts.append(self._str_literal(string_node));
         }
     }
     if not parts {
@@ -803,7 +832,7 @@ impl EsastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
 impl EsastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     params: list[es.Pattern] = [];
     if isinstance(nd.signature, uni.FuncSignature) {
-        for param in nd.signature.params {
+        for param in nd.signature.get_parameters() {
             if param.gen.es_ast {
                 params.append(cast(es.Pattern, param.gen.es_ast));
             }
@@ -971,6 +1000,27 @@ impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) 
     return None;
 }
 
+"""Record the backend module bound by an `sv import` into the client manifest.
+
+A full-stack cl test boots the module it `sv import`s rather than guessing the
+backend by filename, so we capture the resolved local `.jac` path here."""
+impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
+    import from pathlib { Path }
+    if not nd.from_loc {
+        return;
+    }
+    resolved_path = nd.from_loc.resolve_relative_path();
+    if not resolved_path {
+        return;
+    }
+    abs_path = str(Path(resolved_path).resolve());
+    if abs_path.endswith(".jac")
+    and Path(abs_path).exists()
+    and (abs_path not in self.client_manifest.server_imports) {
+        self.client_manifest.server_imports.append(abs_path);
+    }
+}
+
 """Return the ability node represented by a symbol definition."""
 impl EsastGenPass._ability_from_symbol(
     sym: (uni.Symbol | None)
@@ -991,12 +1041,18 @@ impl EsastGenPass._ability_from_symbol(
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
+    # Checker-stamped resolved callee (FuncCall.callee_decl, the Phase 4
+    # central fact) is the authoritative answer when present. The
+    # symbol/manifest/evaluator paths below remain as fallbacks for
+    # JIR-loaded trees whose stamps are recomputed only on inference.
+    if nd.callee_decl is not None {
+        return nd.callee_decl;
+    }
     if isinstance(nd.target, uni.Name) {
-        target_sym = nd.target.sym;
-        if not target_sym and nd.target.sym_tab {
-            target_sym = nd.target.sym_tab.lookup(nd.target.sym_name, deep=True);
-        }
-        ability_node = self._ability_from_symbol(target_sym);
+        # No re-resolution fallbacks: the checker-stamped callee_decl above
+        # and the stored .sym are the facts; a missing stamp means no
+        # statically-known ability (the no-fallback contract of #6542).
+        ability_node = self._ability_from_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
         }
@@ -1012,19 +1068,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
-        target_sym = nd.target.right.sym;
-        if not target_sym {
-            try {
-                _te = self.prog.get_type_evaluator();
-                if _te {
-                    _te.get_type_of_expression(nd.target);
-                    target_sym = nd.target.right.sym;
-                }
-            } except Exception {
-                target_sym = None;
-            }
-        }
-        return self._ability_from_symbol(target_sym);
+        return self._ability_from_symbol(nd.target.right.sym);
     }
     return None;
 }
@@ -1728,20 +1772,36 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
-        # --- Polymorphic fallback (issue #5508 / #5453) ---
+        # --- Polymorphic fallback (issue #5508 / #5453 / #6306) ---
         # When the static type of the receiver is not provably a JS-native
-        # primitive (e.g. props of type `dict`, results of `or` widening,
-        # comprehension over an untyped list), the typed dispatch above
-        # cannot pick an emitter, so without a fallback we would otherwise
-        # leak the Python method name verbatim into the JavaScript output
-        # and crash at runtime. Route through `_jac.poly.<method>(target,
-        # ...args)`, which dispatches at runtime based on the JS type.
-        if _method_name in POLYMORPHIC_METHODS {
+        # primitive (e.g. a prop of type `dict`, the result of `or` widening,
+        # or a comprehension over an untyped value), the typed dispatch above
+        # cannot pick an emitter. Without a fallback the Python method name
+        # would leak verbatim into the JavaScript and crash at runtime.
+        #
+        # If the name is one that some primitive emitter implements
+        # (`self._poly_methods`, derived from the emitter registry), route it
+        # through the single runtime dispatcher `_jac.poly.call(obj, "name",
+        # ...args)`. That helper resolves the receiver's *runtime* type and
+        # applies the matching primitive operation, or forwards to a same-named
+        # method on a user-defined object, and raises a Python-style
+        # AttributeError when neither applies. Names no emitter implements are
+        # left to the default member-call path below: they are user methods and
+        # a direct `obj.name(...)` is correct.
+        if self._poly_methods is not None and (_method_name in self._poly_methods) {
             _poly_args: list[(es.Expression | es.SpreadElement)] = [
-                cast(es.Expression, callee.object)
+                cast(es.Expression, callee.object),
+                self.sync_loc(es.Literal(value=_method_name), jac_node=nd)
             ];
             for _a in args {
                 _poly_args.append(_a);
+            }
+            # Keyword-argument values are forwarded positionally, matching the
+            # convention used by the typed emitter dispatch above.
+            for _p in props {
+                if isinstance(_p, es.Property) and _p.value {
+                    _poly_args.append(cast(es.Expression, _p.value));
+                }
             }
             _poly_callee = es.MemberExpression(
                 object=es.MemberExpression(
@@ -1749,7 +1809,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     property=es.Identifier(name='poly'),
                     computed=False
                 ),
-                property=es.Identifier(name=_method_name),
+                property=es.Identifier(name='call'),
                 computed=False
             );
             self.needs_jac_runtime = True;
@@ -1764,9 +1824,14 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
-    _call_kind = classify_call(nd);
-    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
+    # Dispatch on the checker-stamped call classification; only call nodes
+    # synthesized after type checking lack the stamp and are classified here.
+    _call_kind = nd.call_kind;
+    if _call_kind is None {
+        import from jaclang.compiler.symbol_utils { classify_call }
+        _call_kind = classify_call(nd).value;
+    }
+    if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1784,12 +1849,27 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     _args_strs.append(_unparser.generate(_p.value));
                 }
             }
-            _result = _emit_fn(_ctx, _args_strs);
-            if _result is not None and "_jac." in str(_result) {
-                self.needs_jac_runtime = True;
+            # Guard the emitter so a malformed builtin call surfaces a located
+            # diagnostic instead of aborting the whole build with a bare,
+            # unlocated exception (jaseci-labs/jaseci#6458).
+            _result = None;
+            try {
+                _result = _emit_fn(_ctx, _args_strs);
+            } except Exception as _emit_err {
+                self.emit(
+                    E5016, node_override=nd, name=_builtin_name, error=str(_emit_err)
+                );
+                return;
             }
-            nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
-            return;
+            # An emitter may return None to decline (e.g. unexpected arity); in
+            # that case fall through to the default member-call codegen below.
+            if _result is not None {
+                if "_jac." in str(_result) {
+                    self.needs_jac_runtime = True;
+                }
+                nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
+                return;
+            }
         }
     }
     # --- Default codegen (non-primitive or fallback) ---
@@ -1816,7 +1896,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
+    if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -2157,6 +2237,22 @@ impl EsastGenPass._ensure_emitters -> None {
         }
     }
     self._builtin_emitter = _pes.ESBuiltinEmitter();
+    # Derive the polymorphic-eligible method names from the emitter registry
+    # itself: a method is eligible iff some primitive emitter implements
+    # `emit_<name>` (operators, spelled `emit_op_*`, are excluded — they are
+    # dispatched through their own operator paths). Deriving this set means it
+    # can never drift out of sync with the emitters, and a newly supported
+    # primitive method is automatically routed through the runtime dispatcher
+    # on untyped receivers without touching this pass.
+    _poly: set[str] = set();
+    for _emitter in self._primitive_emitters.values() {
+        for _attr in dir(_emitter) {
+            if _attr.startswith("emit_") and not _attr.startswith("emit_op_") {
+                _poly.add(_attr[len("emit_"):]);
+            }
+        }
+    }
+    self._poly_methods = _poly;
 }
 
 """Resolve a Jac type to a primitive type name (e.g. ``str``, ``list``).
@@ -2666,6 +2762,13 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                     else es.Literal(value=0)
         )
     );
+    # Edge connect (`a ++> b`, `a +>:E():+> b`): the operator is a ConnectOp,
+    # not a token. Lower to the cl OSP graph runtime.
+    connect_call = self._build_osp_graph_call(nd, left, right);
+    if connect_call is not None {
+        nd.gen.es_ast = connect_call;
+        return;
+    }
     op_name_str = nd.op?.name;
     op_name = Tok(op_name_str) if (op_name_str in Tok.__members__) else None;
     if (op_name == Tok.KW_SPAWN) {
@@ -3727,6 +3830,33 @@ impl EsastGenPass._ref_head_name(expr: (uni.UniNode | None)) -> (str | None) {
     return cur.value if isinstance(cur, uni.Name) else None;
 }
 
+"""The trailing `ref: Ref` parameter of a JSX component, or None.
+
+A client component opts into being a ref target -- a 1:1 match with React's
+`forwardRef((props, ref) => ...)` render signature -- by declaring a trailing
+parameter typed `Ref`. It is detected structurally with the same ambient-`Ref`
+recognition used for `has`-field refs (`_ref_head_name`), so client codegen
+needs no type-checker pass. Only the *last* declared parameter qualifies: `ref`
+is the 2nd positional arg React threads in, so it must trail the props. The
+gating to a client JSX component happens at the call site; a non-`Ref`-typed
+trailing param (or none) returns None and the component lowers as before."""
+impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
+    if not isinstance(nd.signature, uni.FuncSignature) {
+        return None;
+    }
+    params = nd.signature.params;
+    if not params {
+        return None;
+    }
+    last = params[-1];
+    if (
+        last.type_tag is not None and self._ref_head_name(last.type_tag.tag) == 'Ref'
+    ) {
+        return last;
+    }
+    return None;
+}
+
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Get the body statements
@@ -3820,8 +3950,17 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
-    # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
-    if not nd.in_client_context() {
+    # Reactive lowering is for COMPONENT state: `has` declared in a client
+    # def (function component). Archetype fields are plain class fields -
+    # exit_archetype consumes the vars directly - and must not trigger this
+    # handler's side effects (useState/useRef runtime imports, reactive_vars
+    # setter registration). Walk to the nearest owner: an Archetype before
+    # any Ability means a data field, whatever the client context.
+    owner: (uni.UniNode | None) = nd.parent;
+    while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
+        owner = owner.parent;
+    }
+    if isinstance(owner, uni.Archetype) or not nd.in_client_context() {
         nd.gen.es_ast = None;
         return;
     }
@@ -3951,7 +4090,14 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 impl EsastGenPass.exit_param_var(nd: uni.ParamVar) -> None {
     param_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
     self._register_declaration(param_id.name);
-    if nd.value and nd.value.gen.es_ast {
+    if nd.is_vararg or nd.is_kwargs {
+        # `*args` / `**kwargs` -> JS rest parameter `...args`. (JS has no keyword
+        # args, so `**kwargs` degrades to a trailing rest; positional `*args` is
+        # exact.) Without this the param is emitted as a bare identifier and then
+        # dropped during signature assembly, leaving the body referencing an
+        # undefined name.
+        nd.gen.es_ast = self.sync_loc(es.RestElement(argument=param_id), jac_node=nd);
+    } elif nd.value and nd.value.gen.es_ast {
         nd.gen.es_ast = self.sync_loc(
             es.AssignmentPattern(
                 left=param_id, right=cast(es.Expression, nd.value.gen.es_ast)
@@ -3998,19 +4144,6 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         self._transform_to_useeffect(nd);
         return;
     }
-    if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
-        self.client_manifest.has_client = True;
-        is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
-            name = nd.name_ref.sym_name;
-            self.client_manifest.exports.append(name);
-            self.client_manifest.params[name] = [
-                p.name.sym_name for p in nd.signature.params
-            ]
-                if isinstance(nd.signature, uni.FuncSignature)
-                else [];
-        }
-    }
     is_jsx_in_return = False;
     if isinstance(nd.body, list) {
         for stmt in nd.body {
@@ -4024,17 +4157,68 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             }
         }
     }
+    # A client JSX component opts into being a ref target -- React's
+    # `forwardRef((props, ref) => ...)` render signature -- by declaring a
+    # trailing `ref: Ref` parameter. When present, `ref` is threaded as the 2nd
+    # positional arg (not a destructured prop) and the component lowers to
+    # `const C = forwardRef(function C(props, ref) {...})`. Without this a jac
+    # component cannot *be* a ref target, so any radix `asChild` composition over
+    # it silently fails to position (#6520).
+    ref_param: (uni.ParamVar | None) = None;
+    if (
+        nd.code_context == CodeContext.CLIENT and not nd.is_method and is_jsx_in_return
+    ) {
+        ref_param = self._ref_forward_param(nd);
+    }
+    if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
+        self.client_manifest.has_client = True;
+        is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            name = nd.name_ref.sym_name;
+            self.client_manifest.exports.append(name);
+            # `ref` is not a positional prop validated at JSX call sites -- React
+            # delivers it through the special `ref=` attribute -- so it is
+            # excluded from the component's prop manifest.
+            self.client_manifest.params[name] = [
+                p.name.sym_name
+                for p in nd.signature.params
+                if p is not ref_param
+            ]
+                if isinstance(nd.signature, uni.FuncSignature)
+                else [];
+        }
+    }
     params: list[es.Pattern] = [];
     destructure_stmts: list[es.Statement] = [];
     destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
-    if isinstance(nd.signature, uni.FuncSignature) and nd.signature.params {
+    # The forwarded `ref` is threaded as a trailing positional arg below, never a
+    # destructured prop, so it is filtered out of the value-param handling here.
+    # `sig_params` mirrors the `.params` view used for the props-destructure
+    # decision; `value_params` mirrors `get_parameters()` for the passthrough
+    # loop (which also carries varargs/kwonly).
+    sig_params = (
+        [
+            p
+            for p in nd.signature.params
+            if p is not ref_param
+        ]
+            if isinstance(nd.signature, uni.FuncSignature)
+            else []
+    );
+    value_params = (
+        [
+            p
+            for p in nd.signature.get_parameters()
+            if p is not ref_param
+        ]
+            if isinstance(nd.signature, uni.FuncSignature)
+            else []
+    );
+    if value_params {
         if is_jsx_in_return
-        and not (
-            len(nd.signature.params) == 1
-            and nd.signature.params[0].name.sym_name == 'props'
-        ) {
+        and not (len(sig_params) == 1 and sig_params[0].name.sym_name == 'props') {
             params.append(es.Identifier(name="props"));
-            for param in nd.signature.params {
+            for param in sig_params {
                 param_key = self.sync_loc(
                     es.Identifier(name=param.name.sym_name), jac_node=param.name
                 );
@@ -4081,23 +4265,40 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             # any single-`props` signature). Surface W5015 so the author picks
             # direct named params explicitly — or suppresses with
             # `# jac:ignore[W5015]` for legitimate forwarding/HOC cases.
+            # A trailing `ref` param is itself a deliberate React-`forwardRef`
+            # shape, so the `(props, ref)` signature it implies is not the
+            # accidental props-bundle W5015 warns about -- skip it then.
             if (
                 is_jsx_in_return
-                and len(nd.signature.params) == 1
-                and nd.signature.params[0].name.sym_name == 'props'
+                and len(sig_params) == 1
+                and sig_params[0].name.sym_name == 'props'
+                and ref_param is None
             ) {
                 self.emit(
-                    W5015,
-                    node_override=nd.signature.params[0],
-                    component=nd.name_ref.sym_name
+                    W5015, node_override=sig_params[0], component=nd.name_ref.sym_name
                 );
             }
-            for param in nd.signature.params {
+            for param in value_params {
                 if param.gen.es_ast {
                     params.append(cast(es.Pattern, param.gen.es_ast));
                 }
             }
         }
+    }
+    if ref_param is not None {
+        # React invokes the `forwardRef` render fn as `(props, ref)`, so the
+        # component always takes a leading `props` even when it declares no value
+        # props; `ref` then lands at position 2 and threads into `ref={ref}`.
+        if not params {
+            params.append(self.sync_loc(es.Identifier(name="props"), jac_node=nd));
+        }
+        params.append(
+            cast(es.Pattern, ref_param.gen.es_ast)
+                if ref_param.gen.es_ast
+                else self.sync_loc(
+                    es.Identifier(name=ref_param.name.sym_name), jac_node=ref_param.name
+                )
+        );
     }
     inner = self.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
@@ -4122,6 +4323,39 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             jac_node=nd
         );
         nd.gen.es_ast = method_def;
+    } elif ref_param is not None {
+        # Lower a ref-forwarding component to
+        # `const C = forwardRef(function C(props, ref) {...})`. The named function
+        # expression preserves the component name in React devtools, and the
+        # `forwardRef` wrapper is the React-18 shim that lets `ref` reach the
+        # component. The jac source contract is version-independent: on React 19
+        # the same source could instead lower to a plain `ref` prop, so adopting
+        # React 19 becomes an optimization rather than the fix.
+        self._inject_runtime_import('forwardRef', nd);
+        func_expr = self.sync_loc(
+            es.FunctionExpression(
+                id=func_id, params=params, body=block, async_=nd.is_async
+            ),
+            jac_node=nd
+        );
+        forward_call = self.sync_loc(
+            es.CallExpression(
+                callee=es.Identifier(name='forwardRef'), arguments=[func_expr]
+            ),
+            jac_node=nd
+        );
+        declarator = self.sync_loc(
+            es.VariableDeclarator(
+                id=self.sync_loc(
+                    es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
+                ),
+                `init=forward_call,
+            ),
+            jac_node=nd
+        );
+        nd.gen.es_ast = self.sync_loc(
+            es.VariableDeclaration(declarations=[declarator], kind='const'), jac_node=nd
+        );
     } else {
         func_decl = self.sync_loc(
             es.FunctionDeclaration(
@@ -4141,23 +4375,39 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if not isinstance(nd.signature, uni.EventSignature) {
         return None;
     }
+    # A body-less event ability (`can x with Y entry;`) is a server-walker RPC
+    # stub whose implementation lives on the server -- not local OSP. Only an
+    # ability implemented in this unit (an inline body or an attached impl) runs
+    # through the local kernel.
+    if nd.body is None {
+        return None;
+    }
     owner = nd.method_owner;
     if not isinstance(owner, uni.Archetype) {
         return None;
     }
-    kind = owner.arch_type.value;
-    if kind not in ("walker", "node", "edge") {
+    kind = owner.arch_kind;
+    if kind is None {
         return None;
     }
     if (nd.name_ref is None) or (owner.name is None) {
         return None;
+    }
+    # Prefer the checker-resolved trigger names (central
+    # Ability.event_trigger_type_names: unions split, `type[X]` unwrapped);
+    # fall back to flattening the trigger AST when no resolution was
+    # recorded (e.g. a JIR-loaded tree). Names unknown to the local tag
+    # table (such as `root`) lower to an untyped slot either way.
+    triggers = nd.event_trigger_type_names();
+    if triggers is None {
+        triggers = self._osp_trigger_names(nd.signature.arch_tag_info);
     }
     return {
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
         "name": nd.name_ref.sym_name,
-        "triggers": self._osp_trigger_names(nd.signature.arch_tag_info)
+        "triggers": triggers
     };
 }
 
@@ -4203,18 +4453,11 @@ single param and binds `here` / `visitor` from it: for a walker ability
 `self`/`visitor` is the walker and `here` is the visited node; for a node/edge
 ability `self`/`here` is the location and `visitor` is the walker."""
 impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
-    self.needs_osp_kernel = True;
-    # The kernel uses `_jac.builtin.bool` / `_jac.poly.and_`, so its host module
-    # must also carry the `_jac` runtime.
+    # NOTE: kernel/descriptor injection is driven by an actual local `spawn`
+    # (see `_build_local_osp_spawn`), not by ability emission -- a local-OSP
+    # archetype that is never spawned locally must not pull in the kernel. The
+    # slot body may use `_jac` primitives, so the runtime is still required.
     self.needs_jac_runtime = True;
-    if osp["owner"] not in self._osp_arch_names {
-        self._osp_arch_names.append(osp["owner"]);
-    }
-    for trig in osp["triggers"] {
-        if trig not in self._osp_arch_names {
-            self._osp_arch_names.append(trig);
-        }
-    }
     self._osp_slots.append(osp);
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -4251,29 +4494,45 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     );
 }
 
-"""Memoized set of local archetype names that participate in OSP: every
-walker/node/edge declared with an event ability, plus the node/edge types those
-abilities trigger on. Scanned up front from all abilities in the module so that
-emission order (a trigger node declared before its walker) doesn't matter."""
-impl EsastGenPass._osp_arch_set -> set[str] {
+"""Memoized {archetype name -> kind ('walker'/'node'/'edge')} for a module with
+local OSP. A module "has local OSP" if any locally-declared walker/node/edge has
+an event ability; when so, EVERY local walker/node/edge is included -- including
+edge types with no abilities (used only in connects/refs), which still need a
+type tag + field constructor. Empty for non-OSP modules. Scanned up front so
+emission order (an edge or trigger node declared before its walker) doesn't
+matter."""
+impl EsastGenPass._osp_arch_kinds -> dict[str, str] {
     if self._osp_prescan is not None {
         return self._osp_prescan;
     }
-    names: set[str] = set();
+    kinds: dict[str, str] = {};
     scan_root = self.ir_in
         if isinstance(self.ir_in, uni.Module)
         else self.get_main_mod();
-    for ability in scan_root.get_all_sub_nodes(uni.Ability) {
-        info = self._osp_ability_info(ability);
-        if info is not None {
-            names.add(info["owner"]);
-            for trig in info["triggers"] {
-                names.add(trig);
+    arches: list[uni.Archetype] = [];
+    has_osp = False;
+    for arch in scan_root.get_all_sub_nodes(uni.Archetype) {
+        if (arch.name is not None) and (arch.arch_kind is not None) {
+            arches.append(arch);
+            for ability in arch.get_all_sub_nodes(uni.Ability) {
+                if self._osp_ability_info(ability) is not None {
+                    has_osp = True;
+                }
             }
         }
     }
-    self._osp_prescan = names;
-    return names;
+    if has_osp {
+        for arch in arches {
+            kinds[arch.name.sym_name] = arch.arch_kind;
+        }
+    }
+    self._osp_prescan = kinds;
+    return kinds;
+}
+
+"""Local archetype names participating in OSP (keys of `_osp_arch_kinds`)."""
+impl EsastGenPass._osp_arch_set -> set[str] {
+    return set(self._osp_arch_kinds().keys());
 }
 
 """Names of local walker archetypes (declared with abilities in this unit), the
@@ -4288,48 +4547,132 @@ impl EsastGenPass._local_walker_names -> set[str] {
     return names;
 }
 
-"""Symbol type of a spawn side's head, e.g. `Item(...)` / `Item` -> NODE_ARCH,
-`Acc()` -> WALKER_ARCH, a local variable -> its (non-archetype) symbol type.
-None when unresolved. Used to find the target (node/edge) side of a spawn
-without relying on type inference (which cl skips for `.cl.jac`)."""
-impl EsastGenPass._spawn_side_arch_type(expr: uni.Expr) -> (SymbolType | None) {
-    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
-    target = expr.target if isinstance(expr, uni.FuncCall) else expr;
-    if not isinstance(target, (uni.Name, uni.SpecialVarRef)) {
-        return None;
+"""Memoized {archetype name -> its direct local base archetype names}, the input
+to the subtype `is_a` table so a `with Base entry` ability dispatches on a
+`Sub`. Only bases that are themselves local OSP archetypes are recorded."""
+impl EsastGenPass._osp_arch_bases -> dict[str, list[str]] {
+    if self._osp_bases_cache is not None {
+        return self._osp_bases_cache;
     }
-    main_mod = self.ir_in
-        if isinstance(self.ir_in, uni.Module)
-        else self.get_main_mod();
-    sym = resolve_expr_symbol(target, main_mod);
-    return sym.sym_type if sym else None;
+    bases: dict[str, list[str]] = {};
+    kinds = self._osp_arch_kinds();
+    if kinds {
+        scan_root = self.ir_in
+            if isinstance(self.ir_in, uni.Module)
+            else self.get_main_mod();
+        for arch in scan_root.get_all_sub_nodes(uni.Archetype) {
+            if (arch.name is None) or (arch.name.sym_name not in kinds) {
+                continue;
+            }
+            direct: list[str] = [];
+            if arch.base_classes {
+                for bc in arch.base_classes {
+                    bname = self._ref_head_name(bc);
+                    if (bname is not None) and (bname in kinds) {
+                        direct.append(bname);
+                    }
+                }
+            }
+            bases[arch.name.sym_name] = direct;
+        }
+    }
+    self._osp_bases_cache = bases;
+    return bases;
 }
 
-"""Lower `walker spawn target` to an in-process kernel call when the target is a
-local node/edge archetype constructor (a fresh local graph node), running the
-walker through the portable kernel rather than the `__jacSpawn` server RPC:
-`osp_spawn(__ospRT, w, __ospDESC[w.__tag], [target])`. A server walker spawned
-at `root` (no local node constructor) falls through to the RPC path. Returns
-None when this isn't a local-archetype spawn."""
+"""Memoized {variable name -> local archetype name} for `x = Arch(...)` bindings
+in a local-OSP module. Lets a spawn whose walker is held in a variable
+(`w spawn n`) identify the walker side without type inference (which cl skips)."""
+impl EsastGenPass._osp_var_arch -> dict[str, str] {
+    if self._osp_var_arch_cache is not None {
+        return self._osp_var_arch_cache;
+    }
+    bindings: dict[str, str] = {};
+    kinds = self._osp_arch_kinds();
+    if kinds {
+        scan_root = self.ir_in
+            if isinstance(self.ir_in, uni.Module)
+            else self.get_main_mod();
+        for asn in scan_root.get_all_sub_nodes(uni.Assignment) {
+            if isinstance(asn.value, uni.FuncCall) {
+                head = self._ref_head_name(asn.value);
+                if (head is not None) and (head in kinds) {
+                    for tgt in asn.target {
+                        if isinstance(tgt, uni.Name) {
+                            bindings[tgt.sym_name] = head;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    self._osp_var_arch_cache = bindings;
+    return bindings;
+}
+
+"""If `expr` denotes a local walker -- a constructor `W(...)` of a local walker
+archetype, or a variable bound to one -- return that walker archetype's name,
+else None. A server (sv-imported) walker isn't in `_osp_arch_kinds`, so it
+returns None and the spawn stays an RPC."""
+impl EsastGenPass._spawn_walker_arch(expr: uni.Expr) -> (str | None) {
+    kinds = self._osp_arch_kinds();
+    head = self._ref_head_name(expr);
+    if (head is not None) and (kinds.get(head) == "walker") {
+        return head;
+    }
+    if isinstance(expr, uni.Name) {
+        bound = self._osp_var_arch().get(expr.sym_name);
+        if (bound is not None) and (kinds.get(bound) == "walker") {
+            return bound;
+        }
+    }
+    return None;
+}
+
+"""True if `expr` is a local node/edge graph location -- a constructor
+`Node(...)` of a local node/edge archetype, or a variable bound to one. A server
+node ref (string / id), `root`, or a function param is not, so spawning there
+stays a `__jacSpawn` RPC."""
+impl EsastGenPass._spawn_target_is_local_node(expr: uni.Expr) -> bool {
+    kinds = self._osp_arch_kinds();
+    head = self._ref_head_name(expr);
+    if (head is not None) and (kinds.get(head) in ("node", "edge")) {
+        return True;
+    }
+    if isinstance(expr, uni.Name) {
+        bound = self._osp_var_arch().get(expr.sym_name);
+        if (bound is not None) and (kinds.get(bound) in ("node", "edge")) {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Lower `walker spawn target` to an in-process kernel call when BOTH the walker
+is a local archetype AND the target is a local node/edge (a fresh local graph
+location, by constructor or a variable bound to one):
+`osp_spawn(__ospRT, w, __ospDESC[w.__tag], [target])`. A server (sv-imported)
+walker, or a spawn at a server node ref / `root`, falls through to the
+`__jacSpawn` RPC path. Returns None when this isn't a local-graph spawn."""
 impl EsastGenPass._build_local_osp_spawn(
     nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
 ) -> (es.Expression | None) {
-    # Only meaningful once this unit has at least one local walker with abilities.
-    if not self._local_walker_names() {
-        return None;
-    }
-    node_kinds = (SymbolType.NODE_ARCH, SymbolType.EDGE_ARCH);
-    left_kind = self._spawn_side_arch_type(nd.left);
-    right_kind = self._spawn_side_arch_type(nd.right);
     walker_es: (es.Expression | None) = None;
     target_es: (es.Expression | None) = None;
-    if (right_kind in node_kinds) and (left_kind not in node_kinds) {
+    target_expr: (uni.Expr | None) = None;
+    if self._spawn_walker_arch(nd.left) is not None {
         walker_es = left;
         target_es = right;
-    } elif (left_kind in node_kinds) and (right_kind not in node_kinds) {
+        target_expr = nd.right;
+    } elif self._spawn_walker_arch(nd.right) is not None {
         walker_es = right;
         target_es = left;
+        target_expr = nd.left;
     } else {
+        return None;
+    }
+    # A server node ref (string / id) or `root` is not a local graph node -> RPC.
+    if not self._spawn_target_is_local_node(target_expr) {
         return None;
     }
     self.needs_osp_kernel = True;
@@ -4370,39 +4713,52 @@ on each archetype prototype, the closed-world subtype table, the per-archetype
 methods), and the cl `NoopHost` `OspRuntime`. Emitted after the archetype
 classes so `<Cls>.prototype` is defined."""
 impl EsastGenPass._build_osp_setup_js -> str {
-    # Stable tag per archetype, in first-encounter order.
+    # Stable tag for every local OSP archetype (walkers, nodes, AND edges, so
+    # edge types used only in connects/refs get a tag too), in declaration order.
+    arch_kinds = self._osp_arch_kinds();
     tags: dict[str, int] = {};
-    for name in self._osp_arch_names {
-        if name not in tags {
-            tags[name] = len(tags);
-        }
+    for name in arch_kinds.keys() {
+        tags[name] = len(tags);
     }
-    # Group slots by owner / phase; track which archetypes are walkers.
+    # Group ability slots by owner / phase.
     entry_by_owner: dict[str, list] = {};
     exit_by_owner: dict[str, list] = {};
-    walkers: set[str] = set();
     for slot in self._osp_slots {
         owner = slot["owner"];
-        if slot["kind"] == "walker" {
-            walkers.add(owner);
-        }
         bucket = entry_by_owner if slot["is_entry"] else exit_by_owner;
         if owner not in bucket {
             bucket[owner] = [];
         }
         bucket[owner].append(slot);
     }
+    # Closed-world subtype table: each tag is-a itself plus its transitive local
+    # base archetypes, so `with Base entry` fires on a `Sub`.
+    bases = self._osp_arch_bases();
     lines: list[str] = [];
     isa_parts: list[str] = [];
     for (name, tag) in tags.items() {
         lines.append(f"{name}.prototype.__tag = {tag};");
-        # Closed-world subtype table; flat for now (each tag is-a itself).
-        isa_parts.append(f"{tag}: new Set([{tag}])");
+        isa_tags: list[int] = [tag];
+        pending: list[str] = `list(bases.get(name, []));
+        visited_bases: set[str] = set();
+        while pending {
+            bname = pending.pop();
+            if bname in visited_bases {
+                continue;
+            }
+            visited_bases.add(bname);
+            if bname in tags {
+                isa_tags.append(tags[bname]);
+            }
+            pending.extend(bases.get(bname, []));
+        }
+        isa_members = ", ".join([str(t) for t in isa_tags]);
+        isa_parts.append(f"{tag}: new Set([{isa_members}])");
     }
     lines.append("const __ospISA = {" + ", ".join(isa_parts) + "};");
     desc_parts: list[str] = [];
     for (name, tag) in tags.items() {
-        desc_cls = "WalkerDesc" if (name in walkers) else "NodeDesc";
+        desc_cls = "WalkerDesc" if (arch_kinds[name] == "walker") else "NodeDesc";
         entry_js = self._osp_slots_js(entry_by_owner.get(name, []), tags);
         exit_js = self._osp_slots_js(exit_by_owner.get(name, []), tags);
         desc_parts.append(
@@ -4433,6 +4789,189 @@ impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
         }
     }
     return "[" + ", ".join(parts) + "]";
+}
+
+"""`visit <target>`: enqueue locations onto the active walk via the kernel.
+`osp_visit(targets, insert_loc)`. The target list comes from an edge ref
+(`[-->]`) or an explicit node/list; a single node is wrapped in a one-element
+array so the kernel always receives a list."""
+impl EsastGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
+    self.needs_osp_kernel = True;
+    self.needs_jac_runtime = True;
+    target = cast(
+        es.Expression,
+        self._get_ast_or_default(
+            nd.target,
+            default_factory=lambda _src: any : es.ArrayExpression(elements=[])
+        )
+    );
+    # Ensure a list: edge refs / list literals already produce arrays; wrap a
+    # bare node expression.
+    if not isinstance(nd.target, (uni.EdgeRefTrailer, uni.ListVal)) {
+        target = self.sync_loc(es.ArrayExpression(elements=[target]), jac_node=nd);
+    }
+    insert: es.Expression = self.sync_loc(
+        es.UnaryExpression(operator='-', argument=es.Literal(value=1), prefix=True),
+        jac_node=nd
+    );
+    if nd.insert_loc and nd.insert_loc.gen.es_ast {
+        insert = cast(es.Expression, nd.insert_loc.gen.es_ast);
+    }
+    nd.gen.es_ast = self.sync_loc(
+        es.ExpressionStatement(
+            expression=self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(es.Identifier(name='osp_visit'), jac_node=nd),
+                    arguments=[target, insert]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+}
+
+"""`disengage`: halt the active walk -> `osp_disengage()`."""
+impl EsastGenPass.exit_disengage_stmt(nd: uni.DisengageStmt) -> None {
+    self.needs_osp_kernel = True;
+    nd.gen.es_ast = self.sync_loc(
+        es.ExpressionStatement(
+            expression=self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(
+                        es.Identifier(name='osp_disengage'), jac_node=nd
+                    ),
+                    arguments=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+}
+
+"""`report <expr>`: collect a value for the spawn boundary -> `osp_report(expr)`."""
+impl EsastGenPass.exit_report_stmt(nd: uni.ReportStmt) -> None {
+    self.needs_osp_kernel = True;
+    expr = cast(
+        es.Expression,
+        self._get_ast_or_default(
+            nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
+        )
+    );
+    nd.gen.es_ast = self.sync_loc(
+        es.ExpressionStatement(
+            expression=self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(es.Identifier(name='osp_report'), jac_node=nd),
+                    arguments=[expr]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+}
+
+"""An edge reference `[-->]` / `[->:E:->]` / `[edge -->]` -> a cl OSP graph
+lookup `__ospRefs(origin, dir, edgeTag, edges_only)`. The origin of a bare ref is
+the current location `here`. The edge type (if any) is the first chain step's
+type filter; direction is its `edge_dir` (IN=1, OUT=2, ANY=3)."""
+impl EsastGenPass.exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
+    result = self._build_edge_ref(nd);
+    if result is not None {
+        nd.gen.es_ast = result;
+    }
+}
+
+impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> (es.Expression | None) {
+    if not nd.chain {
+        return None;
+    }
+    step = nd.chain[0];
+    if not isinstance(step, uni.EdgeOpRef) {
+        return None;
+    }
+    self.needs_osp_graph = True;
+    # Origin: a bare edge ref resolves from the current location `here`.
+    origin: es.Expression = self.sync_loc(es.Identifier(name='here'), jac_node=nd);
+    direction = self.sync_loc(es.Literal(value=int(step.edge_dir.value)), jac_node=nd);
+    edge_tag: es.Expression = self.sync_loc(es.Literal(value=None), jac_node=nd);
+    fcond = step.filter_cond;
+    if (fcond is not None) and (fcond.f_type is not None) {
+        edge_tag = self.sync_loc(
+            es.MemberExpression(
+                object=self.sync_loc(
+                    es.MemberExpression(
+                        object=self.sync_loc(
+                            es.Identifier(name=fcond.f_type.value), jac_node=nd
+                        ),
+                        property=self.sync_loc(
+                            es.Identifier(name='prototype'), jac_node=nd
+                        ),
+                        computed=False
+                    ),
+                    jac_node=nd
+                ),
+                property=self.sync_loc(es.Identifier(name='__tag'), jac_node=nd),
+                computed=False
+            ),
+            jac_node=nd
+        );
+    }
+    edges_only = self.sync_loc(es.Literal(value=bool(nd.edges_only)), jac_node=nd);
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(es.Identifier(name='__ospRefs'), jac_node=nd),
+            arguments=[origin, direction, edge_tag, edges_only]
+        ),
+        jac_node=nd
+    );
+}
+
+"""`a ++> b` / `a +>:E():+> b` (a ConnectOp binary expr) -> a cl OSP graph
+connect `__ospConn(src, tgt, makeEdge, undirected)`. OUT keeps src=left, IN
+swaps, ANY (undirected) keeps src=left with undirected=true. `makeEdge` is an
+arrow building the typed edge, or null for a generic edge."""
+impl EsastGenPass._build_osp_graph_call(
+    nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+) -> (es.Expression | None) {
+    co = nd.op;
+    if not isinstance(co, uni.ConnectOp) {
+        return None;
+    }
+    self.needs_osp_graph = True;
+    dir_val = int(co.edge_dir.value);
+    # EdgeDir: IN=1, OUT=2, ANY=3.
+    undirected = dir_val == 3;
+    if dir_val == 1 {
+        (src, tgt) = (right, left);
+    } else {
+        (src, tgt) = (left, right);
+    }
+    make_edge: es.Expression = self.sync_loc(es.Literal(value=None), jac_node=nd);
+    if (co.conn_type is not None) and co.conn_type.gen.es_ast {
+        make_edge = self.sync_loc(
+            es.ArrowFunctionExpression(
+                params=[],
+                body=cast(es.Expression, co.conn_type.gen.es_ast),
+                expression=True
+            ),
+            jac_node=nd
+        );
+    }
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(es.Identifier(name='__ospConn'), jac_node=nd),
+            arguments=[
+                src,
+                tgt,
+                make_edge,
+                self.sync_loc(es.Literal(value=undirected), jac_node=nd)
+            ]
+        ),
+        jac_node=nd
+    );
 }
 
 """Ensure ImplDef body is properly parented for traversal."""
@@ -4550,7 +5089,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     is_local_osp_arch = (
         (nd.name is not None)
         and (nd.name.sym_name in self._osp_arch_set())
-        and (nd.arch_type.value in ("walker", "node", "edge"))
+        and (nd.arch_kind is not None)
     );
     if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
         constructor_stmts: list[es.Statement] = [];
@@ -4701,6 +5240,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     ) {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
+            self._record_sv_backend(nd);
         }
         return;
     }
@@ -4964,12 +5504,24 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
     }
     stubs: list[es.Statement] = [];
     osp_archs = self._osp_arch_set();
-    for (type_name, info) in manifest.boundary_types.items() {
-        # A local-OSP archetype emits a complete client class (constructor +
-        # slot methods); its boundary stub would be a duplicate declaration.
-        if type_name in osp_archs {
-            continue;
+    # A local-OSP archetype emits its full client class (constructor + slot
+    # methods) in `exit_archetype`, so a boundary stub `class <name>` would be a
+    # duplicate declaration. But such a type can still cross the wire (returned
+    # by a server-walker RPC), so it needs hydration too -- map each OSP class by
+    # name and graft `__from_wire`/`__to_wire` onto it below instead of emitting
+    # a second class.
+    osp_class_map: dict[str, es.ClassDeclaration] = {};
+    for item in self._merge_module_bodies(nd) {
+        if (
+            isinstance(item, uni.Archetype)
+            and (item.name is not None)
+            and isinstance(item.gen.es_ast, es.ClassDeclaration)
+        ) {
+            osp_class_map[item.name.sym_name] = item.gen.es_ast;
         }
+    }
+    for (type_name, info) in manifest.boundary_types.items() {
+        is_osp = type_name in osp_archs;
         if info.kind == "enum" {
             # const Priority = Object.freeze({ LOW: "low", MEDIUM: "medium" });
             enum_props: list[es.Property] = [];
@@ -5546,11 +6098,68 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 static=False,
                 computed=False
             );
-            class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
-            class_decl = es.ClassDeclaration(
-                id=es.Identifier(name=type_name), superClass=None, body=class_body
-            );
-            stubs.append(class_decl);
+            if is_osp {
+                # Graft hydration onto the existing local-OSP class -- a second
+                # `class <name>` would redeclare it. The OSP class already has
+                # its own constructor; for a node, patch that constructor to
+                # carry `_jac_id` from the wire so the hydrated instance keeps
+                # graph identity (set only when present, so a freshly-spawned
+                # local node with no id yet still makes jid() throw).
+                osp_class = osp_class_map.get(type_name);
+                if osp_class is not None {
+                    if info.kind == "node" {
+                        for member in osp_class.body.body {
+                            if (
+                                isinstance(member, es.MethodDefinition)
+                                and (member.kind == "constructor")
+                            ) {
+                                member.value.body.body.append(
+                                    es.IfStatement(
+                                        test=es.CallExpression(
+                                            callee=es.MemberExpression(
+                                                object=es.Identifier(name='props'),
+                                                property=es.Identifier(
+                                                    name='hasOwnProperty'
+                                                ),
+                                                computed=False
+                                            ),
+                                            arguments=[es.Literal(value='_jac_id')]
+                                        ),
+                                        consequent=es.ExpressionStatement(
+                                            expression=es.AssignmentExpression(
+                                                operator='=',
+                                                left=es.MemberExpression(
+                                                    object=es.ThisExpression(),
+                                                    property=es.Identifier(
+                                                        name='_jac_id'
+                                                    ),
+                                                    computed=False
+                                                ),
+                                                right=es.MemberExpression(
+                                                    object=es.Identifier(name='props'),
+                                                    property=es.Identifier(
+                                                        name='_jac_id'
+                                                    ),
+                                                    computed=False
+                                                )
+                                            )
+                                        ),
+                                        alternate=None
+                                    )
+                                );
+                            }
+                        }
+                    }
+                    osp_class.body.body.append(from_wire_def);
+                    osp_class.body.body.append(to_wire_def);
+                }
+            } else {
+                class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
+                class_decl = es.ClassDeclaration(
+                    id=es.Identifier(name=type_name), superClass=None, body=class_body
+                );
+                stubs.append(class_decl);
+            }
         }
     }
     return stubs;
@@ -5663,6 +6272,19 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     # classes (the setup writes `<Cls>.prototype.__tag` and references the
     # archetype classes). `osp_spawn` calls in module functions are hoisted, so
     # they see `__ospRT` by the time they run.
+    if self.needs_osp_graph {
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            build_osp_graph_js
+        }
+        body.append(
+            self.sync_loc(
+                es.ExpressionStatement(
+                    expression=es.Identifier(name=build_osp_graph_js())
+                ),
+                jac_node=nd
+            )
+        );
+    }
     if self.needs_osp_kernel {
         import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
             build_osp_kernel_js

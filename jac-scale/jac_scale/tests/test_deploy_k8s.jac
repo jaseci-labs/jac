@@ -24,7 +24,8 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
+import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 
 """Get current git repository URL, branch, and commit hash.
 
@@ -820,12 +821,14 @@ test "deploy all in one" {
     );
 
     # Validate HPA is updated on redeploy (not silently ignored)
-    create_hpa(
-        namespace=namespace,
-        deployment_name=app_name,
-        min_replicas=2,
-        max_replicas=5,
-        cpu_target=70
+    AutoscalerFactory.create("hpa", {}).apply(
+        AutoscalerSpec(
+            scale_target_name=app_name,
+            namespace=namespace,
+            min_replicas=2,
+            max_replicas=5,
+            triggers=[Trigger(type="cpu", metadata={"averageUtilization": "70"})]
+        )
     );
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
@@ -842,12 +845,14 @@ test "deploy all in one" {
     );
 
     # Restore original HPA values for remaining tests
-    create_hpa(
-        namespace=namespace,
-        deployment_name=app_name,
-        min_replicas=1,
-        max_replicas=3,
-        cpu_target=50
+    AutoscalerFactory.create("hpa", {}).apply(
+        AutoscalerSpec(
+            scale_target_name=app_name,
+            namespace=namespace,
+            min_replicas=1,
+            max_replicas=3,
+            triggers=[Trigger(type="cpu", metadata={"averageUtilization": "50"})]
+        )
     );
 
     # Validate NGINX Ingress controller resources

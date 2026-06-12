@@ -1,31 +1,40 @@
-"""Test closure support in Jac client code."""
+"""Test closure support in Jac client (cl) codegen.
 
-import from pathlib { Path }
-import from jaclang { JacRuntime as Jac }
+Closures are a compiler feature (runtime-agnostic), so this checks the
+generated JS directly rather than building a full bundle.
+"""
 
-glob FIXTURES = str(Path(__file__).parent / "fixtures");
+import os;
+import jaclang;
+import from jaclang.jac0core.program { JacProgram }
 
-test "nested function closures" {
-    (module, ) = Jac.jac_import("test_closures", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
+glob FIXTURES = os.path.join(
+         str(os.path.dirname(os.path.dirname(jaclang.__file__))),
+         "tests",
+         "runtimelib",
+         "fixtures"
+     );
 
-    # Check that functions are present
-    assert "function make_counter()" in bundle.code;
-    assert "function create_signal_simple(" in bundle.code;
-    assert "function make_adder(" in bundle.code;
-    assert "function create_shared_counter()" in bundle.code;
+test "nested function closures compile to JS" {
+    fixture = os.path.join(FIXTURES, "test_closures.jac");
+    prog = JacProgram();
+    mod = prog.compile(fixture);
+    js = mod.gen.js;
+    assert js.strip() , "Expected JavaScript output for cl closures";
 
-    # Check that inner functions are present
-    assert "function increment()" in bundle.code;
-    assert "function readVal()" in bundle.code;
-    assert "function writeVal(" in bundle.code;
-    assert "function get_value()" in bundle.code;
+    # Outer functions.
+    assert "function make_counter(" in js;
+    assert "function create_signal_simple(" in js;
+    assert "function make_adder(" in js;
+    assert "function create_shared_counter(" in js;
 
-    # Check that closures can access outer variables
-    assert "count" in bundle.code;
-    assert "value" in bundle.code;
+    # Inner (closed-over) functions.
+    assert "function increment(" in js;
+    assert "function readVal(" in js;
+    assert "function writeVal(" in js;
+    assert "function get_value(" in js;
 
-    # Ensure no import errors
-    assert "ImportError" not in bundle.code;
+    # Closed-over variables are referenced from inner scopes.
+    assert "count" in js;
+    assert "value" in js;
 }

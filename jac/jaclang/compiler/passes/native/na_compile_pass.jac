@@ -26,4 +26,6 @@ obj NativeCompilePass(Transform) {
     def _compile_and_link_native_imports(
         module: uni.Module, main_mod: object, imports: list, target_machine: object
     ) -> None;
+    # Link the portable OSP kernel's IR into an OSP program (issue #6146)
+    def _link_osp_kernel(main_mod: object) -> None;
 }

@@ -136,13 +136,18 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 
 """Generate code for a list literal [a, b, c, ...]."""
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
+    # Reset the boxed-tuple element-struct hint; set below if the first element
+    # is a boxed tuple so the enclosing assignment can seed var_list_elem_struct.
+    self._pending_list_elem_struct = None;
     if not nd.values {
-        # Empty list: infer type from context
+        # Empty list: the checker stamps the literal with the expected
+        # type (bidirectional inference from the assignment target or the
+        # declared return type), so the element spec comes off the tree.
         elem_type_name = "i64";
-        # 1. Check the type hint set by assignment/field context
-        if self._list_type_hint is not None {
-            elem_type_name = self._list_type_hint;
-        } elif self.builder and self.builder.function {
+        _own_spec = self._elem_spec_of(nd);
+        if _own_spec is not None {
+            elem_type_name = _own_spec;
+        } elif self._builder and self._builder.function {
             # 2. Fallback: infer from function return type
             ret_type = self.builder.function.return_value.type;
             if isinstance(ret_type, ir.PointerType) {
@@ -168,11 +173,10 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             _empty_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
                 if nd.loc
                 else 0}";
-            _empty = self._rc_call_with_ctx(
+            # Fresh allocation: ownership applied at the _codegen_expr seam.
+            return self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
-            self._mark_owned(_empty);
-            return _empty;
         }
         return None;
     }
@@ -194,6 +198,17 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         elem_type_name = "f64";
     } elif isinstance(elem_type, ir.PointerType) {
         elem_type_name = "ptr";
+    } elif self?.jacval_type and elem_type == self.jacval_type {
+        # A boxed `any` element (JacVal struct, by value) gets its own helper key
+        # so it never collides with a real `i64` list — they share neither slot
+        # type nor layout. Mirrors the dict `jacval` value-spec convention.
+        elem_type_name = "jacval";
+    }
+    # If the element is a boxed tuple (pointer-to-struct), remember its struct
+    # shape so a later `(a, b) = lst.pop()` on a bare `list` can recover it.
+    if isinstance(elem_type, ir.PointerType)
+    and isinstance(elem_type.pointee, ir.LiteralStructType) {
+        self._pending_list_elem_struct = elem_type;
     }
     # Ensure helpers exist
     self._emit_list_helpers(elem_type_name, elem_type);
@@ -226,6 +241,18 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            # The first element fixed this list's boxed-tuple layout; coerce later
+            # tuple elements to match so a concrete scalar landing in an `any`
+            # slot is boxed (e.g. `[(seed, 0), (7, 0)]` with `seed: any`). #6511.
+            if self._pending_list_elem_struct is not None
+            and isinstance(self._pending_list_elem_struct, ir.PointerType)
+            and isinstance(
+                self._pending_list_elem_struct.pointee, ir.LiteralStructType
+            ) {
+                val = self._coerce_tuple_to_struct(
+                    val, self._pending_list_elem_struct.pointee
+                );
+            }
             _orig_val = val;
             val = self._box_value_tuple(val, loc=_linit_loc);
             _boxed_val = val;  # Save post-box, pre-bitcast for check
@@ -248,8 +275,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             }
         }
     }
-    # List literal is a fresh allocation — mark as owned so callers don't double-retain.
-    self._mark_owned(list_val);
+    # Fresh allocation: ownership applied at the _codegen_expr seam.
     return list_val;
 }
 

@@ -34,6 +34,97 @@ impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.doc_ir = doc.Text(raw, source_token=source_tok);
 }
 
+"""Prettier-style jsxWhitespace marker.
+
+A same-line space between JSX text and an inline element is *significant*
+(it renders as a space), but a bare newline next to a tag collapses to
+nothing. So when mixed children break onto separate lines, the space must
+be re-materialized as a `{" "}` expression rather than dropped. Flat, it is
+just a literal space."""
+impl DocIRGenPass.jsx_whitespace -> doc.DocType {
+    return self.if_break(
+        self.concat([self.text('{" "}'), self.tight_line()]), self.space()
+    );
+}
+
+"""Lay out JSX children that mix text with inline elements.
+
+Adapts the *whitespace handling* from Prettier's `printJsxChildren` (not the
+full algorithm -- see below): each text run is split from the whitespace at
+its edges, and the boundary between two pieces of content is emitted as
+either a `jsx_whitespace` marker (when the source had a same-line space
+there, so the space is significant) or a `hard_line` (when the boundary was
+a newline that JSX collapses to nothing). `get_normalized_text` already
+applies the JSX whitespace rules, so a kept leading/trailing space in the
+normalized text marks a significant boundary and an empty normalization
+marks a collapsed (newline) one.
+
+Differs from Prettier on purpose: the text run is kept atomic rather than
+split into words, and the caller wraps these parts in a Group (all-or-
+nothing break) instead of Prettier's `fill`, so there is no greedy
+word-wrap of long text. The `jsx_whitespace` marker itself matches
+Prettier's exactly (`{" "}` on break, a literal space when flat)."""
+impl DocIRGenPass.jsx_mixed_child_parts(
+    children: Sequence[uni.UniNode]
+) -> list[doc.DocType] {
+    parts: list[doc.DocType] = [];
+    # Separator owed before the next content piece: "" / "space" / "break".
+    pending = "";
+    have_content = False;
+    for child in children {
+        content: (doc.DocType | None) = None;
+        trail = "";
+        if isinstance(child, uni.JsxText) {
+            norm = child.get_normalized_text();
+            if norm == "" {
+                # Newline-only gap between elements: collapses to nothing.
+                # A space anywhere in the run wins, so don't downgrade it.
+                if pending != "space" {
+                    pending = "break";
+                }
+                continue;
+            } elif norm.strip(" ") == "" {
+                # Spaces-only gap on a single line: a significant space.
+                pending = "space";
+                continue;
+            }
+            if norm.startswith(" ") {
+                pending = "space";
+            }
+            trail = "space" if norm.endswith(" ") else "";
+            content = self.text(norm.strip(" "));
+        } else {
+            # An explicit `{" "}` (single-space string expression) is itself a
+            # jsxWhitespace marker -- the form this pass emits when it breaks.
+            # Recognize it on the way back in so re-formatting is idempotent:
+            # fold it into the boundary instead of laying it out as content.
+            if isinstance(child, uni.JsxExpression) {
+                expr = child.expr;
+                is_ws = False;
+                if isinstance(expr, uni.String) {
+                    is_ws = expr.lit_value == " ";
+                } elif isinstance(expr, uni.MultiString) {
+                    is_ws = expr.lit_value == " ";
+                }
+                if is_ws {
+                    pending = "space";
+                    continue;
+                }
+            }
+            content = child.gen.doc_ir;
+        }
+        if have_content {
+            parts.append(
+                self.jsx_whitespace() if pending == "space" else self.hard_line()
+            );
+        }
+        parts.append(content);
+        have_content = True;
+        pending = trail;
+    }
+    return parts;
+}
+
 """Generate DocIR for JSX normal attributes."""
 impl DocIRGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
@@ -140,12 +231,9 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         }
         is_self_closing = end_token.name == Tok.JSX_SELF_CLOSE;
         if (not is_self_closing and nd.children) {
-            child_parts: list[doc.DocType] = [];
-            for child in nd.children {
-                child_parts.append(child.gen.doc_ir);
-                child_parts.append(self.hard_line());
-            }
-            self.trim_trailing_line(child_parts);
+            # Mixed children (text interleaved with elements) lay out with
+            # JSX-significant whitespace preserved at the boundaries.
+            child_parts = self.jsx_mixed_child_parts(nd.children);
             inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
             all_inline_children = (
                 nd.children
@@ -182,15 +270,23 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                     )
                 );
             } elif child_parts {
+                # Only when there is significant whitespace to preserve (a
+                # jsx_whitespace marker is present) do we use flat-capable
+                # (tight_line) wrapping, so short space-separated JSX stays on
+                # one line and longer JSX breaks with `{" "}` markers. Without
+                # it the layout is unchanged from before (hard_line, one child
+                # per line) so element-only children are not reflowed.
+                has_jsx_ws = any(isinstance(p, doc.IfBreak) for p in child_parts);
+                lead = self.tight_line() if has_jsx_ws else self.hard_line();
+                tail = self.tight_line() if has_jsx_ws else self.hard_line();
                 parts.append(
                     self.group(
                         self.concat(
                             [
                                 self.indent(
-                                    self.concat([self.hard_line(), *child_parts]),
-                                    ast_node=nd
+                                    self.concat([lead, *child_parts]), ast_node=nd
                                 ),
-                                self.hard_line()
+                                tail
                             ]
                         ),
                         break_contiguous=True,
@@ -215,12 +311,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
     }
     opening_doc = nd.kid[0].gen.doc_ir;
     closing_doc = nd.kid[-1].gen.doc_ir if (len(nd.kid) > 1) else self.concat([]);
-    child_parts = [];
-    for child in nd.children {
-        child_parts.append(child.gen.doc_ir);
-        child_parts.append(self.hard_line());
-    }
-    self.trim_trailing_line(child_parts);
+    child_parts = self.jsx_mixed_child_parts(nd.children);
     inline_child_types = (uni.JsxText, uni.JsxExpression);
     all_inline_children = (
         nd.children
@@ -254,15 +345,13 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
             )
         );
     } elif child_parts {
+        has_jsx_ws = any(isinstance(p, doc.IfBreak) for p in child_parts);
+        lead = self.tight_line() if has_jsx_ws else self.hard_line();
+        tail = self.tight_line() if has_jsx_ws else self.hard_line();
         parts.append(
             self.group(
                 self.concat(
-                    [
-                        self.indent(
-                            self.concat([self.hard_line(), *child_parts]), ast_node=nd
-                        ),
-                        self.hard_line()
-                    ]
+                    [self.indent(self.concat([lead, *child_parts]), ast_node=nd), tail]
                 ),
                 break_contiguous=True,
                 ast_node=nd
@@ -903,7 +992,11 @@ impl DocIRGenPass.exit_disconnect_op(nd: uni.DisconnectOp) -> None {
 
 """Generate DocIR for connect operator."""
 impl DocIRGenPass.exit_connect_op(nd: uni.ConnectOp) -> None {
-    self._assign_space_group(nd);
+    # Format the operator body compactly (no inner spaces) so a typed
+    # connect reads `+>:Edge:+>` / `+>:Edge:weight=5:+>`, matching the
+    # traversal edge-op ref (`->:Edge:->`) and disconnect (`del ->:Edge:->`)
+    # forms. Spacing around the operands is added by the enclosing BinaryExpr.
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for visit statements."""

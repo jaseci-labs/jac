@@ -1,10 +1,11 @@
 """Manifest builder for K8s microservice mode. Produces the bundle
-{deployments, services, hpas, pdbs, pod_specs, [pvcs, user_secret,
+{deployments, services, autoscalers, pdbs, pod_specs, [pvcs, user_secret,
 ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.abstractions.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision
@@ -32,22 +33,22 @@ obj MicroserviceManifestBuilder {
         logger: any = None;
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
-    bundle. Returns `{deployments, services, hpas, pdbs, pod_specs}`,
+    bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
     plus optional `pvcs`, `user_secret`, `ingress`."""
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
         pod_specs = self.generate_service_pod_specs(app_config, image);
         deployments: dict[str, dict[str, any]] = {};
         services: dict[str, dict[str, any]] = {};
-        hpas: dict[str, dict[str, any]] = {};
+        autoscalers: dict[str, dict[str, any]] = {};
         pdbs: dict[str, dict[str, any]] = {};
-        # HPA / PDB / PVC / Secret / Ingress builders return None when
+        # Autoscaler / PDB / PVC / Secret / Ingress builders return None when
         # disabled or unconfigured; bundle only carries non-None entries.
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
-            hpa = self._build_hpa_manifest(svc_name);
-            if hpa is not None {
-                hpas[svc_name] = hpa;
+            autoscaler_cfg = self._get_autoscaler_config(svc_name);
+            if autoscaler_cfg is not None {
+                autoscalers[svc_name] = autoscaler_cfg;
             }
             pdb = self._build_pdb_manifest(svc_name);
             if pdb is not None {
@@ -58,7 +59,7 @@ obj MicroserviceManifestBuilder {
         bundle: dict[str, any] = {
             "deployments": deployments,
             "services": services,
-            "hpas": hpas,
+            "autoscalers": autoscalers,
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
@@ -347,6 +348,21 @@ obj MicroserviceManifestBuilder {
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
 
+        # When tracing is enabled, point pods at the in-cluster Alloy OTLP
+        # receiver. Added before user env so a per-service override wins.
+        import from jac_scale.config_loader { get_scale_config }
+        ms_trace_cfg: dict = dict(
+            get_scale_config().get_microservices_config().get("tracing", {})
+        );
+        if ms_trace_cfg.get("enabled", False) {
+            env.append(
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
+                }
+            );
+        }
+
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
@@ -387,9 +403,15 @@ obj MicroserviceManifestBuilder {
     """Container resources with Burstable-QoS defaults (128Mi req / 1Gi
     limit / 50m cpu req). BestEffort pods get evicted first under memory
     pressure, so tiny defaults bump QoS without constraining real
-    workloads. Priority: per-service > [plugins.scale.kubernetes] >
-    defaults. Empty string opts back to BestEffort."""
-    def _build_resources(svc_cfg: dict[str, any]) -> dict[str, any] {
+    workloads. The gateway defaults to a 2Gi limit instead: it loads the
+    admin portal, LLM-telemetry, log wiring and runtime OpenAPI
+    aggregation that service pods don't, so its startup working set rides
+    right at 1Gi and OOM-kills there. Priority: per-service >
+    [plugins.scale.kubernetes] > defaults. Empty string opts back to
+    BestEffort."""
+    def _build_resources(
+        svc_cfg: dict[str, any], is_gateway: bool = False
+    ) -> dict[str, any] {
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
@@ -404,7 +426,7 @@ obj MicroserviceManifestBuilder {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            memory_limit_val = "1Gi";
+            memory_limit_val = "2Gi" if is_gateway else "1Gi";
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -557,42 +579,16 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """HPA; overrides at [...services.NAME.hpa]. None on hpa.enabled=false."""
-    def _build_hpa_manifest(svc_name: str) -> dict[str, any] | None {
+    """Autoscaler config for a service; None if autoscaling is disabled."""
+    def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
         cfg: dict[str, any] = self._service_config(svc_name).get("hpa", {});
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
-        min_r: int = int(cfg.get("min", 1));
-        max_r: int = int(cfg.get("max", 3));
-        cpu: int = int(cfg.get("cpu_target", 70));
         return {
-            "apiVersion": "autoscaling/v2",
-            "kind": "HorizontalPodAutoscaler",
-            "metadata": {
-                "name": f"{k8s_name}-hpa",
-                "namespace": self.k8s_config.namespace,
-                "labels": {"app": k8s_name, "managed": "jac-scale"}
-            },
-            "spec": {
-                "scaleTargetRef": {
-                    "apiVersion": "apps/v1",
-                    "kind": "Deployment",
-                    "name": f"{k8s_name}-deployment"
-                },
-                "minReplicas": min_r,
-                "maxReplicas": max_r,
-                "metrics": [
-                    {
-                        "type": "Resource",
-                        "resource": {
-                            "name": "cpu",
-                            "target": {"type": "Utilization", "averageUtilization": cpu}
-                        }
-                    }
-                ]
-            }
+            "min": int(cfg.get("min", 1)),
+            "max": int(cfg.get("max", 3)),
+            "cpu_target": int(cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET))
         };
     }
 
@@ -702,20 +698,31 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
+        # suffix, surfaced so an in-pod self-check can report "running build X"
+        # with zero RBAC. Strip any user-set copy first so the rendered YAML
+        # has a single, system-owned entry (no duplicate-env reliance).
+        env_list = [
+            e
+            for e in self._build_env(svc_name, svc_cfg)
+            if e["name"] != "JAC_IMAGE_REF"
+        ];
+        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
-            "image": self._resolve_image(image, svc_cfg),
+            "image": resolved_image,
             "command": entry["command"],
             "args": entry["args"],
-            "env": self._build_env(svc_name, svc_cfg),
+            "env": env_list,
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_readiness_probe(),
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
-        resources = self._build_resources(svc_cfg);
+        resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }

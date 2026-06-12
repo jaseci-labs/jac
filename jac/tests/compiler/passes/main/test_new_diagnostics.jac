@@ -403,6 +403,14 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: Python __init__ and init are distinct methods" {
+    # Issue #6556: a Python class with both `__init__` and a plain `init`
+    # method (e.g. Pillow's PIL.ImageFile.PyCodec) is valid Python; raising
+    # `__init__` to Jac's `init` constructor must not collide with it.
+    (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E0077: empty f-string expression" {
     pytest.skip("E0077 not yet implemented");
     (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');
@@ -631,6 +639,18 @@ test "E1042: missing await on sv-imported call (issue #6236)" {
     # runtime. `jac check` must flag it.
     (prog, _) = compile_and_check("type_E1042_sv_missing_await.cl.jac");
     assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
+test "E1042: sv->sv import call is synchronous, not an awaitable coroutine" {
+    # An sv->sv import (a server consuming another server) lowers to a
+    # synchronous `def` stub, so binding its result to a concrete type
+    # without `await` is correct and must NOT raise E1042. Uses the SAME
+    # provider as the cl->sv fixture above, which still must raise it --
+    # the check is sensitive to the importing module's context, not just
+    # the `sv import` keyword.
+    (prog, _) = compile_and_check("type_E1042_sv_sync_call_server.jac");
+    assert count_diagnostic_code(prog, "E1042") == 0 , f"sv->sv call must not be flagged as a missing-await coroutine; "
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 

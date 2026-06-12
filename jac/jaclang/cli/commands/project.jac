@@ -66,9 +66,11 @@ def create(
     args=[
         Arg.create(
             "editable",
-            default="",
-            help="Install the package at this path in editable mode (like pip install -e)",
-            short="e"
+            kind=ArgKind.APPEND,
+            default=[],
+            help="Install the package at this path in editable mode; repeat for multiple packages",
+            short="e",
+            metavar="PATH"
         ),
         Arg.create(
             "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
@@ -134,6 +136,10 @@ def create(
         ("jac install", "Install all dependencies"),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
+        (
+            "jac install -e ./jac-byllm ./jac-scale -e ./jac-client",
+            "Install multiple packages in editable mode (space-separated or repeated -e)"
+        ),
         ("jac install --dev", "Include dev dependencies"),
         ("jac install --extras data monitoring", "Include optional dependency groups"),
         ("jac install -e . --extras all", "Editable install with all optional deps"),
@@ -148,7 +154,7 @@ def create(
     group="project"
 )
 def install(
-    editable: str = "",
+    editable: list = [],
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,
@@ -365,28 +371,35 @@ def clean(
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-"""Build a wheel from jac.toml into the output directory."""
+"""Build a distributable package from jac.toml into the output directory."""
 @registry.command(
     name="bundle",
-    help="Build a .whl from jac.toml (upload separately with twine)",
+    help="Build a .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
     args=[
         Arg.create(
             "output",
             default="dist",
-            help="Output directory for the built .whl file",
+            help="Output directory for the built artifact",
             short="o"
+        ),
+        Arg.create(
+            "target",
+            default="wheel",
+            help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            short="t"
         ),
         Arg.create(
             "precompile",
             typ=bool,
             default=False,
-            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables",
+            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables (wheel only)",
             short="p"
         ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle --target npm", "Build an npm .tgz into dist/"),
         (
             "jac bundle --precompile",
             "Precompile for all Py-versions on PATH then bundle"
@@ -396,4 +409,6 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
     ],
     group="project"
 )
-def bundle(output: str = "dist", precompile: bool = False) -> int;
+def bundle(
+    output: str = "dist", target: str = "wheel", precompile: bool = False
+) -> int;

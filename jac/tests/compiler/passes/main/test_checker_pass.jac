@@ -241,6 +241,20 @@ test "from_import" {
     );
 }
 
+"""Calling an @overload-ed function imported through a re-export chain matches
+the later overload. Overloads must be gathered at the definition scope, not the
+single-symbol re-export scope (regression: SQLAlchemy `create_engine`)."""
+test "imported_overloaded_function_call_resolves" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_imported_overload.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert program.errors_had == [] , (
+        "make(\"a\") matches the no-strict overload; expected no errors, got: " + str(
+            [e.pretty_print() for e in program.errors_had]
+        )
+    );
+}
+
 test "call_expr" {
     path = os.path.join(CHECKER_FIXTURES, "checker_expr_call.jac");
     program = JacProgram();
@@ -1316,6 +1330,30 @@ test "inferred_local_type_frozen" {
         a = "some str";  # <-- Error
     """,
         program.errors_had[0].pretty_print()
+    );
+}
+
+test "inferred_local_type_widens_literals" {
+    # Only the cross-type reassignment errors, and the message reports the
+    # widened base type (`str`), not a leaked `Literal[...]`.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_literal_widening_reassignment.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert program.errors_had[0].code.code == "E1001";
+    msg = program.errors_had[0].pretty_print();
+    assert "Cannot assign int to str" in msg , f"Expected widened-base message, got: {msg}";
+    assert "Literal[" not in msg , f"Frozen type should not leak a literal: {msg}";
+    assert_error_pretty_found(
+        """
+        name = 5;  # <-- Error
+        ^^^^^^^^
+    """, msg
     );
 }
 
@@ -5131,6 +5169,16 @@ test "duplicate_archetype_decl_is_hard_error" {
     ].pretty_print()}";
 }
 
+test "comprehension_in_ternary_narrowing" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_comprehension_in_ternary.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error (no-guard case), got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 test "spread_with_explicit_kwarg_no_false_positive" {
     # Regression: a call that mixes a `*`/`**` spread with an explicit keyword
     # argument must not emit E1057 "Parameter 'X' already matched". The spread
@@ -5143,4 +5191,33 @@ test "spread_with_explicit_kwarg_no_false_positive" {
     assert len(program.errors_had) == 0 , f"Expected no errors for spread + explicit kwarg, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "circular_import_preserves_class_identity" {
+    abs_entry = os.path.join(CHECKER_FIXTURES, "circular_import_identity", "entry.jac");
+    rel_entry = os.path.relpath(abs_entry);
+    program = JacProgram();
+    program.compile(rel_entry, type_check=True);
+    assert len(program.errors_had) == 0 , f"Circular import split the class identity, got {len(
+        program.errors_had
+    )} error(s):\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "callable_null_default_rejected_outside_native" {
+    # Issue #6569 allows `Callable[[...], ret] = 0` (a C NULL function
+    # pointer) in native modules only. Regular Jac must keep rejecting it.
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_null_default.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert program.errors_had[0].code.code == "E1001";
+    assert_error_pretty_found(
+        """
+        has fn: Callable[[int], int] = 0;  # <-- Error
+    """,
+        program.errors_had[0].pretty_print()
+    );
 }

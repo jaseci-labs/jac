@@ -150,10 +150,11 @@ The docs site has three tiers with different expectations for contributors:
 Releasing new versions to PyPI is a two-step process using GitHub Actions.
 
 ```
-┌─────────────────────┐      ┌─────────────────────┐      ┌─────────────────────┐
-│  Create Release PR  │ ───▶ │   Merge to main     │ ───▶ │  Approve & Publish  │
-│  (manual trigger)   │      │   (triggers publish)│      │  (one-click)        │
-└─────────────────────┘      └─────────────────────┘      └─────────────────────┘
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│  Create Release PR  │ ─▶ │  Close & reopen PR  │ ─▶ │   Merge to main     │ ─▶ │  Approve & Publish  │
+│  (manual trigger)   │    │  (so CI runs) +     │    │  (auto-merge;       │    │  (one-click on the  │
+│                     │    │  enable auto-merge  │    │  triggers publish)  │    │  pypi environment)  │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
 ### Step 1: Create the Release PR
@@ -161,11 +162,12 @@ Releasing new versions to PyPI is a two-step process using GitHub Actions.
 1. Go to **GitHub Actions** → **Create Release PR**
 2. Click **Run workflow**
 3. For each package, select the version bump type (`skip`, `patch`, `minor`, or `major`):
-   - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jaseci`
+   - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jac-desktop`, `jaseci`
 4. Click **Run workflow**
 5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
-6. **Current workaround (needs fix)**: Close and reopen the PR to trigger CI tests
-7. Wait for CI tests to pass, then **approve and merge** the PR to main
+6. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach to the PR. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
+7. Once the checks attach, enable **auto-merge** on the PR
+8. When CI passes, the PR auto-merges to `main` (or **approve and merge** it manually)
 
 ### Step 2: Approve Publishing
 
@@ -178,23 +180,25 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
    - Click on the job, then click **Review deployments**
    - Select the `pypi` environment and click **Approve and deploy**
 3. The workflow then handles everything automatically:
-   - Precompiles bytecode (for packages that need it)
-   - Builds all packages
+   - Builds all packages once ([precompiling bytecode](https://docs.jaseci.org/reference/publishing/) for packages that need it)
    - Publishes in dependency order (tiered):
-     - **Tier 1**: `jaclang` (base package)
-     - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
-     - **Tier 3**: `jaseci` (meta-package)
+     - **Tier 1**: `jaclang` (base package; everything depends on it)
+     - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
+     - **Tier 3**: `jac-desktop` (depends on a tier-2 plugin, `jac-client`)
+     - **Tier 4**: `jaseci` (meta-package; depends on everything above)
    - Pushes git tags (`{package}-v{version}`, plus `v{version}` for jaseci)
    - Creates a GitHub Release with artifacts
    - Builds standalone binaries (if jaseci was released)
 
-> **Note**: The workflow waits for each tier to be available on PyPI before publishing the next tier.
+> **Note**: The workflow waits for each tier on PyPI before publishing the next, so a package never lands before a dependency it pins. Tiers are configured per package in `scripts/release_utils.jac`.
 
 ### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| CI tests not running on release PR | Close and reopen the PR to trigger CI |
+| CI checks not running / not showing on the release PR | Expected: GitHub skips `pull_request` checks for PRs opened by the `github-actions[bot]` / `GITHUB_TOKEN` actor. **Close and reopen the PR** so the reopen event comes from a real user, and the checks then run and attach. (A GitHub App / PAT token authoring the PR would remove this step.) |
+| Auto-merge won't enable / PR won't merge | Auto-merge needs the PR's required status checks to be attached; do the close/reopen above first so the checks exist on the PR |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
-| A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped |
+| A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped (`skip-existing`) |
+| Need to re-publish after the release PR is merged | Manually trigger **Publish Release** (`workflow_dispatch`) and check the packages to publish |
 | Version conflict on PyPI | The `Create Release PR` workflow validates this upfront - if you hit this, someone manually published |

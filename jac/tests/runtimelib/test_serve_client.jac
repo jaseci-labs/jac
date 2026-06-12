@@ -6,6 +6,8 @@ This file mirrors the tests in test_serve_client.py but uses native Jac test syn
 import io;
 import json;
 import logging;
+import os;
+import pytest;
 import re;
 import shutil;
 import uuid;
@@ -15,6 +17,22 @@ import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
+
+"""Skip a test unless client integration is explicitly enabled.
+
+Rendering a client page now runs the real Vite/Bun pipeline (bun + npm install
++ vite build), so these are integration tests rather than fast unit tests. They
+run only when JAC_CLIENT_INTEGRATION is set (and are covered by jac-client's own
+suite); core CI skips them.
+"""
+def _require_client_integration {
+    if not os.environ.get("JAC_CLIENT_INTEGRATION") {
+        pytest.skip(
+            "client render requires the Vite/Bun toolchain; "
+            "set JAC_CLIENT_INTEGRATION=1 to run"
+        );
+    }
+}
 
 def fixture_abs_path(filename: str) -> str {
     return str((Path(FIXTURES) / filename).resolve());
@@ -93,6 +111,55 @@ def make_crossboundary_client(tmp_path: str) -> JacTestClient {
     shutil.copy(
         fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
     );
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
+"""Create a client for the cl->sv *dual-role* app (#6507).
+
+`dualrole_guestbook.jac` is reached only through the client's `sv import` (the
+cl->sv load path), AND it is itself a server->server consumer: it does its own
+relative `sv import from .dualrole_analytics`. Before the fix that outgoing
+relative import crashed the guestbook module at load time, silently dropping its
+own `sign_guestbook` / `get_guestbook` endpoints. Copied into an isolated dir so
+the relative imports resolve.
+"""
+def make_dualrole_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"dualrole_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "dualrole_app.jac", dest / f"{module_name}.jac");
+    for name in [
+        "dualrole_frontend.cl.jac",
+        "dualrole_guestbook.jac",
+        "dualrole_analytics.jac"
+    ] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
+"""Create a client whose cl->sv endpoint provider crashes at import (#6507).
+
+The server module behind `do_thing` raises while executing its module body, so
+the serve-side collector cannot resolve the symbol. It must log the failure
+rather than silently drop the endpoint. Copied into an isolated dir.
+"""
+def make_failload_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"failload_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "failload_app.jac", dest / f"{module_name}.jac");
+    for name in ["failload_frontend.cl.jac", "failload_server.jac"] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
     return JacTestClient.from_file(
         str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
     );
@@ -606,6 +673,22 @@ test "serve root endpoint" {
     }
 }
 
+test "serve root app inference follows intent not incidence" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    # Explicit config always wins, regardless of what the manifest exports.
+    cfg_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert cfg_intro.resolve_root_app("dashboard") == "dashboard";
+    # serve_api exports a single, non-conventionally-named cl page
+    # (`client_page`), reachable at /cl/client_page. That is an incidental page,
+    # not a declared entry point, so it must NOT be promoted to / -- the root
+    # path stays the JSON API index.
+    api_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert api_intro.resolve_root_app() == "";
+    # A conventionally-named entry page (`app`) signals intent and IS inferred.
+    app_intro = ModuleIntrospector("client_fullstack_app", FIXTURES);
+    assert app_intro.resolve_root_app() == "app";
+}
+
 test "serve update username" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
@@ -1097,6 +1180,7 @@ test "serve mixed access levels" {
 # TestClientRendering (2 tests)
 # =============================================================================
 test "serve render client page returns html" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
         client.register_user("tester", "pass");
@@ -1131,6 +1215,7 @@ test "serve render unknown page returns error" {
 # TestFullstackClientApp (1 test)
 # =============================================================================
 test "serve client page html and bundle" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_fullstack_app_client(tmpdir);
         response = client.get("/cl/app");
@@ -1150,21 +1235,9 @@ test "serve client page html and bundle" {
         hash_match = re.search(r'/static/client\.js\?hash=([a-f0-9]+)', html);
         assert hash_match is not None;
         bundle_js = client.get(f"/static/client.js?hash={hash_match.group(1)}").text;
-        # @jac/runtime inlined (not left as ES import)
-        assert "// @jac/runtime" in bundle_js;
-        assert "import {" not in bundle_js;
-        # has -> useState hook present
-        assert "function useState(" in bundle_js;
-        assert "useState([])" in bundle_js;
-        # async can with entry -> useEffect present
-        assert "function useEffect(" in bundle_js;
-        assert "useEffect(" in bundle_js;
-        # Server function call wired up
-        assert "__jacCallFunction" in bundle_js;
-        assert '"get_items"' in bundle_js;
-        # Module registered
-        assert "__jacRegisterClientModule" in bundle_js;
-        assert "function app()" in bundle_js;
+        # Vite emits a bundled ESM artifact (React resolved from node_modules);
+        # assert the bundle was produced rather than the old inline-concat shape.
+        assert bundle_js.strip();
         client.close();
     }
 }
@@ -1211,6 +1284,55 @@ test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
         response = client.post("/function/cross_orphan", json={});
         assert not response.ok , "uncalled cross_orphan should not be registered";
         client.close();
+    }
+}
+
+test "issue 6507: cl->sv endpoint module keeps its endpoints when it is also an sv consumer" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_dualrole_client(tmpdir);
+        # `dualrole_guestbook` is reached only through the client's `sv import`
+        # and ALSO does its own `sv import from .dualrole_analytics`. That single
+        # outgoing relative import used to crash the module at load time, so its
+        # walkers vanished (POST -> 405). Both must register and run.
+        listing = client.get("/walkers");
+        assert listing.ok , f"/walkers should respond: {listing.data}";
+        names = listing.data["walkers"];
+        assert "get_guestbook" in names , f"get_guestbook missing from {names}";
+        assert "sign_guestbook" in names , f"sign_guestbook missing from {names}";
+        signed = client.post("/walker/sign_guestbook", json={"name": "ada"});
+        assert signed.ok , f"sign_guestbook should be callable: {signed.data}";
+        got = client.post("/walker/get_guestbook", json={});
+        assert got.ok , f"get_guestbook should be callable: {got.data}";
+        client.close();
+    }
+}
+
+test "issue 6507: a cross-boundary endpoint module that fails to import is logged, not silently dropped" {
+    with TemporaryDirectory() as tmpdir {
+        # Capture before building the client: the failing import happens during
+        # endpoint collection at load time (inside from_file).
+        logger = logging.getLogger("jaclang.serve");
+        cap = capture_log_start(logger, logging.WARNING);
+        buf = cap[0];
+        handler = cap[1];
+        old_level = cap[2];
+        try {
+            client = make_failload_client(tmpdir);
+            # The provider module raises at import, so do_thing cannot resolve;
+            # it must not be served...
+            resp = client.post("/function/do_thing", json={});
+            assert not resp.ok , "endpoint from a crashing module must not be callable";
+            # ...and the failure must be surfaced on the log (the #6507 trap was
+            # that it vanished with no error at all).
+            log_text = buf.getvalue();
+            assert "failload_server" in log_text , (
+                f"module-load failure should be logged, got: {log_text!r}"
+            );
+            assert "RuntimeError" in log_text;
+            client.close();
+        } finally {
+            capture_log_stop(logger, handler, old_level);
+        }
     }
 }
 
@@ -1459,6 +1581,7 @@ test "serve mixed local and imported function access" {
 # TestSPACatchAll (7 tests)
 # =============================================================================
 test "serve spa catchall serves html for clean urls" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/about");
@@ -1473,6 +1596,7 @@ test "serve spa catchall serves html for clean urls" {
 }
 
 test "serve spa catchall root serves html" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/");
@@ -1485,6 +1609,7 @@ test "serve spa catchall root serves html" {
 }
 
 test "serve spa catchall nested path" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/dashboard/settings");
@@ -1511,6 +1636,7 @@ test "serve spa catchall api paths unaffected" {
 }
 
 test "serve spa catchall cl route still works" {
+    _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         spa = make_spa_client(tmpdir);
         response = spa.get("/cl/client_page");
@@ -1855,14 +1981,14 @@ test "CallState.reports is thread-safe (sync walker worker threads put safely)" 
     # a non-event-loop thread (its internal Future wakeup path relies on
     # loop-affine state). The production flow "works" only because the
     # drain runs strictly after the walker joins, so no getter is ever
-    # waiting — but that is a latent invariant. Use a thread-safe queue
+    # waiting - but that is a latent invariant. Use a thread-safe queue
     # so the type itself documents and enforces cross-thread put.
     import asyncio;
     import from jaclang.runtimelib.context { CallState }
 
     call_state = CallState();
 
-    # Type guard — fails today (asyncio.Queue), passes after fix.
+    # Type guard - fails today (asyncio.Queue), passes after fix.
     assert not isinstance(call_state.reports, asyncio.Queue) , (
         "CallState.reports must not be an asyncio.Queue: put_nowait from "
         "a worker thread is thread-unsafe. Use queue.Queue (or another "
@@ -1870,7 +1996,7 @@ test "CallState.reports is thread-safe (sync walker worker threads put safely)" 
         "by construction, not by relying on drain-after-join ordering."
     );
 
-    # Behavioral guard — the invariant we want preserved after the fix:
+    # Behavioral guard - the invariant we want preserved after the fix:
     # many worker threads put concurrently, event loop drains afterward,
     # no lost or duplicated reports.
     total_threads = 50;
@@ -1924,7 +2050,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
     # Before the fix, the server mutated `ctx.user_root` directly on the
     # process-global ExecutionContext. Under N concurrent requests from
     # *different* users, the `await ctx.aset_user_root(...)` calls
-    # interleave on the event loop and the last writer wins — so an
+    # interleave on the event loop and the last writer wins - so an
     # in-flight walker launched by user A could end up executing against
     # user B's root. This test would fail in that world.
     #
@@ -1966,7 +2092,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
             ];
             return await asyncio.gather(*tasks);
         }
-        # Async walker path — most sensitive: the await inside the walker
+        # Async walker path - most sensitive: the await inside the walker
         # guarantees interleaving at the point a shared-ctx bug would
         # manifest. Each task must still observe its own user_root.
         async_results = asyncio.run(run_probe(async_walker));
@@ -1978,15 +2104,15 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
             expected = root_ids[uname];
             assert got["start_root_id"] == expected , (
                 f"async: {uname} saw start_root_id={got['start_root_id']}, "
-                f"expected {expected} — ctx.user_root race regression"
+                f"expected {expected} - ctx.user_root race regression"
             );
             assert got["end_root_id"] == expected , (
                 f"async: {uname} saw end_root_id={got['end_root_id']} after "
-                f"await, expected {expected} — another request overwrote "
+                f"await, expected {expected} - another request overwrote "
                 f"user_root during the await"
             );
         }
-        # Sync walker path — proves isolation propagates across the
+        # Sync walker path - proves isolation propagates across the
         # asyncio.to_thread boundary (ContextVars copy into the worker).
         sync_results = asyncio.run(run_probe(sync_walker));
         for (uname, result) in zip(users, sync_results) {

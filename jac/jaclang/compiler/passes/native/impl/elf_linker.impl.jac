@@ -34,7 +34,8 @@ glob SHT_NULL = 0,
      SHT_RELA = 4,
      SHT_HASH = 5,
      SHT_DYNAMIC = 6,
-     SHT_DYNSYM = 11;
+     SHT_DYNSYM = 11,
+     SHT_INIT_ARRAY = 14;
 
 # ── Section flags ────────────────────────────────────────────────
 glob SHF_WRITE = 0x1,
@@ -68,7 +69,17 @@ glob DT_NULL = 0,
      DT_JMPREL = 23,
      DT_RELA = 7,
      DT_RELASZ = 8,
-     DT_RELAENT = 9;
+     DT_RELAENT = 9,
+     DT_RUNPATH = 29,
+     # Shared-object dynamic tags: SONAME names the library, INIT_ARRAY points
+     # at a vector of init function pointers the loader runs on dlopen/load.
+     DT_SONAME = 14,
+     DT_INIT_ARRAY = 25,
+     DT_INIT_ARRAYSZ = 27;
+
+# ── ELF object type ──────────────────────────────────────────────
+# ET_EXEC = 2 (declared above); ET_DYN = 3 is a shared object / PIE.
+glob ET_DYN = 3;
 
 # ── Symbol binding/type ──────────────────────────────────────────
 glob STB_GLOBAL = 1,
@@ -86,6 +97,7 @@ glob R_X86_64_64 = 1,
      R_X86_64_COPY = 5,
      R_X86_64_GLOB_DAT = 6,
      R_X86_64_JUMP_SLOT = 7,
+     R_X86_64_RELATIVE = 8,
      R_X86_64_GOTPCREL = 9,
      R_X86_64_REX_GOTPCRELX = 42;
 
@@ -107,7 +119,19 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_COPY = 1024,
      R_AARCH64_GLOB_DAT = 1025,
      R_AARCH64_JUMP_SLOT = 1026,
-     R_AARCH64_ABS64 = 257;
+     R_AARCH64_ABS64 = 257,
+     # MOVZ/MOVK absolute-address materialization. A 64-bit address is built
+     # across four instructions; each reloc patches one 16-bit slice into the
+     # imm16 field. G0/G1/G2/G3 carry address bits [15:0]/[31:16]/[47:32]/[63:48].
+     # The _NC ("no check") variants suppress the per-group overflow check.
+     R_AARCH64_MOVW_UABS_G0 = 263,
+     R_AARCH64_MOVW_UABS_G0_NC = 264,
+     R_AARCH64_MOVW_UABS_G1 = 265,
+     R_AARCH64_MOVW_UABS_G1_NC = 266,
+     R_AARCH64_MOVW_UABS_G2 = 267,
+     R_AARCH64_MOVW_UABS_G2_NC = 268,
+     R_AARCH64_MOVW_UABS_G3 = 269,
+     R_AARCH64_RELATIVE = 1027;
 
 
 # ── Helper: build ELF hash table ────────────────────────────────
@@ -139,6 +163,39 @@ def _build_hash_table(num_symbols: int) -> bytes {
         } else {
             data.extend(struct.pack("<I", i + 1));
         }
+    }
+    return bytes(data);
+}
+
+
+# ── Proper SysV hash table over named dynamic symbols ───────────
+"""Build a correct SysV (.hash) table for a list of dynamic-symbol names.
+
+Unlike _build_hash_table (a degenerate single-bucket chain used by the
+executable path, where the loader only ever resolves *undefined* imports),
+a shared object must let `dlsym`/the loader find each *exported* symbol by
+name. names[0] is the reserved null entry (""), and names[i] must line up
+with dynamic-symbol index i. Buckets index the first symbol whose hash lands
+there; chain[i] threads collisions, terminating at 0 (STN_UNDEF)."""
+def _build_sysv_hash_for_names(names: list[str]) -> bytes {
+    n = len(names);
+    nbucket = max(1, n // 2);
+    buckets = [0] * nbucket;
+    chain = [0] * n;
+    i = 1;
+    while i < n {
+        b = _elf_hash(names[i]) % nbucket;
+        chain[i] = buckets[b];
+        buckets[b] = i;
+        i += 1;
+    }
+    data = bytearray();
+    data.extend(struct.pack("<II", nbucket, n));
+    for x in buckets {
+        data.extend(struct.pack("<I", x));
+    }
+    for x in chain {
+        data.extend(struct.pack("<I", x));
     }
     return bytes(data);
 }
@@ -217,7 +274,9 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_X86_64_JUMP_SLOT,
             copy_rtype=R_X86_64_COPY,
             glob_dat_rtype=R_X86_64_GLOB_DAT,
-            gotpcrel_rtypes={R_X86_64_GOTPCREL, R_X86_64_REX_GOTPCRELX}
+            gotpcrel_rtypes={R_X86_64_GOTPCREL, R_X86_64_REX_GOTPCRELX},
+            relative_rtype=R_X86_64_RELATIVE,
+            abs64_rtype=R_X86_64_64
         );
     } elif e_machine == EM_AARCH64 {
         return ArchConfig(
@@ -233,7 +292,9 @@ impl ArchConfig.from_e_machine(e_machine: int) -> (ArchConfig | None) {
             jump_slot_rtype=R_AARCH64_JUMP_SLOT,
             copy_rtype=R_AARCH64_COPY,
             glob_dat_rtype=R_AARCH64_GLOB_DAT,
-            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE, R_AARCH64_LD64_GOT_LO12_NC}
+            gotpcrel_rtypes={R_AARCH64_ADR_GOT_PAGE, R_AARCH64_LD64_GOT_LO12_NC},
+            relative_rtype=R_AARCH64_RELATIVE,
+            abs64_rtype=R_AARCH64_ABS64
         );
     }
     return None;
@@ -415,6 +476,25 @@ def _aarch64_apply_reloc(
     } elif rtype == R_AARCH64_ABS64 {
         val = sym_addr + addend;
         struct.pack_into("<Q", patch_buf, patch_off, val & 0xFFFFFFFFFFFFFFFF);
+        return True;
+    } elif rtype == R_AARCH64_MOVW_UABS_G0
+    or rtype == R_AARCH64_MOVW_UABS_G0_NC
+    or rtype == R_AARCH64_MOVW_UABS_G1
+    or rtype == R_AARCH64_MOVW_UABS_G1_NC
+    or rtype == R_AARCH64_MOVW_UABS_G2
+    or rtype == R_AARCH64_MOVW_UABS_G2_NC
+    or rtype == R_AARCH64_MOVW_UABS_G3 {
+        # Patch one 16-bit slice of the absolute address (S + A) into the
+        # MOVZ/MOVK imm16 field at bits [20:5]. The reloc type selects the
+        # group: G0/G1/G2/G3 -> address bits [15:0]/[31:16]/[47:32]/[63:48].
+        # Each {G,G_NC} pair is two consecutive codes, so dividing the offset
+        # from G0 by two yields the group index.
+        val = sym_addr + addend;
+        group = (rtype - R_AARCH64_MOVW_UABS_G0) // 2;
+        imm16 = (val >> (group * 16)) & 0xFFFF;
+        insn = struct.unpack_from("<I", patch_buf, patch_off)[0];
+        insn = (insn & 0xFFE0001F) | (imm16 << 5);
+        struct.pack_into("<I", patch_buf, patch_off, insn);
         return True;
     }
     return False;
@@ -676,7 +756,9 @@ impl ElfLinker.build_executable -> bytes {
     num_phdrs = 5;
     phdr_size = num_phdrs * 56;
 
-    # Build interp
+    # Build interp. Prefer a loader that exists on the build host (native
+    # build), but when cross-compiling the target loader is absent here, so
+    # fall back to the canonical (first) interpreter path for the target arch.
     interp_data = b"\x00";
     for path in arch.interp_paths {
         if os.path.exists(path) {
@@ -684,9 +766,14 @@ impl ElfLinker.build_executable -> bytes {
             break;
         }
     }
+    if interp_data == b"\x00" and arch.interp_paths {
+        interp_data = arch.interp_paths[0].encode() + b"\x00";
+    }
 
-    # Build dynamic string table
-    dynstr_strings = [""] + extern_syms + self.needed_libs;
+    # Build dynamic string table. "$ORIGIN" backs the DT_RUNPATH entry so the
+    # loader resolves needed libraries relative to the executable's own
+    # directory (a sibling .so is found no matter the launch CWD).
+    dynstr_strings = [""] + extern_syms + self.needed_libs + ["$ORIGIN"];
     (dynstr_data, dynstr_offsets) = _build_strtab(dynstr_strings);
 
     # Build dynamic symbol table
@@ -720,6 +807,10 @@ impl ElfLinker.build_executable -> bytes {
     for lib in self.needed_libs {
         dyn_entries.append((DT_NEEDED, dynstr_offsets.get(lib, 0)));
     }
+    # Resolve needed libraries relative to the executable directory ($ORIGIN),
+    # so a sibling shared library is found regardless of the launch CWD. The
+    # value is a .dynstr offset (like DT_NEEDED), so it is not vaddr-patched.
+    dyn_entries.append((DT_RUNPATH, dynstr_offsets.get("$ORIGIN", 0)));
     dyn_entries.append((DT_HASH, 0));
     dyn_entries.append((DT_STRTAB, 0));
     dyn_entries.append((DT_SYMTAB, 0));
@@ -940,20 +1031,33 @@ impl ElfLinker.build_executable -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is not None {
-            (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        } else {
-            patch_buf = code_bytes;
-            sec_blob_off = 0;
-            patch_base_vaddr = text_vaddr;
+        if _pt is None {
+            # The relocation targets a section we do not place in the loadable
+            # image (e.g. metadata like .eh_frame, whose relocations are also
+            # filtered while parsing). There is nothing in the output to patch,
+            # so skip it. The previous fallback wrote into .text at this offset,
+            # which would corrupt code if such a relocation were ever applied.
+            continue;
         }
+        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
         patch_off = sec_blob_off + rela.offset;
         patch_vaddr = patch_base_vaddr + patch_off;
 
-        # Apply via architecture-specific handler
-        arch.apply_reloc(
+        # Apply via architecture-specific handler. Every relocation that reaches
+        # here targets an emitted (loadable) section, so an unhandled type would
+        # leave the reference pointing at NULL. Fail loudly instead of emitting a
+        # binary that segfaults at process entry (the failure mode of #6366).
+        applied = arch.apply_reloc(
             rela.rtype, patch_buf, patch_off, sym_addr, rela.addend, patch_vaddr
         );
+        if not applied {
+            raise ValueError(
+                f"ELF linker: no handler for relocation type {rela.rtype} "
+                f"(symbol '{rela.sym_name}', section '{rela.target_sec}', "
+                f"e_machine {arch.e_machine}). Refusing to emit a binary with "
+                f"an unrelocated reference."
+            );
+        }
     }
 
     # ── Find entry point ──────────────────────────────────────────
@@ -1104,6 +1208,896 @@ impl ElfLinker.build_executable -> bytes {
         }
     }
 
+    return bytes(output);
+}
+
+
+# ── Build a shared object (ET_DYN) ───────────────────────────────
+"""Link the relocatable object into a position-independent ELF shared object.
+
+Unlike build_executable (a fixed-base ET_EXEC), this emits an ET_DYN image
+with base virtual address 0 and no PT_INTERP, so the loader may map it at any
+address. Three things make that work:
+  * the exported `:pub` symbols are written into .dynsym with a real .hash so
+    a C host can resolve them via dlsym;
+  * every absolute pointer the image stores into its own data — pointers in
+    writable data, GOT slots for defined symbols accessed through the GOT, and
+    the DT_INIT_ARRAY entries — becomes an R_*_RELATIVE dynamic relocation that
+    the loader fixes up with the load bias (external symbols still bind through
+    the PLT/GOT as in the executable path);
+  * DT_INIT_ARRAY lists the init functions (e.g. __jac_shared_init) the loader
+    runs on dlopen, so module globals are initialised before any export runs.
+"""
+impl ElfLinker.build_shared_object -> bytes {
+    arch = self.arch;
+    BASE_VADDR = 0;  # ET_DYN: loader picks the base, everything is bias-relative
+    PAGE_SIZE = arch.page_size;
+
+    # ── Collect code/rodata/data sections (identical to build_executable) ──
+    code_data = bytearray();
+    rodata_blob = bytearray();
+    data_blob = bytearray();
+    code_sections: dict[str, tuple[int, int]] = {};
+    rodata_sections: dict[str, tuple[int, int]] = {};
+    data_sections: dict[str, tuple[int, int]] = {};
+    section_placement: dict[int, tuple[str, int]] = {};
+    sec_idx = 0;
+    for sec in self.sections {
+        if sec.typ == SHT_PROGBITS and (sec.flags & SHF_EXECINSTR) {
+            if len(sec.data) > 0 {
+                off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
+                code_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("code", off);
+            }
+        } elif sec.typ == SHT_PROGBITS
+        and (sec.flags & SHF_ALLOC)
+        and not (sec.flags & SHF_WRITE) {
+            if len(sec.data) > 0 {
+                off = _append_to_blob(rodata_blob, sec.data, sec.align, len(sec.data));
+                rodata_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("rodata", off);
+            }
+        } elif (sec.flags & SHF_WRITE) and (sec.flags & SHF_ALLOC) {
+            alloc_size = sec.mem_size;
+            if alloc_size > 0 {
+                off = _append_to_blob(data_blob, sec.data, sec.align, alloc_size);
+                data_sections[sec.name] = (off, alloc_size);
+                section_placement[sec_idx] = ("data", off);
+            }
+        }
+        sec_idx += 1;
+    }
+
+    # ── Identify external + local symbols (mirrors build_executable) ──
+    known_data_syms = {"stdin", "stdout", "stderr", "environ"};
+    extern_func_syms: list[str] = [];
+    extern_data_syms: list[str] = [];
+    local_sym_map: dict[str, tuple[str, int]] = {};
+    sym_idx_placement: dict[int, tuple[str, int]] = {};
+    sym_i = 0;
+    for sym in self.symbols {
+        if sym.shndx == SHN_UNDEF and sym.name and sym.bind >= STB_GLOBAL {
+            is_data = sym.typ == STT_OBJECT
+            or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
+            if is_data {
+                if sym.name not in extern_data_syms {
+                    extern_data_syms.append(sym.name);
+                }
+            } else {
+                if sym.name not in extern_func_syms {
+                    extern_func_syms.append(sym.name);
+                }
+            }
+        } elif sym.shndx != SHN_UNDEF and sym.shndx < len(self.sections) {
+            placement = section_placement.get(sym.shndx);
+            if placement is not None {
+                if sym.name {
+                    local_sym_map[sym.name] = (placement[0], placement[1] + sym.value);
+                }
+                sym_idx_placement[sym_i] = (placement[0], placement[1]);
+            }
+        }
+        sym_i += 1;
+    }
+
+    # Defined symbols accessed through the GOT (GOTPCREL to a local definition)
+    # each need a private GOT slot fixed up with a RELATIVE relocation.
+    local_got_syms: list[str] = [];
+    for rela in self.relocations {
+        if rela.rtype in arch.gotpcrel_rtypes
+        and rela.sym_name
+        and rela.sym_name not in extern_func_syms
+        and rela.sym_name not in extern_data_syms
+        and rela.sym_name in local_sym_map
+        and rela.sym_name not in local_got_syms {
+            local_got_syms.append(rela.sym_name);
+        }
+    }
+
+    # Exported symbols: requested names that are actually defined here.
+    exports: list[str] = [];
+    for nm in self.export_symbols {
+        if nm in local_sym_map and nm not in exports {
+            exports.append(nm);
+        }
+    }
+    # Init functions that are actually defined (run via DT_INIT_ARRAY).
+    inits: list[str] = [];
+    for nm in self.init_funcs {
+        if nm in local_sym_map and nm not in inits {
+            inits.append(nm);
+        }
+    }
+    _soname = self.soname or "lib.so";
+
+    # ── Dynamic string + symbol tables ────────────────────────────
+    # dynsym order: [null] + exports + extern_func + extern_data. The .hash
+    # and the symbol-index map below must use this exact order.
+    dynsym_names: list[str] = [""] + exports + extern_func_syms + extern_data_syms;
+    dynstr_strings: list[str] = [""] + exports + extern_func_syms + extern_data_syms + self.needed_libs + [
+        _soname,
+        "$ORIGIN"
+    ];
+    (dynstr_data, dynstr_offsets) = _build_strtab(dynstr_strings);
+    hash_data = _build_sysv_hash_for_names(dynsym_names);
+
+    # name -> dynsym index
+    dynsym_index: dict[str, int] = {};
+    _di = 1;
+    for nm in (exports + extern_func_syms + extern_data_syms) {
+        dynsym_index[nm] = _di;
+        _di += 1;
+    }
+    extern_data_set = set(extern_data_syms);
+
+    # ── Sizes ─────────────────────────────────────────────────────
+    plt0_size = arch.plt0_size;
+    plt_entry_size = arch.plt_entry_size;
+    plt_size = plt0_size + len(extern_func_syms) * plt_entry_size;
+    got_plt_entries = 3 + len(extern_func_syms);
+    got_plt_size = got_plt_entries * 8;
+    data_got_size = len(extern_data_syms) * 8;  # GLOB_DAT slots for extern data
+    local_got_size = len(local_got_syms) * 8;  # RELATIVE slots for local defs
+    init_arr_size = len(inits) * 8;
+    num_dynsyms = len(dynsym_names);
+
+    # ── Layout: code segment (RX/R, file offset == vaddr since BASE 0) ──
+    ehdr_size = 64;
+    num_phdrs = 4;  # PHDR, LOAD(code), LOAD(data), DYNAMIC — no INTERP
+    phdr_size = num_phdrs * 56;
+    cur_offset = ehdr_size + phdr_size;
+    cur_offset = _align(cur_offset, 8);
+    hash_foff = cur_offset;
+    cur_offset += len(hash_data);
+    cur_offset = _align(cur_offset, 8);
+    dynsym_foff = cur_offset;
+    cur_offset += num_dynsyms * 24;
+    cur_offset = _align(cur_offset, 8);
+    dynstr_foff = cur_offset;
+    cur_offset += len(dynstr_data);
+    cur_offset = _align(cur_offset, 8);
+    rela_plt_foff = cur_offset;
+    cur_offset += len(extern_func_syms) * 24;
+    cur_offset = _align(cur_offset, 8);
+    # rela.dyn holds: RELATIVE (data abs64 to defined), RELATIVE (local GOT),
+    # RELATIVE (init array), GLOB_DAT (extern data). Built after vaddrs known;
+    # count them now to reserve space.
+    data_abs_relocs: list[tuple] = [];
+    for rela in self.relocations {
+        if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
+            tgt = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
+            if tgt is None {
+                tgt = sym_idx_placement.get(rela.sym_idx);
+            }
+            if tgt is not None {
+                data_abs_relocs.append((rela, tgt));
+            }
+        }
+    }
+    n_rela_dyn = len(data_abs_relocs) + len(local_got_syms) + len(inits) + len(
+        extern_data_syms
+    );
+    rela_dyn_foff = cur_offset;
+    cur_offset += n_rela_dyn * 24;
+    cur_offset = _align(cur_offset, 16);
+    plt_foff = cur_offset;
+    cur_offset += plt_size;
+    cur_offset = _align(cur_offset, 16);
+    text_foff = cur_offset;
+    cur_offset += len(code_data);
+    cur_offset = _align(cur_offset, 16);
+    rodata_foff = cur_offset;
+    cur_offset += len(rodata_blob);
+    code_seg_size = cur_offset;
+
+    # ── Layout: data segment (RW) on a fresh page ──
+    data_seg_foff = _align(cur_offset, PAGE_SIZE);
+    data_seg_vaddr = BASE_VADDR + data_seg_foff;
+    got_plt_foff = data_seg_foff;
+    cur_offset = got_plt_foff + got_plt_size;
+    cur_offset = _align(cur_offset, 8);
+    data_got_foff = cur_offset;
+    cur_offset += data_got_size;
+    cur_offset = _align(cur_offset, 8);
+    local_got_foff = cur_offset;
+    cur_offset += local_got_size;
+    cur_offset = _align(cur_offset, 8);
+    init_arr_foff = cur_offset;
+    cur_offset += init_arr_size;
+    cur_offset = _align(cur_offset, 8);
+    dynamic_foff = cur_offset;
+    # Dynamic entries (sizes known; address fields patched after vaddrs).
+    dyn_entries: list[tuple[int, int]] = [];
+    for lib in self.needed_libs {
+        dyn_entries.append((DT_NEEDED, dynstr_offsets.get(lib, 0)));
+    }
+    dyn_entries.append((DT_SONAME, dynstr_offsets.get(_soname, 0)));
+    dyn_entries.append((DT_RUNPATH, dynstr_offsets.get("$ORIGIN", 0)));
+    dyn_entries.append((DT_HASH, 0));
+    dyn_entries.append((DT_STRTAB, 0));
+    dyn_entries.append((DT_SYMTAB, 0));
+    dyn_entries.append((DT_STRSZ, len(dynstr_data)));
+    dyn_entries.append((DT_SYMENT, 24));
+    if len(extern_func_syms) > 0 {
+        dyn_entries.append((DT_PLTGOT, 0));
+        dyn_entries.append((DT_PLTRELSZ, len(extern_func_syms) * 24));
+        dyn_entries.append((DT_PLTREL, DT_RELA));
+        dyn_entries.append((DT_JMPREL, 0));
+    }
+    if n_rela_dyn > 0 {
+        dyn_entries.append((DT_RELA, 0));
+        dyn_entries.append((DT_RELASZ, n_rela_dyn * 24));
+        dyn_entries.append((DT_RELAENT, 24));
+    }
+    if len(inits) > 0 {
+        dyn_entries.append((DT_INIT_ARRAY, 0));
+        dyn_entries.append((DT_INIT_ARRAYSZ, init_arr_size));
+    }
+    dyn_entries.append((DT_NULL, 0));
+    dynamic_size = len(dyn_entries) * 16;
+    cur_offset = dynamic_foff + dynamic_size;
+    cur_offset = _align(cur_offset, 8);
+    data_foff = cur_offset;
+    cur_offset += len(data_blob);
+    data_seg_size = cur_offset - data_seg_foff;
+    total_file_size = data_seg_foff + data_seg_size;
+
+    # ── Virtual addresses (BASE 0, so vaddr == file offset) ──
+    hash_vaddr = BASE_VADDR + hash_foff;
+    dynsym_vaddr = BASE_VADDR + dynsym_foff;
+    dynstr_vaddr = BASE_VADDR + dynstr_foff;
+    rela_plt_vaddr = BASE_VADDR + rela_plt_foff;
+    rela_dyn_vaddr = BASE_VADDR + rela_dyn_foff;
+    plt_vaddr = BASE_VADDR + plt_foff;
+    text_vaddr = BASE_VADDR + text_foff;
+    rodata_vaddr = BASE_VADDR + rodata_foff;
+    got_plt_vaddr = BASE_VADDR + got_plt_foff;
+    data_got_vaddr = BASE_VADDR + data_got_foff;
+    local_got_vaddr = BASE_VADDR + local_got_foff;
+    init_arr_vaddr = BASE_VADDR + init_arr_foff;
+    dynamic_vaddr = BASE_VADDR + dynamic_foff;
+    data_vaddr = BASE_VADDR + data_foff;
+
+    local_got_slot: dict[str, int] = {};
+    for (gi, gnm) in enumerate(local_got_syms) {
+        local_got_slot[gnm] = local_got_vaddr + gi * 8;
+    }
+    extern_data_slot: dict[str, int] = {};
+    for (gi, gnm) in enumerate(extern_data_syms) {
+        extern_data_slot[gnm] = data_got_vaddr + gi * 8;
+    }
+
+    # ── Section-header specs ──────────────────────────────────────
+    # The runtime loader only needs PT_DYNAMIC, but `ld -lfoo`, readelf
+    # --dyn-syms and nm -D read the section header table. Each spec is
+    # (name, type, flags, addr, offset, size, link_name, info, align, entsize);
+    # link_name is resolved to a section index after the list is built. The
+    # .shstrtab offset/size are filled in when the table is serialised.
+    PF_NONE = 0;
+    sh_specs: list = [("", SHT_NULL, 0, 0, 0, 0, "", 0, 0, 0)];
+    sh_specs.append(
+        (
+            ".hash",
+            SHT_HASH,
+            SHF_ALLOC,
+            hash_vaddr,
+            hash_foff,
+            len(hash_data),
+            ".dynsym",
+            0,
+            8,
+            4
+        )
+    );
+    sh_specs.append(
+        (
+            ".dynsym",
+            SHT_DYNSYM,
+            SHF_ALLOC,
+            dynsym_vaddr,
+            dynsym_foff,
+            num_dynsyms * 24,
+            ".dynstr",
+            1,
+            8,
+            24
+        )
+    );
+    sh_specs.append(
+        (
+            ".dynstr",
+            SHT_STRTAB,
+            SHF_ALLOC,
+            dynstr_vaddr,
+            dynstr_foff,
+            len(dynstr_data),
+            "",
+            0,
+            1,
+            0
+        )
+    );
+    if len(extern_func_syms) > 0 {
+        sh_specs.append(
+            (
+                ".rela.plt",
+                SHT_RELA,
+                SHF_ALLOC,
+                rela_plt_vaddr,
+                rela_plt_foff,
+                len(extern_func_syms) * 24,
+                ".dynsym",
+                0,
+                8,
+                24
+            )
+        );
+    }
+    if n_rela_dyn > 0 {
+        sh_specs.append(
+            (
+                ".rela.dyn",
+                SHT_RELA,
+                SHF_ALLOC,
+                rela_dyn_vaddr,
+                rela_dyn_foff,
+                n_rela_dyn * 24,
+                ".dynsym",
+                0,
+                8,
+                24
+            )
+        );
+    }
+    if plt_size > 0 {
+        sh_specs.append(
+            (
+                ".plt",
+                SHT_PROGBITS,
+                SHF_ALLOC | SHF_EXECINSTR,
+                plt_vaddr,
+                plt_foff,
+                plt_size,
+                "",
+                0,
+                16,
+                16
+            )
+        );
+    }
+    if len(code_data) > 0 {
+        sh_specs.append(
+            (
+                ".text",
+                SHT_PROGBITS,
+                SHF_ALLOC | SHF_EXECINSTR,
+                text_vaddr,
+                text_foff,
+                len(code_data),
+                "",
+                0,
+                16,
+                0
+            )
+        );
+    }
+    if len(rodata_blob) > 0 {
+        sh_specs.append(
+            (
+                ".rodata",
+                SHT_PROGBITS,
+                SHF_ALLOC,
+                rodata_vaddr,
+                rodata_foff,
+                len(rodata_blob),
+                "",
+                0,
+                16,
+                0
+            )
+        );
+    }
+    if got_plt_size > 0 {
+        sh_specs.append(
+            (
+                ".got.plt",
+                SHT_PROGBITS,
+                SHF_WRITE | SHF_ALLOC,
+                got_plt_vaddr,
+                got_plt_foff,
+                got_plt_size,
+                "",
+                0,
+                8,
+                8
+            )
+        );
+    }
+    if data_got_size > 0 {
+        sh_specs.append(
+            (
+                ".got",
+                SHT_PROGBITS,
+                SHF_WRITE | SHF_ALLOC,
+                data_got_vaddr,
+                data_got_foff,
+                data_got_size,
+                "",
+                0,
+                8,
+                8
+            )
+        );
+    }
+    if local_got_size > 0 {
+        sh_specs.append(
+            (
+                ".got.jac",
+                SHT_PROGBITS,
+                SHF_WRITE | SHF_ALLOC,
+                local_got_vaddr,
+                local_got_foff,
+                local_got_size,
+                "",
+                0,
+                8,
+                8
+            )
+        );
+    }
+    if init_arr_size > 0 {
+        sh_specs.append(
+            (
+                ".init_array",
+                SHT_INIT_ARRAY,
+                SHF_WRITE | SHF_ALLOC,
+                init_arr_vaddr,
+                init_arr_foff,
+                init_arr_size,
+                "",
+                0,
+                8,
+                8
+            )
+        );
+    }
+    sh_specs.append(
+        (
+            ".dynamic",
+            SHT_DYNAMIC,
+            SHF_WRITE | SHF_ALLOC,
+            dynamic_vaddr,
+            dynamic_foff,
+            dynamic_size,
+            ".dynstr",
+            0,
+            8,
+            16
+        )
+    );
+    if len(data_blob) > 0 {
+        sh_specs.append(
+            (
+                ".data",
+                SHT_PROGBITS,
+                SHF_WRITE | SHF_ALLOC,
+                data_vaddr,
+                data_foff,
+                len(data_blob),
+                "",
+                0,
+                8,
+                0
+            )
+        );
+    }
+    sh_specs.append((".shstrtab", SHT_STRTAB, 0, 0, 0, 0, "", 0, 1, 0));
+    sh_name_to_idx: dict[str, int] = {};
+    for (_si, _spec) in enumerate(sh_specs) {
+        sh_name_to_idx[_spec[0]] = _si;
+    }
+    # Map a blob segment to the section index a defined symbol lives in, so its
+    # .dynsym entry carries a valid st_shndx (the loader still adds the load
+    # bias; ld needs a real index, not the SHN_ABS placeholder).
+    seg_shndx: dict[str, int] = {
+        "code": sh_name_to_idx.get(".text", 1),
+        "rodata": sh_name_to_idx.get(".rodata", sh_name_to_idx.get(".text", 1)),
+        "data": sh_name_to_idx.get(".data", sh_name_to_idx.get(".dynamic", 1))
+    };
+
+    # ── Patch + serialise the dynamic section ──
+    dynamic_data = bytearray();
+    for (tag, val) in dyn_entries {
+        _v = val;
+        if tag == DT_HASH {
+            _v = hash_vaddr;
+        } elif tag == DT_STRTAB {
+            _v = dynstr_vaddr;
+        } elif tag == DT_SYMTAB {
+            _v = dynsym_vaddr;
+        } elif tag == DT_PLTGOT {
+            _v = got_plt_vaddr;
+        } elif tag == DT_JMPREL {
+            _v = rela_plt_vaddr;
+        } elif tag == DT_RELA {
+            _v = rela_dyn_vaddr;
+        } elif tag == DT_INIT_ARRAY {
+            _v = init_arr_vaddr;
+        }
+        dynamic_data.extend(struct.pack("<qQ", tag, _v));
+    }
+
+    # ── .dynsym ───────────────────────────────────────────────────
+    dynsym_data = bytearray();
+    dynsym_data.extend(struct.pack("<IBBHQQ", 0, 0, 0, 0, 0, 0));
+    for nm in exports {
+        (seg, off) = local_sym_map[nm];
+        va = _resolve_seg_vaddr(seg, off, text_vaddr, rodata_vaddr, data_vaddr);
+        styp = STT_FUNC if seg == "code" else STT_OBJECT;
+        st_info = (STB_GLOBAL << 4) | styp;
+        # st_shndx points at the real defining section so `ld` accepts the
+        # symbol; the loader still relocates st_value by the load bias.
+        st_shndx = seg_shndx.get(seg, 1);
+        dynsym_data.extend(
+            struct.pack(
+                "<IBBHQQ", dynstr_offsets.get(nm, 0), st_info, 0, st_shndx, va, 0
+            )
+        );
+    }
+    for nm in extern_func_syms {
+        st_info = (STB_GLOBAL << 4) | STT_FUNC;
+        dynsym_data.extend(
+            struct.pack(
+                "<IBBHQQ", dynstr_offsets.get(nm, 0), st_info, 0, SHN_UNDEF, 0, 0
+            )
+        );
+    }
+    for nm in extern_data_syms {
+        st_info = (STB_GLOBAL << 4) | STT_OBJECT;
+        dynsym_data.extend(
+            struct.pack(
+                "<IBBHQQ", dynstr_offsets.get(nm, 0), st_info, 0, SHN_UNDEF, 0, 0
+            )
+        );
+    }
+
+    # ── PLT + GOT.PLT + .rela.plt (extern functions) ──
+    plt_data = bytearray();
+    plt_data.extend(arch.build_plt0(got_plt_vaddr, plt_vaddr));
+    for idx in range(len(extern_func_syms)) {
+        entry_vaddr = plt_vaddr + plt0_size + idx * plt_entry_size;
+        got_entry_vaddr = got_plt_vaddr + (3 + idx) * 8;
+        plt_data.extend(
+            arch.build_plt_entry(entry_vaddr, got_entry_vaddr, idx, plt_vaddr)
+        );
+    }
+    got_plt_data = bytearray();
+    got_plt_data.extend(struct.pack("<Q", dynamic_vaddr));
+    got_plt_data.extend(struct.pack("<Q", 0));
+    got_plt_data.extend(struct.pack("<Q", 0));
+    for idx in range(len(extern_func_syms)) {
+        lazy_addr = arch.get_lazy_bind_addr(plt_vaddr, plt0_size, idx, plt_entry_size);
+        got_plt_data.extend(struct.pack("<Q", lazy_addr));
+    }
+    rela_plt_data = bytearray();
+    for nm in extern_func_syms {
+        r_offset = got_plt_vaddr + (3 + extern_func_syms.index(nm)) * 8;
+        r_info = (dynsym_index[nm] << 32) | arch.jump_slot_rtype;
+        rela_plt_data.extend(struct.pack("<QQq", r_offset, r_info, 0));
+    }
+
+    # ── .rela.dyn: RELATIVE (local GOT, init array, data pointers) +
+    #    GLOB_DAT (extern data). Build the GOT/init blobs alongside. ──
+    rela_dyn_data = bytearray();
+    local_got_data = bytearray();
+    for nm in local_got_syms {
+        (seg, off) = local_sym_map[nm];
+        va = _resolve_seg_vaddr(seg, off, text_vaddr, rodata_vaddr, data_vaddr);
+        local_got_data.extend(struct.pack("<Q", va));
+        rela_dyn_data.extend(
+            struct.pack("<QQq", local_got_slot[nm], arch.relative_rtype, va)
+        );
+    }
+    init_arr_data = bytearray();
+    for nm in inits {
+        (seg, off) = local_sym_map[nm];
+        va = _resolve_seg_vaddr(seg, off, text_vaddr, rodata_vaddr, data_vaddr);
+        slot_va = init_arr_vaddr + len(init_arr_data);
+        init_arr_data.extend(struct.pack("<Q", va));
+        rela_dyn_data.extend(struct.pack("<QQq", slot_va, arch.relative_rtype, va));
+    }
+    data_got_data = bytearray(b"\x00" * data_got_size);
+    for nm in extern_data_syms {
+        slot = extern_data_slot[nm];
+        r_info = (dynsym_index[nm] << 32) | arch.glob_dat_rtype;
+        rela_dyn_data.extend(struct.pack("<QQq", slot, r_info, 0));
+    }
+    # Absolute 64-bit pointers stored in writable data (vtables, function-pointer
+    # tables, a global holding &other) → RELATIVE: the loader writes
+    # (load_bias + target offset). The slot is not patched statically — a RELA
+    # RELATIVE ignores the existing field and uses the addend.
+    for (rela, tgt) in data_abs_relocs {
+        _dsec = data_sections.get(rela.target_sec);
+        if _dsec is None {
+            continue;
+        }
+        slot_vaddr = data_vaddr + _dsec[0] + rela.offset;
+        tva = _resolve_seg_vaddr(tgt[0], tgt[1], text_vaddr, rodata_vaddr, data_vaddr);
+        rela_dyn_data.extend(
+            struct.pack("<QQq", slot_vaddr, arch.relative_rtype, tva + rela.addend)
+        );
+    }
+
+    # ── Apply non-RELATIVE relocations into the code/rodata/data blobs ──
+    code_bytes = bytearray(code_data);
+    rodata_bytes = bytearray(rodata_blob);
+    data_bytes = bytearray(data_blob);
+    extern_plt_addr: dict[str, int] = {};
+    for plt_idx in range(len(extern_func_syms)) {
+        extern_plt_addr[extern_func_syms[plt_idx]] = plt_vaddr + plt0_size + plt_idx * plt_entry_size;
+    }
+
+    for rela in self.relocations {
+        # abs64 pointers in writable data are emitted as RELATIVE dynamic
+        # relocations (loader adds the load bias); nothing to patch statically.
+        if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
+            continue;
+        }
+        _pt = _find_patch_target(
+            rela.target_sec,
+            code_sections,
+            rodata_sections,
+            data_sections,
+            code_bytes,
+            rodata_bytes,
+            data_bytes,
+            text_vaddr,
+            rodata_vaddr,
+            data_vaddr
+        );
+        if _pt is None {
+            continue;
+        }
+        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
+        patch_off = sec_blob_off + rela.offset;
+        patch_vaddr = patch_base_vaddr + patch_off;
+        sym_addr = 0;
+        if rela.rtype in arch.gotpcrel_rtypes {
+            # GOT-directed: resolve to the GOT slot holding the target address.
+            if rela.sym_name in extern_data_slot {
+                sym_addr = extern_data_slot[rela.sym_name];
+            } elif rela.sym_name in extern_plt_addr {
+                func_idx = extern_func_syms.index(rela.sym_name);
+                sym_addr = got_plt_vaddr + (3 + func_idx) * 8;
+            } elif rela.sym_name in local_got_slot {
+                sym_addr = local_got_slot[rela.sym_name];
+            } else {
+                sym_addr = 0;
+            }
+        } elif rela.sym_name in extern_plt_addr {
+            sym_addr = extern_plt_addr[rela.sym_name];
+        } else {
+            local = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
+            if local is None {
+                local = sym_idx_placement.get(rela.sym_idx);
+            }
+            if local is not None {
+                sym_addr = _resolve_seg_vaddr(
+                    local[0], local[1], text_vaddr, rodata_vaddr, data_vaddr
+                );
+            } elif rela.rtype == arch.abs64_rtype {
+                # An absolute pointer into a non-writable section referencing an
+                # unresolved symbol cannot be fixed up at load: refuse rather
+                # than emit a binary that faults during relocation.
+                raise ValueError(
+                    f"ELF shared linker: unrelocatable absolute reference to "
+                    f"'{rela.sym_name}' in section '{rela.target_sec}'."
+                );
+            }
+        }
+        applied = arch.apply_reloc(
+            rela.rtype, patch_buf, patch_off, sym_addr, rela.addend, patch_vaddr
+        );
+        if not applied {
+            raise ValueError(
+                f"ELF shared linker: no handler for relocation type {rela.rtype} "
+                f"(symbol '{rela.sym_name}', section '{rela.target_sec}', "
+                f"e_machine {arch.e_machine})."
+            );
+        }
+    }
+
+    # ── Assemble the ELF image ────────────────────────────────────
+    output = bytearray(total_file_size);
+    ident = bytearray(16);
+    ident[0:4] = ELFMAG;
+    ident[4] = ELFCLASS64;
+    ident[5] = ELFDATA2LSB;
+    ident[6] = 1;
+    ident[7] = 0;
+    struct.pack_into("16s", output, 0, bytes(ident));
+    struct.pack_into(
+        "<HHIQQQIHHHHHH",
+        output,
+        16,
+        ET_DYN,
+        arch.e_machine,
+        1,
+        0,  # e_entry: a library has no entry point
+        ehdr_size,
+        0,
+        0,
+        ehdr_size,
+        56,
+        num_phdrs,
+        0,
+        0,
+        0
+    );
+    phdr_off = ehdr_size;
+    # PT_PHDR
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_PHDR,
+        PF_R,
+        ehdr_size,
+        BASE_VADDR + ehdr_size,
+        BASE_VADDR + ehdr_size,
+        phdr_size,
+        phdr_size,
+        8
+    );
+    phdr_off += 56;
+    # PT_LOAD (code segment - RX)
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_LOAD,
+        PF_R | PF_X,
+        0,
+        BASE_VADDR,
+        BASE_VADDR,
+        code_seg_size,
+        code_seg_size,
+        PAGE_SIZE
+    );
+    phdr_off += 56;
+    # PT_LOAD (data segment - RW)
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_LOAD,
+        PF_R | PF_W,
+        data_seg_foff,
+        data_seg_vaddr,
+        data_seg_vaddr,
+        data_seg_size,
+        data_seg_size,
+        PAGE_SIZE
+    );
+    phdr_off += 56;
+    # PT_DYNAMIC
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_DYNAMIC,
+        PF_R | PF_W,
+        dynamic_foff,
+        dynamic_vaddr,
+        dynamic_vaddr,
+        dynamic_size,
+        dynamic_size,
+        8
+    );
+
+    # ── Write all the pieces ──
+    output[hash_foff:hash_foff + len(hash_data)] = hash_data;
+    output[dynsym_foff:dynsym_foff + len(dynsym_data)] = bytes(dynsym_data);
+    output[dynstr_foff:dynstr_foff + len(dynstr_data)] = dynstr_data;
+    if len(rela_plt_data) > 0 {
+        output[rela_plt_foff:rela_plt_foff + len(rela_plt_data)] = bytes(rela_plt_data);
+    }
+    if len(rela_dyn_data) > 0 {
+        output[rela_dyn_foff:rela_dyn_foff + len(rela_dyn_data)] = bytes(rela_dyn_data);
+    }
+    if len(plt_data) > 0 {
+        output[plt_foff:plt_foff + len(plt_data)] = bytes(plt_data);
+    }
+    output[text_foff:text_foff + len(code_bytes)] = bytes(code_bytes);
+    if len(rodata_bytes) > 0 {
+        output[rodata_foff:rodata_foff + len(rodata_bytes)] = bytes(rodata_bytes);
+    }
+    output[got_plt_foff:got_plt_foff + len(got_plt_data)] = bytes(got_plt_data);
+    if data_got_size > 0 {
+        output[data_got_foff:data_got_foff + data_got_size] = bytes(data_got_data);
+    }
+    if local_got_size > 0 {
+        output[local_got_foff:local_got_foff + len(local_got_data)] = bytes(
+            local_got_data
+        );
+    }
+    if init_arr_size > 0 {
+        output[init_arr_foff:init_arr_foff + len(init_arr_data)] = bytes(init_arr_data);
+    }
+    output[dynamic_foff:dynamic_foff + len(dynamic_data)] = bytes(dynamic_data);
+    if len(data_bytes) > 0 {
+        output[data_foff:data_foff + len(data_bytes)] = bytes(data_bytes);
+    }
+
+    # ── Append .shstrtab + the section header table (non-loaded tail) ──
+    sh_names: list[str] = [];
+    for _spec in sh_specs {
+        sh_names.append(_spec[0]);
+    }
+    (shstrtab_data, shstrtab_name_off) = _build_strtab(sh_names);
+    shstrtab_foff = len(output);
+    output.extend(shstrtab_data);
+    shoff = _align(len(output), 8);
+    output.extend(b"\x00" * (shoff - len(output)));
+    for _spec in sh_specs {
+        (snm, styp, sflags, saddr, soff, ssize, slink_name, sinfo, salign, sentsize) = _spec;
+        if snm == ".shstrtab" {
+            soff = shstrtab_foff;
+            ssize = len(shstrtab_data);
+        }
+        slink = sh_name_to_idx.get(slink_name, 0) if slink_name else 0;
+        output.extend(
+            struct.pack(
+                "<IIQQQQIIQQ",
+                shstrtab_name_off.get(snm, 0),
+                styp,
+                sflags,
+                saddr,
+                soff,
+                ssize,
+                slink,
+                sinfo,
+                salign,
+                sentsize
+            )
+        );
+    }
+    # Patch the ELF header's section-header fields now that the table exists.
+    struct.pack_into("<Q", output, 40, shoff);  # e_shoff
+    struct.pack_into("<H", output, 58, 64);  # e_shentsize
+    struct.pack_into("<H", output, 60, len(sh_specs));  # e_shnum
+    struct.pack_into(
+        "<H", output, 62, sh_name_to_idx.get(".shstrtab", 0)
+    );  # e_shstrndx
+
+    for (sname, place) in local_sym_map.items() {
+        va = _resolve_seg_vaddr(
+            place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+        );
+        if sname {
+            self.sym_vaddrs[sname] = va;
+        }
+    }
     return bytes(output);
 }
 
@@ -1264,14 +2258,22 @@ impl ElfLinker.link(
     obj_bytes: bytes,
     output_path: str,
     needed_libs: list[str] = ["libc.so.6"],
-    crt_objects: list[bytes] = []
+    crt_objects: list[bytes] = [],
+    shared: bool = False,
+    export_symbols: list[str] = [],
+    init_funcs: list[str] = [],
+    soname: str = ""
 ) -> bool {
     linker = ElfLinker(
         obj_data=obj_bytes,
         sections=[],
         symbols=[],
         relocations=[],
-        needed_libs=needed_libs
+        needed_libs=needed_libs,
+        shared=shared,
+        export_symbols=export_symbols,
+        init_funcs=init_funcs,
+        soname=soname
     );
     if not linker.parse_object() {
         return False;
@@ -1284,7 +2286,7 @@ impl ElfLinker.link(
         }
     }
 
-    exe_bytes = linker.build_executable();
+    exe_bytes = linker.build_shared_object() if shared else linker.build_executable();
     if not exe_bytes {
         return False;
     }

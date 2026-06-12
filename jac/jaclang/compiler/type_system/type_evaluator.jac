@@ -303,6 +303,12 @@ obj TypeEvaluator {
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
     # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Follow an imported symbol's re-export chain to its defining symbol, so
+    # overload collection happens at the definition scope, not a re-export one.
+    def resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol;
+    # Widen literal types (e.g. Literal["x"] -> str) for the *declared* type
+    # of an unannotated variable, inferred from its first binding.
+    def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
     def _import_module_from_path(
@@ -487,6 +493,10 @@ obj TypeEvaluator {
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
     def _extract_tuple_element_type_path(
         tuple_type: TypeBase, path: list[int]
+    ) -> TypeBase | None;
+
+    def _get_iterable_element_type(
+        iterable_type: TypeBase, node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;

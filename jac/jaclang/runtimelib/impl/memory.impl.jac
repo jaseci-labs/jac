@@ -932,7 +932,7 @@ def _sqlite_snapshot_field_hashes(anchor: Anchor) -> None {
         return;
     }
     arch = anchor.archetype;
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     _seen: tuple[set, set] = (set(), set());
     hashes: dict[str, int] = {};
     for name in known {
@@ -953,7 +953,7 @@ def _sqlite_derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
     if not stored {
         return set();
     }
-    known = Serializer._get_field_types(type(arch)).keys();
+    known = get_field_types(type(arch)).keys();
     dirty: set[str] = set();
     _seen: tuple[set, set] = (set(), set());
     for name in known {
@@ -1084,6 +1084,24 @@ impl SqliteMemory.sync -> None {
                             conn.execute("DELETE FROM anchors WHERE id = ?", (key, ));
                             continue;
                         }
+                        changed = True;
+                    }
+                    # Topology index is a derived adjacency cache on root
+                    # NodeAnchors, updated by edges *anywhere* in the subtree —
+                    # so a deep edge change leaves this root's own edges and
+                    # archetype fields untouched while the index blob still
+                    # changes. It is not an archetype field, so neither the
+                    # edge merge above nor the field-hash dirty check below
+                    # catches it; without this the update is silently dropped
+                    # on persist. Gate on CONNECT access, like edges, since the
+                    # index reflects connectivity.
+                    if (
+                        isinstance(stored_anchor, NodeAnchor)
+                        and isinstance(anchor, NodeAnchor)
+                        and anchor.topology_index_data != stored_anchor.topology_index_data
+                        and Jac.check_connect_access(anchor)
+                    ) {
+                        stored_anchor.topology_index_data = anchor.topology_index_data;
                         changed = True;
                     }
                     # Handle access/archetype updates (WRITE access)

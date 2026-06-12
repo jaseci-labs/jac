@@ -1241,9 +1241,9 @@ impl ESDictEmitter.emit_get(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
-        return target + "[" + args[0] + "] ?? undefined";
+        return "(" + target + "[" + args[0] + "] ?? undefined)";
     }
-    return target + "[" + args[0] + "] ?? " + args[1];
+    return "(" + target + "[" + args[0] + "] ?? " + args[1] + ")";
 }
 
 impl ESDictEmitter.emit_keys(
@@ -1851,12 +1851,25 @@ impl ESBuiltinEmitter.emit_all(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 impl ESBuiltinEmitter.emit_isinstance(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return args[0] + " instanceof " + args[1];
+    # Route through the runtime helper rather than a raw `instanceof`: builtin
+    # types (lowered to string tags by `exit_builtin_type`), tuples of types,
+    # and user archetypes each need a different check, and `x instanceof String`
+    # is even `false` for JS primitive strings. The helper centralizes Python
+    # isinstance semantics. Decline (return None) on unexpected arity so a
+    # malformed call falls through to default codegen instead of indexing past
+    # the end of `args` (jaseci-labs/jaseci#6458).
+    if len(args) != 2 {
+        return None;
+    }
+    return _rt("builtin", "isinstance", args);
 }
 
 impl ESBuiltinEmitter.emit_issubclass(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
+    if len(args) != 2 {
+        return None;
+    }
     return _rt("builtin", "issubclass", args);
 }
 
@@ -1958,7 +1971,7 @@ impl ESBuiltinEmitter.emit_getattr(
     if len(args) == 2 {
         return args[0] + "[" + args[1] + "]";
     }
-    return args[0] + "[" + args[1] + "] ?? " + args[2];
+    return "(" + args[0] + "[" + args[1] + "] ?? " + args[2] + ")";
 }
 
 impl ESBuiltinEmitter.emit_setattr(

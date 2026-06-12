@@ -38,13 +38,14 @@ import from fastapi { WebSocket, WebSocketDisconnect }  # jac:runtime
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 import from jac_scale.admin.logs { JacAPIServerLogs }
+import from jac_scale.admin.traces { JacAPIServerTraces }
 import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.scheduler { JacScaleScheduler }
+import from jac_scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
 import from urllib.parse { quote }
-import from jac_scale.utils { authenticate_or_fail }
+import from jac_scale.utils { authenticate_or_fail, is_safe_loopback_redirect }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
@@ -58,6 +59,7 @@ import from jac_scale.auth_models {
     UpdateProfileResponse,
     MeResponse
 }
+import from jac_scale.scheduler.scheduler_models { CreateJobRequest, UpdateJobRequest }
 import from jac_scale.abstractions.emailer { Emailer }
 
 # Load configuration from jac.toml with env var overrides
@@ -77,6 +79,16 @@ def _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -
 
 """Get local network IP addresses (non-localhost)."""
 def _get_network_ips -> list[str];
+
+"""Pick where the SSO callback should redirect the token.
+
+`requested` is the client-supplied loopback callback that round-tripped through
+the OAuth `state` parameter (a desktop app's own 127.0.0.1 origin). It is only
+honored when it passes is_safe_loopback_redirect; otherwise we fall back to the
+server-configured `client_auth_callback_url`. Returns '' when neither is usable,
+signalling the caller to return the raw API response instead of redirecting.
+"""
+def _resolve_sso_client_redirect(requested: str | None, configured: str) -> str;
 
 """Auth endpoints: register, login, token refresh, update password, SSO, API keys."""
 obj JacAPIServerAuth {
@@ -104,7 +116,10 @@ obj JacAPIServerAuth {
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
-        name: str, expiry_days: int | None = None, Authorization: str | None = None
+        name: str,
+        expiry_days: int | None = None,
+        Authorization: str | None = None,
+        allowed_walkers: list[str] | None = None
     ) -> TransportResponse;
 
     def list_api_keys(Authorization: str | None = None) -> TransportResponse;
@@ -134,6 +149,8 @@ obj JacAPIServerCore {
     def _print_startup_banner(dev: bool, no_client: bool) -> None;
     # Health check
     def register_health_endpoint -> None;
+    # Dev-mode build health (HMR compile status)
+    def register_build_status_endpoint -> None;
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
@@ -212,7 +229,7 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerLogs, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: any | None = None,

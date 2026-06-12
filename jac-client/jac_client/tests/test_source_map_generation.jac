@@ -36,7 +36,7 @@ def _compile_then_clear_hub(module_path: any) -> any {
 `compile_module` wrapped to clear the hub after each compile. Returns the
 compiler and the compiled-output directory."""
 def _make_compiler(proj: Path) -> tuple[any, Path] {
-    import from jac_client.plugin.vite_client_bundle { ViteClientBundleBuilder }
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
     (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
     # A multi-statement component: `marker` is assigned on .jac line 6, but lands
     # several lines deep in the generated JS (after the runtime-import prefix and

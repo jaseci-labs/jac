@@ -66,10 +66,9 @@ import from pathlib { Path }
         ("jac build", "Build web target (default)"),
         ("jac build main.jac", "Build specific file"),
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
-        ("jac build --client desktop", "Build desktop app (PyTauri/Python, no Rust)"),
+        ("jac build --client desktop", "Build desktop app (native webview, no Rust)"),
         ("jac build --client mobile --platform android", "Build Android mobile app"),
         ("jac build --client mobile --platform ios", "Build iOS mobile app"),
-        ("jac build --client desktop --platform windows", "Build for Windows"),
 
     ],
     group="build",
@@ -85,7 +84,7 @@ def build(
 """Register 'setup' command at module level.
 
 Note: --platform is wired in via extend_command (see create_cmd) so it survives
-when a higher-priority plugin (e.g. jac-scale) replaces this spec — primary
+when a higher-priority plugin (e.g. jac-scale) replaces this spec - primary
 args on a spec are spec-local, but extension args are preserved across
 priority replacement by the registry.
 """
@@ -99,7 +98,6 @@ priority replacement by the registry.
 
     ],
     examples=[
-        ("jac setup desktop", "Setup desktop target (PyTauri/Python, no Rust)"),
         ("jac setup mobile", "Setup mobile target (default platform)"),
         ("jac setup mobile --platform ios", "Setup iOS scaffold only"),
         ("jac setup mobile --platform all", "Setup both Android and iOS (macOS)")
@@ -312,7 +310,7 @@ def _handle_npm_add(ctx: HookContext) -> None {
                 style="bold"
             );
             with console.status(
-                f"[cyan]Installing {dep_type.name} packages...[/cyan]", spinner="dots"
+                f"Installing {dep_type.name} packages...", spinner="dots"
             ) as status {
                 dep_type.install_all_handler(config);
             }
@@ -335,9 +333,7 @@ def _handle_npm_add(ctx: HookContext) -> None {
         );
         for pkg_spec in packages {
             (name, version) = resolver.parse_spec(pkg_spec);
-            with console.status(
-                f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-            ) as status {
+            with console.status(f"Installing {name}...", spinner="dots") as status {
                 dep_type.install_handler(config, name, version, dev);
             }
             console.print(f"  ✔ {name}", style="success");
@@ -359,15 +355,6 @@ def _target_setup_missing(
 ) -> bool {
     if not target.requires_setup {
         return False;
-    }
-
-    if target_name == "desktop" {
-        pytauri_dir = project_dir / "src-pytauri";
-        pytauri_conf = pytauri_dir / "tauri.conf.json";
-        app_py = pytauri_dir / "app.py";
-        return (
-            not pytauri_dir.exists() or not pytauri_conf.exists() or not app_py.exists()
-        );
     }
 
     if target_name == "mobile" {
@@ -618,7 +605,7 @@ def _handle_setup_target(ctx: HookContext) -> None {
     target_name = ctx.get_arg("target", None) or ctx.get_arg("subcommand", None);
     available_targets = factory.get_available_target_names();
     if target_name and target_name not in available_targets {
-        # Unknown to us — let another plugin's handler claim it (e.g. jac-scale's
+        # Unknown to us - let another plugin's handler claim it (e.g. jac-scale's
         # `jac setup microservice`). Do NOT cancel.
         return;
     }
@@ -671,21 +658,6 @@ def _handle_setup_target(ctx: HookContext) -> None {
         target.setup(project_dir);
 
         # Verify setup completed successfully
-        if target_name == "desktop" {
-            pytauri_dir = project_dir / "src-pytauri";
-            if not pytauri_dir.exists() {
-                console.error(
-                    f"Setup completed but src-pytauri directory not found at: {pytauri_dir}"
-                );
-                console.print(
-                    "This may indicate the setup function failed silently.",
-                    style="muted"
-                );
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 1);
-                return;
-            }
-        }
         if target_name == "pwa" {
             pwa_icons_dir = project_dir / "pwa_icons";
             if not pwa_icons_dir.exists() {

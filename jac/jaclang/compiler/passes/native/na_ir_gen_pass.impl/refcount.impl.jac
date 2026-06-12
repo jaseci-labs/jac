@@ -477,6 +477,44 @@ impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return bool(getattr(val, 'is_owned', False));
 }
 
+"""Release comparison operands that are owned temporaries.
+
+The fall-through comparison path releases owned left/right operands after
+computing its result; the membership (`in`/`not in`) paths early-return and
+would otherwise bypass that cleanup, leaking a temporary container operand
+(e.g. `x in obj.method()` where the method returns a fresh set/dict/list).
+"""
+impl NaIRGenPass._release_owned_operands(
+    left_orig: ir.Value, right_orig: ir.Value, op: str = ""
+) -> None {
+    if isinstance(left_orig.type, ir.PointerType) and self._is_owned(left_orig) {
+        self._emit_rc_release_simple(
+            left_orig, op=op, loc=getattr(left_orig, 'jac_loc', '')
+        );
+    }
+    if isinstance(right_orig.type, ir.PointerType) and self._is_owned(right_orig) {
+        self._emit_rc_release_simple(
+            right_orig, op=op, loc=getattr(right_orig, 'jac_loc', '')
+        );
+    }
+}
+
+"""Release any owned-temporary arguments after a call.
+
+A callee borrows its arguments (it RETAINs internally any it keeps and, for a
+returned borrowed ref, RETAINs on return), so an owned temporary the caller
+passed — a literal, a call result, or a value-tuple boxed by _coerce_type —
+leaks unless released here. Pass the coerced argument list so the boxed value
+is released, not its unboxed source. Skips non-pointers and borrowed refs.
+"""
+impl NaIRGenPass._release_owned_args(call_args: list, op: str = "call_arg") -> None {
+    for _arg in call_args {
+        if isinstance(_arg.type, ir.PointerType) and self._is_owned(_arg) {
+            self._emit_rc_release_simple(_arg, op=op, loc="");
+        }
+    }
+}
+
 """Emit IR that loads the upper 32 bits of the alloc_id field at
 ptr+HDR_ALLOC_ID_OFF and compares them against HDR_MAGIC. Returns the i1
 boolean comparison result. Used by retain/release to skip externally-owned
@@ -527,14 +565,6 @@ impl NaIRGenPass._rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value {
     }
     size = self._coerce_type(size, ir.IntType(64));
     return self.builder.call(self.rc_alloc_fn, [size], name=name);
-}
-
-"""Allocate RC-managed memory and bitcast to target pointer type."""
-impl NaIRGenPass._rc_alloc_typed(
-    size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
-) -> ir.Value {
-    raw = self._rc_alloc(size, name="rc.raw");
-    return self.builder.bitcast(raw, target_type, name=name);
 }
 
 """Emit rc_retain call for a pointer value.
@@ -606,7 +636,7 @@ end-of-function terminator) are safe — releasing null is a no-op.
 impl NaIRGenPass._emit_scope_cleanup(
     skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
 ) -> None {
-    if self.builder is None {
+    if self._builder is None {
         return;
     }
     for (var_name, alloca) in self.local_vars.items() {
@@ -636,26 +666,27 @@ impl NaIRGenPass._emit_scope_cleanup(
 }
 
 """Release pointer-typed locals introduced inside a loop body and null
-their alloca slots.  Called before back-edge / continue / break branches
-so an early `return` from a later iteration cannot leak the previous
-iteration's value held in a still-live alloca.
+their alloca slots. Called before back-edge branches so an early
+`return` from a later iteration cannot leak the previous iteration's
+value held in a still-live alloca.
 
-`saved_locals` is the snapshot of `self.local_vars.keys()` taken before
-the loop body was codegen'd — any local present now but not in the
-snapshot was declared inside the body.
+`body_locals` is the central release list (ownership.loop_body_locals):
+names first bound inside the body. The emission-side filters stay here:
+only pointer-typed slots that were actually allocated participate, and
+raw-pointer exemptions recorded during body emission are honored.
 """
-impl NaIRGenPass._emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None {
-    if self.builder is None or self.builder.block.is_terminated {
+impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None {
+    if self._builder is None or self._builder.block.is_terminated {
         return;
     }
-    for var_name in list(self.local_vars.keys()) {
-        if var_name in saved_locals {
-            continue;
-        }
+    for var_name in body_locals {
         if var_name == "self" or var_name in self.param_vars {
             continue;
         }
-        alloca = self.local_vars[var_name];
+        alloca = self.local_vars.get(var_name);
+        if alloca is None {
+            continue;
+        }
         if (
             isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.type.pointee, ir.PointerType)
