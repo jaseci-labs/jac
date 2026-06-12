@@ -70,6 +70,18 @@ obj Serializer {
     """
     static def fingerprint(cls: type) -> str;
 
+    """Apply declared schema drift rules to a raw stored archetype dict.
+
+    Looks up the MRO-merged `__jac_schema__` rules for `cls` and applies
+    them (renames, upgrade callbacks, drop-attic) to `data`, honoring the
+    JAC_SCHEMA_REPAIR mode (`repair`/`detect`/`off`). Returns
+    (data, applied_steps): with no rules, no matching steps, or a
+    non-`repair` mode, `data` is returned unchanged with an empty list.
+    Called by `_deserialize_archetype` before the field loop, so every
+    persistence backend (SQLite, Mongo, caches) repairs identically.
+    """
+    static def repair(data: dict[str, object], cls: type) -> tuple;
+
     """Best-effort value coercion for Layer 3 schema migration.
 
     Attempts to convert `val` to `target_type` for stored anchor fields

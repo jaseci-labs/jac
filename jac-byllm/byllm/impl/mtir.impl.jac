@@ -375,19 +375,28 @@ impl MTRuntime.get_output_schema -> dict | None {
     assert (
         len(self.tools) == 0 or self.get_tool("finish_tool") is not None
     );  #Finish tool should be present in the tools list.
-    if len(self.tools) == 0 and self.resp_type {
-        if self.resp_type is str {
-            return None;  # Strings are default and not using a schema.
-        }
-        # Use MTIR info if available, otherwise None (Python library mode)
-        return_type_info = self.mtir.ir_info.return_type
-            if (self.mtir and self.mtir.ir_info)
-            else None;
-        return type_to_schema(resp_type=self.resp_type, info=return_type_info);
+    if len(self.tools) == 0 {
+        return self.get_typed_output_schema();
     }
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.
     return None;
+}
+
+"""Return the JSON schema for the structured return type, even with tools present.
+
+Unlike get_output_schema, not suppressed when tools exist (used for retry feedback).
+"""
+impl MTRuntime.get_typed_output_schema -> dict | None {
+    if self.resp_type is None or self.resp_type is str {
+        # No structured schema: str is the default and not schema-driven.
+        return None;
+    }
+    # Use MTIR info if available, otherwise None (Python library mode)
+    return_type_info = self.mtir.ir_info.return_type
+        if (self.mtir and self.mtir.ir_info)
+        else None;
+    return type_to_schema(resp_type=self.resp_type, info=return_type_info);
 }
 
 impl MTIR.runtime.getter -> MTRuntime {

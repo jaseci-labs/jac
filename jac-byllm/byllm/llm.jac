@@ -30,6 +30,8 @@ import from byllm.types {
     CompletionResult,
     LiteLLMMessage,
     MockToolCall,
+    MockRawResponse,
+    MockError,
     StreamEvent,
     Tool,
     ToolCall,
@@ -86,6 +88,31 @@ obj BaseLLM {
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
     async def ainvoke(mt_run: MTRuntime) -> object;
+    def _resolve_output_attempts(mt_run: MTRuntime) -> int;
+    def _invoke_typed_retry(mt_run: MTRuntime) -> object;
+    async def _ainvoke_typed_retry(mt_run: MTRuntime) -> object;
+    def _typed_retry_reset(
+        mt_run: MTRuntime,
+        base_msgs: list,
+        base_scaffolding: list,
+        reason: str,
+        output: str
+    ) -> None;
+
+    def _parse_failure_feedback(attempt: int, max_attempts: int, err: object) -> tuple;
+    def _nonconforming_feedback(
+        attempt: int, max_attempts: int, mt_run: MTRuntime, result: object
+    ) -> tuple;
+
+    def _typed_retry_exhausted(
+        attempts: int, cause: object, raw: str
+    ) -> OutputConversionError;
+
+    def _structured_output_ok(mt_run: MTRuntime, value: object) -> bool;
+    def _typed_retry_feedback(
+        mt_run: MTRuntime, reason: str, prev_output: str
+    ) -> Message;
+
     def _invoke_react_loop(mt_run: MTRuntime) -> object;
     def _invoke_react_loop_streaming(
         mt_run: MTRuntime
@@ -128,8 +155,14 @@ Useful for unit testing and development without making real API calls.
 Configure outputs via the 'outputs' kwarg to control mock responses.
 """
 obj MockLLM(BaseLLM) {
+    # Text of the prompt (joined message contents) seen on each dispatch, in
+    # order. Lets tests assert how many times the model was called and what the
+    # retry loop fed back between attempts.
+    has seen_prompts: list = [];
+
     def postinit -> None;
     override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
+    override async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 

@@ -207,18 +207,8 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
-    # Determine arch_type string
-    arch_type_str = "object";
-    if arch.arch_type {
-        tok_name = arch.arch_type.name;
-        if tok_name == Tok.KW_WALKER.value {
-            arch_type_str = "walker";
-        } elif tok_name == Tok.KW_NODE.value {
-            arch_type_str = "node";
-        } elif tok_name == Tok.KW_EDGE.value {
-            arch_type_str = "edge";
-        }
-    }
+    # Determine arch_type string ("object" covers obj/class archetypes)
+    arch_type_str = arch.arch_kind or "object";
 
     # Determine if vtable is needed
     parents_set: set[str] = set();

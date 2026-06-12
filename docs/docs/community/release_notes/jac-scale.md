@@ -2,7 +2,31 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.24 (Latest Release)
+## jac-scale 0.2.25 (Latest Release)
+
+### Breaking Changes
+
+- **jac-scale: webhook security hardening**: Webhook auth and signing were reworked. The HMAC signature is now computed over `"<timestamp>." + body` using an independent per-key `signing_secret` returned once from `/api-key/create` (no longer the API key itself), and an `X-Webhook-Timestamp` header is required with replay-tolerance enforcement. API keys are now keyed by stable `user_id`, support an optional `allowed_walkers` scope, fail closed on unknown/revoked keys, and api_key tokens can no longer be used as user sessions. Adds request body size limits, an optional per-key rate limit, generic error responses (no traceback leakage), and per-request audit logging. Existing webhook integrations must update to the new signing scheme.
+
+### New Features
+
+- **Feature: distributed tracing now covers the memory hierarchy**. Each request's trace previously stopped at the HTTP hop boundary - one opaque span per service. Now the Redis (L2 cache) and MongoDB (L3 persistence) backend operations are traced as child spans nested under the request, so a trace shows which tier and which database call was slow, not just which service. Spans carry the backend (`redis`/`mongodb`), tier (L2/L3), and operation (get/put/batch_get/commit/sync). Off unless tracing is enabled (`[plugins.scale.microservices.tracing] enabled = true`); a no-op otherwise. Covered by `test_memory_tracing.jac`.
+- **Feature: Build identity stamped into microservice images**: Auto-built images now carry a `JAC_BUILD_SHA` env (12-char git commit SHA, suffixed `-dirty` when the build tree has uncommitted changes, baked in via a `--build-arg` on the shipped/embedded `Dockerfile.microservice`), and every pod exposes a `JAC_IMAGE_REF` env with its fully-resolved image ref including the content-addressed tag suffix. Together these let an in-pod self-check report "running build X" and answer "did my deploy actually update?" with zero RBAC. The build-identity layer is stamped last so a changing SHA only rebuilds that tiny build-time layer (note: because K-29's content-addressed tag is derived from the image digest, a new commit still forces a rollout - build identity is coupled to the commit, not just byte-content). (K-29's content-addressed image tag, which forces a rolling update and defeats the node image cache on rebuild, was already in place via `_retag_with_content_id`.)
+- **Per-domain TLS on a shared nginx ingress**. In `shared_ingress` mode the Ingress now gets a `spec.tls` block (`{app_name}-tls` secret for the configured domain) when `shared_ingress_tls` is set on an nginx class, so cert-manager's ingress-shim issues a per-domain Let's Encrypt cert. The issuer is supplied by the caller via `shared_ingress_annotations` (`cert-manager.io/cluster-issuer`). Gated on the nginx class, so non-nginx shared controllers (AWS ALB + ACM) that terminate TLS at the load balancer are unaffected. This lets one shared nginx controller front many domains, each with its own cert.
+- **`root.shared` resolves in jac-scale deployments**: The server maps the guest account to its root at startup so walkers can address the public graph via `root.shared`. (jaseci-labs/jaseci#6554)
+- **Pinned-public mode for the graph visualizer**. The `/graph` page accepts a `?public=1` query parameter that always shows the public (super root) graph, ignoring any stored session token, so embeds are unaffected by a logged-in session on the same origin.
+- **`GET /__build_status` on the jac-scale server**: Serves the hot reloader's build health as a documented endpoint.
+
+### Bug Fixes
+
+- **Fix: creating graph nodes is now crash-safe with MongoDB persistence (#6488)**: if a server was killed or restarted (deploy, OOM, pod eviction) just after a `root ++> Node()` connect, the graph could be left with an edge pointing at a node that was never saved, and every later traversal across it failed with `NodeAnchor [...] is not a valid reference!`. New nodes and their edges are now persisted in a crash-safe order, so an interrupted write can no longer leave a dangling edge that breaks traversal. (jaseci-labs/jaseci#6488)
+
+### Refactors
+
+- **Refactor: Scheduler hardening**: Dynamic jobs run as the creating user (stable `user_id`) while static jobs continue running as `__system__`; system-role accounts are no longer loginable over HTTP; `/jobs` endpoints enforce per-job ownership on `GET`/`PUT`/`DELETE` and support `limit`/`offset`/`trigger`/`created_by` pagination; jobs are persisted before scheduling with MongoDB authoritative when configured; cron expressions are validated via `CronTrigger.from_crontab`; thread-pool size, misfire grace, and shutdown drain timeout are configurable under `[plugins.scale.scheduler]`; scheduled jobs record `last_run_at`, `last_status`, `last_error`, and `run_count`; graceful shutdown drains in-flight tasks on `SIGTERM`.
+- **Admin portal UI drops redundant `cl` markers**: Its `.cl.jac` sources rely on the file extension for client context. (jaseci-labs/jaseci#6557)
+
+## jac-scale 0.2.24
 
 ### New Features
 

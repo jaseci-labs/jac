@@ -2,7 +2,7 @@
 
 Jac apps persist their object-spatial graph automatically. Anything reachable from `root` survives across runs -- but the schema of your `node`/`obj`/`edge`/`walker` archetypes inevitably evolves: you add a field, rename one, change a type, rename a class. This page covers what happens when you do.
 
-The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. You inspect and rescue them with [`jac db`](cli/index.md#database-operations).
+The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. You inspect and rescue them with [`jac db`](cli/index.md#database-operations). For changes that need intent -- a field rename, a custom value transform -- archetypes declare their history in a [`__jac_schema__` hook](#declared-drift-rules-__jac_schema__) and the runtime repairs old documents on load.
 
 ---
 
@@ -84,11 +84,17 @@ On reload of v1-stored data with v2 code: `name` comes through unchanged, `email
 
 ### Removed field
 
-Stored data has `age: 30`, the live class no longer declares `age`. The stale value is **silently dropped** instead of leaking onto the rehydrated archetype as an undeclared attribute. Subsequent saves write the row without the dead field.
+Stored data has `age: 30`, the live class no longer declares `age`. The stale value doesn't leak onto the rehydrated archetype as an undeclared attribute -- instead it's **preserved in the attic**, a `__jac_attic__` sub-document that rides along with the row (see [The attic](#the-attic-nothing-is-destroyed)). Subsequent saves carry the attic forward, so the value remains recoverable. (Under `JAC_SCHEMA_REPAIR=off` or `detect`, the legacy behavior applies: the value is silently dropped.)
 
 ### Renamed field
 
-Treated as "remove old + add new with default." If you want the old value to flow into the new field, you'll need a Layer 4 escape hatch (not yet shipped -- see [Limitations](#limitations)).
+Without a declaration, a rename looks like "remove old + add new with default" -- the old value lands in the attic and the new field takes its default. To make the old value flow into the new field, declare the rename with [`schema_alias`](#declared-drift-rules-__jac_schema__):
+
+```jac
+impl Person.__jac_schema__ -> None {
+    schema_alias("name", stored="username");
+}
+```
 
 ### Type changed
 
@@ -126,6 +132,8 @@ In every such case, the row is **moved to a quarantine sidecar**:
 - MongoDB: `<collection>_quarantine` collection.
 
 The quarantine row carries the full original payload, the timestamp, the error message, and the source format version. **Nothing is ever silently deleted** -- that's the contract. Inspect with `jac db quarantine list` / `jac db quarantine show <id>`. Recover (after you fix the cause) with `jac db recover` / `jac db recover-all`.
+
+On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#jac-scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
 
 If you've used Jac before and remember "delete `.jac/data/` to run again after editing a node," that workflow is no longer required. Schema edits don't wipe data; they at worst move data to quarantine where you can rescue it.
 
@@ -172,6 +180,155 @@ DB-resident aliases live in an `aliases` table (SQLite) or `<collection>_aliases
 
 ---
 
+## Declared drift rules: `__jac_schema__`
+
+The drift tolerance above is automatic but generic: it can default a new field or coerce a type, but it can't know that `username` *became* `name`, or that a comma-separated string should now split into a `list[str]`. For changes that need intent, an archetype declares its stored-shape history in a `__jac_schema__` hook.
+
+The hook uses Jac's decl/impl separation, so the model declaration shows only the *present* shape and the history lives in the impl file:
+
+```jac
+# models.jac -- only the present
+node User {
+    has name: str = "";
+    has tags: list[str] = [];
+
+    static def __jac_schema__ -> None;
+}
+```
+
+```jac
+# impl/models.impl.jac -- the ledger of the past
+def split_tags(doc: dict) -> dict {
+    doc["tags"] = [t.strip() for t in doc["tags"].split(",") if t.strip()];
+    return doc;
+}
+
+impl User.__jac_schema__ -> None {
+    schema_was("myapp.models.OldUser");       # class rename
+    schema_alias("name", stored="username");  # field rename
+    schema_drop("legacy_bio");                # removed field: preserve its remains
+    schema_upgrade(
+        split_tags,
+        when=(lambda doc: dict : isinstance(doc.get("tags"), str))
+    );
+}
+```
+
+The four builders are ambient Jac builtins (no import needed) and are only callable inside an executing `__jac_schema__`:
+
+| Builder | Declares | Effect on load |
+|---------|----------|----------------|
+| `schema_was(old_fqn)` | The class was previously `module.ClassName` | Stored rows under the old name resolve to this class (same machinery as `@archetype_alias`) |
+| `schema_alias(new, stored=old)` | Field `new` was previously stored as `old` | Old key is renamed in place; the value flows into the new field (then coercion runs as usual). On save, the old name is also written as a shadow copy ([dual-write](#rolling-deploys-dual-write)) |
+| `schema_drop(field)` | A deleted field may still exist in stored rows | Its stored value moves to the [attic](#the-attic-nothing-is-destroyed) instead of being dropped |
+| `schema_upgrade(fn, when=pred)` | An arbitrary `dict -> dict` transform | `fn` runs on a copy of the raw stored dict when `pred(doc)` is true; it must return the full replacement dict and be idempotent |
+
+Rules are **shape-matched, not version-matched**: there are no version integers to maintain. A rename applies to any stored row that still carries the old key and lacks the new one, which keeps repair robust when dev, staging, and production saw different intermediate schemas. Every rule application is idempotent, so re-repairing an already-repaired row is a no-op.
+
+The engine runs in the core Serializer, **before** field deserialization -- so SQLite, Mongo, and any plugin backend repair identically, and coercion/defaults still apply to the repaired values afterward.
+
+### Validation at startup
+
+Rules are validated against the live `has` declarations when the class registers (i.e. at import time). Contradictions fail the app at startup, never silently mid-traffic:
+
+- `schema_alias("name", stored="username")` requires `name` to be a declared field and `username` to *not* be one (if the old field still exists, nothing was renamed).
+- `schema_drop("x")` requires `x` to not be declared (the rule is about a deleted field's stored remains).
+- Two aliases can't share a stored name, and two aliases can't target the same field.
+- Calling a builder outside `__jac_schema__` raises immediately.
+
+Field rules are **inherited by subclasses** (they inherited the fields, so they inherit the fields' history); `schema_was` applies only to the defining class.
+
+### The attic: nothing is destroyed
+
+Repaired-away values are never deleted. Removed fields (declared via `schema_drop` or simply unknown to the current class) move into a `__jac_attic__` sub-document stored alongside the row:
+
+```json
+{ "name": "ada", "tags": ["math"],
+  "__jac_attic__": { "legacy_bio": { "value": "...", "reason": "dropped" } } }
+```
+
+The attic round-trips through loads and saves -- including under `JAC_SCHEMA_REPAIR=off`, so an emergency rollback can never destroy previously preserved data. It persists until you explicitly clean it up (a future census-gated *contract* phase will automate this).
+
+### Rolling deploys: dual-write
+
+During a rolling deploy, old-version pods read the same database as new-version pods. To keep them working, every aliased field is **dual-written**: saves emit both `name` and `username` with the same value (on full saves and partial field updates alike), so old readers keep finding the field they know.
+
+On load, a row with *both* keys is recognized as dual-written, not drifted: an equal shadow is stripped silently (no write-back churn), and a differing shadow -- an old pod wrote `username` against an already-upgraded row -- resolves deterministically: the new name wins and the conflicting value is preserved in the attic as `shadow-conflict`. Shadows persist until a future contract phase strips them.
+
+### The kill switch: `JAC_SCHEMA_REPAIR`
+
+| Value | Behavior |
+|-------|----------|
+| `repair` (default) | Rules applied, attic written, dual-write active |
+| `detect` | Drift is detected and logged (`steps not applied: [...]`) but nothing is mutated -- a production dry-run |
+| `off` | Legacy load behavior (no renames, no upgrades, no new atticing). Previously written attics still round-trip so data is never lost |
+
+### jac-scale: lazy read-repair and self-healing quarantine
+
+With the [`jac-scale`](plugins/jac-scale.md) Mongo backend, repair goes one step further:
+
+- **Read-repair write-back.** When a load applies repair steps, the upgraded document is written back with compare-and-set on the originally stored fingerprint. A concurrent writer on an older app version cleanly wins the race; the document simply repairs again on its next read. The L2 Redis cache is invalidated on write-back. (SQLite repairs in memory on every load; the write-back optimization is Mongo-only.)
+- **Quarantine reason codes.** Quarantined documents are stamped with a machine-readable `reason_code` -- `CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, or `CASCADE` -- visible via `jac db quarantine show`.
+- **Startup auto-retry.** After a deploy registers its classes, aliases, and drift rules, the backend automatically re-attempts a capped batch of quarantined documents the deploy plausibly fixed (a `CLASS_MISSING` doc whose class now resolves, or any doc whose class now declares rules). Failed attempts increment a `retry_count` and give up loudly after 5. Deploy the fix and the data heals itself; `jac db recover-all` remains the manual override.
+
+### Worked example: a field rename end to end
+
+```jac
+# app.jac (v1)
+node Person {
+    has username: str = "",
+        bio: str = "";
+}
+
+with entry { root ++> Person(username="ada", bio="first programmer"); }
+```
+
+After running v1, rename the field and delete `bio` in v2, declaring both:
+
+```jac
+# app.jac (v2)
+node Person {
+    has name: str = "";
+
+    static def __jac_schema__ -> None;
+}
+
+impl Person.__jac_schema__ -> None {
+    schema_alias("name", stored="username");
+    schema_drop("bio");
+}
+
+with entry {
+    for p in [root -->] {
+        print(f"{p.name} / attic: {p?.__jac_attic__}");
+    }
+}
+```
+
+```text
+INFO - Serializer: repaired __main__.Person: ['rename username -> name', 'attic bio']
+ada / attic: {'bio': {'value': 'first programmer', 'reason': 'dropped'}}
+```
+
+The old value flowed into the renamed field, the deleted field's value is preserved, and no row went anywhere near quarantine.
+
+### Inspecting rules
+
+`jac db schema rules` lists every registered rule (the app is imported first, so its `__jac_schema__` hooks run):
+
+```text
+Registered schema drift rules
+[INFO] JAC_SCHEMA_REPAIR mode: repair
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
+┃ archetype       ┃ rule  ┃ detail           ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
+│ __main__.Person │ alias │ username -> name │
+│ __main__.Person │ drop  │ bio              │
+└─────────────────┴───────┴──────────────────┘
+```
+
+---
+
 ## Backend portability
 
 Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the `jac-scale` `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
@@ -180,9 +337,12 @@ That means the same set of guarantees holds regardless of where your data lives:
 
 - Fingerprints are stamped on every persisted row/document.
 - Drift detection runs on every load.
+- [`__jac_schema__` drift rules](#declared-drift-rules-__jac_schema__) repair rows identically on every backend (the engine lives in the core Serializer, ahead of field deserialization).
 - Quarantine sidecars exist for every backend.
 - Aliases (both decorator and CLI-managed) work the same way.
 - The `jac db` CLI talks to the live backend through the abstract interface -- same commands, same output, different storage underneath.
+
+(Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
 
 For plugin authors implementing a custom backend, see [Plugin Authoring → Recipe 7: Custom persistence backends](plugin-authoring.md#recipe-7-custom-persistence-backends) for the eight methods you need to implement.
 
@@ -274,12 +434,13 @@ Full subcommand reference: [CLI → Database Operations](cli/index.md#database-o
 
 ## Limitations
 
-Currently out of scope (planned for future Layer 4 work):
+Currently out of scope (planned follow-on work):
 
-- **Per-archetype `migrate_from(data, from_version)` hook** -- for the small fraction of changes auto-coercion can't handle.
-- **Per-field rename hint** (e.g. `@rename_field("old", "new")`) -- today, a rename is "drop old, add new with default."
-- **Edge orphan policy** -- when a node quarantines, its incident edges currently stay in the live table; the policy for cascade-delete vs. keep-as-stub is a Layer 4 decision.
-- **Deep container coercion** -- `list[int] → list[str]` doesn't recurse into elements.
+- **Contract phase** -- attic data and dual-written shadow fields persist indefinitely; the census-gated cleanup that strips them once no old-version reader remains is future work. Until then they cost a little storage but are harmless.
+- **Rename auto-inference** -- the runtime won't guess that a removed field and an added field of the same type are a rename; you declare it with `schema_alias`. (A schema registry that proposes such inferences is future work.)
+- **Background sweep** -- repair is lazy (on read) plus startup auto-retry; cold documents that are never read stay at their old shape until touched. They repair correctly whenever that happens.
+- **Compiler enforcement** -- there's no build-time lint yet that detects an undeclared breaking change against a schema lockfile.
+- **Deep container coercion** -- `list[int] → list[str]` doesn't recurse into elements (a `schema_upgrade` callback covers this case today).
 - **Redis cache parity** -- the L2 cache (`RedisBackend` in jac-scale) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
 
-If you hit one of these and need a workaround today, the path is: stop the app, drop the affected rows manually from the DB, re-create them with code. The quarantine sidecar gives you the original payload for reference.
+For arbitrary transforms the escape hatch is `schema_upgrade` -- a `dict -> dict` callback with full control over the raw stored document. If something still can't be expressed, the quarantine sidecar preserves the original payload for manual handling.

@@ -40,6 +40,7 @@ cl {
 - **Wrap the client section in a `cl { ... }` block.** The braces bracket exactly the client region; server is the default context so server imports above the block need no wrapper. (`to cl:` section headers also work and are a flatter alternative for a mostly-client file.)
 - **In `sv import` RPC calls, the caller's local variable names are used as JSON keys - they must exactly match the server-side parameter names.** `get_moves(game_id, r, c)` sends `{"game_id":…, "r":…, "c":…}` but if the server signature is `def:pub get_moves(game_id: str, row: int, col: int)`, it gets 422 because `row` and `col` are missing. Rename caller variables: `get_moves(game_id, row, col)`.
 - **Kill old `jac start` processes before restarting.** If port 8001 is held by a stale process, the new server grabs 8002 but Vite's proxy still points at 8001 → all RPC calls fail. Use `pkill -f "jac start"` before restarting.
+- **QA the running app with `jac browse`** (bundled headless-browser driver, no extra deps): `jac browse open localhost:8000` → `jac browse snapshot` (accessibility tree with `@e1`-style refs) → `jac browse click @e5` / `fill '#email' val` → `jac browse screenshot` → `jac browse close`. Use it to verify rendered UI and flows end-to-end, not just that the server starts.
 
 ## See also
 

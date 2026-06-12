@@ -4,7 +4,7 @@ impl NaIRGenPass._build_vtable(arch_name: str) -> None {
     layout: list[str] = [];
     seen_methods: set[str] = set();
     # Merge method slots from all ancestors in MRO order
-    mro = self.mro_order.get(arch_name, [arch_name]);
+    mro = self._mro_of(arch_name);
     for ancestor_name in mro[1:] {
         ancestor_layout = self.vtable_layouts.get(ancestor_name, []);
         for method_name in ancestor_layout {
@@ -41,7 +41,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
     vtable_type = ir.ArrayType(i8_ptr, len(layout));
     entries: list[ir.Constant] = [];
-    mro = self.mro_order.get(arch_name, [arch_name]);
+    mro = self._mro_of(arch_name);
     for method_name in layout {
         # Resolve: walk MRO to find first implementation
         func = None;
@@ -79,7 +79,7 @@ impl NaIRGenPass._codegen_virtual_call(
     }
     # Find the resolved function (walk MRO)
     func = None;
-    mro = self.mro_order.get(obj_type_name, [obj_type_name]);
+    mro = self._mro_of(obj_type_name);
     for check_name in mro {
         full_name = f"{check_name}.{method_name}";
         if full_name in self.method_funcs {
@@ -135,7 +135,8 @@ impl NaIRGenPass._codegen_virtual_call(
 """Generate wrapper functions for inherited methods so they can be called by name."""
 impl NaIRGenPass._generate_inherited_method_wrappers -> None {
     # For each class with parents, generate wrappers for inherited methods
-    for (child_name, mro) in self.mro_order.items() {
+    for child_name in self.arch_ast_map {
+        mro = self._mro_of(child_name);
         child_struct = self.struct_types.get(child_name);
         if child_struct is None or len(mro) < 2 {
             continue;

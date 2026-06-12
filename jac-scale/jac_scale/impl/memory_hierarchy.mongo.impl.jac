@@ -1,5 +1,10 @@
 """MongoDB PersistenceBackend Implementation."""
 
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
+
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
 On connect we also ensure the companion collections exist as logical
@@ -38,6 +43,14 @@ impl MongoBackend.postinit -> None {
             self.ensure_indexes();
         } except Exception as e {
             logger.debug(f"MongoBackend: index creation skipped: {e}");
+        }
+        # Deploy-the-fix-and-data-heals: with classes, aliases, and drift
+        # rules now registered, re-attempt quarantined docs this deploy may
+        # have fixed. Never blocks startup on failure.
+        try {
+            self._auto_retry_quarantine();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: quarantine auto-retry skipped: {e}");
         }
     }
 }
@@ -184,10 +197,64 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
     };
 }
 
+"""Persist a read-repaired anchor back to its document (lazy migration).
+
+The Serializer records applied drift-rule steps on the archetype
+(`__jac_schema_repairs__`); when present, the upgraded form is written
+back with compare-and-set on the originally stored fingerprint, so a
+concurrent writer on an older code version cleanly wins and the doc
+simply repairs again on its next read. Never raises — a failed
+write-back just means the repair re-runs next load (idempotent).
+"""
+def _mongo_persist_repairs(
+    backend: MongoBackend, id_str: str, anchor: Anchor, stored_fp: (str | None)
+) -> None {
+    arch = anchor.archetype if anchor.is_populated() else None;
+    if arch is None {
+        return;
+    }
+    steps = arch.__dict__.get('__jac_schema_repairs__');
+    if not steps {
+        return;
+    }
+    try {
+        doc = _anchor_to_doc(anchor);
+        result = backend.collection.update_one(
+            {'_id': id_str, 'fingerprint': stored_fp}, {'$set': doc}
+        );
+        if result.matched_count {
+            logger.info(
+                f"MongoBackend: persisted read-repair of {id_str} "
+                f"({doc.get('arch_module')}.{doc.get('arch_type')}): {steps}"
+            );
+            if backend._l2_ref {
+                backend._l2_ref.delete(to_uuid(anchor.id));
+            }
+        } else {
+            logger.info(
+                f"MongoBackend: read-repair write-back of {id_str} skipped "
+                "(concurrent write since load); will repair on next read."
+            );
+        }
+        # Either way the in-memory anchor is current; drop the marker so a
+        # later full save doesn't re-log this as a fresh repair.
+        arch.__dict__.pop('__jac_schema_repairs__', None);
+    } except Exception as e {
+        logger.warning(f"MongoBackend: read-repair write-back of {id_str} failed: {e}");
+    }
+}
+
+
 """Move an unreadable document into the quarantine collection.
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+`reason_code` is a stable, machine-readable classification used by the
+startup auto-retry to decide which quarantined docs a new deploy might
+fix: CLASS_MISSING (archetype unresolvable), FIELD_RECONSTRUCT (class
+resolved but field deserialization failed), DESER_ERROR (deserialize
+raised), CASCADE (edge orphaned by a quarantined node).
 
 When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
 whose data.source or data.target references this node, then strip those
@@ -204,7 +271,8 @@ def _mongo_quarantine(
     data: any,
     error: str,
     from_format_version: (int | None) = None,
-    l2: (any | None) = None
+    l2: (any | None) = None,
+    reason_code: str = 'DESER_ERROR'
 ) {
     try {
         q_col = _mongo_q_collection(backend);
@@ -219,6 +287,7 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
+                    'reason_code': reason_code,
                     'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
@@ -228,6 +297,7 @@ def _mongo_quarantine(
         backend.collection.delete_one({'_id': id_str});
         if l2 {
             l2.delete(to_uuid(id_str));
+            l2.publish_invalidation(str(to_uuid(id_str)), None);
         }
         # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
         if anchor_type == 'NodeAnchor' {
@@ -263,6 +333,7 @@ def _mongo_quarantine(
                                 'fingerprint': edge_doc.get('fingerprint'),
                                 'data': edge_doc.get('data'),
                                 'error': cascade_error,
+                                'reason_code': 'CASCADE',
                                 'quarantined_at': now_ts,
                                 'from_format_version': edge_doc.get('format_version')
                             }
@@ -275,6 +346,7 @@ def _mongo_quarantine(
                 if l2 {
                     for eid in orphan_edge_ids {
                         l2.delete(to_uuid(eid));
+                        l2.publish_invalidation(str(to_uuid(eid)), None);
                     }
                 }
                 backend.collection.update_many(
@@ -284,6 +356,7 @@ def _mongo_quarantine(
                 if l2 {
                     for nid in affected_node_ids {
                         l2.delete(to_uuid(nid));
+                        l2.publish_invalidation(str(to_uuid(nid)), None);
                     }
                 }
                 logger.info(
@@ -305,6 +378,11 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 """Store a reference to the L2 cache so quarantine operations can invalidate it."""
 impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
     self._l2_ref = cache;
+}
+
+"""Record the owning context's L1 id so this backend's broadcasts self-exclude."""
+impl MongoBackend.set_l1_id(l1_id: str) -> None {
+    self._l1_id = l1_id;
 }
 
 """Check if MongoDB is available and connected."""
@@ -348,11 +426,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     }
     self.fetch_count += 1;
     _id = to_uuid(id);
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
     } except Exception as e {
         logger.debug(f"MongoDB get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
     if not db_obj {
         return None;
@@ -393,7 +477,8 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
@@ -405,12 +490,14 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         if cls_resolved is None {
             reason = f"class {arch_module}.{arch_type} unresolvable";
+            code = 'CLASS_MISSING';
             logger.warning(
                 f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
                 f"for anchor {id}. Moving to quarantine."
             );
         } else {
             reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            code = 'FIELD_RECONSTRUCT';
             logger.warning(
                 f"MongoBackend: archetype field deserialization failed for "
                 f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
@@ -426,10 +513,12 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             reason,
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
+    _mongo_persist_repairs(self, str(_id), cast(Anchor, anchor), fingerprint);
     _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
@@ -716,55 +805,110 @@ impl MongoBackend.sync -> set {
         return set();
     }
     self._atomic_written = set();
-    for (_, anchor) in list(self._mem_ref.items()) {
-        if not anchor.persistent {
-            continue;
-        }
-        # Check hash first — skip unchanged anchors without access check
-        current_hash = Serializer._compute_hash(anchor);
-        if current_hash == anchor.hash {
-            continue;
-        }
-        if not Jac.check_write_access(anchor) {
-            continue;
-        }
-        try {
-            if isinstance(anchor, NodeAnchor) {
-                delta = anchor.edge_delta();
-                if delta is not None {
-                    added = [str(eid) for eid in delta[0]];
-                    removed = [str(eid) for eid in delta[1]];
-                    if added or removed {
-                        self._put_node_atomic(anchor, added, removed);
+    span = start_memory_span(
+        "memory.sync mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+    );
+    # try/finally so the span always closes; categorize, then batch-write.
+    try {
+        node_inserts: list[NodeAnchor] = [];
+        edge_inserts: list[EdgeAnchor] = [];
+        atomic_updates: list[tuple[NodeAnchor, list[str], list[str]]] = [];
+        partial_updates: list[tuple[Anchor, set[str]]] = [];
+
+        for (_, anchor) in list(self._mem_ref.items()) {
+            if not anchor.persistent {
+                continue;
+            }
+            try {
+                # Check hash first: skip unchanged anchors without access check
+                current_hash = Serializer._compute_hash(anchor);
+                if current_hash == anchor.hash {
+                    continue;
+                }
+                if not Jac.check_write_access(anchor) {
+                    continue;
+                }
+                if isinstance(anchor, NodeAnchor) {
+                    delta = anchor.edge_delta();
+                    if delta is not None {
+                        added = [str(eid) for eid in delta[0]];
+                        removed = [str(eid) for eid in delta[1]];
+                        if added or removed {
+                            atomic_updates.append((anchor, added, removed));
+                            continue;
+                        }
+                    }
+                }
+                if anchor.hash != 0 {
+                    arch = anchor.archetype if anchor.is_populated() else None;
+                    setattr_dirty: set[str] = (
+                        arch.__dict__.get('__jac_dirty_fields__') or set()
+                    ).copy()
+                        if arch is not None
+                        else set();
+                    derived = _derive_dirty_from_field_hashes(anchor);
+                    dirty = setattr_dirty | derived;
+                    if dirty {
+                        partial_updates.append((anchor, dirty));
                         continue;
                     }
                 }
-            }
-            # Union __setattr__-tracked fields (direct assignments) with
-            # field-hash-derived fields (in-place mutations) to get the complete
-            # dirty set. Both must be combined — running only one silently drops
-            # the other category (e.g. direct + in-place in the same request).
-            if anchor.hash != 0 {
-                arch = anchor.archetype if anchor.is_populated() else None;
-                setattr_dirty: set[str] = (
-                    arch.__dict__.get('__jac_dirty_fields__') or set()
-                ).copy()
-                    if arch is not None
-                    else set();
-                derived = _derive_dirty_from_field_hashes(anchor);
-                dirty = setattr_dirty | derived;
-                if dirty {
-                    self.put_partial(anchor, dirty);
-                    continue;
+                # First insert (hash == 0) or no field changes found: full upsert.
+                if isinstance(anchor, NodeAnchor) {
+                    node_inserts.append(anchor);
+                } else {
+                    edge_inserts.append(cast(EdgeAnchor, anchor));
                 }
+            } except Exception as e {
+                logger.warning(
+                    f"MongoDB sync categorization failed for anchor {anchor.id}: {e}"
+                );
             }
-            # First insert (hash == 0) or no field changes found — full upsert.
-            self._write_to_db(anchor);
-        } except Exception as e {
-            logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+
+        # mem.count = total anchors to write across all paths.
+        if span {
+            span.set_attribute(
+                "mem.count",
+                len(node_inserts) + len(edge_inserts) + len(atomic_updates) + len(
+                    partial_updates
+                )
+            );
+        }
+
+        for anchor in node_inserts {
+            try {
+                self._write_to_db(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for anchor in edge_inserts {
+            try {
+                self._write_to_db(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for (anchor, added, removed) in atomic_updates {
+            try {
+                self._put_node_atomic(anchor, added, removed);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        for (anchor, dirty) in partial_updates {
+            try {
+                self.put_partial(anchor, dirty);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
+        }
+        return self._atomic_written;
+    } finally {
+        end_memory_span(span);
     }
-    return self._atomic_written;
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
@@ -837,6 +981,8 @@ impl MongoBackend._put_node_atomic(
         if self._l2_ref {
             try {
                 self._l2_ref.invalidate(anchor.id);
+                # Evict siblings' stale pre-write edge list cross-pod.
+                self._l2_ref.publish_invalidation(str(anchor.id), self._l1_id);
             } except Exception as inv_err {
                 logger.debug(
                     f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
@@ -915,6 +1061,15 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
+    span = start_memory_span(
+        "memory.batch_get mongodb",
+        {
+            "db.system": "mongodb",
+            "mem.tier": "L3",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
+    );
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
             if (anchor := self._load_anchor(doc)) {
@@ -924,6 +1079,8 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     } except Exception as e {
         logger.debug(f"MongoDB batch_get failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
     return result;
 }
@@ -964,14 +1121,21 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
     if anchor is None {
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
+        );
+        code = 'CLASS_MISSING' if cls_resolved is None else 'FIELD_RECONSTRUCT';
         logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {doc_id}. Moving to quarantine."
+            f"MongoBackend: failed to load {arch_module}.{arch_type} "
+            f"for anchor {doc_id} ({code}). Moving to quarantine."
         );
         _mongo_quarantine(
             self,
@@ -981,12 +1145,14 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
+            f"load failed for class {arch_module}.{arch_type}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
+    _mongo_persist_repairs(self, doc_id, cast(Anchor, anchor), fingerprint);
     _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
@@ -1069,8 +1235,10 @@ def _format_q_doc(d: dict) -> dict {
         'arch_type': d.get('arch_type'),
         'fingerprint': d.get('fingerprint'),
         'error': d.get('error'),
+        'reason_code': d.get('reason_code'),
         'quarantined_at': d.get('quarantined_at'),
         'from_format_version': d.get('from_format_version'),
+        'retry_count': d.get('retry_count'),
         'data': d.get('data')
     };
 }
@@ -1147,6 +1315,7 @@ impl MongoBackend.list_quarantined(limit: int = 50) -> list {
             'arch': ((d.get('arch_module') or '?') + '.' + (d.get('arch_type') or '?')),
             'fingerprint': str(d.get('fingerprint') or ''),
             'error': str(d.get('error') or ''),
+            'reason_code': str(d.get('reason_code') or ''),
             'quarantined_at': str(d.get('quarantined_at') or '')
         } for d in docs
     ];
@@ -1237,6 +1406,90 @@ impl MongoBackend.recover_all -> tuple {
 }
 
 
+"""Auto-retry quarantined documents that a new deploy plausibly fixed.
+
+Runs once at backend startup (after class/alias registration). A doc is
+eligible when its archetype class now resolves AND one of: its reason
+code is CLASS_MISSING (the class/alias appearing IS the fix signal), the
+class declares `__jac_schema__` drift rules (a rule may now repair it),
+or it was CASCADE-quarantined (its node may have recovered). Each failed
+attempt increments `retry_count`; docs give up loudly after 5. Recovery
+itself reuses `_mongo_attempt_recover`, so repaired forms are re-stamped
+with the live fingerprint. Gated off when JAC_SCHEMA_REPAIR=off.
+"""
+impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
+    import from jaclang.runtimelib.schema_rules { merged_rules_for, repair_mode }
+    if self.client is None or repair_mode() == 'off' {
+        return (0, 0);
+    }
+    try {
+        docs = list(
+            _mongo_q_collection(self).find(
+                {
+                    '$or': [
+                        {'retry_count': {'$exists': False}},
+                        {'retry_count': {'$lt': 5}}
+                    ]
+                }
+            ).limit(
+                limit
+            )
+        );
+    } except Exception as e {
+        logger.debug(f"MongoBackend: quarantine auto-retry scan failed: {e}");
+        return (0, 0);
+    }
+    if not docs {
+        return (0, 0);
+    }
+    # Nodes before edges so cascade re-link finds live nodes.
+    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    attempted = 0;
+    recovered = 0;
+    for d in docs {
+        cls = Serializer._get_class(d.get('arch_module'), d.get('arch_type'));
+        if cls is None {
+            continue;
+        }
+        code = d.get('reason_code');
+        if not (
+            code == 'CLASS_MISSING'
+            or code == 'CASCADE'
+            or merged_rules_for(cls) is not None
+        ) {
+            continue;
+        }
+        attempted += 1;
+        (ok, reason) = _mongo_attempt_recover(self, d);
+        if ok {
+            recovered += 1;
+        } else {
+            doc_id = str(d.get('_id', ''));
+            try {
+                _mongo_q_collection(self).update_one(
+                    {'_id': doc_id}, {'$inc': {'retry_count': 1}}
+                );
+            } except Exception { }
+            retries = int(d.get('retry_count') or 0) + 1;
+            if retries >= 5 {
+                logger.warning(
+                    f"MongoBackend: quarantined doc {doc_id} still failing "
+                    f"after {retries} auto-retries ({reason}); giving up "
+                    "until `jac db recover` is run manually."
+                );
+            }
+        }
+    }
+    if attempted {
+        logger.info(
+            f"MongoBackend: quarantine auto-retry attempted {attempted}, "
+            f"recovered {recovered} (of {len(docs)} scanned)."
+        );
+    }
+    return (attempted, recovered);
+}
+
+
 """List DB-resident aliases."""
 impl MongoBackend.list_aliases -> list {
     if self.client is None {
@@ -1306,6 +1559,10 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
         _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
         if not db_obj {
@@ -1315,6 +1572,8 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Async aget failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
@@ -1348,10 +1607,21 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
             UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
             for a in dirty
         ];
+        span = start_memory_span(
+            "memory.commit mongodb",
+            {
+                "db.system": "mongodb",
+                "mem.tier": "L3",
+                "mem.op": "commit",
+                "mem.count": len(dirty)
+            }
+        );
         try {
             await coll.bulk_write(ops, ordered=False);
         } except Exception as e {
             logger.warning(f"Async acommit bulk_write failed: {e}");
+        } finally {
+            end_memory_span(span);
         }
     }
 }
