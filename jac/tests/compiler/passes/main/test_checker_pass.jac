@@ -4873,24 +4873,26 @@ test "generator_yield_return_type_check" {
 }
 
 test "strict_any_in_jac_modules" {
-    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
-    # declared non-Any destination. The rule applies uniformly at every
-    # "destination has a declared type" site: annotated assignments,
-    # has-var initializers, function arguments, and return statements,
-    # and recurses into containers (list[any] -> list[T] errors).
+    # Layer 2: in `.jac` files, `Any` can no longer be *silently* assigned
+    # to a declared non-Any destination: function arguments and return
+    # statements reject an Any source, recursing into containers
+    # (list[any] -> list[T] errors).
+    # An assignment with an explicit annotation (`x: T = ...`, has-var
+    # initializers) is NOT silent — the annotation is the dev explicitly
+    # absorbing the Any boundary into a declared type, so it is allowed.
     # Inferred destinations and explicit `any` annotations remain
     # permissive — that is the user's escape valve.
     path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
-    # The four expected strict-Any sites:
-    #   1. `t: Task = a;`              -- annotated assignment
-    #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
-    #   3. `needs_task(a);`            -- function arg
-    #   4. `return make_any();`        -- typed return
-    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
-    # the *total* count rather than the per-code split, since the
+    # The two expected strict-Any sites (silent flows):
+    #   1. `needs_task(a);`            -- function arg
+    #   2. `return make_any();`        -- typed return
+    # Annotated assignments (`t: Task = a;`, `ts: list[Task] = xs;`) no
+    # longer error — the explicit annotation absorbs the Any source.
+    # Each silent flow emits one type-mismatch error (E1002/E1053). We
+    # assert the *total* count rather than the per-code split, since the
     # specific code depends on which checker site catches the violation.
     strict_codes = ("E1001", "E1002", "E1053");
     strict_errors = [
@@ -4898,7 +4900,7 @@ test "strict_any_in_jac_modules" {
         for e in program.errors_had
         if e.code and e.code.code in strict_codes
     ];
-    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
+    assert len(strict_errors) == 2 , f"Expected 2 strict-Any errors (silent Any -> declared T flows), got {len(
         strict_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
     # No errors should fire on the `inferred destination` or `explicit any`
@@ -5217,6 +5219,78 @@ test "callable_null_default_rejected_outside_native" {
     assert_error_pretty_found(
         """
         has fn: Callable[[int], int] = 0;  # <-- Error
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+test "recursive_type_alias_forward_refs" {
+    # Quoted forward refs inside a recursive alias (`Json = ... | list['Json']`)
+    # must resolve to the alias (gradually truncated with Any at depth 1),
+    # never to Literal["Json"]. Also covers forward refs in generic
+    # subscripts outside the alias's own RHS (`list['Json']`).
+    path = os.path.join(CHECKER_FIXTURES, "checker_recursive_type_alias.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "class_object_assignable_to_callable" {
+    # A class object is callable via its constructor (pyright:
+    # createFunctionFromConstructor): `json.dumps(default=str)` and
+    # `k: Callable[[Any], Any] = str` are valid; only the deliberate
+    # return-type mismatch (`Callable[[int], int] = str`) errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_class_as_callable.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 error (str -> Callable[[int], int]), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        bad: Callable[[int], int] = str;   # Error: str(int) returns str, not int
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+test "unsolved_typevar_does_not_leak" {
+    # `list(x)` with an Any arg cannot solve _T; the result must degrade
+    # to bare list (elements any), never `list[_T]`. The healthy
+    # `list([1, 2])` path still solves to list[int] (the one expected error).
+    path = os.path.join(CHECKER_FIXTURES, "checker_bug_typevar_leak_any_arg.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 error (list[int] -> str), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        bad: str = healthy;   # Error: list[int] not assignable to str (solver intact)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+test "null_ok_access_on_any_stays_any" {
+    # `any?.attr` must evaluate to Any (the attribute may exist at runtime);
+    # only `?.` of a genuinely missing attribute on a concrete class is
+    # NoneType (the one expected error, via its int assignment).
+    path = os.path.join(CHECKER_FIXTURES, "checker_null_ok_on_any.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 error (NoneType -> int), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        bad: int = missing;   # Error: NoneType not assignable to int
     """,
         program.errors_had[0].pretty_print()
     );

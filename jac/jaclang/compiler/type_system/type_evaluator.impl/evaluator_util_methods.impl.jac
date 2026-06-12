@@ -21,6 +21,15 @@ impl TypeEvaluator._try_resolve_forward_ref(expr: uni.String) -> TypeBase | None
     if not symbol.decl or not symbol.decl.name_of {
         return None;
     }
+    # Recursive alias knot (`Json = ... | list['Json']`): the alias is
+    # already mid-resolution on the stack, so resolving it again would
+    # yield Unknown and the caller would fall back to Literal["Json"].
+    # Truncate the recursion gradually at depth 1 with Any instead —
+    # `list[Any]` keeps every assignment into the alias sound without a
+    # full pyright-style placeholder type.
+    if self.get_index_of_symbol_resolution(symbol) is not None {
+        return types.AnyType();
+    }
     # get_type_of_symbol uses symbol_resolution_stack to break alias cycles.
     resolved = self.get_type_of_symbol(symbol);
     if isinstance(resolved, types.UnknownType) {

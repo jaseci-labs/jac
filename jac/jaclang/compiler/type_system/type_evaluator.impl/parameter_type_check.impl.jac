@@ -457,6 +457,14 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             caller_type, expr, matched_method
         );
         if inferred_type_args {
+            # An unsolved TypeVar must never become a concrete type arg of
+            # the constructed instance (pyright: applySolvedTypeVars with
+            # unknownIfNotFound) — `list[_T]` would leak `_T` into every
+            # downstream attribute access and overload check.
+            inferred_type_args = [
+                types.UnknownType() if isinstance(ta, types.TypeVarType) else ta
+                for ta in inferred_type_args
+            ];
             has_inferred = any(
                 not isinstance(ta, types.UnknownType) for ta in inferred_type_args
             );
@@ -806,6 +814,15 @@ impl TypeEvaluator.assign_type_to_type_var(
     and isinstance(arg_type, types.ClassType) {
         param_type_args = param_type.private.type_args if param_type.private else [];
         specialized = type_utils.specialize_for_base_class(arg_type, param_type);
+        # Fallback returned the param type itself: the arg class is unrelated
+        # to the param's generic base (e.g. `list(x)` where x is Any), so the
+        # "arg" type_args are the very TypeVars being solved — binding them
+        # would record the degenerate solution T := T, which then leaks `_T`
+        # into the call's result type. Leave the TypeVars unsolved instead;
+        # the bare-generic path defaults them to Any downstream.
+        if specialized is param_type {
+            return True;
+        }
         arg_type_args = specialized.private.type_args if specialized.private else [];
 
         for (i, pta) in enumerate(param_type_args) {

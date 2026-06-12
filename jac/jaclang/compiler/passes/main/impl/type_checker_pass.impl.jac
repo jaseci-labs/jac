@@ -442,10 +442,20 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 self.evaluator.is_none_type(left_type)
                 or (isinstance(target, uni.Name) and target.value == "_")
             );
+            # An explicit annotation on the assignment is the dev opting in
+            # to absorb a permissive source (`Any` from Python interop) into
+            # the declared type — the annotation itself is the narrowing, so
+            # strict-Any does not apply. Unannotated flows stay strict, which
+            # is what forces a type to be written at every Any boundary.
+            is_annotated_decl = nd.type_tag is not None and nd.type_tag.tag is not None;
             if (
                 not is_evolving_reassign
                 and not self.evaluator.assign_type(
-                    right_type, left_type, strict=self.evaluator._is_strict_site(nd)
+                    right_type,
+                    left_type,
+                    strict=(
+                        not is_annotated_decl and self.evaluator._is_strict_site(nd)
+                    )
                 )
             ) {
                 # A coroutine assigned where its awaited value is expected is
@@ -1182,9 +1192,11 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
             right_type = self.evaluator.get_type_of_expression(
                 nd.value, expected_type=nd.type
             );
-            if not self.evaluator.assign_type(
-                right_type, nd.type, strict=self.evaluator._is_strict_site(nd)
-            ) {
+            # `has` fields always carry an explicit annotation, so the dev
+            # has already opted in to absorb a permissive initializer (`Any`
+            # from Python interop) into the declared type — strict-Any is
+            # for silent flows, not annotated declarations.
+            if not self.evaluator.assign_type(right_type, nd.type, strict=False) {
                 self.emit(
                     E1001,
                     node_override=nd,

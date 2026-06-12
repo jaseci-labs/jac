@@ -727,9 +727,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Get the type to use for member lookup, handling type[T] subscripts.
                     # When base_type is type[T], lookup_type will be T instead of 'type'.
                     lookup_type = self._get_type_for_member_lookup(base_type);
-                    if member := self._lookup_class_member(
-                        lookup_type, expr.right.value
-                    ) {
+                    member = self._lookup_class_member(lookup_type, expr.right.value);
+                    # Jac's `init` compiles to `__init__` (PyastGenPass._py_name
+                    # maps the KW_INIT token), so an explicit `cls.init` access
+                    # resolves to `__init__` on Python-declared classes — e.g.
+                    # `inspect.signature(walker_cls.init)`. Scoped to attribute
+                    # expressions so constructor synthesis (which probes 'init'
+                    # then '__init__' itself) is unaffected.
+                    if member is None and expr.right.value == "init" {
+                        member = self._lookup_class_member(lookup_type, "__init__");
+                    }
+                    if member {
                         # Direct enum member access (e.g. Color.RED) returns
                         # EnumMemberType, bypassing bound-member specialization.
                         if lookup_type.is_enum_class() {
@@ -774,6 +782,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         member.symbol.add_use(expr.right);
                         expr.right.type = overloaded_ty or member_ty;
+                        return expr.right.type;
+                    }
+                    # Any-like base: the attribute may well exist at runtime —
+                    # `any?.attr` must stay Any, not collapse to NoneType (which
+                    # would poison every downstream use of the result). Checked
+                    # before the ?. fallback below for exactly that reason.
+                    if self.is_any_type(lookup_type)
+                    and self.prefetch.any_class is not None {
+                        expr.right.type = self.prefetch.any_class;
                         return expr.right.type;
                     }
                     # Optional chaining (?.): attribute not found is not an error —
@@ -873,9 +890,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # to Archetype._jac_entry_funcs_, not type._jac_entry_funcs_.
                     if self._is_type_subscript(base_type) {
                         lookup_type = self._get_type_for_member_lookup(base_type);
-                        if member := self._lookup_class_member(
+                        member = self._lookup_class_member(
                             lookup_type, expr.right.value
-                        ) {
+                        );
+                        # Jac's `init` compiles to `__init__` (PyastGenPass.
+                        # _py_name), so `cls.init` on a type[T] receiver
+                        # resolves to T's `__init__` — e.g.
+                        # `inspect.signature(walker_cls.init)`.
+                        if member is None and expr.right.value == "init" {
+                            member = self._lookup_class_member(lookup_type, "__init__");
+                        }
+                        if member {
                             value = self._set_symbol_to_expr(expr.right, member.symbol);
                             return value;
                         }
@@ -1023,6 +1048,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = getattr_return;
                         expr.right.is_getattr_resolved = True;
                         return getattr_return;
+                    }
+                    # Any-like base: the attribute may well exist at runtime —
+                    # `any?.attr` must stay Any, not collapse to NoneType (which
+                    # would poison every downstream use of the result). Checked
+                    # before the ?. fallback below for exactly that reason.
+                    if self.is_any_type(base_type)
+                    and self.prefetch.any_class is not None {
+                        expr.right.type = self.prefetch.any_class;
+                        return expr.right.type;
                     }
                     # Optional chaining (?.): attribute not found is not an error —
                     # the ?. operator returns None when the attribute doesn't exist.
@@ -1509,21 +1543,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Type args like `int` in `list[int]` represent element types
                     # (instances), not the class itself. Normalizing here ensures
                     # consistent comparison with type_args inferred from literals.
+                    # Each arg goes through the union-annotation helper so a
+                    # quoted forward ref (`list['Json']`, `dict[(str, 'Json')]`)
+                    # resolves to the named type instead of Literal["Json"] —
+                    # same treatment the Union[...] / Optional[...] path gives
+                    # its arguments.
                     type_args: list[types.TypeBase] = [];
                     if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
                         type_args_vals = expr.right.slices[0].start;
                         if isinstance(type_args_vals, uni.TupleVal) {
                             for val in type_args_vals.values {
-                                type_arg_type = self._convert_to_instance(
-                                    self.get_type_of_expression(val)
+                                type_args.append(
+                                    self._type_from_union_annotation_arg(val)
                                 );
-                                type_args.append(type_arg_type);
                             }
                         } else {
-                            type_arg_type = self._convert_to_instance(
-                                self.get_type_of_expression(type_args_vals)
+                            type_args.append(
+                                self._type_from_union_annotation_arg(type_args_vals)
                             );
-                            type_args.append(type_arg_type);
                         }
                     }
                     return base_type.specialize_generics(type_args);
@@ -3143,6 +3180,13 @@ caught the same way.
 
 `Any` *destination* still accepts any source — that is the user opting
 in to permissive output, not Any leaking silently into a typed slot.
+
+Callers pass `strict=False` for assignments that carry an explicit type
+annotation (`x: T = ...`, `has x: T = ...`): the annotation is the dev
+explicitly absorbing the permissive source into a declared type, so it
+is not a *silent* leak. Returns, call arguments, and unannotated
+reassignments remain strict — that is what forces a type to be written
+at every Any boundary.
 """
 impl TypeEvaluator.assign_type(
     src_type: TypeBase, dest_type: TypeBase, strict: bool = False
@@ -3293,6 +3337,22 @@ impl TypeEvaluator.assign_type(
                     return self._assign_callable(call_type, dest_type, strict);
                 }
             }
+        }
+        # Class object → Callable: a class is callable via its constructor
+        # (pyright: createFunctionFromConstructor in assignType). The
+        # synthesized callable returns an instance of the class — `__init__`
+        # returns None and `__new__` returns Self, neither of which would
+        # survive the covariant return check against e.g. Callable[[Any], str].
+        if isinstance(src_type, types.ClassType)
+        and src_type.is_instantiable_class()
+        and not src_type.is_literal_type() {
+            ctor = self._get_constructor_for_inference(src_type);
+            ctor_fn = types.FunctionType(
+                func_name=src_type.shared.class_name if src_type.shared else "",
+                parameters=ctor.parameters if ctor is not None else [],
+                return_type=self._convert_to_instance(src_type)
+            );
+            return self._assign_callable(ctor_fn, dest_type, strict);
         }
         # int → function reference: in native code a function value is a
         # 64-bit pointer, so an integer may initialize a Callable slot —
@@ -5429,17 +5489,23 @@ impl TypeEvaluator._is_type_alias_annotation(
         isinstance(annotation_type, types.ClassType)
         and annotation_type.shared == self.prefetch.callable_class.shared
     );
-    # Name check: verify the tag is specifically "TypeAlias"
-    if is_special_form and isinstance(tag_expr, uni.Name) {
-        return tag_expr.value == "TypeAlias";
+    # The annotation may be the bare name (`X: TypeAlias = ...`) or the
+    # qualified form typeshed stubs use (`X: typing_extensions.TypeAlias`).
+    tag_name: str | None = None;
+    if isinstance(tag_expr, uni.Name) {
+        tag_name = tag_expr.value;
+    } elif (
+        isinstance(tag_expr, uni.AtomTrailer) and isinstance(tag_expr.right, uni.Name)
+    ) {
+        tag_name = tag_expr.right.value;
+    }
+    if is_special_form {
+        return tag_name == "TypeAlias";
     }
     # Fallback for unresolved imports: annotation may be Unknown but
     # the name is still "TypeAlias" (e.g. from typing_extensions chain)
-    if (
-        isinstance(annotation_type, types.UnknownType)
-        and isinstance(tag_expr, uni.Name)
-    ) {
-        return tag_expr.value == "TypeAlias";
+    if isinstance(annotation_type, types.UnknownType) {
+        return tag_name == "TypeAlias";
     }
     return False;
 }
