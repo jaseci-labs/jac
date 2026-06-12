@@ -118,6 +118,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _foreign_modules: list = [],
         _foreign_structs: (dict | None) = None,
         _foreign_model_nmods: int = -1,
+        _foreign_fn_decls: (dict | None) = None,
+        _foreign_fns_nmods: int = -1,
         # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
         # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
         # single source of truth for how a foreign call is marshalled — it
@@ -796,14 +798,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _clib_struct_layout(name: str) -> tuple;
     # Memoized foreign declaration model over this pass's module universe.
     def _foreign_model -> dict;
+    # Memoized foreign function declarations (name -> {"params", "ret"}).
+    def _foreign_fns -> dict;
     # Ordered (field_name, nested_struct_name | None) pairs for a clib struct.
     def _foreign_fields_of(name: str) -> list;
     # Classify a clib struct for the active target's C ABI (dispatches to the
     # System V or AAPCS variant) into either MEMORY (indirect) or register
     # coerce types.
     def _classify_clib_struct(name: str) -> dict;
-    # Name of the (struct) type an annotation refers to, or None.
-    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
     # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
     # C-laid-out LLVM type for a clib struct (nested clib structs inlined).

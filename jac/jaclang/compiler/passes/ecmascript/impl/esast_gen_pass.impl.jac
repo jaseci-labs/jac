@@ -1727,15 +1727,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         and isinstance(nd.target, uni.AtomTrailer)
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        _obj_type = None;
-        try {
-            _te = self.prog.get_type_evaluator();
-            if _te {
-                _obj_type = _te.get_type_of_expression(nd.target.target);
-            }
-        } except Exception {
-            _obj_type = None;
-        }
+        # Checker-stamped receiver type (typed-tree contract, Phase 0): the
+        # backend reads Expr.type instead of re-querying the evaluator.
+        _obj_type = nd.target.target?.type;
         _type_name = self._resolve_primitive_type_name(_obj_type);
         _method_name = callee.property.name;
         if _type_name {
@@ -2271,7 +2265,8 @@ impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
 """Try to dispatch an operator through the primitive emitter system.
 
 Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
-if the type evaluator doesn't know the type or the emitter doesn't handle this op.
+if the expression's checker-stamped type is unknown or the emitter doesn't
+handle this op.
 """
 impl EsastGenPass._try_primitive_op(
     expr_node: uni.UniNode,
@@ -2281,6 +2276,13 @@ impl EsastGenPass._try_primitive_op(
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
     import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+    # Evaluator query, NOT the stamped Expr.type: operator dispatch needs a
+    # type for ARBITRARY operand expressions (call results, member chains,
+    # subscripts), and the stamps only cover what checking rules evaluated.
+    # Converting this read requires full typed-tree stamp completion, which
+    # in turn needs a side-effect-free evaluator query mode (standalone
+    # evaluation binds member symbols and caches on node.type, perturbing
+    # later context-aware checking) - tracked as Phase 0/10 follow-up.
     _obj_type = None;
     try {
         _te = self.prog.get_type_evaluator();
@@ -2318,6 +2320,9 @@ impl EsastGenPass._try_primitive_op(
 
 """Resolve the primitive type name of an expression, or "" if unknown."""
 impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
+    # Evaluator query, NOT the stamped Expr.type - same constraint as
+    # _try_primitive_op above: consumers pass arbitrary expressions whose
+    # stamps don't exist until full typed-tree completion lands.
     _obj_type = None;
     try {
         _te = self.prog.get_type_evaluator();

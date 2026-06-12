@@ -68,6 +68,68 @@ def collect_foreign_structs(modules: list) -> dict {
     return out;
 }
 
+"""Declared type name of an annotation node, or None. The C boundary is
+declared, not inferred: a foreign signature means exactly what its
+annotation names say, so this reads the surface name only (no union
+peeling, no symbol resolution)."""
+def declared_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
+    if type_expr is None {
+        return None;
+    }
+    if isinstance(type_expr, uni.Name) {
+        return type_expr.value;
+    }
+    val = type_expr?.value;
+    if isinstance(val, str) {
+        return val;
+    }
+    return None;
+}
+
+"""Collect clib function declarations from the given modules: name ->
+{"params": ordered (param_name, declared_type_name) pairs,
+ "ret": declared return type name | None}. Like collect_foreign_structs,
+this owns WHAT the user declared at the C boundary; backends own only
+how those names materialize as LLVM types."""
+def collect_foreign_fns(modules: list) -> dict {
+    out: dict = {};
+    for mod in modules {
+        if mod is None {
+            continue;
+        }
+        for imp in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+            if not imp.clib_decls {
+                continue;
+            }
+            for decl in imp.clib_decls {
+                if not isinstance(decl, uni.Ability) {
+                    continue;
+                }
+                if decl.signature is None
+                or not isinstance(decl.signature, uni.FuncSignature) {
+                    continue;
+                }
+                fname = decl.name_ref.sym_name if decl.name_ref else None;
+                if fname is None {
+                    continue;
+                }
+                params: list = [];
+                for p in decl.signature.get_parameters() {
+                    ptn = declared_type_name(p.type_tag.tag)
+                        if (p.type_tag and p.type_tag.tag)
+                        else None;
+                    params.append((p.name.value if p.name else None, ptn));
+                }
+                out[fname] = {
+                    "params": params,
+                    "ret": declared_type_name(decl.signature.return_type)
+                };
+            }
+        }
+    }
+    return out;
+}
+
 """C data layout of a declared foreign struct: returns
 (size, align, scalars) where scalars are (byte_offset, is_float, bits)
 leaves - nested struct fields are flattened recursively, offsets follow

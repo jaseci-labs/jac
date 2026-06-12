@@ -95,19 +95,16 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     plan: (dict | None) = None;
     if _abi_supported {
         import from jaclang.compiler.targets.abi { classify_foreign_fn }
-        _decl_pairs: list = [];
-        for _p in _decl_params {
-            _ptn = self._clib_type_name(_p.type_tag.tag)
-                if (_p.type_tag and _p.type_tag.tag)
-                else None;
-            _decl_pairs.append((_p.name.value if _p.name else None, _ptn));
+        # The declared signature names come from the foreign declaration
+        # model (collect_foreign_fns) - the central owner of WHAT was
+        # declared at the C boundary - not from re-walking the annotation
+        # AST here.
+        _fdecl = self._foreign_fns().get(name);
+        if _fdecl is not None {
+            plan = classify_foreign_fn(
+                self._foreign_model(), _fdecl["params"], _fdecl["ret"], _abi_triple
+            );
         }
-        plan = classify_foreign_fn(
-            self._foreign_model(),
-            _decl_pairs,
-            self._clib_type_name(sig.return_type),
-            _abi_triple
-        );
     }
     if plan is not None {
         # Materialize the central plan. Identified struct types are

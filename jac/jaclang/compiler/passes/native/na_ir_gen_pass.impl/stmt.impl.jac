@@ -648,7 +648,10 @@ impl NaIRGenPass._match_pattern_cond(
         }
         return result;
     }
-    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet lowered.
+    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet
+    # lowered. The central capability sweep (native_capability_violations)
+    # rejects them before emission starts, so this is a safety net for
+    # pattern kinds the sweep's table does not list.
     self.emit(E5090, node_override=pat, kind="match pattern", name=type(pat).__name__);
     return None;
 }
