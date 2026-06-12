@@ -217,11 +217,16 @@ test "DependencyInstaller install_package success" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "Successfully installed", "");
+            mock_pip.side_effect = [
+                (0, "[]", ""),
+                (0, "", ""),
+                (0, '[{"name":"requests","version":"2.28.0"}]', ""),
+
+            ];
             result = installer.install_package(["requests>=2.28.0"]);
             assert result is True;
-            mock_pip.assert_called_once();
-            call_args = mock_pip.call_args[0][0];
+            assert mock_pip.call_count == 3;
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
@@ -263,9 +268,9 @@ test "DependencyInstaller install_package without version" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
+            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
             installer.install_package(["requests"]);
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "requests" in call_args;
             has_version = False;
             for arg in call_args {
