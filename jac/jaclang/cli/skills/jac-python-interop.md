@@ -7,20 +7,25 @@ Jac compiles to Python bytecode, so the entire PyPI ecosystem is directly import
 
 ## Python → Jac source (use any PyPI package)
 
+Identical syntax for the stdlib, PyPI packages, and your own `.py` files:
+
 ```jac
-import numpy as np;
-import from sklearn.linear_model { LinearRegression }   # deep dotted paths work
+import json;
 import from os.path { join, basename }
+import from collections { Counter }      # deep dotted paths work too
 
 with entry {
-    arr = np.array([1, 2, 3, 4, 5]);
-    print(f"Mean: {np.mean(arr)}");
-    model = LinearRegression();
-    _ = model;
+    blob = json.dumps({"src": join("data", "in.txt")});
+    print(blob, basename("data/in.txt"), Counter("jacjac").most_common(1));
 }
 ```
 
-Local `.py` files import the same way: `import validators;` then `validators.validate_title(t)` - drop the file next to your `.jac` sources, zero config.
+```
+import numpy as np;                                      # any installed PyPI package
+import from sklearn.linear_model { LinearRegression }
+```
+
+Local `.py` files import the same way: `import validators;` then `validators.validate_title(t)` - drop the file next to your `.jac` sources, zero config. Note `jac check` can only type what it can resolve: stdlib modules are fully stubbed, while a PyPI package that isn't installed (or ships no types) reports its members as Unknown.
 
 **The untyped boundary:** untyped Python returns arrive as `any`, and Jac's strict rule blocks `any` from flowing silently into typed destinations (E1001). Three fixes - type the source (`.pyi` stub), accept-and-narrow with `isinstance`, or `value as Type` cast. Full playbook in `jac-types`.
 
