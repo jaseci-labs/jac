@@ -323,7 +323,7 @@ impl JacAPIServerCore.start(
             # race between probing port 0 and the real bind in run_server.
             _ephemeral = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
             _ephemeral.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-            _ephemeral.bind(('0.0.0.0', 0));
+            _ephemeral.bind(('127.0.0.1', 0));
             _ephemeral.listen();
             self.port = _ephemeral.getsockname()[1];
             self.server._prebound_listen_socket = _ephemeral;
