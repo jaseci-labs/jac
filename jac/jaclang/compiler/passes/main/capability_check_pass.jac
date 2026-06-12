@@ -68,12 +68,13 @@ def classify_native_import(item: uni.UniNode) -> tuple;
 
 """Declarative native-capability violations in `mod`'s native-context
 code: (node, kind, name, help_text | None) tuples ready to emit as
-E5090. Covers the disqualifier node kinds, structural match patterns,
-and non-allowlisted Python imports. Invoked by the native backend at the
-START of emission - after auto-promotion has coerced contexts, which is
-why this cannot run inside CapabilityCheckPass itself - so codegen-time
-E5090s remain only for value- and shape-conditional gaps the emitter
-discovers."""
+E5090. Covers structural match patterns and non-allowlisted Python
+imports - NOT the auto-promotion disqualifier table, which is
+conservatively broader than what explicit native code can lower (see the
+impl). Invoked by the native backend at the START of emission - after
+auto-promotion has coerced contexts, which is why this cannot run inside
+CapabilityCheckPass itself - so codegen-time E5090s remain only for
+value- and shape-conditional gaps the emitter discovers."""
 def native_capability_violations(mod: uni.Module) -> list;
 
 """Whether a module is eligible for native auto-promotion: it must have a

@@ -129,18 +129,19 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
         }
     }
-    # Disqualifier node kinds and structural match patterns anywhere in
-    # native-context statements. Flagged subtrees are not descended into,
-    # so one construct yields one violation, not a cascade.
+    # Structural match patterns anywhere in native-context statements.
+    # Flagged subtrees are not descended into, so one construct yields one
+    # violation, not a cascade. NOTE: NATIVE_DISQUALIFIER_NODES is
+    # deliberately NOT swept here - it is the AUTO-PROMOTION eligibility
+    # table, conservatively broader than what explicit na {} / .na.jac code
+    # can lower (LambdaExpr and the OSP forms are auto-promote
+    # disqualifiers but natively supported). Genuinely-unsupported node
+    # kinds remain the emitter fallbacks' job until a dedicated
+    # explicit-native rejection table is derived from them.
     for stmt in ModuleCodegenPass.iter_context_stmts(mod, CodeContext.NATIVE) {
         work: list = [stmt];
         while work {
             nd = work.pop();
-            if isinstance(nd, NATIVE_DISQUALIFIER_NODES) {
-                kind = "expression" if isinstance(nd, uni.Expr) else "statement";
-                out.append((nd, kind, type(nd).__name__, None));
-                continue;
-            }
             if isinstance(nd, NATIVE_REJECT_MATCH_PATTERNS) {
                 out.append((nd, "match pattern", type(nd).__name__, None));
                 continue;

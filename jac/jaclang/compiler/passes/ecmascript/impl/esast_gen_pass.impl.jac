@@ -2276,10 +2276,22 @@ impl EsastGenPass._try_primitive_op(
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
     import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-    # Expr.type is the typed-tree contract fact (Phase 0): inference always
-    # ran, so the backend reads the stamp instead of re-querying the
-    # evaluator.
-    _obj_type = expr_node?.type;
+    # Evaluator query, NOT the stamped Expr.type: operator dispatch needs a
+    # type for ARBITRARY operand expressions (call results, member chains,
+    # subscripts), and the stamps only cover what checking rules evaluated.
+    # Converting this read requires full typed-tree stamp completion, which
+    # in turn needs a side-effect-free evaluator query mode (standalone
+    # evaluation binds member symbols and caches on node.type, perturbing
+    # later context-aware checking) - tracked as Phase 0/10 follow-up.
+    _obj_type = None;
+    try {
+        _te = self.prog.get_type_evaluator();
+        if _te {
+            _obj_type = _te.get_type_of_expression(expr_node);
+        }
+    } except Exception {
+        _obj_type = None;
+    }
     _type_name = self._resolve_primitive_type_name(_obj_type);
     if not _type_name {
         return None;
@@ -2308,8 +2320,19 @@ impl EsastGenPass._try_primitive_op(
 
 """Resolve the primitive type name of an expression, or "" if unknown."""
 impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
-    # Checker-stamped Expr.type (typed-tree contract, Phase 0).
-    return self._resolve_primitive_type_name(expr_node?.type);
+    # Evaluator query, NOT the stamped Expr.type - same constraint as
+    # _try_primitive_op above: consumers pass arbitrary expressions whose
+    # stamps don't exist until full typed-tree completion lands.
+    _obj_type = None;
+    try {
+        _te = self.prog.get_type_evaluator();
+        if _te {
+            _obj_type = _te.get_type_of_expression(expr_node);
+        }
+    } except Exception {
+        _obj_type = None;
+    }
+    return self._resolve_primitive_type_name(_obj_type);
 }
 
 """True if an expression is statically a collection whose JS truthiness and
