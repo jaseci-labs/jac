@@ -245,12 +245,14 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     is_dry_run = "--dry-run" in self.install_flags;
     # Snapshot before install so the diff reflects what actually changed
     before_set: set[tuple] = set();
+    before_snapshot_ok = False;
     if not is_dry_run {
         (rc_before, before_json, _) = self._run_pip(["list", "--format=json"]);
         if rc_before == 0 {
             before_set = {
                 (p["name"].lower(), p["version"]) for p in json.loads(before_json)
             };
+            before_snapshot_ok = True;
         }
     }
     (returncode, stdout, stderr) = self._run_pip(
@@ -267,7 +269,7 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         }
         newly_installed: list[tuple] = [];
         (rc_after, after_json, _) = self._run_pip(["list", "--format=json"]);
-        if rc_after == 0 {
+        if rc_after == 0 and before_snapshot_ok {
             after_set = {
                 (p["name"].lower(), p["version"]) for p in json.loads(after_json)
             };
