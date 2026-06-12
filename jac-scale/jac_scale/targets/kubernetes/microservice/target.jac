@@ -514,7 +514,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger
             );
             triggers = [];
-            if not cfg.get("triggers", []) and not self.k8s_config.extra_triggers {
+            # extra_triggers from [plugins.scale.kubernetes] targets the
+            # gateway only — it is the microservice-mode equivalent of the
+            # monolith ScaledObject.  Per-service triggers belong under
+            # [[plugins.scale.microservices.services.{name}.triggers]].
+            is_gateway = svc_name == GATEWAY_NAME;
+            effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
+            if not cfg.get("triggers", []) and not effective_extra {
                 triggers = [
                     Trigger(
                         type="cpu",
@@ -540,7 +546,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 }
                 triggers.append(t);
             }
-            for raw in self.k8s_config.extra_triggers {
+            for raw in effective_extra {
                 t = Trigger(
                     type=str(raw.get("type", "")),
                     metadata=dict(raw.get("metadata", {})),
