@@ -25,7 +25,10 @@ glob registry = get_registry();
             "action",
             kind=ArgKind.POSITIONAL,
             default="inspect",
-            help="Action: inspect, quarantine, alias, recover, recover-all, schema"
+            help=(
+                "Action: inspect, quarantine, alias, recover, recover-all, "
+                "migrate, schema"
+            )
         ),
         Arg.create(
             "sub",
@@ -47,6 +50,21 @@ glob registry = get_registry();
         ),
         Arg.create(
             "limit", typ=int, default=50, help="Row limit for list commands", short="n"
+        ),
+        Arg.create(
+            "dry_run",
+            kind=ArgKind.FLAG,
+            default=False,
+            help="For `migrate`: scan and report convergence without writing"
+        ),
+        Arg.create(
+            "write",
+            kind=ArgKind.FLAG,
+            default=False,
+            help=(
+                "For `schema retire`: edit source to remove the hook (default "
+                "is a safe preview)"
+            )
         ),
         Arg.create(
             "app",
@@ -73,6 +91,11 @@ glob registry = get_registry();
         ("jac db recover <row-id>", "Try to un-quarantine one row"),
         ("jac db recover-all", "Try to un-quarantine every row; report counts"),
         ("jac db schema rules", "List registered __jac_schema__ drift rules"),
+        ("jac db schema census", "Count docs each drift rule still applies to"),
+        ("jac db migrate --dry-run", "Preview DB-wide convergence to canonical shape"),
+        ("jac db migrate", "Converge every document; strip dual-write shadows"),
+        ("jac db schema retire app.Model", "Preview clearing a fully-migrated hook"),
+        ("jac db schema retire app.Model --write", "Apply the source edit"),
 
     ],
     group="db"
@@ -83,5 +106,7 @@ def db(
     arg1: str = "",
     arg2: str = "",
     limit: int = 50,
+    dry_run: bool = False,
+    write: bool = False,
     app: str = ""
 ) -> int;

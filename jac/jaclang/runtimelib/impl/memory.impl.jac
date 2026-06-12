@@ -16,6 +16,9 @@ import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.query_plan { QueryPlan }
+# schema_rules imports nothing from serializer/memory, so this top-level
+# import is cycle-safe and lets the census/migration helpers stay typed.
+import from jaclang.runtimelib.schema_rules { SchemaRules }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
@@ -1582,6 +1585,269 @@ impl SqliteMemory.remove_alias(old_name: str) -> bool {
         Serializer._aliases.pop(old_name, None);
     }
     return removed;
+}
+
+# =============================================================================
+# Schema census + eager migration (Layer 3 drift convergence)
+# =============================================================================
+# Migration runs the Serializer's read-repair path over every document and
+# converges it to canonical; census is the proof gate (a rule is safe to
+# delete only when no document needs it).
+"""Default: backend has no eager migration; raise so the CLI reports cleanly."""
+impl PersistentMemory.schema_census -> dict {
+    raise NotImplementedError(
+        f"{type(self).__name__} does not implement schema_census; eager "
+        "schema migration is unavailable for this backend."
+    );
+}
+
+impl PersistentMemory.schema_migrate(dry_run: bool = False) -> dict {
+    raise NotImplementedError(
+        f"{type(self).__name__} does not implement schema_migrate; eager "
+        "schema migration is unavailable for this backend."
+    );
+}
+
+
+"""The `archetype` sub-dict of a stored anchor's JSON (where drift rules and their keys live), or None."""
+def _anchor_arch_sub(data_json: str) -> (dict | None) {
+    try {
+        d = json.loads(data_json);
+    } except Exception {
+        return None;
+    }
+    if not isinstance(d, dict) {
+        return None;
+    }
+    arch = d.get('archetype');
+    return arch if isinstance(arch, dict) else None;
+}
+
+
+"""Resolve the live class for an archetype sub-dict (alias-aware), or None."""
+def _resolve_arch_cls(arch_sub: dict) -> (type | None) {
+    tn = arch_sub.get('__type__');
+    mn = arch_sub.get('__module__');
+    if not isinstance(tn, str) or not isinstance(mn, str) {
+        return None;
+    }
+    return Serializer._get_class(mn, tn);
+}
+
+
+"""[(definer_fqn, SchemaRules)] for each base in `cls.__mro__` that declared a hook, attributing inherited rules to their definer (a subclass doc counts against its base's rules)."""
+def _definer_rules_for(cls: type) -> list[tuple[str, SchemaRules]] {
+    import jaclang.runtimelib.schema_rules as _sr;
+    collected = cast(dict[str, SchemaRules], getattr(_sr, '_collected', {}));
+    out: list[tuple[str, SchemaRules]] = [];
+    for base in cls.__mro__ {
+        owner = f"{base.__module__}.{base.__name__}";
+        r = collected.get(owner);
+        if r is not None {
+            out.append((owner, r));
+        }
+    }
+    return out;
+}
+
+
+"""Accumulate census `hits` (rule labels) into a {owner: {label: count}} map."""
+def _tally(bucket_map: dict, owner: str, hits: list) {
+    bucket = bucket_map.setdefault(owner, {});
+    for h in hits {
+        bucket[h] = bucket.get(h, 0) + 1;
+    }
+}
+
+
+"""Per-rule census over every live document. Read-only proof surface."""
+impl SqliteMemory.schema_census -> dict {
+    self._ensure_connection();
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
+    _load_db_aliases(conn);
+    import from jaclang.runtimelib.schema_rules { census_doc, rule_labels }
+    by_owner: dict[str, dict[str, int]] = {};
+    unconditional: dict[str, list[str]] = {};
+    unresolved = 0;
+    for (data_json, ) in cast(
+        list[tuple], list(conn.execute("SELECT data FROM anchors"))
+    ) {
+        arch_sub = _anchor_arch_sub(cast(str, data_json));
+        if arch_sub is None {
+            continue;
+        }
+        cls = _resolve_arch_cls(arch_sub);
+        if cls is None {
+            unresolved += 1;
+            continue;
+        }
+        for (owner, rules) in _definer_rules_for(cls) {
+            bucket = by_owner.setdefault(owner, {});
+            # Seed declared labels at 0 so a migrated rule reads as a zero.
+            for lbl in rule_labels(rules) {
+                bucket.setdefault(lbl, 0);
+            }
+            for u in rules.upgrades {
+                if u.when is None {
+                    lst = unconditional.setdefault(owner, []);
+                    lbl = f"upgrade:{getattr(u.fn, '__name__', '<fn>')}";
+                    if lbl not in lst {
+                        lst.append(lbl);
+                    }
+                }
+            }
+            for hit in census_doc(arch_sub, rules) {
+                bucket[hit] = bucket.get(hit, 0) + 1;
+            }
+        }
+    }
+    return {
+        'archetypes': by_owner,
+        'unconditional': unconditional,
+        'unresolved': unresolved
+    };
+}
+
+
+"""Converge one document; return 'clean'|'repaired'|'error' and accumulate census/errors in place."""
+def _sqlite_migrate_one(
+    conn: sqlite3.Connection,
+    row_id: str,
+    data_json: str,
+    dry_run: bool,
+    before: dict,
+    after: dict,
+    error_samples: list
+) -> str {
+    import from jaclang.runtimelib.schema_rules { census_doc, merged_rules_for }
+    arch_sub = _anchor_arch_sub(data_json);
+    if arch_sub is None {
+        return 'clean';
+    }
+    cls = _resolve_arch_cls(arch_sub);
+    if cls is None {
+        # Unresolvable class is a class-rename concern (recover-all), not this.
+        return 'clean';
+    }
+    definer_rules = _definer_rules_for(cls);
+    if not definer_rules {
+        return 'clean';
+    }
+    before_hits = 0;
+    for (owner, rules) in definer_rules {
+        hits = census_doc(arch_sub, rules);
+        _tally(before, owner, hits);
+        before_hits += len(hits);
+    }
+    if before_hits == 0 {
+        return 'clean';
+    }
+    # Round-trip the read-repair path: deserialize repairs, serialize canonicalizes.
+    try {
+        anchor = cast((Anchor | None), Serializer.deserialize(json.loads(data_json)));
+    } except Exception as e {
+        error_samples.append(
+            (row_id[:8] + '…', f"deserialize: {type(e).__name__}: {e}")
+        );
+        return 'error';
+    }
+    if anchor is None {
+        error_samples.append((row_id[:8] + '…', 'class unresolved'));
+        return 'error';
+    }
+    re_data = Serializer.serialize(anchor, include_type=True);
+    re_arch = re_data.get('archetype') if isinstance(re_data, dict) else None;
+    merged = merged_rules_for(cls);
+    if isinstance(re_arch, dict) and merged is not None {
+        # Drop dual-written alias shadows: migrate is the explicit "drained" signal.
+        for a in merged.aliases {
+            re_arch.pop(a.stored_name, None);
+        }
+    }
+    after_arch = re_arch if isinstance(re_arch, dict) else {};
+    for (owner, rules) in definer_rules {
+        _tally(after, owner, census_doc(after_arch, rules));
+    }
+    # Write back only on a real byte change (idempotent; no churn on re-runs).
+    original = cast(dict, json.loads(data_json));
+    if json.dumps(re_data, sort_keys=True, default=str) == json.dumps(
+        original, sort_keys=True, default=str
+    ) {
+        return 'clean';
+    }
+    if not dry_run {
+        live = anchor?.archetype;
+        live_module = type(live).__module__ if live is not None else None;
+        live_type = type(live).__name__ if live is not None else None;
+        fp = type(live)?.__jac_fingerprint__ if live is not None else None;
+        live_fp = fp if isinstance(fp, str) and fp else None;
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO anchors
+                (id, type, arch_module, arch_type, fingerprint, data,
+                 format_version, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row_id,
+                type(anchor).__name__,
+                live_module,
+                live_type,
+                live_fp,
+                json.dumps(re_data),
+                SQLITE_DB_FORMAT_VERSION,
+                datetime.now(timezone.utc).isoformat()
+            )
+        );
+    }
+    return 'repaired';
+}
+
+
+"""Eagerly converge every live document to canonical shape; report a census."""
+impl SqliteMemory.schema_migrate(dry_run: bool = False) -> dict {
+    self._ensure_connection();
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
+    _load_db_aliases(conn);
+    before: dict = {};
+    after: dict = {};
+    error_samples: list = [];
+    (scanned, repaired, clean, errors) = (0, 0, 0, 0);
+    rows = cast(list[tuple], list(conn.execute("SELECT id, data FROM anchors")));
+    for (row_id, data_json) in rows {
+        scanned += 1;
+        status = _sqlite_migrate_one(
+            conn,
+            str(row_id),
+            cast(str, data_json),
+            dry_run,
+            before,
+            after,
+            error_samples
+        );
+        if status == 'repaired' {
+            repaired += 1;
+        } elif status == 'error' {
+            errors += 1;
+        } else {
+            clean += 1;
+        }
+    }
+    if not dry_run {
+        conn.commit();
+    }
+    return {
+        'scanned': scanned,
+        'repaired': repaired,
+        'clean': clean,
+        'errors': errors,
+        'dry_run': dry_run,
+        'before': before,
+        'after': after,
+        'error_samples': error_samples
+    };
 }
 
 # =============================================================================
