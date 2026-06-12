@@ -221,7 +221,7 @@ impl KEDAAutoscaler.apply{
             namespace=spec.namespace
         );
     } except ApiException as e {
-        if e.status != 404 {
+        if e.status not in [404, 422] {
             raise;
         }
     }
@@ -305,7 +305,7 @@ impl KEDAAutoscaler.destroy_collection{
                         name=item_name
                     );
                 } except ApiException as e {
-                    if e.status != 404 {
+                    if e.status not in [404, 422] {
                         raise;
                     }
                 }
@@ -324,7 +324,7 @@ impl KEDAAutoscaler.destroy_collection{
             namespace=namespace, label_selector=label_selector
         );
     } except ApiException as e {
-        if e.status != 404 {
+        if e.status not in [404, 422] {
             raise;
         }
     }
