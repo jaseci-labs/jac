@@ -130,6 +130,7 @@ def _generate_host_source(
     # Plugin configs are baked at build time as Python literals.
     _plugin_mods = [
         "desktop_plugin",
+        "webview_lib",
         "plugin_host",
         "built_in.path_plugin",
         "built_in.window_plugin",
@@ -139,16 +140,31 @@ def _generate_host_source(
         "built_in.dialog_plugin",
         "built_in.shell_plugin"
     ];
-    plugin_py = "import sys, importlib.util\n";
+    # Build plugin bootstrap as string concat (not Jac f-strings with nested
+    # quotes — those lower to broken Python like
+    # spec_from_file_location('mod, mod.py') with a null loader).
+    plugin_py = (
+        "import sys, importlib.util, types\n"
+        "if _root not in sys.path:\n"
+        "    sys.path.insert(0, _root)\n"
+        "if 'built_in' not in sys.modules:\n"
+        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
+    );
     for _mod in _plugin_mods {
-        _mod_path = _mod.replace(".", "/");
+        _py_rel = _mod.replace(".", "/") + ".py";
         plugin_py += (
-            f"_spec = importlib.util.spec_from_file_location(\n"
-            f"    '{_mod}', '{_mod_path}.py')\n"
-            f"_m = importlib.util.module_from_spec(_spec)\n"
-            f"_spec.loader.exec_module(_m)\n"
-            f"sys.modules['{_mod}'] = _m\n"
+            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
+                _py_rel
+            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
+                _mod
+            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
         );
+        if _mod.startswith("built_in.") {
+            _child = _mod.split(".", 1)[1];
+            plugin_py += (
+                "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n"
+            );
+        }
     }
     # Build plugin host + register enabled plugins
     _pc = plugin_configs;  # baked at build time
@@ -209,10 +225,8 @@ def _generate_host_source(
         "var _l={};"
         "window.__jac={"
         "invoke:function(p,c,a){"
-        "return window.__jac_invoke(JSON.stringify({"
-        "plugin:p,command:c,args:a||{}})"
-        ").then(function(j){"
-        "var r=JSON.parse(j);"
+        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
+        "if(typeof r==='string')r=JSON.parse(r);"
         "if(r.ok)return r.data;"
         "var e=new Error(r.error.message);"
         "e.code=r.error.code;throw e;"
@@ -237,7 +251,8 @@ def _generate_host_source(
     # handles: inttoptr coercion, GIL management, CPython dispatch, webview_return.
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
-        "import from webview { Webview, new_webview, respond, HINT_NONE }\n"
+        "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         f'import from "{libpy}" {{\n'
         "    def Py_Initialize() -> None;\n"
         "    def Py_Finalize() -> None;\n"
@@ -277,6 +292,12 @@ def _generate_host_source(
         "    PyGILState_Release(gstate);\n"
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
+        # nacompile cannot lower wv.get_handle() inside an f-string for
+        # PyRun_SimpleString; passing the int through a native helper works.
+        "def _stash_wv_in_python(h: int) -> None {\n"
+        "    PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
+        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
+        "}\n"
         # --- End inlined plugin bridge ---
         "with entry {\n"
         "    Py_Initialize();\n"
@@ -287,20 +308,21 @@ def _generate_host_source(
         "    # Wire up plugin host dispatch pointer\n"
         "    _PH_DISPATCH = PyRun_String(\"_dispatch_fn\", PY_EVAL, d, d);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
-        "    wv = new_webview(False);\n"
+        "    _wv_raw = webview_create(0, 0);\n"
+        "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
+        "    wv = Webview(handle=_wv_raw);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    # Register the plugin IPC callback in the webview\n"
         "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
         "    # Wire the live webview handle into CPython so plugins (e.g. WindowPlugin)\n"
         "    # can call back into libwebview. Must happen *after* webview creation but\n"
-        "    # *before* wv.run().\n"
-        "    PyRun_SimpleString(f\"_wv_handle = {wv.handle}\");\n"
-        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
+        "    # *before* run_main_loop().\n"
+        "    _stash_wv_in_python(LAST_WEBVIEW_HANDLE);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
         "    wv.navigate(url);\n"
         "    ts = PyEval_SaveThread();\n"
-        "    wv.run();\n"
+        "    run_main_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
         "    Py_Finalize();\n"
         "}\n"
@@ -362,34 +384,32 @@ impl NativeDesktopTarget.build(
             rel = jac_file.relative_to(plugin_src_dir);
             py_name = str(rel.with_suffix(".py"));
             console.print(f"    {rel} -> {py_name}", style="muted");
-            res = subprocess.run(
-                [_jac_bin(), "jac2py", str(jac_file)], capture_output=True, text=True
-            );
-            if res.returncode != 0 or not res.stdout.strip() {
-                # jac2py can fail on some files (e.g. JoinedStr ValueError
-                # from pyast_gen_pass — tracked in jaseci-labs/jaseci#6564).
-                # Safe fallback: jac0.compile_jac() uses a simpler transpilation
-                # path that handles these cases correctly. Once the upstream
-                # JoinedStr bug is fixed, this fallback can be removed.
-                import jaclang.jac0 as jac0;
-                console.print(
-                    f"    ⚠ jac2py failed for {rel}, trying jac0 fallback",
-                    style="yellow"
+            # Embedded CPython has no jaclang — prefer jac0 (stdlib-only output).
+            import jaclang.jac0 as jac0;
+            res_stdout = "";
+            try {
+                res_stdout = jac0.compile_jac(jac_file.read_text());
+                if not res_stdout or not res_stdout.strip() {
+                    raise RuntimeError("jac0 produced empty output");
+                }
+            } except Exception as jac0_err {
+                res = subprocess.run(
+                    [_jac_bin(), "jac2py", str(jac_file)],
+                    capture_output=True,
+                    text=True
                 );
-                try {
-                    res_stdout = jac0.compile_jac(jac_file.read_text());
-                    if not res_stdout or not res_stdout.strip() {
-                        raise RuntimeError("jac0 produced empty output");
-                    }
-                } except Exception as e {
+                if res.returncode != 0 or not res.stdout.strip() {
                     raise RuntimeError(
                         f"Plugin transpile failed: {rel} "
-                        f"(both jac2py and jac0 failed)\n"
-                        f"jac2py stderr: {res.stderr or '(empty)'}\n"
-                        f"jac0 error: {e}"
+                        f"(jac0 and jac2py failed)\n"
+                        f"jac0 error: {jac0_err}\n"
+                        f"jac2py stderr: {res.stderr or '(empty)'}"
                     );
                 }
-            } else {
+                console.print(
+                    f"    ⚠ jac0 failed for {rel}, using jac2py fallback",
+                    style="yellow"
+                );
                 res_stdout = res.stdout;
             }
             target = out_dir / py_name;
@@ -422,8 +442,21 @@ impl NativeDesktopTarget.build(
         raise RuntimeError("Native host compilation failed.");
     }
     binary = out_dir / app_name;
+    launcher = out_dir / f"{app_name}-launch.sh";
+    launcher.write_text(
+        "#!/bin/sh\n"
+        "cd \"$(dirname \"$0\")\" || exit 1\n"
+        "export GDK_BACKEND=\"${GDK_BACKEND:-x11}\"\n"
+        "export WEBKIT_DISABLE_DMABUF_RENDERER=\"${WEBKIT_DISABLE_DMABUF_RENDERER:-1}\"\n"
+        "export WEBKIT_DISABLE_COMPOSITING_MODE=\"${WEBKIT_DISABLE_COMPOSITING_MODE:-1}\"\n"
+        f"exec ./{app_name} \"$@\"\n"
+    );
+    os.chmod(launcher, 0o755);
     console.print(f"\n✅ Desktop app built: {binary}", style="bold green");
-    console.print(f"   run: (cd {out_dir} && ./{app_name})", style="muted");
+    console.print(
+        f"   run: (cd {out_dir} && ./{launcher.name})  # or jac start --client desktop",
+        style="muted"
+    );
     return binary;
 }
 

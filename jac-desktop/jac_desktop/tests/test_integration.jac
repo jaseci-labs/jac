@@ -302,6 +302,21 @@ test "path plugin dispatch roundtrip" {
     );
 }
 
+"""PluginHost.dispatch accepts libwebview bind arg arrays."""
+test "dispatch accepts webview bind arg arrays" {
+    _with_plugins(
+        lambda {
+            import plugin_host;
+            import built_in.path_plugin;
+            host = plugin_host.PluginHost();
+            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            resp = json.loads(host.dispatch(json.dumps(["jac.path", "home", {}])));
+            assert resp["ok"] == True;
+            assert "path" in resp["data"];
+        }
+    );
+}
+
 """PathPlugin dispatch roundtrip: separator command."""
 test "path plugin separator command" {
     _with_plugins(
@@ -877,6 +892,15 @@ test "generated host source contains required elements" {
     # Bridge must be inlined (not imported from separate file)
     assert "PyGILState_Ensure" in src;
     assert "respond" in src;
+    # Plugin bootstrap must use os.path.join(_root, ...) — Jac f-strings with
+    # nested quotes produced spec_from_file_location('mod, mod.py') (null loader).
+    assert "os.path.join(_root," in src;
+    assert "desktop_plugin, desktop_plugin.py" not in src;
+    assert "_stash_wv_in_python" in src;
+    assert "run_main_loop()" in src;
+    assert "webview_create(0, 0)" in src;
+    assert "LAST_WEBVIEW_HANDLE = _wv_raw" in src;
+    assert "Webview(handle=_wv_raw)" in src;
 }
 
 """_generate_host_source with empty plugin_configs still produces valid host."""
@@ -917,10 +941,8 @@ test "js sdk snippet is valid javascript" {
         "var _l={};"
         "window.__jac={"
         "invoke:function(p,c,a){"
-        "return window.__jac_invoke(JSON.stringify({"
-        "plugin:p,command:c,args:a||{}})"
-        ").then(function(j){"
-        "var r=JSON.parse(j);"
+        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
+        "if(typeof r==='string')r=JSON.parse(r);"
         "if(r.ok)return r.data;"
         "var e=new Error(r.error.message);"
         "e.code=r.error.code;throw e;"
@@ -972,16 +994,14 @@ test "js sdk invoke produces correct request format" {
     }
     test_code = (
         "var captured = null;"
-        "window = {__jac_invoke: function(json) { captured = JSON.parse(json); "
-        "return Promise.resolve(JSON.stringify({ok:true,data:{x:1}})); }};"
+        "window = {__jac_invoke: function(p,c,a) { captured = {plugin:p,command:c,args:a}; "
+        "return Promise.resolve({ok:true,data:{x:1}}); }};"
         "(function(){"
         "var _l={};"
         "window.__jac={"
         "invoke:function(p,c,a){"
-        "return window.__jac_invoke(JSON.stringify({"
-        "plugin:p,command:c,args:a||{}})"
-        ").then(function(j){"
-        "var r=JSON.parse(j);"
+        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
+        "if(typeof r==='string')r=JSON.parse(r);"
         "if(r.ok)return r.data;"
         "var e=new Error(r.error.message);"
         "e.code=r.error.code;throw e;"
@@ -1138,16 +1158,19 @@ test "plugin bridge links with full native stack" {
         "    PyGILState_Release(gstate);\n"
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
-        "import from webview { Webview, new_webview, respond, HINT_NONE }\n"
+        "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         "with entry {\n"
         "    Py_Initialize();\n"
-        "    wv = new_webview(False);\n"
+        "    _wv_raw = webview_create(0, 0);\n"
+        "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
+        "    wv = Webview(handle=_wv_raw);\n"
         '    wv.title("integration-test");\n'
         "    wv.size(640, 480, HINT_NONE);\n"
         '    wv.bind("__jac_invoke", _jac_invoke_handler);\n'
         '    wv.html("<h1>integration</h1>");\n'
         "    ts = PyEval_SaveThread();\n"
-        "    wv.run();\n"
+        "    run_main_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
         "    Py_Finalize();\n"
         "}\n"

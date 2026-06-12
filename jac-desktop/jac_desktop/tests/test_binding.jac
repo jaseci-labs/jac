@@ -87,7 +87,7 @@ def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
 """A host that uses the obj:pub Webview API links libwebview.so via $ORIGIN."""
 test "webview binding host compiles and links libwebview.so" {
     src = (
-        "import from webview { Webview, new_webview, respond, HINT_NONE }\n"
+        "import from webview { Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
         "def on_call(id: int, req: int, arg: int) -> None { respond(arg, id, \"1\"); }\n"
         "with entry {\n"
         "    wv = new_webview(False);\n"
@@ -95,7 +95,7 @@ test "webview binding host compiles and links libwebview.so" {
         "    wv.size(640, 480, HINT_NONE);\n"
         "    wv.bind(\"ping\", on_call);\n"
         "    wv.html(\"<h1>hi</h1>\");\n"
-        "    wv.run();\n"
+        "    run_main_loop();\n"
         "}\n"
     );
     (rc, err, data) = _compile_host(src);
@@ -127,6 +127,26 @@ test "embedded-python host compiles and links libpython" {
 def _bridge_src -> str {
     bridge = _native_dir() / "plugin_bridge.na.jac";
     return bridge.read_text();
+}
+
+"""Entry-level webview_create + LAST_WEBVIEW_HANDLE is the desktop host pattern."""
+test "entry-level webview handle wires run_main_loop" {
+    src = (
+        "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
+        "import from webview { Webview, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
+        "with entry {\n"
+        "    _wv_raw = webview_create(0, 0);\n"
+        "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
+        "    wv = Webview(handle=_wv_raw);\n"
+        "    wv.title(\"t\");\n"
+        "    wv.size(640, 480, HINT_NONE);\n"
+        "    wv.html(\"<h1>hi</h1>\");\n"
+        "    run_main_loop();\n"
+        "}\n"
+    );
+    (rc, err, data) = _compile_host(src);
+    assert rc == 0 , f"get_handle host failed to compile:\n{err}";
+    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
 }
 
 """The plugin bridge + embedded-CPython + webview host compiles as a unit.
@@ -176,7 +196,7 @@ test "plugin bridge host compiles with webview + libpython" {
         "    PyGILState_Release(gstate);\n"
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
-        "import from webview { Webview, new_webview, respond, HINT_NONE }\n"
+        "import from webview { Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
         "with entry {\n"
         "    Py_Initialize();\n"
         "    wv = new_webview(False);\n"
@@ -185,7 +205,7 @@ test "plugin bridge host compiles with webview + libpython" {
         '    wv.bind("__jac_invoke", _jac_invoke_handler);\n'
         '    wv.html("<h1>test</h1>");\n'
         "    ts = PyEval_SaveThread();\n"
-        "    wv.run();\n"
+        "    run_main_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
         "    Py_Finalize();\n"
         "}\n"

@@ -32,9 +32,13 @@ def _binary_dir -> str {
 
 """Plugin host: registry, dispatch, emit."""
 obj PluginHost {
-    has plugins: dict = {},
+    has plugins: dict,
         _wv_handle: int = 0,
         _wv_lib: ctypes.CDLL | None = None;
+
+    def init {
+        self.plugins = {};
+    }
 
     """Register a plugin under the given name (e.g. 'jac.fs')."""
     def register(name: str, plugin: DesktopPlugin) {
@@ -62,6 +66,35 @@ obj PluginHost {
         }
     }
 
+    """Normalize a webview bind callback payload into {plugin, command, args}.
+
+    Modern libwebview passes `req` as a JSON array of JS call arguments, e.g.
+    ``["jac.path", "home", {}]``. Older hosts passed a single stringified object
+  in a one-element array. Accept both.
+    """
+    def _parse_invoke(req_json: str) -> dict {
+        wire = json.loads(req_json);
+        if isinstance(wire, list) {
+            if len(wire) == 3 {
+                return {
+                    "plugin": wire[0],
+                    "command": wire[1],
+                    "args": wire[2] if wire[2] is not None else {}
+                };
+            }
+            if len(wire) == 1 {
+                wire = wire[0];
+                if isinstance(wire, str) {
+                    wire = json.loads(wire);
+                }
+            }
+        }
+        if isinstance(wire, dict) {
+            return wire;
+        }
+        raise ValueError(f"unexpected invoke payload: {req_json}");
+    }
+
     """Dispatch a JS invoke() request to the registered plugin.
 
     Entry point called from the native shim via PyObject_CallOneArg.
@@ -70,7 +103,7 @@ obj PluginHost {
     """
     def dispatch(req_json: str) -> str {
         try {
-            req = json.loads(req_json);
+            req = self._parse_invoke(req_json);
             name = req.get("plugin", "");
             command = req.get("command", "");
             args = req.get("args", {});
