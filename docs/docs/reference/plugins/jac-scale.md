@@ -1291,7 +1291,7 @@ with entry {
 All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
 
 ```jac
-# Protected (default) -- requires JWT token
+# Protected (default) -- requires JWT token, runs on the caller's own isolated root
 walker get_profile {
     can fetch with Root entry { report [-->]; }
 }
@@ -1301,7 +1301,7 @@ walker :pub health_check {
     can check with Root entry { report {"status": "ok"}; }
 }
 
-# Private -- requires authentication, per-user isolated
+# Private -- identical to the default; `:priv` is the explicit spelling
 walker :priv internal_process {
     can run with Root entry { }
 }
@@ -1309,13 +1309,12 @@ walker :priv internal_process {
 
 ### Walker Access Levels
 
-Walkers have three access levels when served as API endpoints:
+Walkers have two access levels when served as API endpoints (`:priv` is the explicit spelling of the default):
 
 | Access | Description |
 |--------|-------------|
-| Public (`:pub`) | Accessible without authentication |
-| Protected (default) | Requires JWT authentication |
-| Private (`:priv`) | Requires JWT authentication; per-user isolated (each user operates on their own graph) |
+| Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
+| Protected (default) and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). The unmarked default and `:priv` behave identically. |
 
 ### Permission Functions Reference
 

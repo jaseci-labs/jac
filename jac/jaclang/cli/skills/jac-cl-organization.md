@@ -14,15 +14,20 @@ my-app/
 │   ├── ItemCard.cl.jac
 │   ├── ItemCard.style.css     # optional scoped styles - SAME basename
 │   ├── ItemList.cl.jac        # composes ItemCard
-│   ├── Layout.cl.jac          # app shell
-│   └── pages/
-│       ├── AuthPage.cl.jac    # top-level route targets - thin orchestrators
-│       └── RecipesPage.cl.jac
+│   └── Layout.cl.jac          # app shell
+├── pages/                     # route targets - thin orchestrators
+│   ├── index.jac              # with file-based routing these ARE the routes
+│   └── RecipesPage.cl.jac     #   (see jac-cl-routing); else components/pages/
+├── services/
+│   ├── recipes.sv.jac         # server endpoints + types (see jac-sv-endpoints)
+│   └── wsService.cl.jac       # client-side service module (WebSocket, API glue)
 ├── hooks/
 │   └── useItems.cl.jac        # shared data + handlers, `use` prefix
 └── lib/
     └── utils.cl.jac           # pure helper fns (cn, formatDate)
 ```
+
+Service modules separate transport logic from UI: `.sv.jac` files under `services/` hold server endpoints; a `.cl.jac` service module (e.g. `wsService.cl.jac`) holds client-side WebSocket/API plumbing with `glob` module state (see `jac-cl-js-interop`). Components and hooks import from services - never the reverse.
 
 ## Hook pattern
 
@@ -68,6 +73,38 @@ def:pub ItemList() -> JsxElement {
 }
 ```
 
+## Global state: createContext / useContext
+
+⚠ **A custom hook does NOT share state between two consumers.** Every `useItems()` call creates its OWN `useState` instances - two components calling the same hook see two independent copies. Hooks share *logic*, not *state*. For state that multiple components must see (current user, theme, cart), use a context:
+
+```jac
+import from react { createContext, useContext }
+
+glob AppCtx = createContext(None);
+
+# Provider owns the state - mount ONCE near the app root
+def:pub AppProvider(children: any = None) -> JsxElement {
+    has user: any = None;
+    has theme: str = "light";
+    value = {
+        "user": user, "theme": theme,
+        "setUser": lambda u: any -> None { user = u; },
+        "setTheme": lambda t: str -> None { theme = t; },
+    };
+    return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
+}
+
+# Any descendant reads/writes the SAME state
+def:pub ThemeToggle() -> JsxElement {
+    ctx: any = useContext(AppCtx);
+    return <button onClick={lambda -> None {
+        ctx.setTheme("dark" if ctx.theme == "light" else "light");
+    }}>Theme: {ctx.theme}</button>;
+}
+```
+
+Wire it in the entry: `def:pub app() -> JsxElement { return <AppProvider><AppShell /></AppProvider>; }`. Annotate the consumer's `ctx: any` - a bare `ctx = useContext(...)` is Unknown-typed and `ctx.user` fails `jac check` with E1032. Reach for context only when ≥2 distant components need the same state; otherwise a hook (below) or plain props.
+
 ## jac-shadcn project layout
 
 When the project has `components/ui/` (jac-shadcn primitives are pre-installed):
@@ -105,7 +142,7 @@ Load `jac-shadcn-components` for the import patterns and full component selectio
 - **Hooks live under `hooks/`, components under `components/`.** Don't mix.
 - **Hook return dicts use `[key]` access, not `.get()`** - see `jac-cl-components`.
 - **Don't call a hook from a non-component `def`.** `has` fields only wire up inside `def:pub` that renders JSX or inside another `useXxx()`.
-- **Extract to a hook when:** data involves async fetch, OR it's shared across ≥2 components, OR there are 3+ related handlers on the same state. Otherwise keep state inline in the component.
+- **Extract to a hook when:** data involves async fetch, OR the same *logic* recurs in ≥2 components, OR there are 3+ related handlers on the same state. Otherwise keep state inline. If ≥2 components must see the same *live values*, a hook is NOT enough - use the context pattern above.
 
 ## See also
 

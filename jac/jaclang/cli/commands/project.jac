@@ -47,7 +47,7 @@ glob registry = get_registry(),
         ("jac create myapp --use client", "Create with client jacpack template"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),
-        ("jac create --list-jacpacks", "List available jacpack templates"),
+        ("jac create --list_jacpacks", "List available jacpack templates"),
 
     ],
     group="project"

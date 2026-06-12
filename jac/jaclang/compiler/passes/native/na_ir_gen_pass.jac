@@ -101,12 +101,25 @@ obj NaIRGenPass(ModuleCodegenPass) {
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
         has_native_code: bool = False,
+        # Test blocks lowered to native functions: (name, symbol, description,
+        # line) tuples, exported as NativeTestLayout entries in the layout.
+        native_tests: list = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         # External function cache (Phase 0)
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Foreign declaration model (Phase 8): module universe for the
+        # central collector, and its memoized result. The memo is keyed on
+        # the universe size (_foreign_model_nmods) because _foreign_modules
+        # is assembled mid-transform, after the entry module's clib imports
+        # are already processed.
+        _foreign_modules: list = [],
+        _foreign_structs: (dict | None) = None,
+        _foreign_model_nmods: int = -1,
+        _foreign_fn_decls: (dict | None) = None,
+        _foreign_fns_nmods: int = -1,
         # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
         # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
         # single source of truth for how a foreign call is marshalled — it
@@ -156,7 +169,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # re-emitted per subclass, so `self` must resolve to the *current*
         # (flattened) layout, not the declaring parent the checker reports.
         _self_arch: (str | None) = None,
-        field_type_node: dict[str, dict] = {},
         # Inheritance / vtable support (Phase 5). Hierarchy, MRO, and
         # vtable-need are NOT copied here: they are queried from the central
         # LayoutRegistry via _mro_of / _arch_has_vtable.
@@ -290,6 +302,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
+    # Test block - lowered to a zero-arg native fn returning i8* (null = pass)
+    def _codegen_test(nd: uni.Test) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
@@ -781,19 +795,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Compute the C in-memory layout of a clib struct: (size, align, scalars)
     # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
     # structs are flattened (inlined) recursively to match the C ABI.
-    def _clib_struct_layout(
-        name: str
-    ) -> tuple;  # Classify a clib struct for the active target's C ABI (dispatches to the
-
-
+    def _clib_struct_layout(name: str) -> tuple;
+    # Memoized foreign declaration model over this pass's module universe.
+    def _foreign_model -> dict;
+    # Memoized foreign function declarations (name -> {"params", "ret"}).
+    def _foreign_fns -> dict;
+    # Ordered (field_name, nested_struct_name | None) pairs for a clib struct.
+    def _foreign_fields_of(name: str) -> list;
+    # Classify a clib struct for the active target's C ABI (dispatches to the
     # System V or AAPCS variant) into either MEMORY (indirect) or register
     # coerce types.
-    def _classify_clib_struct(
-        name: str
-    ) -> dict;  # Name of the (struct) type an annotation refers to, or None.
-
-
-    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
+    def _classify_clib_struct(name: str) -> dict;
     # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
     # C-laid-out LLVM type for a clib struct (nested clib structs inlined).
