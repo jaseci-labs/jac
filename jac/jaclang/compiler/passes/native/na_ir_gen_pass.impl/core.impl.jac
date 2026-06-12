@@ -113,6 +113,26 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             _coerce_native_module(self.ir_in);
         }
     }
+    # Phase 9: declaratively-unsupported constructs (disqualifier nodes,
+    # structural match patterns, non-allowlisted Python imports) are
+    # rejected by the central capability authority BEFORE emission starts.
+    # This point is post-auto-promotion, so coerced modules are covered.
+    # Codegen-time E5090s below remain only for value- and shape-conditional
+    # gaps the emitter discovers (plus safety-net fallbacks).
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        native_capability_violations
+    }
+    _viols = native_capability_violations(self.ir_in);
+    for (_vnode, _vkind, _vname, _vhelp) in _viols {
+        self.emit(
+            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
+        );
+    }
+    if _viols {
+        # No emission for a module the capability authority rejected: a
+        # partial binary would be silently wrong.
+        return self.ir_in;
+    }
     # Emit reference counting helper functions (must be first)
     self._emit_rc_helpers();
     # Process C library imports: import from "libname" { def ...; }
@@ -750,13 +770,6 @@ Extracts library paths for loading and forward-declares
 extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
-    # The native-stdlib legality table lives in the capability authority
-    # (Phase 9); this post-coercion point enforces it because
-    # auto-promotion makes imports native-context after CapabilityCheckPass
-    # runs.
-    import from jaclang.compiler.passes.main.capability_check_pass {
-        NATIVE_SUPPORTED_STDLIB
-    }
     # Collect imports from top-level and inside na {} blocks
     imports = [
         s
@@ -768,44 +781,19 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
-                    # Legality is the capability authority's call (Phase 9);
-                    # this post-coercion point only enforces and tracks.
+                    # Legality is the capability authority's call (Phase 9):
+                    # native_capability_violations rejects non-allowlisted
+                    # Python imports before emission ever starts (issue
+                    # #6357), so by the time this runs every plain import is
+                    # either supported or non-native. Track the supported
+                    # ones so member intercepts know they were imported -
+                    # grows with the Python-congruent stdlib roadmap (#6404).
                     import from jaclang.compiler.passes.main.capability_check_pass {
                         classify_native_import
                     }
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported {
-                        # A stdlib module the native backend lowers (its members
-                        # are intercepted in codegen). Track it so those
-                        # intercepts know it was imported. Grows with the
-                        # Python-congruent stdlib roadmap (issue #6404).
                         self._native_stdlib_modules.add(mod_name);
-                    } elif mod_name is not None
-                    and stmt.code_context == CodeContext.NATIVE {
-                        # A plain `import math;` carries a ModulePath item and no
-                        # from_loc. Native compilation cannot import arbitrary
-                        # Python modules: the import is dropped, then attribute
-                        # access on the module name (`math.pi`) lowers to nothing
-                        # and the binary prints empty/garbage. Reject it loudly
-                        # instead of emitting a silently-wrong binary (issue
-                        # #6357). The NATIVE-context guard matters because this
-                        # pass also runs over ordinary .jac modules in the
-                        # standard pipeline, where a Python import is valid and
-                        # SERVER-context -- only `.na.jac` modules and `na {}`
-                        # blocks make a bare Python import an error. C libraries
-                        # (`import from "lib" {...}`) and other native modules
-                        # (`import from mod {...}`) carry a from_loc and are
-                        # handled below / by interop resolution.
-                        _supported = ", ".join(
-                            f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
-                        );
-                        self.emit(
-                            E5090,
-                            node_override=item,
-                            kind="Python module import",
-                            name=mod_name,
-                            help_text=f"Native compilation supports these stdlib imports: {_supported}; C-library imports (`import from \"lib\" {{...}}`); and other native (.na.jac) modules (`import from mod {{...}}`). Move Python-dependent code to a @sv/Python context."
-                        );
                     }
                 }
             }
