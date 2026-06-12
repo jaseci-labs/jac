@@ -1,6 +1,6 @@
 ---
 name: jac-sv-multi-user
-description: Multi-user data sharing - cross-user permission grants (everyone or one specific user), the shared root / public feed pattern (root.shared), per-user grants with allow_root, roles, scanning every user's root. Load when logged-in users need to see or act on each other's data, or when tempted to fake "shared" data with a def:pub global graph. Pair with `jac-sv-auth`, `jac-node-edge-patterns`.
+description: Multi-user data sharing - cross-user permission grants (ReadPerm/ConnectPerm/WritePerm, everyone or one specific user), the shared root / public feed pattern (root.shared), per-user grants with allow_root, roles, scanning every user's root (allroots). Load when logged-in users need to see or act on each other's data, or when tempted to fake "shared" data with a def:pub global graph. Pair with `jac-sv-auth`, `jac-node-edge-patterns`.
 ---
 
 Authenticated endpoints give every user an isolated subgraph hung off *their* `root` (see `jac-sv-auth`). Cross-user features punch through that isolation three ways:
@@ -21,7 +21,7 @@ edge Posted {}
 def post_tweet(content: str) -> str {
     prof = [root --> [?:Profile]][0];
     t = (prof +>:Posted:+> Tweet(content=content))[0];
-    grant(t, level=ConnectPerm);          # all users may now read/connect to it
+    grant(t, level=WritePerm);   # likes/comments MUTATE tweet fields -> WritePerm
     return t.content;
 }
 
@@ -44,7 +44,9 @@ def global_feed() -> list[dict] {
 
 ## Access levels
 
-`grant`/`allow_root` take an ambient level constant (or its int). Higher includes lower: `NoPerm` (explicit deny) < `ReadPerm` (read fields, traverse in) < `ConnectPerm` (+ attach edges - follow/like/comment targets) < `WritePerm` (+ mutate fields). Omitted level defaults to `ReadPerm`; pass it explicitly and pick the least that works.
+`grant`/`allow_root` take an ambient level constant (or its int). Higher includes lower: `NoPerm` (explicit deny) < `ReadPerm` (read fields, traverse in) < `ConnectPerm` (+ attach edges) < `WritePerm` (+ mutate fields). Omitted level defaults to `ReadPerm`; pass it explicitly and pick the least that works.
+
+**Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `ConnectPerm`. Interactions that MUTATE FIELDS on the target need `WritePerm`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `WritePerm` while Profiles and Channels get `ConnectPerm`.
 
 **Vocabulary mapping:** the jac-scale reference spells these `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` with levels `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` - same machinery as the ambient `grant` / `revoke` + `NoPerm`..`WritePerm` names used here.
 
@@ -85,6 +87,7 @@ def:pub read_feed() -> list[str] {           # works anonymous or logged-in
 
 - One traversal regardless of user count - the better public-feed pattern vs the O(N-users) `allroots()` scan above.
 - **Floor: `ConnectPerm`.** Every user (authenticated or anonymous) can read it and attach nodes without an arming grant. Nodes you hang there stay *owned by you* and closed until you `grant` them.
+- **Container/leaf pairing** (the guestbook's shape, `root.shared → Day(date) → Visitor`): grant the *container* `ConnectPerm` so strangers can attach under it, and each *leaf* `ReadPerm` so everyone reads it but only the author's walkers mutate it.
 - **Lockdown:** `grant(root.shared, level=ReadPerm)` (from an anonymous/system context) makes the commons read-only; any explicit level except `NoPerm` is respected.
 - Outside a server (`jac run`, scripts, tests) there are no separate users: `jid(root.shared) == jid(root)`.
 
@@ -103,12 +106,13 @@ def admin_only_action() -> str {
 }
 ```
 
-Gate any `allroots()` scan or cross-user write behind such a check - `allroots()` itself does no authorization.
+Read-only `allroots()` fan-outs don't need gating - grants already filter what each caller can see (public trending/explore feeds are ungated reads in practice). Gate cross-user WRITES behind a check like this - `allroots()` itself does no authorization.
 
 ## Pitfalls
 
 - **A node is only reachable by other users if granted** (`grant`, `allow_root`, or living open on `root.shared`). Creating it under your root and connecting an edge is NOT enough - forgetting the grant is the #1 cause of "the other user's feed is empty" with no error. Grant at creation time, in the same function.
 - **Grants are per-node, not per-subtree.** Granting a `Profile` does not grant the `Tweet`s hanging off it.
 - **`allroots()` needs served context** (`jac start`). In a single-session `jac run` it returns only the one root - validate cross-user features with two real logged-in users, never a single-root script.
+- **`allroots()` fan-outs can visit the same node twice** - a node reachable through more than one root (granted, shared) is surfaced once per path, so a bare per-visit tally double-counts. Dedupe with a `jid(here)`-keyed dict (littleX's trending walker keeps a `seen: dict[str, bool]`).
 - **`def:pub` is the wrong tool for shared data.** Anonymous callers land on the guest graph, token-holders on their own root - so a `:pub` "global graph" isn't even one graph. Keep endpoints authenticated and use `grant`/`root.shared`. See `jac-sv-auth`.
 - `jobj(id)` resolves any node by jid regardless of grants - don't treat a jid as a secret capability; enforce sharing decisions with grant levels and traversal, not id obscurity.

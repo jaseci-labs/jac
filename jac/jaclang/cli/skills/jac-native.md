@@ -1,6 +1,6 @@
 ---
 name: jac-native
-description: Compiling Jac to native machine code via LLVM - `na {}` blocks to speed up hot loops inside regular .jac files, transparent `jac run --autonative`, and standalone zero-dependency binaries via `jac nacompile` (plain .jac or .na.jac). Covers the supported feature subset, the Python-congruent stdlib, the C FFI, and what fails. Load when speeding up a hot loop, building a native binary or CLI tool, or editing any `.na.jac` file. For C-ABI shared libraries see `jac-native-shared`; for in-browser wasm see `jac-native-wasm`.
+description: Compiling Jac to native machine code via LLVM - `na {}` blocks for hot loops in regular .jac files, `jac run --autonative`, and standalone zero-dependency binaries via `jac nacompile` (plain .jac or .na.jac); the supported subset, Python-congruent stdlib, C FFI, and gotchas. Load when speeding up a hot loop, building a native binary or CLI tool, or editing any `.na.jac` file. For C-ABI shared libraries see `jac-native-shared`; for in-browser wasm see `jac-native-wasm`.
 ---
 
 The native codespace compiles Jac through LLVM to machine code - no Python runtime, no external compiler or linker (Jac bundles the whole toolchain). Three verbs:
@@ -58,6 +58,8 @@ with entry {
 
 Anything else fails **loudly at compile time** - `import json` -> *"Native pathway does not yet support Python module import 'json'"*. Unsupported imports never silently produce a garbage binary. PyPI imports never work natively; keep that code in the Python codespace.
 
+The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
+
 **Not supported** (compile errors): walkers/nodes/edges, `async`, generators/`yield`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI. Lambdas: see gotchas.
 
 ## Gotchas (all verified against the current compiler)
@@ -67,7 +69,9 @@ Anything else fails **loudly at compile time** - `import json` -> *"Native pathw
 - **A lambda that captures a local variable compiles silently and computes garbage.** Non-capturing expression lambdas happen to work, but the safe rule is: no lambdas in native code - pass named functions. (Calling a function received through an `any` param is a compile error.)
 - Forward-decl stubs (`obj Board;`) parse, but field access through a stub-typed value fails (`No matching overload ... "__add__"` / `<Unknown>`). They are unnecessary - just reference later-defined types.
 - Booleans are `True`/`False`. Lowercase `true` fails with the misleading `E1002: Cannot return <Unknown>, expected bool`.
-- `node` and `root` are reserved words - they cannot be variable names in native code.
+- `node` and `root` are reserved words - they cannot be variable names in native code. `by` is one too (`by llm()`), so the natural 3D grid params `ax, ay, az, bx, by, ...` fail E0013 - escape as `` `by `` or rename.
+- **Mixing an FFI `i32` with an `int` (i64) in a ternary kills codegen**: `return n if n > 0 else 60;` where `n` came from an `-> i32` extern aborts `jac nacompile` with *"PHI nodes not grouped at top of basic block"* (the widening `zext` lands between the merge block's PHIs). `jac check` passes - it only dies at nacompile. Use an explicit `if { return n; } return 60;` instead.
+- Wide flat signatures next to a C import can misbehave: the shooter flagship hit a type-checker param-counting bug on a 12-float-param helper and renamed to short uniform `p0..p11` (minimal repros pass on the current compiler - if you see a phantom arg-count error on a grid-of-floats signature, rename the params).
 
 ## `na {}` blocks - native sections inside a regular .jac
 
@@ -135,7 +139,8 @@ import from raylib {                                  # logical name, like a lin
 }
 ```
 
-- `import from .raylib` (leading dot) resolves beside the binary: emits DT_NEEDED `$ORIGIN/libraylib.so` + RUNPATH `$ORIGIN` (`@loader_path` on macOS). `import from vendor.raylib` -> `$ORIGIN/vendor/...`.
+- The plain logical name already finds a **sibling** library: every binary gets RUNPATH `$ORIGIN` (`@loader_path` on macOS) plus a bare DT_NEEDED (`libraylib.so`), so the loader checks the binary's own directory first, then `LD_LIBRARY_PATH`/system paths (verified with `readelf -d`). Ship the `.so` next to the binary and it runs from any cwd - the shooter flagship stages `libraylib.so` beside `./shooter` exactly this way.
+- `import from .raylib` (leading dot) **pins** sibling-only resolution: DT_NEEDED becomes `$ORIGIN/libraylib.so`, so a system-installed copy is never used as a fallback. `import from vendor.raylib` -> `$ORIGIN/vendor/...`.
 - A literal string (`import from "/usr/lib/libm.so.6" { def sqrt(x: f64) -> f64; }`) is only for pinning an exact path or versioned soname - no prefix/extension rewriting.
 - Fixed-width types (`i32`, `u8`, `f32`, `f64`, `c_void`) are needed ONLY inside the `import from` declaration to match the C ABI. Everywhere else use standard `int`/`float`/`str`; the compiler coerces at the call site.
 - **Keep FFI calls scalar.** Passing or returning a multi-field struct *by value* (a 3-float `Vector3`, a `Camera3D`, a `Color`) does not reliably round-trip yet - bind the library's scalar entry points instead (e.g. raylib's `rlVertex3f`/`rlColor4ub`/`rlClearColor` rather than `DrawCube(Vector3,...)`/`ClearBackground(Color)`). An int return read straight into `float(...)` is a known safe workaround for some bindings.

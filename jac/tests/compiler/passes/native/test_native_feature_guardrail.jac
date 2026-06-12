@@ -277,3 +277,41 @@ test "guardrail: import sys is not rejected" {
         prog
     )}";
 }
+
+# Edge disconnect has no native lowering (connect and traversal do - they
+# ride the OSP kernel adjacency). The capability sweep rejects it
+# pre-codegen.
+test "guardrail: edge disconnect is rejected" {
+    prog = compile_na_inline(
+        "disconnect",
+        "node N {}\n"
+        "walker W {\n"
+        "    can go with N entry {\n"
+        "        here del --> [-->];\n"
+        "    }\n"
+        "}\n"
+        "with entry { W() spawn N(); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisconnectOp, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# ::py:: blocks cannot execute in a native binary. Before the capability
+# sweep covered PyInlineCode they were silently DROPPED in native context -
+# exactly the silent-failure class this guardrail file exists to prevent.
+test "guardrail: inline Python block is rejected" {
+    prog = compile_na_inline(
+        "pyinline",
+        "def f -> int {\n"
+        "    ::py::\n"
+        "x = 1\n"
+        "::py::\n"
+        "    return 1;\n"
+        "}\n"
+        "with entry { print(f()); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for PyInlineCode, got: {fmt_errors(
+        prog
+    )}";
+}

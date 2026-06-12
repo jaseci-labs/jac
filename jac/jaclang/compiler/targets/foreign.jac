@@ -34,7 +34,13 @@ glob FOREIGN_SCALARS: dict[str, tuple] = {
 
 """Collect clib struct declarations from the given modules: name ->
 ordered list of (field_name, declared_type_name). Field types are the
-declaration-surface names (the C boundary is declared, not inferred)."""
+declaration-surface names (the C boundary is declared, not inferred).
+
+Duplicate names across modules are last-writer-wins: C symbol and struct
+names are unique per link unit, so duplicate declarations of the same
+name must describe the same C entity (the same contract a C compiler
+applies to redeclarations) - the model does not arbitrate conflicting
+redeclarations."""
 def collect_foreign_structs(modules: list) -> dict {
     out: dict = {};
     for mod in modules {
@@ -90,7 +96,9 @@ def declared_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
 {"params": ordered (param_name, declared_type_name) pairs,
  "ret": declared return type name | None}. Like collect_foreign_structs,
 this owns WHAT the user declared at the C boundary; backends own only
-how those names materialize as LLVM types."""
+how those names materialize as LLVM types. The same last-writer-wins
+duplicate-name contract applies: C function symbols are unique per link
+unit, so redeclarations must agree."""
 def collect_foreign_fns(modules: list) -> dict {
     out: dict = {};
     for mod in modules {

@@ -1727,8 +1727,10 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         and isinstance(nd.target, uni.AtomTrailer)
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        # Checker-stamped receiver type (typed-tree contract, Phase 0): the
-        # backend reads Expr.type instead of re-querying the evaluator.
+        # Stamp-ONLY receiver read (deliberately not the lazy central
+        # query): an unstamped receiver (e.g. an untyped comprehension
+        # element) must route through the _jac.poly.call runtime
+        # dispatcher rather than a statically-chosen primitive emitter.
         _obj_type = nd.target.target?.type;
         _type_name = self._resolve_primitive_type_name(_obj_type);
         _method_name = callee.property.name;
@@ -2276,26 +2278,13 @@ impl EsastGenPass._try_primitive_op(
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
     import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-    # Evaluator query, NOT the stamped Expr.type: operator dispatch needs a
-    # type for ARBITRARY operand expressions (call results, member chains,
-    # subscripts), and the stamps only cover what checking rules evaluated.
-    # Converting this read requires full typed-tree stamp completion, which
-    # in turn needs a side-effect-free evaluator query mode (standalone
-    # evaluation binds member symbols and caches on node.type, perturbing
-    # later context-aware checking) - tracked as Phase 0/10 follow-up.
-    _obj_type = None;
-    try {
-        _te = self.prog.get_type_evaluator();
-        if _te {
-            _obj_type = _te.get_type_of_expression(expr_node);
-        }
-    } except Exception {
-        _obj_type = None;
-    }
-    _type_name = self._resolve_primitive_type_name(_obj_type);
+    # Central expression-type read (see _expr_type_name).
+    import from jaclang.compiler.type_system.type_utils { expr_primitive_name }
+    _type_name = expr_primitive_name(self.prog, expr_node);
     if not _type_name {
         return None;
     }
+    self._ensure_emitters();
     _emitter = self._primitive_emitters.get(_type_name);
     _emit_fn = getattr(_emitter, emit_method, None) if _emitter else None;
     if not _emit_fn {
@@ -2320,19 +2309,11 @@ impl EsastGenPass._try_primitive_op(
 
 """Resolve the primitive type name of an expression, or "" if unknown."""
 impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
-    # Evaluator query, NOT the stamped Expr.type - same constraint as
-    # _try_primitive_op above: consumers pass arbitrary expressions whose
-    # stamps don't exist until full typed-tree completion lands.
-    _obj_type = None;
-    try {
-        _te = self.prog.get_type_evaluator();
-        if _te {
-            _obj_type = _te.get_type_of_expression(expr_node);
-        }
-    } except Exception {
-        _obj_type = None;
-    }
-    return self._resolve_primitive_type_name(_obj_type);
+    # The sanctioned central read of an expression's primitive type
+    # (type_utils.expr_primitive_name): stamp when present, lazy authority
+    # query otherwise. The backend owns no type derivation here.
+    import from jaclang.compiler.type_system.type_utils { expr_primitive_name }
+    return expr_primitive_name(self.prog, expr_node);
 }
 
 """True if an expression is statically a collection whose JS truthiness and
@@ -6483,8 +6464,11 @@ impl EsastGenPass._resolve_spawn_walker(
     if not isinstance(stripped_node, uni.FuncCall) {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
-    target_symbol = resolve_expr_symbol(stripped_node.target, self.get_main_mod());
+    # Checker-stamped symbol (Phase 2 contract); the name-based fallback
+    # below already covers sv-imported walkers the checker could not bind.
+    target_symbol = stripped_node.target.sym
+        if isinstance(stripped_node.target, uni.AtomExpr)
+        else None;
     # If symbol is found and is a walker, use it
     if target_symbol and (target_symbol.sym_type == SymbolType.WALKER_ARCH) {
         walker_name = target_symbol.sym_name;

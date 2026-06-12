@@ -98,7 +98,10 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         # The declared signature names come from the foreign declaration
         # model (collect_foreign_fns) - the central owner of WHAT was
         # declared at the C boundary - not from re-walking the annotation
-        # AST here.
+        # AST here. A function absent from the model is one the collector
+        # skipped (unnamed declaration), which cannot name a foreign struct
+        # in its signature - so falling through to the legacy scalar path
+        # below is the correct (and only) outcome, same as a plan of None.
         _fdecl = self._foreign_fns().get(name);
         if _fdecl is not None {
             plan = classify_foreign_fn(

@@ -245,8 +245,10 @@ and emit target code. The contract (tracked in jaseci-labs/jaseci#6542):
 | Result ownership (+1 transfer) | `compiler/ownership.jac` | `result_ownership(expr)`, applied at one emission seam |
 | Borrowed-param promotion | `compiler/ownership.jac` | `param_plainly_rebound(sym)`, entry-block retain |
 | Loop-exit release lists | `compiler/ownership.jac` | `loop_body_locals(body)` |
-| Capability / portability | `capability_check_pass.jac` | declarative disqualifier + stdlib tables, W6001-W6004 |
-| Foreign ABI classification | `compiler/targets/abi.jac` | `classify_struct(size, align, scalars, triple)` (pure, unit-tested) |
+| Capability / portability | `capability_check_pass.jac` | declarative disqualifier + stdlib + explicit-native rejection tables, `native_capability_violations(mod)` pre-codegen sweep, W6001-W6004 |
+| Foreign declarations (clib surface) | `compiler/targets/foreign.jac` | `collect_foreign_structs/fns`, `foreign_struct_layout` (declared names in, layouts out) |
+| Foreign ABI classification + call plans | `compiler/targets/abi.jac` | `classify_struct(...)`, `classify_foreign_fn(...)` (pure, unit-tested) |
+| Codegen-time expression-type reads | `type_system/type_utils.jac` | `expr_primitive_name(prog, expr)`: stamp when present, lazy authority query otherwise |
 
 What stays per-backend by design: target IR construction and emission,
 runtime libraries, backend-idiomatic lowering choices, emitter-created
@@ -254,6 +256,40 @@ temporaries (boxing, coercion buffers - their bookkeeping is driven by
 the central classification of their source expressions), and
 annotation-surface-shape decisions (what the user literally wrote,
 which stamped types deliberately erase).
+
+### The end-state purity contract
+
+The relocation plan (jaseci-labs/jaseci#6542) is complete.
+`tests/compiler/test_backend_purity.jac` is its standing contract:
+`MIGRATION_DEBT` is empty, and every remaining analysis-API match in a
+backend source is `SANCTIONED` with a per-entry rationale and an exact
+count - growth means unreviewed analysis crept back in, shrink means an
+entry earned tightening; both fail the test until the table is edited
+deliberately.
+
+Two design decisions bound what "fully stamped" means:
+
+- **Lazy expression types.** `Expr.type` is the evaluator's memoization,
+  populated by whatever checking rules evaluate; measured across the ES
+  and OSP corpora, a present stamp never disagrees with the evaluator -
+  the gap is purely coverage over arbitrary shapes (call results,
+  compare results, member chains). Eager completion is unsound without a
+  side-effect-free evaluator query mode (standalone evaluation binds
+  member symbols and caches results, perturbing later context-aware
+  checking - measured, twice). So codegen-time reads go through
+  `expr_primitive_name`, which fills gaps lazily; late-query diagnostics
+  ride the checker's deferral machinery.
+
+- **Ownership seam tables (Phase 7 follow-up): not pursued.** The
+  central facts that pay for themselves are landed
+  (`result_ownership`, `param_plainly_rebound`, `loop_body_locals`).
+  The remaining `_mark_owned`/`_is_owned` sites track emitter-created
+  temporaries - values with no AST identity, created and consumed inside
+  single lowering routines. A central table for them would mirror
+  emission order rather than describe the program; the invariant
+  (every value-consumption seam releases its owned temps) is enforced by
+  the leak-check gates (chess fixture under JAC_RC_DEBUG_CODEGEN, the GC
+  suite) rather than by a second bookkeeping layer.
 
 ---
 
