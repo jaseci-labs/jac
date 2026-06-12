@@ -60,16 +60,17 @@ def joinedstr_invariant_violations(`node: ast3.AST) -> list[str] {
                 }
                 walk(value, piece_path);
             }
-        }
-        for (_, field_value) in ast3.iter_fields(nd) {
-            if isinstance(field_value, list) {
-                for item in field_value {
-                    if isinstance(item, ast3.AST) {
-                        walk(item, path);
+        } else {
+            for (_, field_value) in ast3.iter_fields(nd) {
+                if isinstance(field_value, list) {
+                    for item in field_value {
+                        if isinstance(item, ast3.AST) {
+                            walk(item, path);
+                        }
                     }
+                } elif isinstance(field_value, ast3.AST) {
+                    walk(field_value, path);
                 }
-            } elif isinstance(field_value, ast3.AST) {
-                walk(field_value, path);
             }
         }
     }
