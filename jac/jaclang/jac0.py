@@ -2182,11 +2182,12 @@ class CodeGen:
                 self._line(f"{var.name}: {var.type_ann} = field(init=False)")
             elif var.default:
                 d = var.default.strip()
+                d_norm = d.replace(" ", "")
                 if d == "[]":
                     self._line(
                         f"{var.name}: {var.type_ann} = field(default_factory=list)"
                     )
-                elif d == "{}":
+                elif d_norm == "{}":
                     self._line(
                         f"{var.name}: {var.type_ann} = field(default_factory=dict)"
                     )

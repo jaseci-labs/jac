@@ -128,6 +128,26 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
             return (path, lang);
         }
     }
+    # Fallback: check packages that registered a jac.modules entry point.
+    # Plugins (e.g. jac-desktop) self-register their @jac/* modules this way
+    # without writing files into jaclang's runtimelib directory.
+    # Entry point value is "module.path:attr_or_callable". If the loaded object
+    # is callable, it is invoked and must return an absolute path string.
+    # If it is already a string, it is used directly.
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.modules') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                path = loaded() if callable(loaded) else loaded;
+                if isinstance(path, str) and os.path.isfile(path) {
+                    return (path, 'jac');
+                }
+            }
+        }
+    } except Exception {
+        ;
+    }
     return None;
 }
 

@@ -46,6 +46,8 @@ impl ViteCompiler.compile(
     if pwa_config.is_pwa_enabled() {
         self.compile_pwa_runtime();
     }
+    # Compile desktop SDK if @jac/desktop is resolvable (via jac.modules entry point)
+    self.compile_desktop_sdk();
     self.copy_root_assets();
     self.create_entry_file(module_path);
     # Return exports and globals without bundling
@@ -417,6 +419,47 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
     pwa_out.write_text(pwa_js, encoding='utf-8');
     self._write_source_map(mod, str(pwa_runtime_path), pwa_out, pwa_js);
     return (pwa_js, all_exports);
+}
+
+"""Compile @jac/desktop SDK if it is resolvable.
+
+Uses the modresolver's jac.modules entry point mechanism to find the
+SDK source, compiles it to JS, and writes it into the compiled dir.
+Returns silently if @jac/desktop is not installed (no entry point registered)."""
+impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
+    desktop_src = resolve_jac_virtual_module_path('@jac/desktop');
+    if not desktop_src {
+        return;
+    }
+    desktop_path = Path(desktop_src);
+    if not desktop_path.exists() {
+        return;
+    }
+    (desktop_js, mod, desktop_manifest) = self.jac_compiler.compile_module(
+        desktop_path
+    );
+    if not desktop_js or not desktop_js.strip() {
+        return;
+    }
+    # The desktop SDK uses obj types, not def:pub, so extract_exports may be empty.
+    # Append an ES module export for all known SDK symbols.
+    desktop_exports = self.jac_compiler.extract_exports(desktop_manifest);
+    desktop_globals = self.jac_compiler.extract_globals(desktop_manifest, mod);
+    all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
+    # Fallback: the SDK's known obj names if extract found nothing
+    if not all_names {
+        all_names = sorted(
+            ['fs', 'dialog', 'clipboard', 'notification', 'window', 'path', 'shell']
+        );
+    }
+    if all_names {
+        export_line = 'export {' + ', '.join(all_names) + '};';
+        desktop_js = desktop_js + '\n' + export_line + '\n';
+    }
+    desktop_out = self.compiled_dir / 'desktop_api.js';
+    desktop_out.write_text(desktop_js, encoding='utf-8');
+    self._write_source_map(mod, str(desktop_path), desktop_out, desktop_js);
 }
 
 """Write the per-file source map for a freshly compiled module and chain the
