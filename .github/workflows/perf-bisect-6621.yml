@@ -1,12 +1,25 @@
 name: Perf Bisect (#6621)
 
 # Manually-triggered bisect for the Jun 10-11 self-compile / startup perf
-# regression reported in issue #6621. Runs the same measurements against a list
-# of commits across the suspected window and posts a comparison table to the run
-# summary. Default commits span pre-#6536 baseline through the post-window head.
+# regression reported in issue #6621.
+#
+# Root cause (confirmed from the jacBuilder CI logs behind the issue): #6536
+# ("typed-tree contract") made type inference fire on ordinary codegen
+# compiles. The smoking gun is in the per-file compile logs:
+#
+#   - The FAST (Jun 10) run compiled 81 files and NEVER loaded the type system
+#     (type_evaluator.jac / type_checker_pass.jac appear 0 times).
+#   - The SLOW (Jun 12) run compiled 93 files; the 12 extra are precisely the
+#     type-system / analysis modules, and the large runtime file
+#     source_mapping.jac went from never-compiled to a 142s inference stall.
+#
+# So the faithful signal is NOT wall-clock alone (noisy across runners) but
+# WHETHER a plain `jac run` of a runtime app drags the type system into the
+# compile. This workflow measures both, per commit, and FAILS if a regressed
+# commit pulls the type system in where the baseline did not.
 #
 # Trigger from the Actions tab (workflow_dispatch). Override `commits` to bisect
-# a narrower range, e.g. just "f856cc7f~1 f856cc7f" to isolate #6536.
+# a narrower range, e.g. "f856cc7f~1 f856cc7f" to isolate #6536.
 
 on:
   workflow_dispatch:
@@ -15,10 +28,11 @@ on:
         description: 'Space-separated commits/refs to benchmark (oldest first)'
         required: false
         default: '790d3378 f856cc7f c4f648ec f9ad1d86'
-      check_path:
-        description: 'Path passed to `jac check` (the forced-inference workload)'
+      fail_on_regression:
+        description: 'Fail the job if a commit drags the type system into a plain jac run'
         required: false
-        default: 'jac/jaclang'
+        type: boolean
+        default: true
 
 jobs:
   bisect:
@@ -34,79 +48,163 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Write helper scripts
+        run: |
+          # Per-file gap extractor: max seconds spent on any Compiling line whose
+          # path matches the regex arg (time = gap to the next Compiling line).
+          cat > /tmp/per_file.py <<'PY'
+          import re, sys, datetime
+          log, pat = sys.argv[1], sys.argv[2]
+          rows = []
+          for line in open(log, errors='replace'):
+              m = re.search(r'(\d{4}-\d{2}-\d{2}T[\d:.]+Z).*?Compiling (\S+)\.\.\.', line)
+              if not m:
+                  continue
+              ts = re.sub(r'(\.\d{6})\d*Z$', r'\1+00:00', m.group(1))
+              ts = re.sub(r'Z$', '+00:00', ts)
+              try:
+                  t = datetime.datetime.fromisoformat(ts)
+              except Exception:
+                  continue
+              rows.append((t, m.group(2)))
+          best = 0.0
+          for i in range(1, len(rows)):
+              if re.search(pat, rows[i - 1][1]):
+                  best = max(best, (rows[i][0] - rows[i - 1][0]).total_seconds())
+          print(f"{best:.1f}")
+          PY
+          echo "helper written"
+
+      - name: Write runtime workload app
+        run: |
+          # An app that exercises the runtime stack the issue's deploy uses:
+          # walkers + persistence pull in runtimelib (source_mapping, scheduler,
+          # storage). On a regressed commit, compiling this drags in the type
+          # system; on the baseline it does not.
+          cat > /tmp/workload.jac <<'JAC'
+          node N { has v: int = 0; }
+
+          walker W {
+              can go with `root entry {
+                  n = N(v=41);
+                  visit [-->];
+              }
+          }
+
+          with entry {
+              root ++> N(v=1);
+              root spawn W();
+              print("ok");
+          }
+          JAC
+          echo "workload written"
+
       - name: Run perf bisect
         env:
           COMMITS: ${{ github.event.inputs.commits }}
-          CHECK_PATH: ${{ github.event.inputs.check_path }}
         run: |
           set -u
           REPO="$PWD"
           RESULTS="$REPO/perf-bisect-results.tsv"
-          # header: commit  subject  pip_s  bootstrap_s  jaccheck_s  check_files  peakRSS_kb
-          printf 'commit\tsubject\tpip_install_s\tbootstrap_compile_s\tjac_check_s\tcheck_files\tpeak_rss_kb\n' > "$RESULTS"
+          # Modules that only get compiled when the type system is dragged in.
+          # Their presence in a plain `jac run` is THE regression signal.
+          TS_MARKER='type_system/type_evaluator|passes/main/type_checker_pass'
+          # Large runtime files that became inference stalls in the slow run.
+          STALL_FILES='runtimelib/source_mapping|runtimelib/scheduler'
+
+          printf 'commit\tsubject\tpip_install_s\trun_compile_s\trun_files\tts_modules\tsource_mapping_s\tscheduler_s\tpeak_rss_kb\tregressed\n' > "$RESULTS"
 
           for ref in $COMMITS; do
             sha=$(git rev-parse --short "$ref")
             subj=$(git log -1 --format=%s "$ref" | cut -c1-50 | tr '\t' ' ')
             echo "::group::Benchmark $sha — $subj"
 
-            wt="/tmp/wt-$sha"
-            venv="/tmp/venv-$sha"
-            cache="/tmp/cache-$sha"
+            wt="/tmp/wt-$sha"; venv="/tmp/venv-$sha"; cache="/tmp/cache-$sha"
             rm -rf "$wt" "$venv" "$cache"; mkdir -p "$cache"
 
             git worktree add --detach "$wt" "$ref"
-            python -m pip install --upgrade -q pip virtualenv
             python -m venv "$venv"
 
-            # 1) pip install -e (the issue's measured self-compile-on-install step)
+            # 1) pip install -e (issue's self-compile-on-install step)
             t0=$(date +%s.%N)
-            "$venv/bin/pip" install -q -e "$wt/jac" || { echo "pip FAILED for $sha"; }
+            "$venv/bin/pip" install -q -e "$wt/jac" || echo "pip FAILED for $sha"
             t1=$(date +%s.%N)
             pip_s=$(awk "BEGIN{printf \"%.1f\", $t1-$t0}")
 
-            # 2) cold bootstrap self-compile (first jac invocation, isolated cache)
-            t0=$(date +%s.%N)
-            XDG_CACHE_HOME="$cache" "$venv/bin/jac" --version >/tmp/boot-$sha.log 2>&1 || true
-            t1=$(date +%s.%N)
-            boot_s=$(awk "BEGIN{printf \"%.1f\", $t1-$t0}")
+            # warm the bootstrap (internal) cache once so the timed run below
+            # measures the WORKLOAD compile, not the one-time stdlib bootstrap.
+            XDG_CACHE_HOME="$cache" "$venv/bin/jac" --version >/dev/null 2>&1 || true
 
-            # 3) jac check over the tree — forces TypeInferencePass on every file
-            #    (the pass #6536 toggles from off->on for codegen compiles). This is
-            #    the workload that should expose the regression if it is inference.
+            # 2) cold `jac run` of the runtime workload — the regressed path.
+            #    Fresh sub-cache so the workload + its runtime deps recompile,
+            #    but reuse the warmed bootstrap by keeping the same XDG dir and
+            #    only forcing the workload via a rebuild flag on user modules.
+            runlog="/tmp/run-$sha.log"
             t0=$(date +%s.%N)
-            XDG_CACHE_HOME="$cache" "$venv/bin/jac" check "$wt/$CHECK_PATH" --nowarn >/tmp/check-$sha.log 2>&1 || true
+            XDG_CACHE_HOME="$cache" JAC_REBUILD=1 "$venv/bin/jac" run /tmp/workload.jac >"$runlog" 2>&1 || true
             t1=$(date +%s.%N)
-            check_s=$(awk "BEGIN{printf \"%.1f\", $t1-$t0}")
-            nfiles=$(grep -c 'Compiling ' /tmp/check-$sha.log || echo 0)
+            run_s=$(awk "BEGIN{printf \"%.1f\", $t1-$t0}")
 
-            # 4) peak RSS of a cold start
+            run_files=$(grep -c 'Compiling ' "$runlog" || echo 0)
+            ts_mods=$(grep -cE "Compiling .*($TS_MARKER)" "$runlog" || echo 0)
+
+            # per-file gap for the two known stall files (time to next Compiling line)
+            sm_s=$(python3 /tmp/per_file.py "$runlog" 'runtimelib/source_mapping')
+            sch_s=$(python3 /tmp/per_file.py "$runlog" 'runtimelib/scheduler')
+
+            # 3) peak RSS of a cold start
             rm -rf "$cache"; mkdir -p "$cache"
             XDG_CACHE_HOME="$cache" /usr/bin/time -v "$venv/bin/jac" --version >/tmp/mem-$sha.log 2>&1 || true
             rss=$(grep "Maximum resident" /tmp/mem-$sha.log | grep -oE '[0-9]+' | head -1)
 
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$sha" "$subj" "$pip_s" "$boot_s" "$check_s" "${nfiles:-0}" "${rss:-0}" >> "$RESULTS"
+            # regression verdict: type system dragged into a plain jac run
+            if [ "${ts_mods:-0}" -gt 0 ]; then regressed="YES"; else regressed="no"; fi
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$sha" "$subj" "$pip_s" "$run_s" "${run_files:-0}" "${ts_mods:-0}" \
+              "$sm_s" "$sch_s" "${rss:-0}" "$regressed" >> "$RESULTS"
 
             git worktree remove --force "$wt" || true
             rm -rf "$venv" "$cache"
             echo "::endgroup::"
           done
 
-          echo "## Perf bisect for #6621" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Runner: \`${{ runner.name }}\` · \`jac check $CHECK_PATH\` is the forced-inference workload." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| commit | subject | pip install (s) | bootstrap compile (s) | jac check (s) | files | peak RSS (MB) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- | ---: | ---: | ---: | ---: | ---: |" >> "$GITHUB_STEP_SUMMARY"
-          tail -n +2 "$RESULTS" | while IFS=$'\t' read -r c s pip boot chk nf rss; do
+          # ---- summary ----
+          {
+            echo "## Perf bisect for #6621"
+            echo ""
+            echo "Runner: \`${{ runner.name }}\`. Workload: \`jac run\` of a walker+persistence app."
+            echo "**Regression signal:** \`ts modules\` > 0 means a plain \`jac run\` dragged the"
+            echo "type system into the compile (the #6536 inference-gate flip)."
+            echo ""
+            echo "| commit | subject | pip (s) | run compile (s) | files | ts modules | source_mapping (s) | scheduler (s) | peak RSS (MB) | regressed |"
+            echo "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -n +2 "$RESULTS" | while IFS=$'\t' read -r c s pip run nf ts sm sch rss reg; do
             rss_mb=$(awk "BEGIN{printf \"%.0f\", ${rss:-0}/1024}")
-            echo "| \`$c\` | $s | $pip | $boot | $chk | $nf | $rss_mb |" >> "$GITHUB_STEP_SUMMARY"
+            flag="✅"; [ "$reg" = "YES" ] && flag="🔴 **YES**"
+            echo "| \`$c\` | $s | $pip | $run | $nf | $ts | $sm | $sch | $rss_mb | $flag |" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      - name: Assert no regression
+        if: ${{ github.event.inputs.fail_on_regression != 'false' }}
+        run: |
+          # Fail only if the LAST (newest) commit in the list is regressed while
+          # the FIRST (baseline) is not — i.e. the window introduced it.
+          mapfile -t rows < <(tail -n +2 perf-bisect-results.tsv)
+          [ "${#rows[@]}" -ge 2 ] || { echo "need >=2 commits to compare"; exit 0; }
+          first_reg=$(echo "${rows[0]}" | cut -f10)
+          last_reg=$(echo "${rows[-1]}" | cut -f10)
+          echo "baseline regressed=$first_reg ; head regressed=$last_reg"
+          if [ "$first_reg" != "YES" ] && [ "$last_reg" = "YES" ]; then
+            echo "::error::Regression confirmed — the window drags the type system into a plain jac run."
+            exit 1
+          fi
+          echo "No baseline→head regression transition detected."
 
       - name: Upload raw results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf-bisect-results
-          path: |
-            perf-bisect-results.tsv
+          path: perf-bisect-results.tsv
