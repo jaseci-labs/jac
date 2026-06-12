@@ -20,5 +20,17 @@ glob:pub navGroups = [
                  {"id": "traces", "label": "Traces"},
                  {"id": "logs", "label": "Logs"}
              ]
+         },
+         {
+             "label": "Operations",
+             "items": [
+                 {"id": "ops", "label": "Self-Check"},
+                 {"id": "deploy", "label": "Deploy Health"},
+                 {"id": "network", "label": "Endpoints & Storage"},
+                 {"id": "images", "label": "Image Freshness"},
+                 {"id": "events", "label": "Events"},
+                 {"id": "podenv", "label": "Pod Env"},
+                 {"id": "actions", "label": "Actions"}
+             ]
          }
      ];

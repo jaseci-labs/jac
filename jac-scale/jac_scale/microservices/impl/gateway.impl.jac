@@ -927,6 +927,18 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_llm_telemetry_endpoints();
     # /admin/traces/* (Tempo proxy) for the in-admin Traces page.
     self.register_traces_endpoints();
+    # /admin/ops/health (V-01 signal self-check). MUST register here too:
+    # an unregistered /admin/ops/* would fall to the SPA catchall and
+    # return index.html, breaking the client's .json() with HTML.
+    self.register_ops_endpoints();
+    # V-track Ops Console (V-02..V-06 read-only + V-10 mutations). Same
+    # catchall hazard - every /admin/ops/* route must register here too.
+    self.register_deploy_health_endpoints();
+    self.register_network_endpoints();
+    self.register_images_endpoints();
+    self.register_events_endpoints();
+    self.register_podenv_endpoints();
+    self.register_actions_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()
