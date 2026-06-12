@@ -43,9 +43,7 @@ impl create(
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
         console.error(f"Unknown template: {use}");
-        console.print(
-            "Use --list-templates to see available templates.", style="muted"
-        );
+        console.print("Use --list_jacpacks to see available templates.", style="muted");
         return 1;
     }
     cwd = Path.cwd();
@@ -294,7 +292,7 @@ def _resolve_template(use: str, registry: any) -> any {
     tmpl = registry.get(use);
     if tmpl is None {
         console.error(f"Unknown jacpack template: {use}");
-        console.error("Use --list-jacpacks to see available templates.");
+        console.error("Use --list_jacpacks to see available templates.");
         console.error("You can also specify a path to a .jacpack file or a URL.");
         return None;
     }
