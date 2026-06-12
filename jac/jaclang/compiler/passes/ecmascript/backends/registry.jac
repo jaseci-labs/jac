@@ -19,6 +19,12 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
         _BACKENDS["react"] = backend;
         return backend;
     }
+    if framework == "preact" {
+        import from jaclang.compiler.passes.ecmascript.backends.preact { PreactBackend }
+        backend = PreactBackend();
+        _BACKENDS["preact"] = backend;
+        return backend;
+    }
     raise ValueError(E5081.format_message(framework=framework));
 }
 

@@ -3983,14 +3983,15 @@ impl EsastGenPass._has_import(name: str) -> bool {
     return False;
 }
 
-"""Register @jac/runtime in the client manifest so bundler can inline it."""
+"""Register the active backend's runtime module in the client manifest."""
 impl EsastGenPass._register_jac_runtime_import -> None {
     import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
-    # Only register once
-    if '@jac/runtime' not in self.client_manifest.imports {
-        runtime_path = resolve_jac_virtual_module_path('@jac/runtime');
+    self._ensure_backend();
+    module_id = self.backend.runtime_module();
+    if module_id not in self.client_manifest.imports {
+        runtime_path = resolve_jac_virtual_module_path(module_id);
         if runtime_path {
-            self.client_manifest.imports['@jac/runtime'] = runtime_path;
+            self.client_manifest.imports[module_id] = runtime_path;
         }
     }
 }
@@ -4018,7 +4019,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    if src == '@jac/runtime' {
+    if src.startswith('@jac/') {
         # Register in client manifest so bundler knows to inline the runtime.
         self._register_jac_runtime_import();
     }

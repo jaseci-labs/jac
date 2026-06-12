@@ -1,0 +1,98 @@
+"""Preact-backed client runtime for Jac JSX and walker interactions.
+
+API surface matches `client_runtime.cl.jac`; implementation is shared via
+`impl/preact_runtime.impl.jac` (kept in sync with the React runtime).
+"""
+
+import from 'preact/compat' { * as React }
+import from 'preact/hooks' { useState as reactUseState, useEffect as reactUseEffect }
+import from 'react-router-dom' {
+    BrowserRouter as ReactRouterBrowserRouter,
+    Routes as ReactRouterRoutes,
+    Route as ReactRouterRoute,
+    Link as ReactRouterLink,
+    Navigate as ReactRouterNavigate,
+    Outlet as ReactRouterOutlet,
+    useNavigate as reactRouterUseNavigate,
+    useLocation as reactRouterUseLocation,
+    useParams as reactRouterUseParams
+}
+import from 'react-error-boundary' { ErrorBoundary }
+import from 'react-hook-form' { useForm }
+import from '@hookform/resolvers/zod' { zodResolver }
+import from 'zod' { z }
+
+def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
+
+# Hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
+glob:pub useState = reactUseState,
+     useEffect = reactUseEffect,
+     Router = ReactRouterBrowserRouter,
+     Routes = ReactRouterRoutes,
+     Route = ReactRouterRoute,
+     Link = ReactRouterLink,
+     Navigate = ReactRouterNavigate,
+     useNavigate = reactRouterUseNavigate,
+     useLocation = reactRouterUseLocation,
+     useParams = reactRouterUseParams,
+     Outlet = ReactRouterOutlet,
+     JacClientErrorBoundary = ErrorBoundary,
+     JacSchema = __createJacSchema(z);
+
+def:pub __createJacSchema(zodLib: any) -> any;
+def:pub useRouter -> dict;
+def:pub navigate(path: str) -> None;
+async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
+def:pub __normalizeIdentity(x: any) -> dict;
+def:pub __normalizeCredential(x: any) -> dict;
+async def:pub jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict;
+
+async def:pub jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool;
+
+def:pub jacLogout -> None;
+def:pub jacIsLoggedIn -> bool;
+def:pub __getApiBaseUrl -> str;
+def:pub __getLocalStorage(key: str) -> str;
+def:pub __setLocalStorage(key: str, value: str) -> None;
+def:pub __removeLocalStorage(key: str) -> None;
+def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
+def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+
+def:pub JacAwaiting(props: dict) -> JsxElement;
+def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+def:pub JacForm(props: dict) -> JsxElement;
+
+def:pub __getEndpointEffects -> dict;
+def:pub __getCacheState -> dict;
+def:pub __isFresh(`entry: dict) -> bool;
+def:pub __cacheGet(key: str) -> dict;
+def:pub __cacheSet(key: str, data: any, ttl: int) -> None;
+def:pub __evictOldest -> None;
+async def:pub __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any;
+async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
+async def:pub __cachedEndpointCall(
+    endpoint_key: str, args_key: str, fetch_fn: any
+) -> any;
+
+def:pub __invalidateEndpoint(endpoint_key: str) -> None;
+def:pub __overlaps(list1: list, list2: list) -> bool;
+
+def:pub __jacReportError(
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
+) -> None;
+
+def:pub __jacInstallErrorHandlers -> None;
+def:pub __jacReactErrorHandler(error: any, info: any) -> None;
