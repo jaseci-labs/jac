@@ -79,116 +79,79 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     sig = nd.signature;
-    # The System V ABI plan is only needed when a by-value struct actually
-    # crosses the boundary. Pure-scalar foreign functions (sqrt, strlen, calloc,
-    # …) keep the legacy path — which also correctly handles reuse of the
-    # compiler's canonical extern declarations (e.g. a user re-declaring strlen
-    # with an `int` parameter still binds to the pre-declared i8* signature).
-    _clib_has_struct = False;
-    for _cp in sig.get_parameters() {
-        _cptn = self._clib_type_name(_cp.type_tag.tag)
-            if (_cp.type_tag and _cp.type_tag.tag)
-            else None;
-        if _cptn is not None and _cptn in self.clib_struct_names {
-            _clib_has_struct = True;
-        }
-    }
-    _crtn = self._clib_type_name(sig.return_type);
-    if _crtn is not None and _crtn in self.clib_struct_names {
-        _clib_has_struct = True;
-    }
-    # Classify struct arguments/returns per the platform psABI (System V AMD64
-    # or AArch64 AAPCS) and record a marshalling plan on self.clib_fn_abi.
-    # Targets without an ABI classifier fall through to the legacy path below.
+    # Whether and how the ABI plan applies is the central target library's
+    # decision (classify_foreign_fn): it returns None when no by-value foreign
+    # struct crosses the boundary, so pure-scalar foreign functions (sqrt,
+    # strlen, calloc, ...) keep the legacy path below - which also correctly
+    # handles reuse of the compiler's canonical extern declarations (e.g. a
+    # user re-declaring strlen with an `int` parameter still binds to the
+    # pre-declared i8* signature). Targets without an ABI classifier always
+    # take the legacy path.
     _abi_triple = str(self.llvm_module.triple or "");
     _abi_supported = (
         "x86_64" in _abi_triple or "aarch64" in _abi_triple or "arm64" in _abi_triple
     );
-    if _clib_has_struct and _abi_supported {
-        sysv_param_types: list[ir.Type] = [];
-        param_plan: list = [];
-        for p in sig.get_parameters() {
-            pname = p.name.value if p.name else f"arg{len(param_plan)}";
-            ptn = self._clib_type_name(p.type_tag.tag)
-                if (p.type_tag and p.type_tag.tag)
+    _decl_params = sig.get_parameters();
+    plan: (dict | None) = None;
+    if _abi_supported {
+        import from jaclang.compiler.targets.abi { classify_foreign_fn }
+        _decl_pairs: list = [];
+        for _p in _decl_params {
+            _ptn = self._clib_type_name(_p.type_tag.tag)
+                if (_p.type_tag and _p.type_tag.tag)
                 else None;
-            if ptn is not None and ptn in self.clib_struct_names {
-                pcls = self._classify_clib_struct(ptn);
-                if pcls["memory"] {
-                    param_plan.append(
-                        {
-                            "kind": "struct_mem",
-                            "sname": ptn,
-                            "pname": pname,
-                            "align": pcls["align"],
-                            "byval": pcls["byval"],
-                            "argpos": len(sysv_param_types)
-                        }
-                    );
-                    sysv_param_types.append(self._clib_c_type(ptn).as_pointer());
-                } else {
-                    start = len(sysv_param_types);
-                    for ct in pcls["coerce"] {
-                        sysv_param_types.append(ct);
-                    }
-                    param_plan.append(
-                        {
-                            "kind": "struct_reg",
-                            "sname": ptn,
-                            "pname": pname,
-                            "coerce": pcls["coerce"],
-                            "safe": pcls["safe"],
-                            "argpos": start
-                        }
-                    );
-                }
+            _decl_pairs.append((_p.name.value if _p.name else None, _ptn));
+        }
+        plan = classify_foreign_fn(
+            self._foreign_model(),
+            _decl_pairs,
+            self._clib_type_name(sig.return_type),
+            _abi_triple
+        );
+    }
+    if plan is not None {
+        # Materialize the central plan. Identified struct types are
+        # LLVM-module-context-bound and scalar lowering consults the
+        # checker-typed annotation, so only type construction happens here -
+        # classification, argument layout, and sret promotion are decided.
+        sysv_param_types: list[ir.Type] = [];
+        for slot in plan["sig"] {
+            if slot[0] == "structptr" or slot[0] == "sretptr" {
+                sysv_param_types.append(self._clib_c_type(slot[1]).as_pointer());
+            } elif slot[0] == "coerce" {
+                sysv_param_types.append(slot[1]);
             } else {
-                lt = self._resolve_clib_type(p.type_tag.tag)
-                    if (p.type_tag and p.type_tag.tag)
-                    else ir.IntType(64);
-                param_plan.append(
-                    {
-                        "kind": "scalar",
-                        "type": lt,
-                        "pname": pname,
-                        "argpos": len(sysv_param_types)
-                    }
+                _sp = _decl_params[slot[1]];
+                sysv_param_types.append(
+                    self._resolve_clib_type(_sp.type_tag.tag)
+                        if (_sp.type_tag and _sp.type_tag.tag)
+                        else ir.IntType(64)
                 );
-                sysv_param_types.append(lt);
             }
         }
-        rtn = self._clib_type_name(sig.return_type);
-        sysv_sret = False;
-        sysv_ret_plan: dict = {};
-        sysv_ret_type: ir.Type = ir.VoidType();
-        if rtn is not None and rtn in self.clib_struct_names {
-            rcls = self._classify_clib_struct(rtn);
-            if rcls["memory"] {
-                sysv_sret = True;
-                sysv_ret_type = ir.VoidType();
-                sysv_param_types = [
-                    self._clib_c_type(rtn).as_pointer()
-                ] + sysv_param_types;
-                for pp in param_plan {
-                    pp["argpos"] += 1;
-                }
-                sysv_ret_plan = {"kind": "sret", "sname": rtn, "align": rcls["align"]};
+        # Scalar plan entries carry their resolved LLVM type for call-site
+        # argument coercion (the central plan is symbolic by design).
+        param_plan = plan["params"];
+        for pp in param_plan {
+            if pp["kind"] == "scalar" {
+                pp["type"] = sysv_param_types[pp["argpos"]];
+            }
+        }
+        sysv_sret = plan["sret"];
+        sysv_ret_plan = plan["ret"];
+        _sig_ret = plan["sig_ret"];
+        if _sig_ret[0] == "void" {
+            sysv_ret_type = ir.VoidType();
+        } elif _sig_ret[0] == "coerce" {
+            _rco = _sig_ret[1];
+            if len(_rco) == 1 {
+                sysv_ret_type = _rco[0];
             } else {
-                if len(rcls["coerce"]) == 1 {
-                    sysv_ret_type = rcls["coerce"][0];
-                } else {
-                    sysv_ret_type = ir.LiteralStructType(rcls["coerce"]);
-                }
-                sysv_ret_plan = {
-                    "kind": "struct_reg",
-                    "sname": rtn,
-                    "coerce": rcls["coerce"],
-                    "safe": rcls["safe"]
-                };
+                sysv_ret_type = ir.LiteralStructType(_rco);
             }
         } else {
             sysv_ret_type = self._resolve_clib_type(sig.return_type);
-            sysv_ret_plan = {"kind": "scalar", "type": sysv_ret_type};
+            sysv_ret_plan["type"] = sysv_ret_type;
         }
         sysv_fnty = ir.FunctionType(sysv_ret_type, sysv_param_types);
         if name in self.extern_funcs {
