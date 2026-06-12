@@ -1041,12 +1041,18 @@ impl EsastGenPass._ability_from_symbol(
 
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
+    # Checker-stamped resolved callee (FuncCall.callee_decl, the Phase 4
+    # central fact) is the authoritative answer when present. The
+    # symbol/manifest/evaluator paths below remain as fallbacks for
+    # JIR-loaded trees whose stamps are recomputed only on inference.
+    if nd.callee_decl is not None {
+        return nd.callee_decl;
+    }
     if isinstance(nd.target, uni.Name) {
-        target_sym = nd.target.sym;
-        if not target_sym and nd.target.sym_tab {
-            target_sym = nd.target.sym_tab.lookup(nd.target.sym_name, deep=True);
-        }
-        ability_node = self._ability_from_symbol(target_sym);
+        # No re-resolution fallbacks: the checker-stamped callee_decl above
+        # and the stored .sym are the facts; a missing stamp means no
+        # statically-known ability (the no-fallback contract of #6542).
+        ability_node = self._ability_from_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
         }
@@ -1062,19 +1068,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
-        target_sym = nd.target.right.sym;
-        if not target_sym {
-            try {
-                _te = self.prog.get_type_evaluator();
-                if _te {
-                    _te.get_type_of_expression(nd.target);
-                    target_sym = nd.target.right.sym;
-                }
-            } except Exception {
-                target_sym = None;
-            }
-        }
-        return self._ability_from_symbol(target_sym);
+        return self._ability_from_symbol(nd.target.right.sym);
     }
     return None;
 }
@@ -1830,9 +1824,14 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # --- Primitive emitter dispatch for builtin function calls ---
     self._ensure_emitters();
-    import from jaclang.compiler.symbol_utils { classify_call, CallKind }
-    _call_kind = classify_call(nd);
-    if _call_kind == CallKind.BUILTIN and isinstance(nd.target, uni.Name) {
+    # Dispatch on the checker-stamped call classification; only call nodes
+    # synthesized after type checking lack the stamp and are classified here.
+    _call_kind = nd.call_kind;
+    if _call_kind is None {
+        import from jaclang.compiler.symbol_utils { classify_call }
+        _call_kind = classify_call(nd).value;
+    }
+    if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
@@ -1897,7 +1896,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             call_args = [args_obj];
         }
     }
-    if _call_kind == CallKind.INSTANTIATION and isinstance(callee, es.Expression) {
+    if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -3951,8 +3950,17 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
-    # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
-    if not nd.in_client_context() {
+    # Reactive lowering is for COMPONENT state: `has` declared in a client
+    # def (function component). Archetype fields are plain class fields -
+    # exit_archetype consumes the vars directly - and must not trigger this
+    # handler's side effects (useState/useRef runtime imports, reactive_vars
+    # setter registration). Walk to the nearest owner: an Archetype before
+    # any Ability means a data field, whatever the client context.
+    owner: (uni.UniNode | None) = nd.parent;
+    while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
+        owner = owner.parent;
+    }
+    if isinstance(owner, uni.Archetype) or not nd.in_client_context() {
         nd.gen.es_ast = None;
         return;
     }
@@ -4378,19 +4386,28 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if not isinstance(owner, uni.Archetype) {
         return None;
     }
-    kind = owner.arch_type.value;
-    if kind not in ("walker", "node", "edge") {
+    kind = owner.arch_kind;
+    if kind is None {
         return None;
     }
     if (nd.name_ref is None) or (owner.name is None) {
         return None;
+    }
+    # Prefer the checker-resolved trigger names (central
+    # Ability.event_trigger_type_names: unions split, `type[X]` unwrapped);
+    # fall back to flattening the trigger AST when no resolution was
+    # recorded (e.g. a JIR-loaded tree). Names unknown to the local tag
+    # table (such as `root`) lower to an untyped slot either way.
+    triggers = nd.event_trigger_type_names();
+    if triggers is None {
+        triggers = self._osp_trigger_names(nd.signature.arch_tag_info);
     }
     return {
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
         "name": nd.name_ref.sym_name,
-        "triggers": self._osp_trigger_names(nd.signature.arch_tag_info)
+        "triggers": triggers
     };
 }
 
@@ -4441,14 +4458,6 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     # archetype that is never spawned locally must not pull in the kernel. The
     # slot body may use `_jac` primitives, so the runtime is still required.
     self.needs_jac_runtime = True;
-    if osp["owner"] not in self._osp_arch_names {
-        self._osp_arch_names.append(osp["owner"]);
-    }
-    for trig in osp["triggers"] {
-        if trig not in self._osp_arch_names {
-            self._osp_arch_names.append(trig);
-        }
-    }
     self._osp_slots.append(osp);
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -4503,8 +4512,7 @@ impl EsastGenPass._osp_arch_kinds -> dict[str, str] {
     arches: list[uni.Archetype] = [];
     has_osp = False;
     for arch in scan_root.get_all_sub_nodes(uni.Archetype) {
-        if (arch.name is not None)
-        and (arch.arch_type.value in ("walker", "node", "edge")) {
+        if (arch.name is not None) and (arch.arch_kind is not None) {
             arches.append(arch);
             for ability in arch.get_all_sub_nodes(uni.Ability) {
                 if self._osp_ability_info(ability) is not None {
@@ -4515,7 +4523,7 @@ impl EsastGenPass._osp_arch_kinds -> dict[str, str] {
     }
     if has_osp {
         for arch in arches {
-            kinds[arch.name.sym_name] = arch.arch_type.value;
+            kinds[arch.name.sym_name] = arch.arch_kind;
         }
     }
     self._osp_prescan = kinds;
@@ -5081,7 +5089,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     is_local_osp_arch = (
         (nd.name is not None)
         and (nd.name.sym_name in self._osp_arch_set())
-        and (nd.arch_type.value in ("walker", "node", "edge"))
+        and (nd.arch_kind is not None)
     );
     if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
         constructor_stmts: list[es.Statement] = [];

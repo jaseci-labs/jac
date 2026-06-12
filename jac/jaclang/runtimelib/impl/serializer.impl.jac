@@ -13,13 +13,42 @@ impl Serializer._serialize_attrs(
     ref_mode: bool = False,
     _seen: (tuple[set, set] | None) = None
 ) -> dict[str, object] {
-    return {
+    result = {
         a: Serializer._serialize_value(
             getattr(`obj, a), include_type, api_mode, ref_mode, _seen
         )
         for a in dir(`obj)
         if not a.startswith('_') and not callable(getattr(`obj, a, None))
     };
+    # Storage-mode extras. The hasattr gate keeps the hot path import-free
+    # for the overwhelmingly common case of archetypes with no drift rules.
+    if include_type and not api_mode {
+        # Dual-write: aliased fields also emit their old stored name so
+        # old-version readers keep working during a rolling deploy.
+        if hasattr(type(`obj), '__jac_schema__') {
+            import from jaclang.runtimelib.schema_rules {
+                merged_rules_for,
+                repair_mode
+            }
+            if repair_mode() == 'repair' and (rules := merged_rules_for(type(`obj))) {
+                for a in rules.aliases {
+                    if a.new_name in result and a.stored_name not in result {
+                        result[a.stored_name] = result[a.new_name];
+                    }
+                }
+            }
+        }
+        # Attic round-trip: preserved drift values picked up at deserialize
+        # time must survive a full re-save. Literal key (rather than
+        # schema_rules.ATTIC_KEY) avoids an import on rule-free archetypes.
+        attic = `obj?.__jac_attic__;
+        if isinstance(attic, dict) and attic {
+            result['__jac_attic__'] = Serializer._serialize_value(
+                attic, include_type, api_mode, ref_mode, _seen
+            );
+        }
+    }
+    return result;
 }
 
 """Serialize any object to JSON-compatible format."""
@@ -299,6 +328,15 @@ impl Serializer.register(cls: type) -> None {
         logger.debug(f"Failed to compute fingerprint for {cls.__name__}: {e}");
         cls.__jac_fingerprint__ = '';
     }
+    # Collect declared drift rules from the class's own __jac_schema__ hook.
+    # Validation errors propagate: a contradictory rule set must fail at
+    # registration (app startup), never silently mid-traffic.
+    import from jaclang.runtimelib.schema_rules { collect_rules }
+    if (rules := collect_rules(cls)) {
+        for old_name in rules.was_names {
+            Serializer.register_alias(old_name, cls);
+        }
+    }
 }
 
 """Register an alias mapping `old_name` -> current registry key for `cls`."""
@@ -310,6 +348,42 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
         return;
     }
     Serializer._aliases[old_name] = new_name;
+}
+
+"""Apply declared drift rules to a raw stored archetype dict."""
+impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
+    import from jaclang.runtimelib.schema_rules {
+        apply_rules,
+        merged_rules_for,
+        repair_mode
+    }
+    mode = repair_mode();
+    if mode == 'off' {
+        return (data, []);
+    }
+    rules = merged_rules_for(cls);
+    if rules is None {
+        return (data, []);
+    }
+    (repaired, steps) = apply_rules(data, rules);
+    if repaired is data and not steps {
+        return (data, []);
+    }
+    if mode == 'detect' {
+        if steps {
+            logger.info(
+                f"Serializer: drift detected on {cls.__module__}.{cls.__name__} "
+                f"(JAC_SCHEMA_REPAIR=detect; steps not applied: {steps})"
+            );
+        }
+        return (data, []);
+    }
+    if steps {
+        logger.info(f"Serializer: repaired {cls.__module__}.{cls.__name__}: {steps}");
+    }
+    # `repaired` may differ from `data` even with no steps (silent strip of
+    # equal dual-written shadows); those changes apply without write-back.
+    return (repaired, steps);
 }
 
 """Best-effort coercion table. Returns (value, ok)."""
@@ -612,22 +686,29 @@ impl Serializer._deserialize_access(data: object) -> Access {
     return access;
 }
 
-"""Deserialize Archetype with Layer 3 coercion.
+"""Deserialize Archetype with declared-rule repair + Layer 3 coercion.
 
-For each field in the stored data:
-  - `__*` keys are skipped (metadata).
-  - Fields NOT declared on the current class are silently dropped; the
-    stale value doesn't carry forward on re-save. This cleans up removed
-    fields across schema drift.
+The raw dict first runs through `Serializer.repair` (renames, upgrade
+callbacks, drop-attic from the class's __jac_schema__ rules). Then, for
+each field in the (possibly repaired) data:
+  - `__*` keys are skipped (metadata). The attic (`__jac_attic__`) is
+    picked up explicitly and round-trips on the instance.
+  - Fields NOT declared on the current class are preserved in the attic
+    (legacy: silently dropped when JAC_SCHEMA_REPAIR is off/detect).
   - Fields declared on the current class run through `Serializer.coerce`
     against the resolved annotation. Successful coercions setattr the
     converted value; unsuccessful ones log at debug and setattr the raw
     value (never lose data — if a field is un-coercible, downstream code
     will notice, but the anchor still loads).
+Declared fields absent from the stored data are backfilled: factory
+defaults are instantiated per-instance (plain defaults already resolve
+via the class attribute), so a field added after the document was
+written can't surface as a latent AttributeError.
 """
 impl Serializer._deserialize_archetype(
     data: dict[str, object], anchor: Anchor
 ) -> (object | None) {
+    import from jaclang.runtimelib.schema_rules { ATTIC_KEY, REPAIRS_ATTR, repair_mode }
     raw_type_name = data.get('__type__');
     raw_module_name = data.get('__module__');
     if not isinstance(raw_type_name, str) or not isinstance(raw_module_name, str) {
@@ -640,19 +721,37 @@ impl Serializer._deserialize_archetype(
         return None;
     }
     cls = cast(type, resolved);
+    mode = repair_mode();
+    (data, repair_steps) = Serializer.repair(data, cls);
     try {
         arch: object = cls.__new__(cls);
         field_types = get_field_types(cls);
         known = set(field_types.keys());
+        attic: dict = {};
+        # Round-trip a previously written attic so a re-save can't destroy
+        # preserved values. Unconditional on purpose: this is preservation,
+        # not repair behavior — JAC_SCHEMA_REPAIR=off is the emergency
+        # rollback path, and a rollback must never erase attic data that an
+        # earlier repair-mode deploy accumulated. Databases that never ran
+        # repair have no attic key, so legacy behavior is unchanged.
+        stored_attic = data.get(ATTIC_KEY);
+        if isinstance(stored_attic, dict) {
+            attic.update(stored_attic);
+        }
         dropped: list[str] = [];
+        assigned: set[str] = set();
         for (k, v) in data.items() {
             if k.startswith('__') {
                 continue;
             }
             deser_v = Serializer._deserialize_value(v);
             if k not in known {
-                # Field not on current class; drop silently (Layer 3 removed-field path).
+                # Field not on current class: preserve in the attic
+                # (legacy modes keep the historical silent drop).
                 dropped.append(k);
+                if mode == 'repair' {
+                    attic[k] = {'value': deser_v, 'reason': 'unknown'};
+                }
                 continue;
             }
             target = field_types[k];
@@ -691,6 +790,7 @@ impl Serializer._deserialize_archetype(
                         f"on non-Optional field {target}; restored class default."
                     );
                     setattr(arch, k, recovered);
+                    assigned.add(k);
                     continue;
                 }
                 logger.warning(
@@ -700,14 +800,44 @@ impl Serializer._deserialize_archetype(
                 );
             }
             setattr(arch, k, coerced);
+            assigned.add(k);
         }
         if dropped {
-            logger.debug(
-                f"Serializer: dropped removed fields on {module_name}."
-                f"{type_name}: {sorted(dropped)}"
-            );
+            if mode == 'repair' {
+                logger.info(
+                    f"Serializer: preserved unknown fields in attic on "
+                    f"{module_name}.{type_name}: {sorted(dropped)}"
+                );
+            } else {
+                logger.debug(
+                    f"Serializer: dropped removed fields on {module_name}."
+                    f"{type_name}: {sorted(dropped)}"
+                );
+            }
         }
-
+        # Backfill declared fields the stored document predates. Factory
+        # defaults are NOT class attributes, so without this an old doc
+        # loads with the attribute missing entirely.
+        for fd in fields(cls) {
+            if fd.name in assigned {
+                continue;
+            }
+            if fd.default_factory is not MISSING {
+                setattr(arch, fd.name, fd.default_factory());
+            } elif fd.default is MISSING {
+                logger.warning(
+                    f"Serializer: {module_name}.{type_name}.{fd.name}: "
+                    "required field missing from stored data and no default "
+                    "available; attribute left unset."
+                );
+            }
+        }
+        if attic {
+            setattr(arch, ATTIC_KEY, attic);
+        }
+        if repair_steps {
+            setattr(arch, REPAIRS_ATTR, repair_steps);
+        }
         setattr(arch, '__jac__', anchor);
         return arch;
     } except Exception as e {
@@ -733,6 +863,18 @@ impl Serializer.serialize_fields(
     for name in field_names & known {
         val = getattr(arch, name, None);
         result[name] = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+    }
+    # Dual-write on partial updates too: a renamed field's shadow copy must
+    # refresh alongside it, or old-version readers see stale values.
+    if result and hasattr(type(arch), '__jac_schema__') {
+        import from jaclang.runtimelib.schema_rules { merged_rules_for, repair_mode }
+        if repair_mode() == 'repair' and (rules := merged_rules_for(type(arch))) {
+            for a in rules.aliases {
+                if a.new_name in result {
+                    result[a.stored_name] = result[a.new_name];
+                }
+            }
+        }
     }
     return result;
 }

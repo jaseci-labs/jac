@@ -282,6 +282,22 @@ impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
+    # The checked type of the source expression decides first (a bare i8*
+    # is only a string if the checker says so); the LLVM value shape is the
+    # fallback for expressions the checker left untyped.
+    _checked_list = self._list_spec_of(expr);
+    if _checked_list is not None and _checked_list in self.list_helpers {
+        lt = self.list_types.get(_checked_list);
+        if lt is not None and val.type == lt.as_pointer() {
+            elem_type = self.list_helpers[_checked_list]["elem_type"];
+            return (
+                self._make_list_iter(val, _checked_list, elem_type),
+                _checked_list,
+                elem_type,
+
+            );
+        }
+    }
     for (lk, lt) in self.list_types.items() {
         if val.type == lt.as_pointer() {
             elem_type = self.list_helpers[lk]["elem_type"];
@@ -306,6 +322,12 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
     if isinstance(expr, uni.FuncCall) {
         cname = self._get_name(expr.target);
         params = expr.params or [];
+        # Respect user shadowing: only builtin-classified calls are
+        # adapter forms (checker-stamped call_kind, Phase 4 fact).
+        if cname in ("map", "filter", "enumerate", "zip", "iter")
+        and expr.call_kind != "builtin" {
+            cname = None;
+        }
         if cname == "map" and len(params) == 2 {
             fn = self.func_symtab.get(self._get_name(params[0]));
             up = self._build_iter_from_expr(params[1]);
@@ -583,6 +605,13 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     if cname not in ["map", "filter", "enumerate", "zip", "iter"] {
         return False;
     }
+    # A user-defined function named map/filter/... shadows the builtin;
+    # the checker-stamped classification (Phase 4 fact) decides, so the
+    # iterator protocol only claims genuine builtin adapter calls. For-loop
+    # collections are source nodes, so the stamp is always present.
+    if coll.call_kind != "builtin" {
+        return False;
+    }
     built = self._build_iter_from_expr(coll);
     if built is None {
         return False;
@@ -628,7 +657,8 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self.builder.store(self.builder.extract_value(tup, 0, name="iterf.t0"), a0);
         self.builder.store(self.builder.extract_value(tup, 1, name="iterf.t1"), a1);
     }
-    _saved = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }

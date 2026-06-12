@@ -138,6 +138,8 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
             self._codegen_entry(stmt);
+        } elif isinstance(stmt, uni.Test) {
+            self._codegen_test(stmt);
         }
     }
     # Store LLVM module on AST
@@ -226,7 +228,8 @@ impl NaIRGenPass._export_native_layout -> None {
         NativeFieldInfo,
         NativeEnumLayout,
         NativeFuncLayout,
-        NativeTupleLayout
+        NativeTupleLayout,
+        NativeTestLayout
     }
     layout = NativeModuleLayout();
     # Structs
@@ -263,9 +266,7 @@ impl NaIRGenPass._export_native_layout -> None {
             );
         }
         layout.structs[arch_name] = NativeStructLayout(
-            name=arch_name,
-            fields=fields,
-            has_vtable=self.has_vtable.get(arch_name, False)
+            name=arch_name, fields=fields, has_vtable=self._arch_has_vtable(arch_name)
         );
     }
     # Enums
@@ -307,20 +308,14 @@ impl NaIRGenPass._export_native_layout -> None {
                     if func.function_type.return_type.pointee == ttype {
                         ret_tuple = layout.tuples.get(tkey);
                         if ret_tuple is not None {
-                            sig = self.method_ast_sigs.get(fname);
-                            if sig and sig.return_type {
-                                hints = self._extract_tuple_struct_hints(
-                                    sig.return_type
+                            hints = self.func_ret_tuple_hints.get(fname);
+                            if hints and len(hints) == len(ret_tuple.element_types) {
+                                ret_tuple = NativeTupleLayout(
+                                    key=ret_tuple.key,
+                                    element_types=ret_tuple.element_types,
+                                    element_struct_hints=hints
                                 );
-                                if hints
-                                and len(hints) == len(ret_tuple.element_types) {
-                                    ret_tuple = NativeTupleLayout(
-                                        key=ret_tuple.key,
-                                        element_types=ret_tuple.element_types,
-                                        element_struct_hints=hints
-                                    );
-                                    layout.tuples[tkey] = ret_tuple;
-                                }
+                                layout.tuples[tkey] = ret_tuple;
                             }
                         }
                         break;
@@ -328,23 +323,14 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
-        # Enum returns lower to i64 (with a -1 sentinel for `T | None`); recover
-        # the enum name from the AST sig so the marshaller maps the ordinal back
-        # to the Python enum member.
+        # Enum returns lower to i64 (with a -1 sentinel for `T | None`);
+        # recover the enum name from the declaration-time return fact so the
+        # marshaller maps the ordinal back to the Python enum member.
         ret_enum: (str | None) = None;
         if ret_type == "i64" {
-            _fsig = self.method_ast_sigs.get(fname);
-            if _fsig and _fsig.return_type {
-                _rt = _fsig.return_type;
-                # Peel `T | None` (and general unions) to the first member.
-                if isinstance(_rt, uni.BinaryExpr)
-                and getattr(_rt.op, 'value', '') == "|" {
-                    _rt = _rt.left;
-                }
-                _rname = self._get_name(_rt);
-                if _rname is not None and _rname in self.enum_types {
-                    ret_enum = _rname;
-                }
+            _rname = self.func_ret_ann_name.get(fname);
+            if _rname is not None and _rname in self.enum_types {
+                ret_enum = _rname;
             }
         }
         layout.functions[fname] = NativeFuncLayout(
@@ -382,6 +368,12 @@ impl NaIRGenPass._export_native_layout -> None {
     # List element types
     for (ename, ltype) in self.list_types.items() {
         layout.list_elem_types[f"List.{ename}"] = ename;
+    }
+    # Test blocks
+    for (tname, tsymbol, tdesc, tline) in self.native_tests {
+        layout.tests.append(
+            NativeTestLayout(name=tname, symbol=tsymbol, description=tdesc, line=tline)
+        );
     }
     self.ir_in.gen.native_layout = layout;
 }
@@ -541,6 +533,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     # Store transitive source strings on the manifest so _codegen_entry can
     # emit __jac_glob_init_<safe_name>() calls for ALL linked modules.
+    # Hand the module universe to the foreign declaration model (Phase 8).
+    self._foreign_modules = [m for (_s, m) in imported_mods];
+
     for (src_mod_str, _) in imported_mods {
         if src_mod_str not in manifest.native_transitive_sources {
             manifest.native_transitive_sources.append(src_mod_str);
@@ -589,14 +584,6 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
         mod_name = '.'.join(getattr(p, 'value', str(p)) for p in imp.from_loc.path);
     }
     return mod_name;
-}
-
-"""Walk an imported module's AST and register all type declarations."""
-impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
-    # Full walk (types + abilities) — kept for any direct callers.
-    self._walk_imported_module_type_names(imported_mod);
-    self._walk_imported_module_types(imported_mod);
-    self._walk_imported_module_abilities(imported_mod);
 }
 
 """Phase-1a walk: register struct names only (empty identified types, no bodies)."""
@@ -726,9 +713,6 @@ impl NaIRGenPass._register_imported_globals(
             var_type: ir.Type = ir.IntType(64);
             if assign.type_tag and assign.type_tag.tag {
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
-                # Track type annotation node for chained subscript+field access
-                # e.g. ITEMS[i].field chains need the list[Outer] node to bitcast
-                self.var_type_node[var_name] = assign.type_tag.tag;
             }
             global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
             global_var.linkage = "external";
@@ -737,24 +721,6 @@ impl NaIRGenPass._register_imported_globals(
             # Record origin so dup-error messages can name the source module
             if source_path {
                 self._global_origins[var_name] = source_path;
-            }
-            # Track list element types for imported list globals
-            if isinstance(var_type, ir.PointerType) {
-                for (ename, ltype) in self.list_types.items() {
-                    if var_type == ltype.as_pointer() {
-                        self.var_list_elem_type[var_name] = ename;
-                        break;
-                    }
-                }
-            }
-            # Track dict types for imported dict globals
-            if isinstance(var_type, ir.PointerType) {
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if var_type == dtype.as_pointer() {
-                        self.var_dict_type[var_name] = dict_key;
-                        break;
-                    }
-                }
             }
             self.has_native_code = True;
         }
@@ -784,6 +750,13 @@ Extracts library paths for loading and forward-declares
 extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
+    # The native-stdlib legality table lives in the capability authority
+    # (Phase 9); this post-coercion point enforces it because
+    # auto-promotion makes imports native-context after CapabilityCheckPass
+    # runs.
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        NATIVE_SUPPORTED_STDLIB
+    }
     # Collect imports from top-level and inside na {} blocks
     imports = [
         s
@@ -795,17 +768,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
-                    mod_name = None;
-                    if isinstance(item, uni.ModulePath) and item.path {
-                        parts = [];
-                        for p in item.path {
-                            parts.append(
-                                p.value if isinstance(p, uni.Name) else str(p)
-                            );
-                        }
-                        mod_name = ".".join(parts);
+                    # Legality is the capability authority's call (Phase 9);
+                    # this post-coercion point only enforces and tracks.
+                    import from jaclang.compiler.passes.main.capability_check_pass {
+                        classify_native_import
                     }
-                    if mod_name in NATIVE_SUPPORTED_STDLIB {
+                    (mod_name, _supported) = classify_native_import(item);
+                    if _supported {
                         # A stdlib module the native backend lowers (its members
                         # are intercepted in codegen). Track it so those
                         # intercepts know it was imported. Grows with the
@@ -926,6 +895,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
+        # Pass 1.75: record vtable structs (fn-ptr slots) so stores into
+        # them route through C→Jac callback trampolines (issue #6570).
+        self._clib_detect_vtable_structs();
         # Pass 2: Forward-declare extern functions (with value types for clib structs)
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {

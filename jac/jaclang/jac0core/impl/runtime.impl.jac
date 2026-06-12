@@ -994,6 +994,11 @@ impl JacBasics.run_test(
             mod_name = mod_name[:-4];
             if mod_name.endswith('.test') {
                 mod_name = mod_name[:-5];
+            } elif mod_name.endswith('.na') or mod_name.endswith('.sv') {
+                # Compound codespace suffix: foo.na.jac imports as module
+                # 'foo' (the importer resolves the stem back to the file);
+                # leaving the '.na' makes jac_import read it as a package path.
+                mod_name = mod_name[:-3];
             }
             JacTestCheck.reset();
             JacRuntimeInterface.jac_import(target=mod_name, base_path=base);
@@ -1053,8 +1058,13 @@ impl JacBasics.run_test(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
                     );
                     JacTestCheck.reset();
+                    mod_target = file[:-4];
+                    if mod_target.endswith('.na') or mod_target.endswith('.sv') {
+                        # Compound codespace suffix (see single-file branch).
+                        mod_target = mod_target[:-3];
+                    }
                     JacRuntimeInterface.jac_import(
-                        target=file[:-4], base_path=root_dir
+                        target=mod_target, base_path=root_dir
                     );
                     JacTestCheck.run_test(
                         xit, maxfail, verbose, os.path.abspath(file), func_name
@@ -2489,6 +2499,53 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
         cls.program = JacProgram();
     }
     return cls.program;
+}
+
+"""Return the deployment's shared root (resolver-backed, context-root fallback)."""
+impl JacRuntime.get_shared_root -> Root {
+    resolver = _shared_root_resolver[0];
+    if resolver is None {
+        return JacRuntimeInterface.get_context().get_root();
+    }
+    root_id = _shared_root_resolver[1];
+    if not isinstance(root_id, str) {
+        root_id = resolver();
+        if not isinstance(root_id, str) {
+            raise RuntimeError(
+                "Shared root unavailable: the registered shared-root resolver "
+                "returned no root id."
+            );
+        }
+        _shared_root_resolver[1] = root_id;
+    }
+    shared = JacRuntimeInterface.get_object(root_id);
+    if not isinstance(shared, Root) {
+        raise RuntimeError(
+            f"Shared root unavailable: id {root_id} did not resolve to a Root node."
+        );
+    }
+    # Default policy: the shared root is a commons - readable and attachable
+    # (CONNECT) by every user, since anonymous requests already act as its
+    # owner through any public endpoint. The grant is floored lazily on
+    # access so pre-existing deployments pick it up too; persistence
+    # write-through lands the first time an owner-context request touches
+    # it, and until then the in-memory floor keeps each request correct.
+    # An app may lower the level explicitly (e.g. ReadPerm for a read-only
+    # commons) - any level other than NO_ACCESS is respected. Only the
+    # never-granted state is floored: a root owned by the anonymous public
+    # cannot be meaningfully closed.
+    if shared.__jac__.access.all == AccessLevel.NO_ACCESS {
+        JacRuntimeInterface.perm_grant(shared, AccessLevel.CONNECT);
+    }
+    return shared;
+}
+
+"""Register (or clear) the shared-root resolver and drop the cached id."""
+impl JacRuntime.set_shared_root_resolver(
+    resolver: (Callable[([], (str | None))] | None)
+) -> None {
+    _shared_root_resolver[0] = resolver;
+    _shared_root_resolver[1] = None;
 }
 
 """Return the seed base path for new contexts."""

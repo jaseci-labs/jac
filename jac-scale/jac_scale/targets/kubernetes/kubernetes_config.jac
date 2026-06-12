@@ -88,6 +88,14 @@ obj KubernetesConfig(BaseConfig) {
         # is detected automatically; controllers that terminate TLS out-of-band
         # (e.g. ALB via an ACM certificate-arn annotation) set this explicitly.
         shared_ingress_tls: bool = False,
+        # Skip the post-deploy reachability probe against `domain` in shared
+        # ingress mode. The probe verifies external DNS resolves to the shared
+        # controller, which is correct for a domain the platform owns (wildcard
+        # DNS). For a user's custom domain they point at the controller AFTER
+        # the deploy, the probe can never pass at deploy time and would block
+        # the deploy for the full retry budget; setting this lets the deploy
+        # finish on app readiness alone and DNS/cert resolve asynchronously.
+        shared_ingress_skip_reachability: bool = False,
         # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
@@ -175,6 +183,7 @@ obj KubernetesConfig(BaseConfig) {
                 'shared_ingress_class': self.shared_ingress_class,
                 'shared_ingress_annotations': self.shared_ingress_annotations,
                 'shared_ingress_tls': self.shared_ingress_tls,
+                'shared_ingress_skip_reachability': self.shared_ingress_skip_reachability,
                 'ingress_limit_rps': self.ingress_limit_rps,
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
@@ -252,6 +261,9 @@ obj KubernetesConfig(BaseConfig) {
             shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
             shared_ingress_annotations=config.get('shared_ingress_annotations', {}),
             shared_ingress_tls=config.get('shared_ingress_tls', False),
+            shared_ingress_skip_reachability=config.get(
+                'shared_ingress_skip_reachability', False
+            ),
             ingress_limit_rps=config.get('ingress_limit_rps', 20),
             ingress_limit_burst_multiplier=config.get(
                 'ingress_limit_burst_multiplier', 5
