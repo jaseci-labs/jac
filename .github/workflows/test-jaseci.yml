@@ -316,8 +316,20 @@ jobs:
 
   test-scale-k8s:
     # Runs by default. Add the 'skip-k8s' label to a PR to skip it.
+    #
+    # Split into two parallel kind clusters because the live deploy tests in
+    # test_deploy_k8s.jac dominate the job (~19 min sequentially, issue #6629):
+    #  - deploy-core: the three fast test files plus everything in
+    #    test_deploy_k8s.jac except 'early exit' (~12 min)
+    #  - failure-path: the 'early exit' test alone (~10 min) - it deploys a
+    #    deliberately broken app and waits through crash-loop restarts, each of
+    #    which re-runs the full experimental bootstrap
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [deploy-core, failure-path]
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -359,12 +371,18 @@ jobs:
           wait: 120s
           config: /tmp/kind-config.yaml
 
-      - name: Run K8 tests
+      - name: Run K8 tests (deploy-core)
+        if: matrix.group == 'deploy-core'
         run: |
           pytest  -s -x jac-scale/jac_scale/tests/test_image_build.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_pod_env.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac --deselect "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+
+      - name: Run K8 tests (failure-path)
+        if: matrix.group == 'failure-path'
+        run: |
+          pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
