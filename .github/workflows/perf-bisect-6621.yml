@@ -41,7 +41,10 @@ on:
 
 jobs:
   bisect:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Was blacksmith-4vcpu-ubuntu-2404 (jaseci-labs org runner); use the public
+    # runner so the bisect runs on forks too. Restore the org runner if/when
+    # this lands on jaseci-labs and absolute timings need the faster hardware.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
