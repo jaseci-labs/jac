@@ -676,54 +676,46 @@ impl JacCompiler.compile(
         actual_program, cur_mod_path
     );
     had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
-    # Typed-tree contract: type inference runs for every codegen-bearing
-    # compile — sv / cl / na backends are all consumers of Expr.type, never
-    # re-derivers. TypeCheckPass gates its own diagnostic emission (full for
-    # `jac check` / options.type_check and for native-context modules per
-    # #6049; suppressed for plain inference runs per #6262), so inference
-    # here never leaks diagnostics into builds that didn't ask for them.
-    # This covers transitive imports too: a nested compile that reaches its
-    # own codegen gets its own inference run first.
-    #
-    # Auxiliary no-codegen compiles (symtab_ir_only provider resolutions,
-    # no_cgen boundary/import walks) skip inference UNLESS the module is
-    # native-flavored: those lightweight compiles run while an outer pass is
-    # mid-analysis (the evaluator pulls their facts on demand), and forcing
-    # inference there recurses the whole import graph through TypeCheckPass.
-    # The native exception preserves the cross-module native linker contract:
-    # it lowers a provider module's annotations via Expr.type, so native
-    # modules get inference even on the lightweight paths.
-    # Internal (jaclang.*) modules also follow the explicit options.type_check
-    # contract instead of the unconditional one: the compiler's own modules
-    # ARE the type system, so inference during their bootstrap compiles hits
-    # partially initialized evaluator dependencies (type_registry et al.).
-    # They still get fully typed post-bootstrap — get_bytecode tier-3 passes
-    # type_check=True for every internal cache-miss compile (`can_typecheck`).
-    is_internal = (
-        self._internal_program is not None and actual_program is self._internal_program
-    );
-    run_inference = options.type_check
-    or (not options.no_cgen and not options.symtab_ir_only and not is_internal);
+    # Run type inference only when a backend consumes a checker-stamped fact:
+    # the native (na) backend lowers annotations through Expr.type, and both
+    # the native and client (cl/JavaScript) backends read FuncCall.callee_decl
+    # to lower kwargs to ordered positional args (esast_gen_pass has no
+    # re-resolution fallback). `jac check` also wants the diagnostics. The
+    # plain sv (Python) backend reads none of these (Python keeps kwargs as
+    # kwargs), so inference on a pure-sv build is wasted work: it walks the
+    # whole import graph and stamps caches nothing consumes. TypeCheckPass
+    # still self-gates diagnostic emission (full for `jac check` /
+    # native-context per #6049, suppressed otherwise per #6262).
+    run_inference = options.type_check;
     if not run_inference {
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-        is_native_mod = bool(mp) and mp.endswith('.na.jac');
-        if not is_native_mod and mod_targ?.body {
+        is_native_mod = (bool(mp) and mp.endswith('.na.jac'))
+        or (
+            actual_program._auto_promote_native
+            and mod_targ?.gen
+            and mod_targ.gen.native_compat
+        );
+        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
+        # A `na { }` / `cl { }` block puts native / client code in an otherwise
+        # plain .jac module; one body scan covers both extensions' inline form.
+        if (not is_native_mod or not is_client_mod) and mod_targ?.body {
             for _stmt in mod_targ.body {
                 if isinstance(_stmt, uni.NativeBlock) {
                     is_native_mod = True;
-                    break;
+                }
+                if isinstance(_stmt, uni.ClientBlock) {
+                    is_client_mod = True;
                 }
             }
         }
-        if (
-            not is_native_mod
-            and actual_program._auto_promote_native
-            and mod_targ?.gen
-            and mod_targ.gen.native_compat
-        ) {
-            is_native_mod = True;
-        }
-        run_inference = is_native_mod;
+        # Native consumes Expr.type even on lightweight (no_cgen /
+        # symtab_ir_only) compiles, since the cross-module native linker lowers
+        # a provider's annotations on demand. Client only reads callee_decl
+        # while EsastGenPass actually emits JS, so it is gated on real codegen
+        # (this keeps the boundary-completion walk's no_cgen=True compiles from
+        # paying a TypeCheckPass they would only waste).
+        run_inference = is_native_mod
+        or (is_client_mod and not options.no_cgen and not options.symtab_ir_only);
     }
     if run_inference {
         mod_targ._inference_started = True;
