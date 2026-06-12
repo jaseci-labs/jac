@@ -34,6 +34,36 @@ The plugin_host dispatches requests to the correct plugin by plugin_name.
 obj DesktopPlugin {
     has plugin_name: str;
 
+    """Normalize a config value to a dict.
+
+Plugins accept True (from `fs = true`), False, a dict with sub-settings,
+or None/missing. This helper collapses the non-dict forms so each plugin
+init() can assume it always receives a dict.
+"""
+    static def _coerce_config(config: object) -> dict {
+        if isinstance(config, dict) {
+            return config;
+        }
+        return {};
+    }
+
+    """True when a config value means 'enabled'.
+
+Only an explicit False (or None/missing) disables the plugin.
+"""
+    static def _config_enabled(config: object) -> bool {
+        return config is not False and config is not None;
+    }
+
+    def init { }
+    """Register a command handler. Enables command-map dispatch."""
+    def register_command(name: str, handler: callable) {
+        if not hasattr(self, "_command_map") {
+            self._command_map = {};
+        }
+        self._command_map[name] = handler;
+    }
+
     """Receive the live webview handle and ctypes lib after the native webview is created.
 
     Default is a no-op; override in plugins that need to call back into libwebview
@@ -41,8 +71,14 @@ obj DesktopPlugin {
     """
     def setup(wv_handle: int, wv_lib: ctypes.CDLL) { }
 
-    """Handle a command from JS. Returns a dict result or raises PluginError."""
+    """Handle a command from JS. Returns a dict result or raises PluginError.
+
+    First checks the command map; if not found, raises UNKNOWN_COMMAND.
+    """
     def handle(command: str, args: dict) -> dict {
+        if self?._command_map and command in self._command_map {
+            return self._command_map[command](args);
+        }
         raise PluginError(
             "UNKNOWN_COMMAND", f"Plugin '{self.plugin_name}' has no command '{command}'"
         );

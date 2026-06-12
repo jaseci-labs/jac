@@ -9,6 +9,7 @@ Transpiled to dependency-free Python at build time.
 """
 import subprocess;
 import from desktop_plugin { PluginError, DesktopPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
 """System clipboard read/write via platform tools."""
@@ -16,8 +17,31 @@ obj ClipboardPlugin(DesktopPlugin) {
     has _allow_read: bool = True,
         _allow_write: bool = True;
 
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.clipboard",
+            config_key="clipboard",
+            module="built_in.clipboard_plugin",
+            class_name="ClipboardPlugin",
+            commands=[
+                CommandSpec(name="read", returns="dict", doc="Read system clipboard."),
+                CommandSpec(
+                    name="write",
+                    params={"text": "str"},
+                    returns="dict",
+                    doc="Write to system clipboard."
+                )
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return ClipboardPlugin(DesktopPlugin._coerce_config(config));
+    }
+
     def init(config: dict) {
-        super.init("jac.clipboard");
+        self.plugin_name = "jac.clipboard";
         # Normalize non-dict config (e.g. `clipboard = true`) to empty dict.
         if not isinstance(config, dict) {
             config = {};

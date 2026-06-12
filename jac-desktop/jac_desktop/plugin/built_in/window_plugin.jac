@@ -7,6 +7,7 @@ Transpiled to dependency-free Python at build time.
 """
 import ctypes;
 import from desktop_plugin { PluginError, DesktopPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
 """Controls the native webview window via ctypes -> libwebview."""
@@ -14,8 +15,32 @@ obj WindowPlugin(DesktopPlugin) {
     has _wv: ctypes.CDLL | None = None,
         _handle: int = 0;
 
-    def init(wv_handle: int, wv_lib: ctypes.CDLL | None) {
-        super.init("jac.window");
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.window",
+            config_key="window",
+            module="built_in.window_plugin",
+            class_name="WindowPlugin",
+            commands=[
+                CommandSpec(name="set_title", params={"title": "str"}, returns="dict"),
+                CommandSpec(
+                    name="set_size",
+                    params={"width": "int", "height": "int", "hint": "int"},
+                    returns="dict"
+                ),
+                CommandSpec(name="fullscreen", returns="dict"),
+                CommandSpec(name="terminate", returns="dict")
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return WindowPlugin(ctx.wv_handle, ctx.wv_lib);
+    }
+
+    def init(wv_handle: int = 0, wv_lib: ctypes.CDLL | None = None) {
+        self.plugin_name = "jac.window";
         self._handle = wv_handle;
         self._wv = wv_lib;
     }

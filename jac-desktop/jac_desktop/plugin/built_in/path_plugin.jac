@@ -9,12 +9,50 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from desktop_plugin { PluginError, DesktopPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
 """Provides OS path resolution for standard directories."""
 obj PathPlugin(DesktopPlugin) {
+    has plugin_name: str = "jac.path";
+
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.path",
+            config_key="path",
+            module="built_in.path_plugin",
+            class_name="PathPlugin",
+            commands=[
+                CommandSpec(name="home", returns="dict", doc="Resolve home directory."),
+                CommandSpec(name="data", returns="dict", doc="Resolve data directory."),
+                CommandSpec(
+                    name="config", returns="dict", doc="Resolve config directory."
+                ),
+                CommandSpec(
+                    name="cache", returns="dict", doc="Resolve cache directory."
+                ),
+                CommandSpec(
+                    name="downloads", returns="dict", doc="Resolve downloads directory."
+                ),
+                CommandSpec(
+                    name="documents", returns="dict", doc="Resolve documents directory."
+                ),
+                CommandSpec(name="temp", returns="dict", doc="Resolve temp directory."),
+                CommandSpec(name="app_data", params={"app": "str"}, returns="dict"),
+                CommandSpec(name="separator", returns="dict"),
+                CommandSpec(name="join", params={"parts": "list"}, returns="dict"),
+                CommandSpec(name="resolve", params={"path": "str"}, returns="dict")
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return PathPlugin();
+    }
+
     def init {
-        super.init("jac.path");
+        self.plugin_name = "jac.path";
     }
 
     def handle(command: str, args: dict) -> dict {

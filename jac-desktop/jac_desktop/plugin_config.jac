@@ -2,6 +2,7 @@
 
 Registers metadata and schema for the [plugins.desktop] section in jac.toml.
 """
+import os;
 
 import from importlib.metadata { version as pkg_version }
 import from jaclang.jac0core.runtime { hookimpl }
@@ -20,6 +21,22 @@ obj PluginMetadata {
             'description': self.description
         };
     }
+}
+
+
+"""Return the absolute path of desktop_api.cl.jac for the jac.modules entry point.
+
+Works from both source checkout and installed wheel: the SDK file is shipped
+as package data in the wheel and lives beside this module in the source tree."""
+def desktop_sdk_path -> str {
+    this_dir = os.path.dirname(os.path.abspath(__file__));
+    # Source layout: jac_desktop/plugin/desktop_api.cl.jac
+    src_path = os.path.join(this_dir, 'plugin', 'desktop_api.cl.jac');
+    if os.path.isfile(src_path) {
+        return src_path;
+    }
+    # Wheel layout (data files): jac_desktop/plugin/desktop_api.cl.jac
+    return src_path;
 }
 
 """Single option spec in a plugin config schema."""

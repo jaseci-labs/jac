@@ -31,6 +31,7 @@ jac_desktop = [
     "native/webview/build_libwebview.sh",
     "native/webview/install_webkit_deps.sh",
     "native/webview/README.md",
+    "plugin/desktop_api.cl.jac",
 ]
 
 [dependencies]
@@ -42,6 +43,9 @@ pytest = "==8.3.5"
 
 [entrypoints.jac]
 desktop_plugin_config = "jac_desktop.plugin_config:JacDesktopPluginConfig"
+
+[entrypoints."jac.modules"]
+desktop = "jac_desktop.plugin_config:desktop_sdk_path"
 
 [entrypoints.jac_client]
 desktop = "jac_desktop.plugin:JacDesktopPlugin"

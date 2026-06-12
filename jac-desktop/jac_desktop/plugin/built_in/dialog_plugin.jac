@@ -9,14 +9,49 @@ Transpiled to dependency-free Python at build time.
 """
 import subprocess;
 import from desktop_plugin { PluginError, OsPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
 """Native dialog capability via platform tools."""
 obj DialogPlugin(OsPlugin) {
     has _enabled: bool = True;
 
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.dialog",
+            config_key="dialog",
+            module="built_in.dialog_plugin",
+            class_name="DialogPlugin",
+            commands=[
+                CommandSpec(
+                    name="open_file",
+                    params={"title": "str", "filters": "list"},
+                    returns="dict",
+                    doc="Show native open-file dialog."
+                ),
+                CommandSpec(
+                    name="save_file",
+                    params={"title": "str", "default_name": "str"},
+                    returns="dict",
+                    doc="Show native save-file dialog."
+                ),
+                CommandSpec(
+                    name="message",
+                    params={"title": "str", "body": "str", "kind": "str"},
+                    returns="dict",
+                    doc="Show native message dialog."
+                )
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return DialogPlugin(config);
+    }
+
     def init(config: dict) {
-        super.init("jac.dialog");
+        self.plugin_name = "jac.dialog";
         # If this plugin is instantiated at all, it's enabled.
         # config may be True (from `dialog = true`), {} (from empty
         # `[plugins.desktop.plugins.dialog]`), or a dict with sub-settings.

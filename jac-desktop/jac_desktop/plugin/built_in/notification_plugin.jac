@@ -10,14 +10,37 @@ Transpiled to dependency-free Python at build time.
 import os;
 import subprocess;
 import from desktop_plugin { PluginError, OsPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
 """Desktop notification capability via platform tools."""
 obj NotificationPlugin(OsPlugin) {
     has _enabled: bool = True;
 
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.notification",
+            config_key="notification",
+            module="built_in.notification_plugin",
+            class_name="NotificationPlugin",
+            commands=[
+                CommandSpec(
+                    name="send",
+                    params={"title": "str", "body": "str"},
+                    returns="dict",
+                    doc="Send a desktop notification."
+                )
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return NotificationPlugin(config);
+    }
+
     def init(config: dict) {
-        super.init("jac.notification");
+        self.plugin_name = "jac.notification";
         # If this plugin is instantiated at all, it's enabled.
         # config may be True (from `notification = true` in TOML),
         # {} (from empty `[plugins.desktop.plugins.notification]`),

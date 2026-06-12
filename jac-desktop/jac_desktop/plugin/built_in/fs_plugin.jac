@@ -11,7 +11,28 @@ import stat;
 import from pathlib { Path }
 import from desktop_plugin { PluginError, DesktopPlugin }
 import from built_in.path_plugin { PathPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
 
+
+glob FS_COMMANDS: list = [
+         CommandSpec(
+             name="read_file",
+             params={"path": "str", "encoding": "str"},
+             returns="dict",
+             doc="Read a text file inside an allowed root."
+         ),
+         CommandSpec(
+             name="write_file",
+             params={"path": "str", "content": "str"},
+             returns="dict",
+             doc="Write a text file inside an allowed root."
+         ),
+         CommandSpec(name="list_dir", params={"path": "str"}, returns="dict"),
+         CommandSpec(name="mkdir", params={"path": "str"}, returns="dict"),
+         CommandSpec(name="remove", params={"path": "str"}, returns="dict"),
+         CommandSpec(name="exists", params={"path": "str"}, returns="dict"),
+         CommandSpec(name="stat", params={"path": "str"}, returns="dict")
+     ];
 
 """Filesystem operations with allow-list enforcement."""
 obj FsPlugin(DesktopPlugin) {
@@ -21,8 +42,23 @@ obj FsPlugin(DesktopPlugin) {
         _resolved_read: list = [],
         _resolved_write: list = [];
 
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.fs",
+            config_key="fs",
+            module="built_in.fs_plugin",
+            class_name="FsPlugin",
+            commands=FS_COMMANDS,
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return FsPlugin(DesktopPlugin._coerce_config(config), ctx.path_plugin);
+    }
+
     def init(config: dict, path_plugin: PathPlugin) {
-        super.init("jac.fs");
+        self.plugin_name = "jac.fs";
         # Normalize non-dict config (e.g. `fs = true`) to empty dict.
         if not isinstance(config, dict) {
             config = {};

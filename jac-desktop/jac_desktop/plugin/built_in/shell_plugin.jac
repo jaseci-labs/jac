@@ -6,8 +6,12 @@ allowed in jac.toml via glob patterns:
   [plugins.desktop.plugins.shell]
   allow = ["git *", "jac *"]
 
-The executable name (first token) is matched against the allow list before
-execution. Commands run without a shell to prevent operator injection.
+Each pattern token is matched against the corresponding argv token. A trailing
+"*" in a pattern means "any remaining args." For example:
+  "git log"   -> ONLY git log (exact match)
+  "git log *" -> git log with any args
+  "git *"     -> any git invocation
+Commands run without a shell to prevent operator injection.
 
 Transpiled to dependency-free Python at build time.
 """
@@ -15,14 +19,76 @@ import fnmatch;
 import shlex;
 import subprocess;
 import from desktop_plugin { PluginError, DesktopPlugin }
+import from manifest { PluginManifest, CommandSpec, PluginContext }
+
+
+"""True iff argv is permitted by a single pattern's token list.
+
+Each pattern token is matched against the corresponding argv token via
+fnmatch. A trailing "*" in the pattern means "accept any remaining args."
+Without a trailing wildcard, argv must match the pattern's length exactly.
+"""
+def _pattern_matches(pattern_argv: list, argv: list) -> bool {
+    for (i, ptok) in enumerate(pattern_argv) {
+        # Trailing "*" allows any remaining args.
+        if ptok == "*" and i == len(pattern_argv) - 1 {
+            return True;
+        }
+        if i >= len(argv) {
+            return False;
+        }
+        if not fnmatch.fnmatch(argv[i], ptok) {
+            return False;
+        }
+    }
+    # Pattern exhausted with no trailing wildcard: argv must match exactly.
+    return len(argv) == len(pattern_argv);
+}
+
+
+"""True iff argv is permitted by any pattern in the allow list."""
+def _is_allowed(allow: list, argv: list) -> bool {
+    for pattern in allow {
+        pattern_argv = shlex.split(pattern);
+        if not pattern_argv {
+            continue;
+        }
+        if _pattern_matches(pattern_argv, argv) {
+            return True;
+        }
+    }
+    return False;
+}
 
 
 """Shell command execution with glob-based allow-list."""
 obj ShellPlugin(DesktopPlugin) {
     has _allow: list = [];
 
+    static def manifest -> PluginManifest {
+        return PluginManifest(
+            name="jac.shell",
+            config_key="shell",
+            module="built_in.shell_plugin",
+            class_name="ShellPlugin",
+            commands=[
+                CommandSpec(
+                    name="exec",
+                    params={"command": "str", "timeout": "int", "cwd": "str"},
+                    returns="dict",
+                    doc="Execute a shell command."
+                )
+            ],
+            default_on=False
+        );
+    }
+
+    static def build(ctx: PluginContext, config: object) -> DesktopPlugin {
+        return ShellPlugin(DesktopPlugin._coerce_config(config));
+    }
+
     def init(config: dict) {
-        super.init("jac.shell");
+        self.plugin_name = "jac.shell";
         # Normalize non-dict config (e.g. `shell = true`) to empty dict.
         if not isinstance(config, dict) {
             config = {};
@@ -50,23 +116,10 @@ obj ShellPlugin(DesktopPlugin) {
         if not argv {
             raise PluginError("INVALID_ARGS", "'command' must not be empty");
         }
-        cmd_name = argv[0];
-        # Match only the executable name against each pattern's first token.
-        # Full-string fnmatch is unsafe because * matches shell metacharacters.
-        allowed = False;
-        for pattern in self._allow {
-            pattern_argv = shlex.split(pattern);
-            if not pattern_argv {
-                continue;
-            }
-            if fnmatch.fnmatch(cmd_name, pattern_argv[0]) {
-                allowed = True;
-                break;
-            }
-        }
+        allowed = _is_allowed(self._allow, argv);
         if not allowed {
             raise PluginError(
-                "FORBIDDEN", f"Command '{cmd_name}' is not in the allowed list."
+                "FORBIDDEN", f"Command '{argv[0]}' is not in the allowed list."
             );
         }
         try {
