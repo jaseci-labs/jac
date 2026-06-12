@@ -60,8 +60,10 @@ def _extract_path_param_names(path: (str | None)) -> list[str] {
 
 """Keep only kwargs the target declares, mirroring how FastAPI ignores undeclared query parameters."""
 def filter_declared_kwargs(target: Callable, params: dict[str, any]) -> dict[str, any] {
+    # Archetypes expose their declared fields on `.init`; plain callables are inspected directly.
+    declarer: any = getattr(target, 'init', target);
     try {
-        sig = inspect.signature(target);
+        sig = inspect.signature(declarer);
     } except (TypeError, ValueError) {
         return params;
     }
