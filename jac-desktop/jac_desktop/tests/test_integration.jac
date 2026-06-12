@@ -509,6 +509,96 @@ test "shell plugin rejects shell injection in allowed commands" {
 }
 
 
+"""Shell allow-list does not silently widen subcommands.
+
+The old matcher only checked pattern_argv[0], so `allow=["git log"]` permitted
+ALL git subcommands (the " log" was ignored). The token-aware matcher matches
+each pattern token against the corresponding argv token.
+"""
+test "shell allow-list does not silently widen subcommands" {
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            import plugin_host;
+            _ShellPlugin = _get_shell_plugin_class();
+            # "git log" must NOT permit "git push"
+            host = plugin_host.PluginHost();
+            host.register("jac.shell", _ShellPlugin({"allow": ["git log"]}));
+            resp_ok = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "git log"}
+                        }
+                    )
+                )
+            );
+            assert resp_ok["ok"] == True;
+            resp_bad = json.loads(
+                host.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "git push"}
+                        }
+                    )
+                )
+            );
+            assert resp_bad["ok"] == False;
+            assert resp_bad["error"]["code"] == "FORBIDDEN";
+            # Trailing wildcard still works
+            host2 = plugin_host.PluginHost();
+            host2.register("jac.shell", _ShellPlugin({"allow": ["git *"]}));
+            resp_wild = json.loads(
+                host2.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "git push"}
+                        }
+                    )
+                )
+            );
+            assert resp_wild["ok"] == True;
+            # Exact match, extra args rejected unless wildcarded
+            host3 = plugin_host.PluginHost();
+            host3.register("jac.shell", _ShellPlugin({"allow": ["ls"]}));
+            resp_exact = json.loads(
+                host3.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "ls -la"}
+                        }
+                    )
+                )
+            );
+            assert resp_exact["ok"] == False;
+            assert resp_exact["error"]["code"] == "FORBIDDEN";
+            host4 = plugin_host.PluginHost();
+            host4.register("jac.shell", _ShellPlugin({"allow": ["ls *"]}));
+            resp_wc = json.loads(
+                host4.dispatch(
+                    json.dumps(
+                        {
+                            "plugin": "jac.shell",
+                            "command": "exec",
+                            "args": {"command": "ls -la"}
+                        }
+                    )
+                )
+            );
+            assert resp_wc["ok"] == True;
+        }
+    );
+}
+
+
 # ---------------------------------------------------------------------------
 # 3. FsPlugin security
 # ---------------------------------------------------------------------------
@@ -925,8 +1015,9 @@ test "generated host source with no plugins" {
     assert "NoPlugins" in src;
     # Bridge must be inlined
     assert "_jac_invoke_handler" in src;
-    # Plugin registration guards should still be present
-    assert "_pc.get" in src;
+    # Plugin registration should use registry bootstrap
+    assert "bootstrap_plugins" in src;
+    assert "_pc.get" not in src;  # old hand-written registration removed
 }
 
 
@@ -1231,9 +1322,11 @@ test "build pipeline produces all expected artifacts" {
 
         # Check expected files exist
         expected = [
+            "manifest.py",
             "desktop_plugin.py",
             "plugin_host.py",
             "webview_lib.py",
+            "registry.py",
             "built_in/path_plugin.py",
             "built_in/window_plugin.py",
             "built_in/fs_plugin.py",
@@ -1258,8 +1351,10 @@ test "build pipeline produces all expected artifacts" {
         );
         # All plugin modules must be loaded in the generated bootstrap
         for mod in [
+            "manifest",
             "desktop_plugin",
             "plugin_host",
+            "registry",
             "webview_lib",
             "built_in.path_plugin",
             "built_in.window_plugin",
@@ -1271,14 +1366,143 @@ test "build pipeline produces all expected artifacts" {
         ] {
             assert mod in host_src , f"Generated host missing module: {mod}";
         }
-        # Bridge is inlined, verify it's present
+        # Bridge is extracted from plugin_bridge.na.jac, verify it's present
         assert "_jac_invoke_handler" in host_src;
         assert "_PH_DISPATCH" in host_src;
         assert "PyGILState_Ensure" in host_src;
+        # Registry-based bootstrap must be present
+        assert "bootstrap_plugins" in host_src;
         # JS SDK must be injected
         assert "__jac" in host_src;
         assert "__JAC_DESKTOP__" in host_src;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
+}
+
+
+# ---------------------------------------------------------------------------
+# 10. Registry bootstrap + manifests
+# ---------------------------------------------------------------------------
+"""Each built-in plugin exposes manifest() returning a PluginManifest."""
+test "all built-in plugins expose manifest and build" {
+    _with_plugins(
+        lambda {
+            import built_in.path_plugin;
+            import built_in.fs_plugin;
+            import built_in.clipboard_plugin;
+            import built_in.notification_plugin;
+            import built_in.dialog_plugin;
+            import built_in.shell_plugin;
+            import built_in.window_plugin;
+            import from manifest { PluginManifest }
+            for cls in [
+                built_in.path_plugin.PathPlugin,
+                built_in.fs_plugin.FsPlugin,
+                built_in.clipboard_plugin.ClipboardPlugin,
+                built_in.notification_plugin.NotificationPlugin,
+                built_in.dialog_plugin.DialogPlugin,
+                built_in.shell_plugin.ShellPlugin,
+                built_in.window_plugin.WindowPlugin
+            ] {
+                m = cls.manifest();
+                assert isinstance(m, PluginManifest);
+                assert m.name.startswith("jac.");
+                assert len(m.config_key) > 0;
+                assert len(m.module) > 0;
+                assert len(m.class_name) > 0;
+                assert hasattr(cls, "build");
+            }
+        }
+    );
+}
+
+"""bootstrap_plugins() registers only enabled plugins."""
+test "bootstrap_plugins registers only enabled plugins" {
+    _with_plugins(
+        lambda {
+            import from manifest { PluginContext }
+            import from registry { bootstrap_plugins }
+            import plugin_host;
+            configs = {"path": True, "fs": {"allow_read": ["/tmp"]}};
+            import sys;
+            host = bootstrap_plugins(configs, sys.modules);
+            assert "jac.path" in host.plugins;
+            assert "jac.fs" in host.plugins;
+            # Others should not be registered
+            assert "jac.notification" not in host.plugins;
+            assert "jac.clipboard" not in host.plugins;
+            assert "jac.dialog" not in host.plugins;
+            assert "jac.shell" not in host.plugins;
+            assert "jac.window" not in host.plugins;
+        }
+    );
+}
+
+"""bootstrap_plugins() with all plugins enabled."""
+test "bootstrap_plugins registers all plugins when all enabled" {
+    _with_plugins(
+        lambda {
+            import from manifest { PluginContext }
+            import from registry { bootstrap_plugins }
+            import plugin_host;
+            configs = {
+                "path": True,
+                "window": True,
+                "fs": {"allow_read": ["/tmp"]},
+                "notification": True,
+                "clipboard": True,
+                "dialog": True,
+                "shell": {"allow": ["echo *"]}
+            };
+            import sys;
+            host = bootstrap_plugins(configs, sys.modules);
+            assert "jac.path" in host.plugins;
+            assert "jac.window" in host.plugins;
+            assert "jac.fs" in host.plugins;
+            assert "jac.notification" in host.plugins;
+            assert "jac.clipboard" in host.plugins;
+            assert "jac.dialog" in host.plugins;
+            assert "jac.shell" in host.plugins;
+        }
+    );
+}
+
+"""bootstrap_plugins() with empty config registers nothing."""
+test "bootstrap_plugins registers nothing with empty config" {
+    _with_plugins(
+        lambda {
+            import from registry { bootstrap_plugins }
+            import plugin_host;
+            import sys;
+            host = bootstrap_plugins({}, sys.modules);
+            assert len(host.plugins) == 0;
+        }
+    );
+}
+
+"""DesktopPlugin._coerce_config normalizes config values."""
+test "_coerce_config normalizes config values" {
+    _with_plugins(
+        lambda {
+            import desktop_plugin;
+            assert desktop_plugin.DesktopPlugin._coerce_config(True) == {};
+            assert desktop_plugin.DesktopPlugin._coerce_config(False) == {};
+            assert desktop_plugin.DesktopPlugin._coerce_config(None) == {};
+            assert desktop_plugin.DesktopPlugin._coerce_config({"a": 1}) == {"a": 1};
+        }
+    );
+}
+
+"""Plugin bridge extraction between markers works."""
+test "bridge marker extraction from plugin_bridge.na.jac" {
+    import from pathlib { Path }
+
+    bridge_path = _native_dir() / "plugin_bridge.na.jac";
+    src = bridge_path.read_text();
+    assert "# --- BRIDGE START ---" in src;
+    assert "# --- BRIDGE END ---" in src;
+    assert "_PH_DISPATCH" in src;
+    assert "_jac_invoke_handler" in src;
+    assert "_stash_wv_in_python" in src;
 }
