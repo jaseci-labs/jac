@@ -91,7 +91,6 @@ class TypeCheckPass(UniPass) {
     def exit_edge_ref_trailer(self: TypeCheckPass, nd: uni.EdgeRefTrailer) -> None;
     def exit_special_var_ref(self: TypeCheckPass, nd: uni.SpecialVarRef) -> None;
     def exit_name(self: TypeCheckPass, nd: uni.Name) -> None;
-    def exit_cfg_expr(self: TypeCheckPass, nd: uni.CfgExpr) -> None;
     def exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None;
     def exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None;
     def exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None;

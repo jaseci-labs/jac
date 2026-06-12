@@ -36,24 +36,7 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
     if isinstance(nd.parent, uni.JsxElementName) {
         return;
     }
-    # Typed-tree contract (Phase 0): every expression carries Expr.type for
-    # backend consumption. A Name whose symbol resolved still needs its
-    # stamp — symbol resolution alone leaves nd.type None (e.g. a bare
-    # `if el {...}` condition no diagnostic rule ever queried), and
-    # get_type_of_expression caches its result on the node.
-    if nd.sym is None or nd.type is None {
-        self.evaluator.get_type_of_expression(nd);
-    }
-}
-
-"""Stamp the CFG-narrowing wrapper around BoolExpr operands and
-IfElseExpr branches. The enclosing expression's evaluation computes the
-operand types, but only caches them on the inner expressions - the
-wrapper itself stayed unstamped, breaking typed-tree consumers that
-dispatch on an operand's type (e.g. the ES backend's Python-truthiness
-lowering for collections)."""
-impl TypeCheckPass.exit_cfg_expr(self: TypeCheckPass, nd: uni.CfgExpr) -> None {
-    if nd.type is None {
+    if nd.sym is None {
         self.evaluator.get_type_of_expression(nd);
     }
 }
@@ -972,6 +955,20 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
 """Initialize the checker pass."""
 impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
+    # Stamps written by a previous run's completion sweep (see after_pass)
+    # are ephemeral: node.type doubles as the evaluator's memoization cache,
+    # so a stamp on a node no checking rule evaluated changes THIS run's
+    # live evaluation paths (member resolution reads a cached standalone
+    # result instead of resolving in context). Reset exactly the swept
+    # nodes to their pristine unstamped state; this run's own after_pass
+    # re-sweeps for downstream consumers.
+    _swept = self.ir_in?._sweep_stamped;
+    if _swept {
+        for _sn in _swept {
+            _sn.type = None;
+        }
+        self.ir_in._sweep_stamped = [];
+    }
     # Nested compiles (TypeEvaluator import resolution, boundary walks) run
     # their own TypeCheckPass on the shared evaluator. Save the previous
     # reporter so after_pass can restore it — otherwise an inner inference
@@ -1077,6 +1074,85 @@ impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
             stash.clear();
         }
     }
+    # Typed-tree stamp completion (Phase 0): every Expr carries Expr.type
+    # for backend consumption, but checking only evaluates what some rule
+    # queries - a bare `if el {...}` condition Name or a CfgExpr narrowing
+    # wrapper can finish the pass unstamped. Completing the stamps DURING
+    # checking is unsound (a cached standalone result poisons later
+    # context-aware evaluation), and sweeping ARBITRARY expressions is
+    # unsound even post-pass: standalone evaluation has non-type side
+    # effects (an AtomTrailer eval binds member symbols - `self.type`
+    # standalone binds the builtin `type`, resurrecting the spurious
+    # assign-to-builtin E1001 this pass once fixed). The sweep therefore
+    # covers exactly the two side-effect-light shapes consumers dispatch
+    # on: a resolved bare Name (a symbol-type read; emissions dropped, see
+    # emit) and a CfgExpr wrapper (the inner expression's stamp is copied;
+    # no evaluation at all). Stamps are reset to pristine by the next
+    # checker run on this tree (see before_pass) because node.type doubles
+    # as the evaluator's memoization cache.
+    self._stamp_sweep = True;
+    _unstamped: list = [];
+    _work: list = [self.ir_in];
+    while _work {
+        _nd = _work.pop();
+        if isinstance(_nd, uni.Expr) and _nd.type is None {
+            _unstamped.append(_nd);
+        }
+        for _k in _nd.kid {
+            _work.append(_k);
+        }
+    }
+    # Names first: operands must be stamped before the wrappers and
+    # boolean expressions that derive from them.
+    for _nd in _unstamped {
+        if (
+            isinstance(_nd, uni.Name)
+            and _nd.type is None
+            and _nd.sym is not None
+            and not (
+                isinstance(_nd.parent, uni.AtomTrailer) and _nd.parent.right is _nd
+            )
+        ) {
+            try {
+                self.evaluator.get_type_of_expression(_nd);
+            } except Exception {
+            # Best-effort: an unevaluable name stays unstamped.
+            }
+        }
+    }
+    # Wrappers and and/or merges, children before parents (the snapshot is
+    # in parent-first DFS order, so iterate it reversed).
+    for _nd in reversed(_unstamped) {
+        if isinstance(_nd, uni.CfgExpr) and _nd.type is None {
+            _inner_ty = _nd.expr?.type;
+            if _inner_ty is not None {
+                _nd.type = _inner_ty;
+            }
+        } elif isinstance(_nd, uni.BoolExpr) and _nd.type is None {
+            _all_ops = True;
+            for _v in _nd.values {
+                if _v?.type is None {
+                    _all_ops = False;
+                }
+            }
+            if _all_ops {
+                try {
+                    self.evaluator.get_type_of_expression(_nd);
+                } except Exception {
+                # Best-effort merge; stays unstamped on failure.
+                }
+            }
+        }
+    }
+    # Record everything this sweep stamped (directly or transitively - all
+    # such nodes were unstamped when it started) so the next checker run on
+    # this tree can reset them to pristine (see before_pass).
+    self.ir_in._sweep_stamped = [
+        _nd
+        for _nd in _unstamped
+        if _nd.type is not None
+    ];
+    self._stamp_sweep = False;
     # Restore the evaluator's previous diagnostic reporter (see before_pass)
     # for nested runs only. Top-level runs (no previous reporter) stay
     # installed, matching the historical contract: evaluator queries during
@@ -1097,6 +1173,14 @@ impl TypeCheckPass.emit(
 ) -> bool {
     import from jaclang.jac0core.diagnostics { Category }
     if diag.category != Category.ICE {
+        # Stamp-completion sweep (see after_pass): evaluations exist only to
+        # populate Expr.type for backend consumers. Their diagnostics are
+        # DROPPED, not deferred - expressions no checking rule ever queried
+        # have never contributed to the diagnostic surface, and deferring
+        # would replay them in a later full-diagnostic run.
+        if getattr(self, '_stamp_sweep', False) {
+            return False;
+        }
         stash = self.ir_in?._deferred_type_diags;
         key = (
             diag.code,
