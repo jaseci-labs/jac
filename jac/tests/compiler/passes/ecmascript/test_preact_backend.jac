@@ -51,6 +51,8 @@ test "preact entry script uses render and h" {
     assert "createRoot" not in script;
     assert 'render(' in script;
     assert 'h(App, null)' in script;
+    assert 'getElementById("root")' in script;
+    assert 'getElementById("__jac_root")' in script;
 }
 
 test "runtime source selects preact runtime for preact framework" {

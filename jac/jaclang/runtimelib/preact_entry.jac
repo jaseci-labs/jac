@@ -24,13 +24,15 @@ def build_simple_preact_entry_script(
     }
     lines.extend(
         [
+            'const __jacMountEl = document.getElementById("root")',
+            '\t?? document.getElementById("__jac_root");',
             'render(',
             '\th(',
             '\t\tJacClientErrorBoundary,',
             '\t\t{ FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler },',
             '\t\th(App, null)',
             '\t),',
-            '\tdocument.getElementById("root")',
+            '\t__jacMountEl',
             ');',
             ''
         ]
