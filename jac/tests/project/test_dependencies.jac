@@ -865,16 +865,12 @@ test "install with pip and git deps" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.return_value = (
-                    0,
-                    "Successfully installed requests-2.31.0",
-                    ""
-                );
+                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
                 result = proj_cmds.install();
             }
             assert result == 0;
             mock_pip.assert_called();
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
         } finally {
@@ -914,16 +910,12 @@ test "install pip and npm deps" {
                 "jaclang.project.dep_registry.get_dependency_registry",
                 return_value=mock_registry
             ) as _reg {
-                mock_pip.return_value = (
-                    0,
-                    "Successfully installed requests-2.31.0 flask-3.0.0",
-                    ""
-                );
+                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
                 result = proj_cmds.install();
             }
             assert result == 0;
             mock_pip.assert_called();
-            pip_call_args = mock_pip.call_args[0][0];
+            pip_call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in pip_call_args;
             assert "--upgrade" in pip_call_args;
             mock_install_all.assert_called_once();
@@ -1124,7 +1116,7 @@ test "add with explicit version" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
+                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
                 result = proj_cmds.add(packages=["numpy>=1.24"]);
             }
             assert result == 0;
@@ -1157,7 +1149,9 @@ test "update all deps" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
@@ -1378,7 +1372,7 @@ test "add git dependency" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.return_value = (0, "Successfully installed my-lib", "");
+                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
                 result = proj_cmds.add(git="https://github.com/user/my-lib.git");
             }
             assert result == 0;
@@ -1412,7 +1406,9 @@ test "update with dev deps" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: requests\nVersion: 2.32.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", ""),
                     (0, "Name: pytest\nVersion: 8.3.0", "")
@@ -1828,14 +1824,16 @@ test "update always uses upgrade flag" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
                 result = proj_cmds.update();
             }
             assert result == 0;
-            first_call_args = mock_pip.call_args_list[0][0][0];
+            first_call_args = mock_pip.call_args_list[1][0][0];
             assert "--upgrade" in first_call_args;
         } finally {
             os.chdir(original_cwd);
