@@ -186,6 +186,20 @@ jac test main.jac -t calculator_add -v
 
 ---
 
+## Tests and Codespaces
+
+A `test` block runs in the codespace its surrounding context compiles to, so tests exercise the same semantics as the code beside them:
+
+| Context | Where the test runs |
+|---------|---------------------|
+| `.jac` / `.sv.jac` | Python runtime (unittest) |
+| `.na.jac` or inline `na { }` block | Native code via the LLVM JIT |
+| `test_*.cl.jac` / `*.test.cl.jac` | JavaScript runtime via bun |
+
+All of them report through the same `jac test` pass/fail pipeline, and the CLI options above apply uniformly. A test in a `.na.jac` module compiles to native code and runs with native semantics -- a failing `assert` reports the failing source location (`file:line`). See [Native Compilation -- Testing](language/native-pathway.md#testing) for native-specific details and limitations.
+
+---
+
 ## Test Output
 
 ### Success
@@ -726,3 +740,4 @@ test "calculation no message" {
 ## Related Resources
 
 - [CLI Reference](cli/index.md)
+- [Native Compilation -- Testing](language/native-pathway.md#testing)

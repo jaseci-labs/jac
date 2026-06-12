@@ -1,13 +1,17 @@
 ---
 name: jac-sv-endpoints
-description: Writing server-side functions the client can call - endpoint visibility, typed responses, and the basic create/read/update/delete shape. Load before writing any backend function callable from the client. Pair with `jac-sv-persistence` (graph queries inside endpoint bodies), `jac-sv-auth` (def:pub vs def:priv).
+description: Server endpoints - REST API endpoints (/walker/<name>, /function/<name>), walker:pub, the response envelope, @restspec custom routes/methods, file uploads, typed responses. For any REST consumer, not just the jac client. Load before writing any backend function or walker. Pair with `jac-sv-persistence` (graph queries inside endpoint bodies), `jac-sv-auth` (auth semantics).
 ---
 
-Server endpoints are functions the client invokes as RPC. They live at the top of `main.jac` or in a `.sv.jac` module. How a function is declared controls whether - and how - the client can call it:
+A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:priv` / plain `def`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac` or a `.sv.jac` module.
 
-- **`def:pub`** - public endpoint. Anyone can call. Use for unauthenticated data (public feeds, listings).
-- **`def:priv`** - private endpoint. Requires login; each user gets their own isolated `root`. Use for per-user data.
-- **`def`** (no prefix) - **also a client-callable endpoint**, registered like `def:priv` (authenticated, per-user `root`). Jac has no "internal-only" modifier. To keep a function *off* the API, prefix its name with `_` (e.g. `def _helper(...)`) - underscore-prefixed functions are never registered.
+Auth/visibility is per-declaration (canonical semantics in `jac-sv-auth`):
+
+- **`def:pub` / `walker:pub`** - no auth required. Anonymous callers run on the shared guest graph (`root.shared`); a caller who *does* send a valid token runs on their own root.
+- **`def:priv` / plain `def` (and `walker:priv` / plain `walker`)** - JWT required; runs on the caller's own isolated root. Plain and `:priv` behave identically (verified against the live server).
+- **`def _helper(...)`** - underscore prefix keeps a function OFF the API. Underscore-prefixed *walkers* are NOT inert: they become middleware hooks (`_before_request`, `_authenticate`) that run around every request.
+
+## Function endpoints (RPC style)
 
 Return types auto-serialize: node archetypes, primitives, `list[T]`, `dict`, `T | None`.
 
@@ -17,8 +21,6 @@ node Item {
     has done: bool = False;
 }
 
-
-# Public - anyone can call.
 def:pub list_items() -> list[Item] {
     return [root -->][?:Item];
 }
@@ -36,37 +38,94 @@ def:pub toggle_item(id: str) -> Item | None {
     }
     return None;
 }
+```
 
-def:pub delete_item(id: str) -> bool {
-    for i in [root -->][?:Item] {
-        if jid(i) == id {
-            del i;
-            return True;
-        }
+The find-by-`jid` loop (and why Python `id()` silently breaks) lives in `jac-sv-persistence` - same pattern for update/delete.
+
+## Walker endpoints (REST style)
+
+```jac
+node Item {
+    has title: str;
+}
+
+walker:pub add_task {
+    has title: str;                       # request body field
+
+    can create with Root entry {
+        task = (root ++> Item(title=self.title))[0] as Item;   # ++> returns a list
+        report {"id": jid(task), "title": task.title};   # response payload
     }
-    return False;
-}
-
-
-# Private - requires login; root is the current user's subgraph.
-def:priv get_my_items() -> list[Item] {
-    return [root -->][?:Item];
-}
-
-
-# Internal helper - the leading `_` keeps it OFF the API. (A plain `def` with no
-# underscore would itself be registered as an authenticated endpoint.)
-def _compute_age(item: Item) -> int {
-    return len(item.title);
 }
 ```
+
+```bash
+jac start api.jac --no_client       # API only, no frontend bundling (NOT --no-client)
+curl -X POST http://localhost:8000/walker/add_task \
+  -H "Content-Type: application/json" -d '{"title": "Write docs"}'
+```
+
+For typed report accumulation (`has reports: list[T] = [];`, exit-collector pattern), load `jac-walker-patterns` - it owns that pattern.
+
+## REST surface
+
+- `POST /walker/<name>` - spawn a walker; body maps onto `has` fields.
+- `POST /function/<name>` - call a function; body maps onto parameters.
+- `GET /docs` (Swagger), `/redoc`, `/openapi.json` - auto-generated; disable in prod with `[plugins.scale.server] docs_enabled = false`.
+- `GET /graph` - live graph visualizer. `GET /healthz` (+ `/healthz/ready`, `/healthz/live`) - health probes.
+
+Every response is wrapped in a standard envelope:
+
+```json
+{"ok": true, "type": "response",
+ "data": {"result": <return value or executed walker>, "reports": [<report values>]},
+ "error": null, "meta": {"extra": {"http_status": 200}}}
+```
+
+Errors flip `ok` to `false` and fill `error: {code, message}` (e.g. `UNAUTHORIZED` + `http_status: 401`). Returned archetypes carry `_jac_type` / `_jac_id` / `_jac_archetype` keys - wire bookkeeping that lets the jac client rehydrate real typed instances; raw REST consumers should read fields and ignore them.
+
+## @restspec - custom methods and paths
+
+Default is `POST` at the auto path. `restspec` and `APIProtocol` are ambient builtins; `HTTPMethod` needs an import:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/users/{user_id}/orders")
+walker:pub get_user_orders {
+    has user_id: str;          # path parameter (matches {user_id})
+    has status: str = "all";   # query parameter (GET)
+
+    can fetch with Root entry { report {"user": self.user_id, "status": self.status}; }
+}
+```
+
+Parameters are classified: **path** (name matches `{...}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods). `@restspec` works on `def :pub` functions too. `protocol=APIProtocol.WEBHOOK` / `WEBSOCKET` variants: see `jac-sv-deploy`.
+
+## File uploads
+
+```jac
+import from http { UploadFile }
+
+glob storage: any = store();   # ambient builtin; local disk by default
+
+walker:pub upload_doc {
+    has file: UploadFile;      # classified as a multipart file param
+
+    can save with Root entry {
+        storage.upload(self.file.file, f"docs/{self.file.filename}");
+        report {"ok": True};
+    }
+}
+```
+
+S3 backends and `get_url` presigning: `jac-sv-deploy`.
 
 ## Pitfalls
 
 - Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.
-- To delete a node: `del node;` - removes it and all its edges from the graph. Run it inside a loop that matches the id; don't try to pass nodes by reference from the client.
-- Give every client-callable endpoint an explicit return type. The return type IS the client's wire format (next bullet); an endpoint with no `-> T` hands the client nothing useful back.
-- **Return type IS the wire format.** Client gets dot access when you return typed nodes/objs (`list[Item]` → `items[0].title`). Returning raw `dict` or `list` loses typing on the client side.
-- `def:pub` = public endpoint (anonymous), `def:priv` = authenticated endpoint (per-user). A plain `def` is **also registered** - as an authenticated endpoint, same as `def:priv`. Only a leading `_` (`def _helper(...)`) keeps a function off the API. See `jac-sv-auth` for the full auth-model semantics.
-- **Use `jid(node)` for cross-RPC node identity; `id(node)` silently breaks lookups.** `id()` returns Python's in-memory address, which changes every server restart AND differs across worker processes - a lookup `for n in [root -->] { if id(n) == client_id { ... } }` returns no match every time, no error, just empty results. Use `jid(node)` (returns a stable persistent string) and compare with `if jid(n) == client_id`.
-- **Creating a new `services/X.sv.jac` is always a 2-file change.** The new endpoint must ALSO be added to `main.jac`'s plain `import from services.X { fn, Types }` block at the top. Without that import, the dispatcher never sees it and client calls hit `404 Not Found`. Especially easy to miss when extending a client-only app - `main.jac` previously had no server import block at all. See `jac-fullstack-patterns` for the full registry rule.
+- Give every endpoint an explicit return type - **the return type IS the wire format**. Returning typed nodes/objs gives the client dot access (`items[0].title`); raw `dict`/`list` loses typing.
+- Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.
+- **Creating a new `services/X.sv.jac` is always a 2-file change.** The endpoint must ALSO be imported in `main.jac` (`import from services.X { fn, Types }`) or the dispatcher never sees it and calls 404. See `jac-fullstack-patterns`.
+- `jac start` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); flags use underscores: `--no_client`, not `--no-client`.
+- A `{"detail": "Invalid anchor id ..."}` 500 after editing node schemas = stale persisted anchors. Fix: stop the server, `rm -rf .jac/data/`, restart. Full schema-evolution story: `jac-sv-persistence`.

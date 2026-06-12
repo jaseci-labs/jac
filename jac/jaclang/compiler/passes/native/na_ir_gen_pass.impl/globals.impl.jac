@@ -21,8 +21,12 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
             # Determine the LLVM type
             var_type: ir.Type = ir.IntType(64);  # Default to i64
-            if assign.type_tag and assign.type_tag.tag {
-                var_type = self._resolve_jac_type(assign.type_tag.tag);
+            if assign.type_tag is not None {
+                # Annotated global: lower the target's checker-stamped type.
+                _g_t0 = assign.target[0]
+                    if isinstance(assign.target, (list, tuple))
+                    else assign.target;
+                var_type = self._resolve_jac_type(_g_t0);
             } elif assign.value is not None {
                 # Infer type from initializer (e.g., glob game = Game())
                 inferred = self._infer_global_init_type(assign.value);

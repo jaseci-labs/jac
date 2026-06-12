@@ -104,7 +104,18 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             cond_bool = self._to_bool(cond);
             # assert fires when condition is FALSE
             is_false = self.builder.not_(cond_bool, name="assert.fail");
-            self._emit_runtime_raise(is_false, "AssertionError", "assertion failed");
+            # Stamp the source location (and any literal message) into the
+            # raise so the failure points at the assert site; messages are
+            # deduplicated globals, so unique strings cost one constant each.
+            _a_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+            _a_line = nd.loc.first_line if nd.loc else 0;
+            _a_text = "assertion failed";
+            if isinstance(nd.error_msg, uni.String) {
+                _a_text = nd.error_msg.lit_value;
+            }
+            self._emit_runtime_raise(
+                is_false, "AssertionError", f"{_a_text} at {_a_path}:{_a_line}"
+            );
         }
     } elif isinstance(nd, uni.DeleteStmt) {
         # del d[k]  →  d.remove(k)
@@ -433,7 +444,10 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     # across iterations).  Without this, an early `return` in a later
     # iteration that occurs before a body-declared local's source-order
     # declaration would leak the previous iteration's value.
-    _while_saved_locals = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _while_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -441,7 +455,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
         _while_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
             if nd.loc
             else 0}";
-        self._emit_loop_iter_cleanup(_while_saved_locals, loc=_while_loc);
+        self._emit_loop_iter_cleanup(_while_body_locals, loc=_while_loc);
         self.builder.branch(cond_bb);
     }
     self.loop_stack.pop();
@@ -489,7 +503,10 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     # Body block — continue lands on the step block so the counter advances.
     self.loop_stack.append((step_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    _saved_locals = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _saved_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -690,9 +707,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     # Handle set() constructor call with type annotation
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
-        if func_name == "set" and nd.type_tag and nd.type_tag.tag {
-            # set() constructor with type annotation - create empty set
-            set_type = self._resolve_jac_type(nd.type_tag.tag);
+        if func_name == "set" and nd.type_tag is not None {
+            # set() constructor with type annotation - create the empty set
+            # from the target's checker-stamped declared type.
+            _set_t0 = nd.target[0]
+                if isinstance(nd.target, (list, tuple))
+                else nd.target;
+            set_type = self._resolve_jac_type(_set_t0);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
@@ -1620,7 +1641,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     # ── range(...) iteration: the loop var IS the index ──
     if isinstance(nd.collection, uni.FuncCall)
-    and self._get_name(nd.collection.target) == "range" {
+    and self._get_name(nd.collection.target) == "range"
+    and nd.collection.call_kind == "builtin" {
         params = nd.collection.params or [];
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;
@@ -1915,7 +1937,10 @@ impl NaIRGenPass._codegen_for_indexed(
             return;
         }
     }
-    _for_saved = set(self.local_vars.keys());
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _for_saved = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }

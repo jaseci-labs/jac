@@ -86,8 +86,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.main.unitree_enrich_pass {
-            UniTreeEnrichPass
+        import from jaclang.compiler.passes.main.capability_check_pass {
+            CapabilityCheckPass
         }
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
@@ -105,7 +105,7 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemDefMatchPass,
             CFGBuildPass,
             MTIRGenPass,
-            UniTreeEnrichPass
+            CapabilityCheckPass
         ];
     } except ImportError {
         return [
@@ -124,7 +124,7 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     Diagnostic-only passes layered on top of the unconditional inference
     run (get_inference_sched), which has already populated Expr.type and
     surfaced type diagnostics in full-diagnostic mode. TypeCheckPass is NOT
-    repeated here, and UniTreeEnrichPass is not re-run — it runs exactly
+    repeated here, and CapabilityCheckPass is not re-run — it runs exactly
     once at the tail of get_ir_gen_sched (rerunning it mutates AST state
     that NaIRGenPass and the cross-module linker depend on).
 
@@ -143,11 +143,11 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
-        import from jaclang.compiler.passes.main.portability_check_pass {
-            PortabilityCheckPass
+        import from jaclang.compiler.passes.main.capability_check_pass {
+            PortabilityWarnPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-        return [StaticAnalysisPass, PortabilityCheckPass, JacLintCheckPass];
+        return [StaticAnalysisPass, PortabilityWarnPass, JacLintCheckPass];
     } except ImportError {
         return [];
     } finally {

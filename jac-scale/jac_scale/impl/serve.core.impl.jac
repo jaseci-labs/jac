@@ -334,6 +334,11 @@ impl JacAPIServerCore.start(
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
     import from importlib.metadata { version as pkg_version }
 
+    # Dev+client: skip — self.port is the API; the on_ready banner has the real URLs.
+    if dev and not no_client {
+        return;
+    }
+
     # Print header
     try {
         version = pkg_version('jaclang');
@@ -507,6 +512,33 @@ impl JacAPIServerCore.register_health_endpoint -> None {
     );
 }
 
+"""Register /__build_status: dev-mode build health from the hot reloader.
+HTTP 200 alone can't tell a clean build from a broken one (compile errors
+still serve the error-overlay page); "unavailable" outside dev mode."""
+impl JacAPIServerCore.register_build_status_endpoint -> None {
+    async def build_status -> dict {
+        import from jaclang.runtimelib.hmr { get_build_status }
+        return get_build_status();
+    }
+
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/__build_status',
+            callback=build_status,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Dev build health',
+            description=(
+                'Hot-reload build status: "ok", "compiling", or "error" '
+                '(with the failing file and message); "unavailable" when '
+                'not running in dev mode.'
+            )
+        )
+    );
+}
+
 """Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }
@@ -597,6 +629,7 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServerCore._register_endpoints -> None {
     # Core endpoints
     self.register_health_endpoint();
+    self.register_build_status_endpoint();
     self.register_auth_endpoints();
     self.register_page_endpoint();
     self.register_client_js_endpoint();

@@ -39,3 +39,20 @@ test "base builder bundling requires the jac-client plugin" {
     }
     assert raised , "base _compile_bundle should raise ClientBundleError without the plugin";
 }
+
+test "dev vite config registers the port reporter; build config does not" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_config = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_config.read_text();
+        # The plugin writes the bound port to .dev-port on "listening" —
+        # the jac CLI reads it instead of parsing Vite's stdout.
+        assert "jac-port-reporter" in dev_content;
+        assert ".dev-port" in dev_content;
+        build_config = bundler.create_vite_config(entry, is_dev=False);
+        assert "jac-port-reporter" not in build_config.read_text();
+    }
+}
