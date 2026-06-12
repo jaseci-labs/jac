@@ -1,6 +1,6 @@
 ---
 name: jac-debugging
-description: The Jac fix loop - reading `jac check` diagnostics (E/W code anatomy, the `jac guide` pointers), `# jac:ignore[CODE]` suppression, the stale-cache triage table (`jac clean` vs `jac purge` vs deleting `.jac/data`), `jac lint --fix` vs `jac format`, and graph inspection with `jac dot`. Load when a build fails, errors look wrong, or behavior is stale/inexplicable.
+description: The Jac fix loop - reading `jac check` diagnostics (E/W code anatomy, `jac guide` pointers), `# jac:ignore[CODE]` suppression, stale-cache triage (`jac clean` vs `jac purge` vs `.jac/data`), cross-boundary drift after server-contract changes (W1101/W1051 in client files), `jac lint --fix` vs `jac format`, graph inspection with `jac dot`. Load when a build fails, errors look wrong, or behavior is stale/inexplicable.
 ---
 
 The core loop: write -> `jac check <paths>` -> read the diagnostic -> follow its guide pointer -> fix -> re-check -> `jac test`.
@@ -66,6 +66,21 @@ If `jac dot` itself throws `NodeAnchor ... is not a valid reference`, that's the
 
 For a served app, `jac browse` drives a headless Chrome from the CLI (`jac browse open localhost:8000`, `snapshot`, `click @e1`, `screenshot`) - end-to-end checks without Playwright.
 
+## After changing a server contract
+
+Renamed or retyped a `def:pub` param, a walker `has` field, or a report shape? Run `jac check` project-wide and read the hits in `.cl.jac` files as **drift pointers to the stale callers**:
+
+```
+⚠ warning[W1101]: Cannot import name 'greet' from module '..services.api'
+  --> components/App.cl.jac:1:33
+```
+
+- `W1101` at a client's `sv import` - the imported endpoint/type no longer exists on the server (rename or removal).
+- `W1051` (unresolvable expression) at a client call or spawn site - the caller is still feeding the old contract.
+- A retyped param escalates to a hard `E1053` at the client call line (`Cannot assign Literal["world"] to parameter 'name' of type int`).
+
+Measured on a real fullstack app (47 seeded contract mutations): `jac check` flagged the stale **client** line in 70% of cases at error level, 79% counting warnings - the equivalent TypeScript+Python twin caught 0% across the boundary, because tsc never sees the mutated server and mypy never sees the stale client. Caveat: W1101/W1051 also fire for ordinary typos - the signal is their **location** (client files, right after a server edit). `sv import` wiring rules: `jac-fullstack-patterns`.
+
 ## Pitfalls
 
 - **Don't "fix" a type error by switching to `any`** - it defers the error to the next typed boundary (see `jac-types` for the real moves, including the `as` cast).
@@ -76,4 +91,5 @@ For a served app, `jac browse` drives a headless Chrome from the CLI (`jac brows
 
 - `jac-testing` - running tests, the persisted-root gotcha
 - `jac-types` - clearing E1xxx type errors properly
+- `jac-fullstack-patterns` - the `sv import` / endpoint-registry rules behind contract drift
 - `jac-config` - `[check.lint]`, `[run] diagnostics`

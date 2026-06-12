@@ -1,6 +1,6 @@
 ---
 name: jac-python-interop
-description: Using Python from Jac and Jac from Python - PyPI imports (numpy, pandas, sklearn), typing the untyped boundary, inline ::py:: blocks, importing .jac modules into Python scripts, jaclang.lib library mode (Node/Walker/spawn/root), jac2py. Load when mixing .jac and .py code or pulling in any PyPI package.
+description: Using Python from Jac and Jac from Python - PyPI imports (numpy, pandas, sklearn), typing the untyped boundary, inline ::py:: blocks, the class archetype for subclassing metaclass-driven Python types (static has), importing .jac modules into Python scripts, jaclang.lib library mode (Node/Walker/spawn/root), jac2py. Load when mixing .jac and .py code or pulling in any PyPI package.
 ---
 
 Jac compiles to Python bytecode, so the entire PyPI ecosystem is directly importable - no wrappers, no FFI. The bridge works in both directions: `.jac` files import `.py` modules with normal `import` syntax, and `.py` files import `.jac` modules through an import hook.
@@ -47,7 +47,37 @@ with entry {
 }
 ```
 
-Use for: preserving tested legacy code during migration, Python-only API shapes (metaclasses, exotic decorators). Do NOT use for simple imports (plain `import` works) or new logic that could be Jac - inline Python is invisible to the Jac type checker.
+Use for: preserving tested legacy code during migration, Python-only API shapes (exotic decorators, dynamic class construction). Do NOT use for simple imports (plain `import` works) or new logic that could be Jac - inline Python is invisible to the Jac type checker.
+
+## `class` archetype - subclassing metaclass-driven Python types
+
+Between plain `obj` inheritance and a `::py::` block sits a third option: the `class` archetype. Use `class` (not `obj`) when subclassing a Python type whose **metaclass consumes class attributes** - Pygments' `RegexLexer` compiling its `tokens` table, ORM/serializer base classes, ABCs with registration hooks. `obj` is dataclass-machinery-backed, so its `has` fields become instance fields and would be invisible to such a metaclass; in a `class`, `static has` becomes a genuine class attribute, exactly what the metaclass reads. The body stays full Jac - typed, checked, no `::py::` needed:
+
+```jac
+import from pygments.lexer { RegexLexer }
+import from pygments.token { Keyword, Name, Whitespace }
+
+class JacLexer(RegexLexer) {
+    static has name: str = "Jac";
+    static has aliases: list = ["jac"];
+    static has filenames: list = ["*.jac"];
+    static has tokens: dict = {
+        "root": [
+            (r"\b(walker|node|edge)\b", Keyword),
+            (r"\w+", Name),
+            (r"\s+", Whitespace),
+        ],
+    };
+}
+
+with entry {
+    for tok in list(JacLexer().get_tokens("walker greeter")) {
+        print(tok);
+    }
+}
+```
+
+Default to `obj` for your own types; reach for `class` only when a Python base's metaclass (or class-attribute protocol) demands real class attributes.
 
 ## Jac → Python scripts (import hook + `jaclang.lib`)
 
