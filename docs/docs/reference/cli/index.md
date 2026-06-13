@@ -583,7 +583,7 @@ For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutori
 Drive a headless Chrome/Chromium over the Chrome DevTools Protocol (CDP): navigate, interact with elements, inspect the page, and capture screenshots. The driver is zero-dependency -- it speaks CDP over a hand-rolled WebSocket, so no Playwright or Selenium install is required. Interactions use real CDP input events (trusted clicks and keystrokes), not JavaScript injection.
 
 ```bash
-jac browse <action> [args ...] [-s SESSION]
+jac browse <action> [args ...] [-s SESSION] [--viewport WxH]
 ```
 
 | Option | Description | Default |
@@ -591,6 +591,7 @@ jac browse <action> [args ...] [-s SESSION]
 | `action` | The action to perform (see table below) | Required |
 | `args` | Action-specific arguments (selector, url, text, path, ...) | `[]` |
 | `-s, --session` | Session name; each session is an isolated browser instance | `default` |
+| `--viewport` | Browser window size as `WIDTHxHEIGHT` (applied at `open`) | `1280x720` |
 
 **Actions:**
 
@@ -604,6 +605,9 @@ jac browse <action> [args ...] [-s SESSION]
 | `press` | `<key>` | Press a named key or character (`Enter`, `Tab`, `Ctrl+A`, ...) |
 | `get` | `url\|title\|text [selector]` | Read a page property (`get text` needs a selector) |
 | `eval` | `<expression>` | Run JavaScript and return the result as JSON |
+| `wait` | `<ms\|selector>` | Sleep for a duration, or wait until a selector is actionable |
+| `scroll` | `<up\|down\|left\|right\|top\|bottom\|selector> [px]` | Scroll the page, or scroll an element into view |
+| `console` | `[--clear]` | Print buffered console/log/exception output since page load |
 | `snapshot` | | Print the accessibility tree with `@e1`/`@e2` refs on interactive nodes |
 | `screenshot` | `[path]` | Capture the page as PNG (defaults to the cache directory) |
 | `state` | `save\|load <path>` | Save or restore cookies + localStorage as JSON |
@@ -618,7 +622,7 @@ A launched browser stays alive between CLI calls -- each invocation reconnects t
 
 **Refs vs. selectors:**
 
-`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. CSS selectors auto-wait until the element is visible and position-stable before acting.
+`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. Both auto-wait until the element is actionable: it is scrolled into view and must be visible, position-stable, inside the viewport, and the top element at the click point. If any of those cannot be satisfied (e.g. the point lands offscreen or another element covers the target), the command fails with an error instead of silently doing nothing.
 
 **Environment variables:**
 
@@ -650,6 +654,16 @@ jac browse press Enter
 
 # Run JavaScript
 jac browse eval "document.querySelectorAll('a').length"
+
+# Wait for an app to mount, then read its console output
+jac browse wait '#app'
+jac browse console
+#   [log] booted in 312ms
+#   [warning] Each child in a list should have a unique "key" prop.
+
+# Scroll for screenshot framing
+jac browse scroll down
+jac browse scroll '#pricing'
 
 # Capture a screenshot
 jac browse screenshot ./page.png
