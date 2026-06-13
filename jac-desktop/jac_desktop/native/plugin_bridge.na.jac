@@ -35,9 +35,9 @@ def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
     }
     result_str = PyUnicode_AsUTF8(py_result);
     Py_DecRef(py_req);
+    respond(wv_handle, id, result_str);
     Py_DecRef(py_result);
     PyGILState_Release(gstate);
-    respond(wv_handle, id, result_str);
 }
 
 # nacompile cannot lower wv.get_handle() inside an f-string for

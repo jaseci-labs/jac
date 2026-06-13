@@ -192,6 +192,75 @@ impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Parse a Callable[[p1, p2, ...], ret] annotation string into an LLVM
+function-pointer type ir.FunctionType(ret, [p1, ...]).as_pointer(), or None
+if the string is not a recognizable Callable subscript. Spaces are stripped
+so both compact ("Callable[[int],int]") and spaced ("Callable [ [ int ] , int ]")
+forms are accepted. Only primitive type names (int, i32, i8, str, None, etc.)
+are supported as parameter and return types."""
+impl NaIRGenPass._parse_callable_type_string(s: str) -> (ir.Type | None) {
+    # Normalize: remove all spaces
+    s = s.replace(' ', '');
+    if not s.startswith('Callable[') {
+        return None;
+    }
+    # Strip "Callable[" (9 chars) and the trailing "]"
+    inner = s[9:];
+    if not inner.endswith(']') {
+        return None;
+    }
+    inner = inner[:-1];
+    # inner is now "[p1,p2,...],ret"
+    if not inner.startswith('[') {
+        return None;
+    }
+    # Find the matching ']' for the params list
+    depth = 0;
+    end_idx = -1;
+    for i in range(len(inner)) {
+        c = inner[i];
+        if c == '[' {
+            depth += 1;
+        } elif c == ']' {
+            depth -= 1;
+            if depth == 0 {
+                end_idx = i;
+                break;
+            }
+        }
+    }
+    if end_idx < 0 {
+        return None;
+    }
+    params_str = inner[1:end_idx];
+    rest = inner[end_idx + 1:];
+    if not rest.startswith(',') {
+        return None;
+    }
+    ret_str = rest[1:];
+    _tm: dict = {
+        'int': ir.IntType(64),
+        'i64': ir.IntType(64),
+        'i32': ir.IntType(32),
+        'i16': ir.IntType(16),
+        'i8': ir.IntType(8),
+        'bool': ir.IntType(1),
+        'f64': ir.DoubleType(),
+        'f32': ir.FloatType(),
+        'str': ir.IntType(8).as_pointer(),
+        'None': ir.VoidType(),
+        'void': ir.VoidType()
+    };
+    ret_type = _tm.get(ret_str, ir.VoidType());
+    param_types: list = [];
+    if params_str {
+        for p in params_str.split(',') {
+            param_types.append(_tm.get(p, ir.IntType(64)));
+        }
+    }
+    return ir.FunctionType(ret_type, param_types).as_pointer();
+}
+
 """Return the native struct name for an expression whose checked type is a
 known struct instance, or None otherwise. Unions like `T | None` resolve to
 the struct member. `self` resolves to the archetype currently being
@@ -206,6 +275,34 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         return self._self_arch;
     }
     if not isinstance(expr, uni.Expr) or expr.type is None {
+        # Fallback for clib struct locals/globals whose type annotation was
+        # not stamped by the checker (checker skips clib import blocks).
+        # Derive the struct name from the LLVM alloca/global type instead.
+        if isinstance(expr, uni.Name) {
+            var_name = expr.value;
+            alloca = self.local_vars.get(var_name);
+            if alloca is not None {
+                slot_ty = alloca.type?.pointee;
+                if isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee {
+                    for sname in self.struct_types {
+                        if slot_ty.pointee == self.struct_types.get(sname) {
+                            return sname;
+                        }
+                    }
+                }
+            }
+            gvar = self.global_vars.get(var_name);
+            if gvar is not None {
+                gslot_ty = gvar.type?.pointee;
+                if isinstance(gslot_ty, ir.PointerType) and gslot_ty?.pointee {
+                    for sname in self.struct_types {
+                        if gslot_ty.pointee == self.struct_types.get(sname) {
+                            return sname;
+                        }
+                    }
+                }
+            }
+        }
         return None;
     }
     tk = expr.type.mangle();
@@ -494,6 +591,10 @@ impl NaIRGenPass._resolve_primitive_name(
     }
     _unparsed = expr.unparse() if expr?.unparse else '';
     if _unparsed.startswith('Callable') {
+        _fn_ty = self._parse_callable_type_string(_unparsed);
+        if _fn_ty is not None {
+            return _fn_ty;
+        }
         return ir.IntType(64);
     }
     # Fall back: walk sub-nodes for a nested Name (e.g. subscript base,
@@ -1974,6 +2075,16 @@ impl NaIRGenPass._emit_comparison(
             Tok.GTE: ">="
         };
         if op in icmp_map {
+            # Harmonize integer widths: sign-extend the narrower operand so
+            # icmp_signed gets matching types (e.g. i32 == i64(-1) → sext i32).
+            if isinstance(left.type, ir.IntType)
+            and isinstance(right.type, ir.IntType) {
+                if left.type.width < right.type.width {
+                    left = self.builder.sext(left, right.type, name="sext.l");
+                } elif right.type.width < left.type.width {
+                    right = self.builder.sext(right, left.type, name="sext.r");
+                }
+            }
             return self.builder.icmp_signed(icmp_map[op], left, right, name="icmp");
         }
     }
