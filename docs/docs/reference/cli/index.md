@@ -927,6 +927,44 @@ Or, when some rows are still stuck (often because the class involved isn't cover
 └───────────┴─────────────────────────────────────────────────┘
 ```
 
+### jac db fsck
+
+Scan the backend for referential-integrity violations: **dangling references** (a node citing an edge document that no longer exists, or an edge citing a missing endpoint node) and **orphans** (an unreferenced edge, or an edgeless non-root node). Read-only by default, so it is safe to run as a monitoring probe.
+
+```bash
+jac db fsck --app app.jac
+```
+
+**Output:**
+
+```
+Jac DB fsck: /tmp/myapp/.jac/data/app.db
+[INFO] dangling refs : 19   (8 document(s) cite a missing referent)
+[INFO] orphan edges  : 3
+[INFO] orphan nodes  : 11
+[INFO] Run `jac db fsck repair` to heal danglers and collect orphans.
+```
+
+Pass `repair` to act on the findings. Dangling citations are pruned and each missing referent is filed into the quarantine store under the `DANGLING_REF` reason code (visible via `jac db quarantine list`); orphans are collected. On SQLite the whole repair runs inside one `BEGIN IMMEDIATE` transaction, so a `fsck repair` is itself crash-atomic.
+
+```bash
+jac db fsck repair --app app.jac
+```
+
+**Output:**
+
+```
+✔ repaired: pruned 19 citation(s), quarantined 19 dangler(s) under DANGLING_REF, collected 14 orphan(s).
+```
+
+A clean database reports nothing to do:
+
+```
+✔ Clean: no referential-integrity violations.
+```
+
+> Most danglers are healed automatically the first time a traversal touches them (see [Persistence → Dangling references](../persistence.md#dangling-references-and-read-path-healing)). `jac db fsck` is the offline backstop: it heals references no live request has hit yet, and surfaces orphan garbage for collection.
+
 ### jac db schema rules
 
 List every registered [`__jac_schema__` drift rule](../persistence.md#declared-drift-rules-__jac_schema__) along with the active `JAC_SCHEMA_REPAIR` mode. The app is imported first (same `--app` / cwd discovery as the other subcommands), which is what runs the `__jac_schema__` hooks and registers the rules.

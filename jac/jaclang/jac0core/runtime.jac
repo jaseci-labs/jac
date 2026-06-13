@@ -197,6 +197,56 @@ def _prefetch_edges(origin: list[NodeArchetype]) -> None {
     }
 }
 
+"""Resolve a possibly-stub reference to a live anchor, healing danglers.
+
+Given the no-transactions stance of the storage layer, brief inter-document
+inconsistency is inherent, so a dangling reference is a legitimate runtime
+state — not an exception. Before this boundary existed, touching a stub
+whose referent was deleted (the #6587 corruption minted before the
+ChangeSet delete-ordering shipped) raised `ValueError: ... is not a valid
+reference` on *every* traversal shape, 500-ing the affected user's reads.
+
+`resolve_ref` makes traversal resolve-or-skip: return the populated anchor
+if it loads; otherwise skip-and-heal — log, file the dangler under
+DANGLING_REF, prune the stale citation from `referrer` — and return None so
+the loop continues. Direct attribute access on a stale handle still raises
+(programmer error, not a storage state); this is for graph traversal only.
+"""
+def resolve_ref(
+    stub: (Anchor | None), referrer: (Anchor | None) = None
+) -> (Anchor | None) {
+    if stub is None {
+        return None;
+    }
+    if stub.is_populated() {
+        return stub;
+    }
+    stub.populate();
+    if stub.is_populated() {
+        return stub;
+    }
+    ctx = JacRuntimeInterface.get_context();
+    # A referent that is recoverable-quarantined (schema drift / class missing)
+    # is not a permanent dangler: leave it and its citations to the existing
+    # quarantine/recovery machinery (`jac db recover`). Only genuinely-absent
+    # referents are healed. (DANGLING_REF rows are excluded by the gate, so a
+    # stub we already filed last pass is re-healed, not skipped.)
+    if ctx.mem.is_recoverable_quarantine(stub.id) {
+        return None;
+    }
+    ref_repr = referrer.id if referrer is not None else '?';
+    logger.error(
+        f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
+        f"{ref_repr} does not resolve; quarantining and pruning"
+    );
+    try {
+        ctx.mem.quarantine_ref(referrer, stub);
+    } except Exception as e {
+        logger.debug(f"heal of dangling ref {stub.id} failed: {e}");
+    }
+    return None;
+}
+
 """Jac Node Operations."""
 class JacNode {
     """Get edges connected to this node."""
@@ -937,6 +987,23 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
             Storage instance (LocalStorage by default)
         """
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
+
+    """Get the L3 persistent backend (hookable for plugins).
+
+        A DB-backend plugin (Postgres, etc.) supplies its own PersistentMemory
+        here instead of cloning the whole execution-context joint. Because
+        every hook is firstresult, the core default returns None so
+        TieredMemory falls back to SqliteMemory; a plugin that returns a
+        backend wins, composing with both core bare-serve and jac-scale.
+
+        Args:
+            config: resolved backing config (db_path, base_path, target_path)
+                so the backend can select its own keys.
+
+        Returns:
+            A PersistentMemory instance, or None to use the default.
+        """
+    static def get_persistent_memory(config: dict) -> any;
 }
 
 """Generate three helper classes based on a plugin class.

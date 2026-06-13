@@ -13,7 +13,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from datetime { datetime, timezone }
 import from typing { cast }
 import from uuid { UUID }
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }
 import from jaclang.runtimelib.changeset {
     ApplyReport,
     ChangeSet,
@@ -381,6 +381,82 @@ def _quarantine(
     }
 }
 
+"""File a dangling reference (a citation to a document that no longer exists)
+into anchors_quarantine under the DANGLING_REF reason code. Keyed by the
+missing referent's id so repeated sightings are idempotent (INSERT OR
+REPLACE). `manage_txn=False` lets a caller that already holds a transaction
+(fsck --repair) batch this into its unit of work. Never raises."""
+def _record_dangling(
+    conn: sqlite3.Connection,
+    missing_id: object,
+    referrer_id: object,
+    kind: str,
+    manage_txn: bool = True
+) {
+    try {
+        now_ts = datetime.now(timezone.utc).isoformat();
+        anchor_type = 'EdgeAnchor' if kind == 'edge' else 'NodeAnchor';
+        ref_str = str(referrer_id) if referrer_id is not None else '?';
+        # 'DANGLING_REF' is the shared reason code (jaclang.runtimelib.memory
+        # exposes it as DANGLING_REF); SQLite has no reason_code column, so it
+        # leads the error text where the CLI / fsck match on it.
+        err = f"DANGLING_REF: missing {kind} {missing_id} cited by {ref_str}";
+        payload = json.dumps({'referrer': ref_str, 'kind': kind});
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO anchors_quarantine
+                (id, type, arch_module, arch_type, fingerprint, data,
+                 error, quarantined_at, from_format_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(missing_id),
+                anchor_type,
+                None,
+                'DANGLING_REF',
+                None,
+                payload,
+                err,
+                now_ts,
+                None
+            )
+        );
+        if manage_txn {
+            conn.commit();
+        }
+    } except Exception as e {
+        logger.error(f"failed to record dangling ref {missing_id}: {e}");
+    }
+}
+
+"""Strip `remove_ids` from one node row's data.edges, in place. Returns the
+number of citations removed. Caller owns the transaction."""
+def _prune_node_edges(
+    conn: sqlite3.Connection, node_id: str, remove_ids: set[str]
+) -> int {
+    row = conn.execute("SELECT data FROM anchors WHERE id = ?", (node_id, )).fetchone();
+    if not row {
+        return 0;
+    }
+    try {
+        d = json.loads(row[0]);
+    } except Exception {
+        return 0;
+    }
+    old_edges = d.get('edges') or [];
+    new_edges = [
+        e
+        for e in old_edges
+        if str(e) not in remove_ids
+    ];
+    if len(new_edges) == len(old_edges) {
+        return 0;
+    }
+    d['edges'] = new_edges;
+    conn.execute("UPDATE anchors SET data = ? WHERE id = ?", (json.dumps(d), node_id));
+    return len(old_edges) - len(new_edges);
+}
+
 """One-shot migration from legacy pickle (id TEXT, data BLOB) to JSON schema.
 
 Called when an existing DB file has the legacy schema but none of the new
@@ -466,6 +542,15 @@ def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
 # =============================================================================
 """Default abort: nothing staged, nothing to discard."""
 impl Memory.abort -> None { }
+
+"""Default heal: volatile / cache tiers own no durable store, so there is
+nothing to quarantine and (for a bare L1) no shared graph to repair."""
+impl Memory.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None { }
+
+"""Default: a tier with no durable quarantine store has nothing recoverable."""
+impl Memory.is_recoverable_quarantine(id: UUID) -> bool {
+    return False;
+}
 
 """Initialize mutable defaults."""
 impl VolatileMemory.postinit -> None {
@@ -1477,6 +1562,185 @@ impl SqliteMemory.recover_all -> tuple {
 }
 
 
+"""File a dangling reference under DANGLING_REF (read-path healer hook)."""
+impl SqliteMemory.quarantine_dangling(
+    missing_id: UUID, referrer_id: (UUID | None), kind: str
+) -> None {
+    with self.__lock__ {
+        self._ensure_connection();
+        if self.__conn__ is not None {
+            _record_dangling(self.__conn__, missing_id, referrer_id, kind);
+        }
+    }
+}
+
+
+"""True if `id` is quarantined under a recoverable reason. DANGLING_REF rows
+are excluded — they are the read-path healer's own forensic records, not
+recoverable state, so a genuine dangler keeps being pruned on each pass
+instead of being mistaken for a schema-drift quarantine."""
+impl SqliteMemory.is_recoverable_quarantine(id: UUID) -> bool {
+    with self.__lock__ {
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ is None {
+            return False;
+        }
+        row = self.__conn__.execute(
+            """
+            SELECT 1 FROM anchors_quarantine
+            WHERE id = ? AND COALESCE(error, '') NOT LIKE 'DANGLING_REF%'
+            """,
+            (str(id), )
+        ).fetchone();
+        return row is not None;
+    }
+}
+
+
+"""Scan the anchor table for referential-integrity violations; optionally
+repair. See the PersistentMemory.fsck contract for the report shape.
+
+The scan reads only id/type/arch_type/data, classifies in Python, and
+(when repairing) prunes dangling citations + collects orphans inside one
+BEGIN IMMEDIATE transaction so a fsck is itself crash-atomic."""
+impl SqliteMemory.fsck(repair: bool = False) -> dict {
+    fsck_report: dict = {
+        'location': self.path,
+        'dangling_node_edge': [],
+        'dangling_edge_node': [],
+        'orphan_edges': [],
+        'orphan_nodes': [],
+        'repaired': repair,
+        'repaired_counts': {'pruned': 0, 'quarantined': 0, 'collected': 0}
+    };
+    with self.__lock__ {
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ is None {
+            return fsck_report;  # No DB on disk yet — nothing to check.
+        }
+        conn = self.__conn__;
+        # --- 1. Read the graph's topology metadata cheaply. ---
+        node_ids: set[str] = set();
+        edge_ids: set[str] = set();
+        node_edges: dict[str, list[str]] = {};
+        edge_endpoints: dict[str, tuple] = {};
+        node_is_root: dict[str, bool] = {};
+        for (rid, rtype, ratype, rdata) in conn.execute(
+            "SELECT id, type, arch_type, data FROM anchors"
+        ).fetchall() {
+            try {
+                d = json.loads(rdata);
+            } except Exception {
+                d = {};
+            }
+            if rtype == 'NodeAnchor' {
+                node_ids.add(rid);
+                node_edges[rid] = [str(e) for e in (d.get('edges') or [])];
+                node_is_root[rid] = ratype == 'Root';
+            } elif rtype == 'EdgeAnchor' {
+                edge_ids.add(rid);
+                src = d.get('source');
+                tgt = d.get('target');
+                edge_endpoints[rid] = (
+                    (str(src) if src is not None else None),
+                    (str(tgt) if tgt is not None else None)
+                );
+            }
+        }
+        # --- 2. Classify violations. ---
+        cited_edges: set[str] = set();
+        for (nid, eids) in node_edges.items() {
+            for eid in eids {
+                cited_edges.add(eid);
+                if eid not in edge_ids {
+                    fsck_report['dangling_node_edge'].append((nid, eid));
+                }
+            }
+        }
+        referenced_nodes: set[str] = set();
+        for (eid, endpoints) in edge_endpoints.items() {
+            for endp in endpoints {
+                if endp is not None {
+                    referenced_nodes.add(endp);
+                    if endp not in node_ids {
+                        fsck_report['dangling_edge_node'].append((eid, endp));
+                    }
+                }
+            }
+        }
+        for eid in edge_ids {
+            if eid not in cited_edges {
+                fsck_report['orphan_edges'].append(eid);
+            }
+        }
+        for nid in node_ids {
+            if (
+                not node_is_root.get(nid)
+                and not node_edges.get(nid)
+                and nid not in referenced_nodes
+            ) {
+                fsck_report['orphan_nodes'].append(nid);
+            }
+        }
+        if not repair {
+            return fsck_report;
+        }
+        # --- 3. Repair, atomically. ---
+        counts = fsck_report['repaired_counts'];
+        conn.commit();
+        try {
+            conn.execute("BEGIN IMMEDIATE");
+            remove_by_node: dict[str, set[str]] = {};
+            for (nid, eid) in fsck_report['dangling_node_edge'] {
+                remove_by_node.setdefault(nid, set()).add(eid);
+                _record_dangling(conn, eid, nid, 'edge', manage_txn=False);
+                counts['quarantined'] += 1;
+            }
+            broken_edges: set[str] = set();
+            for (eid, nid) in fsck_report['dangling_edge_node'] {
+                _record_dangling(conn, nid, eid, 'node', manage_txn=False);
+                counts['quarantined'] += 1;
+                broken_edges.add(eid);
+            }
+            # Broken (cites a missing node) + orphan edges are collected; first
+            # strip their ids from any node that still cites them.
+            collect_edges: set[str] = broken_edges | set(fsck_report['orphan_edges']);
+            for (nid, eids) in node_edges.items() {
+                also = set(eids) & collect_edges;
+                if also {
+                    remove_by_node.setdefault(nid, set()).update(also);
+                }
+            }
+            for (nid, rem) in remove_by_node.items() {
+                counts['pruned'] += _prune_node_edges(conn, nid, rem);
+            }
+            to_collect: list[str] = (
+                list(collect_edges) + list(fsck_report['orphan_nodes'])
+            );
+            if to_collect {
+                placeholders = ','.join('?' * len(to_collect));
+                cur = conn.execute(
+                    f"DELETE FROM anchors WHERE id IN ({placeholders})", to_collect
+                );
+                counts['collected'] += (
+                    cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                );
+            }
+            conn.commit();
+        } except Exception as e {
+            conn.rollback();
+            logger.error(f"fsck --repair rolled back: {e}");
+            fsck_report['repaired'] = False;
+        }
+    }
+    return fsck_report;
+}
+
+
 """List DB-resident aliases."""
 impl SqliteMemory.list_aliases -> list {
     self._ensure_connection();
@@ -1557,10 +1821,37 @@ impl TieredMemory.postinit -> None {
         # (the bootstrap seed), which can leak across in-process clients
         # (see context.impl.jac for the rationale).
         db_path = get_db_path(self.base_path, target_path=self.target_path);
-        self.l3 = SqliteMemory(path=db_path);
+        # Consult the get_persistent_memory hook first: a DB-backend plugin
+        # (Postgres, etc.) supplies its own PersistentMemory here without
+        # cloning the whole execution-context joint. The core default returns
+        # None (firstresult), so absent a plugin we fall back to SqliteMemory.
+        self.l3 = self._resolve_l3_backend(db_path);
     } else {
         self.l3 = None;
     }
+}
+
+"""Pick the L3 backend: a plugin-provided one via the get_persistent_memory
+hook, else the built-in SqliteMemory at `db_path`."""
+impl TieredMemory._resolve_l3_backend(db_path: str) -> PersistentMemory {
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.runtimelib.memory { SqliteMemory }
+    hooked: (PersistentMemory | None) = None;
+    try {
+        hooked = Jac.get_persistent_memory(
+            {
+                'db_path': db_path,
+                'base_path': self.base_path,
+                'target_path': self.target_path
+            }
+        );
+    } except Exception as e {
+        logger.debug(f"get_persistent_memory hook failed; using SqliteMemory: {e}");
+    }
+    if hooked is not None {
+        return hooked;
+    }
+    return SqliteMemory(path=db_path);
 }
 
 """Get anchor with read-through: L1 -> L2 -> L3 with promotion."""
@@ -1853,6 +2144,73 @@ impl TieredMemory.abort -> None {
                 self.l3.delete(id);
             }
         }
+    }
+}
+
+"""Heal a dangling reference found while traversing: file it under
+DANGLING_REF for operator visibility, prune the stale citation in memory,
+AND stage the repair as a normal EDGE_LIST_DELTA intent so it flushes through
+the same commit -> apply() path as any edge mutation. The repair is integrity
+maintenance, not a user mutation, so it is staged directly rather than gated
+on the walker's connect access — otherwise a read-only request (the exact
+#6587 dashboard load) could never self-heal. The forensic record is written
+immediately so the dangler is visible even if the request later aborts; the
+edge-list repair, being an intent, is discarded on abort and simply re-applied
+next traversal (`jac db fsck --repair` is the offline backstop)."""
+impl TieredMemory.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None {
+    if self.l3 is not None {
+        kind = 'edge' if isinstance(stub, EdgeAnchor) else 'node';
+        ref_id = referrer.id if referrer is not None else None;
+        try {
+            self.l3.quarantine_dangling(stub.id, ref_id, kind);
+        } except Exception as e {
+            logger.debug(f"quarantine_dangling record failed for {stub.id}: {e}");
+        }
+    }
+    # In-memory repair: a node citing a stale/broken edge drops that edge.
+    # (`node` is a reserved word in Jac, so the local is `nanchor`.)
+    if isinstance(referrer, NodeAnchor) {
+        nanchor = cast(NodeAnchor, referrer);
+        before = len(nanchor.edges);
+        nanchor.edges = [
+            e
+            for e in nanchor.edges
+            if e.id != stub.id
+        ];
+        if len(nanchor.edges) != before {
+            if nanchor.persistent {
+                # Stage the repair as a normal EDGE_LIST_DELTA intent — it then
+                # flushes through commit -> apply() like any edge mutation.
+                try {
+                    self.changes.record_edge_delta(
+                        nanchor, added=[], removed=[stub.id]
+                    );
+                } except Exception as e {
+                    logger.debug(f"heal edge-delta record failed: {e}");
+                }
+            }
+            if self.l2 {
+                self.l2.invalidate(nanchor.id);
+            }
+            logger.warning(
+                f"healed dangling reference: pruned {stub.id} from node "
+                f"{nanchor.id} (quarantined under DANGLING_REF)"
+            );
+        }
+    }
+}
+
+"""A referent is recoverable-quarantined iff the durable store (L3) holds a
+recoverable (non-DANGLING_REF) quarantine row for it. No L3 -> nothing is
+recoverable."""
+impl TieredMemory.is_recoverable_quarantine(id: UUID) -> bool {
+    if self.l3 is None {
+        return False;
+    }
+    try {
+        return self.l3.is_recoverable_quarantine(id);
+    } except Exception {
+        return False;
     }
 }
 

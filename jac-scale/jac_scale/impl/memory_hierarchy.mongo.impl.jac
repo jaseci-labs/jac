@@ -1266,6 +1266,203 @@ impl MongoBackend.recover_all -> tuple {
 }
 
 
+"""File a dangling reference under DANGLING_REF (read-path healer hook).
+
+Mirrors SqliteMemory.quarantine_dangling: upsert into the `_quarantine`
+companion collection keyed by the missing referent's id, with the shared
+DANGLING_REF reason_code so `jac db quarantine list/show` and the startup
+auto-retry treat it uniformly. Idempotent; never raises."""
+impl MongoBackend.quarantine_dangling(
+    missing_id: UUID, referrer_id: (UUID | None), kind: str
+) -> None {
+    if self.client is None {
+        return;
+    }
+    try {
+        q_col = _mongo_q_collection(self);
+        now_ts = datetime.now(timezone.utc).isoformat();
+        anchor_type = 'EdgeAnchor' if kind == 'edge' else 'NodeAnchor';
+        ref_str = str(to_uuid(referrer_id)) if referrer_id is not None else '?';
+        mid = str(to_uuid(missing_id));
+        err = f"DANGLING_REF: missing {kind} {mid} cited by {ref_str}";
+        q_col.update_one(
+            {'_id': mid},
+            {
+                '$set': {
+                    'type': anchor_type,
+                    'arch_module': None,
+                    'arch_type': 'DANGLING_REF',
+                    'fingerprint': None,
+                    'data': {'referrer': ref_str, 'kind': kind},
+                    'error': err,
+                    'reason_code': 'DANGLING_REF',
+                    'quarantined_at': now_ts,
+                    'from_format_version': None
+                }
+            },
+            upsert=True
+        );
+    } except Exception as e {
+        logger.error(f"MongoBackend: failed to record dangling ref {missing_id}: {e}");
+    }
+}
+
+
+"""True if `id` is quarantined under a recoverable reason. DANGLING_REF docs
+are excluded (they are the read-path healer's own forensic records), so a
+genuine dangler keeps being pruned instead of mistaken for schema drift."""
+impl MongoBackend.is_recoverable_quarantine(id: UUID) -> bool {
+    if self.client is None {
+        return False;
+    }
+    try {
+        return _mongo_q_collection(self).find_one(
+            {'_id': str(to_uuid(id)), 'reason_code': {'$ne': 'DANGLING_REF'}},
+            {'_id': 1}
+        ) is not None;
+    } except Exception {
+        return False;
+    }
+}
+
+
+"""Scan the anchor collection for referential-integrity violations; optionally
+repair. See the PersistentMemory.fsck contract for the report shape. Repair
+prunes dangling citations (`$pullAll`), files each under DANGLING_REF, and
+collects orphan/broken edge + node docs (`delete_many`), invalidating L2."""
+impl MongoBackend.fsck(repair: bool = False) -> dict {
+    loc = (
+        (self.mongo_url or '<no mongo url>') + '/' + self.db_name + '.' + self.collection_name
+    );
+    fsck_report: dict = {
+        'location': loc,
+        'dangling_node_edge': [],
+        'dangling_edge_node': [],
+        'orphan_edges': [],
+        'orphan_nodes': [],
+        'repaired': repair,
+        'repaired_counts': {'pruned': 0, 'quarantined': 0, 'collected': 0}
+    };
+    if self.client is None {
+        return fsck_report;
+    }
+    node_ids: set[str] = set();
+    edge_ids: set[str] = set();
+    node_edges: dict[str, list[str]] = {};
+    edge_endpoints: dict[str, tuple] = {};
+    node_is_root: dict[str, bool] = {};
+    try {
+        for doc in self.collection.find(
+            {}, {'_id': 1, 'type': 1, 'arch_type': 1, 'data': 1}
+        ) {
+            rid = str(doc.get('_id'));
+            rtype = doc.get('type');
+            d = doc.get('data') or {};
+            if rtype == 'NodeAnchor' {
+                node_ids.add(rid);
+                node_edges[rid] = [str(e) for e in (d.get('edges') or [])];
+                node_is_root[rid] = doc.get('arch_type') == 'Root';
+            } elif rtype == 'EdgeAnchor' {
+                edge_ids.add(rid);
+                src = d.get('source');
+                tgt = d.get('target');
+                edge_endpoints[rid] = (
+                    (str(src) if src is not None else None),
+                    (str(tgt) if tgt is not None else None)
+                );
+            }
+        }
+    } except Exception as e {
+        logger.error(f"MongoBackend.fsck: scan failed: {e}");
+        return fsck_report;
+    }
+    cited_edges: set[str] = set();
+    for (nid, eids) in node_edges.items() {
+        for eid in eids {
+            cited_edges.add(eid);
+            if eid not in edge_ids {
+                fsck_report['dangling_node_edge'].append((nid, eid));
+            }
+        }
+    }
+    referenced_nodes: set[str] = set();
+    for (eid, endpoints) in edge_endpoints.items() {
+        for endp in endpoints {
+            if endp is not None {
+                referenced_nodes.add(endp);
+                if endp not in node_ids {
+                    fsck_report['dangling_edge_node'].append((eid, endp));
+                }
+            }
+        }
+    }
+    for eid in edge_ids {
+        if eid not in cited_edges {
+            fsck_report['orphan_edges'].append(eid);
+        }
+    }
+    for nid in node_ids {
+        if (
+            not node_is_root.get(nid)
+            and not node_edges.get(nid)
+            and nid not in referenced_nodes
+        ) {
+            fsck_report['orphan_nodes'].append(nid);
+        }
+    }
+    if not repair {
+        return fsck_report;
+    }
+    counts = fsck_report['repaired_counts'];
+    try {
+        remove_by_node: dict[str, set[str]] = {};
+        for (nid, eid) in fsck_report['dangling_node_edge'] {
+            remove_by_node.setdefault(nid, set()).add(eid);
+            self.quarantine_dangling(to_uuid(eid), to_uuid(nid), 'edge');
+            counts['quarantined'] += 1;
+        }
+        broken_edges: set[str] = set();
+        for (eid, nid) in fsck_report['dangling_edge_node'] {
+            self.quarantine_dangling(to_uuid(nid), to_uuid(eid), 'node');
+            counts['quarantined'] += 1;
+            broken_edges.add(eid);
+        }
+        collect_edges: set[str] = broken_edges | set(fsck_report['orphan_edges']);
+        for (nid, eids) in node_edges.items() {
+            also = set(eids) & collect_edges;
+            if also {
+                remove_by_node.setdefault(nid, set()).update(also);
+            }
+        }
+        for (nid, rem) in remove_by_node.items() {
+            self.collection.update_one(
+                {'_id': nid}, {'$pullAll': {'data.edges': list(rem)}}
+            );
+            counts['pruned'] += len(rem);
+            if self._l2_ref {
+                self._l2_ref.delete(to_uuid(nid));
+                self._l2_ref.publish_invalidation(nid, None);
+            }
+        }
+        to_collect: list[str] = list(collect_edges) + list(fsck_report['orphan_nodes']);
+        if to_collect {
+            res = self.collection.delete_many({'_id': {'$in': to_collect}});
+            counts['collected'] += res.deleted_count or 0;
+            if self._l2_ref {
+                for cid in to_collect {
+                    self._l2_ref.delete(to_uuid(cid));
+                    self._l2_ref.publish_invalidation(cid, None);
+                }
+            }
+        }
+    } except Exception as e {
+        logger.error(f"MongoBackend.fsck: repair failed: {e}");
+        fsck_report['repaired'] = False;
+    }
+    return fsck_report;
+}
+
+
 """Auto-retry quarantined documents that a new deploy plausibly fixed.
 
 Runs once at backend startup (after class/alias registration). A doc is

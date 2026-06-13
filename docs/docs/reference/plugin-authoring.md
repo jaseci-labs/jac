@@ -533,6 +533,11 @@ obj PersistentMemory(Memory) {
     def list_aliases -> list abs;
     def add_alias(old_name: str, new_name: str) -> None abs;
     def remove_alias(old_name: str) -> bool abs;
+
+    # Referential-integrity surface (read-path healing + `jac db fsck`).
+    def quarantine_dangling(missing_id: UUID, referrer_id: (UUID | None), kind: str) -> None abs;
+    def is_recoverable_quarantine(id: UUID) -> bool abs;
+    def fsck(repair: bool = False) -> dict abs;
 }
 ```
 
@@ -565,19 +570,25 @@ through a delete intent.
 | `list_aliases` | List of `{'old_name', 'new_name', 'created_at'}` dicts |
 | `add_alias(old, new)` | Persist the mapping AND merge into `Serializer._aliases` so it applies on the next read |
 | `remove_alias(old)` | `True` if an entry was deleted; also `pop` from `Serializer._aliases` |
+| `quarantine_dangling(missing_id, referrer_id, kind)` | File a quarantine row for a citation to a now-missing document, under the `DANGLING_REF` reason code. Idempotent; never raises |
+| `is_recoverable_quarantine(id)` | `True` iff `id` is quarantined under a **recoverable** reason. MUST exclude `DANGLING_REF` rows, else the read-path healer is poisoned by its own forensic records and stops pruning a genuine dangler |
+| `fsck(repair=False)` | Scan for dangling references and orphans; return the report dict (`dangling_node_edge`, `dangling_edge_node`, `orphan_edges`, `orphan_nodes`, `repaired`, `repaired_counts`). With `repair=True`, prune danglers (filing each via `quarantine_dangling`) and collect orphans, atomically where the store allows |
 
 **Required guarantees:**
 
 - **Quarantine, never delete.** When `get` / `_load_anchor` (or whatever your read path is) hits a deserialization failure or unresolvable archetype class, move the row to a quarantine sidecar with the original payload and an error message. Never silently drop.
 - **Stamp every persisted row** with `arch_module`, `arch_type`, `fingerprint`, and `format_version` so drift detection works. The fingerprint comes from `cls.__jac_fingerprint__`.
 - **Load DB-resident aliases at connect time** into `Serializer._aliases` so operator-driven rescues apply on the next read.
+- **Keep `DANGLING_REF` distinct from recoverable reasons.** Stamp dangling-reference records with a reason that `is_recoverable_quarantine` excludes (SQLite leads the `error` text with `DANGLING_REF`; Mongo uses `reason_code`), so the read-path healer is never confused by its own forensic records and a genuinely-absent referent is healed while a schema-drift quarantine is left for `recover`.
+
+**Installing the backend.** Implement the `get_persistent_memory(config: dict) -> PersistentMemory | None` [hook](#jacruntimeinterface-runtime-hooks) and return your backend; `TieredMemory` / `ScaleTieredMemory` consult it before falling back to the built-in stores. `config` carries the resolved `db_path`, `base_path`, and `target_path` so you can pick your own connection keys.
 
 **Reference implementations:**
 
 - `jac/jaclang/runtimelib/impl/memory.impl.jac` -- `SqliteMemory`. The simplest backend; uses three tables (`anchors`, `anchors_quarantine`, `aliases`).
 - `jac-scale/jac_scale/impl/memory_hierarchy.mongo.impl.jac` -- `MongoBackend`. Document-store version; uses a main collection plus `<collection>_quarantine` and `<collection>_aliases` sidecars. Worth reading alongside SqliteMemory to see the same contract expressed against a different storage shape.
 
-Once your backend implements the interface, users get `jac db inspect`, `jac db quarantine list/show`, `jac db alias add/list/remove`, and `jac db recover/recover-all` against it for free. No CLI registration required -- `jac db` discovers your backend through the runtime context (`ctx.mem.l3`) at command time.
+Once your backend implements the interface, users get `jac db inspect`, `jac db quarantine list/show`, `jac db alias add/list/remove`, `jac db recover/recover-all`, and `jac db fsck` against it for free. No CLI registration required -- `jac db` discovers your backend through the runtime context (`ctx.mem.l3`) at command time.
 
 ## API reference
 
@@ -692,6 +703,9 @@ A condensed list of every hook plugins can override. The full definitions are in
 |---|---|
 | `get_user_manager` | `(base_path: str) -> UserManager` |
 | `store` | `(base_path: str = "./storage", create_dirs: bool = True) -> Storage` |
+| `get_persistent_memory` | `(config: dict) -> PersistentMemory \| None` |
+
+`get_persistent_memory` is the seam for a custom L3 backend (see [Recipe 7](#recipe-7-custom-persistence-backends)). `TieredMemory.postinit` consults it before falling back to `SqliteMemory`, and `ScaleTieredMemory` consults it before falling back to `MongoBackend`. The core default returns `None` (so absent a plugin nothing changes), and because every hook is `firstresult` the first plugin to return a backend wins. A backend plugin is therefore just a `PersistentMemory` subclass plus this one hookimpl, instead of a whole `create_j_context` replacement that would mutually exclude jac-scale.
 
 **Console (`JacConsole` mixin):**
 
