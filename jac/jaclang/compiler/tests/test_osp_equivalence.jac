@@ -308,3 +308,24 @@ test "osp bare edge: `a +>: E :+> b` (bare type) records the edge like `E()`" {
         require=["na"]
     );
 }
+
+test "osp field access: reading a field off an edge-ref / filtered node-ref element" {
+    # Issue #6646: an edge-ref / node-ref yields opaque handles; reading `.field`
+    # off one crashed codegen (node loop var) or E5090'd (edge subscript) because
+    # the handle was not recovered to the archetype struct layout. Edge fields
+    # and FILTERED node fields (whose element type the checker can resolve) now
+    # read correctly.
+    assert run_py_fixture("osp_field_access", "field_access_py") == {
+        "first_cx": 42.0,
+        "sum_cx": 50.0,
+        "nbr_tag": 99,
+        "direct": 42.0
+    };
+    run_with_both(
+        "osp_field_access.jac",
+        "field_access_py",
+        "field_access_na",
+        "field_access_na",
+        require=["na"]
+    );
+}
