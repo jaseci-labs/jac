@@ -5221,3 +5221,37 @@ test "callable_null_default_rejected_outside_native" {
         program.errors_had[0].pretty_print()
     );
 }
+
+test "recursive_type_alias_forward_refs" {
+    # Quoted forward refs inside a recursive alias (`Json = ... | list['Json']`)
+    # must resolve to the alias (gradually truncated with Any at depth 1),
+    # never to Literal["Json"]. Also covers forward refs in generic
+    # subscripts outside the alias's own RHS (`list['Json']`).
+    path = os.path.join(CHECKER_FIXTURES, "checker_recursive_type_alias.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "class_object_assignable_to_callable" {
+    # A class object is callable via its constructor (pyright:
+    # createFunctionFromConstructor): `json.dumps(default=str)` and
+    # `k: Callable[[Any], Any] = str` are valid; only the deliberate
+    # return-type mismatch (`Callable[[int], int] = str`) errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_class_as_callable.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 error (str -> Callable[[int], int]), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        bad: Callable[[int], int] = str;   # Error: str(int) returns str, not int
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
