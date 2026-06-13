@@ -190,6 +190,31 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
 }
 
 
+# The typed-endpoint counterpart to the guardrail above. Once an edge declares
+# its endpoint node types (`edge Portal: N --> N`, issue #6657), the neighbour
+# traversal element narrows to `N`, so native CAN resolve the struct layout and
+# the UNFILTERED field read compiles -- no E5090, and no `[?:Type]` filter
+# needed. This is the long-term fix the E5090 hint above pointed at.
+test "typed edge endpoints make an unfiltered node ref field read compile" {
+    prog = compile_na_inline(
+        "node_ref_typed_endpoint_field",
+        "node N { has tag: int = 0; }\n"
+        "edge Portal: N --> N {}\n"
+        "walker W {\n"
+        "    has v: int = 0;\n"
+        "    can go with N entry {\n"
+        "        nbrs = [here ->:Portal:->];\n"
+        "        if len(nbrs) > 0 { self.v = nbrs[0].tag; }\n"
+        "    }\n"
+        "}\n"
+        "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Typed-endpoint unfiltered field read should compile, got: {fmt_errors(
+        prog
+    )}";
+}
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────

@@ -695,6 +695,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2083 = _err(
          "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
      ),
+     E2027 = _err(
+         "E2027",
+         Category.SEMANTIC,
+         "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
+     ),
      # Def-impl match errors
      E2009 = _err(
          "E2009",
