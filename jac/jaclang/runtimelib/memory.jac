@@ -87,12 +87,16 @@ obj Memory {
     thing. Never raises into the traversal that called it."""
     def quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None;
 
-    """True if `id` sits in the durable quarantine store. The read-path healer
-    consults this to tell a GENUINE dangler (referent absent everywhere — heal
-    it) from a RECOVERABLE one (a schema-drift / class-missing quarantine that
-    `jac db recover` can still restore — leave its citations intact). Default
-    False (volatile / cache tiers own no quarantine)."""
-    def is_quarantined(id: UUID) -> bool;
+    """True if `id` sits in the durable quarantine store under a RECOVERABLE
+    reason (schema drift, class missing, cascade) that `jac db recover` can
+    still restore. The read-path healer consults this to tell such a referent
+    (leave its citations intact) from a GENUINE dangler (referent absent
+    everywhere - heal it). DANGLING_REF rows are EXCLUDED: they are the
+    healer's own forensic records, not recoverable state, so they must not
+    make the healer treat a genuine dangler as recoverable (and skip pruning
+    it on the next pass). Default False (volatile / cache tiers own no
+    quarantine)."""
+    def is_recoverable_quarantine(id: UUID) -> bool;
 
     def get_mem -> dict[UUID, Anchor] abs;
     # ---- Pushdown protocol ----
@@ -228,6 +232,15 @@ obj PersistentMemory(Memory) {
         missing_id: UUID, referrer_id: (UUID | None), kind: str
     ) -> None abs;
 
+    """True iff `id` is quarantined under a RECOVERABLE reason (anything but
+    DANGLING_REF). The read-path healer's gate: a recoverable referent is left
+    to `jac db recover`; a genuine dangler (no row, or only a DANGLING_REF
+    forensic row) is healed. Abstract here so every backend is guarded — a
+    backend that returns the Memory default (False) would treat a recoverable
+    quarantine as a dangler and prune its citations. Backends MUST exclude
+    DANGLING_REF rows so the healer is not poisoned by its own records."""
+    def is_recoverable_quarantine(id: UUID) -> bool abs;
+
     """Scan stored documents for referential-integrity violations, the basis
     for `jac db fsck`. Read-only by default (a safe monitoring probe); with
     `repair=True`, prune dangling citations (filing each under DANGLING_REF)
@@ -347,7 +360,7 @@ obj SqliteMemory(PersistentMemory) {
     ) -> None;
 
     def fsck(repair: bool = False) -> dict;
-    def is_quarantined(id: UUID) -> bool;
+    def is_recoverable_quarantine(id: UUID) -> bool;
     def get_mem -> dict[UUID, Anchor];
 }
 
@@ -393,7 +406,7 @@ obj TieredMemory(VolatileMemory) {
     def commit(anchor: (Anchor | None) = None) -> None;
     def abort -> None;
     def quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None;
-    def is_quarantined(id: UUID) -> bool;
+    def is_recoverable_quarantine(id: UUID) -> bool;
     # Collect L1 dirtiness into the unit of work (decision logic lives
     # here, in the runtime — backends only execute intents).
     def _collect_into(changes: ChangeSet) -> None;

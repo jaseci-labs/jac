@@ -199,8 +199,23 @@ impl JacNode.get_edges(
                 # that endpoint is genuinely gone; a recoverable (quarantined)
                 # endpoint keeps its edge so `jac db recover` can restore it.
                 gmem = JacRuntimeInterface.get_context().mem;
-                miss_id = `edge.source.id if source is None else `edge.target.id;
-                if not gmem.is_quarantined(miss_id) {
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
                     gmem.quarantine_ref(nanch, `edge);
                 }
                 continue;
@@ -256,8 +271,23 @@ impl JacNode.get_edges_with_node(
                 # Edge points at a ghost endpoint; prune only if genuinely gone
                 # (a recoverable quarantined endpoint keeps its edge).
                 gmem = JacRuntimeInterface.get_context().mem;
-                miss_id = `edge.source.id if source is None else `edge.target.id;
-                if not gmem.is_quarantined(miss_id) {
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
                     gmem.quarantine_ref(nanch, `edge);
                 }
                 continue;
@@ -313,8 +343,23 @@ impl JacNode.edges_to_nodes(
                 # Edge points at a ghost endpoint; prune only if genuinely gone
                 # (a recoverable quarantined endpoint keeps its edge).
                 gmem = JacRuntimeInterface.get_context().mem;
-                miss_id = `edge.source.id if source is None else `edge.target.id;
-                if not gmem.is_quarantined(miss_id) {
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
                     gmem.quarantine_ref(nanch, `edge);
                 }
                 continue;

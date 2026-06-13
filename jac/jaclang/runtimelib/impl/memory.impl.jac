@@ -547,9 +547,8 @@ impl Memory.abort -> None { }
 nothing to quarantine and (for a bare L1) no shared graph to repair."""
 impl Memory.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None { }
 
-"""Default: a tier with no durable quarantine store reports nothing as
-quarantined."""
-impl Memory.is_quarantined(id: UUID) -> bool {
+"""Default: a tier with no durable quarantine store has nothing recoverable."""
+impl Memory.is_recoverable_quarantine(id: UUID) -> bool {
     return False;
 }
 
@@ -1576,8 +1575,11 @@ impl SqliteMemory.quarantine_dangling(
 }
 
 
-"""True if `id` has a row in anchors_quarantine (a recoverable referent)."""
-impl SqliteMemory.is_quarantined(id: UUID) -> bool {
+"""True if `id` is quarantined under a recoverable reason. DANGLING_REF rows
+are excluded — they are the read-path healer's own forensic records, not
+recoverable state, so a genuine dangler keeps being pruned on each pass
+instead of being mistaken for a schema-drift quarantine."""
+impl SqliteMemory.is_recoverable_quarantine(id: UUID) -> bool {
     with self.__lock__ {
         if not self.__conn__ and os.path.exists(self.path) {
             self._ensure_connection();
@@ -1586,7 +1588,11 @@ impl SqliteMemory.is_quarantined(id: UUID) -> bool {
             return False;
         }
         row = self.__conn__.execute(
-            "SELECT 1 FROM anchors_quarantine WHERE id = ?", (str(id), )
+            """
+            SELECT 1 FROM anchors_quarantine
+            WHERE id = ? AND COALESCE(error, '') NOT LIKE 'DANGLING_REF%'
+            """,
+            (str(id), )
         ).fetchone();
         return row is not None;
     }
@@ -2195,13 +2201,14 @@ impl TieredMemory.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> Non
 }
 
 """A referent is recoverable-quarantined iff the durable store (L3) holds a
-quarantine row for it. No L3 -> nothing is recoverable."""
-impl TieredMemory.is_quarantined(id: UUID) -> bool {
+recoverable (non-DANGLING_REF) quarantine row for it. No L3 -> nothing is
+recoverable."""
+impl TieredMemory.is_recoverable_quarantine(id: UUID) -> bool {
     if self.l3 is None {
         return False;
     }
     try {
-        return self.l3.is_quarantined(id);
+        return self.l3.is_recoverable_quarantine(id);
     } except Exception {
         return False;
     }

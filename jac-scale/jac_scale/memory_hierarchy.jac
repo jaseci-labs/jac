@@ -178,7 +178,7 @@ obj MongoBackend(PersistentMemory) {
     ) -> None;
 
     def fsck(repair: bool = False) -> dict;
-    def is_quarantined(id: UUID) -> bool;
+    def is_recoverable_quarantine(id: UUID) -> bool;
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
     def _load_db_aliases -> int;

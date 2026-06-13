@@ -114,3 +114,55 @@ test "traversal heals a dangling edge citation instead of raising" {
         );
     }
 }
+
+
+test "traversal heals an edge whose target node was deleted (ghost endpoint)" {
+    # The secondary #6587 shape: the edge doc survives but cites a node that is
+    # gone. resolve_ref files a DANGLING_REF for the missing endpoint; the
+    # ghost-endpoint branch must still prune the now-dead edge from the citing
+    # node. The is_recoverable_quarantine gate excludes DANGLING_REF rows, so
+    # the row resolve_ref just filed does not poison the prune.
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        app = Path(tmpdir) / "app.jac";
+        app.write_text(APP);
+        (rc, _, err) = _jac(tmpdir, ["enter", str(app), "create"]);
+        assert rc == 0 , f"create failed: {err}";
+        db = _db_path(tmpdir);
+        # Delete one leaf Thing node, leaving the edge that targets it intact:
+        # an edge that now cites a missing node (the ghost endpoint).
+        conn = sqlite3.connect(db);
+        ghost = [
+            r[0]
+            for r in conn.execute(
+                "SELECT id FROM anchors WHERE type='NodeAnchor' AND arch_type='Thing'"
+            )
+        ][0];
+        conn.execute("DELETE FROM anchors WHERE id=?", (ghost, ));
+        conn.commit();
+        conn.close();
+        (rc, out, err) = _jac(tmpdir, ["enter", str(app), "dump"]);
+        assert rc == 0 , f"dump must not crash on a ghost-endpoint edge: {err}";
+        conn = sqlite3.connect(db);
+        # root drops the broken edge (2 -> 1, the surviving Thing remains).
+        root_edges = conn.execute(
+            """
+            SELECT COUNT(*) FROM json_each(json_extract(
+                (SELECT data FROM anchors WHERE arch_type='Root'), '$.edges'))
+            """
+        ).fetchone()[0];
+        # The missing node is filed under DANGLING_REF.
+        ghost_recorded = conn.execute(
+            "SELECT COUNT(*) FROM anchors_quarantine "
+            "WHERE id=? AND error LIKE 'DANGLING_REF%'",
+            (ghost, )
+        ).fetchone()[0];
+        conn.close();
+        assert root_edges == 1 , (
+            f"root must drop the edge to the ghost node, got {root_edges} edges"
+        );
+        assert ghost_recorded == 1 , (
+            "the missing node must be filed under DANGLING_REF"
+        );
+    }
+}

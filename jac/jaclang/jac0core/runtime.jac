@@ -229,8 +229,9 @@ def resolve_ref(
     # A referent that is recoverable-quarantined (schema drift / class missing)
     # is not a permanent dangler: leave it and its citations to the existing
     # quarantine/recovery machinery (`jac db recover`). Only genuinely-absent
-    # referents are healed.
-    if ctx.mem.is_quarantined(stub.id) {
+    # referents are healed. (DANGLING_REF rows are excluded by the gate, so a
+    # stub we already filed last pass is re-healed, not skipped.)
+    if ctx.mem.is_recoverable_quarantine(stub.id) {
         return None;
     }
     ref_repr = referrer.id if referrer is not None else '?';

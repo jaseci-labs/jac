@@ -1308,14 +1308,17 @@ impl MongoBackend.quarantine_dangling(
 }
 
 
-"""True if `id` has a document in the `_quarantine` collection."""
-impl MongoBackend.is_quarantined(id: UUID) -> bool {
+"""True if `id` is quarantined under a recoverable reason. DANGLING_REF docs
+are excluded (they are the read-path healer's own forensic records), so a
+genuine dangler keeps being pruned instead of mistaken for schema drift."""
+impl MongoBackend.is_recoverable_quarantine(id: UUID) -> bool {
     if self.client is None {
         return False;
     }
     try {
         return _mongo_q_collection(self).find_one(
-            {'_id': str(to_uuid(id))}, {'_id': 1}
+            {'_id': str(to_uuid(id)), 'reason_code': {'$ne': 'DANGLING_REF'}},
+            {'_id': 1}
         ) is not None;
     } except Exception {
         return False;

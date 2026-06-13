@@ -352,11 +352,13 @@ def _cmd_fsck(app: str, repair: bool) -> int {
     orphan_edges = r.get('orphan_edges') or [];
     orphan_nodes = r.get('orphan_nodes') or [];
     dangling_total = len(dne) + len(den);
-    roots_affected = len({pair[0] for pair in dne});
+    # Distinct referrers: nodes citing a missing edge + edges citing a missing
+    # node. Not roots specifically — any document on the citing side.
+    referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
     console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
     console.info(
         f"dangling refs : {dangling_total}   "
-        f"({roots_affected} node(s) cite a missing edge)",
+        f"({referrers_affected} document(s) cite a missing referent)",
         emoji=False
     );
     console.info(f"orphan edges  : {len(orphan_edges)}", emoji=False);
