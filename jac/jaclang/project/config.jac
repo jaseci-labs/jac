@@ -144,14 +144,15 @@ obj PluginsConfig {
 
 """Storage settings from [storage] section."""
 obj StorageConfig {
-    has storage_type: str = "local",  # local, s3, gcs, azure
+    has storage_type: str = "local",  # local, s3, gcs, firebase, azure
         base_path: str = "./storage",
         create_dirs: bool = True,
-        # S3 specific configuration
+        # Cloud storage configuration
         bucket: str = "",
         prefix: str = "",
         region: str = "us-east-1",
         endpoint_url: (str | None) = None,
+        project_id: str = "",
         public_read: bool = False;
 }
 

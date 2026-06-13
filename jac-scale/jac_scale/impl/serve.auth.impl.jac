@@ -14,6 +14,7 @@ impl JacAPIServerAuth.register_auth_endpoints -> None {
     self.register_me_endpoint();
     self.register_update_me_endpoint();
     self.register_sso_endpoints();
+    self.register_firebase_token_endpoint();
     self.register_api_key_endpoints();
 }
 
@@ -354,13 +355,12 @@ impl JacAPIServerAuth._create_sso_callback_wrapper -> Callable[
         if result.ok {
             token = result.data.get('token', '') if result.data else '';
             return RedirectResponse(url=f"{frontend_url}?token={token}");
-        } else {
-            error_code = result.error.code if result.error else 'UNKNOWN_ERROR';
-            message = result.error.message if result.error else 'Unknown error';
-            return RedirectResponse(
-                url=f"{frontend_url}?error={quote(error_code)}&message={quote(message)}"
-            );
         }
+        error_code = result.error.code if result.error else 'UNKNOWN_ERROR';
+        message = result.error.message if result.error else 'Unknown error';
+        return RedirectResponse(
+            url=f"{frontend_url}?error={quote(error_code)}&message={quote(message)}"
+        );
     }
     return sso_callback_wrapper;
 }
@@ -444,6 +444,37 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
             tags=['SSO APIs'],
             summary='SSO callback endpoint (POST)',
             description='Handles POST callbacks from SSO providers like Apple Sign In.'
+        )
+    );
+}
+
+# ============================================================================
+# Firebase Token-based Auth Endpoint
+# ============================================================================
+impl JacAPIServerAuth.register_firebase_token_endpoint -> None {
+    async def firebase_token_handler(
+        body_data: FirebaseTokenRequest
+    ) -> TransportResponse {
+        return await self.user_manager.firebase_token_auth_with_id_token(
+            body_data.id_token
+        );
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/sso/firebase/token',
+            callback=firebase_token_handler,
+            request_model=FirebaseTokenRequest,
+            response_model=None,
+            tags=['SSO APIs'],
+            summary='Firebase Auth token verification',
+            description=(
+                'Verify a Firebase ID token and log in or auto-register the user. '
+                'Send a JSON body with {"id_token": "<token>"}. '
+                'Unlike other SSO providers, Firebase does not use redirect flows — '
+                'the client-side Firebase SDK handles authentication and provides '
+                'the ID token directly.'
+            )
         )
     );
 }

@@ -2,12 +2,13 @@
 import os;
 import from jaclang.runtimelib.storage { Storage }
 import from jaclang.project.config { get_config }
-
-enum StorageType {
-    LOCAL = "local",
-    S3 = "s3"
-    # Future: GCS, AZURE
+import from jac_scale.firebase_env {
+    JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,
+    JAC_STORAGE_GCS_PROJECT_ID_ENV,
+    resolve_firebase_project_id
 }
+
+enum StorageType { LOCAL = "local", S3 = "s3", GCS = "gcs", FIREBASE = "firebase" }
 
 """Factory for creating storage instances.
 
@@ -15,20 +16,30 @@ Configuration priority: jac.toml > environment variable > default
 
 In jac.toml:
     [storage]
-    storage_type = "s3"  # or "local"
+    storage_type = "s3"  # or "local", "gcs", "firebase"
     bucket = "my-bucket"
     region = "us-east-1"
     prefix = "uploads/"
     public_read = false
-    endpoint_url = "https://..." # optional
+    endpoint_url = "https://..." # optional for s3
+    project_id = "my-firebase-project" # optional for gcs/firebase
 
 Environment variables:
-    JAC_STORAGE_TYPE: local, s3
+    JAC_STORAGE_TYPE: local, s3, gcs, firebase
     JAC_STORAGE_S3_BUCKET: S3 bucket name
     JAC_STORAGE_S3_REGION: AWS region
     JAC_STORAGE_S3_PREFIX: Key prefix
     JAC_STORAGE_S3_ENDPOINT_URL: For S3-compatible providers
     JAC_STORAGE_S3_PUBLIC_READ: "true" or "false"
+    JAC_STORAGE_GCS_BUCKET: GCS / Firebase Storage bucket name
+    JAC_STORAGE_GCS_PREFIX: GCS object prefix
+    JAC_STORAGE_GCS_PROJECT_ID: GCS / Firebase project ID
+    JAC_STORAGE_GCS_PUBLIC_READ: "true" or "false"
+    JAC_STORAGE_FIREBASE_BUCKET: Firebase Storage bucket name
+    JAC_STORAGE_FIREBASE_PREFIX: Firebase Storage object prefix
+    JAC_STORAGE_FIREBASE_PROJECT_ID: Firebase project ID
+    JAC_STORAGE_FIREBASE_PUBLIC_READ: "true" or "false"
+    FIREBASE_PROJECT_ID: Shared Firebase project ID fallback for all subsystems
 """
 class StorageFactory {
     static def create(
@@ -59,6 +70,20 @@ class StorageFactory {
                 endpoint_url=cfg.get("endpoint_url"),
                 public_read=cfg.get("public_read", False)
             );
+        } elif storage_type in [StorageType.GCS, StorageType.FIREBASE] {
+            import from jac_scale.storage.gcs_storage { GcsStorage }
+            cfg = config or {};
+            if not cfg.get("bucket") {
+                raise ValueError(
+                    "GCS/Firebase storage requires a 'bucket' configuration."
+                );
+            }
+            return GcsStorage(
+                bucket=cfg["bucket"],
+                prefix=cfg.get("prefix", ""),
+                public_read=cfg.get("public_read", False),
+                project_id=cfg.get("project_id")
+            );
         }
         raise ValueError(f"Unsupported storage type: {storage_type}");
     }
@@ -68,7 +93,7 @@ class StorageFactory {
     ) -> Storage {
         # Get config from jac.toml if available
         jac_config = get_config();
-        storage_config: dict[str, Any] = {};
+        storage_config: dict[str, any] = {};
 
         # 1. Determine storage type
         storage_type_str = os.environ.get("JAC_STORAGE_TYPE");
@@ -112,6 +137,56 @@ class StorageFactory {
             }
             if (public_env := os.environ.get("JAC_STORAGE_S3_PUBLIC_READ")) {
                 storage_config["public_read"] = public_env.lower() == "true";
+            }
+        } elif storage_type in [StorageType.GCS, StorageType.FIREBASE] {
+            if jac_config and jac_config.storage {
+                storage_config["bucket"] = jac_config.storage.bucket;
+                storage_config["prefix"] = jac_config.storage.prefix;
+                storage_config["project_id"] = jac_config.storage.project_id;
+                storage_config["public_read"] = jac_config.storage.public_read;
+            }
+            env_prefix = "GCS" if storage_type == StorageType.GCS else "FIREBASE";
+            if (bucket_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_BUCKET")) {
+                storage_config["bucket"] = bucket_env;
+            }
+            if (prefix_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_PREFIX")) {
+                storage_config["prefix"] = prefix_env;
+            }
+            if (
+                public_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_PUBLIC_READ")
+            ) {
+                storage_config["public_read"] = public_env.lower() == "true";
+            }
+            # Allow GCS and FIREBASE env vars to cross-populate bucket/prefix.
+            for (field, env_suffix) in [('bucket', 'BUCKET'), ('prefix', 'PREFIX')] {
+                if not storage_config.get(field) {
+                    alias_val = os.environ.get(f"JAC_STORAGE_FIREBASE_{env_suffix}")
+                    or os.environ.get(f"JAC_STORAGE_GCS_{env_suffix}");
+                    if alias_val {
+                        storage_config[field] = alias_val;
+                    }
+                }
+            }
+            other_prefix = "FIREBASE" if env_prefix == "GCS" else "GCS";
+            if (
+                resolved_project := resolve_firebase_project_id(
+                    [
+                        f"JAC_STORAGE_{env_prefix}_PROJECT_ID",
+                        f"JAC_STORAGE_{other_prefix}_PROJECT_ID",
+                        JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,
+                        JAC_STORAGE_GCS_PROJECT_ID_ENV
+                    ],
+                    storage_config.get('project_id')
+                )
+            ) {
+                storage_config['project_id'] = resolved_project;
+            }
+            if "public_read" not in storage_config {
+                public_alias = os.environ.get("JAC_STORAGE_FIREBASE_PUBLIC_READ")
+                or os.environ.get("JAC_STORAGE_GCS_PUBLIC_READ");
+                if public_alias {
+                    storage_config["public_read"] = public_alias.lower() == "true";
+                }
             }
         }
 

@@ -207,7 +207,7 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
 
 """Create callback that extracts all query parameters from FastAPI Request."""
 impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
-    """Render a page by name with all query parameters.""";
+    """Render a page by name with all query parameters."""
     def callback(page_name: str, **kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
@@ -230,7 +230,7 @@ impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
 impl JacAPIServerStatic.render_base_route_callback(
     app_name: str
 ) -> Callable[..., HTMLResponse] {
-    """Render the base route app.""";
+    """Render the base route app."""
     def callback(**kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(

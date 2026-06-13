@@ -7,6 +7,7 @@ import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.utils { generate_random_password, is_safe_loopback_redirect }
+import from jac_scale.firebase_env { firebase_project_id_env_hint }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jac_scale.identity_storage {
@@ -65,7 +66,7 @@ obj JacScaleUserManager(UserManager) {
     ) -> dict[str, str];
 
     def reset_password_by_user_id(user_id: str, new_password: str) -> dict[str, str];
-    def add_identity(user_id: str, identity: dict[str, Any]) -> bool;
+    def add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def is_identity_taken(value: str) -> bool;
     def set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def update_profile(
@@ -85,6 +86,12 @@ obj JacScaleUserManager(UserManager) {
     ) -> Response | TransportResponse;
 
     async def sso_callback(request: Request, platform: str) -> TransportResponse;
+    # Firebase Auth: token-based authentication (no redirect flow)
+    async def firebase_token_auth_with_id_token(id_token: str) -> TransportResponse;
+    # Shared login/register logic used by sso_callback and firebase_token_auth_with_id_token
+    def _complete_sso_login(
+        platform: str, user_info: SSOUserInfo
+    ) -> TransportResponse;
     # SSO Account Linking
     def link_sso_account(
         user_id: str, platform: str, external_id: str

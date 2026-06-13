@@ -1,0 +1,12 @@
+[project]
+name = "firestore-kvstore-demo"
+version = "1.0.0"
+description = "Minimal demo: store and retrieve values with kvstore() backed by Firestore"
+entry-point = "app.jac"
+
+# Configure Firestore as the database backend.
+# Set FIRESTORE_PROJECT_ID env var instead, or fill in your project ID below.
+#
+# [plugins.scale.database]
+# type = "firestore"
+# project_id = "your-firebase-project-id"

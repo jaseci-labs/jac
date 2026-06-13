@@ -269,6 +269,21 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_s3_storage.jac
 
+    - name: Install jac-scale[firebase] extras
+      run: |
+        jac install -e jac-scale --extras firebase
+
+    - name: Run Firebase storage / Firestore / Auth SSO tests
+      # Each file is a separate pytest process: jac modules double-load when many
+      # test files share one importlib session, which staleifies mock patches.
+      # test_firestore_e2e is omitted here — it needs a live Firestore emulator
+      # and skips without FIRESTORE_EMULATOR_HOST.
+      run: |
+        pytest -x -vv jac-scale/jac_scale/tests/test_storage.jac
+        pytest -x -vv jac-scale/jac_scale/tests/test_gcs_storage.jac
+        pytest -x -vv jac-scale/jac_scale/tests/test_firestore_db.jac
+        pytest -x -vv jac-scale/jac_scale/tests/test_firebase_auth_sso.jac
+
     - name: Run Microservice interop tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
