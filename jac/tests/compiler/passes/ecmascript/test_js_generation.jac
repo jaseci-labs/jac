@@ -1856,6 +1856,112 @@ test "sibling block scopes — try except finally each get their own let" {
 }
 
 
+test "except Exception catches native JS errors (interop resilience)" {
+    # jaseci-labs/jaseci#6656: `except Exception` lowered to
+    # `__jac_e instanceof _jac.exc.Exception`, which native JS errors
+    # (SyntaxError from JSON.parse, interop TypeError, host Errors) are NOT
+    # part of — so the common best-effort `try { ... } except Exception { ... }`
+    # pattern silently re-threw them. The fix routes builtin except clauses
+    # through `_jac.exc.matches`, whose `Exception` arm also accepts non-Jac
+    # throws (Python semantics).
+    jac_code = "\"\"\"native-error catch test.\"\"\"\n\ncl def parse_or_default(raw: str) -> any {\n    try { return JSON.parse(raw); } except Exception { return None; }\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.exc.matches(__jac_e, \"Exception\")" in js_code , (
+            "builtin except must dispatch via _jac.exc.matches, got:\n" f"{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (parse_or_default('not json') !== null)" + " { throw new Error('except Exception must catch native SyntaxError'); }" + "\nif (JSON.stringify(parse_or_default('[1,2]')) !== '[1,2]')" + " { throw new Error('valid JSON must still parse'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "except Exception failed to catch a native JS error (#6656):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "narrow builtin except does not catch native JS errors" {
+    # The flip side of #6656: `except ValueError` must stay Python-faithful and
+    # NOT swallow an unrelated native SyntaxError — only `except Exception`
+    # broadens to native throws. A native error here must propagate.
+    jac_code = "\"\"\"narrow except test.\"\"\"\n\ncl def narrow(raw: str) -> int {\n    try { JSON.parse(raw); return 1; } except ValueError { return 0; }\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.exc.matches(__jac_e, \"ValueError\")" in js_code , (
+            f"narrow builtin except must dispatch via _jac.exc.matches, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nlet threw = false;" + "\ntry { narrow('not json'); } catch (e) { threw = (e instanceof SyntaxError); }" + "\nif (!threw) { throw new Error('except ValueError must NOT catch native SyntaxError'); }" + "\nif (narrow('5') !== 1) { throw new Error('valid path must return 1'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "narrow except wrongly caught (or mis-handled) a native error:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "user-defined exception except is not a catch-all" {
+    # Before #6656, `except MyError` (a non-builtin type) fell through to the
+    # else branch and compiled to `if (true)` — catching EVERY exception. It
+    # must now emit `instanceof MyError` so it catches only that type and lets
+    # unrelated exceptions fall through to the next handler.
+    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ncl def classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "instanceof MyError" in js_code , (
+            f"user-defined except must emit `instanceof MyError`, got:\n{js_code}"
+        );
+        assert "matches(__jac_e, \"MyError\")" not in js_code , (
+            "user-defined type must not be routed through the builtin "
+            f"_jac.exc.matches predicate, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (classify(1) !== 'mine')" + " { throw new Error('except MyError must catch MyError'); }" + "\nif (classify(2) !== 've')" + " { throw new Error('except MyError must NOT catch a ValueError'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "user-defined except behaved as a catch-all (#6656):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
 test "in/not in on unknown-typed containers matches Python semantics" {
     # `opaque()` returns `any`, so the backend cannot statically prove the
     # container types. Membership must still behave like Python: substring

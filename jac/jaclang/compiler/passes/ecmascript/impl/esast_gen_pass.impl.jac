@@ -3269,16 +3269,18 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                 }
             }
             import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+            # Build the per-handler guard `test_expr`. A None test_expr means a
+            # catch-all (bare `except`, or a type whose name we cannot resolve).
+            test_expr: (es.Expression | None) = None;
             if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
                 self.needs_jac_runtime = True;
-                # Build: __jac_e instanceof _jac.exc.X
+                # Builtin exception → `_jac.exc.matches(__jac_e, "X")`. The
+                # runtime predicate encodes Python catch semantics so that
+                # `except Exception`/`except BaseException` also catch native JS
+                # errors (which are not in the `_jac.exc` class hierarchy).
                 test_expr = self.sync_loc(
-                    es.BinaryExpression(
-                        operator='instanceof',
-                        left=self.sync_loc(
-                            es.Identifier(name=catch_param_name), jac_node=except_node
-                        ),
-                        right=self.sync_loc(
+                    es.CallExpression(
+                        callee=self.sync_loc(
                             es.MemberExpression(
                                 object=self.sync_loc(
                                     es.MemberExpression(
@@ -3289,20 +3291,52 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                                         property=self.sync_loc(
                                             es.Identifier(name='exc'),
                                             jac_node=except_node
-                                        )
+                                        ),
+                                        computed=False
                                     ),
                                     jac_node=except_node
                                 ),
                                 property=self.sync_loc(
-                                    es.Identifier(name=exc_type_name),
-                                    jac_node=except_node
-                                )
+                                    es.Identifier(name='matches'), jac_node=except_node
+                                ),
+                                computed=False
                             ),
                             jac_node=except_node
+                        ),
+                        arguments=[
+                            self.sync_loc(
+                                es.Identifier(name=catch_param_name),
+                                jac_node=except_node
+                            ),
+                            self.sync_loc(
+                                es.Literal(
+                                    value=exc_type_name, raw=json.dumps(exc_type_name)
+                                ),
+                                jac_node=except_node
+                            )
+                        ]
+                    ),
+                    jac_node=except_node
+                );
+            } elif exc_type_name {
+                # User-defined exception archetype → `__jac_e instanceof X`, the
+                # JS class the archetype compiles to. Only that type (and its
+                # subclasses, via the prototype chain) is caught; unrelated
+                # exceptions fall through to the next handler / re-throw.
+                test_expr = self.sync_loc(
+                    es.BinaryExpression(
+                        operator='instanceof',
+                        left=self.sync_loc(
+                            es.Identifier(name=catch_param_name), jac_node=except_node
+                        ),
+                        right=self.sync_loc(
+                            es.Identifier(name=exc_type_name), jac_node=except_node
                         )
                     ),
                     jac_node=except_node
                 );
+            }
+            if test_expr is not None {
                 if_chain = self.sync_loc(
                     es.IfStatement(
                         test=test_expr, consequent=handler_body, alternate=if_chain
@@ -3310,32 +3344,18 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     jac_node=except_node
                 );
             } else {
-                # No type or unknown type = catch-all (bare "except:" or "except Exception:")
-                if if_chain is None {
-                    # This is the only/last handler — use its body directly
-                    if_chain = self.sync_loc(
-                        es.IfStatement(
-                            test=self.sync_loc(
-                                es.Literal(value=True, raw='true'), jac_node=except_node
-                            ),
-                            consequent=handler_body,
-                            alternate=None
+                # Catch-all (bare `except`): `if (true) { ... }`. Any existing
+                # chain is discarded as unreachable, matching prior behavior.
+                if_chain = self.sync_loc(
+                    es.IfStatement(
+                        test=self.sync_loc(
+                            es.Literal(value=True, raw='true'), jac_node=except_node
                         ),
-                        jac_node=except_node
-                    );
-                } else {
-                    # Catch-all wraps the existing chain as its else
-                    if_chain = self.sync_loc(
-                        es.IfStatement(
-                            test=self.sync_loc(
-                                es.Literal(value=True, raw='true'), jac_node=except_node
-                            ),
-                            consequent=handler_body,
-                            alternate=None
-                        ),
-                        jac_node=except_node
-                    );
-                }
+                        consequent=handler_body,
+                        alternate=None
+                    ),
+                    jac_node=except_node
+                );
             }
         }
         # If no catch-all handler was found, add a re-throw as the final else
