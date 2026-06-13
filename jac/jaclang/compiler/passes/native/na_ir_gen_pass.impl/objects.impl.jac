@@ -391,7 +391,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                         # resolve via the raw type-tag node which _resolve_primitive_name
                         # can process (handles Callable[[...], ret] → fn-ptr type).
                         if arch_name in self.clib_struct_names {
-                            ftype = self._resolve_jac_type(var.type_tag.tag);
+                            ftype = self._resolve_jac_type(var.type_tag);
                         } else {
                             ftype = self._resolve_jac_type(var);
                         }
