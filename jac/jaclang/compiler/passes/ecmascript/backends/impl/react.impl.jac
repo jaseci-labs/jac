@@ -32,6 +32,16 @@ impl ReactBackend.required_globals -> list[str] {
     return ["__jacJsx", "__jacSpawn"];
 }
 
+"""Basename of the framework-specific client runtime .cl.jac source."""
+impl ReactBackend.runtime_source_basename -> str {
+    return "client_runtime.cl.jac";
+}
+
+"""Vite resolve aliases — React needs no module remapping."""
+impl ReactBackend.vite_aliases -> dict[str, str] {
+    return {};
+}
+
 """Build the React entry script that mounts an exported `app` component."""
 impl ReactBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True

@@ -4,16 +4,14 @@ import os;
 
 """Basename of the client runtime source file for `framework`."""
 def client_runtime_cl_basename(framework: str = "") -> str {
-    fw = framework;
-    if not fw {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-        fw = cfg.client.framework if (cfg and cfg.client) else "react";
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_framework_backend,
+        resolve_active_backend
     }
-    if fw == "preact" {
-        return "preact_runtime.cl.jac";
-    }
-    return "client_runtime.cl.jac";
+    backend = resolve_framework_backend(framework)
+        if framework
+        else resolve_active_backend();
+    return backend.runtime_source_basename();
 }
 
 """Absolute path to the client runtime `.cl.jac` for `framework`."""

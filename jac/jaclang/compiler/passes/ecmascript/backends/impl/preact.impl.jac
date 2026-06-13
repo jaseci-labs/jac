@@ -15,6 +15,17 @@ impl PreactBackend.import_source(symbol: str) -> str {
     return "@jac/runtime";
 }
 
+"""Preact shares the canonical client runtime; the `react` imports inside it
+are remapped to `preact/compat` at bundle time via `vite_aliases` below."""
+impl PreactBackend.runtime_source_basename -> str {
+    return "client_runtime.cl.jac";
+}
+
+"""Route React-ecosystem packages through preact/compat."""
+impl PreactBackend.vite_aliases -> dict[str, str] {
+    return {"react": "preact/compat", "react-dom": "preact/compat"};
+}
+
 impl PreactBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {

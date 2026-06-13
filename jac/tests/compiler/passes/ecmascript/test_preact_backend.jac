@@ -102,11 +102,13 @@ test "preact entry script uses render and h" {
     assert 'getElementById("__jac_root")' in script;
 }
 
-test "runtime source selects preact runtime for preact framework" {
-    assert client_runtime_cl_basename("preact") == "preact_runtime.cl.jac";
+test "preact shares the canonical client runtime source" {
+    # Preact rides on the React-flavored runtime; `react` imports are remapped
+    # to `preact/compat` at bundle time via vite_aliases (see test below).
+    assert client_runtime_cl_basename("preact") == "client_runtime.cl.jac";
     assert client_runtime_cl_basename("react") == "client_runtime.cl.jac";
     path = resolve_client_runtime_cl_path("preact");
-    assert path.endswith("preact_runtime.cl.jac");
+    assert path.endswith("client_runtime.cl.jac");
     assert os.path.isfile(path);
 }
 
@@ -140,4 +142,44 @@ test "resolve_active_backend reads preact from project config" {
     set_config(cfg);
     backend = resolve_active_backend();
     assert backend.name() == "preact";
+}
+
+test "runtime_source_basename delegates to backend via registry" {
+    assert ReactBackend().runtime_source_basename() == "client_runtime.cl.jac";
+    assert PreactBackend().runtime_source_basename() == "client_runtime.cl.jac";
+    # Verify the runtime_source module delegates to the backend
+    assert client_runtime_cl_basename("react") == "client_runtime.cl.jac";
+    assert client_runtime_cl_basename("preact") == "client_runtime.cl.jac";
+}
+
+test "vite_aliases returns empty for react and compat mapping for preact" {
+    assert ReactBackend().vite_aliases() == {};
+    preact_aliases = PreactBackend().vite_aliases();
+    assert preact_aliases == {"react": "preact/compat", "react-dom": "preact/compat"};
+}
+
+test "preact async_boundary_symbols with except arms returns both symbols" {
+    backend = PreactBackend();
+    try_expr = es.Identifier(name="tryFn");
+    awaiting_only = AsyncBoundary(
+        try_expr=try_expr, awaiting_expr=None, except_exprs=[]
+    );
+    assert backend.async_boundary_symbols(awaiting_only) == ["JacAwaiting"];
+    with_except = AsyncBoundary(
+        try_expr=try_expr,
+        awaiting_expr=None,
+        except_exprs=[es.Identifier(name="onErr")]
+    );
+    assert backend.async_boundary_symbols(with_except) == [
+        "JacAwaiting",
+        "JacClientErrorBoundary"
+    ];
+}
+
+test "preact ref_field_symbols inherits useRef from react" {
+    backend = PreactBackend();
+    init = es.Literal(value=0, raw="0");
+    assert backend.ref_field_symbols(RefField(name="node", init_expr=init)) == [
+        "useRef"
+    ];
 }

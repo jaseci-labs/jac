@@ -32,6 +32,10 @@ obj FrameworkBackend {
     def jsx_factory_name -> str;
     def import_source(symbol: str) -> str;
     def required_globals -> list[str];
+    # Runtime source basename — selects framework-specific .cl.jac runtime
+    def runtime_source_basename -> str;
+    # Vite resolve aliases — framework-specific module remapping for the bundler
+    def vite_aliases -> dict[str, str];
     # Entry-point script — builds the JS bootstrap that mounts the app
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True

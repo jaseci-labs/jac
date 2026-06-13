@@ -1,8 +1,14 @@
-"""Client-side runtime for Jac JSX and walker interactions."""
+"""Client-side runtime for Jac JSX and walker interactions.
+
+Framework-agnostic: imports are written against `react`, and non-React
+backends (e.g. Preact) remap them at bundle time via `FrameworkBackend.
+vite_aliases` (`react` -> `preact/compat`). DOM mounting lives in the
+per-framework entry scripts (`react_entry` / `preact_entry`), so this
+module deliberately imports no `react-dom`.
+"""
 
 import from 'react' { * as React }
 import from 'react' { useState as reactUseState, useEffect as reactUseEffect }
-import from 'react-dom/client' { * as ReactDOM }
 import from 'react-router-dom' {
     BrowserRouter as ReactRouterBrowserRouter,
     Routes as ReactRouterRoutes,

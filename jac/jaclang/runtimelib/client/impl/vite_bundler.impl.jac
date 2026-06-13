@@ -380,16 +380,16 @@ impl ViteBundler._generate_vite_config_content(
     if self.config_loader.is_pwa_enabled() {
         pwa_alias_str = f'\n      "@jac/pwa": path.resolve(buildDir, "{compiled_pwa_relative}"),';
     }
-    # Preact backend: route React-ecosystem packages through preact/compat.
-    preact_alias_str = '';
+    # Framework backend aliases (e.g. preact/compat remapping).
+    # Plugin selection is React-only for now; Preact rides on preact/compat.
+    # TODO: Solid/Svelte will need a vite_plugin -> (str | None) seam.
+    framework_alias_str = '';
     try {
-        import from jaclang.project.config { get_config }
-        jac_cfg = get_config();
-        if jac_cfg and jac_cfg.client and jac_cfg.client.framework == "preact" {
-            preact_alias_str = (
-                '\n      "react": "preact/compat",'
-                '\n      "react-dom": "preact/compat",'
-            );
+        import from jaclang.compiler.passes.ecmascript.backends.registry {
+            resolve_active_backend
+        }
+        for (k, v) in resolve_active_backend().vite_aliases().items() {
+            framework_alias_str += f'\n      "{k}": "{v}",';
         }
     } except Exception {
         ;
@@ -661,7 +661,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{preact_alias_str}
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{framework_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -783,7 +783,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{preact_alias_str}
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{framework_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
