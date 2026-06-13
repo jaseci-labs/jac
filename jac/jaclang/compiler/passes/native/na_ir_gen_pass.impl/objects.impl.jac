@@ -812,9 +812,17 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self._self_arch = saved_self_arch;
 }
 
-"""Generate object instantiation: allocate struct, init fields, call postinit."""
-impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
-    type_name = self._get_name(nd.target);
+"""Generate object instantiation: allocate struct, init fields, call postinit.
+
+`nd` is normally a `FuncCall` (`Edge(args)`); it may also be a bare archetype
+`Name` (`Edge`), which constructs a DEFAULT instance (no args) -- the form a
+typed edge connect `a +>: Edge :+> b` uses, which would otherwise codegen to no
+value and silently drop the edge (issue #6642)."""
+impl NaIRGenPass._codegen_instantiation(
+    nd: (uni.FuncCall | uni.Name)
+) -> (ir.Value | None) {
+    _is_call = isinstance(nd, uni.FuncCall);
+    type_name = self._get_name(nd.target if _is_call else nd);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -935,7 +943,7 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     field_defaults = self.struct_field_defaults.get(type_name, {});
     # Track which fields were explicitly set
     set_fields: set[str] = set();
-    params = nd.params or [];
+    params = (nd.params or []) if _is_call else [];
     for param in params {
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;

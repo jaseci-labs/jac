@@ -541,8 +541,9 @@ impl NaIRGenPass._codegen_kernel_spawn(
     self._rc_call_with_ctx(
         _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
     );
-    # wdesc = (WalkerDesc*) __ospDESC[walker_tag]
-    _wtag = self.osp_tags.get(walker_name, 0);
+    # wdesc = (WalkerDesc*) __ospDESC[walker_local_idx] -- the descriptor table
+    # is keyed by the dense LOCAL index, not the globally-stable hash tag.
+    _wtag = self.osp_local_idx.get(walker_name, 0);
     _descp = self.builder.load(
         self.builder.gep(
             self._osp_desc_global,

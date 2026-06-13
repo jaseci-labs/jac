@@ -200,14 +200,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # thunks, so a consumer's thunk never collides with the library's
         # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
         _osp_thunk_uid: int = 0,
-        # Whether cross-module OSP materialization is SOUND for this compile.
-        # The deterministic sorted-name tag scheme only makes a library and its
-        # importer agree when the consumer's sorted OSP set equals the library's
-        # -- i.e. no local OSP archetypes and a single OSP-defining import. When
-        # this is False, imported OSP archetypes are NOT materialized, so
-        # spawn/connect/edge-ref on them fail loudly (E5090) instead of running
-        # on mismatched tags and silently computing the wrong walk (issue #6642).
-        _osp_xmod_safe: bool = True,
+        # Dense per-compile index of each OSP archetype into this module's
+        # descriptor / is_a tables. Distinct from osp_tags, which holds the
+        # GLOBALLY-STABLE hash tag stored in instances / edges / dispatch slots;
+        # the runtime callbacks translate a stable tag to a local index via the
+        # __ospHASH table so cross-module dispatch agrees (issue #6642).
+        osp_local_idx: dict[str, int] = {},
         # OSP archetypes IMPORTED from another native module: name ->
         #   (arch_kind, defining module name). Cross-module OSP lowering is
         #   not supported until #6146 Phases 3-4 (tag numbering and the
@@ -229,9 +227,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # of whether the program ran through a `with entry`.
         _osp_ensure_fn: (object | None) = None,
         # __osp_filter_type(list, node_tag) -> list: filters edge-ref neighbor
-        # handles by node type via the is_a table (`[--> [?:Area]]`); built once
-        # in _emit_osp_setup alongside the runtime callbacks (issue #6642).
+        # handles by node type via the is_a callback (`[--> [?:Area]]`); built
+        # once in _emit_osp_setup alongside the runtime callbacks (issue #6642).
         _osp_filter_fn: (object | None) = None,
+        # __osp_h2i(stable_tag) -> i64 and __osp_is_a(t, b) -> i1: the stable-tag
+        # -> local-index translation and the subtype query, emitted in
+        # _emit_osp_setup and reused by the callbacks and the filter so
+        # cross-module dispatch agrees on globally-stable hash tags (#6642).
+        _osp_h2i_fn: (object | None) = None,
+        _osp_is_a_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         # Global variable support (Phase 11)
@@ -476,9 +480,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
+    def _stable_osp_tag(name: str) -> int;
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
     def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
-    def _osp_cross_module_safe(imported_mods: list) -> bool;
     def _module_uses_osp(module: uni.Module) -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
@@ -494,6 +498,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _osp_build_slot_list(pairs: list) -> ir.Value;
     def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_h2i_fn(hash_global: ir.GlobalVariable, n: int) -> ir.Function;
     def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
     def _osp_emit_filter_fn(
         isa_global: ir.GlobalVariable, n: int
@@ -532,7 +537,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str

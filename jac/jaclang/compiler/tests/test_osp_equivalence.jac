@@ -241,3 +241,70 @@ test "osp cross-module: spawn / connect / edge-ref on imported archetypes" {
     (_eng, _) = compile_native(_xmod);
     assert run_native_function(_eng, "xmod_na") == {"seen": 7, "ports": 2};
 }
+
+test "osp cross-module general: consumer with its OWN OSP archetype still agrees" {
+    # Issue #6642 follow-up: the deterministic sorted-name tag scheme only held
+    # when the consumer defined no local OSP archetypes (a local name sorting
+    # before a shared one shifted every tag and silently mis-walked). Globally
+    # stable per-archetype tags make the library's tags and the consumer's tags
+    # agree no matter what else the consumer defines, so a consumer that ALSO
+    # declares `Bot` materializes the imports and runs correctly.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "osp_xmod_local.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "xmod_local_na") == {
+        "seen": 7,
+        "ports": 2,
+        "bot": 3
+    };
+}
+
+test "osp cross-module two libraries: OSP imported from two modules agrees" {
+    # Issue #6642 follow-up: a consumer importing OSP archetypes from TWO
+    # independent libraries. Position-based tags collided across libraries;
+    # globally stable hash tags make every module agree without coordination.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "osp_xmod_two.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "xmod_two_na") == {"total": 7, "power": 9};
+}
+
+test "osp bare edge: `a +>: E :+> b` (bare type) records the edge like `E()`" {
+    # Issue #6642 follow-up: native silently DROPPED a bare-edge-type connect
+    # (codegen of a bare archetype name yielded no value), so the edge was never
+    # recorded and the walk found nothing.
+    assert run_py_fixture("osp_bare_edge", "bare_edge_py") == {"hits": 3};
+    run_with_both(
+        "osp_bare_edge.jac",
+        "bare_edge_py",
+        "bare_edge_na",
+        "bare_edge_na",
+        require=["na"]
+    );
+}

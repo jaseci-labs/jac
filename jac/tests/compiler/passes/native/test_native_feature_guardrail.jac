@@ -355,48 +355,16 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     )}";
 }
 
-# NOTE (issue #6642 Blocker 2): the cross-module spawn/connect/edge-ref guardrail
-# that asserted E5090 for ALL imported OSP was REMOVED -- in the SOUND shape
-# (a single imported OSP module, no local OSP archetypes) those archetypes now
-# materialize into the consumer's deterministic tag space and lower, pinned by
-# the native run in test_osp_equivalence.jac ("osp cross-module ...").
-
-# But the deterministic sorted-name tag scheme is only sound when the consumer's
-# OSP archetype set matches the library's. A consumer that ALSO defines a local
-# OSP archetype (here `AAA`, which sorts before the library's `Area`) shifts the
-# shared tags, so the library walker body would dispatch on mismatched tags and
-# silently mis-walk. That unsound shape must fail LOUDLY (E5090), not silently
-# materialize -- the soundness invariant of the #6636 lineage.
-test "osp gate: cross-module OSP with a tag-shifting local archetype is rejected" {
-    prog = compile_na_inline(
-        "xmod_unsafe",
-        "import from osp_xmod_lib { Area, Portal, Counter }\n"
-        "node AAA { has v: int = 0; }\n"  # sorts before Area -> shifts tags
-        "with entry {\n"
-        "    a1 = Area(tag=1);\n"
-        "    a2 = Area(tag=2);\n"
-        "    a1 +>: Portal(w=1) :+> a2;\n"
-        "    c = Counter();\n"
-        "    c spawn a1;\n"
-        "    print(c.seen);\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsound cross-module OSP, got: {fmt_errors(
-        prog
-    )}";
-    named = False;
-    for alrt in prog.errors_had {
-        if (
-            alrt.code is not None
-            and alrt.code.code == "E5090"
-            and alrt.help_text is not None
-            and "osp_xmod_lib" in alrt.help_text
-        ) {
-            named = True;
-        }
-    }
-    assert named , f"E5090 help should name the defining module: {fmt_errors(prog)}";
-}
+# NOTE (issue #6642): the cross-module spawn/connect/edge-ref guardrail that
+# asserted E5090 was REMOVED, and so was its follow-up that asserted E5090 for a
+# consumer with a tag-shifting LOCAL archetype. OSP type tags are now globally
+# stable content hashes (not position-based), so imported OSP archetypes
+# materialize and lower correctly in EVERY configuration -- including a consumer
+# that defines its own OSP archetypes or imports from multiple modules. The
+# end-to-end behavior (including the local-archetype shape) is pinned by the
+# native runs in test_osp_equivalence.jac ("osp cross-module ..." and
+# "osp cross-module general ..."). A guardrail asserting E5090 here would now be
+# a false negative.
 
 # ─────────────────────────────────────────────────────────────────────
 # Diagnostic rendering + check/nacompile parity (issue #6636 follow-ups)

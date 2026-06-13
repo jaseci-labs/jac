@@ -573,11 +573,10 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
     # ── Phase 1a.5: mark imported OSP archetypes (issue #6642 Blocker 2) ──────
     # Before bodies are laid out, so an imported node/walker/edge reserves the
-    # OSP header (vtable + __type_tag) matching its defining module and joins
-    # the deterministic tag numbering -- but ONLY when the sorted-name tag
-    # scheme is provably sound (see _osp_cross_module_safe); otherwise the
-    # archetypes stay un-materialized and cross-module ops on them E5090.
-    self._osp_xmod_safe = self._osp_cross_module_safe(imported_mods);
+    # OSP header (vtable + __type_tag) matching its defining module and gets its
+    # globally-stable tag. Tags are content hashes (see _register_osp_tags), so
+    # a library and any importer agree regardless of what else either defines --
+    # no sorted-order fragility, materialization is always sound.
     for (_, imported_mod) in imported_mods {
         self._register_imported_osp_archetypes(imported_mod);
     }
