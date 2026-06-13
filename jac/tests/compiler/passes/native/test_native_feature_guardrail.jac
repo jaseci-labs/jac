@@ -147,6 +147,31 @@ test "guardrail: yield expression is rejected" {
     )}";
 }
 
+# Reading a field off an UNFILTERED node-ref element is unsupported: the
+# checker types the neighbour as `any` (the adjacency returns untyped handles),
+# so native cannot resolve the element to a struct layout. It must E5090 -- and
+# crucially must NOT throw an uncaught codegen traceback (issue #6646 Bug 3).
+# A typed receiver (edge ref, or a `[?:Type]`-filtered node ref) IS supported;
+# see test_osp_equivalence.jac "osp field access".
+test "guardrail: field access on an untyped (any) node-ref element is rejected" {
+    prog = compile_na_inline(
+        "node_ref_any_field",
+        "node N { has tag: int = 0; }\n"
+        "edge Portal {}\n"
+        "walker W {\n"
+        "    has v: int = 0;\n"
+        "    can go with N entry {\n"
+        "        nbrs = [here ->:Portal:->];\n"
+        "        if len(nbrs) > 0 { self.v = nbrs[0].tag; }\n"
+        "    }\n"
+        "}\n"
+        "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for any-typed node-ref field access, got: {fmt_errors(
+        prog
+    )}";
+}
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)

@@ -1203,10 +1203,19 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
         # Chained field access: expr.field where expr is a complex expression
+        # (a subscript, call, ...). Prefer the checker-resolved struct type of
+        # the receiver, then fall back to inferring it from the LLVM value type.
+        # The checker path is what resolves an edge-ref / node-ref element
+        # (`ports[0].cx`), whose value is a raw i64 handle that LLVM-type
+        # inference cannot name -- _codegen_field_access recovers the pointer
+        # from the handle once it knows the struct (issue #6646).
         if right_name is not None {
             obj_val = self._codegen_expr(nd.target);
             if obj_val is not None {
-                type_name = self._infer_type_name(obj_val);
+                type_name = self._struct_name_of(nd.target);
+                if type_name is None {
+                    type_name = self._infer_type_name(obj_val);
+                }
                 if type_name is not None {
                     return self._codegen_field_access(obj_val, right_name, type_name);
                 }

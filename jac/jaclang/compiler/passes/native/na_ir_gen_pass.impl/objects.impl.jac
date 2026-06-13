@@ -1601,6 +1601,16 @@ impl NaIRGenPass._codegen_field_access(
     if field_indices is None or field_name not in field_indices {
         return None;
     }
+    # An OSP edge-ref / node-ref yields its elements as i64 handles (the
+    # `ptrtoint` of the archetype pointer; issue #6646). When the checker
+    # resolved the receiver to an archetype struct but the value arrived as a
+    # raw handle, recover the typed pointer so the field GEP resolves -- instead
+    # of crashing on a non-pointer GEP or being dropped to E5090.
+    if isinstance(obj_val.type, ir.IntType) and (type_name in self.struct_types) {
+        obj_val = self.builder.inttoptr(
+            obj_val, self.struct_types[type_name].as_pointer(), name="osp.handle.ptr"
+        );
+    }
     # AttributeError: check for null pointer (None) before accessing field
     if isinstance(obj_val.type, ir.PointerType) {
         null_ptr = ir.Constant(obj_val.type, None);
