@@ -196,6 +196,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
         #   reads back the values reported during the walk (#6146).
         osp_reports_field: dict[str, int] = {},
         osp_thunk_funcs: dict[str, ir.Function] = {},
+        # Counter for unique link-private names of imported-walker dispatch
+        # thunks, so a consumer's thunk never collides with the library's
+        # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
+        _osp_thunk_uid: int = 0,
+        # Whether cross-module OSP materialization is SOUND for this compile.
+        # The deterministic sorted-name tag scheme only makes a library and its
+        # importer agree when the consumer's sorted OSP set equals the library's
+        # -- i.e. no local OSP archetypes and a single OSP-defining import. When
+        # this is False, imported OSP archetypes are NOT materialized, so
+        # spawn/connect/edge-ref on them fail loudly (E5090) instead of running
+        # on mismatched tags and silently computing the wrong walk (issue #6642).
+        _osp_xmod_safe: bool = True,
         # OSP archetypes IMPORTED from another native module: name ->
         #   (arch_kind, defining module name). Cross-module OSP lowering is
         #   not supported until #6146 Phases 3-4 (tag numbering and the
@@ -216,6 +228,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # that spawn lowering calls, so descriptors/_walk_stack exist regardless
         # of whether the program ran through a `with entry`.
         _osp_ensure_fn: (object | None) = None,
+        # __osp_filter_type(list, node_tag) -> list: filters edge-ref neighbor
+        # handles by node type via the is_a table (`[--> [?:Area]]`); built once
+        # in _emit_osp_setup alongside the runtime callbacks (issue #6642).
+        _osp_filter_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         # Global variable support (Phase 11)
@@ -461,6 +477,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
+    def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
+    def _osp_cross_module_safe(imported_mods: list) -> bool;
     def _module_uses_osp(module: uni.Module) -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
@@ -477,6 +495,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_build_slot_list(pairs: list) -> ir.Value;
     def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
     def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
+    def _osp_emit_filter_fn(
+        isa_global: ir.GlobalVariable, n: int
+    ) -> (ir.Function | None);
+
     def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;

@@ -117,19 +117,28 @@ an OSP construct (connect / spawn / visit / edge ref). Keying on usage rather
 than walker presence keeps a graph-builder module that only WIRES nodes
 (defining no walker) on the kernel path instead of E5090 (issue #6636), while a
 module that merely declares archetypes it never wires/walks still skips the
-kernel. Edges referenced only in connects/refs still get a tag so dispatch over
-them is uniform. Tags index the instance `__type_tag` field, the is_a table,
-and the descriptor table.
-"""
+kernel.
+
+Tags index the instance `__type_tag` field, the is_a table, and the descriptor
+table, and they are assigned in deterministic SORTED-NAME order over the FULL
+OSP archetype set the module knows -- local archetypes plus the ones imported
+from other native modules (registered into `osp_arch_kind` beforehand). Sorting
+makes a module and any module that imports it compute the IDENTICAL tag for a
+shared archetype, so an imported walker body (compiled with the library's tags)
+and the consumer's connects/constructions (using the consumer's tags) agree at
+runtime -- the cross-module materialization #6642 Blocker 2 needs without
+recompiling library code (which would collide at link, E5026)."""
 impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
-    osp_arches: list[uni.Archetype] = [];
     has_osp = False;
     for arch in archetypes {
-        kind = arch.arch_kind;
-        if kind is None {
+        if arch.arch_kind is None {
             continue;
         }
-        osp_arches.append(arch);
+        name = arch.name.value if arch.name else None;
+        if name is not None {
+            self.osp_arch_kind[name] = arch.arch_kind;
+            self.arch_ast_map[name] = arch;
+        }
         if arch.body is not None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability)
@@ -139,19 +148,83 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
             }
         }
     }
-    if (not has_osp) and osp_arches {
+    # `osp_arch_kind` already carries any imported OSP archetypes registered by
+    # `_register_imported_osp_archetypes`; if the module uses OSP at all, tag
+    # the whole set deterministically.
+    if (not has_osp) and self.osp_arch_kind {
         has_osp = self._module_uses_osp(self.ir_in);
     }
     if not has_osp {
         return;
     }
-    for arch in osp_arches {
-        name = arch.name.value if arch.name else None;
-        if (name is not None) and (name not in self.osp_tags) {
-            self.osp_arch_kind[name] = arch.arch_kind;
+    for name in sorted(self.osp_arch_kind.keys()) {
+        if name not in self.osp_tags {
             self.osp_tags[name] = len(self.osp_tags);
         }
     }
+}
+
+"""Register OSP archetypes IMPORTED from other native modules into
+`osp_arch_kind` / `arch_ast_map` so their struct layout reserves the OSP header
+fields (vtable + `__type_tag`) to MATCH the defining module, and so
+`_register_osp_tags` includes them in the deterministic tag numbering. Only when
+the importing module actually uses OSP -- a module that merely constructs an
+imported archetype (no spawn/connect/visit) keeps the plain layout and never
+loads the kernel (issue #6642 Blocker 2). Must run before imported struct bodies
+are filled (`_codegen_archetype` reads `osp_arch_kind` for the layout)."""
+impl NaIRGenPass._register_imported_osp_archetypes(imported_mod: uni.Module) -> None {
+    if (not self._module_uses_osp(self.ir_in)) or (not self._osp_xmod_safe) {
+        return;
+    }
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) and (stmt.arch_kind is not None) {
+            _name = stmt.name.value if stmt.name else None;
+            if (_name is not None) and (_name not in self.osp_arch_kind) {
+                self.osp_arch_kind[_name] = stmt.arch_kind;
+                self.arch_ast_map[_name] = stmt;
+            }
+        }
+    }
+}
+
+"""Whether cross-module OSP materialization is SOUND for this compile.
+
+The deterministic sorted-name tag scheme makes an imported archetype's tag in
+the consumer equal to its tag in the defining library only when the consumer's
+sorted OSP archetype set is IDENTICAL to that library's. That holds exactly
+when the consumer defines NO local OSP archetypes and every imported OSP
+archetype comes from a SINGLE defining module (a library that itself imports
+OSP shows up as a second defining module in the transitive `imported_mods`, so
+it is covered). Any other shape interleaves foreign names into the sort and
+shifts tags, which would dispatch on mismatched tags and silently compute the
+wrong walk -- so the cross-module ops fail loudly (E5090) instead (issue
+#6642). Returns True when there is no cross-module OSP at all."""
+impl NaIRGenPass._osp_cross_module_safe(imported_mods: list) -> bool {
+    _local_osp = 0;
+    for arch in self._native_archetypes(self.ir_in) {
+        if (arch.arch_kind is not None) and arch.name {
+            _local_osp += 1;
+        }
+    }
+    _def_mods: set = set();
+    for (_, imported_mod) in imported_mods {
+        for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+            if isinstance(stmt, uni.Archetype) and (stmt.arch_kind is not None) {
+                _def_mods.add(imported_mod.name);
+                break;
+            }
+        }
+    }
+    if not _def_mods {
+        return True;
+    }
+    return (_local_osp == 0) and (len(_def_mods) == 1);
 }
 
 """True when the module's native code USES an OSP construct — an edge connect
@@ -181,10 +254,14 @@ impl NaIRGenPass._module_uses_osp(module: uni.Module) -> bool {
 }
 
 """Cross-module OSP E5090 help: when one of `names` resolves to an OSP
-archetype imported from another native module (and not overridden locally),
-return help text naming the defining module — the diagnosable form of the
-#6146 cross-module materialization gap. None when no name matches, so callers
-fall back to the generic E5090."""
+archetype imported from another native module that was NOT materialized into
+this compile, return help text naming the defining module. An imported
+archetype goes un-materialized only when the deterministic sorted-name tag
+scheme is not provably sound here (`_osp_xmod_safe` is False) -- a consumer
+that also defines local OSP archetypes, or imports OSP from more than one
+module, would shift the shared tags and silently mis-walk -- so the op is
+rejected loudly. None when no name matches, so callers fall back to the
+generic E5090 (issue #6642)."""
 impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
     for _n in names {
         if (
@@ -195,10 +272,13 @@ impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
             (_kind, _mod) = self.imported_osp_archs[_n];
             return (
                 f"the {_kind} archetype '{_n}' is imported from native module "
-                f"'{_mod}'; spawn / connect / edge-ref on OSP archetypes across "
-                f"a native module boundary is not lowered yet (#6146 Phases "
-                f"3-4) — per-module type tags would mismatch. Move this OSP "
-                f"usage into '{_mod}' or define the archetype in this module."
+                f"'{_mod}', but cross-module Object-Spatial lowering needs the "
+                f"deterministic type-tag order to match across modules; here it "
+                f"cannot, because this module also defines local OSP archetypes "
+                f"or imports OSP from more than one module (sorted tags would "
+                f"shift and the walk would silently mis-dispatch). Spawn / "
+                f"connect / edge-ref on a SINGLE imported OSP module with no "
+                f"local OSP archetypes, or define the archetype in this module."
             );
         }
     }
@@ -226,9 +306,23 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
         return;
     }
     jv = self.jacval_type;
+    # An IMPORTED walker already carries its own `__ospthunk` in the library's
+    # linked IR; the consumer needs a thunk wired into ITS descriptor table, so
+    # emit a link-private copy under a unique internal name (calling the
+    # library-linked ability body) rather than redefining the shared symbol,
+    # which would collide at link (E5026). Issue #6642 Blocker 2.
+    _thunk_name = f"{full}.__ospthunk";
+    _imported = arch_name in self.imported_osp_archs;
+    if _imported {
+        _thunk_name = f"{_thunk_name}.x{self._osp_thunk_uid}";
+        self._osp_thunk_uid += 1;
+    }
     thunk = ir.Function(
-        self.llvm_module, ir.FunctionType(jv, [jv, jv]), name=f"{full}.__ospthunk"
+        self.llvm_module, ir.FunctionType(jv, [jv, jv]), name=_thunk_name
     );
+    if _imported {
+        thunk.linkage = "internal";
+    }
     thunk.args[0].name = "a";
     thunk.args[1].name = "b";
     _saved = self._builder;
@@ -479,6 +573,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     # tag_of(JacVal h) -> i64: read the instance __type_tag at byte offset 8
     # (field 0 is the reserved vtable slot, field 1 is the i64 __type_tag).
     _tf = ir.Function(self.llvm_module, _fields["tag_of"].pointee, name="__osp_tag_of");
+    _tf.linkage = "internal";
     self._builder = ir.IRBuilder(_tf.append_basic_block("entry"));
     _pl = self.builder.extract_value(_tf.args[0], 1, name="h.payload");
     _hp = self.builder.inttoptr(_pl, i8p, name="h.ptr");
@@ -491,6 +586,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     out["tag_of"] = _tf;
     # is_a(i64 t, i64 b) -> i1: lookup isa_global[t*n + b] != 0
     _iaf = ir.Function(self.llvm_module, _fields["is_a"].pointee, name="__osp_is_a");
+    _iaf.linkage = "internal";
     self._builder = ir.IRBuilder(_iaf.append_basic_block("entry"));
     _ix = self.builder.add(
         self.builder.mul(_iaf.args[0], ir.Constant(i64, n), name="isa.row"),
@@ -509,6 +605,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     _ndf = ir.Function(
         self.llvm_module, _fields["node_desc"].pointee, name="__osp_node_desc"
     );
+    _ndf.linkage = "internal";
     self._builder = ir.IRBuilder(_ndf.append_basic_block("entry"));
     _dp = self.builder.load(
         self.builder.gep(
@@ -528,6 +625,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     _ocf = ir.Function(
         self.llvm_module, _fields["on_complete"].pointee, name="__osp_on_complete"
     );
+    _ocf.linkage = "internal";
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
     _ws_idx = self.struct_field_indices.get("WalkScope", {});
     _li64 = self.list_types.get("i64");
@@ -569,6 +667,87 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     out["on_complete"] = _ocf;
     self._builder = _saved;
     return out;
+}
+
+"""Emit `__osp_filter_type(list, node_tag) -> list`: keep only the handles in
+`list` whose instance type `is_a` `node_tag`, the lowering of a trailing node
+filter on an edge ref (`[--> [?:Area]]`). Reads each handle's `__type_tag` at
+the uniform byte offset 8 (vtable@0, tag@1) and consults `isa_global[tag*n +
+node_tag]` -- the same subtype table the kernel's `is_a` callback uses. Returns
+a fresh `list` (the input is left to its caller). `n` is the tag count."""
+impl NaIRGenPass._osp_emit_filter_fn(
+    isa_global: ir.GlobalVariable, n: int
+) -> (ir.Function | None) {
+    self._emit_list_helpers("i64", ir.IntType(64));
+    _h = self.list_helpers.get("i64");
+    _li64 = self.list_types.get("i64");
+    if (_h is None) or (_li64 is None) {
+        return None;
+    }
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    _lp = _li64.as_pointer();
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(_lp, [_lp, i64]), name="__osp_filter_type"
+    );
+    fn.linkage = "internal";
+    fn.args[0].name = "in";
+    fn.args[1].name = "ntag";
+    _saved = self._builder;
+    _entry = fn.append_basic_block("entry");
+    _loop = fn.append_basic_block("loop");
+    _body = fn.append_basic_block("body");
+    _keep = fn.append_basic_block("keep");
+    _next = fn.append_basic_block("next");
+    _done = fn.append_basic_block("done");
+    self._builder = ir.IRBuilder(_entry);
+    _out = self._rc_call_with_ctx(_h["new"], [], op="new", loc="", name="filt.out");
+    _len = self.builder.call(_h["len"], [fn.args[0]], name="filt.len");
+    self.builder.branch(_loop);
+    self._builder = ir.IRBuilder(_loop);
+    _i = self.builder.phi(i64, name="filt.i");
+    _i.add_incoming(ir.Constant(i64, 0), _entry);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">=", _i, _len, name="filt.atend"), _done, _body
+    );
+    self._builder = ir.IRBuilder(_body);
+    _hv = self.builder.call(_h["get"], [fn.args[0], _i], name="filt.h");
+    _p = self.builder.inttoptr(_hv, i8p, name="filt.p");
+    _tag = self.builder.load(
+        self.builder.bitcast(
+            self.builder.gep(_p, [ir.Constant(i64, 8)], name="filt.tagp"),
+            i64.as_pointer(),
+            name="filt.tagp64"
+        ),
+        name="filt.tag"
+    );
+    _ix = self.builder.add(
+        self.builder.mul(_tag, ir.Constant(i64, n), name="filt.row"),
+        fn.args[1],
+        name="filt.idx"
+    );
+    _v = self.builder.load(
+        self.builder.gep(isa_global, [ir.Constant(i32, 0), _ix], name="filt.slot"),
+        name="filt.v"
+    );
+    self.builder.cbranch(
+        self.builder.icmp_unsigned("!=", _v, ir.Constant(i8, 0), name="filt.keepc"),
+        _keep,
+        _next
+    );
+    self._builder = ir.IRBuilder(_keep);
+    self._rc_call_with_ctx(_h["append"], [_out, _hv], op="append", loc="");
+    self.builder.branch(_next);
+    self._builder = ir.IRBuilder(_next);
+    _i1 = self.builder.add(_i, ir.Constant(i64, 1), name="filt.i1");
+    _i.add_incoming(_i1, _next);
+    self.builder.branch(_loop);
+    self._builder = ir.IRBuilder(_done);
+    self.builder.ret(_out);
+    self._builder = _saved;
+    return fn;
 }
 
 """Emit `__osp_setup()` -- builds the subtype table, per-archetype descriptors,
@@ -622,10 +801,13 @@ impl NaIRGenPass._emit_osp_setup -> None {
     self._osp_rt_global.linkage = "internal";
     self._osp_rt_global.initializer = ir.Constant(_rt_ty, None);
     _cbs = self._osp_emit_callbacks(_isa_global, n);
+    # __osp_filter_type: node-type filter for `[--> [?:Area]]` edge refs.
+    self._osp_filter_fn = self._osp_emit_filter_fn(_isa_global, n);
     # __osp_setup(): build descriptors + runtime.
     _setup = ir.Function(
         self.llvm_module, ir.FunctionType(ir.VoidType(), []), name="__osp_setup"
     );
+    _setup.linkage = "internal";
     self._osp_setup_fn = _setup;
     _saved = self._builder;
     self._builder = ir.IRBuilder(_setup.append_basic_block("entry"));
@@ -687,6 +869,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
     _ensure = ir.Function(
         self.llvm_module, ir.FunctionType(ir.VoidType(), []), name="__osp_ensure_init"
     );
+    _ensure.linkage = "internal";
     self._osp_ensure_fn = _ensure;
     _e_entry = _ensure.append_basic_block("entry");
     _e_run = _ensure.append_basic_block("run");
@@ -815,30 +998,73 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     return tgt;
 }
 
-"""Lower an edge reference `[-->]` / `[->:Edge:->]` to `osp_refs(here, dir,
-edge_tag, edges_only)`, returning a `list` of neighbor (or edge) handles in the
-kernel's list representation -- ready to hand to `osp_visit`. The origin of a
-bare ref is the walker's current location `here`."""
+"""Lower an edge reference to `osp_refs(origin, dir, edge_tag, edges_only)`,
+returning a `list` of neighbor-node (or, with `edge`, edge) handles in the
+kernel's list representation -- ready for `visit`, `len`, iteration, or `del`.
+
+The `chain` is `[origin?, EdgeOpRef, FilterCompr?]` (issue #6642 Blocker 1):
+
+  * origin -- a leading non-`EdgeOpRef` expression is the explicit origin
+    (`[a -->]`, `[world --> [?:Area]]`); an omitted origin defaults to the
+    walker's current location `here` (`[-->]`).
+  * EdgeOpRef -- direction (IN/OUT/ANY) and an optional `:Edge:` type filter.
+  * FilterCompr -- an optional trailing node-type filter (`[?:Area]`), applied
+    to the neighbor handles by `__osp_filter_type` via the `is_a` table.
+
+Multi-hop chains and value-compare filters (`[?:Area(x > 1)]`) are not lowered
+yet and fail loudly with E5090 rather than silently traversing one step."""
 impl NaIRGenPass._codegen_edge_ref_trailer(
     nd: uni.EdgeRefTrailer
 ) -> (ir.Value | None) {
     osp_refs_fn = self.func_symtab.get("osp_refs");
-    # Only the single-step form (`[-->]` / `[->:Edge:->]`, one EdgeOpRef) is
-    # lowered -- the same shape the cl backend handles. A multi-element chain
-    # (multi-hop / trailing filter comprehension) must fail loudly rather than
-    # silently traversing on just the first step.
-    if (osp_refs_fn is None) or (len(nd.chain) != 1) {
-        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
-        return None;
-    }
-    step = nd.chain[0];
-    _here = self.local_vars.get("here");
-    if (not isinstance(step, uni.EdgeOpRef)) or (_here is None) {
+    if (osp_refs_fn is None) or (not nd.chain) {
         self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
     i64 = ir.IntType(64);
-    origin_ptr = self.builder.load(_here, name="here");
+    chain = nd.chain;
+    # ── origin ──────────────────────────────────────────────────────────────
+    _idx = 0;
+    origin_val: (ir.Value | None) = None;
+    if isinstance(chain[0], uni.EdgeOpRef) {
+        _here = self.local_vars.get("here");
+        if _here is None {
+            self.emit(
+                E5090, node_override=nd, kind="expression", name="EdgeRefTrailer"
+            );
+            return None;
+        }
+        origin_val = self.builder.load(_here, name="here");
+    } else {
+        origin_val = self._codegen_expr(chain[0]);
+        _idx = 1;
+    }
+    # ── edge step ───────────────────────────────────────────────────────────
+    if (origin_val is None)
+    or (_idx >= len(chain))
+    or (not isinstance(chain[_idx], uni.EdgeOpRef)) {
+        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    step = chain[_idx];
+    _idx += 1;
+    # ── optional trailing node-type filter ──────────────────────────────────
+    _node_filter: (str | None) = None;
+    if _idx < len(chain) {
+        _f = chain[_idx];
+        if isinstance(_f, uni.FilterCompr)
+        and (_f.f_type is not None)
+        and (not _f.compares) {
+            _node_filter = self._get_name(_f.f_type);
+            _idx += 1;
+        }
+    }
+    # Anything left over (multi-hop, value-compare filter) is unsupported.
+    if _idx != len(chain) {
+        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    # ── edge-type filter tag ────────────────────────────────────────────────
     _dir = int(step.edge_dir.value);
     _edge_tag = -1;
     _fcond = step.filter_cond;
@@ -846,36 +1072,57 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         _etname = self._get_name(_fcond.f_type);
         if _etname is not None {
             _edge_tag = self.osp_tags.get(_etname, -1);
-            # An imported edge type has no local tag; lowering it as -1 would
-            # silently BROADEN the filter to match-any. Fail loudly with the
-            # import named (#6636 / #6146 cross-module gap).
+            # An unknown edge type has no tag; lowering as -1 would silently
+            # BROADEN the filter to match-any, so fail loudly.
             if _edge_tag < 0 {
-                _xhelp = self._xmod_osp_help([_etname]);
-                if _xhelp is not None {
-                    self.emit(
-                        E5090,
-                        node_override=nd,
-                        kind="expression",
-                        name="EdgeRefTrailer",
-                        help_text=_xhelp
-                    );
-                    return None;
-                }
+                self.emit(
+                    E5090,
+                    node_override=nd,
+                    kind="expression",
+                    name="EdgeRefTrailer",
+                    help_text=self._xmod_osp_help([_etname])
+                );
+                return None;
             }
         }
     }
     _edges_only = 1 if nd.edges_only else 0;
     _argtys = osp_refs_fn.function_type.args;
-    return self.builder.call(
+    _result = self.builder.call(
         osp_refs_fn,
         [
-            self._coerce_type(origin_ptr, _argtys[0]),
+            self._coerce_type(origin_val, _argtys[0]),
             self._coerce_type(ir.Constant(i64, _dir), _argtys[1]),
             self._coerce_type(ir.Constant(i64, _edge_tag), _argtys[2]),
             self._coerce_type(ir.Constant(i64, _edges_only), _argtys[3])
         ],
         name="osp.refs"
     );
+    # ── node-type filter ────────────────────────────────────────────────────
+    if _node_filter is not None {
+        _ntag = self.osp_tags.get(_node_filter, -1);
+        if (_ntag < 0) or (self._osp_filter_fn is None) {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="expression",
+                name="EdgeRefTrailer",
+                help_text=self._xmod_osp_help([_node_filter])
+            );
+            return None;
+        }
+        _unfiltered = _result;
+        _result = self.builder.call(
+            self._osp_filter_fn,
+            [_unfiltered, ir.Constant(i64, _ntag)],
+            name="osp.refs.filt"
+        );
+        # `__osp_filter_type` copied the surviving handles into a fresh list, so
+        # the intermediate `osp_refs` result is now dead -- release it (its
+        # elements are immortal graph handles, untouched by the list teardown).
+        self._emit_rc_release_simple(_unfiltered, op="osp_refs_filtered", loc="");
+    }
+    return _result;
 }
 
 """Resolve a `visit` target to the kernel's `list` representation. An edge-ref

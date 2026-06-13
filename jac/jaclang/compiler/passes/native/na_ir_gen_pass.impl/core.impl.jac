@@ -571,6 +571,16 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }
+    # ── Phase 1a.5: mark imported OSP archetypes (issue #6642 Blocker 2) ──────
+    # Before bodies are laid out, so an imported node/walker/edge reserves the
+    # OSP header (vtable + __type_tag) matching its defining module and joins
+    # the deterministic tag numbering -- but ONLY when the sorted-name tag
+    # scheme is provably sound (see _osp_cross_module_safe); otherwise the
+    # archetypes stay un-materialized and cross-module ops on them E5090.
+    self._osp_xmod_safe = self._osp_cross_module_safe(imported_mods);
+    for (_, imported_mod) in imported_mods {
+        self._register_imported_osp_archetypes(imported_mod);
+    }
     # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
@@ -697,6 +707,15 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
             if stmt.signature is not None
             and isinstance(stmt.signature, uni.FuncSignature) {
                 self._forward_declare_method(aname, stmt);
+            } elif isinstance(stmt.signature, uni.EventSignature)
+            and (aname in self.osp_arch_kind) {
+                # An imported OSP event ability (`can ... with T entry`): the
+                # body is linked from the defining module, but the consumer must
+                # forward-declare it and build its kernel dispatch thunk so its
+                # descriptor can route to it across the module boundary (issue
+                # #6642 Blocker 2). Mirrors the local Pass-3 handling.
+                self._forward_declare_event_method(aname, stmt);
+                self._emit_osp_thunk(aname, stmt);
             }
         }
     }

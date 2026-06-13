@@ -185,3 +185,59 @@ test "osp skip guard: `skip` + node-identity `in` dedupes a re-spawned node" {
         require=["na"]
     );
 }
+
+test "osp edge nav: every edge-ref form (typed/untyped, edges, node-filter, explicit origin)" {
+    # Issue #6642 Blocker 1: edge-ref trailers lower as general expressions
+    # (assigned + len()), with the real origin (here / a local / a def param)
+    # and node-type filters ([?:Area]) — not only as a bare `visit` target.
+    assert run_py_fixture("osp_edge_nav", "edge_nav_py") == {
+        "ports": 1,
+        "nbrs": 1,
+        "ents": 2,
+        "areas": 2,
+        "world_areas": 2,
+        "area_of": 1
+    };
+    run_with_both(
+        "osp_edge_nav.jac", "edge_nav_py", "edge_nav_na", "edge_nav_na", require=["na"]
+    );
+}
+
+test "osp edge del: `del e` removes the edge from the adjacency (rewire)" {
+    # Issue #6642 Blocker 3: `del <edge>` disconnects it; after a rewire the
+    # entity has exactly one In edge (the old one was removed, not left behind).
+    assert run_py_fixture("osp_edge_del", "edge_del_py") == {
+        "before": 1,
+        "after_edges": 1,
+        "now_in": 1
+    };
+    run_with_both(
+        "osp_edge_del.jac", "edge_del_py", "edge_del_na", "edge_del_na", require=["na"]
+    );
+}
+
+test "osp cross-module: spawn / connect / edge-ref on imported archetypes" {
+    # Issue #6642 Blocker 2: archetypes defined in osp_xmod_lib.na.jac, wired +
+    # walked from the consumer osp_xmod_main.na.jac. Imported OSP archetypes
+    # materialize into the consumer's deterministic tag space, so spawn / connect
+    # and the imported walker body's own edge-refs all lower across the boundary
+    # and agree at runtime. Native-only (a .na.jac library is not @sv-importable);
+    # the @sv result {"seen": 7, "ports": 2} is pinned in the fixture docstring.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "osp_xmod_main.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "xmod_na") == {"seen": 7, "ports": 2};
+}

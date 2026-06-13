@@ -355,26 +355,33 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     )}";
 }
 
-# spawn / connect on OSP archetypes IMPORTED from another native module have
-# no lowering yet (cross-module archetype materialization is #6146 Phases
-# 3-4): tag numbering and the __osp_setup tables are per-module, so lowering
-# against an imported archetype would dispatch on mismatched type tags. The
-# E5090 must fire AND its help text must name the defining module so the
-# failure is diagnosable as the cross-module gap, not a generic unsupported-op.
-test "osp gate: spawn/connect on imported archetypes E5090 names the import" {
+# NOTE (issue #6642 Blocker 2): the cross-module spawn/connect/edge-ref guardrail
+# that asserted E5090 for ALL imported OSP was REMOVED -- in the SOUND shape
+# (a single imported OSP module, no local OSP archetypes) those archetypes now
+# materialize into the consumer's deterministic tag space and lower, pinned by
+# the native run in test_osp_equivalence.jac ("osp cross-module ...").
+
+# But the deterministic sorted-name tag scheme is only sound when the consumer's
+# OSP archetype set matches the library's. A consumer that ALSO defines a local
+# OSP archetype (here `AAA`, which sorts before the library's `Area`) shifts the
+# shared tags, so the library walker body would dispatch on mismatched tags and
+# silently mis-walk. That unsound shape must fail LOUDLY (E5090), not silently
+# materialize -- the soundness invariant of the #6636 lineage.
+test "osp gate: cross-module OSP with a tag-shifting local archetype is rejected" {
     prog = compile_na_inline(
-        "xmod_osp",
-        "import from osp_xmod_lib { Area, In, Noop }\n"
+        "xmod_unsafe",
+        "import from osp_xmod_lib { Area, Portal, Counter }\n"
+        "node AAA { has v: int = 0; }\n"  # sorts before Area -> shifts tags
         "with entry {\n"
-        "    a = Area(tag=1);\n"
-        "    b = Area(tag=2);\n"
-        "    a +>: In() :+> b;\n"
-        "    n = Noop();\n"
-        "    n spawn a;\n"
-        "    print(n.count);\n"
+        "    a1 = Area(tag=1);\n"
+        "    a2 = Area(tag=2);\n"
+        "    a1 +>: Portal(w=1) :+> a2;\n"
+        "    c = Counter();\n"
+        "    c spawn a1;\n"
+        "    print(c.seen);\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for cross-module OSP, got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsound cross-module OSP, got: {fmt_errors(
         prog
     )}";
     named = False;
