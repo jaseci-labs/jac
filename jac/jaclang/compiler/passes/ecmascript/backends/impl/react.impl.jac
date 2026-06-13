@@ -60,6 +60,30 @@ impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpress
     );
 }
 
+"""Runtime symbols required when lowering a reactive state field."""
+impl ReactBackend.state_field_symbols(s: StateField) -> list[str] {
+    return ["useState"];
+}
+
+"""Runtime symbols required when lowering a ref field."""
+impl ReactBackend.ref_field_symbols(r: RefField) -> list[str] {
+    return ["useRef"];
+}
+
+"""Runtime symbols required when lowering an effect."""
+impl ReactBackend.effect_symbols(e: Effect) -> list[str] {
+    return ["useEffect"];
+}
+
+"""Runtime symbols required when lowering an async boundary."""
+impl ReactBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
+    syms = ["JacAwaiting"];
+    if a.except_exprs {
+        syms.append("JacClientErrorBoundary");
+    }
+    return syms;
+}
+
 """Lower a reactive state field to `const [name, setName] = useState(init);`."""
 impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
     setter_name = self._get_setter_name(s.name);

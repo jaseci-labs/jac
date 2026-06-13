@@ -5,11 +5,19 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.backends.preact { PreactBackend }
+import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.compiler.passes.ecmascript.backends.registry {
     resolve_active_backend,
     resolve_framework_backend
 }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.reactive_intent {
+    AsyncBoundary,
+    Effect,
+    RefField,
+    StateField
+}
+import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { JacConfig, ClientConfig, set_config }
 import from jaclang.runtimelib.preact_entry { build_simple_preact_entry_script }
@@ -33,6 +41,45 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
     es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
     es_ir = es_pass.ir_out;
     return es_to_js(es_ir.gen.es_ast);
+}
+
+test "react backend reports runtime symbols for reactive lowering" {
+    backend = ReactBackend();
+    init = es.Literal(value=0, raw="0");
+    assert backend.state_field_symbols(StateField(name="count", init_expr=init)) == [
+        "useState"
+    ];
+    assert backend.ref_field_symbols(RefField(name="node", init_expr=init)) == [
+        "useRef"
+    ];
+    assert backend.effect_symbols(
+        Effect(body=[], deps=[], is_entry=True, is_async=False)
+    ) == ["useEffect"];
+    try_expr = es.Identifier(name="tryFn");
+    awaiting_only = AsyncBoundary(
+        try_expr=try_expr, awaiting_expr=None, except_exprs=[]
+    );
+    assert backend.async_boundary_symbols(awaiting_only) == ["JacAwaiting"];
+    with_except = AsyncBoundary(
+        try_expr=try_expr,
+        awaiting_expr=None,
+        except_exprs=[es.Identifier(name="onErr")]
+    );
+    assert backend.async_boundary_symbols(with_except) == [
+        "JacAwaiting",
+        "JacClientErrorBoundary"
+    ];
+}
+
+test "preact backend inherits hook symbol names from react" {
+    backend = PreactBackend();
+    init = es.Literal(value=0, raw="0");
+    assert backend.state_field_symbols(StateField(name="count", init_expr=init)) == [
+        "useState"
+    ];
+    assert backend.effect_symbols(
+        Effect(body=[], deps=[], is_entry=True, is_async=False)
+    ) == ["useEffect"];
 }
 
 test "registry resolves preact backend" {

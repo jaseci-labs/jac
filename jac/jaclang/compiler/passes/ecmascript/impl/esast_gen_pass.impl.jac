@@ -3407,10 +3407,8 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                 if (nd.awaiting_body is not None and nd.awaiting_body.gen.es_ast)
                 else self._build_view_iife([], VIEW_ACC, nd)
         );
-        self._inject_runtime_import('JacAwaiting', nd);
         except_iifes: list[es.Expression] = [];
         if nd.excepts {
-            self._inject_runtime_import('JacClientErrorBoundary', nd);
             except_iifes = [
                 cast(es.Expression, ex.gen.es_ast)
                 for ex in nd.excepts
@@ -3421,6 +3419,9 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
             try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
         );
         self._ensure_backend();
+        for sym in self.backend.async_boundary_symbols(async_boundary) {
+            self._inject_runtime_import(sym, nd);
+        }
         wrapper = self.sync_loc(
             self.backend.lower_async_boundary(async_boundary), jac_node=nd
         );
@@ -4111,6 +4112,9 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
         body=body_stmts, deps=deps_elements, is_entry=is_entry, is_async=is_async
     );
     self._ensure_backend();
+    for sym in self.backend.effect_symbols(effect) {
+        self._inject_runtime_import(sym, nd);
+    }
     lowered = self.backend.lower_effect(effect);
     if lowered {
         nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
@@ -4152,7 +4156,6 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             if ref_typed and not ref_ctor {
                 self.emit(E2025, node_override=has_var);
             }
-            self._inject_runtime_import('useRef', nd);
             ref_init: es.Expression = self.sync_loc(
                 es.Literal(value=None, raw='null'), jac_node=has_var
             );
@@ -4165,6 +4168,9 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             }
             ref_field = RefField(name=var_name, init_expr=ref_init);
             self._ensure_backend();
+            for sym in self.backend.ref_field_symbols(ref_field) {
+                self._inject_runtime_import(sym, nd);
+            }
             for stmt in self.backend.lower_ref_field(ref_field) {
                 statements.append(self.sync_loc(stmt, jac_node=has_var));
             }
@@ -4173,8 +4179,6 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
         }
 
         # --- reactive field -> delegate to backend
-        self._inject_runtime_import('useState', nd);
-
         init_value: es.Expression;
         if has_var.value and has_var.value.gen.es_ast {
             init_value = cast(es.Expression, has_var.value.gen.es_ast);
@@ -4184,6 +4188,9 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 
         state_field = StateField(name=var_name, init_expr=init_value);
         self._ensure_backend();
+        for sym in self.backend.state_field_symbols(state_field) {
+            self._inject_runtime_import(sym, nd);
+        }
         for stmt in self.backend.lower_state_field(state_field) {
             statements.append(self.sync_loc(stmt, jac_node=has_var));
         }
@@ -4252,9 +4259,6 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     }
     # CHECK: Is this an event-based ability (can with entry/exit) in client context?
     if (isinstance(nd.signature, uni.EventSignature) and nd.in_client_context()) {
-        # Auto-inject useEffect import if needed
-        self._inject_runtime_import('useEffect', nd);
-        # Transform to useEffect
         self._transform_to_useeffect(nd);
         return;
     }
