@@ -200,6 +200,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # thunks, so a consumer's thunk never collides with the library's
         # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
         _osp_thunk_uid: int = 0,
+        # Whether cross-module OSP materialization is SOUND for this compile.
+        # The deterministic sorted-name tag scheme only makes a library and its
+        # importer agree when the consumer's sorted OSP set equals the library's
+        # -- i.e. no local OSP archetypes and a single OSP-defining import. When
+        # this is False, imported OSP archetypes are NOT materialized, so
+        # spawn/connect/edge-ref on them fail loudly (E5090) instead of running
+        # on mismatched tags and silently computing the wrong walk (issue #6642).
+        _osp_xmod_safe: bool = True,
         # OSP archetypes IMPORTED from another native module: name ->
         #   (arch_kind, defining module name). Cross-module OSP lowering is
         #   not supported until #6146 Phases 3-4 (tag numbering and the
@@ -470,6 +478,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
     def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
+    def _osp_cross_module_safe(imported_mods: list) -> bool;
     def _module_uses_osp(module: uni.Module) -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;

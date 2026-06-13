@@ -173,7 +173,7 @@ imported archetype (no spawn/connect/visit) keeps the plain layout and never
 loads the kernel (issue #6642 Blocker 2). Must run before imported struct bodies
 are filled (`_codegen_archetype` reads `osp_arch_kind` for the layout)."""
 impl NaIRGenPass._register_imported_osp_archetypes(imported_mod: uni.Module) -> None {
-    if not self._module_uses_osp(self.ir_in) {
+    if (not self._module_uses_osp(self.ir_in)) or (not self._osp_xmod_safe) {
         return;
     }
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
@@ -191,6 +191,40 @@ impl NaIRGenPass._register_imported_osp_archetypes(imported_mod: uni.Module) -> 
             }
         }
     }
+}
+
+"""Whether cross-module OSP materialization is SOUND for this compile.
+
+The deterministic sorted-name tag scheme makes an imported archetype's tag in
+the consumer equal to its tag in the defining library only when the consumer's
+sorted OSP archetype set is IDENTICAL to that library's. That holds exactly
+when the consumer defines NO local OSP archetypes and every imported OSP
+archetype comes from a SINGLE defining module (a library that itself imports
+OSP shows up as a second defining module in the transitive `imported_mods`, so
+it is covered). Any other shape interleaves foreign names into the sort and
+shifts tags, which would dispatch on mismatched tags and silently compute the
+wrong walk -- so the cross-module ops fail loudly (E5090) instead (issue
+#6642). Returns True when there is no cross-module OSP at all."""
+impl NaIRGenPass._osp_cross_module_safe(imported_mods: list) -> bool {
+    _local_osp = 0;
+    for arch in self._native_archetypes(self.ir_in) {
+        if (arch.arch_kind is not None) and arch.name {
+            _local_osp += 1;
+        }
+    }
+    _def_mods: set = set();
+    for (_, imported_mod) in imported_mods {
+        for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+            if isinstance(stmt, uni.Archetype) and (stmt.arch_kind is not None) {
+                _def_mods.add(imported_mod.name);
+                break;
+            }
+        }
+    }
+    if not _def_mods {
+        return True;
+    }
+    return (_local_osp == 0) and (len(_def_mods) == 1);
 }
 
 """True when the module's native code USES an OSP construct — an edge connect
@@ -220,10 +254,14 @@ impl NaIRGenPass._module_uses_osp(module: uni.Module) -> bool {
 }
 
 """Cross-module OSP E5090 help: when one of `names` resolves to an OSP
-archetype imported from another native module (and not overridden locally),
-return help text naming the defining module — the diagnosable form of the
-#6146 cross-module materialization gap. None when no name matches, so callers
-fall back to the generic E5090."""
+archetype imported from another native module that was NOT materialized into
+this compile, return help text naming the defining module. An imported
+archetype goes un-materialized only when the deterministic sorted-name tag
+scheme is not provably sound here (`_osp_xmod_safe` is False) -- a consumer
+that also defines local OSP archetypes, or imports OSP from more than one
+module, would shift the shared tags and silently mis-walk -- so the op is
+rejected loudly. None when no name matches, so callers fall back to the
+generic E5090 (issue #6642)."""
 impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
     for _n in names {
         if (
@@ -234,10 +272,13 @@ impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
             (_kind, _mod) = self.imported_osp_archs[_n];
             return (
                 f"the {_kind} archetype '{_n}' is imported from native module "
-                f"'{_mod}'; spawn / connect / edge-ref on OSP archetypes across "
-                f"a native module boundary is not lowered yet (#6146 Phases "
-                f"3-4) — per-module type tags would mismatch. Move this OSP "
-                f"usage into '{_mod}' or define the archetype in this module."
+                f"'{_mod}', but cross-module Object-Spatial lowering needs the "
+                f"deterministic type-tag order to match across modules; here it "
+                f"cannot, because this module also defines local OSP archetypes "
+                f"or imports OSP from more than one module (sorted tags would "
+                f"shift and the walk would silently mis-dispatch). Spawn / "
+                f"connect / edge-ref on a SINGLE imported OSP module with no "
+                f"local OSP archetypes, or define the archetype in this module."
             );
         }
     }
@@ -1070,11 +1111,16 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             );
             return None;
         }
+        _unfiltered = _result;
         _result = self.builder.call(
             self._osp_filter_fn,
-            [_result, ir.Constant(i64, _ntag)],
+            [_unfiltered, ir.Constant(i64, _ntag)],
             name="osp.refs.filt"
         );
+        # `__osp_filter_type` copied the surviving handles into a fresh list, so
+        # the intermediate `osp_refs` result is now dead -- release it (its
+        # elements are immortal graph handles, untouched by the list teardown).
+        self._emit_rc_release_simple(_unfiltered, op="osp_refs_filtered", loc="");
     }
     return _result;
 }
