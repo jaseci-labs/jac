@@ -14,7 +14,8 @@ import from built_in.path_plugin { PathPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
-glob FS_COMMANDS: list = [
+glob _RMTREE_ENTRY_LIMIT: int = 500,
+     FS_COMMANDS: list = [
          CommandSpec(
              name="read_file",
              params={"path": "str", "encoding": "str"},
@@ -159,6 +160,17 @@ obj FsPlugin(DesktopPlugin) {
         self._check_allowed(path, "write");
         if path.is_dir() {
             import shutil;
+            count = 0;
+            for (_, dirs, files) in os.walk(str(path)) {
+                count += len(dirs) + len(files);
+                if count > _RMTREE_ENTRY_LIMIT {
+                    raise PluginError(
+                        "FORBIDDEN",
+                        f"Directory '{path}' contains more than {_RMTREE_ENTRY_LIMIT} entries; "
+                        "recursive removal refused."
+                    );
+                }
+            }
             shutil.rmtree(str(path));
         } else {
             path.unlink();

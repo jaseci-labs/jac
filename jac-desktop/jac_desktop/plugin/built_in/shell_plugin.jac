@@ -130,7 +130,18 @@ obj ShellPlugin(DesktopPlugin) {
         if timeout <= 0 or timeout > 3600 {
             raise PluginError("INVALID_ARGS", "timeout must be between 1 and 3600");
         }
-        cwd = args.get("cwd") or None;
+        cwd = None;
+        cwd_raw = args.get("cwd");
+        if cwd_raw {
+            import pathlib;
+            cwd_path = pathlib.Path(cwd_raw).resolve();
+            if not cwd_path.is_dir() {
+                raise PluginError(
+                    "INVALID_ARGS", f"cwd '{cwd_raw}' is not an existing directory"
+                );
+            }
+            cwd = str(cwd_path);
+        }
         try {
             result = subprocess.run(
                 argv,

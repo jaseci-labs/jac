@@ -76,8 +76,10 @@ obj WindowPlugin(DesktopPlugin) {
             return {};
         }
         if command == "fullscreen" {
-            # WEBVIEW_HINT_FIXED = 3, used here for fullscreen-like behavior
-            self._wv.webview_set_size(self._handle, 0, 0, 3);
+            self._wv.webview_eval(
+                self._handle,
+                b"document.documentElement.requestFullscreen().catch(function(){});"
+            );
             return {};
         }
         if command == "terminate" {

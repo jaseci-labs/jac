@@ -67,17 +67,17 @@ def _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-"""Ensure libwebview.so exists beside the binding (build it on first use)."""
+"""Ensure the platform webview shared library exists beside the binding (build it on first use)."""
 def _ensure_libwebview(webview_dir: Path) -> Path {
-    lib = webview_dir / "libwebview.so";
+    lib = webview_dir / libwebview_name();
     if lib.exists() {
         return lib;
     }
-    console.print("  Building libwebview.so (one-time)...", style="muted");
+    console.print(f"  Building {libwebview_name()} (one-time)...", style="muted");
     res = subprocess.run([str(webview_dir / "build_libwebview.sh")]);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
-            "Failed to build libwebview.so - is WebKitGTK + a C toolchain installed? "
+            f"Failed to build {libwebview_name()} - is WebKitGTK + a C toolchain installed? "
             "See jac_desktop/native/webview/README.md."
         );
     }
