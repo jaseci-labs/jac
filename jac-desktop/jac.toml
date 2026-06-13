@@ -35,6 +35,7 @@ jac_desktop = [
     "native/cef/close_preload.c",
     "native/cef/build_cef_dispatch.sh",
     "native/cef/fetch_libcef.sh",
+    "native/cef/minimal-fonts.conf",
     "native/cef/README.md",
 ]
 

@@ -125,3 +125,8 @@ Without setuid, the shim passes `--no-sandbox` via `no_sandbox=1` (OK for dev).
   `window.__JAC_BROKER__ = '/__jac'` on the V8 global object synchronously
   before any page scripts execute. This is the CEF equivalent of the native
   target's `webview_init(BOOTSTRAP_JS)`.
+
+## QA
+
+Proactive testing checklist, CI smoke patterns, and pre-ship matrix:
+[`QA.md`](QA.md).

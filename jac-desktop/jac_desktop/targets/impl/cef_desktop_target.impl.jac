@@ -62,6 +62,34 @@ def _find_webview_dir -> Path {
     raise RuntimeError("jac-desktop: native/webview assets not found in the package.");
 }
 
+"""Add $ORIGIN + the build-time libpython directory to the host ELF RUNPATH.
+
+nacompile links libpython by soname (e.g. libpython3.14.so.1.0). CEF/webview
+shims resolve via $ORIGIN; libpython usually lives in the Python LIBDIR and
+must be on the loader path. Without this, moving the binary or building on a
+different Python version yields 'cannot open shared object file'.
+"""
+def _patch_host_rpath(binary: Path) -> None {
+    libdir = sysconfig.get_config_var("LIBDIR") or "";
+    if not libdir {
+        return;
+    }
+    patchelf = shutil.which("patchelf");
+    if not patchelf {
+        console.print(
+            "  [yellow]patchelf not found; libpython must be on LD_LIBRARY_PATH at runtime[/yellow]"
+        );
+        return;
+    }
+    rpath = f"$ORIGIN:{libdir}";
+    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
+    if res.returncode != 0 {
+        console.print(
+            "  [yellow]patchelf rpath patch failed; rebuild on this machine if the binary won't start[/yellow]"
+        );
+    }
+}
+
 """Resolve the jac CLI for nacompile."""
 def _jac_bin -> str {
     # Prefer jac beside the running interpreter (editable venv installs).
@@ -103,19 +131,46 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
 """Ensure libcef_dispatch.so exists beside the binding (build it on first use)."""
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
-    if lib.exists() {
+    src = cef_dir / "cef_dispatch.na.jac";
+    stale = (
+        not lib.exists() or (src.exists() and src.stat().st_mtime > lib.stat().st_mtime)
+    );
+    if not stale {
         return lib;
     }
-    _ensure_cef_dist(cef_dir);
-    console.print("  Building libcef_dispatch.so (one-time)...", style="muted");
+    console.print(
+        "  Building libcef_dispatch.so (jac nacompile --shared)...", style="muted"
+    );
     res = subprocess.run([str(cef_dir / "build_cef_dispatch.sh")]);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
             "Failed to build libcef_dispatch.so. "
-            "See jac_desktop/native/cef/README.md for prerequisites."
+            "Ensure jac is on PATH and patchelf is installed."
         );
     }
     return lib;
+}
+
+"""Ensure cef-subprocess helper exists (jac nacompile binary for CEF browser subprocesses)."""
+def _ensure_cef_subprocess(cef_dir: Path) -> Path {
+    helper = cef_dir / "cef-subprocess";
+    src = cef_dir / "cef_subprocess.na.jac";
+    stale = (
+        not helper.exists()
+        or (src.exists() and src.stat().st_mtime > helper.stat().st_mtime)
+    );
+    if not stale {
+        return helper;
+    }
+    console.print("  Building cef-subprocess (jac nacompile)...", style="muted");
+    res = subprocess.run([str(cef_dir / "build_cef_subprocess.sh")]);
+    if res.returncode != 0 or not helper.exists() {
+        raise RuntimeError(
+            "Failed to build cef-subprocess. "
+            "Ensure jac is on PATH and patchelf is installed."
+        );
+    }
+    return helper;
 }
 
 """Generate the CEF native host source (`host.na.jac`): embed CPython, serve
@@ -126,9 +181,9 @@ the renderer FFI for `cef.na.jac` and adds CEF subprocess handling.
 
 Lifecycle order (must match `cef.na.jac`):
   1. cef_execute_subprocess() — exit early in CEF subprocesses
-  2. Py_Initialize + loopback server (URL ready before CEF UI thread runs)
-  3. cef_queue_browser() — queues pending browser
-  4. cef_startup() — on_context_initialized creates the window
+  2. cef_startup() — must run before any Python threads (CEF main-thread rule)
+  3. Py_Initialize + loopback server
+  4. cef_open_browser() — create the window after URL is known
   5. cef_run_loop() with GIL released
 
 Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
@@ -171,8 +226,8 @@ def _generate_host_source(
         "import sys;\n"
         "import from cef {\n"
         "    cef_execute_subprocess,\n"
-        "    cef_queue_browser,\n"
         "    cef_startup,\n"
+        "    cef_open_browser,\n"
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
         "}\n"
@@ -194,21 +249,21 @@ def _generate_host_source(
         "    if code >= 0 {\n"
         "        sys.exit(code);\n"
         "    }\n"
+        f"    rc: i32 = cef_startup({json.dumps(cache_path, ensure_ascii=False)}, 1);\n"
+        "    if rc != 1 {\n"
+        "        sys.exit(1);\n"
+        "    }\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(SERVE_PY);\n"
         '    main_mod = PyImport_AddModule("__main__");\n'
         "    d = PyModule_GetDict(main_mod);\n"
         '    port = PyLong_AsLong(PyRun_String("_port", PY_EVAL, d, d));\n'
         "    url = f\"http://127.0.0.1:{port}/\";\n"
-        "    cef_queue_browser(\n"
+        "    cef_open_browser(\n"
         "        url,\n"
         f"        {json.dumps(title, ensure_ascii=False)},\n"
         f"        {width}, {height}\n"
         "    );\n"
-        f"    rc: i32 = cef_startup({json.dumps(cache_path, ensure_ascii=False)}, 1);\n"
-        "    if rc != 1 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
         "    ts = PyEval_SaveThread();\n"
         "    cef_run_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
@@ -309,9 +364,17 @@ impl CefDesktopTarget.build(
 
     # CEF binding + dispatch helper (built on first use against the staged CEF dist).
     cef_dir = _find_cef_dir();
+    # Minimal fontconfig avoids Arch's broken 48-guessfamily.conf stalling Chromium init.
+    fonts_conf = cef_dir / "minimal-fonts.conf";
+    if fonts_conf.exists() {
+        shutil.copy2(fonts_conf, out_dir / "minimal-fonts.conf");
+    }
     cef_dist = _ensure_cef_dist(cef_dir);
     libcef_dispatch = _ensure_libcef_dispatch(cef_dir);
+    cef_subprocess = _ensure_cef_subprocess(cef_dir);
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
+    shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
+    (out_dir / "cef-subprocess").chmod(0o755);
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
 
     # CEF runtime bundle (libcef.so + resources).
@@ -340,25 +403,15 @@ impl CefDesktopTarget.build(
     );
     (out_dir / "host.na.jac").write_text(host_src);
 
-    close_preload = cef_dir / ".build" / "close_preload.o";
-    if not close_preload.exists() {
-        raise RuntimeError(
-            "close_preload.o missing after libcef_dispatch build. "
-            "Re-run jac_desktop/native/cef/build_cef_dispatch.sh."
-        );
-    }
-    nacompile_env = dict(os.environ);
-    nacompile_env["JAC_CRT_OBJECTS"] = str(close_preload);
     console.print("  Compiling CEF native host (jac nacompile)...", style="muted");
     res = subprocess.run(
-        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name],
-        cwd=str(out_dir),
-        env=nacompile_env,
+        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name], cwd=str(out_dir),
     );
     if res.returncode != 0 {
         raise RuntimeError("CEF native host compilation failed.");
     }
     binary = out_dir / app_name;
+    _patch_host_rpath(binary);
     console.print(f"\n✅ CEF desktop app built: {binary}", style="bold green");
     console.print(f"   run: (cd {out_dir} && ./{app_name})", style="muted");
     return binary;
@@ -369,11 +422,18 @@ impl CefDesktopTarget.start(
 ) -> None {
     binary = self.build(entry_file, project_dir, None);
     env = dict(os.environ);
-    # CEF on Linux: force X11 + Mesa software GL when GPU drivers fail.
-    env.setdefault("DISPLAY", ":0");
-    env.setdefault("OZONE_PLATFORM", "x11");
+    libdir = sysconfig.get_config_var("LIBDIR") or "";
+    if libdir {
+        prev = env.get("LD_LIBRARY_PATH", "");
+        env["LD_LIBRARY_PATH"] = libdir if not prev else f"{libdir}:{prev}";
+    }
+    # CEF on Linux: software GL by default; platform auto-detected by the C shim.
     env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1");
     env.setdefault("GALLIUM_DRIVER", "llvmpipe");
+    fonts_conf = binary.parent / "minimal-fonts.conf";
+    if fonts_conf.exists() {
+        env.setdefault("FONTCONFIG_FILE", str(fonts_conf));
+    }
     console.print(f"\n🚀 Launching CEF desktop app: {binary.name}", style="bold green");
     try {
         subprocess.run([str(binary)], cwd=str(binary.parent), env=env);

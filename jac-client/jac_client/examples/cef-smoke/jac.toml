@@ -1,10 +1,18 @@
 [project]
-name = "basic"
-version = "1.0.0"
-description = "Jac client application: basic"
+name = "cef-smoke"
+version = "0.1.0"
+description = "CEF desktop-cef target smoke test for jac-desktop PR validation"
 entry-point = "main.jac"
 
 [plugins.client]
+
+[plugins.desktop]
+engine = "cef"
+
+[plugins.desktop.window]
+title = "CEF Smoke Test"
+width = 960
+height = 720
 
 [dependencies.npm]
 react = "^18.2.0"

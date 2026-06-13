@@ -69,15 +69,21 @@ impl _find_patch_target(
     rodata_vaddr: int,
     data_vaddr: int
 ) -> tuple[bytearray, int, int] | None {
+    # Returns (buffer, sec_blob_off, segment_base_vaddr).
+    # The caller computes patch_off = sec_blob_off + rela.offset (offset within the
+    # whole buffer) and patch_vaddr = segment_base_vaddr + patch_off. Returning the
+    # SEGMENT base (not the section base sec_blob_off + segment_base) avoids
+    # double-counting sec_blob_off when multiple sections are packed into one blob
+    # (e.g. when CRT objects introduce a second .text alongside the main .ltext).
     if target_sec in code_sections {
         off = code_sections[target_sec][0];
-        return (code_bytes, off, code_vaddr + off);
+        return (code_bytes, off, code_vaddr);
     } elif target_sec in rodata_sections {
         off = rodata_sections[target_sec][0];
-        return (rodata_bytes, off, rodata_vaddr + off);
+        return (rodata_bytes, off, rodata_vaddr);
     } elif target_sec in data_sections {
         off = data_sections[target_sec][0];
-        return (data_bytes, off, data_vaddr + off);
+        return (data_bytes, off, data_vaddr);
     }
     return None;
 }

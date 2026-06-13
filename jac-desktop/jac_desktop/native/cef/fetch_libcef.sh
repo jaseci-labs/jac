@@ -26,14 +26,28 @@ cd "$HERE"
 # legacy C API which works correctly with client-side vtable structs.
 CEF_MAJOR="${CEF_MAJOR:-119}"
 
+HEADERS_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --headers-only) HEADERS_ONLY=1 ;;
+    esac
+done
+
 DIST_DIR="$HERE/cef_dist"
 VERSION_STAMP="$DIST_DIR/.cef_version"
 HEADERS_DIR="$HERE/cef_headers"
 HEADERS_MARKER="$HEADERS_DIR/include/capi/cef_app_capi.h"
 CACHED_TARBALL="$HERE/.cef_tarball.tar.bz2"
 
+# --- Skip if headers-only and headers already staged ------------------
+if [ "$HEADERS_ONLY" = "1" ] && [ -f "$HEADERS_MARKER" ]; then
+    echo ">> CEF headers already staged in $HEADERS_DIR"
+    exit 0
+fi
+
 # --- Skip if runtime + headers already staged -------------------------
-if [ -f "$VERSION_STAMP" ] \
+if [ "$HEADERS_ONLY" = "0" ] \
+    && [ -f "$VERSION_STAMP" ] \
     && [ "$(cat "$VERSION_STAMP")" = "${CEF_MAJOR}.x" ] \
     && [ -f "$DIST_DIR/libcef.so" ] \
     && [ -f "$HEADERS_MARKER" ]; then
@@ -111,6 +125,38 @@ if [ -n "$EXPECTED_SHA1" ]; then
     echo ">> SHA-1 verified: $ACTUAL_SHA1"
 else
     echo "WARNING: no SHA-1 available in index; skipping integrity check" >&2
+fi
+
+# --- Headers-only: extract headers then exit (no runtime download) ----
+if [ "$HEADERS_ONLY" = "1" ]; then
+    if [ ! -f "$HEADERS_MARKER" ]; then
+        echo ">> extracting CEF SDK headers to $HEADERS_DIR (headers-only)"
+        rm -rf "$HEADERS_DIR"
+        python3 -c "
+import tarfile, os, shutil
+tb = '$CACHED_TARBALL'
+out = '$HEADERS_DIR'
+with tarfile.open(tb, 'r:bz2') as tf:
+    for m in tf:
+        parts = m.name.split('/', 1)
+        if len(parts) < 2: continue
+        rel = parts[1]
+        if not rel.startswith('include/'): continue
+        target = os.path.join(out, rel)
+        if m.isdir():
+            os.makedirs(target, exist_ok=True)
+        else:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with tf.extractfile(m) as src, open(target, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+" || {
+            echo "ERROR: CEF header extraction failed" >&2; exit 1
+        }
+    else
+        echo ">> CEF SDK headers already staged in $HEADERS_DIR"
+    fi
+    echo "OK."
+    exit 0
 fi
 
 # --- Extract runtime (skip if libcef.so already present) ---------------

@@ -34,7 +34,13 @@ import from "libcef_dispatch.so" {
         window_info: int, client: int, url: str, settings: int
     ) -> i32;  def cef_dispatch_get_exe_dir -> str;  def cef_dispatch_getenv_set(
         name: str
-    ) -> i32;  def cef_dispatch_log(msg: str) -> None;
+    ) -> i32;  def cef_dispatch_log(msg: str) -> None;  def cef_dispatch_set_pending_browser(
+        url: str, title: str, width: int, height: int
+    ) -> None;  def cef_dispatch_execute_process -> i32;  def cef_dispatch_startup(
+        cache_path: str, no_sandbox: int
+    ) -> i32;  def cef_dispatch_open_browser(
+        url: str, title: str, width: int, height: int
+    ) -> None;
 }
 
 # ---------------------------------------------------------------------------
@@ -44,79 +50,79 @@ import from "libcef_dispatch.so" {
 import from "libcef.so" {
     obj cef_life_span_handler_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             on_before_popup: int = 0,
             on_before_dev_tools_popup: int = 0,
-            on_after_created: Callable[[int, int], None] = 0,
+            on_after_created: int = 0,
             do_close: int = 0,
-            on_before_close: Callable[[int, int], None] = 0;
+            on_before_close: int = 0;
     }  obj cef_load_handler_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             on_loading_state_change: int = 0,
-            on_load_start: Callable[[int, int, int, int], None] = 0,
-            on_load_end: Callable[[int, int, int, int], None] = 0,
-            on_load_error: Callable[[int, int, int, int, int, int], None] = 0;
+            on_load_start: int = 0,
+            on_load_end: int = 0,
+            on_load_error: int = 0;
     }  obj cef_display_handler_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             on_address_change: int = 0,
             on_title_change: int = 0,
             on_favicon_urlchange: int = 0,
             on_fullscreen_mode_change: int = 0,
             on_tooltip: int = 0,
             on_status_message: int = 0,
-            on_console_message: Callable[[int, int, int, int, int, int], int] = 0,
+            on_console_message: int = 0,
             on_auto_resize: int = 0,
             on_loading_progress_change: int = 0,
             on_cursor_change: int = 0,
             on_media_access_change: int = 0;
     }  obj cef_browser_process_handler_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             on_register_custom_preferences: int = 0,
-            on_context_initialized: Callable[[int], None] = 0,
+            on_context_initialized: int = 0,
             on_before_child_process_launch: int = 0,
             on_schedule_message_pump_work: int = 0,
             get_default_client: int = 0;
     }  obj cef_render_process_handler_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             on_web_kit_initialized: int = 0,
             on_browser_created: int = 0,
             on_browser_destroyed: int = 0,
             get_load_handler: int = 0,
-            on_context_created: Callable[[int, int, int, int], None] = 0,
+            on_context_created: int = 0,
             on_context_released: int = 0,
             on_uncaught_exception: int = 0,
             on_focused_node_changed: int = 0,
             on_process_message_received: int = 0;
     }  obj cef_client_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
             get_audio_handler: int = 0,
             get_command_handler: int = 0,
             get_context_menu_handler: int = 0,
             get_dialog_handler: int = 0,
-            get_display_handler: Callable[[int], int] = 0,
+            get_display_handler: int = 0,
             get_download_handler: int = 0,
             get_drag_handler: int = 0,
             get_find_handler: int = 0,
@@ -125,23 +131,23 @@ import from "libcef.so" {
             get_permission_handler: int = 0,
             get_jsdialog_handler: int = 0,
             get_keyboard_handler: int = 0,
-            get_life_span_handler: Callable[[int], int] = 0,
-            get_load_handler: Callable[[int], int] = 0,
+            get_life_span_handler: int = 0,
+            get_load_handler: int = 0,
             get_print_handler: int = 0,
             get_render_handler: int = 0,
             get_request_handler: int = 0,
             on_process_message_received: int = 0;
     }  obj cef_app_t {
         has size: int = 0,
-            add_ref: Callable[[int], None] = 0,
-            release: Callable[[int], int] = 0,
-            has_one_ref: Callable[[int], int] = 0,
-            has_at_least_one_ref: Callable[[int], int] = 0,
-            on_before_command_line_processing: Callable[[int, int, int], None] = 0,
+            add_ref: int = 0,
+            release: int = 0,
+            has_one_ref: int = 0,
+            has_at_least_one_ref: int = 0,
+            on_before_command_line_processing: int = 0,
             on_register_custom_schemes: int = 0,
             get_resource_bundle_handler: int = 0,
-            get_browser_process_handler: Callable[[int], int] = 0,
-            get_render_process_handler: Callable[[int], int] = 0;
+            get_browser_process_handler: int = 0,
+            get_render_process_handler: int = 0;
     }
 }  # import from libcef.so
 
@@ -232,13 +238,15 @@ def _on_console_message(
 }
 
 def _on_context_initialized(self: int) {
+    global g_browser_pending;
     _cef_log("context initialized");
     if g_browser_pending != 0 {
         wi = cef_dispatch_window_info_create(
             g_pending_title, g_pending_width, g_pending_height,
         );
         bs = cef_dispatch_browser_settings_create();
-        cef_dispatch_create_browser(wi, g_cli, g_pending_url, bs);
+        ok: i32 = cef_dispatch_create_browser(wi, g_cli, g_pending_url, bs);
+        _cef_log(f"context initialized: create_browser returned {ok}");
         g_browser_pending = 0;
     }
 }
@@ -281,15 +289,24 @@ def _get_render_process_handler(self: int) -> int {
 }
 
 def _on_before_cmdline(self: int, process_type: int, command_line: int) {
-    cef_dispatch_cmdline_append_switch_value(command_line, "ozone-platform", "x11");
-    cef_dispatch_cmdline_append_switch_value(command_line, "use-gl", "desktop");
+    if cef_dispatch_getenv_set("WAYLAND_DISPLAY") != 0 {
+        cef_dispatch_cmdline_append_switch_value(
+            command_line, "ozone-platform", "wayland"
+        );
+    } else {
+        cef_dispatch_cmdline_append_switch_value(command_line, "ozone-platform", "x11");
+    }
     cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-sandbox");
     cef_dispatch_cmdline_append_switch(command_line, "disable-dev-shm-usage");
-    if cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU") != 0 {
+    if cef_dispatch_getenv_set("JAC_CEF_ENABLE_GPU") == 0 {
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-compositing");
         cef_dispatch_cmdline_append_switch(command_line, "enable-software-rasterizer");
+    } else {
+        cef_dispatch_cmdline_append_switch_value(command_line, "use-gl", "desktop");
     }
+    cef_dispatch_cmdline_append_switch(command_line, "no-zygote");
+    cef_dispatch_cmdline_append_switch(command_line, "no-sandbox");
     if cef_dispatch_getenv_set("JAC_CEF_SINGLE_PROCESS") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "single-process");
     }
@@ -299,6 +316,7 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
 # Vtable initialization
 # ---------------------------------------------------------------------------
 def _init_vtables {
+    global g_lsh,g_lh,g_dh,g_bph,g_rph,g_cli,g_app;
     g_lsh = cef_life_span_handler_t(
         size=80,
         add_ref=_cef_add_ref,
@@ -395,29 +413,22 @@ obj:pub CefBrowser {
 
 """Run CEF subprocess dispatch; return exit code (>= 0) or -1 for main process."""
 def:pub cef_execute_subprocess -> i32 {
-    _init_vtables();
-    main_args = cef_dispatch_main_args_create();
-    return cef_execute_process(main_args, g_app, 0);
+    return cef_dispatch_execute_process();
 }
 
 """Queue a browser window to open on on_context_initialized (before initialize)."""
 def:pub cef_queue_browser(url: str, title: str, width: int, height: int) {
-    g_pending_url = url;
-    g_pending_title = title;
-    g_pending_width = width;
-    g_pending_height = height;
-    g_browser_pending = 1;
+    cef_dispatch_set_pending_browser(url, title, width, height);
+}
+
+"""Open a browser window after cef_startup (main process, post-init)."""
+def:pub cef_open_browser(url: str, title: str, width: int, height: int) {
+    cef_dispatch_open_browser(url, title, width, height);
 }
 
 """Initialize CEF on the main process; returns 1 on success."""
 def:pub cef_startup(cache_path: str, no_sandbox: int) -> i32 {
-    main_args = cef_dispatch_main_args_create();
-    exe_dir: str = cef_dispatch_get_exe_dir();
-    locales_dir: str = f"{exe_dir}/locales";
-    settings = cef_dispatch_settings_create(
-        no_sandbox, cache_path, exe_dir, locales_dir,
-    );
-    return cef_initialize(main_args, settings, g_app, 0);
+    return cef_dispatch_startup(cache_path, no_sandbox);
 }
 
 """Run the CEF UI message loop (blocks until quit)."""
@@ -434,12 +445,12 @@ def:pub new_cef_browser(
     cache_path: str = "",
     no_sandbox: int = 1,
 ) -> CefBrowser {
-    code: i32 = cef_execute_subprocess();
+    code: int = cef_execute_subprocess();
     if code >= 0 {
         return CefBrowser(browser_handle=0);
     }
     cef_queue_browser(url, title, width, height);
-    rc: i32 = cef_startup(cache_path, no_sandbox);
+    rc: int = cef_startup(cache_path, no_sandbox);
     if rc != 1 {
         return CefBrowser(browser_handle=0);
     }

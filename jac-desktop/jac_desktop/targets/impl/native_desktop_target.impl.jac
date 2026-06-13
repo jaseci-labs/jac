@@ -32,6 +32,28 @@ def _find_webview_dir -> Path {
     raise RuntimeError("jac-desktop: native/webview assets not found in the package.");
 }
 
+"""Add $ORIGIN + libpython LIBDIR to the host ELF RUNPATH (see cef target)."""
+def _patch_host_rpath(binary: Path) -> None {
+    libdir = sysconfig.get_config_var("LIBDIR") or "";
+    if not libdir {
+        return;
+    }
+    patchelf = shutil.which("patchelf");
+    if not patchelf {
+        console.print(
+            "  [yellow]patchelf not found; libpython must be on LD_LIBRARY_PATH at runtime[/yellow]"
+        );
+        return;
+    }
+    rpath = f"$ORIGIN:{libdir}";
+    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
+    if res.returncode != 0 {
+        console.print(
+            "  [yellow]patchelf rpath patch failed; rebuild on this machine if the binary won't start[/yellow]"
+        );
+    }
+}
+
 """Resolve the jac CLI for nacompile (we're running under it)."""
 def _jac_bin -> str {
     found = shutil.which("jac");
@@ -228,6 +250,7 @@ impl NativeDesktopTarget.build(
         raise RuntimeError("Native host compilation failed.");
     }
     binary = out_dir / app_name;
+    _patch_host_rpath(binary);
     console.print(f"\n✅ Desktop app built: {binary}", style="bold green");
     console.print(f"   run: (cd {out_dir} && ./{app_name})", style="muted");
     return binary;
@@ -238,6 +261,11 @@ impl NativeDesktopTarget.start(
 ) -> None {
     binary = self.build(entry_file, project_dir, None);
     env = dict(os.environ);
+    libdir = sysconfig.get_config_var("LIBDIR") or "";
+    if libdir {
+        prev = env.get("LD_LIBRARY_PATH", "");
+        env["LD_LIBRARY_PATH"] = libdir if not prev else f"{libdir}:{prev}";
+    }
     # WebKitGTK on WSL/headless-ish setups: prefer X11 + software paths.
     env.setdefault("GDK_BACKEND", "x11");
     env.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1");

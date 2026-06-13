@@ -2159,14 +2159,24 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
             # Merge into existing section
             merged_idx = existing_sec_by_name[crt_sec.name];
             merged_sec = linker.sections[merged_idx];
-            # Align the append offset
+            # For SHT_NOBITS (.bss) sections, data is always empty but mem_size
+            # tracks the actual occupied bytes. Use mem_size as the base for
+            # alignment so CRT .bss symbols land at the correct virtual offset.
             align = max(crt_sec.align, 1);
-            cur_len = len(merged_sec.data);
-            aligned_off = _align(cur_len, align);
-            padding = b"\x00" * (aligned_off - cur_len);
+            cur_base = merged_sec.mem_size
+                if merged_sec.typ == 8
+                else len(merged_sec.data);
+            aligned_off = _align(cur_base, align);
+            padding = b"\x00" * (aligned_off - len(merged_sec.data));
             # Append CRT section data to existing section
             new_data = merged_sec.data + padding + crt_sec.data;
-            new_mem_size = max(merged_sec.mem_size, len(new_data));
+            # For NOBITS merges, account for CRT mem_size explicitly; the data
+            # blob stays empty but the segment mapping must reserve virtual space.
+            if merged_sec.typ == 8 or crt_sec.typ == 8 {
+                new_mem_size = aligned_off + crt_sec.mem_size;
+            } else {
+                new_mem_size = max(merged_sec.mem_size, len(new_data));
+            }
             linker.sections[merged_idx] = ElfSection(
                 name=merged_sec.name,
                 typ=merged_sec.typ,
@@ -2193,7 +2203,12 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
     }
 
     # Map CRT symbol indices -> merged symbol indices.
+    # Also track addend adjustments for CRT section symbols that map to an
+    # existing defined symbol: when the CRT content was appended at merge_off > 0
+    # inside a section, PC-relative relocations using the section symbol need
+    # their addend bumped by merge_off so they still resolve to the right address.
     sym_idx_map: dict[int, int] = {};
+    sym_addend_adjust: dict[int, int] = {};
     existing_syms: dict[str, int] = {};
     for (i, sym) in enumerate(linker.symbols) {
         if sym.name {
@@ -2221,11 +2236,27 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
                     typ=crt_sym.typ,
                     shndx=new_shndx
                 );
+            } elif crt_sym.shndx != SHN_UNDEF {
+                # Existing defined symbol takes precedence. If the CRT content
+                # was appended at a non-zero offset (adjusted_value > existing
+                # value), PC-relative relocations using this symbol need their
+                # addend corrected by the difference so they still point at the
+                # CRT data, not the base of the merged section.
+                addend_delta = adjusted_value - existing_sym.value;
+                if addend_delta != 0 {
+                    sym_addend_adjust[crt_sym_idx] = addend_delta;
+                }
             }
             sym_idx_map[crt_sym_idx] = existing_idx;
         } else {
             new_idx = len(linker.symbols);
-            new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+            # SHN_UNDEF (0) must stay 0 — it means "no section / external", not
+            # "section at index 0". sec_idx_map[0] points at the CRT null section
+            # which was appended at a non-zero linker index; blindly remapping
+            # would turn UNDEF imports (dlsym, dlopen, …) into "defined" symbols.
+            new_shndx = 0
+                if crt_sym.shndx == SHN_UNDEF
+                else sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
             linker.symbols.append(
                 ElfSymbol(
                     name=crt_sym.name,
@@ -2262,12 +2293,15 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
         if crt_target_idx is not None {
             adjusted_offset += sec_data_offset.get(crt_target_idx, 0);
         }
+        # Adjust addend for CRT symbols that mapped to an existing defined symbol
+        # at a different virtual offset (see sym_addend_adjust above).
+        adjusted_addend = rel.addend + sym_addend_adjust.get(rel.sym_idx, 0);
         linker.relocations.append(
             ElfRela(
                 offset=adjusted_offset,
                 sym_idx=new_sym_idx,
                 rtype=rel.rtype,
-                addend=rel.addend,
+                addend=adjusted_addend,
                 sym_name=new_sym_name,
                 target_sec=rel.target_sec
             )
