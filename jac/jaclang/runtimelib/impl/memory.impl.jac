@@ -14,8 +14,16 @@ import from datetime { datetime, timezone }
 import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.changeset {
+    ApplyReport,
+    ChangeSet,
+    WriteIntent,
+    derive_dirty_fields,
+    snapshot_field_hashes
+}
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.query_plan { QueryPlan }
+import from jaclang.runtimelib.typecache { get_field_types }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
@@ -225,6 +233,10 @@ When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
 whose data.source or data.target references this node, then strip those
 edge IDs from all remaining live NodeAnchor data.edges arrays. This
 prevents dangling edge references after schema drift removes a node type.
+
+`manage_txn=False` is for callers that already hold an open transaction
+(apply()'s BEGIN IMMEDIATE): committing here would split their unit of
+work in two, so the quarantine rides the caller's transaction instead.
 """
 def _quarantine(
     conn: sqlite3.Connection,
@@ -235,7 +247,8 @@ def _quarantine(
     fingerprint: (str | None),
     data: (str | None),
     error: str,
-    from_format_version: (int | None) = None
+    from_format_version: (int | None) = None,
+    manage_txn: bool = True
 ) {
     try {
         now_ts = datetime.now(timezone.utc).isoformat();
@@ -360,7 +373,9 @@ def _quarantine(
                 }
             }
         }
-        conn.commit();
+        if manage_txn {
+            conn.commit();
+        }
     } except Exception as e {
         logger.error(f"Failed to quarantine anchor {id}: {e}");
     }
@@ -449,10 +464,12 @@ def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
 # =============================================================================
 # VolatileMemory Implementation (L1)
 # =============================================================================
+"""Default abort: nothing staged, nothing to discard."""
+impl Memory.abort -> None { }
+
 """Initialize mutable defaults."""
 impl VolatileMemory.postinit -> None {
     self.__mem__ = {};
-    self.__gc__ = set();
 }
 
 """In-memory storage is always available."""
@@ -470,17 +487,14 @@ impl VolatileMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
 }
 
-"""Remove an anchor by ID and track for garbage collection."""
+"""Remove an anchor by ID."""
 impl VolatileMemory.delete(id: UUID) -> None {
-    if (anchor := self.__mem__.pop(id, None)) {
-        self.__gc__.add(anchor);
-    }
+    self.__mem__.pop(id, None);
 }
 
 """Close and clear memory."""
 impl VolatileMemory.close -> None {
     self.__mem__.clear();
-    self.__gc__.clear();
 }
 
 """Check if an anchor is in memory."""
@@ -537,16 +551,6 @@ impl VolatileMemory.find_one(
     return None;
 }
 
-"""Get garbage collection list."""
-impl VolatileMemory.get_gc -> list[Anchor] {
-    return list(self.__gc__);
-}
-
-"""Remove anchor from garbage collection list."""
-impl VolatileMemory.remove_from_gc(anchor: Anchor) -> None {
-    self.__gc__.discard(anchor);
-}
-
 """Get the underlying memory dict."""
 impl VolatileMemory.get_mem -> dict[UUID, Anchor] {
     return self.__mem__;
@@ -587,7 +591,6 @@ impl LocalCacheMemory.invalidate(id: UUID) -> None {
 """Initialize SqliteMemory with a file path (lazy - no DB created yet)."""
 impl SqliteMemory.postinit -> None {
     self.__mem__ = {};
-    self.__gc__ = set();
     # Connection is lazily initialized on first write
     self.__conn__ = None;
     # Serializes access to the sqlite3 connection. The connection is opened
@@ -748,51 +751,65 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         self.__mem__[id] = cast(Anchor, anchor);
-        _sqlite_snapshot_field_hashes(cast(Anchor, anchor));
+        snapshot_field_hashes(cast(Anchor, anchor));
         return cast(Anchor, anchor);
     }
 }
 
-"""Store an anchor in L1 memory. DB persistence is deferred to sync() so
-that concurrent writes go through a single merge-aware BEGIN IMMEDIATE
-transaction per walker instead of per-anchor writes that race on
-cross-anchor consistency (closes issue #5446)."""
+"""Store an anchor: cache it in the working set and write the row through.
+A direct backend put is a seeding/administrative write that bypasses the
+unit-of-work; the runtime never calls l3.put() — its graph mutations flow
+through commit() -> apply() exclusively (one merge-aware transaction per
+unit of work; issues #5446, #6587)."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
-}
-
-"""Delete an anchor and track for garbage collection (only if persistent)."""
-impl SqliteMemory.delete(id: UUID) -> None {
-    if (anchor := self.__mem__.pop(id, None)) {
-        # Only track persistent anchors for DB deletion
-        if anchor.persistent {
-            self.__gc__.add(anchor);
-        }
+    if not anchor.persistent or not anchor.is_populated() {
+        return;
     }
-    # Also remove from database immediately if connected
-    if self.__conn__ {
-        with self.__lock__ {
-            conn = cast(sqlite3.Connection, self.__conn__);
-            conn.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
+    with self.__lock__ {
+        self._ensure_connection();
+        conn = cast(sqlite3.Connection, self.__conn__);
+        try {
+            row = _anchor_to_row(anchor);
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint,
+                     data, format_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (str(anchor.id), ) + row
+            );
             conn.commit();
+        } except (AttributeError, ModuleNotFoundError) {
+            # Anchors that can't be serialized (e.g. transient test classes)
+            # stay cache-only, matching the legacy skip.
+            return;
+        } except Exception as e {
+            logger.warning(
+                f"SqliteMemory.put: failed to persist {anchor.id}: "
+                f"{type(e).__name__}: {e}"
+            );
         }
     }
 }
 
-"""Flush pending writes and close database connection."""
+"""Drop an anchor from this store's working set. The database row is only
+removed by apply() executing a delete intent, in dependency order with the
+edge-list repairs that must precede it — never inline (issue #6587)."""
+impl SqliteMemory.delete(id: UUID) -> None {
+    self.__mem__.pop(id, None);
+}
+
+"""Close database connection. Flushing is the runtime's job (commit ->
+apply); close must not write — a closed-but-uncommitted unit of work is
+discarded, which is what abort semantics require."""
 impl SqliteMemory.close -> None {
-    # Persist any pending L1 changes before closing
-    try {
-        self.sync();
-    } except Exception as e {
-        logger.warning(f"SqliteMemory.close sync failed: {e}");
-    }
     if self.__conn__ {
         self.__conn__.close();
         self.__conn__ = None;
     }
     self.__mem__.clear();
-    self.__gc__.clear();
 }
 
 """Check if an anchor is in memory or database."""
@@ -917,299 +934,229 @@ def _canonical_json(val: object) -> str {
     );
 }
 
-"""Stable hash of a single serialized field value — used for per-field dirty detection."""
-def _sqlite_field_hash(val: object) -> int {
-    try {
-        return hash(json.dumps(val, sort_keys=True, default=str));
-    } except Exception {
-        return hash(str(val));
-    }
-}
+"""Flush a unit of work inside one BEGIN IMMEDIATE transaction.
 
-"""Snapshot per-field hashes onto the archetype after a successful DB load or sync write."""
-def _sqlite_snapshot_field_hashes(anchor: Anchor) -> None {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return;
-    }
-    arch = anchor.archetype;
-    known = get_field_types(type(arch)).keys();
-    _seen: tuple[set, set] = (set(), set());
-    hashes: dict[str, int] = {};
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        hashes[name] = _sqlite_field_hash(serialized);
-    }
-    object.__setattr__(arch, '__jac_field_hashes__', hashes);
-}
-
-"""Derive dirty fields by comparing current field values against the stored hash snapshot."""
-def _sqlite_derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return set();
-    }
-    arch = anchor.archetype;
-    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
-    if not stored {
-        return set();
-    }
-    known = get_field_types(type(arch)).keys();
-    dirty: set[str] = set();
-    _seen: tuple[set, set] = (set(), set());
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        if _sqlite_field_hash(serialized) != stored.get(name) {
-            dirty.add(name);
-        }
-    }
-    return dirty;
-}
-
-"""Sync memory to database with access control checks.
-
-Preserves the field-level merge semantics from the legacy pickle path:
-edges merge requires CONNECT access, archetype/access merge require
-WRITE access. Equality comparisons use JSON-serialized forms instead of
-pickle-hash, making the sync safe across schema drift.
+A transactional backend: the staged order from the changeset is a no-op
+for crash-safety here (the transaction is all-or-nothing), but executing
+it keeps one code path with non-transactional backends. Access decisions
+were made by the runtime's collect pass — this method only executes
+intents. Per-intent serialization failures are skipped (with their
+dependents poisoned) exactly like the legacy sync did for transient
+classes; transaction-level failures roll the whole unit back.
 """
-impl SqliteMemory.sync -> None {
-    import from jaclang { JacRuntimeInterface as Jac }
-    # Check if there's anything to sync
-    has_persistent = any(a.persistent for a in self.__mem__.values());
-    if not self.__gc__ and not has_persistent {
-        return;  # Nothing to sync, don't create DB
+impl SqliteMemory.apply(changeset: ChangeSet) -> ApplyReport {
+    apply_report = ApplyReport();
+    if changeset.is_empty() {
+        return apply_report;  # Nothing to flush, don't create the DB
     }
     with self.__lock__ {
-        # Lazily create connection now that we have data to persist
         self._ensure_connection();
         assert self.__conn__ is not None;
         conn = self.__conn__;
-        # Acquire write lock before reading to prevent concurrent commit races.
         # Commit any implicit transaction first, then start an explicit one.
         conn.commit();
-        conn.execute("BEGIN IMMEDIATE");
-        # Handle garbage collected anchors (deletions)
-        for anchor in self.__gc__ {
-            conn.execute("DELETE FROM anchors WHERE id = ?", (str(anchor.id), ));
-        }
-        self.__gc__.clear();
-        # Sync memory to database with access control
-        for (id, anchor) in list(self.__mem__.items()) {
-            if not anchor.persistent {
-                continue;
-            }
-            # Skip stubs - only sync fully populated anchors
-            if not anchor.is_populated() {
-                continue;
-            }
-
-            key = str(id);
-            try {
-                cursor = conn.execute(
-                    """
-                    SELECT type, arch_module, arch_type, fingerprint, data,
-                           format_version
-                    FROM anchors WHERE id = ?
-                    """,
-                    (key, )
-                );
-                raw_row = cursor.fetchone();
-                stored: (Anchor | None) = None;
-                if raw_row {
-                    row_type = cast(str, raw_row[0]);
-                    row_arch_module = cast((str | None), raw_row[1]);
-                    row_arch_type = cast((str | None), raw_row[2]);
-                    row_fingerprint = cast((str | None), raw_row[3]);
-                    row_data = cast(str, raw_row[4]);
-                    row_fmt = cast(int, raw_row[5]);
+        try {
+            conn.execute("BEGIN IMMEDIATE");
+            poisoned: set[UUID] = set();
+            for stage in changeset.staged() {
+                for intent in stage {
+                    if (deps := intent.depends_on & poisoned) {
+                        # Proceeding would mint a dangling reference (e.g.
+                        # a node delete after a failed edge delete).
+                        dep = next(iter(deps));
+                        apply_report.skipped[intent.anchor.id] = (
+                            f"dependency {dep} failed"
+                        );
+                        poisoned.add(intent.anchor.id);
+                        logger.error(
+                            f"SqliteMemory.apply: skipping {intent.op.name} on "
+                            f"{intent.anchor.id}: dependency {dep} failed"
+                        );
+                        continue;
+                    }
                     try {
-                        stored = cast(
-                            (Anchor | None),
-                            Serializer.deserialize(json.loads(row_data))
-                        );
-                    } except Exception as de {
-                        logger.warning(
-                            f"SqliteMemory.sync: stored anchor {key} unreadable "
-                            f"({type(de).__name__}: {de}); quarantining and "
-                            "overwriting with in-memory version."
-                        );
-                        _quarantine(
-                            conn,
-                            key,
-                            row_type,
-                            row_arch_module,
-                            row_arch_type,
-                            row_fingerprint,
-                            row_data,
-                            f"sync-time deserialize: {type(de).__name__}: {de}",
-                            from_format_version=row_fmt
-                        );
-                        stored = None;
-                    }
-                }
-
-                if stored is not None and stored.is_populated() {
-                    stored_anchor = cast(Anchor, stored);
-                    changed = False;
-                    # Handle edge updates with merge-based conflict resolution
-                    # (CONNECT access)
-                    if (
-                        isinstance(stored_anchor, NodeAnchor)
-                        and isinstance(anchor, NodeAnchor)
-                        and stored_anchor.edges != anchor.edges
-                        and Jac.check_connect_access(anchor)
-                    ) {
-                        delta = anchor.edge_delta();
-                        if delta is not None {
-                            edges_added = set(delta[0]);
-                            edges_removed = set(delta[1]);
-                            # Apply delta to the stored (DB-current) edge list
-                            stored_set = set(e.id for e in stored_anchor.edges);
-                            merged_ids = (stored_set | edges_added) - edges_removed;
-                            edge_by_id = {e.id: e for e in stored_anchor.edges};
-                            edge_by_id.update({e.id: e for e in anchor.edges});
-                            stored_anchor.edges = [
-                                edge_by_id[eid]
-                                for eid in merged_ids
-                                if eid in edge_by_id
-                            ];
-                        } else {
-                            stored_anchor.edges = anchor.edges;
-                        }
-                        if (
-                            not stored_anchor.edges
-                            and not isinstance(anchor.archetype, Root)
-                        ) {
-                            conn.execute("DELETE FROM anchors WHERE id = ?", (key, ));
-                            continue;
-                        }
-                        changed = True;
-                    }
-                    # Topology index is a derived adjacency cache on root
-                    # NodeAnchors, updated by edges *anywhere* in the subtree —
-                    # so a deep edge change leaves this root's own edges and
-                    # archetype fields untouched while the index blob still
-                    # changes. It is not an archetype field, so neither the
-                    # edge merge above nor the field-hash dirty check below
-                    # catches it; without this the update is silently dropped
-                    # on persist. Gate on CONNECT access, like edges, since the
-                    # index reflects connectivity.
-                    if (
-                        isinstance(stored_anchor, NodeAnchor)
-                        and isinstance(anchor, NodeAnchor)
-                        and anchor.topology_index_data != stored_anchor.topology_index_data
-                        and Jac.check_connect_access(anchor)
-                    ) {
-                        stored_anchor.topology_index_data = anchor.topology_index_data;
-                        changed = True;
-                    }
-                    # Handle access/archetype updates (WRITE access)
-                    access_changed = _canonical_json(stored_anchor.access) != _canonical_json(
-                        anchor.access
-                    );
-                    arch = anchor.archetype;
-                    setattr_dirty: set[str] = set(
-                        arch.__dict__.get('__jac_dirty_fields__') or set()
-                    )
-                        if arch is not None
-                        else set();
-                    hash_dirty: set[str] = _sqlite_derive_dirty_from_field_hashes(
-                        anchor
-                    )
-                        if arch is not None
-                        else set();
-                    dirty = setattr_dirty | hash_dirty;
-                    if (access_changed or dirty)
-                    and Jac.check_write_access(anchor, op_hint="field_write") {
-                        if access_changed {
-                            stored_anchor.access = anchor.access;
-                            changed = True;
-                        }
-                        if dirty
-                        and stored_anchor.archetype is not None
-                        and arch is not None {
-                            for field in dirty {
-                                try {
-                                    setattr(
-                                        stored_anchor.archetype,
-                                        field,
-                                        getattr(arch, field)
-                                    );
-                                } except AttributeError {
-                                    continue;
-                                }
-                            }
-                            changed = True;
-                        }
-                    }
-                    # Only write to database if something actually changed
-                    if changed {
-                        merged_row = _anchor_to_row(stored_anchor);
-                        conn.execute(
-                            """
-                            INSERT OR REPLACE INTO anchors
-                                (id, type, arch_module, arch_type, fingerprint,
-                                 data, format_version, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (key, ) + merged_row
-                        );
-                        if anchor.archetype is not None {
-                            anchor.archetype.__dict__.pop('__jac_dirty_fields__', None);
-                            _sqlite_snapshot_field_hashes(anchor);
-                        }
-                    }
-                } else {
-                    # No stored or stored is a stub - save anchor if valid
-                    if not (
-                        isinstance(anchor, NodeAnchor)
-                        and not isinstance(anchor.archetype, Root)
-                        and not anchor.edges
-                    )
-                    and Jac.check_write_access(anchor, op_hint="field_write") {
-                        new_row = _anchor_to_row(anchor);
-                        conn.execute(
-                            """
-                            INSERT OR REPLACE INTO anchors
-                                (id, type, arch_module, arch_type, fingerprint,
-                                 data, format_version, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (key, ) + new_row
+                        self._apply_one(conn, intent);
+                        apply_report.applied.append(intent.anchor.id);
+                    } except (AttributeError, ModuleNotFoundError) as se {
+                        # Anchors that can't be serialized (e.g. transient
+                        # test classes) are skipped, not fatal.
+                        poisoned.add(intent.anchor.id);
+                        apply_report.failed[intent.anchor.id] = str(se);
+                    } except Exception as e {
+                        poisoned.add(intent.anchor.id);
+                        apply_report.failed[intent.anchor.id] = str(e);
+                        logger.error(
+                            f"SqliteMemory.apply: {intent.op.name} failed for "
+                            f"{intent.anchor.id}: {type(e).__name__}: {e}"
                         );
                     }
                 }
-            } except (AttributeError, ModuleNotFoundError) {
-                # Skip anchors that can't be serialized (e.g. transient test classes)
-                continue;
-            } except Exception as e {
-                logger.warning(
-                    f"SqliteMemory.sync: failed to sync anchor {key}: "
-                    f"{type(e).__name__}: {e}"
-                );
-                continue;
             }
+            conn.commit();
+        } except Exception as te {
+            conn.rollback();
+            apply_report.applied = [];
+            for stage in changeset.staged() {
+                for intent in stage {
+                    apply_report.failed[intent.anchor.id] = str(te);
+                }
+            }
+            logger.error(f"SqliteMemory.apply: transaction rolled back: {te}");
         }
-        conn.commit();
     }
+    return apply_report;
 }
 
-"""Bulk store multiple anchors."""
-impl SqliteMemory.bulk_put(anchors: Iterable[Anchor]) -> None {
-    for anchor in anchors {
-        self.put(anchor);
+"""Execute one intent: deletes remove the row; everything else is a
+merge-aware write against the stored row."""
+impl SqliteMemory._apply_one(conn: sqlite3.Connection, intent: WriteIntent) -> None {
+    if intent.is_delete() {
+        conn.execute("DELETE FROM anchors WHERE id = ?", (str(intent.anchor.id), ));
+        return;
     }
+    self._merge_write(conn, intent);
 }
 
-"""Get garbage collection list."""
-impl SqliteMemory.get_gc -> list[Anchor] {
-    return list(self.__gc__);
-}
+"""Merge-aware write (cross-process safety, issue #5446): read the stored
+row, apply this unit's edge delta / dirty fields / access / topology-index
+changes onto it, and write the merged result. A concurrent writer's edges
+survive because the delta is applied to the DB-current list, not ours."""
+impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) -> None {
+    anchor = intent.anchor;
+    key = str(anchor.id);
+    cursor = conn.execute(
+        """
+        SELECT type, arch_module, arch_type, fingerprint, data,
+               format_version
+        FROM anchors WHERE id = ?
+        """,
+        (key, )
+    );
+    raw_row = cursor.fetchone();
+    stored: (Anchor | None) = None;
+    if raw_row {
+        row_type = cast(str, raw_row[0]);
+        row_arch_module = cast((str | None), raw_row[1]);
+        row_arch_type = cast((str | None), raw_row[2]);
+        row_fingerprint = cast((str | None), raw_row[3]);
+        row_data = cast(str, raw_row[4]);
+        row_fmt = cast(int, raw_row[5]);
+        try {
+            stored = cast(
+                (Anchor | None), Serializer.deserialize(json.loads(row_data))
+            );
+        } except Exception as de {
+            logger.warning(
+                f"SqliteMemory.apply: stored anchor {key} unreadable "
+                f"({type(de).__name__}: {de}); quarantining and "
+                "overwriting with in-memory version."
+            );
+            # apply() holds the BEGIN IMMEDIATE: the quarantine must ride
+            # that transaction, not commit it mid-flush.
+            _quarantine(
+                conn,
+                key,
+                row_type,
+                row_arch_module,
+                row_arch_type,
+                row_fingerprint,
+                row_data,
+                f"apply-time deserialize: {type(de).__name__}: {de}",
+                from_format_version=row_fmt,
+                manage_txn=False
+            );
+            stored = None;
+        }
+    }
 
-"""Remove anchor from garbage collection list."""
-impl SqliteMemory.remove_from_gc(anchor: Anchor) -> None {
-    self.__gc__.discard(anchor);
+    if stored is not None and stored.is_populated() {
+        stored_anchor = cast(Anchor, stored);
+        changed = False;
+        # Merge edge lists: apply this unit's delta to the DB-current list
+        # so a concurrent writer's edges survive.
+        if (
+            isinstance(stored_anchor, NodeAnchor)
+            and isinstance(anchor, NodeAnchor)
+            and stored_anchor.edges != anchor.edges
+        ) {
+            delta = anchor.edge_delta();
+            if delta is not None {
+                edges_added = set(delta[0]);
+                edges_removed = set(delta[1]);
+                stored_set = set(e.id for e in stored_anchor.edges);
+                merged_ids = (stored_set | edges_added) - edges_removed;
+                edge_by_id = {e.id: e for e in stored_anchor.edges};
+                edge_by_id.update({e.id: e for e in anchor.edges});
+                stored_anchor.edges = [
+                    edge_by_id[eid]
+                    for eid in merged_ids
+                    if eid in edge_by_id
+                ];
+            } else {
+                stored_anchor.edges = anchor.edges;
+            }
+            if (not stored_anchor.edges and not isinstance(anchor.archetype, Root)) {
+                conn.execute("DELETE FROM anchors WHERE id = ?", (key, ));
+                return;
+            }
+            changed = True;
+        }
+        # Topology index is a derived adjacency cache on root NodeAnchors,
+        # updated by edges anywhere in the subtree — not an archetype field,
+        # so the edge merge and field merge don't catch it.
+        if (
+            isinstance(stored_anchor, NodeAnchor)
+            and isinstance(anchor, NodeAnchor)
+            and anchor.topology_index_data != stored_anchor.topology_index_data
+        ) {
+            stored_anchor.topology_index_data = anchor.topology_index_data;
+            changed = True;
+        }
+        if _canonical_json(stored_anchor.access) != _canonical_json(anchor.access) {
+            stored_anchor.access = anchor.access;
+            changed = True;
+        }
+        # Merge dirty fields. A full write (create intent) copies every
+        # field; otherwise only the fields the collect pass flagged.
+        arch = anchor.archetype;
+        fields = set(get_field_types(type(arch)).keys())
+            if (intent.is_create() and arch is not None)
+            else set(intent.fields);
+        if fields and stored_anchor.archetype is not None and arch is not None {
+            for field in fields {
+                try {
+                    setattr(stored_anchor.archetype, field, getattr(arch, field));
+                } except AttributeError {
+                    continue;
+                }
+            }
+            changed = True;
+        }
+        if changed {
+            merged_row = _anchor_to_row(stored_anchor);
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint,
+                     data, format_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (key, ) + merged_row
+            );
+        }
+    } else {
+        # No stored row (or stored is a stub): write the anchor whole.
+        new_row = _anchor_to_row(anchor);
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO anchors
+                (id, type, arch_module, arch_type, fingerprint,
+                 data, format_version, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (key, ) + new_row
+        );
+    }
 }
 
 """Get the underlying memory dict."""
@@ -1217,10 +1164,9 @@ impl SqliteMemory.get_mem -> dict[UUID, Anchor] {
     return self.__mem__;
 }
 
-"""Commit - syncs pending changes to database."""
-impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None {
-    self.sync();
-}
+"""Commit — a backend has no unit of work of its own; flushing happens via
+apply() driven by the runtime (TieredMemory.commit)."""
+impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None { }
 
 # =============================================================================
 # SqliteMemory: Layer 1+2+3 operator surface
@@ -1586,7 +1532,7 @@ impl SqliteMemory.remove_alias(old_name: str) -> bool {
 
 # =============================================================================
 # TieredMemory Implementation (extends VolatileMemory with L2 + L3)
-# Inherits L1 functionality (__mem__, __gc__) from VolatileMemory.
+# Inherits L1 functionality (__mem__) from VolatileMemory.
 # Only overrides methods that need tiering logic.
 # =============================================================================
 """Initialize TieredMemory with optional cache and persistence."""
@@ -1595,7 +1541,8 @@ impl TieredMemory.postinit -> None {
     import from jaclang.runtimelib.utils { get_db_path }
     # Initialize L1 (inherited from VolatileMemory)
     self.__mem__ = {};
-    self.__gc__ = set();
+    # The request's unit of work (typed write intents).
+    self.changes = ChangeSet();
     # Initialize L2 cache if requested
     if self.use_cache {
         self.l2 = LocalCacheMemory();
@@ -1638,22 +1585,13 @@ impl TieredMemory.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Put anchor with write-through: L1 always, L2/L3 with access control."""
+"""Put anchor into L1 (and L2 cache). L3 is never written here: graph
+mutations reach storage only through commit() -> apply(), where the
+collect pass decides what changed and access control gates each intent."""
 impl TieredMemory.put(anchor: Anchor) -> None {
-    import from jaclang { JacRuntimeInterface as Jac }
-    # Always write to L1 (self.__mem__ inherited from VolatileMemory)
     self.__mem__[anchor.id] = anchor;
-    # Write-through to L2 (cache) if enabled
     if self.l2 {
         self.l2.put(anchor);
-    }
-    # Write-through to L3 with access control check.
-    # On denial, _check_access emits a `field_write` PermissionDenied
-    # diagnostic so the caller learns *why* their mutation didn't persist.
-    if self.l3 and anchor.persistent {
-        if Jac.check_write_access(anchor, op_hint="field_write") {
-            self.l3.put(anchor);
-        }
     }
 }
 
@@ -1687,38 +1625,47 @@ impl TieredMemory.get_roots -> Generator[Root, None, None] {
     }
 }
 
-"""Delete anchor from all tiers."""
+"""Delete becomes an intent, not an I/O call. The L3 row is removed at
+commit, in dependency order with the edge-list repairs that must precede
+it — never inline. An inline delete opens a crash window spanning the rest
+of the request in which the persisted graph holds references to documents
+that no longer exist (issue #6587), and it makes `del` the one mutation
+that abandoning a failed request cannot undo."""
 impl TieredMemory.delete(id: UUID) -> None {
-    # Delete from L1 (only track persistent anchors for GC)
-    if (anchor := self.__mem__.pop(id, None)) {
-        if anchor.persistent {
-            self.__gc__.add(anchor);
-        }
+    anchor: (Anchor | None) = self.__mem__.pop(id, None);
+    if anchor is None and self.l3 is not None {
+        # Deleting something never loaded this request: fetch the anchor so
+        # the delete intent can wire its dependencies.
+        anchor = self.l3.get(id);
     }
-    # Invalidate L2 cache
+    if self.l3 is not None {
+        # Drop the backend's cached copy so a re-get within this request
+        # cannot resurrect the deleted anchor. Durable removal happens at
+        # commit via apply(), never here.
+        self.l3.delete(id);
+    }
     if self.l2 {
         self.l2.invalidate(id);
     }
-    # Delete from L3 persistence (only if we have persistent data)
-    if self.l3 {
-        self.l3.delete(id);
+    if anchor is not None and anchor.persistent {
+        self.changes.record_delete(anchor);
     }
 }
 
-"""Close all tiers."""
+"""Close all tiers. Pending work is committed first — this is the backstop
+that persists CLI runs (`jac run` flows end at close, not at an explicit
+commit). A failed request must abort() before close to discard its work."""
 impl TieredMemory.close -> None {
-    # Sync L3 before closing
+    self.commit();
     if self.l3 {
-        self.l3.sync();
         self.l3.close();
     }
-    # Close L2
     if self.l2 {
         self.l2.close();
     }
     # Clear L1 (inherited from VolatileMemory)
     self.__mem__.clear();
-    self.__gc__.clear();
+    self.changes.clear();
 }
 
 """Check if anchor exists in any tier."""
@@ -1755,10 +1702,157 @@ impl TieredMemory.reset_l3_fetch_count -> None {
     }
 }
 
-"""Commit - syncs L3 persistence if available."""
+"""Commit the unit of work: collect L1 dirtiness into intents, flush them
+through the backend's apply(), then refresh change-tracking baselines."""
 impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
-    if self.l3 {
-        self.l3.sync();
+    if self.l3 is None {
+        self.changes.clear();
+        return;
+    }
+    self._collect_into(self.changes);
+    if self.changes.is_empty() {
+        return;
+    }
+    apply_report = self.l3.apply(self.changes);
+    self._post_apply(apply_report);
+    self.changes.clear();
+}
+
+"""Collect the working set's dirtiness into the unit of work. This is the
+single home of the WHAT-changed decision logic (whole-anchor hash gate,
+edge deltas, per-field dirtiness) and of access control: creates and field
+writes need WRITE access, edge-list changes need CONNECT access. Backends
+never decide — they execute intents."""
+impl TieredMemory._collect_into(changes: ChangeSet) -> None {
+    import from jaclang { JacRuntimeInterface as Jac }
+    for (id, anchor) in list(self.__mem__.items()) {
+        if not anchor.persistent or not anchor.is_populated() {
+            continue;
+        }
+        existing = changes.intents.get(id);
+        if existing is not None and existing.is_delete() {
+            continue;
+        }
+        try {
+            computed = Serializer._compute_hash(anchor);
+        } except Exception {
+            continue;
+        }
+        if anchor.hash != 0 and computed == anchor.hash {
+            continue;  # Unchanged since last load/persist.
+        }
+        if anchor.hash == 0 {
+            # Brand new. Edgeless non-root nodes are not persisted (legacy
+            # rule: an unreachable node is garbage, not data).
+            if (
+                isinstance(anchor, NodeAnchor)
+                and not isinstance(anchor.archetype, Root)
+                and not anchor.edges
+            ) {
+                continue;
+            }
+            if Jac.check_write_access(anchor, op_hint="field_write") {
+                changes.record_create(anchor);
+            }
+            continue;
+        }
+        recorded = False;
+        if isinstance(anchor, NodeAnchor) {
+            delta = anchor.edge_delta();
+            if delta is not None {
+                added = [eid for eid in delta[0]];
+                removed = [eid for eid in delta[1]];
+                if (added or removed) and Jac.check_connect_access(anchor) {
+                    changes.record_edge_delta(anchor, added, removed);
+                    recorded = True;
+                }
+            }
+        }
+        dirty = derive_dirty_fields(anchor);
+        if dirty and Jac.check_write_access(anchor, op_hint="field_write") {
+            changes.record_update(anchor, dirty);
+            recorded = True;
+        } elif (
+            recorded
+            and not anchor.archetype.__dict__.get('__jac_field_hashes__')
+            and Jac.check_write_access(anchor, op_hint="field_write")
+        ) {
+            # An edge delta was recorded, but with no field-hash snapshot
+            # derive_dirty_fields() is blind: "no dirty fields" cannot be
+            # trusted (e.g. an anchor loaded through a tier that didn't
+            # snapshot). Put every field on the intent so a mutation hiding
+            # behind the edge delta isn't silently dropped — record_update
+            # keeps the merge-aware EDGE_LIST_DELTA write (a record_create
+            # upgrade would move this anchor to stage 0, ahead of the edge
+            # docs its new edge list cites).
+            changes.record_update(
+                anchor, set(get_field_types(type(anchor.archetype)).keys())
+            );
+        }
+        if not recorded {
+            # Hash changed but no per-field/edge signal (access grants,
+            # topology-index blob, containers without a snapshot): full
+            # merged rewrite.
+            if Jac.check_write_access(anchor, op_hint="field_write") {
+                changes.record_create(anchor);
+            }
+        }
+    }
+}
+
+"""After a flush, re-baseline change tracking for every applied intent so
+the next commit sees these anchors as clean: whole-anchor hash, per-field
+hash snapshot, and the edge-list baseline that feeds edge_delta()."""
+impl TieredMemory._post_apply(apply_report: ApplyReport) -> None {
+    applied = set(apply_report.applied);
+    for intent in self.changes.intents.values() {
+        if intent.is_delete() or intent.anchor.id not in applied {
+            continue;
+        }
+        anchor = intent.anchor;
+        try {
+            anchor.hash = Serializer._compute_hash(anchor);
+            snapshot_field_hashes(anchor);
+            if isinstance(anchor, NodeAnchor) {
+                anchor.__dict__['_initial_edge_ids'] = frozenset(
+                    e.id for e in anchor.edges
+                );
+            }
+        } except Exception as e {
+            logger.debug(f"post-apply re-baseline failed for {anchor.id}: {e}");
+        }
+    }
+}
+
+"""Discard the uncommitted unit of work: drop pending intents and evict
+dirty anchors from L1/L2 so a later commit (or the close-time backstop)
+cannot re-collect the failed request's mutations. Evicted anchors reload
+clean from L3 on next touch."""
+impl TieredMemory.abort -> None {
+    self.changes.clear();
+    for (id, anchor) in list(self.__mem__.items()) {
+        if not anchor.persistent or not anchor.is_populated() {
+            continue;
+        }
+        dirty = anchor.hash == 0;
+        if not dirty {
+            try {
+                dirty = Serializer._compute_hash(anchor) != anchor.hash;
+            } except Exception {
+                dirty = True;
+            }
+        }
+        if dirty {
+            self.__mem__.pop(id, None);
+            if self.l2 {
+                self.l2.invalidate(id);
+            }
+            if self.l3 {
+                # Drop the backend's cached copy too, so a re-get reloads
+                # the committed state instead of the aborted mutation.
+                self.l3.delete(id);
+            }
+        }
     }
 }
 

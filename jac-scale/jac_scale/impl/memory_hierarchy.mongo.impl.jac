@@ -15,7 +15,6 @@ collections on first write, so all we do here is load any existing
 aliases into the in-process Serializer map.
 """
 impl MongoBackend.postinit -> None {
-    self._atomic_written = set();
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
@@ -123,53 +122,8 @@ def _strip_empty_dicts(v: object) -> object {
 }
 
 
-"""Stable hash of any serialized field value (dict, list, or scalar)."""
-def _field_hash(val: object) -> int {
-    import from json { dumps }
-    try {
-        return hash(dumps(val, sort_keys=True, default=str));
-    } except Exception {
-        return hash(str(val));
-    }
-}
-
-"""Snapshot per-field hashes onto the archetype after a successful save or load."""
-def _snapshot_field_hashes(anchor: Anchor) -> None {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return;
-    }
-    arch = anchor.archetype;
-    known = get_field_types(type(arch)).keys();
-    _seen: tuple[set, set] = (set(), set());
-    hashes: dict[str, int] = {};
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        hashes[name] = _field_hash(serialized);
-    }
-    object.__setattr__(arch, '__jac_field_hashes__', hashes);
-}
-
-"""Derive the dirty field set by comparing current field hashes to the stored snapshot."""
-def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return set();
-    }
-    arch = anchor.archetype;
-    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
-    known = get_field_types(type(arch)).keys();
-    dirty: set[str] = set();
-    _seen: tuple[set, set] = (set(), set());
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        if _field_hash(serialized) != stored.get(name) {
-            dirty.add(name);
-        }
-    }
-    return dirty;
-}
-
+# Field-hash dirty detection lives in jaclang.runtimelib.changeset — one
+# shared implementation for the runtime's collect pass and every backend.
 """Build a stored document for an anchor, including Layer 2 fingerprint
 and Layer 1 archetype identity fields. Parallels _anchor_to_row in
 SqliteMemory; kept here so schema evolution stays per-backend."""
@@ -370,11 +324,6 @@ def _mongo_quarantine(
     }
 }
 
-"""Set reference to parent TieredMemory's __mem__ for sync()."""
-impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
-    self._mem_ref = mem;
-}
-
 """Store a reference to the L2 cache so quarantine operations can invalidate it."""
 impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
     self._l2_ref = cache;
@@ -519,7 +468,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         return None;
     }
     _mongo_persist_repairs(self, str(_id), cast(Anchor, anchor), fingerprint);
-    _snapshot_field_hashes(cast(Anchor, anchor));
+    snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
@@ -539,12 +488,12 @@ impl MongoBackend._write_to_db(anchor: Anchor) -> None {
         doc = _anchor_to_doc(anchor);
         self.collection.update_one({'_id': str(_id)}, {'$set': doc}, upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
-        _snapshot_field_hashes(anchor);
+        snapshot_field_hashes(anchor);
     } except Exception as e {
+        # Propagate: apply() must know a structural write failed so it can
+        # poison dependents instead of minting a dangling reference.
         logger.error(f"MongoDB _write_to_db failed: {e}");
+        raise;
     }
 }
 
@@ -565,39 +514,24 @@ impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
         update['updated_at'] = datetime.now(timezone.utc).isoformat();
         self.collection.update_one({'_id': str(_id)}, {'$set': update});
         anchor.hash = Serializer._compute_hash(anchor);
-        arch = anchor.archetype if anchor.is_populated() else None;
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
-        _snapshot_field_hashes(anchor);
+        snapshot_field_hashes(anchor);
     } except Exception as e {
         logger.error(f"MongoDB put_partial failed: {e}");
+        raise;
     }
 }
 
-"""Delete anchor from MongoDB."""
-impl MongoBackend.delete(id: UUID) -> None {
-    if self.client is None {
-        return;
-    }
-    _id = to_uuid(id);
-    try {
-        self.collection.delete_one({'_id': str(_id)});
-    } except Exception as e {
-        logger.debug(f"MongoDB delete failed: {e}");
-    }
-}
+"""Forget backend-local cache state for an anchor. MongoBackend keeps no
+local cache, so this is a no-op: the document is removed by apply()
+executing a delete intent, in dependency order with the edge-list repairs
+that must precede it — never inline (issue #6587)."""
+impl MongoBackend.delete(id: UUID) -> None { }
 
-"""Flush pending writes and release local reference to the shared client."""
+"""Release local reference to the shared client. Flushing is the runtime's
+job (commit -> apply); close must not write."""
 impl MongoBackend.close -> None {
-    try {
-        self.sync();
-    } except Exception as e {
-        logger.warning(f"MongoBackend.close sync failed: {e}");
-    }
     # Don't close the shared process-level client; just drop local reference.
     self.client = None;
-    self._mem_ref = None;
     self._l2_ref = None;
 }
 
@@ -793,128 +727,94 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only changed anchors).
+"""Flush a unit of work in dependency order — the changeset's stages.
 
-Returns the set of anchor IDs written via the edge-delta atomic path this
-cycle; those entries have already been invalidated in L2, so the caller
-(ScaleTieredMemory.commit) skips re-caching them from the stale in-memory
-snapshot."""
-impl MongoBackend.sync -> set {
-    import from jaclang { JacRuntimeInterface as Jac }
-    if not self._mem_ref or not self.client {
-        return set();
+MongoDB multi-document transactions require a replica set, which many
+deployments (and the standalone default) don't run, so crash-safety comes
+from ORDER: truncating this sequence at any point can only leave an
+unreferenced document (orphan), never a dangling reference. A failed
+structural write poisons its dependents (e.g. a node delete after a failed
+edge delete is skipped) instead of corrupting the graph. Decision logic
+(what changed, access control) ran in the runtime's collect pass — this
+method only executes intents."""
+impl MongoBackend.apply(changeset: ChangeSet) -> ApplyReport {
+    apply_report = ApplyReport();
+    if changeset.is_empty() or self.client is None {
+        return apply_report;
     }
-    self._atomic_written = set();
     span = start_memory_span(
-        "memory.sync mongodb",
-        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "sync"}
+        "memory.apply mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "apply"}
     );
-    # try/finally so the span always closes; categorize, then batch-write.
     try {
-        node_inserts: list[NodeAnchor] = [];
-        edge_inserts: list[EdgeAnchor] = [];
-        atomic_updates: list[tuple[NodeAnchor, list[str], list[str]]] = [];
-        partial_updates: list[tuple[Anchor, set[str]]] = [];
-
-        for (_, anchor) in list(self._mem_ref.items()) {
-            if not anchor.persistent {
-                continue;
-            }
-            try {
-                # Check hash first: skip unchanged anchors without access check
-                current_hash = Serializer._compute_hash(anchor);
-                if current_hash == anchor.hash {
+        poisoned: set[UUID] = set();
+        for stage in changeset.staged() {
+            for intent in stage {
+                if (deps := intent.depends_on & poisoned) {
+                    dep = next(iter(deps));
+                    apply_report.skipped[intent.anchor.id] = f"dependency {dep} failed";
+                    poisoned.add(intent.anchor.id);
+                    logger.error(
+                        f"MongoDB apply: skipping {intent.op.name} on "
+                        f"{intent.anchor.id}: dependency {dep} failed"
+                    );
                     continue;
                 }
-                if not Jac.check_write_access(anchor) {
-                    continue;
+                try {
+                    self._apply_one(intent);
+                    apply_report.applied.append(intent.anchor.id);
+                } except Exception as e {
+                    poisoned.add(intent.anchor.id);
+                    apply_report.failed[intent.anchor.id] = str(e);
+                    logger.error(
+                        f"MongoDB apply: {intent.op.name} failed for "
+                        f"{intent.anchor.id}: {type(e).__name__}: {e}"
+                    );
                 }
-                if isinstance(anchor, NodeAnchor) {
-                    delta = anchor.edge_delta();
-                    if delta is not None {
-                        added = [str(eid) for eid in delta[0]];
-                        removed = [str(eid) for eid in delta[1]];
-                        if added or removed {
-                            atomic_updates.append((anchor, added, removed));
-                            continue;
-                        }
-                    }
-                }
-                if anchor.hash != 0 {
-                    arch = anchor.archetype if anchor.is_populated() else None;
-                    setattr_dirty: set[str] = (
-                        arch.__dict__.get('__jac_dirty_fields__') or set()
-                    ).copy()
-                        if arch is not None
-                        else set();
-                    derived = _derive_dirty_from_field_hashes(anchor);
-                    dirty = setattr_dirty | derived;
-                    if dirty {
-                        partial_updates.append((anchor, dirty));
-                        continue;
-                    }
-                }
-                # First insert (hash == 0) or no field changes found: full upsert.
-                if isinstance(anchor, NodeAnchor) {
-                    node_inserts.append(anchor);
-                } else {
-                    edge_inserts.append(cast(EdgeAnchor, anchor));
-                }
-            } except Exception as e {
-                logger.warning(
-                    f"MongoDB sync categorization failed for anchor {anchor.id}: {e}"
-                );
             }
         }
-
-        # mem.count = total anchors to write across all paths.
         if span {
-            span.set_attribute(
-                "mem.count",
-                len(node_inserts) + len(edge_inserts) + len(atomic_updates) + len(
-                    partial_updates
-                )
-            );
+            span.set_attribute("mem.count", len(apply_report.applied));
         }
-
-        for anchor in node_inserts {
-            try {
-                self._write_to_db(anchor);
-            } except Exception as e {
-                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
-            }
-        }
-        for anchor in edge_inserts {
-            try {
-                self._write_to_db(anchor);
-            } except Exception as e {
-                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
-            }
-        }
-        for (anchor, added, removed) in atomic_updates {
-            try {
-                self._put_node_atomic(anchor, added, removed);
-            } except Exception as e {
-                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
-            }
-        }
-        for (anchor, dirty) in partial_updates {
-            try {
-                self.put_partial(anchor, dirty);
-            } except Exception as e {
-                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
-            }
-        }
-        return self._atomic_written;
+        return apply_report;
     } finally {
         end_memory_span(span);
     }
 }
 
-"""Atomically update a NodeAnchor, merging only dirty archetype fields and
-edge delta with DB state."""
+"""Execute one intent against MongoDB."""
+impl MongoBackend._apply_one(intent: WriteIntent) -> None {
+    anchor = intent.anchor;
+    if intent.is_delete() {
+        self.collection.delete_one({'_id': str(to_uuid(anchor.id))});
+        return;
+    }
+    if intent.op == WriteOp.EDGE_LIST_DELTA {
+        self._put_node_atomic(
+            cast(NodeAnchor, anchor),
+            [str(eid) for eid in intent.edges_added],
+            [str(eid) for eid in intent.edges_removed],
+            intent.fields
+        );
+        return;
+    }
+    if intent.op == WriteOp.FIELD_UPDATE {
+        self.put_partial(anchor, intent.fields);
+        return;
+    }
+    # NODE_CREATE / EDGE_CREATE (and full merged rewrites): whole-document upsert.
+    self._write_to_db(anchor);
+}
+
+"""Atomically update a NodeAnchor, merging the intent's archetype fields and
+edge delta with DB state. `fields` comes from the runtime's collect pass —
+the single owner of dirty detection AND write-access decisions. Re-deriving
+dirtiness here would persist fields the collect pass never authorized."""
 impl MongoBackend._put_node_atomic(
-    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+    anchor: NodeAnchor,
+    edges_added: list[str],
+    edges_removed: list[str],
+    fields: set[str]
 ) -> None {
     if self.client is None {
         return;
@@ -923,18 +823,8 @@ impl MongoBackend._put_node_atomic(
     try {
         arch = anchor.archetype if anchor.is_populated() else None;
 
-        # Compute dirty archetype fields: union of __setattr__-tracked writes
-        # and hash-derived in-place mutations (mirrors sync() → put_partial).
-        setattr_dirty: set[str] = (
-            arch.__dict__.get('__jac_dirty_fields__') or set()
-        ).copy()
-            if arch is not None
-            else set();
-        hash_dirty = _derive_dirty_from_field_hashes(anchor);
-        dirty = setattr_dirty | hash_dirty;
-
-        # Serialize only the dirty archetype fields.
-        partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
+        # Serialize only the intent's archetype fields.
+        partial_data = Serializer.serialize_fields(anchor, fields) if fields else {};
 
         # Non-archetype, non-edge top-level data fields (e.g. access control).
         # Strip empty nested dicts before including in the aggregation-pipeline
@@ -977,7 +867,6 @@ impl MongoBackend._put_node_atomic(
             return_document=ReturnDocument.AFTER
         );
 
-        self._atomic_written.add(anchor.id);
         if self._l2_ref {
             try {
                 self._l2_ref.invalidate(anchor.id);
@@ -1011,11 +900,8 @@ impl MongoBackend._put_node_atomic(
         }
 
         anchor.hash = Serializer._compute_hash(anchor);
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
         try {
-            _snapshot_field_hashes(anchor);
+            snapshot_field_hashes(anchor);
         } except Exception as shf_err {
             logger.debug(
                 f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
@@ -1023,33 +909,7 @@ impl MongoBackend._put_node_atomic(
         }
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
-    }
-}
-
-"""Bulk store multiple anchors with Layer 1+2 fingerprint + metadata."""
-impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
-    if self.client is None {
-        return;
-    }
-    ops: list = [];
-    for anchor in anchors {
-        if not anchor.persistent {
-            continue;
-        }
-        _id = to_uuid(anchor.id);
-        try {
-            doc = _anchor_to_doc(anchor);
-            ops.append(UpdateOne({'_id': str(_id)}, {'$set': doc}, upsert=True));
-        } except Exception as e {
-            logger.debug(f"MongoDB bulk_put serialization failed: {e}");
-        }
-    }
-    if ops {
-        try {
-            self.collection.bulk_write(ops);
-        } except Exception as e {
-            logger.debug(f"MongoDB bulk_write failed: {e}");
-        }
+        raise;
     }
 }
 
@@ -1153,7 +1013,7 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         return None;
     }
     _mongo_persist_repairs(self, doc_id, cast(Anchor, anchor), fingerprint);
-    _snapshot_field_hashes(cast(Anchor, anchor));
+    snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
@@ -1579,52 +1439,6 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
 
 """Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
 impl MongoBackend.aput(anchor: Anchor) -> None { }
-
-"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
-impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
-    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
-    if AsyncMongoClient is None or self.mongo_url is None {
-        await super.acommit(anchor);
-        return;
-    }
-    if self._mem_ref is None {
-        await super.acommit(anchor);
-        return;
-    }
-    if 'async_mongo_client' not in _process_cache {
-        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
-    }
-    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
-    dirty = [];
-    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
-    for a in targets {
-        if a.persistent and Jac.check_write_access(a) {
-            dirty.append(a);
-        }
-    }
-    if dirty {
-        ops = [
-            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
-            for a in dirty
-        ];
-        span = start_memory_span(
-            "memory.commit mongodb",
-            {
-                "db.system": "mongodb",
-                "mem.tier": "L3",
-                "mem.op": "commit",
-                "mem.count": len(dirty)
-            }
-        );
-        try {
-            await coll.bulk_write(ops, ordered=False);
-        } except Exception as e {
-            logger.warning(f"Async acommit bulk_write failed: {e}");
-        } finally {
-            end_memory_span(span);
-        }
-    }
-}
 
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {

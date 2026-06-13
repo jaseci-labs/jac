@@ -19,6 +19,13 @@ import from uuid { UUID }
 import from jac_scale._optdeps.redis { redis_module as redis }
 import from jac_scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }
+import from jaclang.runtimelib.changeset {
+    ApplyReport,
+    ChangeSet,
+    WriteIntent,
+    WriteOp,
+    snapshot_field_hashes
+}
 import from jaclang.runtimelib.memory {
     CacheMemory,
     PersistentMemory,
@@ -112,16 +119,13 @@ obj MongoBackend(PersistentMemory) {
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
-        _mem_ref: (dict[UUID, Anchor] | None) = None,
         _l2_ref: (any | None) = None,
         # L1 id stamped on broadcasts so the writer self-excludes.
         _l1_id: (str | None) = None,
         fetch_count: int = 0,
-        put_count: int = 0,
-        _atomic_written: set by postinit;
+        put_count: int = 0;
 
     def postinit -> None;
-    def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
     def set_cache_ref(cache: (any | None)) -> None;
     def set_l1_id(l1_id: str) -> None;
     def is_available -> bool;
@@ -153,8 +157,8 @@ obj MongoBackend(PersistentMemory) {
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     # One-time index setup (idempotent). Called from postinit.
     def ensure_indexes -> None;
-    def sync -> set;
-    def bulk_put(anchors: Iterable[Anchor]) -> None;
+    def apply(changeset: ChangeSet) -> ApplyReport;
+    def _apply_one(intent: WriteIntent) -> None;
     # Layer 1+2+3 operator surface
     def inspect_summary -> dict;
     def list_quarantined(limit: int = 50) -> list;
@@ -172,14 +176,16 @@ obj MongoBackend(PersistentMemory) {
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
     def _load_db_aliases -> int;
     def _put_node_atomic(
-        anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+        anchor: NodeAnchor,
+        edges_added: list[str],
+        edges_removed: list[str],
+        fields: set[str]
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;
-    # Async overrides — PyMongo AsyncMongoClient / redis.asyncio (no asyncio.to_thread)
+    # Async overrides — PyMongo AsyncMongoClient (no asyncio.to_thread)
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
-    async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
 """

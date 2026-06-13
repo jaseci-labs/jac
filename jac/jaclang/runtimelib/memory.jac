@@ -23,6 +23,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.changeset { ApplyReport, ChangeSet, WriteIntent }
 import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.typecache { get_field_types }
 
@@ -66,8 +67,11 @@ obj Memory {
     ) -> (Anchor | None) abs;
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
-    def get_gc -> list[Anchor] abs;
-    def remove_from_gc(anchor: Anchor) -> None abs;
+    """Discard this memory's uncommitted unit of work. Default is a no-op;
+    TieredMemory implements the real thing (drop pending intents and evict
+    dirty anchors so a later commit/close cannot re-collect them)."""
+    def abort -> None;
+
     def get_mem -> dict[UUID, Anchor] abs;
     # ---- Pushdown protocol ----
     # Backends opt into native query pushdown by declaring `capabilities()` and
@@ -128,8 +132,12 @@ uniform CLI, regardless of whether the underlying store is SQLite,
 MongoDB, Postgres, or anything else.
 """
 obj PersistentMemory(Memory) {
-    def sync -> None abs;
-    def bulk_put(anchors: Iterable[Anchor]) -> None abs;
+    """Flush a unit of work. Non-transactional backends MUST honor the
+    stage order from `changeset.staged()` and the per-intent `depends_on`
+    (skip intents whose dependencies failed); transactional backends may
+    collapse all stages into one transaction. Storage I/O for graph
+    mutations happens here and only here."""
+    def apply(changeset: ChangeSet) -> ApplyReport abs;
     # ---- Layer 1+2+3 operator/inspection surface ----
     """Summary for `jac db inspect`: format version, live row count,
     quarantine count, alias count, and per-archetype breakdowns.
@@ -198,8 +206,7 @@ This is the L1 tier in a tiered memory hierarchy. All data is lost when
 the process exits. Used as the fast cache layer in TieredMemory.
 """
 obj VolatileMemory(Memory) {
-    has __mem__: dict[UUID, Anchor] by postinit,
-        __gc__: set[Anchor] by postinit;
+    has __mem__: dict[UUID, Anchor] by postinit;
 
     def postinit -> None;
     def is_available -> bool;
@@ -222,8 +229,6 @@ obj VolatileMemory(Memory) {
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
-    def get_gc -> list[Anchor];
-    def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];
 }
 
@@ -247,7 +252,6 @@ Maintains an in-memory cache for fast reads with write-through to database.
 obj SqliteMemory(PersistentMemory) {
     has path: str,
         __mem__: dict[UUID, Anchor] by postinit,
-        __gc__: set[Anchor] by postinit,
         __conn__: (sqlite3.Connection | None) by postinit,
         __lock__: threading.RLock by postinit,
         l3_fetch_count: int by postinit;
@@ -277,8 +281,9 @@ obj SqliteMemory(PersistentMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     # PersistentMemory interface
-    def sync -> None;
-    def bulk_put(anchors: Iterable[Anchor]) -> None;
+    def apply(changeset: ChangeSet) -> ApplyReport;
+    def _apply_one(conn: sqlite3.Connection, intent: WriteIntent) -> None;
+    def _merge_write(conn: sqlite3.Connection, intent: WriteIntent) -> None;
     def inspect_summary -> dict;
     def list_quarantined(limit: int = 50) -> list;
     def show_quarantined(id_prefix: str) -> (dict | None);
@@ -287,8 +292,6 @@ obj SqliteMemory(PersistentMemory) {
     def list_aliases -> list;
     def add_alias(old_name: str, new_name: str) -> None;
     def remove_alias(old_name: str) -> bool;
-    def get_gc -> list[Anchor];
-    def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];
 }
 
@@ -300,7 +303,7 @@ This is the main memory abstraction used by ExecutionContext. It provides:
 - Configurable tiers (L2 and L3 are optional)
 - Automatic L3 initialization when base_path is provided
 
-TieredMemory IS the L1 tier (inherits __mem__, __gc__ from VolatileMemory).
+TieredMemory IS the L1 tier (inherits __mem__ from VolatileMemory).
 jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
@@ -314,6 +317,10 @@ obj TieredMemory(VolatileMemory) {
         target_path: (str | None) = None,
         l2: (CacheMemory | None) by postinit,
         l3: (PersistentMemory | None) by postinit,
+        # The request's unit of work: typed write intents accumulated by
+        # put()/delete()/the collect pass, flushed atomically (or in
+        # dependency order) by commit() -> l3.apply().
+        changes: ChangeSet by postinit,
         use_cache: bool = False;
 
     def get_l3_fetch_count -> int;
@@ -327,6 +334,12 @@ obj TieredMemory(VolatileMemory) {
     def close -> None;
     def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
+    def abort -> None;
+    # Collect L1 dirtiness into the unit of work (decision logic lives
+    # here, in the runtime — backends only execute intents).
+    def _collect_into(changes: ChangeSet) -> None;
+    # Refresh hash/field/edge baselines for applied intents post-flush.
+    def _post_apply(apply_report: ApplyReport) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
     # Pushdown protocol — delegate to L3 (the only tier that can push down).
     def capabilities -> set[str];
