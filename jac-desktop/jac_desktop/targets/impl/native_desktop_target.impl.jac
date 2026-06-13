@@ -352,6 +352,10 @@ impl NativeDesktopTarget.build(
     if plugin_src_dir.exists() {
         console.print("  Transpiling plugin IPC modules...", style="muted");
         for jac_file in plugin_src_dir.rglob("*.jac") {
+            # rglob("*.jac") also matches directories named ".jac" (build cache).
+            if not jac_file.is_file() {
+                continue;
+            }
             rel = jac_file.relative_to(plugin_src_dir);
             py_name = str(rel.with_suffix(".py"));
             console.print(f"    {rel} -> {py_name}", style="muted");

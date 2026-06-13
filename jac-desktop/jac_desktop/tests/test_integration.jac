@@ -69,6 +69,10 @@ def _transpile_all_plugins -> tuple {
     src_dir = _plugin_src_dir();
     results: dict = {};
     for jac_file in sorted(src_dir.rglob("*.jac")) {
+        # rglob("*.jac") also matches directories named ".jac" (build cache).
+        if not jac_file.is_file() {
+            continue;
+        }
         rel = str(jac_file.relative_to(src_dir));
         py_name = str(jac_file.with_suffix(".py").relative_to(src_dir));
         target = os.path.join(tmp, py_name);
