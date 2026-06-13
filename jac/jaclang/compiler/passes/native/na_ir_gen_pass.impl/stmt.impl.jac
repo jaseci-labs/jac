@@ -1570,10 +1570,33 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 # ─── Expression Codegen ──────────────────────────────────────
 """Generate break or continue statement."""
 impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
+    ctrl_name = nd.ctrl.name if isinstance(nd.ctrl, uni.Token) else str(nd.ctrl);
+    # `skip` is Return-family, not loop control: the py target lowers it to a
+    # bare `return` and cl to a ReturnStatement (issue #6206). It must NOT
+    # fall under the loop_stack guard below — dropping it turns a
+    # `if <seen> { skip; }` visit-once guard into dead code, the silent wrong
+    # answer of issue #6636. Statements after it are skipped by the
+    # is_terminated check, mirroring disengage.
+    if ctrl_name == Tok.KW_SKIP {
+        if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
+            self.builder.ret_void();
+        } else {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="statement",
+                name="SkipStmt",
+                help_text=(
+                    "`skip` ends an event ability (a void body); in a "
+                    "value-returning function use an explicit `return`."
+                )
+            );
+        }
+        return;
+    }
     if not self.loop_stack {
         return;
     }
-    ctrl_name = nd.ctrl.name if isinstance(nd.ctrl, uni.Token) else str(nd.ctrl);
     (continue_bb, break_bb) = self.loop_stack[-1];
     if ctrl_name == Tok.KW_BREAK {
         self.builder.branch(break_bb);

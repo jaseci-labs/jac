@@ -156,3 +156,32 @@ test "osp edge typed: `[->:Road:->]` follows only the typed edge" {
         require=["na", "cl"]
     );
 }
+
+test "osp visit list: walker-field and inline list targets enqueue element-wise" {
+    # Issue #6636 (#1): native wrapped a list target as ONE location and the
+    # binary aborted after a clean compile. The list must pass through whole.
+    assert run_py_fixture("osp_visit_list", "visit_list_py") == {
+        "field": 3,
+        "inline": 12
+    };
+    run_with_both(
+        "osp_visit_list.jac",
+        "visit_list_py",
+        "visit_list_cl",
+        "visit_list_na",
+        require=["na"]
+    );
+}
+
+test "osp skip guard: `skip` + node-identity `in` dedupes a re-spawned node" {
+    # Issue #6636 (#2): native silently dropped `skip`, so the documented
+    # user-managed visit-once guard never fired and the count doubled.
+    assert run_py_fixture("osp_skip_guard", "skip_guard_py") == {"count": 1};
+    run_with_both(
+        "osp_skip_guard.jac",
+        "skip_guard_py",
+        "skip_guard_cl",
+        "skip_guard_na",
+        require=["na"]
+    );
+}

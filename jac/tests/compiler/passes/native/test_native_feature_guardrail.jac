@@ -315,3 +315,66 @@ test "guardrail: inline Python block is rejected" {
         prog
     )}";
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# OSP gate soundness (issue #6636)
+# ─────────────────────────────────────────────────────────────────────
+# OSP kernel emission used to be keyed on "module defines an archetype with an
+# event ability", so a graph-builder module that only CONNECTS nodes (defining
+# no walker) was E5090 while the byte-identical connects compiled fine next to
+# an unrelated walker. The gate must key on OSP *usage*, not walker presence.
+test "osp gate: connect-only module (no walker) lowers without E5090" {
+    prog = compile_na_inline(
+        "connect_no_walker",
+        "node Area { has tag: int = 0; }\n"
+        "edge In {}\n"
+        "with entry {\n"
+        "    a = Area(tag=1);\n"
+        "    b = Area(tag=2);\n"
+        "    c = Area(tag=3);\n"
+        "    a +>: In() :+> b;\n"
+        "    b <+: In :+> c;\n"
+        "    a ++> c;\n"
+        "    print(0);\n"
+        "}\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"connect-only module should lower, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# spawn / connect on OSP archetypes IMPORTED from another native module have
+# no lowering yet (cross-module archetype materialization is #6146 Phases
+# 3-4): tag numbering and the __osp_setup tables are per-module, so lowering
+# against an imported archetype would dispatch on mismatched type tags. The
+# E5090 must fire AND its help text must name the defining module so the
+# failure is diagnosable as the cross-module gap, not a generic unsupported-op.
+test "osp gate: spawn/connect on imported archetypes E5090 names the import" {
+    prog = compile_na_inline(
+        "xmod_osp",
+        "import from osp_xmod_lib { Area, In, Noop }\n"
+        "with entry {\n"
+        "    a = Area(tag=1);\n"
+        "    b = Area(tag=2);\n"
+        "    a +>: In() :+> b;\n"
+        "    n = Noop();\n"
+        "    n spawn a;\n"
+        "    print(n.count);\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for cross-module OSP, got: {fmt_errors(
+        prog
+    )}";
+    named = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E5090"
+            and alrt.help_text is not None
+            and "osp_xmod_lib" in alrt.help_text
+        ) {
+            named = True;
+        }
+    }
+    assert named , f"E5090 help should name the defining module: {fmt_errors(prog)}";
+}

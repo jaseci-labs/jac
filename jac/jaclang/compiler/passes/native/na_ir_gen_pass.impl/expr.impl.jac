@@ -470,8 +470,33 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     } elif right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+        # An IMPORTED walker is not in the local osp_arch_kind, so neither
+        # side classifies as a walker here — name the import in the E5090
+        # instead of leaving a generic unsupported-op (#6636 / #6146).
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=self._xmod_osp_help([left_name, right_name])
+        );
         return left_val;
+    }
+    # A LOCAL walker spawned on an imported location cannot dispatch: the
+    # location's constructor (in the defining module's IR) stamps that
+    # module's tag numbering, mismatching the local descriptor tables. Fail
+    # loudly with the import named rather than walking garbage tags (#6636).
+    _loc_name = right_name if left_is_walker else left_name;
+    _xhelp = self._xmod_osp_help([_loc_name]);
+    if _xhelp is not None {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=_xhelp
+        );
+        return walker_val;
     }
     # `walker spawn loc` lowers to the portable osp_kernel (issue #6146):
     # dispatch by the location's RUNTIME type tag, so computed locations,

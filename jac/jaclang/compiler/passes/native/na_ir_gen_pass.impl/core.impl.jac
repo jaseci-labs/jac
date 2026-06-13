@@ -636,6 +636,15 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         }
         if isinstance(stmt, uni.Archetype) {
             self._register_imported_archetype(stmt);
+            # Record imported OSP archetypes (walker/node/edge) so spawn /
+            # connect / edge-ref lowering can E5090 with help naming the
+            # defining module — cross-module OSP materialization is #6146
+            # Phases 3-4 territory; until then it must fail loudly and
+            # diagnosably rather than as a generic unsupported-op (#6636).
+            _aname = stmt.name.value if stmt.name else None;
+            if (_aname is not None) and (stmt.arch_kind is not None) {
+                self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
+            }
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
         } elif isinstance(stmt, uni.GlobalVars) {

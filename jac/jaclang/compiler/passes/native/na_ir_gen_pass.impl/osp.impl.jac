@@ -111,10 +111,15 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
 }
 
 """Assign a stable int type-tag to every walker/node/edge archetype, but only
-when the program actually participates in OSP (some walker/node/edge declares an
-event ability `can ... with T entry/exit`). Edges referenced only in
-connects/refs still get a tag so dispatch over them is uniform. Tags index the
-instance `__type_tag` field, the is_a table, and the descriptor table.
+when the program actually participates in OSP: some walker/node/edge declares
+an event ability (`can ... with T entry/exit`) OR the module's native code uses
+an OSP construct (connect / spawn / visit / edge ref). Keying on usage rather
+than walker presence keeps a graph-builder module that only WIRES nodes
+(defining no walker) on the kernel path instead of E5090 (issue #6636), while a
+module that merely declares archetypes it never wires/walks still skips the
+kernel. Edges referenced only in connects/refs still get a tag so dispatch over
+them is uniform. Tags index the instance `__type_tag` field, the is_a table,
+and the descriptor table.
 """
 impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
     osp_arches: list[uni.Archetype] = [];
@@ -134,6 +139,9 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
             }
         }
     }
+    if (not has_osp) and osp_arches {
+        has_osp = self._module_uses_osp(self.ir_in);
+    }
     if not has_osp {
         return;
     }
@@ -144,6 +152,57 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
             self.osp_tags[name] = len(self.osp_tags);
         }
     }
+}
+
+"""True when the module's native code USES an OSP construct — an edge connect
+(`++>`), a `spawn`, a `visit`, or an edge ref (`[-->]`) — anywhere in its
+native-context statements. Distinct from declaring OSP archetypes: usage is
+what requires the kernel + adjacency at runtime. Same work-stack sweep idiom
+as `native_capability_violations`."""
+impl NaIRGenPass._module_uses_osp(module: uni.Module) -> bool {
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        work: list = [stmt];
+        while work {
+            nd = work.pop();
+            if isinstance(nd, (uni.ConnectOp, uni.VisitStmt, uni.EdgeOpRef)) {
+                return True;
+            }
+            if isinstance(nd, uni.BinaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and (nd.op.name == Tok.KW_SPAWN) {
+                return True;
+            }
+            for k in nd.kid {
+                work.append(k);
+            }
+        }
+    }
+    return False;
+}
+
+"""Cross-module OSP E5090 help: when one of `names` resolves to an OSP
+archetype imported from another native module (and not overridden locally),
+return help text naming the defining module — the diagnosable form of the
+#6146 cross-module materialization gap. None when no name matches, so callers
+fall back to the generic E5090."""
+impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
+    for _n in names {
+        if (
+            (_n is not None)
+            and (_n not in self.osp_tags)
+            and (_n in self.imported_osp_archs)
+        ) {
+            (_kind, _mod) = self.imported_osp_archs[_n];
+            return (
+                f"the {_kind} archetype '{_n}' is imported from native module "
+                f"'{_mod}'; spawn / connect / edge-ref on OSP archetypes across "
+                f"a native module boundary is not lowered yet (#6146 Phases "
+                f"3-4) — per-module type tags would mismatch. Move this OSP "
+                f"usage into '{_mod}' or define the archetype in this module."
+            );
+        }
+    }
+    return None;
 }
 
 """Emit a `(JacVal, JacVal) -> JacVal` dispatch thunk for an OSP ability so it
@@ -681,8 +740,28 @@ operand value so the connect expression yields its right side (chaining)."""
 impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     co = nd.op;
     osp_conn_fn = self.func_symtab.get("osp_conn");
-    if osp_conn_fn is None {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="ConnectOp");
+    # An operand or edge type that is an IMPORTED OSP archetype cannot lower
+    # even when the kernel is registered locally: its constructor (in the
+    # defining module's IR) stamps that module's tag numbering, so the local
+    # is_a / descriptor tables would dispatch on mismatched tags. Fail loudly
+    # with the import named instead of wiring a silently-wrong graph (#6636).
+    _xnames: list = [
+        self._spawn_operand_name(nd.left),
+        self._spawn_operand_name(nd.right),
+
+    ];
+    if co.conn_type is not None {
+        _xnames.append(self._spawn_operand_name(co.conn_type));
+    }
+    _xhelp = self._xmod_osp_help(_xnames);
+    if (osp_conn_fn is None) or (_xhelp is not None) {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="ConnectOp",
+            help_text=_xhelp
+        );
         return None;
     }
     # A connect can be the program's first OSP op (before any spawn), so the
@@ -767,6 +846,22 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         _etname = self._get_name(_fcond.f_type);
         if _etname is not None {
             _edge_tag = self.osp_tags.get(_etname, -1);
+            # An imported edge type has no local tag; lowering it as -1 would
+            # silently BROADEN the filter to match-any. Fail loudly with the
+            # import named (#6636 / #6146 cross-module gap).
+            if _edge_tag < 0 {
+                _xhelp = self._xmod_osp_help([_etname]);
+                if _xhelp is not None {
+                    self.emit(
+                        E5090,
+                        node_override=nd,
+                        kind="expression",
+                        name="EdgeRefTrailer",
+                        help_text=_xhelp
+                    );
+                    return None;
+                }
+            }
         }
     }
     _edges_only = 1 if nd.edges_only else 0;
@@ -784,7 +879,14 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 }
 
 """Resolve a `visit` target to the kernel's `list` representation. An edge-ref
-target already yields that list; a bare location is wrapped via `osp_wrap1`."""
+target already yields that list; a LIST-valued target (a walker-field list or
+an inline list literal — `visit self.targets` / `visit [a, b]`) passes through
+whole so the kernel enqueues its ELEMENTS; only a bare single location is
+wrapped via `osp_wrap1`. Wrapping a list as if it were one location made the
+kernel read a garbage `__type_tag` off the list object itself and abort after
+a clean compile (issue #6636). Every native list layout is {len, cap, data*}
+with 8-byte elements, so a node-pointer list reinterprets as the kernel's
+handle list via the caller's ordinary pointer coercion."""
 impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     if isinstance(target, uni.EdgeRefTrailer) {
         return self._codegen_edge_ref_trailer(target);
@@ -793,6 +895,11 @@ impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     _val = self._codegen_expr(target);
     if (_val is None) or (_wrap is None) {
         return None;
+    }
+    for _lt in self.list_types.values() {
+        if _val.type == _lt.as_pointer() {
+            return _val;
+        }
     }
     _argtys = _wrap.function_type.args;
     return self.builder.call(
@@ -832,6 +939,16 @@ impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
         ],
         name="visit.did"
     );
+    # `visit` is a value-consumption seam: the kernel copies the (handle)
+    # elements into scope.next, so an OWNED targets temp (an inline list
+    # literal) is dead here and must be released. The elements themselves are
+    # OSP instances pinned immortal at construction, so element release inside
+    # the list teardown is a no-op on them.
+    if isinstance(_targets.type, ir.PointerType) and self._is_owned(_targets) {
+        self._emit_rc_release_simple(
+            _targets, op="visit_targets", loc=getattr(_targets, 'jac_loc', '')
+        );
+    }
     if nd.else_body is None {
         return;
     }
