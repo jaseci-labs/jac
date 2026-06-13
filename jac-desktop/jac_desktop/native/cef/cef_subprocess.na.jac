@@ -74,7 +74,7 @@ glob g_app: cef_app_t = cef_app_t(
          has_one_ref=_sp_has_one_ref,
          has_at_least_one_ref=_sp_has_at_least_one_ref,
      ),
-     g_args: cef_main_args_t = cef_main_args_t,
+     g_args: cef_main_args_t = cef_main_args_t(),
      g_cmdline_buf: int = 0,
      g_argv_arr: int = 0;
 
@@ -143,7 +143,7 @@ def _build_main_args {
     memset(argv_arr + argc * 8, 0, 8);  # NULL terminator
     pos = 0;
     i: int = 0;
-    pw: cef_ptr_wrap_t = cef_ptr_wrap_t;
+    pw: cef_ptr_wrap_t = cef_ptr_wrap_t();
     while i < argc {
         # Store pointer value (buf+pos) into argv_arr[i] via a Jac obj
         pw.p0 = buf + pos;
