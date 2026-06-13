@@ -54,11 +54,6 @@ import from "libcef.so" {
     }
 }
 
-glob g_app: cef_app_t = cef_app_t(),
-     g_args: cef_main_args_t = cef_main_args_t(),
-     g_cmdline_buf: int = 0,
-     g_argv_arr: int = 0;
-
 def _sp_add_ref(self: int) { }
 def _sp_release(self: int) -> int {
     return 0;
@@ -71,6 +66,17 @@ def _sp_has_one_ref(self: int) -> int {
 def _sp_has_at_least_one_ref(self: int) -> int {
     return 1;
 }
+
+glob g_app: cef_app_t = cef_app_t(
+         size=80,
+         add_ref=_sp_add_ref,
+         release=_sp_release,
+         has_one_ref=_sp_has_one_ref,
+         has_at_least_one_ref=_sp_has_at_least_one_ref,
+     ),
+     g_args: cef_main_args_t = cef_main_args_t,
+     g_cmdline_buf: int = 0,
+     g_argv_arr: int = 0;
 
 def _subprocess_bootstrap {
     buf: int = calloc(1, 4096);
@@ -137,7 +143,7 @@ def _build_main_args {
     memset(argv_arr + argc * 8, 0, 8);  # NULL terminator
     pos = 0;
     i: int = 0;
-    pw: cef_ptr_wrap_t = cef_ptr_wrap_t();
+    pw: cef_ptr_wrap_t = cef_ptr_wrap_t;
     while i < argc {
         # Store pointer value (buf+pos) into argv_arr[i] via a Jac obj
         pw.p0 = buf + pos;
@@ -150,22 +156,15 @@ def _build_main_args {
     g_args.argv = argv_arr;
 }
 
-with entry {
-    _subprocess_bootstrap();
-    _build_main_args();
-}
-
-glob g_app = cef_app_t(
-         size=80,
-         add_ref=_sp_add_ref,
-         release=_sp_release,
-         has_one_ref=_sp_has_one_ref,
-         has_at_least_one_ref=_sp_has_at_least_one_ref,
-     ),
-     code: i32 = cef_execute_process(g_args, g_app, 0);
-
-with entry {
+def _finish_subprocess {
+    code: i32 = cef_execute_process(g_args, g_app, 0);
     if code >= 0 {
         sys.exit(code);
     }
+}
+
+with entry {
+    _subprocess_bootstrap();
+    _build_main_args();
+    _finish_subprocess();
 }
