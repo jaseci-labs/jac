@@ -793,7 +793,8 @@ impl MongoBackend._apply_one(intent: WriteIntent) -> None {
         self._put_node_atomic(
             cast(NodeAnchor, anchor),
             [str(eid) for eid in intent.edges_added],
-            [str(eid) for eid in intent.edges_removed]
+            [str(eid) for eid in intent.edges_removed],
+            intent.fields
         );
         return;
     }
@@ -805,10 +806,15 @@ impl MongoBackend._apply_one(intent: WriteIntent) -> None {
     self._write_to_db(anchor);
 }
 
-"""Atomically update a NodeAnchor, merging only dirty archetype fields and
-edge delta with DB state."""
+"""Atomically update a NodeAnchor, merging the intent's archetype fields and
+edge delta with DB state. `fields` comes from the runtime's collect pass —
+the single owner of dirty detection AND write-access decisions. Re-deriving
+dirtiness here would persist fields the collect pass never authorized."""
 impl MongoBackend._put_node_atomic(
-    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+    anchor: NodeAnchor,
+    edges_added: list[str],
+    edges_removed: list[str],
+    fields: set[str]
 ) -> None {
     if self.client is None {
         return;
@@ -817,12 +823,8 @@ impl MongoBackend._put_node_atomic(
     try {
         arch = anchor.archetype if anchor.is_populated() else None;
 
-        # Dirty archetype fields ride the same atomic update (hash-derived;
-        # in-place container mutations leave no setattr signal).
-        dirty = derive_dirty_fields(anchor);
-
-        # Serialize only the dirty archetype fields.
-        partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
+        # Serialize only the intent's archetype fields.
+        partial_data = Serializer.serialize_fields(anchor, fields) if fields else {};
 
         # Non-archetype, non-edge top-level data fields (e.g. access control).
         # Strip empty nested dicts before including in the aggregation-pipeline

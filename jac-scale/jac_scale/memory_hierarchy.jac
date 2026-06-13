@@ -24,7 +24,6 @@ import from jaclang.runtimelib.changeset {
     ChangeSet,
     WriteIntent,
     WriteOp,
-    derive_dirty_fields,
     snapshot_field_hashes
 }
 import from jaclang.runtimelib.memory {
@@ -177,7 +176,10 @@ obj MongoBackend(PersistentMemory) {
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
     def _load_db_aliases -> int;
     def _put_node_atomic(
-        anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+        anchor: NodeAnchor,
+        edges_added: list[str],
+        edges_removed: list[str],
+        fields: set[str]
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;

@@ -73,57 +73,58 @@ impl ScaleTieredMemory.postinit -> None {
 """Commit the unit of work: collect L1 dirtiness into intents (inherited),
 flush via the backend's apply(), refresh L2/cross-pod state from what was
 actually applied, then re-baseline change tracking. No second hash sweep:
-the changeset itself says what was written and how."""
+the changeset itself says what was written and how.
+
+A flush failure propagates — like core TieredMemory.commit — so the
+request lifecycle can error/abort instead of silently losing the
+request's mutations; the changeset is kept for the close-time backstop.
+Only the L2 refresh is best-effort (the durable write already landed)."""
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         self.changes.clear();
         return;
     }
-    try {
-        self._collect_into(self.changes);
-        if self.changes.is_empty() {
-            return;
-        }
-        # EDGE_LIST_DELTA intents on Mongo take _put_node_atomic, which
-        # invalidates + broadcasts internally; don't double-publish.
-        self_broadcasting: set = set();
-        if isinstance(self.l3, MongoBackend) {
-            self_broadcasting = {
-                intent.anchor.id
-                for intent in self.changes.intents.values()
-                if intent.op == WriteOp.EDGE_LIST_DELTA
-            };
-        }
-        apply_report = self.l3.apply(self.changes);
-        if self.l2 {
-            applied = set(apply_report.applied);
-            for intent in list(self.changes.intents.values()) {
-                if intent.anchor.id not in applied {
-                    continue;
+    self._collect_into(self.changes);
+    if self.changes.is_empty() {
+        return;
+    }
+    # EDGE_LIST_DELTA intents on Mongo take _put_node_atomic, which
+    # invalidates + broadcasts internally; don't double-publish.
+    self_broadcasting: set = set();
+    if isinstance(self.l3, MongoBackend) {
+        self_broadcasting = {
+            intent.anchor.id
+            for intent in self.changes.intents.values()
+            if intent.op == WriteOp.EDGE_LIST_DELTA
+        };
+    }
+    apply_report = self.l3.apply(self.changes);
+    if self.l2 {
+        applied = set(apply_report.applied);
+        for intent in list(self.changes.intents.values()) {
+            if intent.anchor.id not in applied {
+                continue;
+            }
+            try {
+                if intent.is_delete() {
+                    self.l2.invalidate(intent.anchor.id);
+                    cast(RedisBackend, self.l2).publish_invalidation(
+                        str(intent.anchor.id), self._l1_id
+                    );
+                } elif intent.anchor.id not in self_broadcasting {
+                    self.l2.put(intent.anchor);
+                    # Evict siblings' stale L1 copy after refreshing L2.
+                    cast(RedisBackend, self.l2).publish_invalidation(
+                        str(intent.anchor.id), self._l1_id
+                    );
                 }
-                try {
-                    if intent.is_delete() {
-                        self.l2.invalidate(intent.anchor.id);
-                        cast(RedisBackend, self.l2).publish_invalidation(
-                            str(intent.anchor.id), self._l1_id
-                        );
-                    } elif intent.anchor.id not in self_broadcasting {
-                        self.l2.put(intent.anchor);
-                        # Evict siblings' stale L1 copy after refreshing L2.
-                        cast(RedisBackend, self.l2).publish_invalidation(
-                            str(intent.anchor.id), self._l1_id
-                        );
-                    }
-                } except Exception as l2_err {
-                    logger.warning(f"L2 cache update failed: {l2_err}");
-                }
+            } except Exception as l2_err {
+                logger.warning(f"L2 cache update failed: {l2_err}");
             }
         }
-        self._post_apply(apply_report);
-        self.changes.clear();
-    } except Exception as e {
-        logger.warning(f"ScaleTieredMemory.commit failed: {e}");
     }
+    self._post_apply(apply_report);
+    self.changes.clear();
 }
 
 """Batch get with full tiered read-through: L1 → L2 MGET → L3 $in."""
@@ -201,25 +202,30 @@ impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
 }
 
 """Close all backends. The commit here is the backstop for non-spawn
-endpoints that mutate without an explicit commit; spawn requests already
-committed via acommit (=> _committed), so don't pay a second sweep —
-and a failed walker's abort leaves nothing to collect either way."""
+endpoints that mutate without an explicit commit — and the retry for a
+spawn whose acommit flush failed (a failed flush leaves _committed False);
+a failed walker's abort leaves nothing to collect either way. A backstop
+failure still propagates (silent data loss is worse), but the tiers are
+closed and L1 dropped regardless."""
 impl ScaleTieredMemory.close -> None {
-    if not self._committed {
-        self.commit();
+    try {
+        if not self._committed {
+            self.commit();
+        }
+    } finally {
+        if self.l3 {
+            self.l3.close();
+        }
+        if self.l2 {
+            self.l2.close();
+        }
+        # Drop this context's L1 from the invalidation registry.
+        if self._l1_id {
+            deregister_l1(self._l1_id);
+        }
+        self.__mem__.clear();
+        self.changes.clear();
     }
-    if self.l3 {
-        self.l3.close();
-    }
-    if self.l2 {
-        self.l2.close();
-    }
-    # Drop this context's L1 from the invalidation registry.
-    if self._l1_id {
-        deregister_l1(self._l1_id);
-    }
-    self.__mem__.clear();
-    self.changes.clear();
 }
 
 """If a sibling write flagged `id` stale, drop our copy (only if clean) so the

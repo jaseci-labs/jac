@@ -233,6 +233,10 @@ When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
 whose data.source or data.target references this node, then strip those
 edge IDs from all remaining live NodeAnchor data.edges arrays. This
 prevents dangling edge references after schema drift removes a node type.
+
+`manage_txn=False` is for callers that already hold an open transaction
+(apply()'s BEGIN IMMEDIATE): committing here would split their unit of
+work in two, so the quarantine rides the caller's transaction instead.
 """
 def _quarantine(
     conn: sqlite3.Connection,
@@ -243,7 +247,8 @@ def _quarantine(
     fingerprint: (str | None),
     data: (str | None),
     error: str,
-    from_format_version: (int | None) = None
+    from_format_version: (int | None) = None,
+    manage_txn: bool = True
 ) {
     try {
         now_ts = datetime.now(timezone.utc).isoformat();
@@ -368,7 +373,9 @@ def _quarantine(
                 }
             }
         }
-        conn.commit();
+        if manage_txn {
+            conn.commit();
+        }
     } except Exception as e {
         logger.error(f"Failed to quarantine anchor {id}: {e}");
     }
@@ -1044,6 +1051,8 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
                 f"({type(de).__name__}: {de}); quarantining and "
                 "overwriting with in-memory version."
             );
+            # apply() holds the BEGIN IMMEDIATE: the quarantine must ride
+            # that transaction, not commit it mid-flush.
             _quarantine(
                 conn,
                 key,
@@ -1053,7 +1062,8 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
                 row_fingerprint,
                 row_data,
                 f"apply-time deserialize: {type(de).__name__}: {de}",
-                from_format_version=row_fmt
+                from_format_version=row_fmt,
+                manage_txn=False
             );
             stored = None;
         }
@@ -1762,6 +1772,22 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
         if dirty and Jac.check_write_access(anchor, op_hint="field_write") {
             changes.record_update(anchor, dirty);
             recorded = True;
+        } elif (
+            recorded
+            and not anchor.archetype.__dict__.get('__jac_field_hashes__')
+            and Jac.check_write_access(anchor, op_hint="field_write")
+        ) {
+            # An edge delta was recorded, but with no field-hash snapshot
+            # derive_dirty_fields() is blind: "no dirty fields" cannot be
+            # trusted (e.g. an anchor loaded through a tier that didn't
+            # snapshot). Put every field on the intent so a mutation hiding
+            # behind the edge delta isn't silently dropped — record_update
+            # keeps the merge-aware EDGE_LIST_DELTA write (a record_create
+            # upgrade would move this anchor to stage 0, ahead of the edge
+            # docs its new edge list cites).
+            changes.record_update(
+                anchor, set(get_field_types(type(anchor.archetype)).keys())
+            );
         }
         if not recorded {
             # Hash changed but no per-field/edge signal (access grants,

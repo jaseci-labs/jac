@@ -16,6 +16,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.jac0core.archetype { EdgeAnchor, GenericEdge, NodeAnchor, Root }
 import from jaclang.jac0core.runtime { JacRuntime }
+import from jaclang.runtimelib.changeset { ChangeSet }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.memory { SqliteMemory, TieredMemory }
 
@@ -180,6 +181,152 @@ test "delete intent wins over earlier aspects for the same anchor" {
     # And a late edge-list delta on a deleted anchor must not resurrect it.
     cs.record_edge_delta(item, added=[], removed=[]);
     assert cs.intents[item.id].op == WriteOp.NODE_DELETE;
+}
+
+
+"""A stage whose iteration raises: simulates a transaction-level failure
+(not a per-intent one) that strikes after the real stages have executed."""
+obj _BoomStage {
+    def __iter__ {
+        raise RuntimeError("forced transaction-level failure");
+    }
+}
+
+
+"""Changeset wrapper that appends a transaction-level failure after the
+real stages, so apply()'s outer rollback path is exercised."""
+obj _PoisonTailChangeSet {
+    has inner: ChangeSet;
+
+    def is_empty -> bool {
+        return self.inner.is_empty();
+    }
+
+    def staged -> list {
+        out: list = list(self.inner.staged());
+        out.append(_BoomStage());
+        return out;
+    }
+}
+
+
+test "quarantine during apply must not split the transaction" {
+    import sqlite3;
+    with TemporaryDirectory() as tmpdir {
+        ctx = _make_ctx(tmpdir);
+        old_ctx = JacRuntime.exec_ctx;
+        JacRuntime.exec_ctx = ctx;
+        try {
+            mem = ctx.mem;
+            assert isinstance(mem, TieredMemory);
+            (ranch, ianch, eanch) = _seed_graph(mem);
+            mem.commit();
+            db_path = mem.l3.path;
+
+            # Corrupt the item's stored row so the next merge-aware write
+            # hits the apply-time deserialize -> quarantine path.
+            raw = sqlite3.connect(db_path);
+            raw.execute(
+                "UPDATE anchors SET data = ? WHERE id = ?",
+                ("this is not json", str(ianch.id))
+            );
+            raw.commit();
+            raw.close();
+
+            # One unit of work: a new node create (stage 0) plus a field
+            # update on the corrupt row (stage 3, triggers _quarantine).
+            # The poison tail then fails the transaction AFTER both ran.
+            # All-or-nothing: the rollback must undo the create AND the
+            # quarantine — not just whatever followed the quarantine.
+            ghost = CsItem(name="ghost").__jac__;
+            ghost.persistent = True;
+            cs = ChangeSet();
+            cs.record_create(ghost);
+            ianch.archetype.name = "renamed";
+            cs.record_update(ianch, {"name"});
+
+            try {
+                mem.l3.apply(_PoisonTailChangeSet(inner=cs));
+            } except Exception { }
+
+            check = sqlite3.connect(db_path);
+            q_count = check.execute(
+                "SELECT COUNT(*) FROM anchors_quarantine"
+            ).fetchone()[0];
+            item_row = check.execute(
+                "SELECT data FROM anchors WHERE id = ?", (str(ianch.id), )
+            ).fetchone();
+            ghost_row = check.execute(
+                "SELECT id FROM anchors WHERE id = ?", (str(ghost.id), )
+            ).fetchone();
+            check.close();
+
+            assert q_count == 0 , (
+                "rolled-back transaction must not leave a quarantine row: "
+                "_quarantine committed mid-flush and split the transaction"
+            );
+            assert item_row is not None and item_row[0] == "this is not json" , (
+                "rolled-back transaction must leave the (corrupt) stored row "
+                f"exactly as it was; got {item_row}"
+            );
+            assert ghost_row is None , (
+                "rolled-back transaction must not persist the staged create: "
+                "a mid-flush commit made the rollback partial"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old_ctx;
+        }
+    }
+}
+
+
+test "field change without a hash snapshot is not dropped when an edge delta rides along" {
+    with TemporaryDirectory() as tmpdir {
+        ctx = _make_ctx(tmpdir);
+        old_ctx = JacRuntime.exec_ctx;
+        JacRuntime.exec_ctx = ctx;
+        try {
+            mem = ctx.mem;
+            assert isinstance(mem, TieredMemory);
+            (ranch, ianch, eanch) = _seed_graph(mem);
+            mem.commit();
+            db_path = mem.l3.path;
+
+            # Simulate an anchor loaded through a tier that never snapshot
+            # per-field hashes (e.g. an L2 cache hit): derive_dirty_fields
+            # is blind for this anchor.
+            ianch.archetype.__dict__.pop('__jac_field_hashes__', None);
+
+            # The request mutates a field AND the edge list. The edge delta
+            # alone must not satisfy the collect pass: with no per-field
+            # signal available, the field change has to ride a full merged
+            # rewrite — not be silently dropped.
+            ianch.archetype.name = "renamed";
+            extra = CsItem(name="extra").__jac__;
+            extra.persistent = True;
+            xeanch = EdgeAnchor(
+                archetype=GenericEdge(), source=ianch, target=extra, is_undirected=False
+            );
+            xeanch.persistent = True;
+            ianch.edges.append(xeanch);
+            extra.edges.append(xeanch);
+            mem.put(extra);
+            mem.put(xeanch);
+            mem.commit();
+
+            fresh = SqliteMemory(path=db_path);
+            reloaded = fresh.get(ianch.id);
+            assert reloaded is not None;
+            assert reloaded.archetype.name == "renamed" , (
+                "field mutation was dropped: an edge delta on the same anchor "
+                "must not mask field changes when no field-hash snapshot exists"
+            );
+            assert fresh.`has(extra.id) , "new node must persist";
+            assert _integrity_violations(db_path) == [];
+        } finally {
+            JacRuntime.exec_ctx = old_ctx;
+        }
+    }
 }
 
 
