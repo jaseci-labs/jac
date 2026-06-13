@@ -14,9 +14,18 @@ import ctypes;
 """One IPC command's shape — used for validation and SDK codegen."""
 obj CommandSpec {
     has name: str,
-        params: dict = {},  # param_name -> type string, e.g. {"path": "str"}
-        returns: str = "dict",
-        doc: str = "";
+        params: dict,
+        returns: str,
+        doc: str;
+
+    def init(
+        name: str, params: dict | None = None, returns: str = "dict", doc: str = ""
+    ) {
+        self.name = name;
+        self.params = params if params is not None else {};
+        self.returns = returns;
+        self.doc = doc;
+    }
 }
 
 

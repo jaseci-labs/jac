@@ -616,6 +616,11 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
     }
+    # SubTag[Expr] wraps an Expr (HasVar.type_tag); delegate to the inner tag so
+    # _resolve_primitive_name can extract the type name (e.g. "int", "Callable[...]").
+    if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
+        return self._resolve_jac_type(type_expr.tag);
+    }
     # Unified path: TypeBase -> ir.Type via the central type checker.
     _ptb = type_expr?.type;
     if _ptb is not None and not isinstance(type_expr, uni.Expr) {

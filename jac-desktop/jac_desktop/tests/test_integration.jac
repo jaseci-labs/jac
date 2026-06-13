@@ -1208,7 +1208,7 @@ test "plugin bridge source contains expected elements" {
     assert "_jac_invoke_handler" in src;
     assert "respond" in src;
     assert "DISPATCH_CRASHED" in src;
-    assert "req_str: str = req" in src;
+    assert "req as str" in src;
 }
 
 """plugin_bridge.na.jac compiles with webview + libpython (link test)."""
@@ -1237,9 +1237,8 @@ test "plugin bridge links with full native stack" {
         "glob PY_EVAL: i32 = 258;\n"
         "glob _PH_DISPATCH: int = 0;\n"
         "def _jac_invoke_handler(id: int, req: int, wv_handle: int) -> None {\n"
-        "    req_str: str = req;\n"
         "    gstate = PyGILState_Ensure();\n"
-        "    py_req = PyUnicode_FromString(req_str);\n"
+        "    py_req = PyUnicode_FromString(req as str);\n"
         "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
         "    if py_result == 0 {\n"
         "        Py_DecRef(py_req);\n"

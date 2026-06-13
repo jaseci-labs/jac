@@ -446,7 +446,8 @@ def _handle_build_target(ctx: HookContext) -> None {
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     } except Exception as e {
-        console.error(f"Build failed: {e}");
+        import traceback;
+        console.error(f"Build failed: {e}\n{traceback.format_exc()}");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     }

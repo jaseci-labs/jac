@@ -21,9 +21,8 @@ import from "<libpy>" {
 glob _PH_DISPATCH: int = 0;
 
 def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
-    req_str: str = req;  # inttoptr i64 -> i8*, valid for callback lifetime
     gstate = PyGILState_Ensure();
-    py_req = PyUnicode_FromString(req_str);
+    py_req = PyUnicode_FromString(req as str);  # inttoptr i64 -> i8*
     py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);
     if py_result == 0 {
         Py_DecRef(py_req);
