@@ -148,12 +148,15 @@ test "guardrail: yield expression is rejected" {
 }
 
 # Reading a field off an UNFILTERED node-ref element is unsupported: the
-# checker types the neighbour as `any` (the adjacency returns untyped handles),
-# so native cannot resolve the element to a struct layout. It must E5090 -- and
-# crucially must NOT throw an uncaught codegen traceback (issue #6646 Bug 3).
-# A typed receiver (edge ref, or a `[?:Type]`-filtered node ref) IS supported;
-# see test_osp_equivalence.jac "osp field access".
-test "guardrail: field access on an untyped (any) node-ref element is rejected" {
+# checker types the neighbour as `any` (an edge can connect any node types, so
+# the adjacency returns untyped handles), so native cannot resolve the element
+# to a struct layout. It must E5090 -- and crucially must NOT throw an uncaught
+# codegen traceback (issue #6646 Bug 3) -- AND the diagnostic must guide the
+# author to the only sound narrowing today, a `[?:Type]` node filter (until
+# typed edge endpoints land, issue #6657). A typed receiver (edge ref, or a
+# `[?:Type]`-filtered node ref) IS supported; see test_osp_equivalence.jac
+# "osp field access".
+test "guardrail: field access on an untyped (any) node-ref element is rejected with a filter hint" {
     prog = compile_na_inline(
         "node_ref_any_field",
         "node N { has tag: int = 0; }\n"
@@ -168,6 +171,20 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected" 
         "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
     );
     assert has_error_code(prog, "E5090") , f"Expected E5090 for any-typed node-ref field access, got: {fmt_errors(
+        prog
+    )}";
+    hinted = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E5090"
+            and alrt.help_text is not None
+            and "[?:" in alrt.help_text
+        ) {
+            hinted = True;
+        }
+    }
+    assert hinted , f"E5090 help should suggest a `[?:Type]` filter: {fmt_errors(
         prog
     )}";
 }
