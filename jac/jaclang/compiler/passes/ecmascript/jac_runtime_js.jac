@@ -1392,7 +1392,7 @@ def _build_exc_runtime_js -> str {
     lines.append("    function matches(e, name) {");
     lines.append("      if (name === 'BaseException') return true;");
     lines.append(
-        "      if (name === 'Exception') return (e instanceof Exception) || !(e instanceof BaseException);"
+        "      if (name === 'Exception') return (e instanceof _all.Exception) || !(e instanceof _all.BaseException);"
     );
     lines.append("      const cls = _all[name];");
     lines.append("      return cls ? (e instanceof cls) : false;");
