@@ -144,10 +144,16 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             StaticAnalysisPass
         }
         import from jaclang.compiler.passes.main.capability_check_pass {
-            PortabilityWarnPass
+            PortabilityWarnPass,
+            NativeCapabilityCheckPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-        return [StaticAnalysisPass, PortabilityWarnPass, JacLintCheckPass];
+        return [
+            StaticAnalysisPass,
+            PortabilityWarnPass,
+            NativeCapabilityCheckPass,
+            JacLintCheckPass
+        ];
     } except ImportError {
         return [];
     } finally {

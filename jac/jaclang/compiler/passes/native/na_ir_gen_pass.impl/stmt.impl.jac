@@ -1577,6 +1577,12 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
     # `if <seen> { skip; }` visit-once guard into dead code, the silent wrong
     # answer of issue #6636. Statements after it are skipped by the
     # is_terminated check, mirroring disengage.
+    #
+    # `skip` outside a void (event-ability) body is rejected up front by the
+    # capability sweep (`native_capability_violations`), which runs before any
+    # codegen on BOTH `jac check` and `jac nacompile`, so a value-returning
+    # body never reaches here. The non-void branch below is a defensive
+    # backstop: a clean E5090 rather than an invalid `ret void` in a typed fn.
     if ctrl_name == Tok.KW_SKIP {
         if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
             self.builder.ret_void();

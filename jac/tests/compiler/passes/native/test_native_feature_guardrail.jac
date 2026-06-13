@@ -34,6 +34,18 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
     return prog;
 }
 
+"""Compile a snippet through the FRONT-END check schedule (the `type_check`
+extras) with codegen OFF — the `jac check` path. This is the path that
+historically did NOT surface native codegen-time E5090s, so structural native
+gaps stayed invisible at check time and only failed at `jac nacompile` (issue
+#6636 follow-up B). The native capability authority is now run here too."""
+def check_na_inline(label: str, code: str) -> JacProgram {
+    path = os.path.join(FIXTURES_DIR, f"_check_{label}.na.jac");
+    prog = JacProgram();
+    prog.compile(file_path=path, use_str=code, type_check=True, no_cgen=True);
+    return prog;
+}
+
 """Return True if the program emitted at least one alert with the given code."""
 def has_error_code(prog: JacProgram, code: str) -> bool {
     for alrt in prog.errors_had {
@@ -377,4 +389,89 @@ test "osp gate: spawn/connect on imported archetypes E5090 names the import" {
         }
     }
     assert named , f"E5090 help should name the defining module: {fmt_errors(prog)}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Diagnostic rendering + check/nacompile parity (issue #6636 follow-ups)
+# ─────────────────────────────────────────────────────────────────────
+# (A) `jac nacompile` rendered diagnostics with `str(_err)`, which drops
+# `Alert.help_text` — so the cross-module-OSP / stdlib-import guidance that
+# the native E5090s carry never reached the user. nacompile must render like
+# `jac check` / `jac run` (Alert.pretty_print), which includes the help line.
+# The stdlib-import E5090 is the simplest carrier (single file, stable help).
+test "nacompile surfaces native E5090 help text, not just the generic message" {
+    import contextlib;
+    import io;
+    import tempfile;
+    import from jaclang.cli.commands.nacompile { nacompile }
+    with tempfile.TemporaryDirectory() as td {
+        src = os.path.join(td, "bad_import.na.jac");
+        with open(src, "w") as f {
+            f.write("import json;\nwith entry { print(0); }\n");
+        }
+        buf = io.StringIO();
+        with contextlib.redirect_stdout(buf) {
+            rc = nacompile(filename=src, output=os.path.join(td, "out"));
+        }
+        out = buf.getvalue();
+        assert rc != 0 , "nacompile should fail on an unsupported stdlib import";
+        assert "Native compilation supports these stdlib imports" in out , (
+            f"E5090 help text missing from nacompile output:\n{out}"
+        );
+    }
+}
+
+# (B) `skip` is an object-spatial walker statement (Return-family); native can
+# only lower it where the body returns no value — i.e. inside a walker `with`
+# event ability. In a value-returning function it is unsupported. That rejection
+# used to be a codegen-time E5090 only, so `jac check` passed while `jac
+# nacompile` failed. The native capability authority now sees it, so BOTH agree.
+test "check rejects skip in a value-returning native function" {
+    prog = check_na_inline(
+        "skip_in_value_fn",
+        "def f(n: int) -> int {\n"
+        "    for i in range(n) {\n"
+        "        if i == 2 { skip; }\n"
+        "    }\n"
+        "    return n;\n"
+        "}\n"
+        "with entry { print(f(5)); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 at check for skip-in-value-fn, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check accepts skip in a walker event ability" {
+    prog = check_na_inline(
+        "skip_in_event_ability",
+        "node C { has tag: int; }\n"
+        "walker W {\n"
+        "    has seen: list[C] = [];\n"
+        "    can step with C entry {\n"
+        "        if here in self.seen { skip; }\n"
+        "        self.seen.append(here);\n"
+        "    }\n"
+        "}\n"
+        "with entry { W() spawn C(tag=1); }\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"skip in an event ability should be accepted, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "nacompile still rejects skip in a value-returning native function" {
+    prog = compile_na_inline(
+        "skip_in_value_fn_cg",
+        "def f(n: int) -> int {\n"
+        "    for i in range(n) {\n"
+        "        if i == 2 { skip; }\n"
+        "    }\n"
+        "    return n;\n"
+        "}\n"
+        "with entry { print(f(5)); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 at full compile for skip-in-value-fn, got: {fmt_errors(
+        prog
+    )}";
 }

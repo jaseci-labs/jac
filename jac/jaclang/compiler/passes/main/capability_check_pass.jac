@@ -18,7 +18,7 @@ axis (a new disqualifier, a new JS-ism) is a table edit, not a new scan.
 """
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.jac0core.diagnostics { W6001, W6002, W6003, W6004 }
+import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
 
 # Python stdlib modules the native backend can lower: the allowlist of
 # bare `import X;` modules whose member accesses the native codegen
@@ -120,4 +120,22 @@ obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
     def _check_js_methods(mod: uni.Module) -> None;
     def _check_js_keywords(mod: uni.Module) -> None;
     def _check_js_properties(mod: uni.Module) -> None;
+}
+
+"""Surfaces native-capability violations (E5090) over explicitly-native code
+at `jac check` time. The native backend runs the same
+`native_capability_violations` sweep at the START of emission; this pass runs
+it during `jac check` (which compiles with codegen OFF, so the backend never
+runs), so structural native gaps -- non-allowlisted Python imports, structural
+match patterns, `skip` in a value-returning function -- are reported by `check`
+and not only by `jac nacompile` (issue #6636). Scheduled in the check-extras
+schedule, which runs ONLY for `jac check`; native emission runs in a disjoint
+invocation (type_check off), so a violation is surfaced exactly once."""
+obj NativeCapabilityCheckPass(Transform[uni.Module, uni.Module]) {
+    has ir_in: uni.Module,
+        prog: any,
+        cancel_token: any = None;
+
+    def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
 }

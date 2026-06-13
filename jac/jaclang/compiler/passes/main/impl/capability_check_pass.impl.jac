@@ -80,7 +80,13 @@ glob JS_GLOBALS: dict[str, str] = {
          "prototype": "Jac inheritance",
          "constructor": "type() or __init__",
          "__proto__": "Jac inheritance"
-     };
+     },
+     # Help text for the native `skip`-outside-event-ability rejection.
+     _NATIVE_SKIP_HELP: str = (
+         "`skip` is an object-spatial walker statement; native lowers it only "
+         "inside a walker `with` event ability (a body that returns no value). "
+         "In a value-returning function, use an explicit `return` to exit early."
+     );
 
 
 impl classify_native_import(item: uni.UniNode) -> tuple {
@@ -97,7 +103,7 @@ impl classify_native_import(item: uni.UniNode) -> tuple {
 
 impl native_capability_violations(mod: uni.Module) -> list {
     import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-    import from jaclang.jac0core.constant { CodeContext }
+    import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
     out: list = [];
     _stdlib_help: (str | None) = None;
     # One NATIVE-context iteration covers both violation families. NOTE:
@@ -153,6 +159,24 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 out.append((nd, kind, type(nd).__name__, None));
                 continue;
             }
+            # `skip` is an object-spatial walker statement (Return-family): the
+            # native backend lowers it only where the body returns no value --
+            # a walker `with` event ability. In a value-returning function it
+            # would have to return-void from a typed function, which native
+            # cannot do, so it is unsupported there. Detected structurally here
+            # (not only at codegen) so `jac check` and `jac nacompile` agree
+            # (issue #6636). `break`/`continue` are ordinary loop control and
+            # are unaffected.
+            if isinstance(nd, uni.CtrlStmt)
+            and isinstance(nd.ctrl, uni.Token)
+            and (nd.ctrl.name == Tok.KW_SKIP) {
+                _encl = nd.find_parent_of_type(uni.Ability);
+                if (_encl is None)
+                or (not isinstance(_encl.signature, uni.EventSignature)) {
+                    out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
+                }
+                continue;
+            }
             for k in nd.kid {
                 work.append(k);
             }
@@ -206,6 +230,23 @@ impl CapabilityCheckPass.postinit -> None {
 
 impl CapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     ir_in.gen.native_compat = module_native_compat(ir_in);
+    return ir_in;
+}
+
+impl NativeCapabilityCheckPass.postinit -> None {
+    super.postinit();
+}
+
+"""Emit each native-capability violation as E5090, reusing the single
+`native_capability_violations` authority the native backend emits from. Called
+on the main module only (the same scope NaIRGenPass sweeps), so `jac check` and
+`jac nacompile` report an identical violation set."""
+impl NativeCapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
+    for (_vnode, _vkind, _vname, _vhelp) in native_capability_violations(ir_in) {
+        self.emit(
+            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
+        );
+    }
     return ir_in;
 }
 
