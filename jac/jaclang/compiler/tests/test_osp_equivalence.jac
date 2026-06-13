@@ -295,6 +295,89 @@ test "osp cross-module two libraries: OSP imported from two modules agrees" {
     assert run_native_function(_eng, "xmod_two_na") == {"total": 7, "power": 9};
 }
 
+test "osp cross-module field read: imported node reserves its OSP header" {
+    # Issue #6659 Bug 1: a consumer that only constructs an imported node and
+    # reads a field (no spawn/connect/visit -- the module does not "use OSP")
+    # still must lay the imported node out with its OSP header (vtable@0,
+    # __type_tag@1) so the field offsets match the defining module. Before the
+    # fix the consumer dropped the header and `a.tag` read the vtable slot,
+    # returning a garbage pointer instead of 7. Native-only (a .na.jac library
+    # is not @sv-importable); the @sv result {"tag": 7} is pinned in the fixture.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "xmod_fieldread_main.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "fieldread_na") == {"tag": 7};
+}
+
+test "osp cross-module inherited write: write an inherited field of imported node" {
+    # Issue #6659 Bug 2: writing (plain or augmented) an INHERITED field of an
+    # imported node subtype raised `E5090: field assignment`, while reading the
+    # same inherited field worked. The write path must resolve the inherited
+    # field's slot through the imported MRO the same way the read path does.
+    # Native-only; the @sv result {"yaw": 2.0, "pitch": 0.5} is pinned.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "xmod_inherited_main.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "inherited_na") == {"yaw": 2.0, "pitch": 0.5};
+}
+
+test "osp cross-module union return: narrow `Area | None`, read / pass / spawn" {
+    # Issue #6659 Bug 3: a cross-module `def f() -> Area | None`, narrowed with
+    # `is not None`, then read / passed to an `Area`-typed function / used as a
+    # spawn target -- the app-level cascade (E1053 / E1115 / E1099 / runtime
+    # crash), all rooted in the imported node layout being unsound across the
+    # boundary (same root as Bug 1). Native-only; the @sv result {"present": 5,
+    # "taken": 5, "hits": 5, "absent": -1} is pinned.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "xmod_unionret_main.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "unionret_na") == {
+        "present": 5,
+        "taken": 5,
+        "hits": 5,
+        "absent": -1
+    };
+}
+
 test "osp bare edge: `a +>: E :+> b` (bare type) records the edge like `E()`" {
     # Issue #6642 follow-up: native silently DROPPED a bare-edge-type connect
     # (codegen of a bare archetype name yielded no value), so the edge was never

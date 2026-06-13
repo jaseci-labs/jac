@@ -195,16 +195,24 @@ impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
 
 """Register OSP archetypes IMPORTED from other native modules into
 `osp_arch_kind` / `arch_ast_map` so their struct layout reserves the OSP header
-fields (vtable + `__type_tag`) to MATCH the defining module, and so
-`_register_osp_tags` gives them their globally-stable tag. Only when the
-importing module actually uses OSP -- a module that merely constructs an
-imported archetype (no spawn/connect/visit) keeps the plain layout and never
-loads the kernel (issue #6642 Blocker 2). Must run before imported struct bodies
-are filled (`_codegen_archetype` reads `osp_arch_kind` for the layout)."""
+fields (vtable@0 + `__type_tag`@1) to MATCH the defining module, and so
+`_register_osp_tags` gives them their globally-stable tag.
+
+Registration is UNCONDITIONAL: a LOCAL node/walker/edge always reserves the OSP
+header (`_register_osp_tags` records every local archetype in `osp_arch_kind`
+regardless of OSP usage), so the defining library always lays its archetypes out
+WITH the header. An importing module must therefore reserve the same header even
+when it merely constructs/reads an imported node and never spawns/connects/visits
+-- otherwise its field offsets disagree with the library and a plain `a.field`
+read returns the vtable slot (garbage), the silent cross-module corruption in
+issue #6659 (Bug 1, and the union-return read in Bug 3). The header is a fixed
+two-field reservation; it does NOT pull in the kernel. Loading the kernel and
+assigning dense tags stays gated on actual OSP usage (`_register_osp_tags`
+re-checks `_module_uses_osp`; `_emit_osp_setup` / `_register_osp_kernel_module`
+gate on a non-empty `osp_tags`), so a construct-only consumer still skips the
+kernel (issue #6642 Blocker 2). Must run before imported struct bodies are filled
+(`_codegen_archetype` reads `osp_arch_kind` for the layout)."""
 impl NaIRGenPass._register_imported_osp_archetypes(imported_mod: uni.Module) -> None {
-    if not self._module_uses_osp(self.ir_in) {
-        return;
-    }
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
