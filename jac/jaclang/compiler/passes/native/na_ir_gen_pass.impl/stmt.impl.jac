@@ -118,13 +118,28 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             );
         }
     } elif isinstance(nd, uni.DeleteStmt) {
-        # del d[k]  →  d.remove(k)
         target_expr = nd.target;
-        if (
+        # `del e` on an edge: disconnect it from the adjacency (issue #6642).
+        # The edge handle (`ptrtoint` of the edge object, as carried by an
+        # `[edge ...]` ref) keys the row `osp_disconnect` drops.
+        _del_arch = self._struct_name_of(target_expr);
+        if (_del_arch is not None) and (self.osp_arch_kind.get(_del_arch) == "edge") {
+            _disc_fn = self.func_symtab.get("osp_disconnect");
+            _edge_h = self._codegen_expr(target_expr);
+            if (_disc_fn is not None) and (_edge_h is not None) {
+                _disc_argtys = _disc_fn.function_type.args;
+                self.builder.call(
+                    _disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]
+                );
+            } elif _disc_fn is None {
+                self.emit(E5090, node_override=nd, kind="statement", name="DeleteStmt");
+            }
+        } elif (
             isinstance(target_expr, uni.AtomTrailer)
             and not target_expr.is_attr
             and target_expr.right?.slices
         ) {
+            # del d[k]  →  d.remove(k)  (or del list[i] → list.del_at(i))
             slices = target_expr.right.slices or [];
             if slices {
                 # Only handle dict-typed targets (checked type, then LLVM shape)

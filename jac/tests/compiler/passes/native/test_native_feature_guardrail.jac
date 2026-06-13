@@ -355,41 +355,12 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     )}";
 }
 
-# spawn / connect on OSP archetypes IMPORTED from another native module have
-# no lowering yet (cross-module archetype materialization is #6146 Phases
-# 3-4): tag numbering and the __osp_setup tables are per-module, so lowering
-# against an imported archetype would dispatch on mismatched type tags. The
-# E5090 must fire AND its help text must name the defining module so the
-# failure is diagnosable as the cross-module gap, not a generic unsupported-op.
-test "osp gate: spawn/connect on imported archetypes E5090 names the import" {
-    prog = compile_na_inline(
-        "xmod_osp",
-        "import from osp_xmod_lib { Area, In, Noop }\n"
-        "with entry {\n"
-        "    a = Area(tag=1);\n"
-        "    b = Area(tag=2);\n"
-        "    a +>: In() :+> b;\n"
-        "    n = Noop();\n"
-        "    n spawn a;\n"
-        "    print(n.count);\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for cross-module OSP, got: {fmt_errors(
-        prog
-    )}";
-    named = False;
-    for alrt in prog.errors_had {
-        if (
-            alrt.code is not None
-            and alrt.code.code == "E5090"
-            and alrt.help_text is not None
-            and "osp_xmod_lib" in alrt.help_text
-        ) {
-            named = True;
-        }
-    }
-    assert named , f"E5090 help should name the defining module: {fmt_errors(prog)}";
-}
+# NOTE (issue #6642 Blocker 2): the cross-module spawn/connect/edge-ref guardrail
+# that asserted E5090 was REMOVED -- OSP archetypes imported from another native
+# module now MATERIALIZE into the consumer's deterministic tag space and lower,
+# so the op no longer errors. The end-to-end behavior is pinned by the native
+# run in test_osp_equivalence.jac ("osp cross-module ..."). A guardrail asserting
+# E5090 here would now be a false negative.
 
 # ─────────────────────────────────────────────────────────────────────
 # Diagnostic rendering + check/nacompile parity (issue #6636 follow-ups)
