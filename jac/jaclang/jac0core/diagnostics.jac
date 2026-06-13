@@ -819,6 +819,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "declaration has no ref object to hold — '.current' would never be "
          "defined. This mirrors how every other 'has'-field carries a value."
      ),
+     E2026 = _err(
+         "E2026",
+         Category.SEMANTIC,
+         "Definition '{name}' in .impl.jac file is not linked to its declaration stub. "
+         "Use an `impl` block instead of a bare re-declaration.",
+         help="In Jac, implementation files use `impl Name {{ ... }}` or `impl Name(...) {{ ... }}` blocks to provide bodies for declaration stubs. A bare re-declaration in a `.impl.jac` file is treated as a separate definition and will not be linked to the stub."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

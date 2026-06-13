@@ -14,7 +14,15 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+def _jac_root -> str {
+    here = __file__;
+    if here is None {
+        raise RuntimeError("test __file__ is unavailable");
+    }
+    return str(Path(here).resolve().parent.parent.parent.parent.parent);
+}
+
+glob JAC_ROOT = _jac_root(),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
@@ -328,5 +336,39 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
     }
     assert reads_checked >= 4 , (
         f"Expected >=4 local reads checked (one per construct), got {reads_checked}"
+    );
+}
+
+test "E2026 bare re-declaring def in .impl.jac" {
+    (out := JacProgram()).compile(os.path.join(FIXTURES, "bare_redecl_impl_error.jac"));
+
+    e2026_errors = [
+        e
+        for e in out.errors_had
+        if "E2026" in e.pretty_print()
+    ];
+    assert len(e2026_errors) == 1 , (
+        f"Expected 1 E2026 error, got {len(e2026_errors)}"
+    );
+
+    errors_output = e2026_errors[0].pretty_print();
+    assert "E2026" in errors_output;
+    assert "Definition 'foo' in .impl.jac file is not linked" in errors_output;
+    assert "Use an `impl` block" in errors_output;
+}
+
+test "E2026 bare redecl emits once across cross-variant connect_impls" {
+    head_path = os.path.join(FIXTURES, "bare_redecl_cross_variant", "mymod.jac");
+    (out := JacProgram()).compile(head_path);
+
+    e2026_errors = [
+        e
+        for e in out.errors_had
+        if "E2026" in e.pretty_print()
+    ];
+    assert len(e2026_errors) == 1 , (
+        f"Expected 1 E2026 error across primary and variant stubs, got {len(
+            e2026_errors
+        )}"
     );
 }
