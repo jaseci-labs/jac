@@ -717,6 +717,9 @@ obj TypeEvaluator {
     def _loop_exit_narrowed_type(
         loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
     ) -> TypeBase | None;
+    def _assignment_narrowed_type(
+        value_type: TypeBase | None, declared_type: TypeBase
+    ) -> TypeBase | None;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
         target: NarrowingTarget, condition: uni.Expr

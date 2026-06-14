@@ -4474,56 +4474,30 @@ impl TypeEvaluator._loop_exit_narrowed_type(
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
     key = target.key;
-    declared_type = target.declared_type;
     body_types: list[TypeBase] = [];
     for assign in loop_node.get_all_sub_nodes(uni.Assignment) {
         if not assign.value {
             continue;
         }
-        writes_key: bool = False;
-        flat_target: bool = False;
         for t in assign.target {
-            if key in collect_assignment_target_keys(t) {
-                writes_key = True;
-                if (
-                    (isinstance(t, uni.Name) and t.value == key)
-                    or (
-                        isinstance(t, uni.AtomTrailer)
-                        and t.is_attr
-                        and self.create_key_for_reference(t) == key
-                    )
-                ) {
-                    flat_target = True;
-                }
-                break;
+            if key not in collect_assignment_target_keys(t) {
+                continue;
             }
-        }
-        if not writes_key {
-            continue;
-        }
-        if not flat_target {
+            is_flat = (isinstance(t, uni.Name) and t.value == key) or (
+                isinstance(t, uni.AtomTrailer)
+                and t.is_attr
+                and self.create_key_for_reference(t) == key
+            );
             # Destructuring write: widen instead of guessing the element type.
-            return None;
+            narrowed = self._assignment_narrowed_type(
+                self.get_type_of_expression(assign.value), target.declared_type
+            ) if is_flat else None;
+            if narrowed is None {
+                return None;
+            }
+            body_types.append(narrowed);
+            break;
         }
-        assigned_type = self.get_type_of_expression(assign.value);
-        if assigned_type is None or isinstance(assigned_type, types.UnknownType) {
-            return None;
-        }
-        narrowed_assign: TypeBase | None = None;
-        # Same narrowing rules as a normal assignment edge.
-        if self.is_none_type(declared_type) {
-            narrowed_assign = assigned_type;
-        } elif (
-            self.assign_type(assigned_type, declared_type)
-            and not self.assign_type(declared_type, assigned_type)
-        ) {
-            narrowed_assign = assigned_type;
-        }
-        if narrowed_assign is None {
-            # Assignment does not narrow below the declared type: widen.
-            return None;
-        }
-        body_types.append(narrowed_assign);
     }
     if len(body_types) == 0 {
         # Body never writes the variable: keep the entry type.
@@ -4534,10 +4508,27 @@ impl TypeEvaluator._loop_exit_narrowed_type(
         return None;
     }
     body_types.append(entry_type);
-    if len(body_types) == 1 {
-        return body_types[0];
+    return body_types[0] if len(body_types) == 1
+        else self._union_narrowed_types(body_types);
+}
+
+"""Narrowed type from an assignment value, or None to keep the declared type."""
+impl TypeEvaluator._assignment_narrowed_type(
+    value_type: TypeBase | None, declared_type: TypeBase
+) -> TypeBase | None {
+    if value_type is None or isinstance(value_type, types.UnknownType) {
+        return None;
     }
-    return self._union_narrowed_types(body_types);
+    if self.is_none_type(declared_type) {
+        return value_type;
+    }
+    if (
+        self.assign_type(value_type, declared_type)
+        and not self.assign_type(declared_type, value_type)
+    ) {
+        return value_type;
+    }
+    return None;
 }
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
