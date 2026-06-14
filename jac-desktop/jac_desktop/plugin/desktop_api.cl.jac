@@ -7,16 +7,22 @@ Short term: hand-written (this file). Long term: GENERATED from each plugin's
 PluginManifest.commands at build time and staged beside the user's client code,
 so the host and the SDK can never drift.
 
-Binding note: `window.__jac` is injected by the host's BOOTSTRAP_JS and treated
-here as an ambient browser global. If the jac-client compiler does not resolve a
-bare `window`, declare it with a tiny ambient/extern shim — that is the only
-open binding detail for this piece.
+Binding note: the bridge is injected by the host's BOOTSTRAP_JS onto the browser
+global. It is reached via `globalThis.__jac` (see `_invoke`) rather than bare
+`window.__jac`, because this module declares `obj window` for the window-control
+facade, which shadows the ambient `window` global — `globalThis` is the same
+object in the webview and is never shadowed.
 """
 
 """Thin wrapper over the injected JS bridge. Resolves to data or throws an
-Error carrying `.code` (the host's structured PluginError code)."""
+Error carrying `.code` (the host's structured PluginError code).
+
+Uses `globalThis` (not bare `window`) deliberately: this module declares
+`obj window` for the window-control facade, which shadows the ambient browser
+`window` global — so `window.__jac` would bind to that class. `globalThis` is
+the same object as `window` in the webview and is never shadowed."""
 async def _invoke(plugin: str, command: str, args: dict) -> any {
-    return await window.__jac.invoke(plugin, command, args);
+    return await globalThis.__jac.invoke(plugin, command, args);
 }
 
 
