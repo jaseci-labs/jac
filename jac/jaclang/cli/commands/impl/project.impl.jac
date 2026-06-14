@@ -393,8 +393,9 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
     console.print(f"  ✔ .gitignore", style="success");
 }
 
-"""Install all dependencies from jac.toml."""
+"""Install all dependencies from jac.toml, or packages into the activated environment."""
 impl install(
+    packages: list = [],
     editable: list = [],
     dev: bool = False,
     extras: list = [],
@@ -427,14 +428,40 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
+    # ── Direct install into activated environment ─────────────────────────────
+    if packages {
+        console.print(
+            f"\n📦 Installing {len(packages)} package(s) into activated environment",
+            style="bold"
+        );
+        cmd: list[str] = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install"
+        ] + install_flags + packages;
+        if verbose {
+            console.print(f"  Running: {' '.join(cmd)}", style="muted");
+        }
+        result = subprocess.run(cmd, capture_output=not verbose, text=True);
+        if result.returncode != 0 {
+            console.error(f"Install failed:\n{result.stderr or result.stdout}");
+            return 1;
+        }
+        if not verbose {
+            for pkg in packages {
+                console.print(f"  ✔ {pkg}", style="success");
+            }
+        }
+        console.success("Package(s) installed");
+        return 0;
+    }
     # ── Editable install ──────────────────────────────────────────────────────
     # Flatten nested lists produced by action="append" with nargs="+":
     #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
     editable = [p for group in (editable or []) for p in group];
     if editable {
-        import sys;
         import site;
-        import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
 
         # Phase 1 — collect all dep specs for a single unified pip call.
