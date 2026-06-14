@@ -15,12 +15,9 @@ import from jac_scale._optdeps.pymongo {
     Collection,
     ObjectId
 }
-import from jac_scale.factories.database_factory { DatabaseType }
 import from jaclang.runtimelib.serializer { Serializer }
 
 obj MongoDb(Db) {
-    has db_type: DatabaseType = DatabaseType.MONGODB;
-
     """Get MongoDB collection reference."""
     def _get_mongo_collection(col_name: str) -> Collection;
 

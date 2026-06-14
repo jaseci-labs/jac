@@ -5,6 +5,7 @@ import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.tests.fixtures.social_graph { User, Post, BuildGraph, QueryGraph }
 import from jac_scale.lib { kvstore }
 import from jac_scale.db { close_all_db_connections }
+import from jac_scale.mongo_db { MongoDb }
 import from jac_scale.config_loader { reset_scale_config }
 import from testcontainers.mongodb { MongoDbContainer }
 import from uuid { uuid4 }
@@ -53,7 +54,7 @@ test "find_nodes queries persisted graph with BuildGraph" {
     # Clean up any leftover connections from previous tests
     cleanup_connections();
 
-    db = kvstore(db_name='jac_db', db_type='mongodb', uri=MONGO_URI);
+    db: MongoDb = kvstore(db_name='jac_db', db_type='mongodb', uri=MONGO_URI);
 
     # Drop collection to ensure clean state before test
     db._get_mongo_collection('_anchors').drop();

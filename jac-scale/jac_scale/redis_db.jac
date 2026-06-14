@@ -1,12 +1,8 @@
 """Redis-backed database implementation."""
 import from jac_scale.db { Db, DeleteResult }
-import from jac_scale._optdeps.pymongo { PyMongoDeleteResult }
 import from jac_scale._optdeps.redis { Redis }
-import from jac_scale.factories.database_factory { DatabaseType }
 
 obj RedisDb(Db) {
-    has db_type: DatabaseType = DatabaseType.REDIS;
-
     """Get namespaced Redis key."""
     def _get_redis_key(col_name: str, key: str) -> str;
 
@@ -30,5 +26,5 @@ obj RedisDb(Db) {
     ) -> bool;
 
     def find_by_id(col_name: str, id: str) -> dict | None;
-    def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult;
+    def delete_by_id(col_name: str, id: str) -> DeleteResult;
 }

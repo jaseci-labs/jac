@@ -1,19 +1,5 @@
 """MongoDB implementation for MongoDb."""
-
-"""Check if a collection is read-only (protected from user modifications)."""
-def _is_read_only_collection(col_name: str) -> bool {
-    return col_name == '_anchors';
-}
-
-"""Validate that a collection is not read-only, raise error if it is."""
-def _validate_not_read_only(col_name: str) {
-    if _is_read_only_collection(col_name) {
-        raise PermissionError(
-            f"Collection '{col_name}' is read-only and cannot be modified. "
-            "This is a system collection managed internally."
-        );
-    }
-}
+import from jac_scale._db_helpers { _validate_not_read_only }
 
 impl MongoDb._get_mongo_collection(col_name: str) -> Collection {
     return self.client[self.db_name][col_name];

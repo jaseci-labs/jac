@@ -1,24 +1,10 @@
 """Redis implementation for RedisDb."""
 import json;
+import from jac_scale._db_helpers { _validate_not_read_only }
 
 """Generate Redis key in format: {db_name}:{col_name}:{key}."""
 def _redis_key(db_name: str, col_name: str, key: str) -> str {
     return f"{db_name}:{col_name}:{key}";
-}
-
-"""Check if a collection is read-only (protected from user modifications)."""
-def _is_read_only_collection(col_name: str) -> bool {
-    return col_name == '_anchors';
-}
-
-"""Validate that a collection is not read-only, raise error if it is."""
-def _validate_not_read_only(col_name: str) {
-    if _is_read_only_collection(col_name) {
-        raise PermissionError(
-            f"Collection '{col_name}' is read-only and cannot be modified. "
-            "This is a system collection managed internally."
-        );
-    }
 }
 
 # Lua script kept at module scope so redis-py can cache its SHA after the first
@@ -113,9 +99,7 @@ impl RedisDb.find_by_id(col_name: str, id: str) -> dict | None {
     return self.get(id, col_name);
 }
 
-impl RedisDb.delete_by_id(
-    col_name: str, id: str
-) -> PyMongoDeleteResult | DeleteResult {
+impl RedisDb.delete_by_id(col_name: str, id: str) -> DeleteResult {
     deleted = self.delete(id, col_name);
     return DeleteResult(deleted_count=deleted);
 }

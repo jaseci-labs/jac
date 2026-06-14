@@ -1,24 +1,12 @@
 """Direct Database Access Module."""
 import from jac_scale._optdeps.optional_deps { require_optional }
-import from jac_scale._optdeps.pymongo {
-    MongoClient,
-    PyMongoInsertOneResult,
-    PyMongoInsertManyResult,
-    PyMongoUpdateResult,
-    PyMongoDeleteResult,
-    Cursor,
-    Collection,
-    ObjectId
-}
+import from jac_scale._optdeps.pymongo { MongoClient }
 import from jac_scale._optdeps.redis { Redis }
 import from jac_scale.factories.database_factory {
     DatabaseProviderFactory,
     DatabaseType,
     _resolve_uri
 }
-import from uuid { uuid4 }
-import from jaclang.runtimelib.serializer { Serializer }
-import json;
 
 glob _mongo_clients: dict[str, MongoClient] = {},
      _redis_clients: dict[str, Redis] = {};
@@ -129,125 +117,10 @@ def close_all_db_connections {
 
 obj Db {
     has client: (MongoClient | Redis),
-        db_name: str = 'jac_db',
-        db_type: DatabaseType = DatabaseType.MONGODB;
+        db_name: str = 'jac_db';
 
-    # ===== COMMON METHODS (work for both MongoDB and Redis) =====
-    """Get a document/value by key.
-
-    For MongoDB: key is the document ID.
-    For Redis: key is the Redis key.
-    """
     def get(key: str, col_name: str = 'default') -> dict | None;
-
-    """Set a document/value by key.
-    For MongoDB: Inserts or updates document with given ID.
-    For Redis: Sets the key-value pair.
-"""
     def set(key: str, value: dict, col_name: str = 'default') -> str;
-
-    """Delete a document/value by key. Returns count deleted."""
     def delete(key: str, col_name: str = 'default') -> int;
-
-    """Check if a key exists."""
     def exists(key: str, col_name: str = 'default') -> bool;
-
-    # ===== MONGODB-ONLY METHODS =====
-    """Find one document matching filter."""
-    def find_one(
-        col_name: str, filter: dict, projection: dict | None = None
-    ) -> dict | None;
-
-    """Find all documents matching filter.
-
-    `projection` follows pymongo semantics: `{field: 1}` to include, `{field: 0}`
-    to exclude. Passing None returns all fields.
-    """
-    def find(
-        col_name: str, filter: dict, projection: dict | None = None
-    ) -> Cursor | list;
-
-    """Count documents matching filter."""
-    def count_documents(col_name: str, filter: dict) -> int;
-
-    """Create (or no-op if exists) a pymongo index."""
-    def create_index(
-        col_name: str, keys: dict, unique: bool = False, name: str | None = None
-    ) -> str;
-
-    """Insert a single document."""
-    def insert_one(
-        col_name: str, document: dict
-    ) -> PyMongoInsertOneResult | InsertResult;
-
-    """Update one document."""
-    def update_one(
-        col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult;
-
-    """Delete one document."""
-    def delete_one(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteResult;
-
-    # Bulk operations
-    def insert_many(
-        col_name: str, documents: list
-    ) -> PyMongoInsertManyResult | InsertManyResult;
-
-    def update_many(
-        col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult;
-
-    def delete_many(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteResult;
-    # ID-based convenience methods
-    def find_by_id(col_name: str, id: str) -> dict | None;
-    def update_by_id(
-        col_name: str, id: str, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult;
-
-    def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult;
-    # ===== REDIS-ONLY METHODS =====
-    """Set a value with TTL/expiration.
-    Args:
-        key: Redis key
-        value: Dictionary to store (JSON serialized)
-        ttl: Time to live in seconds
-        col_name: Optional namespace prefix
-    """
-    def set_with_ttl(
-        key: str, value: dict, ttl: int, col_name: str = 'default'
-    ) -> bool;
-
-    """Increment a numeric key."""
-    def incr(key: str, col_name: str = 'default') -> int;
-
-    """Set expiration on existing key."""
-    def expire(key: str, seconds: int, col_name: str = 'default') -> bool;
-
-    """Get all keys matching pattern (Redis only).
-    Warning: This uses SCAN which is safer than KEYS but still O(n).
-    """
-    def scan_keys(pattern: str, col_name: str = 'default') -> list[str];
-
-    """Atomically set a value with TTL only if the key does not already exist.
-    Returns True if the key was set (caller acquired), False if another holder
-    won. Maps to Redis ``SET key value NX EX ttl``.
-    Used for distributed locks, leader election, and cross-pod debounce
-    windows where exactly one caller in the cluster must succeed."""
-    def set_nx_with_ttl(
-        key: str, value: dict, ttl: int, col_name: str = 'default'
-    ) -> bool;
-
-    """Atomically delete a key only when its current value matches
-    ``expected_value``. Returns True if deleted, False if the key was absent
-    or held a different value. Implemented with a server-side Lua script so
-    the GET/DEL pair is atomic.
-    Used for fence-token release: pairs with ``set_nx_with_ttl`` so a slow
-    holder whose TTL expired does not delete a lock another pod now owns."""
-    def delete_if_equals(
-        key: str, expected_value: dict, col_name: str = 'default'
-    ) -> bool;
-
-    def find_nodes(
-        node_type: str, filter: dict = {}, col_name: str = '_anchors'
-    ) -> list;
 }

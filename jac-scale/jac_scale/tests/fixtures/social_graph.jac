@@ -4,6 +4,7 @@ Graph shape:  Root --> User --> Post
               (each User can have multiple Posts)
 """
 import from jac_scale.lib { kvstore }
+import from jac_scale.mongo_db { MongoDb }
 
 node User {
     has name: str,
@@ -36,7 +37,7 @@ walker:pub QueryGraph {
 
     can query with Root entry {
         # Use kvstore to access the database where nodes are persisted
-        db = kvstore(db_name='jac_db', db_type='mongodb', uri=self.mongo_uri);
+        db: MongoDb = kvstore(db_name='jac_db', db_type='mongodb', uri=self.mongo_uri);
 
         # Find users younger than 28
         young = list(db.find_nodes('User', {'age': {'$lt': 28}}));
