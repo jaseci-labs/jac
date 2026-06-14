@@ -239,7 +239,9 @@ impl DependencyInstaller._snapshot_installed -> tuple[bool, set[tuple]] {
     import json;
     (rc, out, _) = self._run_pip(["list", "--format=json"]);
     if rc == 0 {
-        return (True, {(p["name"].lower(), p["version"]) for p in json.loads(out)});
+        try {
+            return (True, {(p["name"].lower(), p["version"]) for p in json.loads(out)});
+        } except Exception { }
     }
     return (False, set());
 }
