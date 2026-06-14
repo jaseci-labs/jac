@@ -229,8 +229,9 @@ jobs:
       run: |
         # With libcef.so absent, ldd will report it missing — that is expected.
         # The audit checks that no *other* unexpected dep is missing.
-        ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true
-        MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef)
+        # grep exits non-zero when it matches nothing (the expected/good case);
+        # the trailing `|| true` keeps `set -e` from aborting the step there.
+        MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true)
         [ -z "$MISSING" ] || (echo "Unexpected missing deps: $MISSING" && exit 1)
 
   test-mcp:
