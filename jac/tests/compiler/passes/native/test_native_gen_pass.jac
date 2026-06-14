@@ -2051,6 +2051,67 @@ test "clib System V AMD64 ABI lowering" {
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
 }
 
+test "jac run loads a transitive imported-module clib (issue #6687)" {
+    # `jac run` JIT-executes a native module in-process via MCJIT. A C shared
+    # library declared in an IMPORTED module through a dotted logical import
+    # carries an `$ORIGIN`-relative path; the imported-dependency clib loader
+    # did not strip that loader token, so the library was never loaded into the
+    # JIT and its FFI symbols resolved to NULL -- the process SIGSEGV'd after a
+    # clean compile, while the byte-identical `jac nacompile` binary ran fine.
+    # The library must now be loaded so the cross-module FFI call returns 21.
+    import platform;
+    import shutil;
+    import tempfile;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        import pytest;
+        pytest.skip("x86_64-only shared-library build");
+    }
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        import pytest;
+        pytest.skip("no C compiler available to build the test shared library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        os.makedirs(os.path.join(tmpdir, "libs"));
+        # Build libs/libclibjit6687.so from the C fixture.
+        so_path = os.path.join(tmpdir, "libs", "libclibjit6687.so");
+        build = subprocess.run(
+            [
+                cc,
+                "-shared",
+                "-fPIC",
+                "-o",
+                so_path,
+                str(os.path.join(FIXTURES, "clib_jit_xmod.c"))
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert build.returncode == 0 , f"cc failed: {build.stderr}";
+        # The `$ORIGIN` token strips to the cwd at JIT time, so the .na.jac
+        # fixtures and the lib subdir must sit together in the run directory.
+        for _f in ["clib_jit_xmod_lib.na.jac", "clib_jit_xmod_main.na.jac"] {
+            shutil.copy(os.path.join(FIXTURES, _f), os.path.join(tmpdir, _f));
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", "clib_jit_xmod_main.na.jac"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tmpdir
+        );
+        assert result.returncode == 0 , (
+            f"`jac run` crashed (transitive clib unresolved): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "21" , (
+            f"Expected '21', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 test "clib AArch64 AAPCS ABI lowering" {
     # Cross-targets aarch64 (works from any host) and asserts the emitted
     # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
