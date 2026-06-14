@@ -148,9 +148,19 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         }
 
         # Link the portable OSP kernel's IR when this program uses Object-Spatial
-        # spawn (issue #6146). NaIRGenPass marks it via native_transitive_sources.
-        if (manifest is not None)
-        and ("osp_kernel" in manifest.native_transitive_sources) {
+        # spawn/visit (issue #6146). NaIRGenPass marks DIRECT use on the entry
+        # module via native_transitive_sources. But a thin entry that only
+        # delegates -- doing no OSP itself while an imported module does the
+        # spawn -- carries no such mark, yet the imported IR (already linked into
+        # `mod` above) still references the kernel's glob-init. Link the kernel
+        # whenever ANY linked module needs it: the dangling `__jac_glob_init_osp_kernel`
+        # declaration in the merged IR is the ground truth (issue #6669).
+        _needs_osp_kernel = (manifest is not None)
+        and ("osp_kernel" in manifest.native_transitive_sources);
+        if (not _needs_osp_kernel) and self._references_undefined_osp_kernel(mod) {
+            _needs_osp_kernel = True;
+        }
+        if _needs_osp_kernel {
             self._link_osp_kernel(mod);
             module.gen.llvm_ir = mod;
         }
@@ -863,6 +873,26 @@ def _compile_osp_kernel_ir -> (str | None) {
         _OSP_KERNEL_IR_CACHE.append(ir_str);
     }
     return ir_str;
+}
+
+"""True when the merged module references the OSP kernel's glob-init symbol
+without defining it. Any OSP-using module emits an `__osp_ensure_init` that calls
+`__jac_glob_init_osp_kernel`; the kernel that DEFINES that symbol is only linked
+by `_link_osp_kernel`. So a dangling declaration in `main_mod` -- after all
+imported modules are linked in -- means an imported (non-entry) module pulled in
+OSP and the kernel still needs linking, even though the entry module's manifest
+never marked it (issue #6669)."""
+impl NativeCompilePass._references_undefined_osp_kernel(main_mod: object) -> bool {
+    try {
+        for _fn in main_mod.functions {
+            if _fn.name == "__jac_glob_init_osp_kernel" and _fn.is_declaration {
+                return True;
+            }
+        }
+    } except Exception {
+        return False;
+    }
+    return False;
 }
 
 """Compile + link the portable OSP kernel's IR into an OSP program's module.

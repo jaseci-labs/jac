@@ -2446,6 +2446,38 @@ test "sys argv via nacompile" {
     }
 }
 
+test "native osp kernel links transitively through an imported module (issue #6669)" {
+    # A thin entry that uses no OSP itself but imports a module whose `run_it`
+    # does the `spawn`. The kernel's glob-init is referenced only transitively,
+    # so the entry module's manifest carries no `osp_kernel` mark. The link gate
+    # must still pull the kernel in. Before the fix the binary built cleanly but
+    # failed at load with: undefined symbol: __jac_glob_init_osp_kernel.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_kernel_transitive_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_kernel_transitive");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed at load: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 # --- TestNativeAArch64Linker ---
 test "aarch64 standalone binary runs (issue #6366)" {
     # Cross-compile a trivial program to aarch64 via the in-house ELF linker

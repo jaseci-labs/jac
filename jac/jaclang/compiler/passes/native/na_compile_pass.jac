@@ -28,4 +28,7 @@ obj NativeCompilePass(Transform) {
     ) -> None;
     # Link the portable OSP kernel's IR into an OSP program (issue #6146)
     def _link_osp_kernel(main_mod: object) -> None;
+    # True when the linked IR references the OSP kernel but no module defines it
+    # -- e.g. the spawn/visit lives in an imported module (issue #6669)
+    def _references_undefined_osp_kernel(main_mod: object) -> bool;
 }
