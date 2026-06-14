@@ -9,7 +9,7 @@ Transpiled to dependency-free Python at build time.
 import os;
 import stat;
 import from pathlib { Path }
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from built_in.path_plugin { PathPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
@@ -104,14 +104,14 @@ obj FsPlugin(DesktopPlugin) {
         try {
             content = path.read_text(encoding=encoding);
         } except FileNotFoundError {
-            raise PluginError("NOT_FOUND", f"File not found: {path}");
+            raise PluginError(ErrorCode.NOT_FOUND, f"File not found: {path}");
         } except PermissionError {
-            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+            raise PluginError(ErrorCode.FORBIDDEN, f"Permission denied: {path}");
         } except LookupError {
-            raise PluginError("INVALID_ARGS", f"Unknown encoding: {encoding}");
+            raise PluginError(ErrorCode.INVALID_ARGS, f"Unknown encoding: {encoding}");
         } except UnicodeDecodeError {
             raise PluginError(
-                "INVALID_ARGS", f"File is not valid {encoding} text: {path}"
+                ErrorCode.INVALID_ARGS, f"File is not valid {encoding} text: {path}"
             );
         }
         return {"content": content};
@@ -126,12 +126,12 @@ obj FsPlugin(DesktopPlugin) {
         try {
             path.write_text(content, encoding=encoding);
         } except PermissionError {
-            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+            raise PluginError(ErrorCode.FORBIDDEN, f"Permission denied: {path}");
         } except LookupError {
-            raise PluginError("INVALID_ARGS", f"Unknown encoding: {encoding}");
+            raise PluginError(ErrorCode.INVALID_ARGS, f"Unknown encoding: {encoding}");
         } except UnicodeEncodeError {
             raise PluginError(
-                "INVALID_ARGS", f"Content cannot be encoded as {encoding}"
+                ErrorCode.INVALID_ARGS, f"Content cannot be encoded as {encoding}"
             );
         }
         return {};
@@ -141,7 +141,7 @@ obj FsPlugin(DesktopPlugin) {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "read");
         if not path.is_dir() {
-            raise PluginError("NOT_FOUND", f"Not a directory: {path}");
+            raise PluginError(ErrorCode.NOT_FOUND, f"Not a directory: {path}");
         }
         entries = [];
         try {
@@ -156,7 +156,7 @@ obj FsPlugin(DesktopPlugin) {
                 );
             }
         } except PermissionError {
-            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+            raise PluginError(ErrorCode.FORBIDDEN, f"Permission denied: {path}");
         }
         return {"entries": entries};
     }
@@ -178,7 +178,7 @@ obj FsPlugin(DesktopPlugin) {
                 count += len(dirs) + len(files);
                 if count > _RMTREE_ENTRY_LIMIT {
                     raise PluginError(
-                        "FORBIDDEN",
+                        ErrorCode.FORBIDDEN,
                         f"Directory '{path}' contains more than {_RMTREE_ENTRY_LIMIT} entries; "
                         "recursive removal refused."
                     );
@@ -203,16 +203,16 @@ obj FsPlugin(DesktopPlugin) {
         path = self._resolve_path(args.get("path", ""));
         self._check_allowed(path, "read");
         if not path.exists() {
-            raise PluginError("NOT_FOUND", f"Path not found: {path}");
+            raise PluginError(ErrorCode.NOT_FOUND, f"Path not found: {path}");
         }
         try {
             st = path.stat();
         } except FileNotFoundError {
-            raise PluginError("NOT_FOUND", f"Path not found: {path}");
+            raise PluginError(ErrorCode.NOT_FOUND, f"Path not found: {path}");
         } except PermissionError {
-            raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+            raise PluginError(ErrorCode.FORBIDDEN, f"Permission denied: {path}");
         } except OSError as e {
-            raise PluginError("FAILED", f"Failed to stat path: {path}: {e}");
+            raise PluginError(ErrorCode.FAILED, f"Failed to stat path: {path}: {e}");
         }
         return {
             "size": st.st_size,
@@ -225,7 +225,7 @@ obj FsPlugin(DesktopPlugin) {
     """Resolve a user-provided path string to an absolute canonical Path."""
     def _resolve_path(raw: str) -> Path {
         if not raw {
-            raise PluginError("INVALID_ARGS", "'path' is required");
+            raise PluginError(ErrorCode.INVALID_ARGS, "'path' is required");
         }
         return Path(raw).expanduser().resolve();
     }
@@ -257,7 +257,7 @@ obj FsPlugin(DesktopPlugin) {
         allowed = self._resolved_read if mode == "read" else self._resolved_write;
         if not allowed {
             raise PluginError(
-                "FORBIDDEN",
+                ErrorCode.FORBIDDEN,
                 f"No {mode} paths are allowed. Configure allow_{mode} in jac.toml."
             );
         }
@@ -268,7 +268,8 @@ obj FsPlugin(DesktopPlugin) {
             }
         }
         raise PluginError(
-            "FORBIDDEN", f"Path '{path}' is outside the allowed {mode} directories."
+            ErrorCode.FORBIDDEN,
+            f"Path '{path}' is outside the allowed {mode} directories."
         );
     }
 }

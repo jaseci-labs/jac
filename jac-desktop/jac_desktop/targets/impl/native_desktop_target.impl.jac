@@ -314,6 +314,9 @@ impl NativeDesktopTarget.build(
 
     # 2. Desktop window config from [plugins.desktop].
     cfg = get_desktop_config(project_dir);
+    # Fail the build on a bad config (geometry, unknown plugin/option keys)
+    # instead of silently shipping a misconfigured app.
+    cfg.validate();
     ident = cfg.get_identity();
     win = cfg.get_window_config();
     plugin_configs = cfg.get_plugin_configs();

@@ -26,6 +26,27 @@ obj PluginError(Exception) {
 }
 
 
+"""Canonical PluginError codes - the IPC error taxonomy shared by every plugin.
+
+The client SDK switches on the `code` field, so these are a stable contract.
+Reuse a code here rather than inventing a per-plugin synonym; that is what keeps
+error handling uniform across capabilities.
+"""
+obj ErrorCode {
+    static has INVALID_ARGS: str = "INVALID_ARGS",  # missing/malformed command arguments
+        FORBIDDEN: str = "FORBIDDEN",  # blocked by an allow-list / permission gate
+        NOT_FOUND: str = "NOT_FOUND",  # target path/resource does not exist
+        UNAVAILABLE: str = "UNAVAILABLE",  # required OS tool/service not present
+        UNSUPPORTED: str = "UNSUPPORTED",  # operation unsupported on this platform
+        TIMEOUT: str = "TIMEOUT",  # operation exceeded its time budget
+        NOT_READY: str = "NOT_READY",  # capability not initialized yet (e.g. webview)
+        FAILED: str = "FAILED",  # operation ran but did not succeed
+        UNKNOWN_COMMAND: str = "UNKNOWN_COMMAND",  # plugin has no such command
+        PLUGIN_NOT_FOUND: str = "PLUGIN_NOT_FOUND",  # no plugin registered under that name
+        INTERNAL_ERROR: str = "INTERNAL_ERROR";  # unexpected host-side exception
+}
+
+
 """Abstract base for capability plugins.
 
 Subclasses override handle(command, args) to implement their commands.
@@ -80,7 +101,8 @@ Only an explicit False (or None/missing) disables the plugin.
             return self._command_map[command](args);
         }
         raise PluginError(
-            "UNKNOWN_COMMAND", f"Plugin '{self.plugin_name}' has no command '{command}'"
+            ErrorCode.UNKNOWN_COMMAND,
+            f"Plugin '{self.plugin_name}' has no command '{command}'"
         );
     }
 

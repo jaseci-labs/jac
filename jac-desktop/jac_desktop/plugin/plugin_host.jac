@@ -12,7 +12,7 @@ import os;
 import sys;
 import ctypes;
 import from pathlib { Path }
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from webview_lib { libwebview_name }
 
 
@@ -68,26 +68,19 @@ obj PluginHost {
 
     """Normalize a webview bind callback payload into {plugin, command, args}.
 
-    Modern libwebview passes `req` as a JSON array of JS call arguments, e.g.
-    ``["jac.path", "home", {}]``. Older hosts passed a single stringified object
-  in a one-element array. Accept both.
+    The canonical wire shape is a JSON array of the JS call arguments, e.g.
+    ``["jac.path", "home", {}]`` - the host's BOOTSTRAP_JS always invokes with
+    three arguments (``__jac_invoke(p, c, a || {})``). The trailing args object
+    is tolerated as absent or null for robustness.
+
+    A bare ``{plugin, command, args}`` object is also accepted: that is the
+    already-normalized form, used by in-process callers and the test suite.
     """
     def _parse_invoke(req_json: str) -> dict {
         wire = json.loads(req_json);
-        if isinstance(wire, list) {
-            if len(wire) == 3 {
-                return {
-                    "plugin": wire[0],
-                    "command": wire[1],
-                    "args": wire[2] if wire[2] is not None else {}
-                };
-            }
-            if len(wire) == 1 {
-                wire = wire[0];
-                if isinstance(wire, str) {
-                    wire = json.loads(wire);
-                }
-            }
+        if isinstance(wire, list) and len(wire) >= 2 {
+            args = wire[2] if len(wire) > 2 and wire[2] is not None else {};
+            return {"plugin": wire[0], "command": wire[1], "args": args};
         }
         if isinstance(wire, dict) {
             return wire;
@@ -112,7 +105,7 @@ obj PluginHost {
                     {
                         "ok": False,
                         "error": {
-                            "code": "PLUGIN_NOT_FOUND",
+                            "code": ErrorCode.PLUGIN_NOT_FOUND,
                             "message": f"Plugin '{name}' is not registered"
                         }
                     }
@@ -126,7 +119,10 @@ obj PluginHost {
             );
         } except Exception as e {
             return json.dumps(
-                {"ok": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+                {
+                    "ok": False,
+                    "error": {"code": ErrorCode.INTERNAL_ERROR, "message": str(e)}
+                }
             );
         }
     }

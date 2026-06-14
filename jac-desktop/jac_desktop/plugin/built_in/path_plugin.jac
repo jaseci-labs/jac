@@ -8,7 +8,7 @@ Transpiled to dependency-free Python at build time.
 import os;
 import tempfile;
 import from pathlib { Path }
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -90,14 +90,18 @@ obj PathPlugin(DesktopPlugin) {
         if command == "join" {
             parts = args.get("parts", []);
             if not parts {
-                raise PluginError("INVALID_ARGS", "'parts' is required for 'join'");
+                raise PluginError(
+                    ErrorCode.INVALID_ARGS, "'parts' is required for 'join'"
+                );
             }
             return {"path": str(Path(*parts))};
         }
         if command == "resolve" {
             p = args.get("path", "");
             if not p {
-                raise PluginError("INVALID_ARGS", "'path' is required for 'resolve'");
+                raise PluginError(
+                    ErrorCode.INVALID_ARGS, "'path' is required for 'resolve'"
+                );
             }
             return {"path": str(Path(p).expanduser().resolve())};
         }

@@ -8,7 +8,7 @@ Shows native OS dialogs (open file, save file, message) via platform tools:
 Transpiled to dependency-free Python at build time.
 """
 import subprocess;
-import from desktop_plugin { PluginError, OsPlugin }
+import from desktop_plugin { PluginError, ErrorCode, OsPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -60,7 +60,7 @@ obj DialogPlugin(OsPlugin) {
 
     def handle(command: str, args: dict) -> dict {
         if not self._enabled {
-            raise PluginError("FORBIDDEN", "Dialogs are not enabled.");
+            raise PluginError(ErrorCode.FORBIDDEN, "Dialogs are not enabled.");
         }
         if command == "open_file" {
             return self._open_file(args);
@@ -119,11 +119,13 @@ obj DialogPlugin(OsPlugin) {
                 path = result.stdout.decode("utf-8").strip();
                 return {"canceled": path == "", "path": path};
             }
-            raise PluginError("UNSUPPORTED", f"Platform '{platform}' not supported");
+            raise PluginError(
+                ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
+            );
         } except FileNotFoundError {
-            raise PluginError("UNAVAILABLE", "Dialog tool not found");
+            raise PluginError(ErrorCode.UNAVAILABLE, "Dialog tool not found");
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Dialog timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Dialog timed out");
         }
     }
 
@@ -176,11 +178,13 @@ obj DialogPlugin(OsPlugin) {
                 path = result.stdout.decode("utf-8").strip();
                 return {"canceled": path == "", "path": path};
             }
-            raise PluginError("UNSUPPORTED", f"Platform '{platform}' not supported");
+            raise PluginError(
+                ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
+            );
         } except FileNotFoundError {
-            raise PluginError("UNAVAILABLE", "Dialog tool not found");
+            raise PluginError(ErrorCode.UNAVAILABLE, "Dialog tool not found");
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Dialog timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Dialog timed out");
         }
     }
 
@@ -232,11 +236,13 @@ obj DialogPlugin(OsPlugin) {
                 self._run_powershell(ps);
                 return {};
             }
-            raise PluginError("UNSUPPORTED", f"Platform '{platform}' not supported");
+            raise PluginError(
+                ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
+            );
         } except FileNotFoundError {
-            raise PluginError("UNAVAILABLE", "Dialog tool not found");
+            raise PluginError(ErrorCode.UNAVAILABLE, "Dialog tool not found");
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Dialog timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Dialog timed out");
         }
     }
 }

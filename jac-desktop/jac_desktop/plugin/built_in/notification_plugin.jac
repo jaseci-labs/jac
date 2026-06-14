@@ -9,7 +9,7 @@ Transpiled to dependency-free Python at build time.
 """
 import os;
 import subprocess;
-import from desktop_plugin { PluginError, OsPlugin }
+import from desktop_plugin { PluginError, ErrorCode, OsPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -50,7 +50,7 @@ obj NotificationPlugin(OsPlugin) {
 
     def handle(command: str, args: dict) -> dict {
         if not self._enabled {
-            raise PluginError("FORBIDDEN", "Notifications are not enabled.");
+            raise PluginError(ErrorCode.FORBIDDEN, "Notifications are not enabled.");
         }
         if command == "send" {
             return self._send(args);
@@ -62,7 +62,7 @@ obj NotificationPlugin(OsPlugin) {
         title = args.get("title", "");
         body = args.get("body", "");
         if not title {
-            raise PluginError("INVALID_ARGS", "'title' is required for 'send'");
+            raise PluginError(ErrorCode.INVALID_ARGS, "'title' is required for 'send'");
         }
         platform = self._detect_platform();
         try {
@@ -95,17 +95,17 @@ obj NotificationPlugin(OsPlugin) {
                 self._run_powershell(ps_script, timeout=10);
             } else {
                 raise PluginError(
-                    "UNSUPPORTED", f"Platform '{platform}' not supported"
+                    ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
                 );
             }
         } except FileNotFoundError {
             raise PluginError(
-                "UNAVAILABLE", f"Notification tool not found on {platform}"
+                ErrorCode.UNAVAILABLE, f"Notification tool not found on {platform}"
             );
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Notification command timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Notification command timed out");
         } except subprocess.CalledProcessError as e {
-            raise PluginError("FAILED", f"Notification failed: {e.stderr}");
+            raise PluginError(ErrorCode.FAILED, f"Notification failed: {e.stderr}");
         }
         return {};
     }

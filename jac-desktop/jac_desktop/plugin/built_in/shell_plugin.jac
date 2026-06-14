@@ -18,7 +18,7 @@ Transpiled to dependency-free Python at build time.
 import fnmatch;
 import shlex;
 import subprocess;
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -106,29 +106,35 @@ obj ShellPlugin(DesktopPlugin) {
     def _exec(args: dict) -> dict {
         cmd = args.get("command", "");
         if not cmd {
-            raise PluginError("INVALID_ARGS", "'command' is required for 'exec'");
+            raise PluginError(
+                ErrorCode.INVALID_ARGS, "'command' is required for 'exec'"
+            );
         }
         try {
             argv = shlex.split(cmd);
         } except ValueError as e {
-            raise PluginError("INVALID_ARGS", f"Invalid command: {e}");
+            raise PluginError(ErrorCode.INVALID_ARGS, f"Invalid command: {e}");
         }
         if not argv {
-            raise PluginError("INVALID_ARGS", "'command' must not be empty");
+            raise PluginError(ErrorCode.INVALID_ARGS, "'command' must not be empty");
         }
         allowed = _is_allowed(self._allow, argv);
         if not allowed {
             raise PluginError(
-                "FORBIDDEN", f"Command '{argv[0]}' is not in the allowed list."
+                ErrorCode.FORBIDDEN, f"Command '{argv[0]}' is not in the allowed list."
             );
         }
         try {
             timeout = int(args.get("timeout", 30));
         } except (ValueError, TypeError) {
-            raise PluginError("INVALID_ARGS", "timeout must be a positive integer");
+            raise PluginError(
+                ErrorCode.INVALID_ARGS, "timeout must be a positive integer"
+            );
         }
         if timeout <= 0 or timeout > 3600 {
-            raise PluginError("INVALID_ARGS", "timeout must be between 1 and 3600");
+            raise PluginError(
+                ErrorCode.INVALID_ARGS, "timeout must be between 1 and 3600"
+            );
         }
         cwd = None;
         cwd_raw = args.get("cwd");
@@ -137,7 +143,8 @@ obj ShellPlugin(DesktopPlugin) {
             cwd_path = pathlib.Path(cwd_raw).resolve();
             if not cwd_path.is_dir() {
                 raise PluginError(
-                    "INVALID_ARGS", f"cwd '{cwd_raw}' is not an existing directory"
+                    ErrorCode.INVALID_ARGS,
+                    f"cwd '{cwd_raw}' is not an existing directory"
                 );
             }
             cwd = str(cwd_path);
@@ -157,7 +164,9 @@ obj ShellPlugin(DesktopPlugin) {
                 "stderr": result.stderr
             };
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", f"Command timed out after {timeout}s: {cmd}");
+            raise PluginError(
+                ErrorCode.TIMEOUT, f"Command timed out after {timeout}s: {cmd}"
+            );
         }
     }
 }

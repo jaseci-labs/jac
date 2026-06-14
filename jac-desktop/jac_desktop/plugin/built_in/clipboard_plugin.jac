@@ -8,7 +8,7 @@ Reads/writes the system clipboard via platform-native tools:
 Transpiled to dependency-free Python at build time.
 """
 import subprocess;
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -62,7 +62,7 @@ obj ClipboardPlugin(DesktopPlugin) {
 
     def _read -> dict {
         if not self._allow_read {
-            raise PluginError("FORBIDDEN", "Clipboard read is not allowed.");
+            raise PluginError(ErrorCode.FORBIDDEN, "Clipboard read is not allowed.");
         }
         platform = self._detect_platform();
         try {
@@ -95,17 +95,19 @@ obj ClipboardPlugin(DesktopPlugin) {
                 );
                 return {"text": result.stdout.decode("utf-8", errors="replace")};
             }
-            raise PluginError("UNSUPPORTED", f"Platform '{platform}' not supported");
+            raise PluginError(
+                ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
+            );
         } except FileNotFoundError {
-            raise PluginError("UNAVAILABLE", "Clipboard tool not found");
+            raise PluginError(ErrorCode.UNAVAILABLE, "Clipboard tool not found");
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Clipboard command timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Clipboard command timed out");
         }
     }
 
     def _write(args: dict) -> dict {
         if not self._allow_write {
-            raise PluginError("FORBIDDEN", "Clipboard write is not allowed.");
+            raise PluginError(ErrorCode.FORBIDDEN, "Clipboard write is not allowed.");
         }
         text = args.get("text", "");
         platform = self._detect_platform();
@@ -146,15 +148,15 @@ obj ClipboardPlugin(DesktopPlugin) {
                 );
             } else {
                 raise PluginError(
-                    "UNSUPPORTED", f"Platform '{platform}' not supported"
+                    ErrorCode.UNSUPPORTED, f"Platform '{platform}' not supported"
                 );
             }
         } except FileNotFoundError {
-            raise PluginError("UNAVAILABLE", "Clipboard tool not found");
+            raise PluginError(ErrorCode.UNAVAILABLE, "Clipboard tool not found");
         } except subprocess.TimeoutExpired {
-            raise PluginError("TIMEOUT", "Clipboard command timed out");
+            raise PluginError(ErrorCode.TIMEOUT, "Clipboard command timed out");
         } except subprocess.CalledProcessError as e {
-            raise PluginError("FAILED", f"Clipboard write failed: {e.stderr}");
+            raise PluginError(ErrorCode.FAILED, f"Clipboard write failed: {e.stderr}");
         }
         return {};
     }

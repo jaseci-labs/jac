@@ -6,7 +6,7 @@ Requires the webview handle and the loaded libwebview CDLL.
 Transpiled to dependency-free Python at build time.
 """
 import ctypes;
-import from desktop_plugin { PluginError, DesktopPlugin }
+import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -53,7 +53,7 @@ obj WindowPlugin(DesktopPlugin) {
 
     def handle(command: str, args: dict) -> dict {
         if self._wv is None {
-            raise PluginError("NOT_READY", "Window plugin not yet initialized");
+            raise PluginError(ErrorCode.NOT_READY, "Window plugin not yet initialized");
         }
         # Wrap the handle in c_void_p so ctypes marshals it as a full-width
         # pointer. A bare int defaults to c_int and truncates the 64-bit webview
@@ -62,7 +62,7 @@ obj WindowPlugin(DesktopPlugin) {
         if command == "set_title" {
             title = args.get("title", "");
             if not title {
-                raise PluginError("INVALID_ARGS", "'title' is required");
+                raise PluginError(ErrorCode.INVALID_ARGS, "'title' is required");
             }
             self._wv.webview_set_title(wv, title.encode("utf-8"));
             return {};
@@ -72,7 +72,8 @@ obj WindowPlugin(DesktopPlugin) {
             height = int(args.get("height", 0));
             if width <= 0 or height <= 0 {
                 raise PluginError(
-                    "INVALID_ARGS", "'width' and 'height' must be positive integers"
+                    ErrorCode.INVALID_ARGS,
+                    "'width' and 'height' must be positive integers"
                 );
             }
             hint = int(args.get("hint", 0));
