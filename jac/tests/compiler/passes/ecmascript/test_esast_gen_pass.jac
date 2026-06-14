@@ -1022,3 +1022,27 @@ test "user function shadowing a builtin name is called, not the builtin" {
         "was used instead:\n" + es_to_js(es_ast)
     );
 }
+
+test "augmented reactive assignments do not double-apply the lhs" {
+    # Regression: count += 5 must emit setCount(count + 5), not
+    # setCount(count + (count + 5)).  The bug was that exit_assignment built
+    # the full BinaryExpression and also passed aug_op to StateUpdate, causing
+    # lower_state_update to wrap it a second time.
+    es_ast = compile_to_esast(fixture_path("reactive_aug_assign.cl.jac"));
+    js = es_to_js(es_ast);
+
+    # Each setter call must appear exactly once as a simple binary: op(count op N)
+    assert "setCount(count + 5)" in js , (
+        "expected setCount(count + 5) but got:\n" + js
+    );
+    assert "setCount(count - 2)" in js , (
+        "expected setCount(count - 2) but got:\n" + js
+    );
+    assert "setCount(count * 3)" in js , (
+        "expected setCount(count * 3) but got:\n" + js
+    );
+    # The double-application fingerprint: the name appears twice inside the call
+    assert "setCount(count + (count" not in js , (
+        "double-application bug detected in:\n" + js
+    );
+}

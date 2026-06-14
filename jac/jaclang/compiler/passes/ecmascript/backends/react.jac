@@ -30,7 +30,10 @@ obj ReactBackend(FrameworkBackend) {
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True
     ) -> str;
+    # Vite plugin — returns (import_line, plugin_call) or None to skip plugin
+    def vite_plugin_lines -> (tuple[str, str] | None);
     # Helpers reused across lower_* methods
+    def _hook_symbols -> set[str];
     def _get_setter_name(var_name: str) -> str;
     def _jsx_fragment(children: list[es.Expression]) -> es.CallExpression;
 }

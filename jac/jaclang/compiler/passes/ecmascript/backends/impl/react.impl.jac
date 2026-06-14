@@ -50,6 +50,32 @@ impl ReactBackend.build_entry_script(
     return build_simple_react_entry_script(entry_module, install_global_handlers);
 }
 
+"""All React hook names — used by import_source and subclass backends."""
+impl ReactBackend._hook_symbols -> set[str] {
+    return {
+        "useState",
+        "useEffect",
+        "useRef",
+        "useCallback",
+        "useMemo",
+        "useReducer",
+        "useContext",
+        "useId",
+        "useLayoutEffect",
+        "useImperativeHandle",
+        "useDebugValue",
+        "useDeferredValue",
+        "useTransition",
+        "useSyncExternalStore",
+        "useInsertionEffect"
+    };
+}
+
+"""Vite plugin for React (import line, plugin call expression)."""
+impl ReactBackend.vite_plugin_lines -> (tuple[str, str] | None) {
+    return ('import react from "@vitejs/plugin-react";', 'react()');
+}
+
 """Generate setter name for reactive variable (count -> setCount)."""
 impl ReactBackend._get_setter_name(var_name: str) -> str {
     if not var_name {

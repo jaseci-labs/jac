@@ -9,7 +9,7 @@ impl PreactBackend.runtime_module -> str {
 }
 
 impl PreactBackend.import_source(symbol: str) -> str {
-    if symbol in ["useState", "useEffect", "useRef"] {
+    if symbol in self._hook_symbols() {
         return "preact/hooks";
     }
     return "@jac/runtime";

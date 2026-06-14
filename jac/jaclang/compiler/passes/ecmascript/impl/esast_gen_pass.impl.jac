@@ -2220,15 +2220,8 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                 };
                 binary_op = aug_to_binary.get(aug_tok, '+') if aug_tok else '+';
                 aug_op = binary_op;
-                right_expr = cast(es.Expression, value_expr or es.Literal(value=0));
-                setter_arg = self.sync_loc(
-                    es.BinaryExpression(
-                        operator=binary_op,
-                        left=es.Identifier(name=target_name),
-                        right=right_expr
-                    ),
-                    jac_node=nd
-                );
+                # Pass the bare RHS; lower_state_update builds `lhs op rhs`.
+                setter_arg = cast(es.Expression, value_expr or es.Literal(value=0));
             } else {
                 setter_arg = cast(
                     es.Expression, value_expr or es.Identifier(name='undefined')

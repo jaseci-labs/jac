@@ -36,6 +36,8 @@ obj FrameworkBackend {
     def runtime_source_basename -> str;
     # Vite resolve aliases — framework-specific module remapping for the bundler
     def vite_aliases -> dict[str, str];
+    # Vite plugin — returns (import_line, plugin_call) or None to skip plugin
+    def vite_plugin_lines -> (tuple[str, str] | None);
     # Entry-point script — builds the JS bootstrap that mounts the app
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True

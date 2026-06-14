@@ -24,16 +24,16 @@ obj RuntimeSymbol {
 
 # Static React surface for backward-compatible callers that have no backend.
 glob _REACT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
-    RuntimeSymbol(name="__jacJsx", prepend=True),
-    RuntimeSymbol(name="__jacSpawn", prepend=True),
-    # `useRef` is imported straight from `react`, so it never resolves
-    # through the runtime: `Ref[T]` fields take it directly from React.
-    RuntimeSymbol(name="useRef", source="react"),
-    # `forwardRef` is likewise taken straight from `react`: a component that
-    # declares a trailing `ref: Ref` param lowers to
-    # `forwardRef(function C(props, ref) {...})` so it can *be* a ref target.
-    RuntimeSymbol(name="forwardRef", source="react")
-];
+         RuntimeSymbol(name="__jacJsx", prepend=True),
+         RuntimeSymbol(name="__jacSpawn", prepend=True),
+         # `useRef` is imported straight from `react`, so it never resolves
+         # through the runtime: `Ref[T]` fields take it directly from React.
+         RuntimeSymbol(name="useRef", source="react"),
+         # `forwardRef` is likewise taken straight from `react`: a component that
+         # declares a trailing `ref: Ref` param lowers to
+         # `forwardRef(function C(props, ref) {...})` so it can *be* a ref target.
+         RuntimeSymbol(name="forwardRef", source="react")
+     ];
 
 """The declared symbol for `name`, or `None` if it needs no special handling."""
 def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
@@ -48,7 +48,7 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
 """Module the compiler imports `name` from.
 
 When `backend` is provided, delegates to the backend's `import_source`. Falls
-back to the hard-coded React surface when the backend stub is not yet wired.
+back to the hard-coded React surface when backend is None.
 """
 def runtime_import_source(name: str, backend: (object | None) = None) -> str {
     if backend is not None {
