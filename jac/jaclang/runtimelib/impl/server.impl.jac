@@ -143,6 +143,7 @@ impl UserManager.get_root_id(username: str) -> (str | None) {
 """Return a user's root_id, repairing the guest root if its anchor is gone."""
 impl UserManager.ensure_root_id(username: str) -> (str | None) {
     self._ensure_connection();
+    assert self._conn is not None;
     with self._lock {
         cursor = self._conn.execute(
             "SELECT root_id FROM users WHERE username = ?", (username, )

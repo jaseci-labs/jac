@@ -146,18 +146,14 @@ impl JacScaleUserManager.ensure_root_id(username: str) -> str | None {
     if not root_id {
         return None;
     }
-    guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
-    user = self.get_user(username);
-    resolved_user_id = user.get('user_id') if user else username;
-    is_guest = (
-        username == Con.GUEST.value
-        or (guest_user is not None and resolved_user_id == guest_user.get('user_id'))
-    );
-    if not is_guest or self._root_anchor_exists(root_id) {
+    # Non-guest users never need root repair — skip all anchor and identity lookups.
+    if username != Con.GUEST.value or self._root_anchor_exists(root_id) {
         return root_id;
     }
+    # Guest root is missing: fetch the stored user_id once (only on repair path).
+    guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
     new_root_id = self._create_root_id();
-    storage_user_id = guest_user.get('user_id') if guest_user else resolved_user_id;
+    storage_user_id = guest_user.get('user_id') if guest_user else username;
     self._identity_storage.update_user_fields(
         storage_user_id,
         {'root_id': new_root_id, 'updated_at': datetime.now(UTC).isoformat()}
