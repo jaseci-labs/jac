@@ -1083,7 +1083,9 @@ test "add resolves version" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed numpy-1.26.4", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", "")
                 ];
                 result = proj_cmds.add(packages=["numpy"]);
@@ -1188,7 +1190,9 @@ test "update specific package" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed requests-2.32.0", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: requests\nVersion: 2.32.0", "")
                 ];
                 result = proj_cmds.update(packages=["requests"]);
@@ -1261,7 +1265,9 @@ test "add dev dependency" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed pytest-cov-7.0.0", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: pytest-cov\nVersion: 7.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["pytest-cov"], dev=True);
@@ -1297,9 +1303,13 @@ test "add multiple packages" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "Successfully installed numpy-2.4.2", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: numpy\nVersion: 2.4.2", ""),
-                    (0, "Successfully installed pandas-3.0.0", ""),
+                    (0, "[]", ""),
+                    (0, "", ""),
+                    (0, "[]", ""),
                     (0, "Name: pandas\nVersion: 3.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["numpy", "pandas"]);
