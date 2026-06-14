@@ -262,7 +262,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
 impl module_native_compat(mod: uni.Module) -> bool {
     scan_mods = [mod] + list(mod.impl_mod) + list(mod.test_mod) + list(mod.variant_mod);
     has_entry = False;
-    for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode, brute_force=True) {
+    for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode) {
         for k in mc.kid {
             if isinstance(k, uni.Token) and k.value == "entry" {
                 has_entry = True;
@@ -278,18 +278,18 @@ impl module_native_compat(mod: uni.Module) -> bool {
     }
     for m in scan_mods {
         for nd_type in NATIVE_DISQUALIFIER_NODES {
-            if m.get_all_sub_nodes(typ=nd_type, brute_force=True) {
+            if m.get_all_sub_nodes(typ=nd_type) {
                 return False;
             }
         }
-        for arch in m.get_all_sub_nodes(typ=uni.Archetype, brute_force=True) {
+        for arch in m.get_all_sub_nodes(typ=uni.Archetype) {
             # Any OSP archetype (node/edge/walker) disqualifies; plain
             # obj/class archetypes (arch_kind None) are native-lowerable.
             if arch.arch_kind is not None {
                 return False;
             }
         }
-        for ab in m.get_all_sub_nodes(typ=uni.Ability, brute_force=True) {
+        for ab in m.get_all_sub_nodes(typ=uni.Ability) {
             if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
                 return False;
             }
@@ -346,7 +346,7 @@ impl PortabilityWarnPass.transform(ir_in: uni.Module) -> uni.Module {
 """Detect usage of JS-specific global objects (console, Math, JSON, etc.)."""
 impl PortabilityWarnPass._check_js_globals(mod: uni.Module) -> None {
     import ast as ast3;
-    all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
+    all_names = mod.get_all_sub_nodes(typ=uni.Name);
     for name_nd in all_names {
         # Only check name usage (Load context), not definitions
         if name_nd._py_ctx_func != ast3.Load {
@@ -373,7 +373,7 @@ impl PortabilityWarnPass._check_js_globals(mod: uni.Module) -> None {
 
 """Detect usage of JS-idiomatic method calls (.push, .forEach, .indexOf, etc.)."""
 impl PortabilityWarnPass._check_js_methods(mod: uni.Module) -> None {
-    all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer, brute_force=True);
+    all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer);
     for trailer in all_trailers {
         if not trailer.is_attr {
             continue;
@@ -405,7 +405,7 @@ impl PortabilityWarnPass._check_js_methods(mod: uni.Module) -> None {
 """Detect usage of JS-specific keywords used as identifiers (undefined, typeof, etc.)."""
 impl PortabilityWarnPass._check_js_keywords(mod: uni.Module) -> None {
     import ast as ast3;
-    all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
+    all_names = mod.get_all_sub_nodes(typ=uni.Name);
     for name_nd in all_names {
         if name_nd._py_ctx_func != ast3.Load {
             continue;
@@ -438,7 +438,7 @@ impl PortabilityWarnPass._check_js_keywords(mod: uni.Module) -> None {
 
 """Detect usage of JS-specific property access (.length instead of len(), etc.)."""
 impl PortabilityWarnPass._check_js_properties(mod: uni.Module) -> None {
-    all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer, brute_force=True);
+    all_trailers = mod.get_all_sub_nodes(typ=uni.AtomTrailer);
     for trailer in all_trailers {
         if not trailer.is_attr {
             continue;

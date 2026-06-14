@@ -320,7 +320,7 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
     # assignment (msg / local_label / v / n) and assert each has a resolved sym.
     resolvable = {"msg", "local_label", "v", "n"};
     reads_checked = 0;
-    for nm in impl_mod.get_all_sub_nodes(uni.Name, brute_force=True) {
+    for nm in impl_mod.get_all_sub_nodes(uni.Name) {
         if nm.value not in resolvable {
             continue;
         }

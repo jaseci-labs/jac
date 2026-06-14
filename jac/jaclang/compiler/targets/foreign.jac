@@ -47,7 +47,7 @@ def collect_foreign_structs(modules: list) -> dict {
         if mod is None {
             continue;
         }
-        for imp in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+        for imp in mod.get_all_sub_nodes(typ=uni.Import) {
             if not imp.clib_decls {
                 continue;
             }
@@ -105,7 +105,7 @@ def collect_foreign_fns(modules: list) -> dict {
         if mod is None {
             continue;
         }
-        for imp in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+        for imp in mod.get_all_sub_nodes(typ=uni.Import) {
             if not imp.clib_decls {
                 continue;
             }

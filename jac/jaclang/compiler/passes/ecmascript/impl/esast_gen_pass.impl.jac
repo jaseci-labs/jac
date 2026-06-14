@@ -5214,8 +5214,7 @@ impl EsastGenPass._build_osp_graph_call(
 """Ensure ImplDef body is properly parented for traversal."""
 impl EsastGenPass.enter_ability(nd: uni.Ability) -> None {
     if isinstance(nd.body, uni.ImplDef) and (nd.body not in nd.kid) {
-        nd.body.parent = nd;
-        nd.kid.append(nd.body);
+        nd.add_kids_right([nd.body], pos_update=False, parent_update=True);
     }
     # Push a view barrier: a nested `def` inside a slot body has its own
     # `return`/JSX semantics and must not feed the enclosing slot's
