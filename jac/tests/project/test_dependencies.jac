@@ -1084,11 +1084,12 @@ test "add resolves version" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed numpy-1.26.4", ""),
-                    (1, "", ""),
                     (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", "")
                 ];
                 result = proj_cmds.add(packages=["numpy"]);
@@ -1152,11 +1153,12 @@ test "update all deps" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
-                    (1, "", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
@@ -1191,11 +1193,12 @@ test "update specific package" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed requests-2.32.0", ""),
-                    (1, "", ""),
                     (0, "Name: requests\nVersion: 2.32.0", "")
                 ];
                 result = proj_cmds.update(packages=["requests"]);
@@ -1266,11 +1269,12 @@ test "add dev dependency" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed pytest-cov-7.0.0", ""),
-                    (1, "", ""),
                     (0, "Name: pytest-cov\nVersion: 7.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["pytest-cov"], dev=True);
@@ -1304,15 +1308,14 @@ test "add multiple packages" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed numpy-2.4.2", ""),
-                    (1, "", ""),
                     (0, "Name: numpy\nVersion: 2.4.2", ""),
-                    (1, "", ""),
                     (0, "Successfully installed pandas-3.0.0", ""),
-                    (1, "", ""),
                     (0, "Name: pandas\nVersion: 3.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["numpy", "pandas"]);
@@ -1417,11 +1420,12 @@ test "update with dev deps" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed", ""),
-                    (1, "", ""),
                     (0, "Name: requests\nVersion: 2.32.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", ""),
                     (0, "Name: pytest\nVersion: 8.3.0", "")
@@ -1835,18 +1839,19 @@ test "update always uses upgrade flag" {
                 "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip {
+            ) as mock_pip, patch(
+                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
-                    (1, "", ""),
                     (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
-                    (1, "", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
                 result = proj_cmds.update();
             }
             assert result == 0;
-            first_call_args = mock_pip.call_args_list[1][0][0];
+            first_call_args = mock_pip.call_args_list[0][0][0];
             assert "--upgrade" in first_call_args;
         } finally {
             os.chdir(original_cwd);
