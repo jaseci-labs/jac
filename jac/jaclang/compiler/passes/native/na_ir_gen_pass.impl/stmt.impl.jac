@@ -1659,7 +1659,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                         helpers=helpers,
                         var_names=[key_var_name, val_var_name],
                         var_types=[helpers["key_type"], helpers["val_type"]],
-                        rc_vars=False,
+                        rc_vars=True,
                         coll_release_op="fori_coll"
                     );
                     return;
@@ -1939,6 +1939,23 @@ impl NaIRGenPass._codegen_for_indexed(
             val_val = self.builder.call(
                 helpers["get_val"], [collection_val, body_idx], name="for.val"
             );
+            # `get_key`/`get_val` hand back BORROWED pointers into the dict's
+            # backing arrays. Pointer loop vars land in `local_vars`, so scope
+            # exit releases them; without a matching retain the dict's last
+            # key/val are over-released and their heap backing is freed under
+            # the still-live dict (issue #6688). Mirror the list/dict discipline
+            # below: release the prior occupant (null on the first pass) and
+            # retain the new borrow so the scope-exit release stays balanced.
+            if rc_vars and isinstance(var_types[0], ir.PointerType) {
+                _old_k = self.builder.load(allocas[0], name="for.key.old");
+                self._emit_rc_release_simple(_old_k, op="for_items_key", loc=_rc_loc);
+                self._emit_rc_retain(key_val, op="for_items_key", loc=_rc_loc);
+            }
+            if rc_vars and isinstance(var_types[1], ir.PointerType) {
+                _old_v = self.builder.load(allocas[1], name="for.val.old");
+                self._emit_rc_release_simple(_old_v, op="for_items_val", loc=_rc_loc);
+                self._emit_rc_retain(val_val, op="for_items_val", loc=_rc_loc);
+            }
             self.builder.store(key_val, allocas[0]);
             self.builder.store(val_val, allocas[1]);
         } elif kind == "str" {

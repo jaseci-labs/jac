@@ -2263,6 +2263,22 @@ test "dicts items iteration sum" {
     assert f() == 60;
 }
 
+# --- TestNativeDictItemsRefcount (regression: issue #6688) ---
+test "dict items iteration does not over release key val issue 6688" {
+    # `__dict_get_key`/`__dict_get_val` hand back BORROWED pointers into the
+    # dict's backing arrays. `for (k, v) in d.items()` bound them into pointer
+    # locals that scope-exit cleanup releases, but never retained them -- so the
+    # dict's last key+val were over-released, freeing their heap backing under
+    # the still-live dict. In a long-running native OSP loop that read a node's
+    # str field each spawn, this surfaced as a dangling `char*` strlen'd by a
+    # C-FFI call. `verify_items_rc` drains a dict via `.items()` in a helper,
+    # churns same-size allocations to reuse the freed block, then re-reads the
+    # value: it returns 1 when the value survived intact, 0 when corrupted.
+    (eng, _) = compile_native("fix_dict_items_rc.na.jac");
+    f = get_func(eng, "verify_items_rc", ctypes.c_int64);
+    assert f() == 1 , "dict .items() over-released its key/val (issue #6688)";
+}
+
 # --- TestNativeEmptyGlobDict (regression: empty-dict-glob-var-init-null-ptr) ---
 test "dicts empty glob dict set and get" {
     # glob x: dict[K,V] = {} previously left the global as null -> segfault on first access.
