@@ -10,7 +10,7 @@ cl {
         if not error {
             return None;
         }
-        return <p>{error.message}</p>;
+        return <p>{error["message"]}</p>;
     }
 
     def:pub direct_call -> any {
