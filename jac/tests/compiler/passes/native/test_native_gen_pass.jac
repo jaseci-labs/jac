@@ -2514,6 +2514,44 @@ test "native osp graph survives a cross-module spawn (kernel glob-init runs once
     }
 }
 
+test "native osp node constructed in a non-OSP module carries its dispatch tag (issue #6683)" {
+    # The entry module CONSTRUCTS an OSP node (`Hub`) but uses no OSP construct
+    # of its own; the spawn happens inside the imported `run_probe`. Tag-table
+    # population is gated on a module actually using OSP, so the construct-only
+    # entry assigned the node NO tag -- its reserved `__type_tag` field stayed 0.
+    # When `run_probe` spawned on it, the kernel's `tag_of` read 0 and
+    # `node_desc(0)` returned a null descriptor, aborting the walk
+    # (`Aborted (core dumped)`, exit 134). The construction site must write the
+    # node's globally-stable tag regardless of whether the constructing module
+    # uses OSP. The byte-identical program with the spawn in the entry module
+    # always ran clean. Fixed: prints `7`.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_ctor_only_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_ctor_only");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary aborted mid-walk (null dispatch descriptor): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 # --- TestNativeAArch64Linker ---
 test "aarch64 standalone binary runs (issue #6366)" {
     # Cross-compile a trivial program to aarch64 via the in-house ELF linker
