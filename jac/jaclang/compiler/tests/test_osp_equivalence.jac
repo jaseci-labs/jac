@@ -378,6 +378,38 @@ test "osp cross-module union return: narrow `Area | None`, read / pass / spawn" 
     };
 }
 
+test "xmod narrow: `is not None` narrowing applies on the imported-module path" {
+    # Issue #6667: `T | None` narrowed with `is not None` (block and ternary)
+    # narrowed correctly when the code was the entry module but stayed
+    # `T | None` (E1099 / E1115 / E1053) when the same code lived in an
+    # `import`ed module. The imported-dependency compile path ran type
+    # inference without first building the CFG that flow-narrowing walks. Here
+    # the narrowing lives in xmod_narrow_lib.use_it (imported by the entry
+    # xmod_narrow_main), so it exercises exactly that path. Native-only; the
+    # @sv result {"present": "hit", "size": 5, "absent": "void"} is pinned.
+    import os;
+    import jaclang;
+    import from jaclang.compiler.tests.xbackend_equiv {
+        compile_native,
+        run_native_function
+    }
+    _xmod = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "tests",
+        "compiler",
+        "passes",
+        "native",
+        "fixtures",
+        "xmod_narrow_main.na.jac"
+    );
+    (_eng, _) = compile_native(_xmod);
+    assert run_native_function(_eng, "narrow_na") == {
+        "present": "hit",
+        "size": 5,
+        "absent": "void"
+    };
+}
+
 test "osp bare edge: `a +>: E :+> b` (bare type) records the edge like `E()`" {
     # Issue #6642 follow-up: native silently DROPPED a bare-edge-type connect
     # (codegen of a bare archetype name yielded no value), so the edge was never
