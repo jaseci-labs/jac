@@ -237,12 +237,12 @@ impl DependencyInstaller._make_git_spec(
 
 impl DependencyInstaller._snapshot_installed -> tuple[bool, set[tuple]] {
     import json;
-    (rc, out, _) = self._run_pip(["list", "--format=json"]);
-    if rc == 0 {
-        try {
+    try {
+        (rc, out, _) = self._run_pip(["list", "--format=json"]);
+        if rc == 0 {
             return (True, {(p["name"].lower(), p["version"]) for p in json.loads(out)});
-        } except Exception { }
-    }
+        }
+    } except Exception { }
     return (False, set());
 }
 
@@ -261,8 +261,9 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     );
     if returncode == 0 {
         if is_dry_run {
-            # uv writes human output to stderr; pip writes to stdout
-            preview = stderr if self.use_uv else stdout;
+            # uv writes to stderr, pip to stdout; pick whichever is non-empty
+            # so the fallback to pip (when uv is not on PATH) is also covered.
+            preview = stderr or stdout;
             if preview {
                 console.print(preview, style="dim");
             }
