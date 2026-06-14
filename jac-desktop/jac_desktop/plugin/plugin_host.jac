@@ -143,6 +143,9 @@ obj PluginHost {
         js = "window.__jac.__emit__(" + json.dumps(event) + ", " + json.dumps(
             payload
         ) + ")";
-        self._wv_lib.webview_eval(self._wv_handle, js.encode("utf-8"));
+        # Wrap the handle in c_void_p so ctypes marshals it as a full-width
+        # pointer. Passing the bare int defaults to c_int and truncates the
+        # 64-bit webview handle to 32 bits on Windows x64 (LLP64), breaking emit.
+        self._wv_lib.webview_eval(ctypes.c_void_p(self._wv_handle), js.encode("utf-8"));
     }
 }

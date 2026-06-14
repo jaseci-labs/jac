@@ -219,18 +219,22 @@ obj FsPlugin(DesktopPlugin) {
 
     """Resolve allow-list pattern entries ($HOME, $APP_DATA, etc.)."""
     def _resolve_pattern(pattern: str) -> str {
+        # Always resolve() so allow-list prefixes are canonicalized the same way
+        # as user paths in _resolve_path(). Otherwise a symlinked $HOME (common
+        # on NFS / managed homes) would never match and every op returns FORBIDDEN.
         if pattern == "$HOME" {
-            return str(Path.home());
+            return str(Path.home().resolve());
         }
         if pattern == "$APP_DATA" {
-            return self._path_plugin.resolve_xdg("XDG_DATA_HOME", ".local/share");
+            base = self._path_plugin.resolve_xdg("XDG_DATA_HOME", ".local/share");
+            return str(Path(base).resolve());
         }
         if pattern.startswith("$HOME/") {
-            return str(Path.home() / pattern[6:]);
+            return str((Path.home() / pattern[6:]).resolve());
         }
         if pattern.startswith("$APP_DATA/") {
             base = self._path_plugin.resolve_xdg("XDG_DATA_HOME", ".local/share");
-            return str(Path(base) / pattern[10:]);
+            return str((Path(base) / pattern[10:]).resolve());
         }
         return str(Path(pattern).expanduser().resolve());
     }
