@@ -1031,18 +1031,20 @@ test "augmented reactive assignments do not double-apply the lhs" {
     es_ast = compile_to_esast(fixture_path("reactive_aug_assign.cl.jac"));
     js = es_to_js(es_ast);
 
-    # Each setter call must appear exactly once as a simple binary: op(count op N)
-    assert "setCount(count + 5)" in js , (
-        "expected setCount(count + 5) but got:\n" + js
+    # Each setter call must appear exactly once as a simple binary: setCount((count op N)).
+    # gen_binary_expression always wraps in parens, so the argument is (count op N).
+    assert "setCount((count + 5))" in js , (
+        "expected setCount((count + 5)) but got:\n" + js
     );
-    assert "setCount(count - 2)" in js , (
-        "expected setCount(count - 2) but got:\n" + js
+    assert "setCount((count - 2))" in js , (
+        "expected setCount((count - 2)) but got:\n" + js
     );
-    assert "setCount(count * 3)" in js , (
-        "expected setCount(count * 3) but got:\n" + js
+    assert "setCount((count * 3))" in js , (
+        "expected setCount((count * 3)) but got:\n" + js
     );
-    # The double-application fingerprint: the name appears twice inside the call
-    assert "setCount(count + (count" not in js , (
+    # Double-application fingerprint: with parens from gen_binary_expression the bug
+    # produces setCount((count + (count + 5))) — catch the nested `(count + (count` shape.
+    assert "setCount((count + (count" not in js , (
         "double-application bug detected in:\n" + js
     );
 }

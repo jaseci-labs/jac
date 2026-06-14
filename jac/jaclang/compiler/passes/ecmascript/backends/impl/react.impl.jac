@@ -22,7 +22,7 @@ impl ReactBackend.jsx_factory_name -> str {
 }
 
 impl ReactBackend.import_source(symbol: str) -> str {
-    if symbol == "useRef" {
+    if symbol in {"useRef", "forwardRef"} {
         return "react";
     }
     return "@jac/runtime";
