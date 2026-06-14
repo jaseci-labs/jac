@@ -678,6 +678,44 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             imp_init_fn = ir.Function(self.llvm_module, imp_init_fnty, name=init_name);
             self.func_symtab[init_name] = imp_init_fn;
         }
+        # The OSP kernel glob-init initializes link-merged SINGLETON globals
+        # (`_e_src`/`_walk_stack`) shared by every module, and __osp_ensure_init
+        # also runs it (lazily, for library-call entry). Route this startup call
+        # through the same shared `__osp_kernel_inited` flag so the two paths run
+        # it exactly once between them — otherwise a module-level glob-initializer
+        # that connects (triggering __osp_ensure_init) followed by this startup
+        # call would re-empty the adjacency the initializer just populated.
+        #
+        # Match the kernel glob-init by IDENTITY against the Function
+        # _emit_osp_setup stashed (`_osp_kernel_glob_init_fn`), not by re-deriving
+        # its symbol name here: a name re-match would silently no-op if the kernel
+        # source string or `__jac_glob_init_` prefix ever changed, whereas the
+        # identity follows whatever symbol the kernel link actually produces (and
+        # a true mismatch surfaces loudly as an undefined-symbol link error). Both
+        # `_osp_kernel_inited_gv` and `_osp_kernel_glob_init_fn` are set together
+        # in _emit_osp_setup, gated on this module using OSP.
+        _guard_kernel = (
+            (self._osp_kernel_inited_gv is not None)
+            and (imp_init_fn is self._osp_kernel_glob_init_fn)
+        );
+        if _guard_kernel {
+            _i8 = ir.IntType(8);
+            _gk_run = self.builder.function.append_basic_block("osp_kinit_run");
+            _gk_done = self.builder.function.append_basic_block("osp_kinit_done");
+            self.builder.cbranch(
+                self.builder.icmp_unsigned(
+                    "!=",
+                    self.builder.load(
+                        self._osp_kernel_inited_gv, name="osp.kinited.entry"
+                    ),
+                    ir.Constant(_i8, 0)
+                ),
+                _gk_done,
+                _gk_run
+            );
+            self.builder.position_at_end(_gk_run);
+            self.builder.store(ir.Constant(_i8, 1), self._osp_kernel_inited_gv);
+        }
         _init_call = self.builder.call(imp_init_fn, []);
         # Tag the call with a per-module DISubprogram + DILocation so that
         # jac-gdb correctly names the module whose glob_init crashed,
@@ -721,6 +759,10 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             } except Exception {
             # best-effort; debug quality degrades but safety unaffected
             }
+        }
+        if _guard_kernel {
+            self.builder.branch(_gk_done);
+            self.builder.position_at_end(_gk_done);
         }
     }
     # Generate body statements

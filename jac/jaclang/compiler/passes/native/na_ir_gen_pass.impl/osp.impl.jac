@@ -941,9 +941,27 @@ impl NaIRGenPass._emit_osp_setup -> None {
     }
     self.builder.ret_void();
     # __osp_ensure_init(): idempotent guard that runs the kernel's glob-init
-    # (initializes `_walk_stack`) then __osp_setup once. Spawn lowering calls it,
-    # so OSP works whether the program is entered via `with entry` or a library
-    # call (the test harness invokes functions directly).
+    # (initializes the shared adjacency `_e_src`/`_walk_stack`) then __osp_setup.
+    # Spawn lowering calls it, so OSP works whether the program is entered via
+    # `with entry` or a library call (the test harness invokes functions directly).
+    #
+    # Two SEPARATE guards, because the two inits have different scopes:
+    #   * the kernel glob-init touches link-merged SINGLETON globals shared by
+    #     every module, so it must run exactly ONCE program-wide — guarded by the
+    #     SHARED weak `__osp_kernel_inited`. (A per-module guard re-ran it the
+    #     first time each module spawned/connected, re-initializing `_e_src = []`
+    #     and wiping a graph an earlier module had built — the cross-module spawn
+    #     bug where `[world -->]` collapsed to empty after one spawn.)
+    #   * __osp_setup builds THIS module's own descriptor / is_a / runtime tables
+    #     (`__ospDESC` et al. are `internal`), so it must run once PER MODULE —
+    #     guarded by the per-module internal `__osp_inited`.
+    _kinited = self._osp_kernel_inited_gv;
+    if _kinited is None {
+        _kinited = ir.GlobalVariable(self.llvm_module, i8, name="__osp_kernel_inited");
+        _kinited.linkage = "weak";  # one shared flag across all linked modules
+        _kinited.initializer = ir.Constant(i8, 0);
+        self._osp_kernel_inited_gv = _kinited;
+    }
     _inited = ir.GlobalVariable(self.llvm_module, i8, name="__osp_inited");
     _inited.linkage = "internal";
     _inited.initializer = ir.Constant(i8, 0);
@@ -956,25 +974,44 @@ impl NaIRGenPass._emit_osp_setup -> None {
         );
         self.func_symtab["__jac_glob_init_osp_kernel"] = _kgi;
     }
+    # Stash the kernel glob-init Function so _codegen_entry can guard the
+    # program-entry call to it by identity rather than re-matching the symbol
+    # name (keeps the cross-module spawn fix from silently no-op'ing on rename).
+    self._osp_kernel_glob_init_fn = _kgi;
     _ensure = ir.Function(
         self.llvm_module, ir.FunctionType(ir.VoidType(), []), name="__osp_ensure_init"
     );
     _ensure.linkage = "internal";
     self._osp_ensure_fn = _ensure;
     _e_entry = _ensure.append_basic_block("entry");
-    _e_run = _ensure.append_basic_block("run");
+    _e_krun = _ensure.append_basic_block("kernel_run");
+    _e_setup_chk = _ensure.append_basic_block("setup_check");
+    _e_srun = _ensure.append_basic_block("setup_run");
     _e_done = _ensure.append_basic_block("done");
+    # Shared run-once kernel glob-init.
     _eb = ir.IRBuilder(_e_entry);
     _eb.cbranch(
         _eb.icmp_unsigned(
-            "!=", _eb.load(_inited, name="osp.inited"), ir.Constant(i8, 0)
+            "!=", _eb.load(_kinited, name="osp.kinited"), ir.Constant(i8, 0)
+        ),
+        _e_setup_chk,
+        _e_krun
+    );
+    _kb = ir.IRBuilder(_e_krun);
+    _kb.store(ir.Constant(i8, 1), _kinited);
+    _kb.call(_kgi, []);
+    _kb.branch(_e_setup_chk);
+    # Per-module run-once setup.
+    _cb = ir.IRBuilder(_e_setup_chk);
+    _cb.cbranch(
+        _cb.icmp_unsigned(
+            "!=", _cb.load(_inited, name="osp.inited"), ir.Constant(i8, 0)
         ),
         _e_done,
-        _e_run
+        _e_srun
     );
-    _rb = ir.IRBuilder(_e_run);
+    _rb = ir.IRBuilder(_e_srun);
     _rb.store(ir.Constant(i8, 1), _inited);
-    _rb.call(_kgi, []);
     _rb.call(_setup, []);
     _rb.branch(_e_done);
     ir.IRBuilder(_e_done).ret_void();

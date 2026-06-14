@@ -2478,6 +2478,42 @@ test "native osp kernel links transitively through an imported module (issue #66
     }
 }
 
+test "native osp graph survives a cross-module spawn (kernel glob-init runs once)" {
+    # The graph is BUILT in an imported module (`build`) and SPAWNED in the entry
+    # module. The OSP kernel's adjacency globals (`_e_src`/`_walk_stack`) are
+    # link-merged singletons, but `__osp_setup` + its `__osp_inited` guard are
+    # per-module (internal). The entry module's first `spawn` therefore hit its
+    # OWN (unset) guard and re-ran the SHARED kernel glob-init via
+    # `__osp_ensure_init`, re-initializing `_e_src = []` and wiping the graph the
+    # imported module had built -- so `[root -->]` collapsed from 2 to 0 after a
+    # single spawn. The kernel glob-init must run exactly once program-wide.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_buildsplit_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_buildsplit");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2, after=2 (graph survives the spawn), seen=1+2=3.
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 # --- TestNativeAArch64Linker ---
 test "aarch64 standalone binary runs (issue #6366)" {
     # Cross-compile a trivial program to aarch64 via the in-house ELF linker

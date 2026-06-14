@@ -226,6 +226,19 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # that spawn lowering calls, so descriptors/_walk_stack exist regardless
         # of whether the program ran through a `with entry`.
         _osp_ensure_fn: (object | None) = None,
+        # __osp_kernel_inited (i8, weak): SHARED run-once guard for the OSP kernel
+        # glob-init. The kernel's adjacency / walk-stack globals (_e_src, ...) are
+        # link-merged singletons shared by every module, but __osp_setup +
+        # __osp_inited are per-module (internal). Routing the kernel glob-init
+        # through this one weak flag keeps it from re-running per module and
+        # wiping a graph an earlier module built (the cross-module spawn bug).
+        _osp_kernel_inited_gv: (object | None) = None,
+        # The kernel glob-init Function (`__jac_glob_init_osp_kernel`), stashed by
+        # _emit_osp_setup. _codegen_entry guards the program-entry call to it by
+        # IDENTITY against this, not by re-matching the symbol name — so the guard
+        # can never silently drift from the symbol the kernel link produces (a
+        # name mismatch surfaces as a loud undefined-symbol link error instead).
+        _osp_kernel_glob_init_fn: (object | None) = None,
         # __osp_filter_type(list, node_tag) -> list: filters edge-ref neighbor
         # handles by node type via the is_a callback (`[--> [?:Area]]`); built
         # once in _emit_osp_setup alongside the runtime callbacks (issue #6642).
