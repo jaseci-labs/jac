@@ -2051,6 +2051,67 @@ test "clib System V AMD64 ABI lowering" {
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
 }
 
+test "jac run loads a transitive imported-module clib (issue #6687)" {
+    # `jac run` JIT-executes a native module in-process via MCJIT. A C shared
+    # library declared in an IMPORTED module through a dotted logical import
+    # carries an `$ORIGIN`-relative path; the imported-dependency clib loader
+    # did not strip that loader token, so the library was never loaded into the
+    # JIT and its FFI symbols resolved to NULL -- the process SIGSEGV'd after a
+    # clean compile, while the byte-identical `jac nacompile` binary ran fine.
+    # The library must now be loaded so the cross-module FFI call returns 21.
+    import platform;
+    import shutil;
+    import tempfile;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        import pytest;
+        pytest.skip("x86_64-only shared-library build");
+    }
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        import pytest;
+        pytest.skip("no C compiler available to build the test shared library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        os.makedirs(os.path.join(tmpdir, "libs"));
+        # Build libs/libclibjit6687.so from the C fixture.
+        so_path = os.path.join(tmpdir, "libs", "libclibjit6687.so");
+        build = subprocess.run(
+            [
+                cc,
+                "-shared",
+                "-fPIC",
+                "-o",
+                so_path,
+                str(os.path.join(FIXTURES, "clib_jit_xmod.c"))
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert build.returncode == 0 , f"cc failed: {build.stderr}";
+        # The `$ORIGIN` token strips to the cwd at JIT time, so the .na.jac
+        # fixtures and the lib subdir must sit together in the run directory.
+        for _f in ["clib_jit_xmod_lib.na.jac", "clib_jit_xmod_main.na.jac"] {
+            shutil.copy(os.path.join(FIXTURES, _f), os.path.join(tmpdir, _f));
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", "clib_jit_xmod_main.na.jac"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tmpdir
+        );
+        assert result.returncode == 0 , (
+            f"`jac run` crashed (transitive clib unresolved): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "21" , (
+            f"Expected '21', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 test "clib AArch64 AAPCS ABI lowering" {
     # Cross-targets aarch64 (works from any host) and asserts the emitted
     # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
@@ -2200,6 +2261,22 @@ test "dicts items iteration sum" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
     assert f() == 60;
+}
+
+# --- TestNativeDictItemsRefcount (regression: issue #6688) ---
+test "dict items iteration does not over release key val issue 6688" {
+    # `__dict_get_key`/`__dict_get_val` hand back BORROWED pointers into the
+    # dict's backing arrays. `for (k, v) in d.items()` bound them into pointer
+    # locals that scope-exit cleanup releases, but never retained them -- so the
+    # dict's last key+val were over-released, freeing their heap backing under
+    # the still-live dict. In a long-running native OSP loop that read a node's
+    # str field each spawn, this surfaced as a dangling `char*` strlen'd by a
+    # C-FFI call. `verify_items_rc` drains a dict via `.items()` in a helper,
+    # churns same-size allocations to reuse the freed block, then re-reads the
+    # value: it returns 1 when the value survived intact, 0 when corrupted.
+    (eng, _) = compile_native("fix_dict_items_rc.na.jac");
+    f = get_func(eng, "verify_items_rc", ctypes.c_int64);
+    assert f() == 1 , "dict .items() over-released its key/val (issue #6688)";
 }
 
 # --- TestNativeEmptyGlobDict (regression: empty-dict-glob-var-init-null-ptr) ---
@@ -2442,6 +2519,112 @@ test "sys argv via nacompile" {
         # DONE should NOT appear (sys.exit called before it)
         assert "DONE" not in exit_result.stdout , (
             f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
+        );
+    }
+}
+
+test "native osp kernel links transitively through an imported module (issue #6669)" {
+    # A thin entry that uses no OSP itself but imports a module whose `run_it`
+    # does the `spawn`. The kernel's glob-init is referenced only transitively,
+    # so the entry module's manifest carries no `osp_kernel` mark. The link gate
+    # must still pull the kernel in. Before the fix the binary built cleanly but
+    # failed at load with: undefined symbol: __jac_glob_init_osp_kernel.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_kernel_transitive_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_kernel_transitive");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed at load: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp graph survives a cross-module spawn (kernel glob-init runs once)" {
+    # The graph is BUILT in an imported module (`build`) and SPAWNED in the entry
+    # module. The OSP kernel's adjacency globals (`_e_src`/`_walk_stack`) are
+    # link-merged singletons, but `__osp_setup` + its `__osp_inited` guard are
+    # per-module (internal). The entry module's first `spawn` therefore hit its
+    # OWN (unset) guard and re-ran the SHARED kernel glob-init via
+    # `__osp_ensure_init`, re-initializing `_e_src = []` and wiping the graph the
+    # imported module had built -- so `[root -->]` collapsed from 2 to 0 after a
+    # single spawn. The kernel glob-init must run exactly once program-wide.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_buildsplit_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_buildsplit");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2, after=2 (graph survives the spawn), seen=1+2=3.
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp node constructed in a non-OSP module carries its dispatch tag (issue #6683)" {
+    # The entry module CONSTRUCTS an OSP node (`Hub`) but uses no OSP construct
+    # of its own; the spawn happens inside the imported `run_probe`. Tag-table
+    # population is gated on a module actually using OSP, so the construct-only
+    # entry assigned the node NO tag -- its reserved `__type_tag` field stayed 0.
+    # When `run_probe` spawned on it, the kernel's `tag_of` read 0 and
+    # `node_desc(0)` returned a null descriptor, aborting the walk
+    # (`Aborted (core dumped)`, exit 134). The construction site must write the
+    # node's globally-stable tag regardless of whether the constructing module
+    # uses OSP. The byte-identical program with the spawn in the entry module
+    # always ran clean. Fixed: prints `7`.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_ctor_only_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_ctor_only");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary aborted mid-walk (null dispatch descriptor): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
         );
     }
 }

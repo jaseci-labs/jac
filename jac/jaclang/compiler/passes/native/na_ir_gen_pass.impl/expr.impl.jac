@@ -470,8 +470,33 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     } elif right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+        # An IMPORTED walker is not in the local osp_arch_kind, so neither
+        # side classifies as a walker here — name the import in the E5090
+        # instead of leaving a generic unsupported-op (#6636 / #6146).
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=self._xmod_osp_help([left_name, right_name])
+        );
         return left_val;
+    }
+    # A LOCAL walker spawned on an imported location cannot dispatch: the
+    # location's constructor (in the defining module's IR) stamps that
+    # module's tag numbering, mismatching the local descriptor tables. Fail
+    # loudly with the import named rather than walking garbage tags (#6636).
+    _loc_name = right_name if left_is_walker else left_name;
+    _xhelp = self._xmod_osp_help([_loc_name]);
+    if _xhelp is not None {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=_xhelp
+        );
+        return walker_val;
     }
     # `walker spawn loc` lowers to the portable osp_kernel (issue #6146):
     # dispatch by the location's RUNTIME type tag, so computed locations,
@@ -516,8 +541,9 @@ impl NaIRGenPass._codegen_kernel_spawn(
     self._rc_call_with_ctx(
         _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
     );
-    # wdesc = (WalkerDesc*) __ospDESC[walker_tag]
-    _wtag = self.osp_tags.get(walker_name, 0);
+    # wdesc = (WalkerDesc*) __ospDESC[walker_local_idx] -- the descriptor table
+    # is keyed by the dense LOCAL index, not the globally-stable hash tag.
+    _wtag = self.osp_local_idx.get(walker_name, 0);
     _descp = self.builder.load(
         self.builder.gep(
             self._osp_desc_global,
@@ -1177,13 +1203,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
         # Chained field access: expr.field where expr is a complex expression
+        # (a subscript, call, ...). Prefer the checker-resolved struct type of
+        # the receiver, then fall back to inferring it from the LLVM value type.
+        # The checker path is what resolves an edge-ref / node-ref element
+        # (`ports[0].cx`), whose value is a raw i64 handle that LLVM-type
+        # inference cannot name -- _codegen_field_access recovers the pointer
+        # from the handle once it knows the struct (issue #6646).
         if right_name is not None {
             obj_val = self._codegen_expr(nd.target);
             if obj_val is not None {
-                type_name = self._infer_type_name(obj_val);
+                type_name = self._struct_name_of(nd.target);
+                if type_name is None {
+                    type_name = self._infer_type_name(obj_val);
+                }
                 if type_name is not None {
                     return self._codegen_field_access(obj_val, right_name, type_name);
                 }
+                # An unresolved receiver here (no checker struct type, no
+                # LLVM-inferable struct) falls through to the dead-end E5090
+                # below. The common case -- a field read off an untyped (`any`)
+                # graph-traversal handle -- is rejected pre-codegen by the
+                # native capability authority (`native_capability_violations`,
+                # issues #6646 / #6657), so this module never reaches codegen.
             }
         }
     }

@@ -5728,6 +5728,21 @@ impl Parser.parse_archetype -> Archetype {
         }
         rp_uni = self.consume_uni(TokenKind.RPAREN);
     }
+    # Optional edge endpoint clause: `edge E: Src --> Tgt { ... }` declaring the
+    # source/target node types an edge connects (issue #6657). Orthogonal to the
+    # `(Base)` inheritance list above. The `-->` reads in the same direction a
+    # traversal does (`->:E:->` yields Tgt, `<-:E:<-` yields Src).
+    src_endpoint = None;
+    tgt_endpoint = None;
+    ep_colon_uni = None;
+    ep_arrow_uni = None;
+    if self.check(TokenKind.COLON) {
+        self.advance();
+        ep_colon_uni = self.make_uni_token(self.previous());
+        src_endpoint = self.parse_atomic_chain();
+        ep_arrow_uni = self.consume_uni(TokenKind.ARROW_R);
+        tgt_endpoint = self.parse_atomic_chain();
+    }
     body: list | None = None;
     has_body = False;
     body_lb_uni = None;
@@ -5784,6 +5799,12 @@ impl Parser.parse_archetype -> Archetype {
         }
         kid.append(rp_uni);
     }
+    if src_endpoint is not None {
+        kid.append(ep_colon_uni);
+        kid.append(src_endpoint);
+        kid.append(ep_arrow_uni);
+        kid.append(tgt_endpoint);
+    }
     if has_body {
         kid.append(body_lb_uni);
         kid.extend(body);
@@ -5800,7 +5821,9 @@ impl Parser.parse_archetype -> Archetype {
         kid=kid,
         doc=None,
         decorators=decorators,
-        type_params=type_params
+        type_params=type_params,
+        src_endpoint=src_endpoint,
+        tgt_endpoint=tgt_endpoint
     );
     if is_async {
         arch.is_async = True;
