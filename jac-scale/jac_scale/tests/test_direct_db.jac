@@ -7,8 +7,6 @@ import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
 import from jac_scale.db { close_all_db_connections }
 import from jac_scale.lib { kvstore }
-import from jac_scale.mongo_db { MongoDb }
-import from jac_scale.redis_db { RedisDb }
 
 # Helper to safely close DB connections
 def cleanup_connections {
@@ -35,7 +33,7 @@ glob MONGO_URI = _mongo_container.get_connection_url(),
 
 # ===== MONGODB =====
 test "mongodb crud" {
-    db: MongoDb = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
+    db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
 
     # Insert and find
     db.insert_one("users", {"name": "Alice", "role": "admin", "age": 30});
@@ -65,7 +63,7 @@ test "mongodb crud" {
 }
 
 test "mongodb kv api" {
-    db: MongoDb = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
+    db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
 
     assert db.set("user:123", {"name": "Dave"}, "sessions") == "user:123";
     assert db.get("user:123", "sessions")["name"] == "Dave";
@@ -77,9 +75,63 @@ test "mongodb kv api" {
     cleanup_connections();
 }
 
+test "mongodb rejects redis methods" {
+    db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
+
+    raised = False;
+    try {
+        db.set_with_ttl("key", {"v": 1}, ttl=60);
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for set_with_ttl on mongodb";
+
+    raised = False;
+    try {
+        db.incr("counter");
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for incr on mongodb";
+
+    raised = False;
+    try {
+        db.expire("key", 300);
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for expire on mongodb";
+
+    raised = False;
+    try {
+        db.scan_keys("pattern:*");
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for scan_keys on mongodb";
+
+    raised = False;
+    try {
+        db.set_nx_with_ttl("lock", {"v": 1}, ttl=10);
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for set_nx_with_ttl on mongodb";
+
+    raised = False;
+    try {
+        db.delete_if_equals("lock", {"v": 1});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for delete_if_equals on mongodb";
+
+    cleanup_connections();
+}
+
 # ===== REDIS =====
 test "redis kv operations" {
-    db: RedisDb = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+    db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
 
     # Basic get/set/delete/exists
     assert db.set("session:abc", {"user_id": "42"}) == "session:abc";
@@ -110,7 +162,7 @@ test "redis kv operations" {
 }
 
 test "redis distlock primitives" {
-    db: RedisDb = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+    db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
 
     fence_a = {"holder": "pod-a", "id": "abc123"};
     fence_b = {"holder": "pod-b", "id": "def456"};
@@ -143,13 +195,59 @@ test "redis distlock primitives" {
     cleanup_connections();
 }
 
+test "redis rejects mongodb methods" {
+    db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+
+    raised = False;
+    try {
+        db.find_one("users", {"name": "Alice"});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for find_one on redis";
+
+    raised = False;
+    try {
+        db.find("users", {});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for find on redis";
+
+    raised = False;
+    try {
+        db.insert_one("users", {"name": "Bob"});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for insert_one on redis";
+
+    raised = False;
+    try {
+        db.update_one("users", {"name": "Bob"}, {"$set": {"age": 30}});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for update_one on redis";
+
+    raised = False;
+    try {
+        db.delete_many("users", {});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for delete_many on redis";
+
+    cleanup_connections();
+}
+
 # ===== CONNECTION POOLING & CONFIG =====
 test "connection pooling" {
-    db1: MongoDb = kvstore(db_name="db1", db_type="mongodb", uri=MONGO_URI);
-    db2: MongoDb = kvstore(db_name="db2", db_type="mongodb", uri=MONGO_URI);
+    db1 = kvstore(db_name="db1", db_type="mongodb", uri=MONGO_URI);
+    db2 = kvstore(db_name="db2", db_type="mongodb", uri=MONGO_URI);
     assert db1.client is db2.client;
 
-    redis_db: RedisDb = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+    redis_db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
     assert db1.client is not redis_db.client;
 
     cleanup_connections();
@@ -159,7 +257,7 @@ test "config fallback" {
     # Explicit URI overrides env var
     os.environ["MONGODB_URI"] = "mongodb://fake:27017";
     try {
-        db: MongoDb = kvstore(db_name="test", db_type="mongodb", uri=MONGO_URI);
+        db = kvstore(db_name="test", db_type="mongodb", uri=MONGO_URI);
         assert db.insert_one("test", {"data": "ok"}).inserted_id is not None;
     } finally {
         del os.environ["MONGODB_URI"];
@@ -168,7 +266,7 @@ test "config fallback" {
     # Env var fallback
     os.environ["MONGODB_URI"] = MONGO_URI;
     try {
-        db: MongoDb = kvstore(db_name="test", db_type="mongodb");
+        db = kvstore(db_name="test", db_type="mongodb");
         assert db.insert_one("test", {"data": "ok"}).inserted_id is not None;
     } finally {
         del os.environ["MONGODB_URI"];
@@ -203,8 +301,8 @@ test "invalid db type" {
 
 # ===== REAL-WORLD PATTERN =====
 test "cache aside pattern" {
-    mongo: MongoDb = kvstore(db_name="app", db_type="mongodb", uri=MONGO_URI);
-    cache: RedisDb = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+    mongo = kvstore(db_name="app", db_type="mongodb", uri=MONGO_URI);
+    cache = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
 
     # Persist user in MongoDB, cache session in Redis
     user_id = str(
@@ -241,7 +339,7 @@ test "find_nodes basic" {
             age: int,
             status: str = "active";
     }
-    db: MongoDb = kvstore(db_name="test_find_nodes", db_type="mongodb", uri=MONGO_URI);
+    db = kvstore(db_name="test_find_nodes", db_type="mongodb", uri=MONGO_URI);
 
     # Create test nodes manually
     alice = TestNode(name="Alice", age=30, status="active");
@@ -283,7 +381,7 @@ test "find_nodes basic" {
 }
 
 test "_anchors collection is read-only" {
-    db: MongoDb = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
+    db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
 
     # Test that write operations on _anchors are blocked
     raised = False;

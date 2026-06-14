@@ -1,6 +1,14 @@
 """Direct Database Access Module."""
 import from jac_scale._optdeps.optional_deps { require_optional }
-import from jac_scale._optdeps.pymongo { MongoClient }
+import from jac_scale._optdeps.pymongo {
+    MongoClient,
+    PyMongoInsertOneResult,
+    PyMongoInsertManyResult,
+    PyMongoUpdateResult,
+    PyMongoDeleteResult,
+    Cursor,
+    Collection
+}
 import from jac_scale._optdeps.redis { Redis }
 import from jac_scale.factories.database_factory {
     DatabaseProviderFactory,
@@ -116,10 +124,77 @@ def close_all_db_connections {
 }
 
 obj Db {
-    has db_name: str = 'jac_db';
+    has client: (MongoClient | Redis),
+        db_name: str = 'jac_db',
+        db_type: DatabaseType = DatabaseType.MONGODB;
 
+    # ===== PRIVATE HELPER METHODS =====
+    """Get MongoDB collection reference."""
+    def _get_mongo_collection(col_name: str) -> Collection;
+
+    """Get namespaced Redis key."""
+    def _get_redis_key(col_name: str, key: str) -> str;
+
+    # ===== COMMON METHODS (work for both MongoDB and Redis) =====
     def get(key: str, col_name: str = 'default') -> dict | None;
     def set(key: str, value: dict, col_name: str = 'default') -> str;
     def delete(key: str, col_name: str = 'default') -> int;
     def exists(key: str, col_name: str = 'default') -> bool;
+    # ===== MONGODB-ONLY METHODS =====
+    def find_one(
+        col_name: str, filter: dict, projection: dict | None = None
+    ) -> dict | None;
+
+    def find(
+        col_name: str, filter: dict, projection: dict | None = None
+    ) -> Cursor | list;
+
+    def count_documents(col_name: str, filter: dict) -> int;
+    def create_index(
+        col_name: str, keys: dict, unique: bool = False, name: str | None = None
+    ) -> str;
+
+    def insert_one(
+        col_name: str, document: dict
+    ) -> PyMongoInsertOneResult | InsertResult;
+
+    def update_one(
+        col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
+    ) -> PyMongoUpdateResult | UpdateResult;
+
+    def delete_one(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteResult;
+    def insert_many(
+        col_name: str, documents: list
+    ) -> PyMongoInsertManyResult | InsertManyResult;
+
+    def update_many(
+        col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
+    ) -> PyMongoUpdateResult | UpdateResult;
+
+    def delete_many(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteResult;
+    def find_by_id(col_name: str, id: str) -> dict | None;
+    def update_by_id(
+        col_name: str, id: str, update_data: dict, upsert_mode: bool = False
+    ) -> PyMongoUpdateResult | UpdateResult;
+
+    def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult;
+    # ===== REDIS-ONLY METHODS =====
+    def set_with_ttl(
+        key: str, value: dict, ttl: int, col_name: str = 'default'
+    ) -> bool;
+
+    def incr(key: str, col_name: str = 'default') -> int;
+    def expire(key: str, seconds: int, col_name: str = 'default') -> bool;
+    def scan_keys(pattern: str, col_name: str = 'default') -> list[str];
+    def set_nx_with_ttl(
+        key: str, value: dict, ttl: int, col_name: str = 'default'
+    ) -> bool;
+
+    def delete_if_equals(
+        key: str, expected_value: dict, col_name: str = 'default'
+    ) -> bool;
+
+    def find_nodes(
+        node_type: str, filter: dict = {}, col_name: str = '_anchors'
+    ) -> list;
 }

@@ -17,7 +17,7 @@ import from datetime { UTC, datetime, timedelta }
 import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.config_loader { get_scale_config }
-import from jac_scale.db { get_mongo_client }
+import from jac_scale.db { Db, get_mongo_client }
 import from jac_scale.mongo_db { MongoDb }
 
 glob logger = logging.getLogger(__name__);
@@ -67,7 +67,7 @@ obj WebhookUtils {
 }
 
 """Create database connection for API key storage, or None if MongoDB not configured."""
-def _create_api_key_db -> MongoDb | None {
+def _create_api_key_db -> Db | None {
     db_config = get_scale_config().get_database_config();
     if db_config.get('mongodb_uri') is not None {
         return MongoDb(client=get_mongo_client(), db_name='jac_db');
@@ -77,7 +77,7 @@ def _create_api_key_db -> MongoDb | None {
 
 """Manager for API keys associated with users."""
 obj ApiKeyManager {
-    has _db: MongoDb | None = _create_api_key_db(),
+    has _db: Db | None = _create_api_key_db(),
         _inmemory_store: dict = {},
         _collection: str = 'webhook_api_keys',
         _rate_window: dict = {};
