@@ -220,8 +220,8 @@ test "DependencyInstaller install_package success" {
             mock_pip.return_value = (0, "Successfully installed", "");
             result = installer.install_package(["requests>=2.28.0"]);
             assert result is True;
-            mock_pip.assert_called_once();
-            call_args = mock_pip.call_args[0][0];
+            assert mock_pip.call_count == 3;
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
@@ -265,7 +265,7 @@ test "DependencyInstaller install_package without version" {
         ) as mock_pip {
             mock_pip.return_value = (0, "", "");
             installer.install_package(["requests"]);
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "requests" in call_args;
             has_version = False;
             for arg in call_args {
@@ -297,7 +297,7 @@ test "DependencyInstaller install_git_package" {
             );
             result = installer.install_package([specs]);
             assert result is True;
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "git+https://github.com/user/plugin.git@main" in call_args;
         }
     } finally {
@@ -321,7 +321,7 @@ test "DependencyInstaller install_all" {
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 1;
+            assert mock_pip.call_count == 3;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -344,7 +344,7 @@ test "DependencyInstaller install_all with dev" {
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 1;
+            assert mock_pip.call_count == 3;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -869,7 +869,7 @@ test "install with pip and git deps" {
             }
             assert result == 0;
             mock_pip.assert_called();
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
         } finally {
@@ -918,7 +918,7 @@ test "install pip and npm deps" {
             }
             assert result == 0;
             mock_pip.assert_called();
-            pip_call_args = mock_pip.call_args[0][0];
+            pip_call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in pip_call_args;
             assert "--upgrade" in pip_call_args;
             mock_install_all.assert_called_once();
@@ -1687,7 +1687,7 @@ test "DependencyInstaller install_flags passed to pip" {
         ) as mock_pip {
             mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
             installer.install_package(["requests>=2.28.0"]);
-            call_args = mock_pip.call_args[0][0];
+            call_args = mock_pip.call_args_list[1][0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "--no-cache-dir" in call_args;
@@ -1830,7 +1830,7 @@ test "update always uses upgrade flag" {
                 result = proj_cmds.update();
             }
             assert result == 0;
-            first_call_args = mock_pip.call_args_list[0][0][0];
+            first_call_args = mock_pip.call_args_list[1][0][0];
             assert "--upgrade" in first_call_args;
         } finally {
             os.chdir(original_cwd);
