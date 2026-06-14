@@ -719,6 +719,23 @@ impl JacCompiler.compile(
     }
     if run_inference {
         mod_targ._inference_started = True;
+        # Flow-narrowing (`is not None` / isinstance) inside TypeInferencePass
+        # walks the CFG (UniCFGNode.bb_in/bb_out). The full IR-gen schedule
+        # built that CFG above, but a symtab_ir_only compile skipped it. Native
+        # still forces inference on those modules (imported dependency / on-
+        # demand cross-module provider lowering), so build the CFG first or the
+        # narrowing silently no-ops and a `T | None` guarded by `is not None`
+        # stays `T | None` only on the imported-module path (issue #6667). The
+        # entry path (symtab_ir_only False) already has its CFG -- skip the
+        # redundant build there.
+        if options.symtab_ir_only {
+            self.run_schedule(
+                mod=mod_targ,
+                target_program=actual_program,
+                passes=get_cfg_sched(),
+                cancel_token=options.cancel_token
+            );
+        }
         # Diagnostic-mode intent must ride on the module, not on the
         # program's ambient _compile_options: creating the TypeEvaluator
         # inside TypeCheckPass.before_pass triggers nested compiles (stub
