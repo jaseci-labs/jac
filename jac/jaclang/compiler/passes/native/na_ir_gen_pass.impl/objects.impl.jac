@@ -902,9 +902,23 @@ impl NaIRGenPass._codegen_instantiation(
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _tt_idx)],
             name="type_tag.slot"
         );
-        self.builder.store(
-            ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
-        );
+        # The tag VALUE is the globally-stable content hash of the archetype
+        # name -- the same number `_register_osp_tags` records in `osp_tags`.
+        # A module that merely CONSTRUCTS an OSP node but uses no OSP itself
+        # (no spawn/visit/connect/edge-ref) leaves `osp_tags` empty, since
+        # tag-table population is gated on OSP usage so a construct-only
+        # consumer skips the kernel (#6642 Blocker 2). The instance it builds
+        # is still handed to OSP-using code (e.g. an imported module that
+        # spawns on it), so its tag must be the real stable hash, not 0 --
+        # otherwise the kernel's `tag_of` reads 0 and `node_desc(0)` returns a
+        # null descriptor mid-walk (#6683). Recompute the stable hash directly
+        # (a pure name-derived value, no kernel needed) when `osp_tags` has no
+        # entry, so the written tag matches what every OSP-using module derives.
+        _tt_val = self.osp_tags.get(type_name);
+        if _tt_val is None {
+            _tt_val = self._stable_osp_tag(type_name);
+        }
+        self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
         # Graph-arena lifetime: an OSP instance is a graph location, referenced
         # by the walk as a borrowed `any` handle (boxed pointer) inside the
         # kernel's work-stack / scope lists. Those lists retain/release the boxed
