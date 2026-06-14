@@ -644,10 +644,8 @@ test "bug_loop_exit_widen" {
     program = compile_and_check("checker_bug_loop_exit_widen.jac");
 
     assert len(program.errors_had) == 0 , (
-        "A loop body may run zero times, so a var reassigned in the body must "
-        "widen to (entry | assigned) after the loop. `fb = 5` inside a for/while "
-        "over `fb: int | None` must leave `fb` as `int | None`, letting "
-        "`is not None` narrow it to `int` at the return. "
+        "A var reassigned in a loop body must widen to (entry | assigned) after "
+        "the loop, so `is not None` narrows it at the return. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

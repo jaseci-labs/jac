@@ -4293,11 +4293,7 @@ impl TypeEvaluator._get_type_from_flow_node(
             }
         }
 
-        # Loop-header predecessor read from OUTSIDE the loop (the exit edge).
-        # A loop body may run zero times, so the post-loop type is the union of
-        # the pre-loop (entry) narrowing and any type the body reassigns into
-        # the target. When flow_node is inside the body instead, this is the
-        # entry edge and is left to the existing per-loop handling above.
+        # Loop header read from after the loop: merge entry and body types.
         if isinstance(pred, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
             ancestor_node: uni.UniNode | None = flow_node;
             inside_loop: bool = False;
@@ -4471,14 +4467,7 @@ impl TypeEvaluator._get_type_from_flow_node(
     return result;
 }
 
-"""Type of `target` on a loop's exit edge.
-
-A loop body may run zero times, so the post-loop type is the union of the
-pre-loop entry narrowing (`entry_type`) and every type the body may reassign
-into the target. When the body never writes the target, the entry narrowing
-carries through unchanged so pre-loop narrowing survives the loop. Returns
-None to mean "widen to the declared type".
-"""
+"""Type of a variable after a loop: union of the entry type and body assignments."""
 impl TypeEvaluator._loop_exit_narrowed_type(
     loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
 ) -> TypeBase | None {
@@ -4513,8 +4502,7 @@ impl TypeEvaluator._loop_exit_narrowed_type(
             continue;
         }
         if not flat_target {
-            # Destructuring / complex write into the target: be conservative
-            # and widen rather than guess the element type on the exit edge.
+            # Destructuring write: widen instead of guessing the element type.
             return None;
         }
         assigned_type = self.get_type_of_expression(assign.value);
@@ -4522,7 +4510,7 @@ impl TypeEvaluator._loop_exit_narrowed_type(
             return None;
         }
         narrowed_assign: TypeBase | None = None;
-        # Mirror the assignment-barrier narrowing rules used on normal edges.
+        # Same narrowing rules as a normal assignment edge.
         if self.is_none_type(declared_type) {
             narrowed_assign = assigned_type;
         } elif (
@@ -4538,12 +4526,11 @@ impl TypeEvaluator._loop_exit_narrowed_type(
         body_types.append(narrowed_assign);
     }
     if len(body_types) == 0 {
-        # Body never reassigns the target: pre-loop narrowing carries through.
+        # Body never writes the variable: keep the entry type.
         return entry_type;
     }
-    # Zero-trip keeps the entry type; ran-cases add the body reassignment types.
+    # The loop may run zero times, so the entry type stays in the union.
     if entry_type is None {
-        # Entry already widened to the declared type; the union can't be tighter.
         return None;
     }
     body_types.append(entry_type);
