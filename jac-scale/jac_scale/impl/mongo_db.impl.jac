@@ -135,24 +135,36 @@ impl MongoDb.delete_many(
     return self._get_mongo_collection(col_name).delete_many(filter);
 }
 
+# A non-ObjectId id (e.g. a UUID or empty string) cannot match an ObjectId
+# _id, so report not-found via the declared return type rather than letting
+# bson's InvalidId escape — mirrors get()/delete()/exists() on this class.
 impl MongoDb.find_by_id(col_name: str, id: str) -> dict | None {
-    return self._get_mongo_collection(col_name).find_one({'_id': ObjectId(id)});
+    if (oid := _as_object_id(id)) {
+        return self._get_mongo_collection(col_name).find_one({'_id': oid});
+    }
+    return None;
 }
 
 impl MongoDb.update_by_id(
     col_name: str, id: str, update_data: dict, upsert_mode: bool = False
 ) -> PyMongoUpdateResult | UpdateResult {
     _validate_not_read_only(col_name);
-    return self._get_mongo_collection(col_name).update_one(
-        {'_id': ObjectId(id)}, update_data, upsert=upsert_mode
-    );
+    if (oid := _as_object_id(id)) {
+        return self._get_mongo_collection(col_name).update_one(
+            {'_id': oid}, update_data, upsert=upsert_mode
+        );
+    }
+    return UpdateResult(matched_count=0, modified_count=0);
 }
 
 impl MongoDb.delete_by_id(
     col_name: str, id: str
 ) -> PyMongoDeleteResult | DeleteResult {
     _validate_not_read_only(col_name);
-    return self._get_mongo_collection(col_name).delete_one({'_id': ObjectId(id)});
+    if (oid := _as_object_id(id)) {
+        return self._get_mongo_collection(col_name).delete_one({'_id': oid});
+    }
+    return DeleteResult(deleted_count=0);
 }
 
 impl MongoDb.find_nodes(

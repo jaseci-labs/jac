@@ -50,6 +50,14 @@ test "mongodb crud" {
     db.delete_by_id("users", doc_id);
     assert db.find_by_id("users", doc_id) is None;
 
+    # A non-ObjectId id reports not-found via the return type rather than
+    # raising bson.errors.InvalidId.
+    assert db.find_by_id("users", "not-an-objectid") is None;
+    assert db.update_by_id(
+        "users", "not-an-objectid", {"$set": {"x": 1}}
+    ).matched_count == 0;
+    assert db.delete_by_id("users", "not-an-objectid").deleted_count == 0;
+
     # Bulk operations
     db.insert_many("scores", [{"score": 100}, {"score": 200}, {"score": 300}]);
     assert (
