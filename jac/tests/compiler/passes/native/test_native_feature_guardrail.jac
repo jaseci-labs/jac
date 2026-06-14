@@ -188,6 +188,24 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
     assert hinted , f"E5090 help should suggest a `[?:Type]` filter: {fmt_errors(
         prog
     )}";
+    # The native capability authority now rejects this pre-codegen, so the same
+    # E5090 surfaces under `jac check` (codegen OFF), not only at `nacompile`.
+    check_prog = check_na_inline(
+        "node_ref_any_field",
+        "node N { has tag: int = 0; }\n"
+        "edge Portal {}\n"
+        "walker W {\n"
+        "    has v: int = 0;\n"
+        "    can go with N entry {\n"
+        "        nbrs = [here ->:Portal:->];\n"
+        "        if len(nbrs) > 0 { self.v = nbrs[0].tag; }\n"
+        "    }\n"
+        "}\n"
+        "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
+    );
+    assert has_error_code(check_prog, "E5090") , f"Expected E5090 at check time (codegen OFF) for any-typed node-ref field access, got: {fmt_errors(
+        check_prog
+    )}";
 }
 
 

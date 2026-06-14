@@ -638,21 +638,13 @@ impl NaIRGenPass._match_pattern_cond(
         return self._match_value_eq(subj, pat.value);
     }
     if isinstance(pat, uni.MatchOr) {
-        # OR is restricted to non-capturing alternatives so there is no
-        # ambiguity about which names a matched alternative binds.
+        # OR is restricted to non-capturing alternatives (value / singleton /
+        # wildcard / nested OR) so there is no ambiguity about which names a
+        # matched alternative binds. The native capability authority
+        # (`native_capability_violations`) rejects any other alternative
+        # pre-codegen, so by the time we lower here every sub-pattern is valid.
         result: (ir.Value | None) = None;
         for sub in pat.patterns {
-            if not isinstance(
-                sub, (uni.MatchValue, uni.MatchSingleton, uni.MatchWild, uni.MatchOr)
-            ) {
-                self.emit(
-                    E5090,
-                    node_override=sub,
-                    kind="match pattern",
-                    name=f"{type(sub).__name__} inside OR pattern"
-                );
-                return None;
-            }
             sub_cond = self._match_pattern_cond(sub, subj);
             if sub_cond is None {
                 return None;

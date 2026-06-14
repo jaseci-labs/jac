@@ -177,6 +177,80 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 }
                 continue;
             }
+            # Attribute read off an UNTYPED (`any`) receiver. Native cannot
+            # pick a struct field layout for an `any` value: an untyped graph
+            # traversal (`[here -->]` / `[... ->:Edge:->]`) types its element
+            # as `any` (an edge can connect any node types), and a boxed `any`
+            # has no statically-known fields. The backend E5090s every such
+            # read at codegen; detect it structurally so `jac check` and
+            # `jac nacompile` agree (issues #6646 / #6657). The receiver type is
+            # a checker fact (`Expr.type`), available pre-codegen.
+            if isinstance(nd, uni.AtomTrailer)
+            and nd.is_attr
+            and isinstance(nd.right, uni.Name)
+            and (nd.target.type is not None)
+            and nd.target.type.is_any_type() {
+                _fld = nd.right.value;
+                out.append(
+                    (
+                        nd,
+                        "attribute access",
+                        _fld,
+                        (
+                            f"'{_fld}' is read off an untyped (`any`) receiver with "
+                            f"no statically-known archetype (an edge can connect any "
+                            f"node types, so a bare `[... -->]` / `[... ->:Edge:->]` "
+                            f"neighbour is `any`). Add a node-type filter so the "
+                            f"element resolves to an archetype, e.g. "
+                            f"`[... -->[?:NodeType]]`, then read `.{_fld}` off it."
+                        )
+                    )
+                );
+                continue;
+            }
+            # Native lowers only a SINGLE-HOP edge reference whose chain reduces
+            # to `[origin?, EdgeOpRef, FilterCompr(no value-compare)?]`. Multi-hop
+            # chains (`[here -->-->]`) and value-compare node filters
+            # (`[?:Area(x > 1)]`) are not lowered; the backend E5090s them so a
+            # two-hop traversal is not silently truncated to one. Replicate the
+            # chain reduction here STRUCTURALLY (no `here`/tag/lowering state) so
+            # `jac check` and `jac nacompile` agree. Origin lowering, edge/node
+            # type tags, and kernel registration stay codegen backstops.
+            if isinstance(nd, uni.EdgeRefTrailer) and nd.chain {
+                _chain = nd.chain;
+                _ci = 0 if isinstance(_chain[0], uni.EdgeOpRef) else 1;
+                _shape_ok = (_ci < len(_chain))
+                and isinstance(_chain[_ci], uni.EdgeOpRef);
+                if _shape_ok {
+                    _ci += 1;
+                    if (_ci < len(_chain))
+                    and isinstance(_chain[_ci], uni.FilterCompr)
+                    and (_chain[_ci].f_type is not None)
+                    and (not _chain[_ci].compares) {
+                        _ci += 1;
+                    }
+                    _shape_ok = _ci == len(_chain);
+                }
+                if not _shape_ok {
+                    out.append(
+                        (
+                            nd,
+                            "expression",
+                            "EdgeRefTrailer",
+                            (
+                                "native lowers only a single-hop edge reference "
+                                "(`[origin -->]` / `[here ->:Edge:->]`) with an "
+                                "optional trailing node-type filter (`[?:Node]`). "
+                                "Multi-hop chains (`[here -->-->]`) and value-compare "
+                                "filters (`[?:Node(x > 1)]`) are not yet supported; "
+                                "split the traversal into single hops or move it to "
+                                "@sv."
+                            )
+                        )
+                    );
+                    continue;
+                }
+            }
             for k in nd.kid {
                 work.append(k);
             }

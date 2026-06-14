@@ -1219,34 +1219,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 if type_name is not None {
                     return self._codegen_field_access(obj_val, right_name, type_name);
                 }
-                # An i64 receiver with no resolvable struct type is an OSP
-                # edge-ref / node-ref handle whose element type is `any` -- an
-                # UNTYPED neighbour traversal (`[here ->:Edge:->]` / `[here -->]`)
-                # has no statically-known node type, so native cannot pick a
-                # field layout. (A general `any` value is a boxed JacVal, not an
-                # i64, so this discriminates the graph-traversal case.) Fail
-                # loudly with actionable guidance toward a node-type filter --
-                # the only sound narrowing today, until typed edge endpoints land
-                # (issues #6646 / #6657).
-                if isinstance(obj_val.type, ir.IntType) {
-                    self.emit(
-                        E5090,
-                        node_override=nd,
-                        kind="attribute access",
-                        name=right_name,
-                        help_text=(
-                            f"'{right_name}' is read off the result of an "
-                            f"untyped graph traversal, whose element type is "
-                            f"`any` (an edge can connect any node types, so a "
-                            f"bare `[... -->]` / `[... ->:Edge:->]` neighbour "
-                            f"has no statically-known type). Add a node-type "
-                            f"filter so the element resolves to an archetype, "
-                            f"e.g. `[... -->[?:NodeType]]`, then read `.{right_name}` "
-                            f"off it."
-                        )
-                    );
-                    return None;
-                }
+                # An unresolved receiver here (no checker struct type, no
+                # LLVM-inferable struct) falls through to the dead-end E5090
+                # below. The common case -- a field read off an untyped (`any`)
+                # graph-traversal handle -- is rejected pre-codegen by the
+                # native capability authority (`native_capability_violations`,
+                # issues #6646 / #6657), so this module never reaches codegen.
             }
         }
     }
