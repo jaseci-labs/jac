@@ -202,6 +202,15 @@ test "streaming + conversation persists assistant message and emits dicts" {
     assert "STREAM_CONV_PASS" in stdout_value;
 }
 
+test "streaming generator survives consumption from a foreign Context" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_cross_context", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CROSS_CONTEXT_PASS" in stdout_value;
+}
+
 test "by expr" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
