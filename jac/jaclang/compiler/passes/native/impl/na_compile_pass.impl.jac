@@ -41,60 +41,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         if clib_paths {
             for lib_path in clib_paths {
                 try {
-                    # A logical import (issue #6387) may carry a loader token
-                    # ($ORIGIN/@loader_path) meant for the AOT binary; at JIT
-                    # time there is no output binary, so strip it and resolve
-                    # the remainder relative to the current directory.
-                    probe = lib_path;
-                    if probe.startswith("$ORIGIN/") {
-                        probe = probe[8:];
-                    } elif probe.startswith("@loader_path/") {
-                        probe = probe[13:];
-                    }
-                    base = os.path.basename(probe);
-                    loaded = False;
-                    # 1. An explicit/relative/sibling file that exists on disk.
-                    #    Pass the ABSOLUTE path: dlopen only loads a named file
-                    #    when the string contains a slash; a bare "libfoo.so" is
-                    #    treated as a soname and searched on the system path
-                    #    instead of the cwd-relative file we just found.
-                    for cand in [lib_path, probe, os.path.join(".", base)] {
-                        if cand and os.path.exists(cand) {
-                            llvm.load_library_permanently(os.path.abspath(cand));
-                            loaded = True;
-                            break;
-                        }
-                    }
-                    # 2. dlopen by soname (searches LD_LIBRARY_PATH + ldcache).
-                    if not loaded {
-                        try {
-                            llvm.load_library_permanently(base);
-                            loaded = True;
-                        } except Exception {
-                            loaded = False;
-                        }
-                    }
-                    # 3. find_library on the bare stem (handles versioned
-                    #    sonames, e.g. libraylib.so -> libraylib.so.5).
-                    if not loaded {
-                        stem = base;
-                        if stem.startswith("lib") {
-                            stem = stem[3:];
-                        }
-                        for _ext in [".so", ".dylib", ".dll"] {
-                            _i = stem.find(_ext);
-                            if _i != -1 {
-                                stem = stem[:_i];
-                            }
-                        }
-                        found = ctypes.util.find_library(stem)
-                        or ctypes.util.find_library(probe);
-                        if found {
-                            llvm.load_library_permanently(found);
-                            loaded = True;
-                        }
-                    }
-                    if not loaded {
+                    if not self._jit_load_clib(lib_path) {
                         self.emit(W5021, path=lib_path);
                     }
                 } except Exception as lib_err {
@@ -321,6 +268,62 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         self.emit(E5020, error=str(e));
     }
     return ir_in;
+}
+
+"""Load a C shared library so MCJIT can resolve its symbols at JIT time.
+
+A logical import (issue #6387) may carry a loader token (`$ORIGIN` /
+`@loader_path`) meant for the AOT binary's DT_NEEDED; at JIT time there is no
+output binary, so strip it and resolve the remainder relative to the current
+directory, then fall back to soname / `find_library` lookup. Shared by the
+top-level module's own clibs and the transitive clibs an imported module pulls
+in (issue #6687: an imported module's `$ORIGIN/...` clib was never loaded into
+the JIT, so its FFI symbols resolved to NULL and the program SIGSEGV'd -- while
+the AOT binary, whose loader honors `$ORIGIN`, ran fine). Returns True when the
+library was loaded."""
+impl NativeCompilePass._jit_load_clib(lib_path: str) -> bool {
+    import os;
+    import ctypes.util;
+    probe = lib_path;
+    if probe.startswith("$ORIGIN/") {
+        probe = probe[8:];
+    } elif probe.startswith("@loader_path/") {
+        probe = probe[13:];
+    }
+    base = os.path.basename(probe);
+    # 1. An explicit/relative/sibling file that exists on disk. Pass the
+    #    ABSOLUTE path: dlopen only loads a named file when the string contains
+    #    a slash; a bare "libfoo.so" is treated as a soname and searched on the
+    #    system path instead of the cwd-relative file we just found.
+    for cand in [lib_path, probe, os.path.join(".", base)] {
+        if cand and os.path.exists(cand) {
+            llvm.load_library_permanently(os.path.abspath(cand));
+            return True;
+        }
+    }
+    # 2. dlopen by soname (searches LD_LIBRARY_PATH + ldcache).
+    try {
+        llvm.load_library_permanently(base);
+        return True;
+    } except Exception { }
+    # 3. find_library on the bare stem (handles versioned sonames, e.g.
+    #    libraylib.so -> libraylib.so.5).
+    stem = base;
+    if stem.startswith("lib") {
+        stem = stem[3:];
+    }
+    for _ext in [".so", ".dylib", ".dll"] {
+        _i = stem.find(_ext);
+        if _i != -1 {
+            stem = stem[:_i];
+        }
+    }
+    found = ctypes.util.find_library(stem) or ctypes.util.find_library(probe);
+    if found {
+        llvm.load_library_permanently(found);
+        return True;
+    }
+    return False;
 }
 
 """Link imported .na.jac modules at IR level (before JIT compilation)."""
@@ -632,8 +635,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         # Load any .so libraries required by this imported module so that
         # MCJIT can resolve their external symbols at JIT compilation time.
         # Without this, transitive `import from "lib.so" { ... }` in a dep
-        # module causes an unresolved-symbol segfault at runtime.
-        import ctypes.util as _ctu;
+        # module causes an unresolved-symbol segfault at runtime (issue #6687).
         # dep_clib_paths is set by both cache-hit and cache-miss paths above.
         if dep_clib_paths {
             # Propagate dep C-lib paths back to the main module so that
@@ -642,15 +644,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 if dep_lib_path not in module.gen._clib_paths {
                     module.gen._clib_paths.append(dep_lib_path);
                 }
+                # Use the same robust loader as the top-level module's clibs:
+                # it strips the AOT-only `$ORIGIN`/`@loader_path` token a
+                # logical import carries, which a bare `os.path.exists` /
+                # `find_library` check could not resolve -- leaving the library
+                # unloaded and its FFI symbols NULL under `jac run` (#6687).
                 try {
-                    if os.path.exists(dep_lib_path) {
-                        llvm.load_library_permanently(dep_lib_path);
-                    } else {
-                        found_lib = _ctu.find_library(dep_lib_path);
-                        if found_lib {
-                            llvm.load_library_permanently(found_lib);
-                        }
-                    }
+                    self._jit_load_clib(dep_lib_path);
                 } except Exception { }
             }
         }
