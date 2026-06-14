@@ -55,12 +55,16 @@ obj WindowPlugin(DesktopPlugin) {
         if self._wv is None {
             raise PluginError("NOT_READY", "Window plugin not yet initialized");
         }
+        # Wrap the handle in c_void_p so ctypes marshals it as a full-width
+        # pointer. A bare int defaults to c_int and truncates the 64-bit webview
+        # handle to 32 bits on Windows x64 (LLP64).
+        wv = ctypes.c_void_p(self._handle);
         if command == "set_title" {
             title = args.get("title", "");
             if not title {
                 raise PluginError("INVALID_ARGS", "'title' is required");
             }
-            self._wv.webview_set_title(self._handle, title.encode("utf-8"));
+            self._wv.webview_set_title(wv, title.encode("utf-8"));
             return {};
         }
         if command == "set_size" {
@@ -72,18 +76,17 @@ obj WindowPlugin(DesktopPlugin) {
                 );
             }
             hint = int(args.get("hint", 0));
-            self._wv.webview_set_size(self._handle, width, height, hint);
+            self._wv.webview_set_size(wv, width, height, hint);
             return {};
         }
         if command == "fullscreen" {
             self._wv.webview_eval(
-                self._handle,
-                b"document.documentElement.requestFullscreen().catch(function(){});"
+                wv, b"document.documentElement.requestFullscreen().catch(function(){});"
             );
             return {};
         }
         if command == "terminate" {
-            self._wv.webview_terminate(self._handle);
+            self._wv.webview_terminate(wv);
             return {};
         }
         return super.handle(command, args);

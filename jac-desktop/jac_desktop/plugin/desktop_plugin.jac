@@ -107,7 +107,13 @@ escaping and running shell commands on macOS and Windows.
 """
 obj OsPlugin(DesktopPlugin) {
     def _escape_applescript(s: str) -> str {
-        return s.replace("\\", "\\\\").replace('"', '\\"');
+        # Backslash first, then quotes, then raw newlines -> \n / \r escapes.
+        # AppleScript string literals can't span raw newlines (parse error), but
+        # it does interpret \n and \r escape sequences. Newline replacement runs
+        # after backslash-doubling so the inserted backslashes aren't re-escaped.
+        return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace(
+            "\r", "\\r"
+        );
     }
 
     def _escape_powershell(s: str) -> str {

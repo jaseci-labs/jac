@@ -107,6 +107,12 @@ obj FsPlugin(DesktopPlugin) {
             raise PluginError("NOT_FOUND", f"File not found: {path}");
         } except PermissionError {
             raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+        } except LookupError {
+            raise PluginError("INVALID_ARGS", f"Unknown encoding: {encoding}");
+        } except UnicodeDecodeError {
+            raise PluginError(
+                "INVALID_ARGS", f"File is not valid {encoding} text: {path}"
+            );
         }
         return {"content": content};
     }
@@ -115,11 +121,18 @@ obj FsPlugin(DesktopPlugin) {
         path = self._resolve_path(args.get("path", ""));
         content = args.get("content", "");
         self._check_allowed(path, "write");
+        encoding = args.get("encoding", "utf-8");
         path.parent.mkdir(parents=True, exist_ok=True);
         try {
-            path.write_text(content, encoding=args.get("encoding", "utf-8"));
+            path.write_text(content, encoding=encoding);
         } except PermissionError {
             raise PluginError("FORBIDDEN", f"Permission denied: {path}");
+        } except LookupError {
+            raise PluginError("INVALID_ARGS", f"Unknown encoding: {encoding}");
+        } except UnicodeEncodeError {
+            raise PluginError(
+                "INVALID_ARGS", f"Content cannot be encoded as {encoding}"
+            );
         }
         return {};
     }
