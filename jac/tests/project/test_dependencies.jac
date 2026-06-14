@@ -217,16 +217,11 @@ test "DependencyInstaller install_package success" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [
-                (0, "[]", ""),
-                (0, "", ""),
-                (0, '[{"name":"requests","version":"2.28.0"}]', ""),
-
-            ];
+            mock_pip.return_value = (0, "Successfully installed", "");
             result = installer.install_package(["requests>=2.28.0"]);
             assert result is True;
-            assert mock_pip.call_count == 3;
-            call_args = mock_pip.call_args_list[1][0][0];
+            mock_pip.assert_called_once();
+            call_args = mock_pip.call_args[0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
@@ -268,9 +263,9 @@ test "DependencyInstaller install_package without version" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+            mock_pip.return_value = (0, "", "");
             installer.install_package(["requests"]);
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args[0][0];
             assert "requests" in call_args;
             has_version = False;
             for arg in call_args {
@@ -296,13 +291,13 @@ test "DependencyInstaller install_git_package" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+            mock_pip.return_value = (0, "", "");
             specs = installer._make_git_spec(
                 "my-plugin", "https://github.com/user/plugin.git", branch="main"
             );
             result = installer.install_package([specs]);
             assert result is True;
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args[0][0];
             assert "git+https://github.com/user/plugin.git@main" in call_args;
         }
     } finally {
@@ -321,12 +316,12 @@ test "DependencyInstaller install_all" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+            mock_pip.return_value = (0, "", "");
             pip_packages = installer.get_pip_package_specs(include_dev=False);
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 3;
+            assert mock_pip.call_count == 1;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -344,12 +339,12 @@ test "DependencyInstaller install_all with dev" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+            mock_pip.return_value = (0, "", "");
             pip_packages = installer.get_pip_package_specs(include_dev=True);
             git_packages = installer.get_git_package_specs();
             result = installer.install_package(pip_packages + git_packages);
             assert result is True;
-            assert mock_pip.call_count == 3;
+            assert mock_pip.call_count == 1;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -865,12 +860,16 @@ test "install with pip and git deps" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+                mock_pip.return_value = (
+                    0,
+                    "Successfully installed requests-2.31.0",
+                    ""
+                );
                 result = proj_cmds.install();
             }
             assert result == 0;
             mock_pip.assert_called();
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args[0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
         } finally {
@@ -910,12 +909,16 @@ test "install pip and npm deps" {
                 "jaclang.project.dep_registry.get_dependency_registry",
                 return_value=mock_registry
             ) as _reg {
-                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+                mock_pip.return_value = (
+                    0,
+                    "Successfully installed requests-2.31.0 flask-3.0.0",
+                    ""
+                );
                 result = proj_cmds.install();
             }
             assert result == 0;
             mock_pip.assert_called();
-            pip_call_args = mock_pip.call_args_list[1][0][0];
+            pip_call_args = mock_pip.call_args[0][0];
             assert "install" in pip_call_args;
             assert "--upgrade" in pip_call_args;
             mock_install_all.assert_called_once();
@@ -1083,9 +1086,7 @@ test "add resolves version" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed numpy-1.26.4", ""),
                     (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", "")
                 ];
                 result = proj_cmds.add(packages=["numpy"]);
@@ -1118,7 +1119,7 @@ test "add with explicit version" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+                mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
                 result = proj_cmds.add(packages=["numpy>=1.24"]);
             }
             assert result == 0;
@@ -1151,9 +1152,7 @@ test "update all deps" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
@@ -1190,9 +1189,7 @@ test "update specific package" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed requests-2.32.0", ""),
                     (0, "Name: requests\nVersion: 2.32.0", "")
                 ];
                 result = proj_cmds.update(packages=["requests"]);
@@ -1265,9 +1262,7 @@ test "add dev dependency" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed pytest-cov-7.0.0", ""),
                     (0, "Name: pytest-cov\nVersion: 7.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["pytest-cov"], dev=True);
@@ -1303,13 +1298,9 @@ test "add multiple packages" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed numpy-2.4.2", ""),
                     (0, "Name: numpy\nVersion: 2.4.2", ""),
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed pandas-3.0.0", ""),
                     (0, "Name: pandas\nVersion: 3.0.0", "")
                 ];
                 result = proj_cmds.add(packages=["numpy", "pandas"]);
@@ -1382,7 +1373,7 @@ test "add git dependency" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+                mock_pip.return_value = (0, "Successfully installed my-lib", "");
                 result = proj_cmds.add(git="https://github.com/user/my-lib.git");
             }
             assert result == 0;
@@ -1416,9 +1407,7 @@ test "update with dev deps" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed", ""),
                     (0, "Name: requests\nVersion: 2.32.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", ""),
                     (0, "Name: pytest\nVersion: 8.3.0", "")
@@ -1696,9 +1685,9 @@ test "DependencyInstaller install_flags passed to pip" {
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
         ) as mock_pip {
-            mock_pip.side_effect = [(0, "[]", ""), (0, "", ""), (0, "[]", ""), ];
+            mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
             installer.install_package(["requests>=2.28.0"]);
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args[0][0];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "--no-cache-dir" in call_args;
@@ -1834,16 +1823,14 @@ test "update always uses upgrade flag" {
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
-                    (0, "[]", ""),
-                    (0, "", ""),
-                    (0, "[]", ""),
+                    (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
                 result = proj_cmds.update();
             }
             assert result == 0;
-            first_call_args = mock_pip.call_args_list[1][0][0];
+            first_call_args = mock_pip.call_args_list[0][0][0];
             assert "--upgrade" in first_call_args;
         } finally {
             os.chdir(original_cwd);

@@ -235,26 +235,25 @@ impl DependencyInstaller._make_git_spec(
     return f"git+{git_url}";
 }
 
+impl DependencyInstaller._snapshot_installed -> tuple[bool, set[tuple]] {
+    import json;
+    (rc, out, _) = self._run_pip(["list", "--format=json"]);
+    if rc == 0 {
+        return (True, {(p["name"].lower(), p["version"]) for p in json.loads(out)});
+    }
+    return (False, set());
+}
+
 """Install packages given a list of pip specs."""
 impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     if not specs {
         return True;
     }
     self.ensure_venv();
-    import json;
     is_dry_run = "--dry-run" in self.install_flags;
-    # Snapshot before install so the diff reflects what actually changed
-    before_set: set[tuple] = set();
-    before_snapshot_ok = False;
-    if not is_dry_run {
-        (rc_before, before_json, _) = self._run_pip(["list", "--format=json"]);
-        if rc_before == 0 {
-            before_set = {
-                (p["name"].lower(), p["version"]) for p in json.loads(before_json)
-            };
-            before_snapshot_ok = True;
-        }
-    }
+    (before_snapshot_ok, before_set) = (
+        self._snapshot_installed() if not is_dry_run else (False, set())
+    );
     (returncode, stdout, stderr) = self._run_pip(
         ["install", "--upgrade"] + self.install_flags + specs
     );
@@ -268,11 +267,8 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
             return True;
         }
         newly_installed: list[tuple] = [];
-        (rc_after, after_json, _) = self._run_pip(["list", "--format=json"]);
-        if rc_after == 0 and before_snapshot_ok {
-            after_set = {
-                (p["name"].lower(), p["version"]) for p in json.loads(after_json)
-            };
+        (after_ok, after_set) = self._snapshot_installed();
+        if after_ok and before_snapshot_ok {
             newly_installed = sorted(after_set - before_set);
         }
         if newly_installed {
