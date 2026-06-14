@@ -1163,11 +1163,11 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             _idx += 1;
         }
     }
-    # Anything left over (multi-hop, value-compare filter) is unsupported.
-    if _idx != len(chain) {
-        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
-        return None;
-    }
+    # Leftover chain elements (multi-hop `[here -->-->]`, value-compare filter
+    # `[?:Area(x > 1)]`) are unsupported. The native capability authority
+    # (`native_capability_violations`) rejects them pre-codegen with the same
+    # single-hop chain reduction, so this module never reaches codegen; the
+    # reduction below can assume a clean `[origin?, EdgeOpRef, FilterCompr?]`.
     # ── edge-type filter tag ────────────────────────────────────────────────
     _dir = int(step.edge_dir.value);
     _edge_tag = -1;
