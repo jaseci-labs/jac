@@ -175,9 +175,16 @@ obj path {
 #   import from "@jac/desktop" { fs, dialog, clipboard }
 #
 #   async def export_notes() -> None {
-#       picked = await dialog.save_file(title="Export", default_name="notes.txt");
+#       picked = await dialog.save_file("Export", "notes.txt");
 #       if not picked["canceled"] {
 #           await fs.write_file(picked["path"], current_text);
 #           await dialog.message("Saved", "Notes exported.");
 #       }
 #   }
+#
+# Call these with POSITIONAL arguments, not keywords. The cl compiler can't
+# resolve param names across the @jac/desktop module boundary, so a keyword call
+# like `dialog.save_file(title="Export", default_name="notes.txt")` silently
+# compiles to a single options object passed as the first positional arg — the
+# host then receives `title={...}` and fails. Tracked in jaseci-labs/jaseci#6675;
+# until fixed, pass positionally.
