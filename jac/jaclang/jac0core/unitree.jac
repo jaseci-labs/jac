@@ -573,7 +573,9 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
     has name: Name,
         arch_type: Token,
         base_classes: (Sequence[Expr] | None),
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        src_endpoint: (Expr | None) = None,
+        tgt_endpoint: (Expr | None) = None;
 
     def postinit -> None;
     def _get_impl_resolved_body -> list;

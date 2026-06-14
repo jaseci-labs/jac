@@ -2163,6 +2163,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             #   1. FilterCompr `[?:T]` directly in chain (e.g. [-->[?:Todo]])
             #   2. EdgeOpRef typed-edge filter `->:T:->` — when edges_only,
             #      the result element is T itself. Issue #5885 gap 6.
+            #   3. EdgeOpRef whose edge T declares endpoint node types
+            #      (`edge T: Src --> Tgt`) — a neighbour traversal narrows to
+            #      the declared node type for the direction. Issue #6657.
             # Bare untyped traversals stay as `list[<Any>]` so visit, spawn,
             # and other consumers retain their gradual-typing semantics.
             if self.prefetch and self.prefetch.list_class {
@@ -2183,6 +2186,22 @@ impl TypeEvaluator._get_type_of_expression_core(
                         ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
                         if isinstance(ft, types.ClassType) and ft.is_edge_type() {
                             element_type = self._convert_to_instance(ft);
+                        }
+                    } elif (
+                        isinstance(chain_item, uni.EdgeOpRef)
+                        and not expr.edges_only
+                        and chain_item.filter_cond is not None
+                        and chain_item.filter_cond.f_type is not None
+                    ) {
+                        # `[... ->:T:-> ...]` neighbour: if T declares endpoint
+                        # node types, narrow to the declared node for the
+                        # traversal direction (out -> target, in -> source).
+                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
+                        if isinstance(ft, types.ClassType) and ft.is_edge_type() {
+                            ep = self._edge_endpoint_type(ft, chain_item.edge_dir);
+                            if ep is not None {
+                                element_type = self._convert_to_instance(ep);
+                            }
                         }
                     }
                 }

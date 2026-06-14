@@ -3,6 +3,7 @@
 import os;
 import from pathlib { Path }
 import jaclang;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -5242,5 +5243,56 @@ test "callable_null_default_rejected_outside_native" {
         has fn: Callable[[int], int] = 0;  # <-- Error
     """,
         program.errors_had[0].pretty_print()
+    );
+}
+
+test "edge_endpoint_typing_narrows_neighbour_traversals" {
+    # Issue #6657: an edge that declares `: Src --> Tgt` lets a neighbour
+    # traversal infer the declared node type instead of `any`, with no
+    # `[?:Type]` filter -- so a field read off the result resolves statically.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "edge_endpoint_typing.jac"), type_check=True
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\\n" + "\\n---\\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    expected = {
+        "follow_out": "list[Profile]",  # ->:Follow:-> narrows to target
+        "post_in": "list[Profile]",  # <-:Post:<- narrows to source
+        "post_out": "list[Tweet]",  # ->:Post:-> narrows to target
+        "untyped": "list[<any>]",  # bare edge stays gradual
+        "inherited": "list[Profile]",  # subtype edge inherits endpoints
+        "one": "Tweet",  # subscript element of a narrowed list
+        "field_read": "str"  # field read off a narrowed element
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
+
+test "edge_endpoint_clause_rejected_on_non_edge" {
+    # Issue #6657: the endpoint clause is edge-only; a node carrying one is an
+    # E2027 rather than a silently-ignored declaration.
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "edge_endpoint_on_node.jac"), type_check=True
+    );
+    has_e2027 = False;
+    for alrt in program.errors_had {
+        if alrt.code is not None and alrt.code.code == "E2027" {
+            has_e2027 = True;
+        }
+    }
+    assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n" + "\\n---\\n".join(
+        e.pretty_print() for e in program.errors_had
     );
 }

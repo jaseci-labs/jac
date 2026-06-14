@@ -412,3 +412,23 @@ test "osp field access: reading a field off an edge-ref / filtered node-ref elem
         require=["na"]
     );
 }
+
+test "osp typed edge endpoints: field read off an unfiltered neighbour traversal" {
+    # Issue #6657: with `edge Portal: Spot --> Spot`, an UNFILTERED neighbour
+    # traversal `[here ->:Portal:->]` narrows to list[Spot], so native recovers
+    # the struct layout from the adjacency handle and reads the field correctly
+    # -- no `[?:Spot]` filter. (The untyped form of this read still E5090s; see
+    # test_native_feature_guardrail.jac.) na must match the py reference.
+    assert run_py_fixture("osp_typed_endpoint_field", "typed_endpoint_py") == {
+        "count": 2,
+        "nbr_tag": 99,
+        "sum_tag": 106
+    };
+    run_with_both(
+        "osp_typed_endpoint_field.jac",
+        "typed_endpoint_py",
+        "typed_endpoint_na",
+        "typed_endpoint_na",
+        require=["na"]
+    );
+}

@@ -147,15 +147,16 @@ test "guardrail: yield expression is rejected" {
     )}";
 }
 
-# Reading a field off an UNFILTERED node-ref element is unsupported: the
-# checker types the neighbour as `any` (an edge can connect any node types, so
-# the adjacency returns untyped handles), so native cannot resolve the element
-# to a struct layout. It must E5090 -- and crucially must NOT throw an uncaught
-# codegen traceback (issue #6646 Bug 3) -- AND the diagnostic must guide the
-# author to the only sound narrowing today, a `[?:Type]` node filter (until
-# typed edge endpoints land, issue #6657). A typed receiver (edge ref, or a
-# `[?:Type]`-filtered node ref) IS supported; see test_osp_equivalence.jac
-# "osp field access".
+# Reading a field off an UNFILTERED node-ref element over an *untyped* edge is
+# unsupported: the checker types the neighbour as `any` (a bare edge can connect
+# any node types, so the adjacency returns untyped handles), so native cannot
+# resolve the element to a struct layout. It must E5090 -- and crucially must
+# NOT throw an uncaught codegen traceback (issue #6646 Bug 3) -- AND the
+# diagnostic must guide the author to a narrowing: a `[?:Type]` node filter, or
+# declaring the edge's endpoint node types. A typed receiver (edge ref, a
+# `[?:Type]`-filtered node ref, or -- since #6657 -- a neighbour over an edge
+# with declared endpoints) IS supported and reads correctly on native; see
+# test_osp_equivalence.jac "osp field access" and "osp typed edge endpoints".
 test "guardrail: field access on an untyped (any) node-ref element is rejected with a filter hint" {
     prog = compile_na_inline(
         "node_ref_any_field",
@@ -189,6 +190,12 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
     )}";
 }
 
+
+# (The typed-endpoint counterpart -- that the UNFILTERED field read over an edge
+# with declared endpoints compiles AND reads the right value on native -- is a
+# behavioral test in test_osp_equivalence.jac "osp typed edge endpoints", per
+# this file's convention of migrating a feature to a behavioral test once it
+# gains real support.)
 
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)

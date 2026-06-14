@@ -341,6 +341,18 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
             self.emit(E2083, node_override=nd);
         }
     }
+
+    # E2027: an edge endpoint clause `: Src --> Tgt` is only meaningful on edges.
+    for nd in mod.get_all_sub_nodes(typ=uni.Archetype, brute_force=True) {
+        if nd.src_endpoint is not None and nd.arch_kind != "edge" {
+            self.emit(
+                E2027,
+                node_override=nd.src_endpoint,
+                arch_type=(nd.arch_kind or nd.arch_type.value),
+                name=nd.name.value
+            );
+        }
+    }
 }
 
 """Flag imports of names that are now ambient or have a Jac builtin equivalent.
