@@ -85,12 +85,17 @@ impl RedisDb.delete_if_equals(
     return int(result) == 1;
 }
 
+# Redis stores keys as "{db_name}:{col_name}:{original_key}" — exactly two prefix
+# segments — so split on at most two colons and keep the remainder. Using
+# split(':', 2)[2] (rather than split(':')[-1]) preserves original keys that
+# themselves contain ':', e.g. "session:user1" stays "session:user1" instead of
+# being silently truncated to "user1".
 impl RedisDb.scan_keys(pattern: str, col_name: str = 'default') -> list[str] {
     full_pattern = self._get_redis_key(col_name, pattern);
     keys = [];
     for key in self.client.scan_iter(match=full_pattern) {
         key_str = key.decode('utf-8') if isinstance(key, bytes) else key;
-        keys.append(key_str.split(':')[-1]);
+        keys.append(key_str.split(':', 2)[2]);
     }
     return keys;
 }

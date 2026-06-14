@@ -151,12 +151,17 @@ test "redis kv operations" {
     assert db.incr("page:views") == 2;
     assert db.incr("page:views") == 3;
 
-    # Pattern scan
+    # Pattern scan. Keys deliberately contain ':' so that scan_keys must return
+    # the full original key (e.g. "session:user1") and not truncate it to
+    # "user1" — the key prefix is stripped, not every colon-delimited segment.
     db.set("session:user1", {"id": "1"});
     db.set("session:user2", {"id": "2"});
     db.set("config:app", {"theme": "dark"});
-    assert len(db.scan_keys("session:*")) == 2;
-    assert len(db.scan_keys("config:*")) == 1;
+    session_keys = db.scan_keys("session:*");
+    assert len(session_keys) == 2;
+    assert "session:user1" in session_keys;
+    assert "session:user2" in session_keys;
+    assert db.scan_keys("config:*") == ["config:app"];
 
     cleanup_connections();
 }
