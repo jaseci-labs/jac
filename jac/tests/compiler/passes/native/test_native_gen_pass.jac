@@ -307,6 +307,23 @@ test "strings concat" {
     assert f(b"hello ", b"world") == b"hello world";
 }
 
+# --- TestNativeGetenvDefault (regression: issue #6688) ---
+test "os getenv honors default for unset var issue 6688" {
+    # `os.getenv(key, default)` ignored its default and returned NULL for an
+    # unset var; any downstream string op (`len`/`+`/`!=`) then `strlen`'d NULL
+    # and segfaulted at startup. quakepassion's `os.getenv("QP_SMOKE", "") != ""`
+    # crashed `./main` instantly (misread as a render-loop use-after-free). The
+    # default must now be substituted. GETENV_UNSET_6688 is never set here.
+    os.environ.pop("GETENV_UNSET_6688", None);
+    (eng, _) = compile_native("fix_getenv_default.na.jac");
+    f1 = get_func(eng, "getenv_unset_string_default", ctypes.c_int64);
+    assert f1() == 8 , "os.getenv unset must return the string default ('fallback')";
+    f2 = get_func(eng, "getenv_unset_empty_default", ctypes.c_int64);
+    assert f2() == 0 , "os.getenv unset must return the empty-string default";
+    f3 = get_func(eng, "getenv_unset_concat", ctypes.c_int64);
+    assert f3() == 5 , "concatenating an unset os.getenv default must not crash";
+}
+
 # UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
 # previously unimplemented in native (returned empty); these lock in that
 # `s.encode()[a:b].decode()` round-trips and that byte access is portable.
