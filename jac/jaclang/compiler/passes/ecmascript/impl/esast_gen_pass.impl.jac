@@ -1073,6 +1073,195 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
+"""Return True when a return-type annotation includes ``JsxElement``.
+
+Recognises a bare ``JsxElement`` name or any ``|``-chained union whose leaf
+members include ``JsxElement`` (e.g. ``JsxElement | None``).
+"""
+impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        return (
+            self._return_type_includes_jsx_element(rt.left)
+            or self._return_type_includes_jsx_element(rt.right)
+        );
+    }
+    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+}
+
+"""Return the calling convention a JSX-returning ability expects.
+
+`direct`
+    Ordinary function ABI — positional/direct JS call lowering is correct.
+`props_passthrough`
+    Single parameter literally named ``props``; the body reads the bundle
+    directly and call sites must not rewrap.
+`props_destructure`
+    JSX component lowered to ``function X(props) { const {a, b} = props; }``;
+    direct calls must wrap arguments into a single props object.
+
+The result is cached on ``ability_node.gen.component_call_abi`` so the
+callee-lowering and call-site-lowering paths consult one shared decision.
+"""
+impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
+    cached_abi = ability_node.gen?.component_call_abi;
+    if isinstance(cached_abi, str) and cached_abi {
+        return cached_abi;
+    }
+    abi = 'direct';
+    if isinstance(ability_node.signature, uni.FuncSignature) {
+        sig = ability_node.signature;
+        if sig.get_parameters() {
+            rt = sig.return_type;
+            # JSX detection relies on the explicit return type annotation:
+            # a bare ``-> JsxElement`` or a union that includes ``JsxElement``
+            # (e.g. ``-> JsxElement | None``).
+            if rt is not None and self._return_type_includes_jsx_element(rt) {
+                # Runtime helpers (e.g. __jacJsx) are not user components; keep
+                # their original positional ABI so parameter names don't collide
+                # with the synthetic `props` destructuring parameter.
+                if (
+                    ability_node.name_ref
+                    and ability_node.name_ref.sym_name
+                    and ability_node.name_ref.sym_name.startswith('__jac')
+                ) {
+                    abi = 'direct';
+                } else {
+                    # Use the same positional-param list that
+                    # ``_param_names_from_ability`` consumes so the two stay
+                    # in lockstep.  ``get_parameters()`` includes varargs /
+                    # kwonly / kwargs, which must not influence the
+                    # ``props_passthrough`` count (a single ``props`` plus
+                    # ``**kwargs`` is still passthrough).
+                    all_pos_params = self._pos_params_from_ability(ability_node);
+                    if (
+                        len(all_pos_params) == 1
+                        and all_pos_params[0].name.sym_name == 'props'
+                    ) {
+                        abi = 'props_passthrough';
+                    } else {
+                        abi = 'props_destructure';
+                    }
+                }
+            }
+        }
+    }
+    ability_node.gen.component_call_abi = abi;
+    return abi;
+}
+
+"""Lower a props-destructured component call that includes positional spreads.
+
+A direct call like ``Greeting(*vals)`` cannot be wrapped by naively turning the
+spread into ``{...vals}``, because that would create numeric object keys rather
+than mapping spread positions onto parameter names.  Instead we pack the
+expanded positional sequence into an array once, then synthesize the props
+object by reading indices back out in parameter order.
+"""
+impl EsastGenPass._build_props_spread_component_call(
+    nd: uni.FuncCall,
+    callee_expr: es.Expression,
+    ability_node: uni.Ability,
+    args: list[(es.Expression | es.SpreadElement)],
+    props: list[(es.Property | es.SpreadElement)]
+) -> es.Expression {
+    param_names = self._param_names_from_ability(ability_node);
+    packed_args = self.sync_loc(es.ArrayExpression(elements=args), jac_node=nd);
+    packed_kwargs = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
+    args_id = self.sync_loc(es.Identifier(name='__jac_args'), jac_node=nd);
+    kwargs_id = self.sync_loc(es.Identifier(name='__jac_kwargs'), jac_node=nd);
+    wrap_props: list[es.Property] = [];
+    for (i, pname) in enumerate(param_names) {
+        len_expr = self.sync_loc(
+            es.MemberExpression(
+                object=args_id, property=es.Identifier(name='length'), computed=False
+            ),
+            jac_node=nd
+        );
+        pos_exists = self.sync_loc(
+            es.BinaryExpression(
+                operator='>',
+                left=len_expr,
+                right=self.sync_loc(es.Literal(value=i), jac_node=nd)
+            ),
+            jac_node=nd
+        );
+        pos_value = self.sync_loc(
+            es.MemberExpression(
+                object=args_id,
+                property=self.sync_loc(es.Literal(value=i), jac_node=nd),
+                computed=True
+            ),
+            jac_node=nd
+        );
+        kw_value = self.sync_loc(
+            es.MemberExpression(
+                object=kwargs_id,
+                property=self.sync_loc(es.Literal(value=pname), jac_node=nd),
+                computed=True
+            ),
+            jac_node=nd
+        );
+        wrap_props.append(
+            self.sync_loc(
+                es.Property(
+                    key=self.sync_loc(es.Identifier(name=pname), jac_node=nd),
+                    value=self.sync_loc(
+                        es.ConditionalExpression(
+                            `test=pos_exists, consequent=pos_value, alternate=kw_value
+                        ),
+                        jac_node=nd
+                    ),
+                    kind='init',
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                ),
+                jac_node=nd
+            )
+        );
+    }
+    inner_call = self.sync_loc(
+        es.CallExpression(
+            callee=callee_expr,
+            arguments=[
+                self.sync_loc(es.ObjectExpression(properties=wrap_props), jac_node=nd)
+            ]
+        ),
+        jac_node=nd
+    );
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(
+                es.ArrowFunctionExpression(
+                    params=[args_id, kwargs_id],
+                    body=inner_call,
+                    expression=True,
+                    async_=False
+                ),
+                jac_node=nd
+            ),
+            arguments=[packed_args, packed_kwargs]
+        ),
+        jac_node=nd
+    );
+}
+
+"""Return the positional parameters (posonly + regular) of an ability.
+
+Shared helper so ``_component_call_abi`` and call-site lowering both derive
+parameter order from the same source and never drift out of sync.
+"""
+impl EsastGenPass._pos_params_from_ability(
+    ability_node: uni.Ability
+) -> list[uni.ParamVar] {
+    sig = ability_node.signature;
+    return (sig.posonly_params or []) + (sig.params or []);
+}
+
 """Extract normal positional parameter names from an ability."""
 impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[str] {
     if not isinstance(ability_node.signature, uni.FuncSignature) {
@@ -1080,13 +1269,8 @@ impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[s
     }
     sig = ability_node.signature;
     names: list[str] = [];
-    for p in sig.posonly_params {
+    for p in self._pos_params_from_ability(ability_node) {
         names.append(p.name.sym_name);
-    }
-    if sig.params {
-        for p in sig.params {
-            names.append(p.name.sym_name);
-        }
     }
     for p in sig.kwonlyargs {
         names.append(p.name.sym_name);
@@ -1706,6 +1890,18 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             );
             continue;
         }
+        if (isinstance(param, uni.UnaryExpr) and param.op.name == Tok.STAR_MUL.value) {
+            spread_arg = cast(
+                es.Expression,
+                param.operand.gen.es_ast
+                    if (param.operand and param.operand.gen.es_ast)
+                    else self.sync_loc(es.Identifier(name='undefined'), jac_node=param)
+            );
+            args.append(
+                self.sync_loc(es.SpreadElement(argument=spread_arg), jac_node=param)
+            );
+            continue;
+        }
         if param.gen.es_ast {
             args.append(cast(es.Expression, param.gen.es_ast));
         }
@@ -1874,15 +2070,15 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     call_args: list[(es.Expression | es.SpreadElement)] = args;
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, nd);
     use_kwargs_temp = spread_read_source is not None;
+    ability_node_resolved = self._resolve_call_ability(nd);
     if props {
-        ability_node = self._resolve_call_ability(nd);
-        if ability_node {
+        if ability_node_resolved {
             ordered_args = self._call_args_from_slots(
                 self._resolve_call_arg_slots(
                     nd,
                     args,
                     props,
-                    self._param_names_from_ability(ability_node),
+                    self._param_names_from_ability(ability_node_resolved),
                     nd.target.sym_name if isinstance(nd.target, uni.Name) else "func",
                     spread_read_source
                 )
@@ -1891,6 +2087,63 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         } else {
             call_args = [args_obj];
         }
+    }
+    # --- Props-wrapped component call lowering ---
+    # JSX-returning functions lowered to `function X(props) { const {a, b} =
+    # props; }` need direct call sites to synthesize that single props object.
+    if (
+        ability_node_resolved
+        and self._component_call_abi(ability_node_resolved) == 'props_destructure'
+    ) {
+        result_expr: es.Expression;
+        # We test the *raw* ``args`` (before keyword reordering) for
+        # positional spreads because a spread in the original positional
+        # list changes how we must pack the props object.  ``call_args``
+        # has already been reordered by ``_resolve_call_arg_slots``, so
+        # it is not the right source for this test.
+        if any(isinstance(arg, es.SpreadElement) for arg in args) {
+            result_expr = self._build_props_spread_component_call(
+                nd, callee_expr, ability_node_resolved, args, props
+            );
+        } else {
+            wrap_props: list[es.Property] = [];
+            param_names = self._param_names_from_ability(ability_node_resolved);
+            for (i, arg) in enumerate(call_args) {
+                if i < len(param_names) {
+                    wrap_props.append(
+                        self.sync_loc(
+                            es.Property(
+                                key=self.sync_loc(
+                                    es.Identifier(name=param_names[i]), jac_node=nd
+                                ),
+                                value=cast(es.Expression, arg),
+                                kind='init',
+                                method=False,
+                                shorthand=False,
+                                computed=False
+                            ),
+                            jac_node=nd
+                        )
+                    );
+                }
+            }
+            result_expr = self.sync_loc(
+                es.CallExpression(
+                    callee=callee_expr,
+                    arguments=[
+                        self.sync_loc(
+                            es.ObjectExpression(properties=wrap_props), jac_node=nd
+                        )
+                    ]
+                ),
+                jac_node=nd
+            );
+            if use_kwargs_temp and spread_arg is not None {
+                result_expr = self._wrap_with_kwargs_temp(result_expr, spread_arg, nd);
+            }
+        }
+        nd.gen.es_ast = result_expr;
+        return;
     }
     if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
@@ -4150,19 +4403,6 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         self._transform_to_useeffect(nd);
         return;
     }
-    is_jsx_in_return = False;
-    if isinstance(nd.body, list) {
-        for stmt in nd.body {
-            if isinstance(stmt, uni.ReturnStmt) {
-                for i in stmt.kid {
-                    if isinstance(i, uni.JsxElement) {
-                        is_jsx_in_return = True;
-                        break;
-                    }
-                }
-            }
-        }
-    }
     # A client JSX component opts into being a ref target -- React's
     # `forwardRef((props, ref) => ...)` render signature -- by declaring a
     # trailing `ref: Ref` parameter. When present, `ref` is threaded as the 2nd
@@ -4172,7 +4412,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     # it silently fails to position (#6520).
     ref_param: (uni.ParamVar | None) = None;
     if (
-        nd.code_context == CodeContext.CLIENT and not nd.is_method and is_jsx_in_return
+        nd.code_context == CodeContext.CLIENT
+        and not nd.is_method
+        and self._component_call_abi(nd) in ('props_destructure', 'props_passthrough')
     ) {
         ref_param = self._ref_forward_param(nd);
     }
@@ -4194,14 +4436,12 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
                 else [];
         }
     }
+    component_call_abi = self._component_call_abi(nd);
     params: list[es.Pattern] = [];
     destructure_stmts: list[es.Statement] = [];
     destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
     # The forwarded `ref` is threaded as a trailing positional arg below, never a
     # destructured prop, so it is filtered out of the value-param handling here.
-    # `sig_params` mirrors the `.params` view used for the props-destructure
-    # decision; `value_params` mirrors `get_parameters()` for the passthrough
-    # loop (which also carries varargs/kwonly).
     sig_params = (
         [
             p
@@ -4221,8 +4461,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             else []
     );
     if value_params {
-        if is_jsx_in_return
-        and not (len(sig_params) == 1 and sig_params[0].name.sym_name == 'props') {
+        if component_call_abi == 'props_destructure' {
             params.append(es.Identifier(name="props"));
             for param in sig_params {
                 param_key = self.sync_loc(
@@ -4271,17 +4510,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             # any single-`props` signature). Surface W5015 so the author picks
             # direct named params explicitly — or suppresses with
             # `# jac:ignore[W5015]` for legitimate forwarding/HOC cases.
-            # A trailing `ref` param is itself a deliberate React-`forwardRef`
-            # shape, so the `(props, ref)` signature it implies is not the
-            # accidental props-bundle W5015 warns about -- skip it then.
-            if (
-                is_jsx_in_return
-                and len(sig_params) == 1
-                and sig_params[0].name.sym_name == 'props'
-                and ref_param is None
-            ) {
+            if component_call_abi == 'props_passthrough' {
                 self.emit(
-                    W5015, node_override=sig_params[0], component=nd.name_ref.sym_name
+                    W5015, node_override=value_params[0], component=nd.name_ref.sym_name
                 );
             }
             for param in value_params {
