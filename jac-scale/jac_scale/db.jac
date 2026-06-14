@@ -132,13 +132,6 @@ obj Db {
         db_name: str = 'jac_db',
         db_type: DatabaseType = DatabaseType.MONGODB;
 
-    # ===== PRIVATE HELPER METHODS =====
-    """Get MongoDB collection reference."""
-    def _get_mongo_collection(col_name: str) -> Collection;
-
-    """Get namespaced Redis key."""
-    def _get_redis_key(col_name: str, key: str) -> str;
-
     # ===== COMMON METHODS (work for both MongoDB and Redis) =====
     """Get a document/value by key.
 

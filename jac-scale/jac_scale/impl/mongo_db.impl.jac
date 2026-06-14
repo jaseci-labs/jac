@@ -1,0 +1,187 @@
+"""MongoDB implementation for MongoDb."""
+
+"""Check if a collection is read-only (protected from user modifications)."""
+def _is_read_only_collection(col_name: str) -> bool {
+    return col_name == '_anchors';
+}
+
+"""Validate that a collection is not read-only, raise error if it is."""
+def _validate_not_read_only(col_name: str) {
+    if _is_read_only_collection(col_name) {
+        raise PermissionError(
+            f"Collection '{col_name}' is read-only and cannot be modified. "
+            "This is a system collection managed internally."
+        );
+    }
+}
+
+impl MongoDb._get_mongo_collection(col_name: str) -> Collection {
+    return self.client[self.db_name][col_name];
+}
+
+impl MongoDb.get(key: str, col_name: str = 'default') -> dict | None {
+    result = self._get_mongo_collection(col_name).find_one({'_id': key});
+    if result is None {
+        try {
+            result = self._get_mongo_collection(col_name).find_one(
+                {'_id': ObjectId(key)}
+            );
+        } except Exception { }
+    }
+    return result;
+}
+
+impl MongoDb.set(key: str, value: dict, col_name: str = 'default') -> str {
+    _validate_not_read_only(col_name);
+    col = self._get_mongo_collection(col_name);
+    value_copy = value.copy();
+    value_copy['_id'] = key;
+    col.replace_one({'_id': key}, value_copy, upsert=True);
+    return key;
+}
+
+impl MongoDb.delete(key: str, col_name: str = 'default') -> int {
+    _validate_not_read_only(col_name);
+    result = self._get_mongo_collection(col_name).delete_one({'_id': key});
+    if result.deleted_count == 0 {
+        try {
+            result = self._get_mongo_collection(col_name).delete_one(
+                {'_id': ObjectId(key)}
+            );
+        } except Exception { }
+    }
+    return result.deleted_count;
+}
+
+impl MongoDb.exists(key: str, col_name: str = 'default') -> bool {
+    exists = self._get_mongo_collection(col_name).count_documents(
+        {'_id': key}, limit=1
+    ) > 0;
+    if not exists {
+        try {
+            exists = self._get_mongo_collection(col_name).count_documents(
+                {'_id': ObjectId(key)}, limit=1
+            ) > 0;
+        } except Exception { }
+    }
+    return exists;
+}
+
+impl MongoDb.find_one(
+    col_name: str, filter: dict, projection: dict | None = None
+) -> dict | None {
+    col: Any = self._get_mongo_collection(col_name);
+    return col.find_one(filter, projection);
+}
+
+impl MongoDb.find(
+    col_name: str, filter: dict, projection: dict | None = None
+) -> Cursor | list {
+    col: Any = self._get_mongo_collection(col_name);
+    return col.find(filter, projection);
+}
+
+impl MongoDb.count_documents(col_name: str, filter: dict) -> int {
+    col: Any = self._get_mongo_collection(col_name);
+    return col.count_documents(filter);
+}
+
+"""Create an index. Idempotent — pymongo returns the existing index's name
+if one with the same spec already exists."""
+impl MongoDb.create_index(
+    col_name: str, keys: dict, unique: bool = False, name: str | None = None
+) -> str {
+    key_spec = [(k, v) for (k, v) in keys.items()];
+    col: Any = self._get_mongo_collection(col_name);
+    if name is not None {
+        return col.create_index(key_spec, unique=unique, name=name);
+    }
+    return col.create_index(key_spec, unique=unique);
+}
+
+impl MongoDb.insert_one(
+    col_name: str, document: dict
+) -> PyMongoInsertOneResult | InsertResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).insert_one(document);
+}
+
+impl MongoDb.update_one(
+    col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
+) -> PyMongoUpdateResult | UpdateResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).update_one(
+        filter, update_data, upsert=upsert_mode
+    );
+}
+
+impl MongoDb.delete_one(
+    col_name: str, filter: dict
+) -> PyMongoDeleteResult | DeleteResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).delete_one(filter);
+}
+
+impl MongoDb.insert_many(
+    col_name: str, documents: list
+) -> PyMongoInsertManyResult | InsertManyResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).insert_many(documents);
+}
+
+impl MongoDb.update_many(
+    col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
+) -> PyMongoUpdateResult | UpdateResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).update_many(
+        filter, update_data, upsert=upsert_mode
+    );
+}
+
+impl MongoDb.delete_many(
+    col_name: str, filter: dict
+) -> PyMongoDeleteResult | DeleteResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).delete_many(filter);
+}
+
+impl MongoDb.find_by_id(col_name: str, id: str) -> dict | None {
+    return self._get_mongo_collection(col_name).find_one({'_id': ObjectId(id)});
+}
+
+impl MongoDb.update_by_id(
+    col_name: str, id: str, update_data: dict, upsert_mode: bool = False
+) -> PyMongoUpdateResult | UpdateResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).update_one(
+        {'_id': ObjectId(id)}, update_data, upsert=upsert_mode
+    );
+}
+
+impl MongoDb.delete_by_id(
+    col_name: str, id: str
+) -> PyMongoDeleteResult | DeleteResult {
+    _validate_not_read_only(col_name);
+    return self._get_mongo_collection(col_name).delete_one({'_id': ObjectId(id)});
+}
+
+impl MongoDb.find_nodes(
+    node_type: str, filter: dict = {}, col_name: str = '_anchors'
+) -> list {
+    mongo_filter: dict = {"data.archetype.__type__": node_type};
+    for (key, value) in filter.items() {
+        mongo_filter[f"data.archetype.{key}"] = value;
+    }
+    col = self._get_mongo_collection(col_name);
+    results: list = [];
+    for doc in col.find(mongo_filter) {
+        if (data := doc.get('data')) {
+            if (anchor := Serializer.deserialize(data)) {
+                if anchor?.archetype {
+                    results.append(anchor.archetype);
+                }
+            }
+        }
+    }
+    return results;
+}
