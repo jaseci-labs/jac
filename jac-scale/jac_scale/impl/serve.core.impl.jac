@@ -303,7 +303,7 @@ impl JacAPIServerCore.start(
     # Back `root.shared`: map the guest user (created above) to its root id.
     _um = self.user_manager;
     def _shared_root_id -> (str | None) {
-        return _um.get_root_id(Con.GUEST.value);
+        return _um.ensure_root_id(Con.GUEST.value);
     }
     Jac.set_shared_root_resolver(_shared_root_id);
     self.setup_emailer();

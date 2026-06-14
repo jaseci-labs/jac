@@ -134,6 +134,38 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     return result;
 }
 
+"""Return a user's root_id, repairing the guest root if its anchor is gone.
+
+Jac-scale stores users in IdentityStorage, not UserManager's legacy SQLite
+users table. ExecutionManager routes through ensure_root_id (not get_root_id),
+so this override must resolve via identity storage and reuse the guest-root
+repair path from jaclang's UserManager.
+"""
+impl JacScaleUserManager.ensure_root_id(username: str) -> str | None {
+    root_id = self.get_root_id(username);
+    if not root_id {
+        return None;
+    }
+    guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
+    user = self.get_user(username);
+    resolved_user_id = user.get('user_id') if user else username;
+    is_guest = (
+        username == Con.GUEST.value
+        or (guest_user is not None and resolved_user_id == guest_user.get('user_id'))
+    );
+    if not is_guest or self._root_anchor_exists(root_id) {
+        return root_id;
+    }
+    new_root_id = self._create_root_id();
+    storage_user_id = guest_user.get('user_id') if guest_user else resolved_user_id;
+    self._identity_storage.update_user_fields(
+        storage_user_id,
+        {'root_id': new_root_id, 'updated_at': datetime.now(UTC).isoformat()}
+    );
+    _root_id_request_cache.set(None);
+    return new_root_id;
+}
+
 """Update password by user_id."""
 impl JacScaleUserManager.update_password(
     user_id: str, current_password: str, new_password: str
