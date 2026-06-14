@@ -7,6 +7,7 @@ import from jac_scale.db {
     DeleteResult
 }
 import from jac_scale._optdeps.pymongo {
+    MongoClient,
     PyMongoInsertOneResult,
     PyMongoInsertManyResult,
     PyMongoUpdateResult,
@@ -18,6 +19,8 @@ import from jac_scale._optdeps.pymongo {
 import from jaclang.runtimelib.serializer { Serializer }
 
 obj MongoDb(Db) {
+    has client: MongoClient;
+
     """Get MongoDB collection reference."""
     def _get_mongo_collection(col_name: str) -> Collection;
 

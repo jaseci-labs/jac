@@ -116,8 +116,7 @@ def close_all_db_connections {
 }
 
 obj Db {
-    has client: (MongoClient | Redis),
-        db_name: str = 'jac_db';
+    has db_name: str = 'jac_db';
 
     def get(key: str, col_name: str = 'default') -> dict | None;
     def set(key: str, value: dict, col_name: str = 'default') -> str;

@@ -1,18 +1,26 @@
 """MongoDB implementation for MongoDb."""
 import from jac_scale._db_helpers { _validate_not_read_only }
 
+"""Return a parsed ObjectId, or None if key is not valid ObjectId hex."""
+def _as_object_id(key: str) -> ObjectId | None {
+    try {
+        return ObjectId(key);
+    } except Exception {
+        return None;
+    }
+}
+
 impl MongoDb._get_mongo_collection(col_name: str) -> Collection {
     return self.client[self.db_name][col_name];
 }
 
 impl MongoDb.get(key: str, col_name: str = 'default') -> dict | None {
-    result = self._get_mongo_collection(col_name).find_one({'_id': key});
+    col = self._get_mongo_collection(col_name);
+    result = col.find_one({'_id': key});
     if result is None {
-        try {
-            result = self._get_mongo_collection(col_name).find_one(
-                {'_id': ObjectId(key)}
-            );
-        } except Exception { }
+        if (oid := _as_object_id(key)) {
+            result = col.find_one({'_id': oid});
+        }
     }
     return result;
 }
@@ -28,27 +36,23 @@ impl MongoDb.set(key: str, value: dict, col_name: str = 'default') -> str {
 
 impl MongoDb.delete(key: str, col_name: str = 'default') -> int {
     _validate_not_read_only(col_name);
-    result = self._get_mongo_collection(col_name).delete_one({'_id': key});
+    col = self._get_mongo_collection(col_name);
+    result = col.delete_one({'_id': key});
     if result.deleted_count == 0 {
-        try {
-            result = self._get_mongo_collection(col_name).delete_one(
-                {'_id': ObjectId(key)}
-            );
-        } except Exception { }
+        if (oid := _as_object_id(key)) {
+            result = col.delete_one({'_id': oid});
+        }
     }
     return result.deleted_count;
 }
 
 impl MongoDb.exists(key: str, col_name: str = 'default') -> bool {
-    exists = self._get_mongo_collection(col_name).count_documents(
-        {'_id': key}, limit=1
-    ) > 0;
+    col = self._get_mongo_collection(col_name);
+    exists = col.count_documents({'_id': key}, limit=1) > 0;
     if not exists {
-        try {
-            exists = self._get_mongo_collection(col_name).count_documents(
-                {'_id': ObjectId(key)}, limit=1
-            ) > 0;
-        } except Exception { }
+        if (oid := _as_object_id(key)) {
+            exists = col.count_documents({'_id': oid}, limit=1) > 0;
+        }
     }
     return exists;
 }

@@ -1,11 +1,7 @@
-"""Shared read-only-collection guards used by MongoDb and RedisDb impls."""
-
-def _is_read_only_collection(col_name: str) -> bool {
-    return col_name == '_anchors';
-}
+"""Shared read-only-collection guard used by MongoDb and RedisDb impls."""
 
 def _validate_not_read_only(col_name: str) {
-    if _is_read_only_collection(col_name) {
+    if col_name == '_anchors' {
         raise PermissionError(
             f"Collection '{col_name}' is read-only and cannot be modified. "
             "This is a system collection managed internally."
