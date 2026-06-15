@@ -4295,7 +4295,7 @@ impl TypeEvaluator._get_type_from_flow_node(
 
         # Loop header read from after the loop: merge entry and body types.
         if isinstance(pred, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt))
-            and not self._is_within(flow_node, pred) {
+        and not self._is_within(flow_node, pred) {
             exit_type = self._loop_exit_narrowed_type(pred, target, pred_narrowed);
             if exit_type is not None {
                 incoming_types.append(exit_type);
@@ -4482,8 +4482,7 @@ impl TypeEvaluator._loop_exit_narrowed_type(
             for t in assign.target {
                 if isinstance(t, uni.Name) and self._is_within(name_atom, t) {
                     narrowed = self._assignment_narrowed_type(
-                        self.get_type_of_expression(assign.value),
-                        target.declared_type
+                        self.get_type_of_expression(assign.value), target.declared_type
                     );
                     break;
                 }
@@ -4503,7 +4502,8 @@ impl TypeEvaluator._loop_exit_narrowed_type(
         return None;
     }
     body_types.append(entry_type);
-    return body_types[0] if len(body_types) == 1
+    return body_types[0]
+        if len(body_types) == 1
         else self._union_narrowed_types(body_types);
 }
 
