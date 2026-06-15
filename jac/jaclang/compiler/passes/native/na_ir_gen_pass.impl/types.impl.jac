@@ -431,8 +431,10 @@ centrally (#6118) it was reached zero times across the native suite.
 
 An annotation that reaches codegen without a `.type` is an E9002 ICE: the
 typed-tree contract (Phase 0) guarantees inference ran, so a missing type
-is a pipeline bug, never a user error. A present-but-unlowerable type still
-defaults to i64 (capability gap, E5090 territory -- tightened separately).
+is a pipeline bug, never a user error. A present-but-unlowerable type is no
+longer silently widened to i64 -- it is reported honestly via
+`_emit_unlowerable_type` (E2018 for an unresolved type name, E5090 for a real
+native capability gap), closing the silent signed-i64 default of #6676.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
@@ -445,7 +447,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if lowered is not None {
             return lowered;
         }
-        return ir.IntType(64);
+        return self._emit_unlowerable_type(type_expr, _ptb);
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
@@ -463,6 +465,41 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if lowered is not None {
             return lowered;
         }
+        return self._emit_unlowerable_type(type_expr, type_expr.type);
+    }
+    return ir.IntType(64);
+}
+
+"""Emit an honest diagnostic for a present TypeBase that native codegen cannot
+lower to an LLVM type, then return a defensive i64 so the pass keeps running
+and surfaces every error in one go (matching the E9002 pattern above).
+
+An `UnknownType` means the central checker could not resolve the annotation's
+*name* — a user error (a typedef'd C handle, an unmodeled width like
+`uint32_t`, a typo'd type). Native annotations are *declared*, not inferred,
+so an unresolved name has no LLVM lowering and was the silent signed-i64
+default of #6676. It is reported as E2018 ("requires a defined type") — the
+same user-facing error `jac check` raises for it (#6676), so the `nacompile`
+path agrees instead of falling to a misleading "compiler bug" ICE. Any other
+present-but-unlowerable `TypeBase` (a resolved class native does not model, a
+`TypeVar`, ...) is a genuine native capability gap -> E5090.
+"""
+impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
+    is_unknown = False;
+    try {
+        import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
+        is_unknown = isinstance(tb, _UnknownType);
+    } except ImportError { }
+    _label = type_expr.unparse() if isinstance(type_expr, uni.Expr) else str(tb);
+    if is_unknown {
+        self.emit(
+            E2018,
+            node_override=type_expr,
+            name=_label,
+            position="native type annotation position"
+        );
+    } else {
+        self.emit(E5090, node_override=type_expr, kind="type", name=_label);
     }
     return ir.IntType(64);
 }

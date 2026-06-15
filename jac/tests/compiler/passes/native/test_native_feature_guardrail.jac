@@ -517,3 +517,71 @@ test "nacompile still rejects skip in a value-returning native function" {
         prog
     )}";
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# C-library (clib) import decl type resolution (issue #6676)
+# ─────────────────────────────────────────────────────────────────────
+# A clib import declares the C ABI boundary: every parameter/return type is
+# *declared*, not inferred. A type name the compiler can't resolve (a typedef'd
+# handle, an unmodeled width like `uint32_t`, an opaque struct) used to be
+# silently lowered to a SIGNED i64 at the FFI boundary — a wrong-ABI call with
+# zero diagnostics (mis-widening + the signed-comparison hazard of #6353). The
+# undefined type name must now be rejected as E2018 ("requires a defined type"),
+# both at `jac check` and at full `nacompile`, instead of compiling silently.
+test "check rejects clib decl with an unknown parameter type" {
+    prog = check_na_inline(
+        "clib_unknown_param",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> f64;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects clib decl with an unknown return type" {
+    prog = check_na_inline(
+        "clib_unknown_ret",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def make_handle(x: f64) -> some_handle;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "nacompile rejects clib decl with an unknown type (no silent i64)" {
+    prog = compile_na_inline(
+        "clib_unknown_cg",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> some_handle;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 (not a silent i64 declare) for unknown clib types, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Negative control: a clib decl whose param/return types ARE recognized
+# (primitive `f64`, and a struct declared in the same block) must compile
+# cleanly — no E2018 false positive, no E5090.
+test "clib decl with known types is not rejected" {
+    prog = compile_na_inline(
+        "clib_known_ok",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    obj Vec2 { has x: f64, y: f64; }\n"
+        "    def sqrt(x: f64) -> f64;\n"
+        "    def scale(v: Vec2, s: f64) -> Vec2;\n"
+        "}\n"
+        "def hypot(a: f64, b: f64) -> f64 { return sqrt(a * a + b * b); }\n"
+    );
+    assert not has_error_code(prog, "E2018") , f"Known clib types triggered E2018: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
+        prog
+    )}";
+}

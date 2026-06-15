@@ -112,6 +112,23 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if isinstance(parent, uni.KWPair) and parent.key is name_nd {
             continue;
         }
+        # C-library import declarations (`import from "lib" { def f(x: T); }`)
+        # DO require defined types, unlike the rest of an import statement: the
+        # C ABI boundary is declared, not inferred, so an undefined type name
+        # here would otherwise be silently lowered to a signed i64 at native
+        # codegen (issue #6676). Flag it before the blanket import skip below.
+        if not name_nd.is_kwesc {
+            clib_position = self._clib_type_position(name_nd);
+            if clib_position is not None {
+                self.emit(
+                    E2018,
+                    node_override=name_nd,
+                    name=name_nd.value,
+                    position=clib_position
+                );
+                continue;
+            }
+        }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
             continue;
@@ -193,6 +210,41 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
                 return "disconnect typed-edge position";
             }
             return None;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    return None;
+}
+
+"""Return a position label when `name_nd` is an undefined type reference inside
+a C-library import declaration (`import from "lib" { def f(x: T) -> R; }` or a
+foreign `obj`/`has` field), else None.
+
+The C ABI boundary is *declared*, not inferred: a parameter, return, or field
+annotation that names a type the compiler cannot resolve has no LLVM lowering,
+so the native backend would silently widen it to a signed i64 (issue #6676).
+That makes an undefined name here a hard error (E2018), not the stylistic
+W2001 warning the rest of an import statement gets. Mirrors
+`_osp_shape_position`: a bounded walk to the enclosing type-tag (`SubTag`) or
+function return type, stopping at the import boundary."""
+impl StaticAnalysisPass._clib_type_position(name_nd: uni.Name) -> (str | None) {
+    imp = name_nd.find_parent_of_type(uni.Import);
+    if imp is None or not imp.clib_decls {
+        return None;
+    }
+    cur: uni.UniNode = name_nd;
+    parent = cur.parent;
+    # Bound the walk so an unrelated nested name can't reach the import.
+    for _ in range(8) {
+        if parent is None or isinstance(parent, uni.Import) {
+            return None;
+        }
+        if isinstance(parent, uni.SubTag) {
+            return "C library declaration type position";
+        }
+        if isinstance(parent, uni.FuncSignature) and parent.return_type is cur {
+            return "C library declaration return type position";
         }
         cur = parent;
         parent = cur.parent;
