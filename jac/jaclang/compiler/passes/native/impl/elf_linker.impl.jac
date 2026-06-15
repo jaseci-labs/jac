@@ -12,7 +12,7 @@ import from jaclang.compiler.passes.native.linker_common {
     _build_strtab,
     _append_to_blob,
     _resolve_seg_vaddr,
-    _find_patch_target,
+    _resolve_patch_site,
     _find_entry_vaddr
 }
 
@@ -1018,8 +1018,9 @@ impl ElfLinker.build_executable -> bytes {
             }
         }
 
-        # Determine target buffer and base vaddr
-        _pt = _find_patch_target(
+        # Determine target buffer, in-buffer offset, and final vaddr.
+        site = _resolve_patch_site(
+            rela.offset,
             rela.target_sec,
             code_sections,
             rodata_sections,
@@ -1031,7 +1032,7 @@ impl ElfLinker.build_executable -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is None {
+        if site is None {
             # The relocation targets a section we do not place in the loadable
             # image (e.g. metadata like .eh_frame, whose relocations are also
             # filtered while parsing). There is nothing in the output to patch,
@@ -1039,9 +1040,7 @@ impl ElfLinker.build_executable -> bytes {
             # which would corrupt code if such a relocation were ever applied.
             continue;
         }
-        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        patch_off = sec_blob_off + rela.offset;
-        patch_vaddr = patch_base_vaddr + patch_off;
+        (patch_buf, patch_off, patch_vaddr) = site;
 
         # Apply via architecture-specific handler. Every relocation that reaches
         # here targets an emitted (loadable) section, so an unhandled type would
@@ -1863,7 +1862,8 @@ impl ElfLinker.build_shared_object -> bytes {
         if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
             continue;
         }
-        _pt = _find_patch_target(
+        site = _resolve_patch_site(
+            rela.offset,
             rela.target_sec,
             code_sections,
             rodata_sections,
@@ -1875,12 +1875,10 @@ impl ElfLinker.build_shared_object -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is None {
+        if site is None {
             continue;
         }
-        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        patch_off = sec_blob_off + rela.offset;
-        patch_vaddr = patch_base_vaddr + patch_off;
+        (patch_buf, patch_off, patch_vaddr) = site;
         sym_addr = 0;
         if rela.rtype in arch.gotpcrel_rtypes {
             # GOT-directed: resolve to the GOT slot holding the target address.
