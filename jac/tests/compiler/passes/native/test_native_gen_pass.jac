@@ -4386,3 +4386,20 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
     );
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
+
+# isinstance over a tuple mixing a supported and an unsupported type must raise
+# a structured error, not silently drop the unsupported arm (review of #6421).
+test "isinstance mixed tuple unsupported type errors" {
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "na_isinstance_mixed_tuple.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for mixed-tuple isinstance, got {codes}"
+    );
+}
