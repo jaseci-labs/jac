@@ -23,6 +23,7 @@ import from jaclang.jac0core.diagnostics {
     W2074,
     W2075,
     E2018,
+    E2027,
     E2055,
     E2083
 }

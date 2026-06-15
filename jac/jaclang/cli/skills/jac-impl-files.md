@@ -1,6 +1,6 @@
 ---
 name: jac-impl-files
-description: Splitting declarations from method bodies via impl blocks, .impl.jac files, impl/ and .impl/ directory layouts, variant modules (.sv/.cl/.na), .test.jac annexes, and package layout. Load when a source file grows past ~100 lines, or to separate a clean public-API surface from implementation.
+description: Splitting declarations from method bodies via impl blocks, .impl.jac files, impl/ and .impl/ directory layouts, client-component handler annexes, variant modules (.sv/.cl/.na), .test.jac annexes, and package layout. Load when a source file grows past ~100 lines, or to separate a clean public-API surface from implementation.
 ---
 
 A `.jac` file declares fields, enums, method signatures. Implementations live in `impl <name>` blocks - inline in the same file, or in auto-discovered `.impl.jac` annex files. The compiler auto-pairs them by **basename** - no `import` between them. Three layouts work (all verified):
@@ -51,12 +51,53 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 | `def fn_name(args) -> T;` | `impl fn_name(args) -> T { body }` |
 | `def Obj.method(args) -> T;` | `impl Obj.method(args) -> T { body }` |
 | `can event with NodeType entry;` | `impl Walker.event { body }` |
+| `async def loadData -> None;` (handler stub inside a `def:pub` component) | `impl app.loadData -> None { body }` - `has` state is in scope bare, no `self.` (see below) |
 | `obj X;` (decl-only archetype; also `node X;` etc.) | `impl X { has f: int = 0; def m -> int { ... } }` - the whole body |
 | `enum Color;` | `impl Color { RED = "r", GREEN = "g" }` |
 | `enum Color: int;` (typed-base) | `impl Color { RED = 1, GREEN = 2 }` |
 | `override def method;` (subclass) | `impl Subclass.method { body }` |
 | property accessor decls `getter -> T; setter(v: T);` | `impl Obj.prop.getter -> T { body }` / `impl Obj.prop.setter(v: T) { body }` |
 | `def method -> T abs;` (abstract) | (none on base - every subclass *should* `impl`; not compiler-enforced - see Rules) |
+
+## Client components: the handler annex
+
+The standard answer to "my `.cl.jac` component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use fullstack` scaffold ships and the dominant pattern in real Jac frontends - the `.cl.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
+
+```jac
+# frontend.cl.jac - state + stubs + render
+def:pub app -> JsxElement {
+    has items: list[str] = [],
+        draft: str = "",
+        loading: bool = False;
+
+    can with entry { loadItems(); }
+
+    async def loadItems -> None;            # handler stubs - bodies in the annex
+    async def addItem -> None;
+
+    return <div>
+        <input value={draft} onChange={lambda e: ChangeEvent { draft = e.target.value; }}/>
+        <button onClick={addItem}>Add</button>
+        {if loading { <p>Loading...</p> }}
+        {for it in items { <li key={it}>{it}</li> }}
+    </div>;
+}
+
+# frontend.impl.jac - bodies; `has` state is bare (no self.), writes re-render
+impl app.loadItems -> None {
+    loading = True;
+    items = ["first", "second"];            # real code: await a sv import call here
+    loading = False;
+}
+
+impl app.addItem -> None {
+    if not draft.strip() { return; }
+    items = items + [draft];
+    draft = "";
+}
+```
+
+(Shown as one file - it also compiles merged - but in practice the `impl` blocks go in `frontend.impl.jac`, paired by basename as usual.) The annex sees the head file's imports, including `sv import` stubs. Architecture-level guidance (stateful shell, prop-drilled sections) is in `jac-cl-organization`.
 
 ## Rules
 
@@ -76,4 +117,4 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 
 ## See also
 
-`jac-has-fields` (property accessor blocks) · `jac-testing` (`.test.jac`, `jac test`) · `jac-core-cheatsheet` (import dot semantics) · `jac-packaging` (shipping packages)
+`jac-has-fields` (property accessor blocks) · `jac-testing` (`.test.jac`, `jac test`) · `jac-cl-organization` (shell-component architecture using the handler annex) · `jac-core-cheatsheet` (import dot semantics) · `jac-packaging` (shipping packages)

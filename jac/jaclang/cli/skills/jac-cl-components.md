@@ -1,6 +1,6 @@
 ---
 name: jac-cl-components
-description: Writing a client-side UI component - shape, reactive state, mount effects, rendering, event handlers. Load when creating or editing any `.cl.jac` file. Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (file layout & hooks), `jac-cl-auth` (protected pages).
+description: Writing a client-side UI component - shape, reactive state, mount effects, props and Callable callbacks, JSX rendering, event handlers. Load when creating or editing any `.cl.jac` file. Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (architecture & file layout), `jac-cl-auth` (protected pages).
 ---
 
 `.cl.jac` files are client-side Jac. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `to cl:` header - the extension sets client context.
@@ -47,10 +47,10 @@ def:pub Counter() -> JsxElement {
 
 ## Props
 
-Components declare props as typed function params; callers pass as JSX attributes. Type callback props with `Callable[([ArgTypes], ReturnType)]` - `Callable` is ambient, so no import - which catches a mistyped call (wrong arity, wrong arg type, bogus `.member`) at compile time. The escape-hatch `any` disables that checking and earns a `W1037` warning; keep it for genuine interop boundaries only. Wrap incoming callbacks in a local handler so parent-side data (like a row's id) is closed over when the event fires.
+Components declare props as typed function params; callers pass as JSX attributes. Type callback props with `Callable[[ArgTypes], ReturnType]` - `Callable[[str], None]` for a one-string callback, `Callable[[], None]` for a no-arg one. `Callable` is ambient (no import), and the typing catches a mistyped call (wrong arity, wrong arg type, bogus `.member`) at compile time. (The parenthesized spelling `Callable[([str], None)]` also parses; prefer the Python form.) The escape-hatch `any` disables that checking and earns a `W1037` warning; keep it for genuine interop boundaries only. Wrap incoming callbacks in a local handler so parent-side data (like a row's id) is closed over when the event fires.
 
 ```jac
-def:pub BookCard(bookId: str, title: str, onDelete: Callable[([str], None)]) -> JsxElement {
+def:pub BookCard(bookId: str, title: str, onDelete: Callable[[str], None]) -> JsxElement {
     def handle_delete(e: MouseEvent) {
         onDelete(bookId);
     }
@@ -58,7 +58,7 @@ def:pub BookCard(bookId: str, title: str, onDelete: Callable[([str], None)]) -> 
 }
 ```
 
-Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`. For an optional callback, type it `Callable[([str], None)] | None` and guard the call: `if onDelete { onDelete(bookId); }`.
+Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`. For an optional callback, type it `Callable[[str], None] | None` and guard the call: `if onDelete { onDelete(bookId); }`.
 
 **`children` needs a default.** A component that accepts nested JSX declares `children: any = None`. Nested content does NOT count as a passed attribute, so a `children` param **without a default is a required prop** - every call site that passes any other attribute fails `E1102: Component 'Card' requires prop 'children'`. (`any` is the honest type: children can be an element, string, number, or list.)
 
@@ -108,6 +108,8 @@ Use the matching type even when you don't read `e`; for an event not in the tabl
 | `can with [dep] entry { ... }` | `useEffect(fn, [dep])` - re-runs when `dep` changes |
 | `can with (a, b) entry { ... }` | `useEffect(fn, [a, b])` |
 | `can with exit { ... }` | `useEffect(() => () => { ... }, [])` - cleanup on unmount |
+
+Multiple `can with entry` blocks in one component are fine and good for separating concerns - each compiles to its own `useEffect`, and dep-array effects (`can with [darkMode] entry`) sit alongside the mount effects.
 
 ⚠ **`entry` and `exit` compile to SEPARATE `useEffect` closures.** A handle created in `can with entry` (interval id, WebSocket, listener) is **invisible** in `can with exit` - the cleanup silently no-ops. For acquire-then-release pairs, use a single manual `useEffect` whose body returns the cleanup - and the outer lambda must NOT be annotated `-> None` (it returns a function):
 
@@ -160,11 +162,28 @@ Caveats specific to slot bodies:
 
 ## Pitfalls
 
-The first three bullets below are **silent runtime bugs** (⚠) - no compile error, no obvious failure mode at runtime. Read them every time.
+The first four bullets below are **silent runtime bugs** (⚠) - no compile error, no obvious failure mode at runtime. Read them every time.
 
 - ⚠ **In-place mutation does NOT re-render - rebind instead.** `has` state compiles to `useState`; React only re-renders on a *new* value assignment. `todos.append(x)`, `todos[0] = y`, `d["k"] = v`, `.sort()` all mutate the existing object - the UI silently never updates. This is the #1 Python-habit bug. Rebind a fresh value: `todos = todos + [x];`, `todos = [t for t in todos if jid(t) != tid];`, `d = {**d, "k": v};`.
 - ⚠ **Hooks + `has` BEFORE any conditional return.** React hooks must fire in the same order every render. `if not jacIsLoggedIn() { return <Navigate />; } has x: int = 0;` → white screen, no compile error.
 - ⚠ **Mount effects (`async can with entry`) fire even when the component returns `<Navigate>`.** Guard the EFFECT body with `if jacIsLoggedIn() { ... }`, not just the render - otherwise `def:priv` calls fire and return 401 silently.
+- ⚠ **Long-running async code reads a STALE snapshot of `has` state.** After an `await`, reading a reactive field back gives the render-time value, not the latest write - so `story = story + frame;` inside a streaming/polling loop re-appends to the same old string every iteration. Accumulate into a LOCAL and assign the whole value each step:
+
+```
+# FRAGILE - each read of reactive `story` inside the loop sees the render-time snapshot
+while feeding {
+    frame = await next_frame();
+    story = story + frame;      # appends to the SAME stale value every time
+}
+
+# CORRECT - local accumulator; assign the full value each iteration (each write re-renders)
+acc = "";
+while feeding {
+    frame = await next_frame();
+    acc = acc + frame;
+    story = acc;
+}
+```
 
 - **`has` fields are reactive state - assign directly.** `count = count + 1` re-renders. No `setCount`. Non-default fields come before defaulted ones (E2004 - see `jac-has-fields`).
 - **Derived values are locals, not `has` fields.** Anything computable from props/params/hook results gets recomputed every render - so it's a local. Putting it in `has` forces a top-level write to keep it in sync, which can cascade to React error #301. Rule: `has` is only for event-driven or async values (user input, fetch results, server data).
@@ -212,24 +231,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **Iterate with statement slots, NOT `.map()`.** `items.map(...)` on a Jac list fails E1030 - use `{for x in xs { <li>...</li> }}` (see "Statement slots" above; `enumerate` destructuring needs parens: `for (i, x) in enumerate(items)`). Inline `[<li>...</li> for i in items]` still works for one-liners.
 - **Dict / hook access (`useParams()[k]`, `useLocation()[k]`, generic `[key]`) returns `any` and yields JS `undefined` for missing keys.** Since `undefined !== null` in JS, both `x is None` and `x is not None` MISS undefined - `params["id"] is not None` returns True even when `:id` isn't in the route, and `str(undefined)` produces the literal string `"undefined"`. **Use a truthy check (`if x` / `if not x`) for hook/dict values - it catches both `None` and `undefined`.** The narrowing-friendly `is not None` form is still correct for typed Optionals (`T | None` from `sv import`-ed functions, function params, etc.) where `undefined` can't appear. (Also: `params.get("id")` runtime-fails in the browser since `useParams` returns a plain JS object - always use `[key]`.)
 - **`unsafe_html(x)` opts out of escaping for raw HTML.** Ambient builtin (no import). `{unsafe_html(c.html_blob)}` renders the string as raw HTML via `dangerouslySetInnerHTML` (React) or `innerHTML` (bare-serve). Use ONLY with trusted content - the `unsafe_` prefix is the security-review marker at the call site; never wrap user input or anything that crossed an unsanitized boundary.
-- **Guard None/null/undefined when iterating or dotting into server data.** Runtime-only failure (`Cannot read properties of null/undefined`), nothing at compile. Four hot spots - single-level access is the most common:
-
-```
-# FRAGILE - crashes if the value is None/null
-total = result.total_posts;                            # result is None → crash (SINGLE-LEVEL)
-status = result.recipe.status;                         # result.recipe is None → crash (NESTED)
-first = songs[0]["title"];                             # empty list → crash
-
-# SAFE - narrow, filter, or length-check first
-if result is not None { total = result.total_posts; }
-rows = [<Card ... /> for s in songs if s is not None];
-if len(songs) > 0 { first = songs[0]["title"]; }
-```
-
-Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />}`.
-
-**For server response objects (dicts/lists from `sv import` calls), prefer truthy checks (`if result {`) over `!= None`.** The `!=` operator uses deep equality which calls `Object.keys()` - crashes with `"Cannot convert undefined or null to object"` if the value is `null`/`undefined`. `!= None` is safe for primitives (strings, ints, bools) but not for complex objects returned from server calls.
-
+- **Guard None/null/undefined when iterating or dotting into server data.** Runtime-only failure (`Cannot read properties of null/undefined`), nothing at compile. Single-level access is the most common crash (`total = result.total_posts;` when `result` is None), then nested access, then `songs[0]["title"]` on an empty list. Narrow (`if result is not None { ... }`), filter (`[<Card .../> for s in songs if s is not None]`), or length-check (`if len(songs) > 0`) first; short-circuit in JSX also works - `{result and <X total={result.total_posts} />}`. For dicts/lists from `sv` calls, prefer truthy checks (`if result {`) over `!= None` - `!=` is deep equality (calls `Object.keys()`) and itself crashes on `null`/`undefined`; `!= None` is safe only for primitives.
 - **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, use the base `Event` type - not `any`, which earns a `W1037` warning (and capital `Any` is not the keyword, warning `W2001` "Name 'Any' may be undefined").
 - **Inline anonymous functions in JSX use `lambda`, NOT `def`.** `onClick={lambda (e: MouseEvent) { count = count + 1; }}` works; anonymous `def (...)` is a parse error regardless of return type - `def` requires a name. Prefer named `def` methods; inline `lambda` only for trivial one-liners.
 
@@ -238,6 +240,8 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 - **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
 - **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX.
+- **Module `glob`s can hold rich data - including JSX.** `glob _BUILDS: list[dict] = [{"name": "CLI", "icon": <Terminal size={15}/>}];` is a fine home for render-constant tables; iterate them in slots or comprehensions. `glob` is NOT reactive - anything that changes belongs in `has`.
+- **`jac format` can drop significant JSX whitespace** when reflowing mixed text + inline elements. Keep spacing that matters as explicit string children - `{" "}` between an element and text, `{" · "}` separators - those survive reformatting.
 
 ## See also
 

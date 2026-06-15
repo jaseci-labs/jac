@@ -300,6 +300,13 @@ Tag 3 = list pointer (any List.T* ptrtoint to i64)
 Tag 4 = dict pointer (any Dict.K:V* ptrtoint to i64)
 Tag 5 = set pointer  (any Set.T* ptrtoint to i64)
 Tag 6 = archetype/struct pointer (any %Arch* ptrtoint to i64)
+Tag 7 = bool (i1 zero-extended to i64)
+
+`bool` (tag 7) is kept distinct from `int` (tag 0) so `isinstance(x, bool)` can
+discriminate the two on an `any` operand, mirroring CPython where `bool ⊂ int`
+(`isinstance(True, bool)` and `isinstance(True, int)` are both true, but
+`isinstance(5, bool)` is false). The inverse unbox (_unbox_from_jacval) keys off
+the *target* type, not the tag, so a tag-7 payload still unboxes to i1/i64 fine.
 """
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     b = self.builder;
@@ -321,8 +328,9 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
     );
     if isinstance(value.type, ir.IntType) and value.type.width == 1 {
-        # bool (i1) → box as int (tag 0) via zero-extension
-        b.store(ir.Constant(i8, 0), tag_ptr);
+        # bool (i1) → tag 7, payload zero-extended (kept distinct from int so
+        # isinstance-on-`any` can tell `bool` from `int`; see the tag table).
+        b.store(ir.Constant(i8, 7), tag_ptr);
         ext = b.zext(value, i64, name="jv.bext");
         b.store(ext, payload_ptr);
     } elif isinstance(value.type, ir.IntType) {
@@ -417,7 +425,14 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
     if isinstance(target_type, ir.PointerType) {
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
-    return payload;
+    # No faithful unbox for a by-value aggregate (complex/range/slice/...): the
+    # JacVal payload is a single i64, so the value cannot round-trip (the box
+    # side cannot represent it either). Emit a clear diagnostic instead of
+    # silently returning raw bits, which would miscompile. `any -> concrete` is
+    # supported for scalars (int/bool/float/str) and pointer-shaped types (user
+    # obj/node, list/dict/set). See #6421.
+    self.emit(E5090, kind="expression", name=f"`any` unbox to {target_type}");
+    return ir.Constant(target_type, None);
 }
 
 """Generate code for a dict literal {k1: v1, k2: v2, ...}."""

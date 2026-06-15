@@ -1,6 +1,6 @@
 ---
 name: jac-walker-patterns
-description: Writing walkers that traverse the graph - the core of Object-Spatial Programming (OSP) in Jac. Entry points, moving between nodes, report/reports, spawn results, disengage/skip, exit abilities, and walker API responses. Load before creating, editing, or debugging any walker-based traversal or OSP code. Pair with `jac-node-edge-patterns` (the graph shape the walker moves through).
+description: Writing walkers that traverse the graph - the core of Object-Spatial Programming (OSP) in Jac. Entry points, visit/report, spawn results, disengage/skip, exit abilities, get-or-create `visit ... else`, lookup-base walker inheritance, walker API responses. Load when creating, editing, or debugging walker traversal or OSP code. Pair with `jac-node-edge-patterns` (the graph shape the walker moves through).
 ---
 
 A walker is a mobile procedure that enters nodes and runs type-matched entry points. Walker state lives on the walker via `has`; traversal is driven by `visit`; results come back via `report`. Entry points can live on **both** sides - the walker reacts to nodes it enters, and nodes can react to arriving walkers.
@@ -58,10 +58,61 @@ with entry {
 ## Traversal control
 
 - `skip;` ends the *current ability only* (like an early return) - the walker continues with its queue. `disengage;` halts the whole walker immediately - queued visits are discarded. Use `disengage` for search-style early exits.
-- `visit [-->] else { ... }` - the else body runs when there is nothing to visit (dead-end fallback).
+- `visit ... else { ... }` - the else body runs only when the visit enqueued **nothing**. Its main use is **get-or-create**: try to walk into a node, create it on miss, and visit the fresh one - found or created, the same downstream ability runs. `visit fresh` works directly on the connect-result list (`++>` returns a list):
+
+```jac
+node Day {
+    has date: str;
+}
+
+walker log_visit {
+    can run with Root entry {
+        today = "2026-06-12";
+        visit [here-->[?:Day, date == today]] else {
+            fresh = here ++> Day(date=today);
+            visit fresh;            # visit accepts the connect-result list
+        }
+    }
+
+    can record with Day entry {
+        print("on " + here.date);   # found OR just created - same code path
+    }
+}
+```
+
+Re-running is idempotent: the second run's `visit` finds the existing `Day`, so the `else` never fires (verified: two runs, one `Day` total).
+
 - Default queueing appends, so traversal is breadth-first. `visit :0: [-->];` inserts at the queue front - depth-first.
 - Typed context blocks dispatch on the runtime node type inside one ability: `->Dog{ print(here.name); }`. Union entries match several node types: `can checkup with Dog | Cat entry { ... }`.
-- Walkers inherit and override entry points - `walker VerboseAuditor(Auditor) { override can log with Root entry { ... } }` replaces the base ability for the same node type.
+- Walkers inherit: `walker Sub(Base)` reuses the base's `has` fields and abilities (`override can log with Root entry { ... }` replaces a base ability for the same node type). The high-leverage form is the **lookup-base pattern**: a base walker resolves the target node once (jid string -> `jobj` -> type guard -> `visit`), and each action walker subclasses it with a single entry ability - littleX shares 3 lookup bases across 10 action walkers this way:
+
+```jac
+node Tweet {
+    has content: str;
+    has likes: list[str] = [];
+}
+
+walker find_tweet {
+    has target_id: str = "";
+
+    can locate with Root entry {
+        target = jobj(self.target_id);
+        if isinstance(target, Tweet) {
+            visit [target];
+        }
+    }
+}
+
+walker like_tweet(find_tweet) {       # inherits target_id + locate
+    can like with Tweet entry {
+        here.likes.append("alice");
+        report here.likes;
+        disengage;
+    }
+}
+```
+
+`delete_tweet`, `add_comment`, ... are each one more subclass with one ability - the jid resolution and `isinstance` guard live in one place.
 
 ## Pitfalls
 

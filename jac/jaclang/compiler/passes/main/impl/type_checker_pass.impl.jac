@@ -26,6 +26,9 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         #   against the _JsxIntrinsicElements registry (not module scope) and
         #   uppercase component parts are resolved with JSX context by the
         #   JsxElement handler in the type evaluator.
+        # - ModuleCode.name: the label of a named entry block (e.g. `__main__`
+        #   in `with entry:__main__`) — an entry-point name, not a variable
+        #   reference; it has no symbol and is not an expression.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
             return;
         }
@@ -36,6 +39,9 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
             return;
         }
         if isinstance(nd.parent, uni.JsxElementName) {
+            return;
+        }
+        if isinstance(nd.parent, uni.ModuleCode) and nd.parent.name is nd {
             return;
         }
         self.evaluator.get_type_of_expression(nd);

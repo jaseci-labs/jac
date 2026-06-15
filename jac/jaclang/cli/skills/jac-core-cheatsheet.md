@@ -109,16 +109,18 @@ import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 
 **`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`.
 
-**Relative imports - what each dot means (Python-style):** each leading `.` walks ONE folder up from the importing file's directory. `sv import` carries the same dot semantics.
+**No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
+
+**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files / `cl { }` blocks), where the bundler resolves them. `sv import` carries the same dot semantics.
 
 | Dots | Meaning | Use when |
 |---|---|---|
-| `services.X`   | project-root absolute  | importing file is AT the root (e.g. `main.jac`) |
-| `.services.X`  | same folder            | `services/` content is a sibling file in this same folder |
+| `services.X`   | project-root absolute  | **default** - resolves from any depth in the project (server/native) |
+| `.services.X`  | same folder            | `services` is a sibling file in this same folder |
 | `..services.X` | one folder up          | importing file is one level deep (`components/X.cl.jac`) |
 | `...services.X`| two folders up         | importing file is two levels deep (`components/pages/X.cl.jac`) |
 
-If a file moves to a different depth, **the dot count must change**. Wrong dot count = silent import resolution failure = every imported name becomes `<Unknown>` → cascading type errors.
+A no-dot import is depth-independent: moving a file between directories never changes it. Dot-counted forms (`..`, `...`) DO break when a file moves to a different depth - wrong dot count = silent resolution failure = imported names become `<Unknown>` → cascading type errors. Prefer no-dot imports to avoid this.
 
 ## Also available (Python semantics, brace bodies)
 
@@ -134,7 +136,7 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 - **Unused names warn (`W2003`).** Prefix intentionally-unused names with `_`, or for unread exception bindings drop the clause: `except ValueError { ... }`, not `except ValueError as e`. A value bound only to *validate* still counts as unused - discard with `_ = int(s);`. This is the #1 reason otherwise-correct parsing/validation code fails `jac check`.
 - **Booleans are `True`/`False`, null is `None` - capitalized.** Lowercase `false` parses as an undefined name, so `return false;` fails with the *misleading* `E1002: Cannot return <Unknown>, expected bool`.
 - **Docstrings go immediately before a declaration, never inside its body** (`W0060`, often + `E0002`).
-- **Lambdas must be typed.** Expression form `lambda x: int : x + 1` (note the space before the body colon), parenthesized form `lambda (x: int, y: int) -> int : x * y`, or block form `lambda(x: int) -> int { return x; }`. The bare Python form `lambda x: x` parses but is untyped (W1051 fallout); `:x: x` and `<lambda x: x>` are hard parse errors.
+- **Lambdas must be typed.** Expression form `lambda x: int : x + 1` (note the space before the body colon), parenthesized form `lambda (x: int, y: int) -> int : x * y`, or block form `lambda(x: int) -> int { return x; }`. Block-lambda params don't need parens and the return type is optional - all idiomatic: zero-arg `lambda { onSign(); }`, single typed param `lambda v: str { gbName = v; }` (in client code also `lambda e: ChangeEvent { ... }`), multi-param `lambda exports: any, fps: int { ... }`. The bare Python form `lambda x: x` parses but is untyped (W1051 fallout); `:x: x` and `<lambda x: x>` are hard parse errors.
 - Ternary is **Python-style**: `A if cond else B`. NOT `cond ? A : B` - parse error.
 - **Python stdlib needs explicit import - Jac auto-imports nothing.** `datetime.now()` without `import from datetime { datetime }` = runtime `NameError`.
 - **`sv import` calls are `async` - always `await` them.** `items = fetch_items()` assigns a `Promise`, not the data.

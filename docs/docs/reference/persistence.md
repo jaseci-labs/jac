@@ -139,6 +139,24 @@ If you've used Jac before and remember "delete `.jac/data/` to run again after e
 
 ---
 
+## Dangling references and read-path healing
+
+Quarantine handles a document that *exists* but can't be loaded. A **dangling reference** is the opposite failure: a document that cites another document which is *gone*. A node's edge list names an edge that no longer exists; an edge names an endpoint node that no longer exists.
+
+Each graph mutation flushes as one [crash-atomic unit of work](#what-gets-persisted) in referential-integrity order, so a crash can only ever leave an unreferenced *orphan*, never a dangling reference. Danglers therefore come from history, not from new writes: data corrupted before that ordering shipped, or a backend bug. They still need handling, because the citing document is live and a naive traversal that touched the missing referent would raise on every read.
+
+**The read path heals them automatically.** When a traversal resolves a reference whose target is genuinely gone, it does not raise. Instead it:
+
+1. files the missing referent into the quarantine store under the `DANGLING_REF` reason code (so it surfaces in `jac db quarantine list`),
+2. prunes the stale citation from the citing document, staged as a normal edge-list write so the repair persists on the request's commit -- even a read-only request self-heals,
+3. skips the dead reference and continues, so the rest of the traversal returns normally.
+
+`DANGLING_REF` is deliberately distinct from the recoverable reasons (class-missing, schema-drift, cascade). A recoverable quarantine is left untouched on the read path -- its citations stay intact so `jac db recover` can restore the connection once you fix the cause. Only a referent that is absent *everywhere* (no live row, no recoverable quarantine) is treated as a genuine dangler and healed. Direct attribute access on a stale handle still raises: that is a programmer error, not a storage state, and only graph traversal heals.
+
+**`jac db fsck` is the offline backstop.** Read-path healing only fixes references a live request actually touches. `jac db fsck` scans the whole store for dangling references and orphans, and `jac db fsck repair` heals every dangler (filing it under `DANGLING_REF`) and collects orphan garbage in one transaction -- useful as a monitoring probe and for cleaning references no traversal has reached yet. See [CLI → `jac db fsck`](cli/index.md#jac-db-fsck).
+
+---
+
 ## Class renames: the alias decorator
 
 A renamed class is the most common reason rows go to quarantine: the stored row says `arch_module=__main__, arch_type=LegacyPerson`, but the live registry only has `__main__.Person`. Lookup fails, row quarantines.
@@ -426,9 +444,13 @@ jac db alias add "__main__.OldName" "__main__.NewName" --app app.jac
 
 # 5. Re-attempt every quarantined row.
 jac db recover-all --app app.jac
+
+# 6. Scan for referential-integrity violations (dangling refs, orphans);
+#    add `repair` to heal danglers and collect orphans.
+jac db fsck --app app.jac
 ```
 
-Full subcommand reference: [CLI → Database Operations](cli/index.md#database-operations).
+Full subcommand reference: [CLI → Database Operations](cli/index.md#database-operations). For the dangling-reference model behind step 6, see [Dangling references and read-path healing](#dangling-references-and-read-path-healing).
 
 ---
 
