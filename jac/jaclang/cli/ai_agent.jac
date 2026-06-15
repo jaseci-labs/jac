@@ -11,6 +11,7 @@ directly and builds the model from them before the session starts.
 """
 
 # Implementations live in impl/ai_agent.impl.jac.
+import from jaclang.cli.agent_api { AgentRequest }
 import from typing { Callable }
 import from byllm.lib { Model }
 import from byllm.parallel { mark_serialize }
@@ -764,7 +765,7 @@ walker AgentSession {
 
 def run_turn(message: str);
 def verify_and_continue(max_rounds: int = 3);
-def run_agent(req: object) -> int;
+def run_agent(req: AgentRequest) -> int;
 
 
 # ---------------------------------------------------------------------------

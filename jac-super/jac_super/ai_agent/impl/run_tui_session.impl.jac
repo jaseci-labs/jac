@@ -18,7 +18,9 @@ Frame format (Python -> binary):
 text_escaped: \n -> \\n, \\ -> \\\\
 """
 
-impl run_tui_session(req: any) -> int {
+import from jaclang.cli.agent_api { AgentRequest }
+
+impl run_tui_session(req: AgentRequest) -> int {
     import os;
     import subprocess;
     import threading;
@@ -43,7 +45,8 @@ impl run_tui_session(req: any) -> int {
         return 1;
     }
 
-    r: any = req;
+    typed_req: AgentRequest = req;
+    r: any = typed_req;
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");

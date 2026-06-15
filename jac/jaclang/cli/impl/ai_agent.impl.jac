@@ -13,6 +13,7 @@ import from pathlib { Path }
 import from byllm.lib { Model, IterationAction }
 import from byllm.config_loader { get_byllm_config }
 
+import from jaclang.cli.agent_api { AgentRequest }
 import from jaclang.compiler.code_intel { CodeIntelligence }
 import from jaclang.cli.console { console }
 import from jaclang.cli.guide_store { list_guides as gs_list, get_guide as gs_get }
@@ -2726,10 +2727,9 @@ failed turn reports its error but does not abort the session.
 When `req.ui` is set, hands off to `_run_ui_server`: launches the bundled Jac
 web app as a subprocess and opens it in the browser instead of the REPL.
 """
-impl run_agent(req: object) -> int {
+impl run_agent(req: AgentRequest) -> int {
     global agent_model;
-    # Access `req` untyped so attribute reads type-check without importing
-    # AgentRequest into this byLLM-only module.
+    # Access `req` untyped locally so optional-field reads stay ergonomic.
     r: any = req;
     # Seed the session working directory; every file tool and run_command
     # resolves against it, and a `cd` the model issues updates it.
