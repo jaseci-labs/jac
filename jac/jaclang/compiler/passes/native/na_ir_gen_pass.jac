@@ -407,6 +407,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     # Lowered LLVM type of a checked list type's element.
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Lowered LLVM element type of a checked Iterator[T] expression (#6403).
+    def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
@@ -812,8 +814,20 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> ir.Value;
 
     def _make_str_iter(str_val: ir.Value) -> ir.Value;
+    # Container iterators for first-class iter() over dict/set/range (#6403 M1).
+    def _dict_iter_next_fn(dict_key: str) -> ir.Function;
+    def _make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value;
+    def _set_iter_next_fn(elem_type_name: str, elem_type: ir.Type) -> ir.Function;
+    def _make_set_iter(
+        set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+    ) -> ir.Value;
+
+    def _range_iter_next_fn -> ir.Function;
+    def _make_range_iter(range_val: ir.Value) -> ir.Value;
     def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
     def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
+    # First-class next(it): pull one element (StopIteration at exhaustion).
+    def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
     def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
     def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);

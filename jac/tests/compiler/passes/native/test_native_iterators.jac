@@ -85,38 +85,69 @@ test "iter zip unequal lengths" {
     assert f() == 50;
 }
 
-# --- first-class iter() / next() ---
-# Deferred (phase 2): first-class iterator *values* (`it = iter(x); next(it)`,
-# `for x in it`) need generic element-type inference for the `iter`/`next`
-# builtins in the native type context (the checker currently leaves the element
-# type as an unbound `_T` / `SupportsNext[Any]`). The boxed-iterator codegen is
-# already in place; only the type-system surface is missing. Tracked in #6403.
+# --- first-class iter() / next() (#6403 phase 2) ---
+# `it = iter(x); next(it)` and `for x in it` over a stored iterator value, now
+# that the native checker infers `iter(x) -> Iterator[T]` / `next(it) -> T`
+# through the same __iter__/__next__ machinery the for-loop uses.
 test "iter next basic" {
-    import unittest;
-    raise unittest.SkipTest(
-        "first-class iter()/next() values need native generic inference (#6403 phase 2)"
-    );
     (eng, _) = compile_native("iter_protocol.na.jac");
     f = get_func(eng, "iter_next_basic", ctypes.c_int64);
     assert f() == 57;
 }
 
 test "iter for over stored iterator" {
-    import unittest;
-    raise unittest.SkipTest(
-        "first-class iter()/next() values need native generic inference (#6403 phase 2)"
-    );
     (eng, _) = compile_native("iter_protocol.na.jac");
     f = get_func(eng, "for_over_iter", ctypes.c_int64);
     assert f() == 10;
 }
 
 test "iter str iter next" {
-    import unittest;
-    raise unittest.SkipTest(
-        "first-class iter()/next() values need native generic inference (#6403 phase 2)"
-    );
     (eng, _) = compile_native("iter_protocol.na.jac");
     f = get_func(eng, "str_iter_next", ctypes.c_int64);
     assert f() == 2;
+}
+
+# next() past the end raises StopIteration (Python contract), caught here.
+test "iter next exhausted raises stopiteration" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "next_exhausted", ctypes.c_int64);
+    assert f() == 99;
+}
+
+# --- M1: first-class iter() over range / dict / set ---
+test "iter over range" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "for_over_range_iter", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "iter next over stepped range" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "next_range", ctypes.c_int64);
+    assert f() == 1013;
+}
+
+test "iter over descending range" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "for_over_range_desc", ctypes.c_int64);
+    assert f() == 15;
+}
+
+test "iter over dict yields keys" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "for_over_dict_iter", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "iter over set" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "for_over_set_iter", ctypes.c_int64);
+    assert f() == 12;
+}
+
+# --- composition: adapter over a stored iterator ---
+test "iter map over stored iterator" {
+    (eng, _) = compile_native("iter_protocol.na.jac");
+    f = get_func(eng, "map_over_stored", ctypes.c_int64);
+    assert f() == 12;
 }

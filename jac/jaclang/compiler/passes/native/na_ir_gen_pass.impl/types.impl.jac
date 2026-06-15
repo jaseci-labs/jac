@@ -239,6 +239,23 @@ impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | No
     return self._lower_type(args[0]);
 }
 
+"""Return the lowered LLVM element type of a checked `Iterator[T]` expression
+(the `T` a `next()` call or for-loop over the iterator yields), or None when
+the expression isn't a typed iterator. Mirrors `_list_elem_llvm_of` (#6403)."""
+impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    if not expr.type.mangle().startswith("Iterator[") {
+        return None;
+    }
+    args = expr.type.private.type_args or [];
+    if not args {
+        return None;
+    }
+    return self._lower_type(args[0]);
+}
+
 """Return the native element spec of a checked list type's element
 ("i64"/"f64"/"ptr"/"jacval"), or None when the expression isn't a typed list."""
 impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -291,6 +308,13 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         return self.struct_types[cname].as_pointer();
     }
     type_args = t.private.type_args or [];
+    # Iterator[T] / Iterable[T] (#6403): a first-class iterator is a boxed
+    # JacIter pointer. The element type T is recovered at the use site
+    # (next / for-loop) via _iter_elem_llvm_of, not from this layout.
+    if cname in ("Iterator", "Iterable") {
+        self._ensure_iter_types();
+        return self._jac_iter_type.as_pointer();
+    }
     # list[T] — bare `list` defaults to a list of i64.
     if cname == "list" {
         elem_llvm: ir.Type = ir.IntType(64);

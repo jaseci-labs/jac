@@ -284,6 +284,23 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
             }
         }
+        # First-class iterator builtins (#6403 phase 2). `iter(x)` boxes a
+        # JacIter over x (its element type flows from the checker's
+        # Iterator[T]); `next(it)` pulls one element and raises StopIteration
+        # at exhaustion. For-loop driving of map/filter/... and of a stored
+        # iterator is handled earlier in `_try_iter_protocol_for`.
+        if func_name == "iter" {
+            built = self._build_iter_from_expr(nd);
+            if built is not None {
+                (iter_val, _ename, _etype) = built;
+                return iter_val;
+            }
+            self._emit_unsupported_builtin_call(nd, "iter");
+            return None;
+        }
+        if func_name == "next" {
+            return self._codegen_next(nd);
+        }
         # Handle complex() constructor: complex(real, imag) -> JacComplex*
         if func_name == "complex" {
             params_l = nd.params or [];
