@@ -1,10 +1,19 @@
-"""Client-side runtime for Jac JSX and walker interactions.
+"""React (and Preact) client runtime shim for Jac JSX and framework bindings.
 
-Framework-agnostic: imports are written against `react`, and non-React
-backends (e.g. Preact) remap them at bundle time via `FrameworkBackend.
-vite_aliases` (`react` -> `preact/compat`). DOM mounting lives in the
-per-framework entry scripts (`react_entry` / `preact_entry`), so this
-module deliberately imports no `react-dom`.
+Framework-agnostic behavior (auth, walker/function fetch + auto-cache,
+localStorage, navigation, error reporting, zod-schema proxy) lives in
+`client_runtime_core.cl.jac`; this module imports and **re-exports** every core
+symbol so `@jac/runtime` keeps exposing the full surface from a single module.
+On top of that it adds the React-specific pieces: the `__jacJsx` element factory
+(React.createElement), router bindings (react-router-dom), forms
+(react-hook-form + zod), the `JacAwaiting` Suspense wrapper, and the error
+boundary.
+
+Imports are written against `react`; the Preact backend remaps them to
+`preact/compat` at bundle time via `FrameworkBackend.vite_aliases`. DOM mounting
+lives in the per-framework entry scripts, so this module imports no `react-dom`.
+The Solid runtime (`solid_runtime.cl.jac`) re-exports the same core but supplies
+its own `solid-js`-backed `__jacJsx`.
 """
 
 import from 'react' { * as React }
@@ -25,6 +34,80 @@ import from 'react-hook-form' { useForm }
 import from '@hookform/resolvers/zod' { zodResolver }
 import from 'zod' { z }
 
+# --- Framework-agnostic core: import + re-export so `@jac/runtime` is one module.
+import from jaclang.runtimelib.client_runtime_core {
+    navigate as _navigate,
+    __createJacSchema as ___createJacSchema,
+    __jacSpawn as ___jacSpawn,
+    jacSpawn as _jacSpawn,
+    __jacCallFunction as ___jacCallFunction,
+    __normalizeIdentity as ___normalizeIdentity,
+    __normalizeCredential as ___normalizeCredential,
+    jacSignup as _jacSignup,
+    jacLogin as _jacLogin,
+    jacLogout as _jacLogout,
+    jacIsLoggedIn as _jacIsLoggedIn,
+    jacSsoLogin as _jacSsoLogin,
+    jacSetToken as _jacSetToken,
+    __jacClearCache as ___jacClearCache,
+    __jacDesktopBroker as ___jacDesktopBroker,
+    __jacPollBrokerSession as ___jacPollBrokerSession,
+    __jacSleep as ___jacSleep,
+    __getApiBaseUrl as ___getApiBaseUrl,
+    __getLocalStorage as ___getLocalStorage,
+    __setLocalStorage as ___setLocalStorage,
+    __removeLocalStorage as ___removeLocalStorage,
+    __getEndpointEffects as ___getEndpointEffects,
+    __getCacheState as ___getCacheState,
+    __isFresh as ___isFresh,
+    __cacheGet as ___cacheGet,
+    __cacheSet as ___cacheSet,
+    __evictOldest as ___evictOldest,
+    __doWalkerFetch as ___doWalkerFetch,
+    __doFuncFetch as ___doFuncFetch,
+    __cachedEndpointCall as ___cachedEndpointCall,
+    __invalidateEndpoint as ___invalidateEndpoint,
+    __overlaps as ___overlaps,
+    __jacReportError as ___jacReportError,
+    __jacInstallErrorHandlers as ___jacInstallErrorHandlers
+}
+
+glob:pub navigate = _navigate,
+     __createJacSchema = ___createJacSchema,
+     __jacSpawn = ___jacSpawn,
+     jacSpawn = _jacSpawn,
+     __jacCallFunction = ___jacCallFunction,
+     __normalizeIdentity = ___normalizeIdentity,
+     __normalizeCredential = ___normalizeCredential,
+     jacSignup = _jacSignup,
+     jacLogin = _jacLogin,
+     jacLogout = _jacLogout,
+     jacIsLoggedIn = _jacIsLoggedIn,
+     jacSsoLogin = _jacSsoLogin,
+     jacSetToken = _jacSetToken,
+     __jacClearCache = ___jacClearCache,
+     __jacDesktopBroker = ___jacDesktopBroker,
+     __jacPollBrokerSession = ___jacPollBrokerSession,
+     __jacSleep = ___jacSleep,
+     __getApiBaseUrl = ___getApiBaseUrl,
+     __getLocalStorage = ___getLocalStorage,
+     __setLocalStorage = ___setLocalStorage,
+     __removeLocalStorage = ___removeLocalStorage,
+     __getEndpointEffects = ___getEndpointEffects,
+     __getCacheState = ___getCacheState,
+     __isFresh = ___isFresh,
+     __cacheGet = ___cacheGet,
+     __cacheSet = ___cacheSet,
+     __evictOldest = ___evictOldest,
+     __doWalkerFetch = ___doWalkerFetch,
+     __doFuncFetch = ___doFuncFetch,
+     __cachedEndpointCall = ___cachedEndpointCall,
+     __invalidateEndpoint = ___invalidateEndpoint,
+     __overlaps = ___overlaps,
+     __jacReportError = ___jacReportError,
+     __jacInstallErrorHandlers = ___jacInstallErrorHandlers;
+
+# --- React-specific surface -------------------------------------------------
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
 
 # React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
@@ -42,58 +125,7 @@ glob:pub useState = reactUseState,
      JacClientErrorBoundary = ErrorBoundary,
      JacSchema = __createJacSchema(z);
 
-def:pub __createJacSchema(zodLib: any) -> any;
 def:pub useRouter -> dict;
-def:pub navigate(path: str) -> None;
-async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
-def:pub __normalizeIdentity(x: any) -> dict;
-def:pub __normalizeCredential(x: any) -> dict;
-async def:pub jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
-) -> dict;
-
-async def:pub jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
-) -> bool;
-
-def:pub jacLogout -> None;
-def:pub jacIsLoggedIn -> bool;
-
-# SSO login. On the web, navigates to the server's `/sso/<platform>/<operation>`
-# endpoint (the server redirects back to the SPA callback with the token). In the
-# Jac-native desktop shell, hands the flow to the *system* browser via the
-# loopback broker (RFC 8252) and polls the broker session store until the token
-# lands -- returns True on success, False on timeout/failure.
-async def:pub jacSsoLogin(
-    platform: str, api_base: str = "", operation: str = "login"
-) -> bool;
-
-# Persist an auth token under the canonical `jac_token` key, clearing any cached
-# pre-auth responses (same invariant as jacLogin). Used by SSO callback pages.
-def:pub jacSetToken(token: str) -> None;
-
-# Drop every cached walker/function response (called on any auth change).
-def:pub __jacClearCache -> None;
-
-# The loopback broker URL prefix when running inside the Jac-native desktop
-# shell (set by the host's document-start bootstrap), else "".
-def:pub __jacDesktopBroker -> str;
-
-# Poll `GET <broker>/session` until a non-empty token appears or the timeout
-# elapses; returns the token, or "" on timeout.
-async def:pub __jacPollBrokerSession(
-    broker: str, timeout_ms: int, interval_ms: int
-) -> str;
-
-async def:pub __jacSleep(ms: int) -> None;
-def:pub __getApiBaseUrl -> str;
-def:pub __getLocalStorage(key: str) -> str;
-def:pub __setLocalStorage(key: str, value: str) -> None;
-def:pub __removeLocalStorage(key: str) -> None;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 
@@ -111,39 +143,6 @@ def:pub JacAwaiting(props: dict) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
 def:pub JacForm(props: dict) -> JsxElement;
-
-# ============================================================================
-# AUTO-CACHE INTERNALS - Compiler-driven caching for walker/function calls
-# ============================================================================
-def:pub __getEndpointEffects -> dict;
-def:pub __getCacheState -> dict;
-def:pub __isFresh(`entry: dict) -> bool;
-def:pub __cacheGet(key: str) -> dict;
-def:pub __cacheSet(key: str, data: any, ttl: int) -> None;
-def:pub __evictOldest -> None;
-async def:pub __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any;
-async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
-async def:pub __cachedEndpointCall(
-    endpoint_key: str, args_key: str, fetch_fn: any
-) -> any;
-
-def:pub __invalidateEndpoint(endpoint_key: str) -> None;
-def:pub __overlaps(list1: list, list2: list) -> bool;
-
-# ============================================================================
-# Client Error Reporting
-# ============================================================================
-# `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
-# captured by the boundary's onError; the JS `stack` is engine frames only.
-def:pub __jacReportError(
-    message: str,
-    stack: str = "",
-    url: str = "",
-    source: str = "",
-    componentStack: str = ""
-) -> None;
-
-def:pub __jacInstallErrorHandlers -> None;
 
 # onError prop for JacClientErrorBoundary. Wired by entry-script generators
 # so `info.componentStack` reaches the server (FallbackComponent's props

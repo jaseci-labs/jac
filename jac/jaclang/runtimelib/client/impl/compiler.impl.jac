@@ -396,6 +396,26 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
+    # The per-framework runtime shim re-exports the framework-agnostic surface
+    # from `client_runtime_core.cl.jac` (so `@jac/runtime` stays one module). The
+    # shim's compiled import resolves the core by its dotted module path
+    # (`./jaclang/runtimelib/client_runtime_core.js`); compile that sibling and
+    # emit it flat alongside the shim, then rewrite the import to the sibling path
+    # so Vite resolves it. Core symbols are already re-exported by the shim, so
+    # `all_exports` needs no addition.
+    core_path = runtime_utils_path.parent / 'client_runtime_core.cl.jac';
+    if core_path.exists() {
+        core_specifier = './jaclang/runtimelib/client_runtime_core.js';
+        if core_specifier in runtimeutils_js {
+            (core_js, core_mod, _) = self.jac_compiler.compile_module(core_path);
+            runtimeutils_js = runtimeutils_js.replace(
+                core_specifier, './client_runtime_core.js'
+            );
+            core_out = self.compiled_dir / 'client_runtime_core.js';
+            core_out.write_text(core_js, encoding='utf-8');
+            self._write_source_map(core_mod, str(core_path), core_out, core_js);
+        }
+    }
     runtime_out = self.compiled_dir / 'client_runtime.js';
     runtime_out.write_text(runtimeutils_js, encoding='utf-8');
     self._write_source_map(mod, str(runtime_utils_path), runtime_out, runtimeutils_js);
