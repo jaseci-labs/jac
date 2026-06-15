@@ -150,12 +150,24 @@ impl nacompile(
     output: str = "",
     scrub: bool = False,
     target: str = "",
-    shared: bool = False
+    shared: bool = False,
+    debug: bool = False
 ) -> int {
     # Validate input
     if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
+    }
+
+    # -g/--debug: emit DWARF line tables, DISubprograms and a .symtab so the
+    # ELF linker preserves them into a section-header table (gated on the IR
+    # carrying debug metadata). NaIRGenPass and the linker both gate on this
+    # env var, so set it before compiling. The metadata only appears on a fresh
+    # compile, so imply --scrub: a cached non-debug build would otherwise be
+    # reused and silently yield a binary GDB can't read.
+    if debug {
+        os.environ["JAC_NATIVE_DEBUG"] = "1";
+        scrub = True;
     }
     if not os.path.exists(filename) {
         console.error(f"File not found: {filename}");
