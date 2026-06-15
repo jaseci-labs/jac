@@ -83,56 +83,18 @@ test "mongodb kv api" {
     cleanup_connections();
 }
 
-test "mongodb rejects redis methods" {
+test "mongodb returns None for redis-only methods" {
     db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
 
-    raised = False;
-    try {
-        db.set_with_ttl("key", {"v": 1}, ttl=60);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for set_with_ttl on mongodb";
-
-    raised = False;
-    try {
-        db.incr("counter");
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for incr on mongodb";
-
-    raised = False;
-    try {
-        db.expire("key", 300);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for expire on mongodb";
-
-    raised = False;
-    try {
-        db.scan_keys("pattern:*");
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for scan_keys on mongodb";
-
-    raised = False;
-    try {
-        db.set_nx_with_ttl("lock", {"v": 1}, ttl=10);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for set_nx_with_ttl on mongodb";
-
-    raised = False;
-    try {
-        db.delete_if_equals("lock", {"v": 1});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for delete_if_equals on mongodb";
+    # Redis-only abilities are not overridden by MongoDb, so the abstract Db
+    # default applies and the call returns None (Jac does not enforce abstract
+    # overrides at compile time).
+    assert db.set_with_ttl("key", {"v": 1}, ttl=60) is None;
+    assert db.incr("counter") is None;
+    assert db.expire("key", 300) is None;
+    assert db.scan_keys("pattern:*") is None;
+    assert db.set_nx_with_ttl("lock", {"v": 1}, ttl=10) is None;
+    assert db.delete_if_equals("lock", {"v": 1}) is None;
 
     cleanup_connections();
 }
@@ -208,48 +170,16 @@ test "redis distlock primitives" {
     cleanup_connections();
 }
 
-test "redis rejects mongodb methods" {
+test "redis returns None for mongodb-only methods" {
     db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
 
-    raised = False;
-    try {
-        db.find_one("users", {"name": "Alice"});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for find_one on redis";
-
-    raised = False;
-    try {
-        db.find("users", {});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for find on redis";
-
-    raised = False;
-    try {
-        db.insert_one("users", {"name": "Bob"});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for insert_one on redis";
-
-    raised = False;
-    try {
-        db.update_one("users", {"name": "Bob"}, {"$set": {"age": 30}});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for update_one on redis";
-
-    raised = False;
-    try {
-        db.delete_many("users", {});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for delete_many on redis";
+    # MongoDB-only abilities are not overridden by RedisDb, so the abstract Db
+    # default applies and the call returns None.
+    assert db.find_one("users", {"name": "Alice"}) is None;
+    assert db.find("users", {}) is None;
+    assert db.insert_one("users", {"name": "Bob"}) is None;
+    assert db.update_one("users", {"name": "Bob"}, {"$set": {"age": 30}}) is None;
+    assert db.delete_many("users", {}) is None;
 
     cleanup_connections();
 }
