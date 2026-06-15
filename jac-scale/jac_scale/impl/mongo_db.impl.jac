@@ -65,10 +65,17 @@ impl MongoDb.find_one(
 }
 
 impl MongoDb.find(
-    col_name: str, filter: dict, projection: dict | None = None
+    col_name: str,
+    filter: dict,
+    projection: dict | None = None,
+    limit: int | None = None
 ) -> Cursor | list {
     col: Any = self._get_mongo_collection(col_name);
-    return col.find(filter, projection);
+    cursor = col.find(filter, projection);
+    if limit is not None {
+        cursor = cursor.limit(limit);
+    }
+    return cursor;
 }
 
 impl MongoDb.count_documents(col_name: str, filter: dict) -> int {

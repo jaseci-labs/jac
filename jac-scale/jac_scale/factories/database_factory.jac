@@ -99,7 +99,7 @@ class DatabaseProviderFactory {
             return Redis.from_url(resolved_uri, **(config or {}));
         } elif (db_type_enum == DatabaseType.FIRESTORE) {
             require_optional("google.cloud.firestore", "firebase");
-            import from google.cloud.firestore { Client as FirestoreClient }
+            import from jac_scale._optdeps.firestore { FirestoreClient }
             return FirestoreClient(project=resolved_uri, **(config or {}));
         } else {
             raise ValueError(f"Unsupported database type: {db_type_enum}");

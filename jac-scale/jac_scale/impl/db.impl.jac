@@ -18,6 +18,7 @@ def get_db -> Db {
 impl get_firestore_db(db_name: str = 'jac_db', project_id: (str | None) = None) -> Db {
     import from jac_scale.db { get_firestore_client }
     import from jac_scale.firestore_db { FirestoreDb }
+    import from jac_scale.factories.database_factory { DatabaseType }
     return FirestoreDb(
         client=get_firestore_client(project_id=project_id),
         db_name=db_name,

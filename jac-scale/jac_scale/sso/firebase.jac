@@ -67,14 +67,18 @@ obj FirebaseSSOProvider(SSOProvider) {
         }
         fa: any = firebase_admin;
         cred_mod: any = credentials;
-        # Initialize with Application Default Credentials.
-        # In GCP / Firebase environments this is automatic; for local dev,
-        # set GOOGLE_APPLICATION_CREDENTIALS.
+        # Use a named app keyed by project_id so that multiple
+        # FirebaseSSOProvider instances with different project IDs each get
+        # their own isolated Firebase Admin app.  The default (unnamed) app is
+        # intentionally avoided to prevent cross-project token verification.
+        app_name = f"jac_sso_{self.project_id}";
         try {
-            self._app = fa.get_app();
+            self._app = fa.get_app(name=app_name);
         } except ValueError {
             cred = cred_mod.ApplicationDefault();
-            self._app = fa.initialize_app(cred, {'projectId': self.project_id});
+            self._app = fa.initialize_app(
+                cred, {'projectId': self.project_id}, name=app_name
+            );
         }
     }
 

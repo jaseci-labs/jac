@@ -145,6 +145,8 @@ impl GcsStorage.get_url(
     }
 
     return blob.generate_signed_url(
-        version="v4", expiration=timedelta(seconds=expires_in or 3600), method="GET"
+        version="v4",
+        expiration=timedelta(seconds=expires_in if expires_in is not None else 3600),
+        method="GET"
     );
 }

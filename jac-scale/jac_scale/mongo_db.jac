@@ -33,7 +33,10 @@ obj MongoDb(Db) {
     ) -> dict | None;
 
     def find(
-        col_name: str, filter: dict, projection: dict | None = None
+        col_name: str,
+        filter: dict,
+        projection: dict | None = None,
+        limit: int | None = None
     ) -> Cursor | list;
 
     def count_documents(col_name: str, filter: dict) -> int;

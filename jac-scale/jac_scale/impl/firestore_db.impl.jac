@@ -3,7 +3,12 @@ import from uuid { uuid4 }
 import from jac_scale._db_helpers { _validate_not_read_only }
 
 # ===== FIRESTORE HELPERS =====
-"""Generate Firestore collection name with db namespace."""
+"""Generate Firestore collection name with db namespace.
+
+Uses `__` as a separator. Do not use `__` in `db_name` or `col_name` — the
+separator is not escaped, so names containing `__` can produce ambiguous
+collection paths that silently collide with other (db_name, col_name) pairs.
+"""
 def _firestore_collection_name(db_name: str, col_name: str) -> str {
     return f"{db_name}__{col_name}";
 }
@@ -36,8 +41,24 @@ def _firestore_document_body(document: dict) -> dict {
     return body;
 }
 
-"""Convert Mongo-style update payloads into Firestore field updates."""
+glob _SUPPORTED_UPDATE_OPERATORS: frozenset = frozenset(['$set']);
+
+"""Convert Mongo-style update payloads into Firestore field updates.
+
+Only `$set` and flat field maps are supported. Passing `$inc`, `$unset`,
+`$push`, or other Mongo operators raises ValueError rather than silently
+writing a field named `'$inc'` etc. to Firestore.
+"""
 def _firestore_update_fields(update_data: dict) -> dict {
+    for key in update_data {
+        if key.startswith('$') and key not in _SUPPORTED_UPDATE_OPERATORS {
+            raise ValueError(
+                f"Unsupported update operator '{key}' for Firestore. "
+                "Only '$set' and flat field maps are supported. "
+                "Use Firestore-native operations for '$inc', '$unset', etc."
+            );
+        }
+    }
     fields = update_data['$set'].copy()
         if '$set' in update_data
         else update_data.copy();
@@ -379,7 +400,8 @@ impl FirestoreDb.update_many(
     col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
 ) -> UpdateResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
+    col = self._get_firestore_collection(col_name);
+    query = _apply_firestore_filters(col, filter);
     update_fields = _firestore_update_fields(update_data);
 
     # Stream matches straight into batches rather than materializing the
@@ -389,10 +411,7 @@ impl FirestoreDb.update_many(
     modified_count = 0;
 
     for snapshot in query.stream() {
-        batch.update(
-            self._get_firestore_collection(col_name).document(snapshot.id),
-            update_fields
-        );
+        batch.update(col.document(snapshot.id), update_fields);
         modified_count += 1;
         (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
     }
@@ -403,9 +422,7 @@ impl FirestoreDb.update_many(
         }
         seed_document = _firestore_seed_document(filter, update_data);
         doc_id = _firestore_document_id(seed_document) or str(uuid4());
-        self._get_firestore_collection(col_name).document(doc_id).set(
-            _firestore_document_body(seed_document), merge=True
-        );
+        col.document(doc_id).set(_firestore_document_body(seed_document), merge=True);
         return UpdateResult(matched_count=0, modified_count=0, upserted_id=doc_id);
     }
 
@@ -415,7 +432,8 @@ impl FirestoreDb.update_many(
 
 impl FirestoreDb.delete_many(col_name: str, filter: dict) -> DeleteResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
+    col = self._get_firestore_collection(col_name);
+    query = _apply_firestore_filters(col, filter);
 
     # Stream matches straight into batches rather than materializing the
     # whole result set: memory stays bounded to one batch (500 writes).
@@ -424,7 +442,7 @@ impl FirestoreDb.delete_many(col_name: str, filter: dict) -> DeleteResult {
     deleted_count = 0;
 
     for snapshot in query.stream() {
-        batch.delete(self._get_firestore_collection(col_name).document(snapshot.id));
+        batch.delete(col.document(snapshot.id));
         deleted_count += 1;
         (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
     }
