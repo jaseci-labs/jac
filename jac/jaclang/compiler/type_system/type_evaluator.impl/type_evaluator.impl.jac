@@ -4583,7 +4583,6 @@ impl TypeEvaluator._get_loop_header_type(
     # them and only roll back keys this header stages during its own attempts.
     outer_staged = set(self._flow_loop_staging.keys());
     result: TypeBase | None = None;
-    prev_repr: str | None = None;
     try {
         attempts = 0;
         while attempts < max_attempts {
@@ -4604,13 +4603,14 @@ impl TypeEvaluator._get_loop_header_type(
             inner_visited = set();
             inner_visited.add(flow_node_id);
             new_result = self._merge_flow_preds(target, flow_node, inner_visited);
-            result = new_result;
-            new_repr = str(new_result) if new_result is not None else None;
-            # Converged: the published partial stopped changing.
-            if attempts > 1 and new_repr == prev_repr {
+            # Converged: the published partial stopped changing. Structural
+            # (mutual-assignability) comparison, not string equality, so union
+            # member reordering across iterations can't mask a real fixed point.
+            if attempts > 1 and self._narrowed_types_equiv(new_result, result) {
+                result = new_result;
                 break;
             }
-            prev_repr = new_repr;
+            result = new_result;
             self._flow_loop_pending[cache_key] = new_result;
         }
     } finally {
@@ -4624,8 +4624,11 @@ impl TypeEvaluator._get_loop_header_type(
         }
         self._flow_loop_depth -= 1;
     }
-    # The converged header type is final regardless of nesting depth -- commit it
-    # durably so later reads through this loop join reuse it.
+    # The converged header type is final regardless of nesting depth, so write
+    # it to the DURABLE cache directly rather than via `_flow_cache_put`. At this
+    # point `_flow_loop_depth` is already decremented; for a nested inner loop
+    # (depth still > 0) `_flow_cache_put` would mis-route this final value into
+    # staging, where the outer loop's per-attempt rollback could then discard it.
     self._flow_node_type_cache[cache_key] = result;
     return result;
 }
@@ -4637,6 +4640,19 @@ impl TypeEvaluator._loop_prebody_type(
     target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
     return self._merge_flow_preds(target, flow_node, visited, skip_loop_backedges=True);
+}
+
+"""Structural equivalence of two narrowed-type results for fixed-point
+convergence. Order-independent (mutual assignability) so union member
+reordering across iterations cannot mask a real fixed point. None means
+'widen to declared', so two Nones are equivalent and None vs a type is not."""
+impl TypeEvaluator._narrowed_types_equiv(
+    a: TypeBase | None, b: TypeBase | None
+) -> bool {
+    if a is None or b is None {
+        return a is None and b is None;
+    }
+    return self.assign_type(a, b) and self.assign_type(b, a);
 }
 
 """True when `cache_key` has a usable entry in the staged (loop-iteration) or

@@ -956,5 +956,25 @@ test "bug_postloop_narrowing" {
             ]
         );
     }
-    assert seen_returns == 3 , f"expected 3 returns, saw {seen_returns}";
+    assert seen_returns == 4 , f"expected 4 returns, saw {seen_returns}";
+
+    # Nested loops: a `for` inside a `while` must converge so the inner loop's
+    # `str` and the outer loop's `int` both survive the outer post-loop join.
+    nested = None;
+    for d in mod.get_all_sub_nodes(uni.Ability) {
+        if d.sym_name == "nested_union" {
+            nested = d;
+        }
+    }
+    assert nested is not None , "nested_union ability not found";
+    for n in nested.get_all_sub_nodes(uni.ReturnStmt) {
+        if n.expr {
+            ty = str(evaluator.get_type_of_expression(n.expr));
+            # Outer loop assigns int, inner loop assigns the str literal "s";
+            # both must survive the outer post-loop join.
+            assert "int" in ty and ("str" in ty or "\"s\"" in ty) , (
+                f"nested-loop post-loop type lost a level's assignment: {ty}"
+            );
+        }
+    }
 }

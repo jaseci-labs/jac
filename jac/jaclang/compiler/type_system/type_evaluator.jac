@@ -741,6 +741,7 @@ obj TypeEvaluator {
         target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
+    def _narrowed_types_equiv(a: TypeBase | None, b: TypeBase | None) -> bool;
     def _merge_flow_preds(
         target: NarrowingTarget,
         flow_node: uni.UniCFGNode,

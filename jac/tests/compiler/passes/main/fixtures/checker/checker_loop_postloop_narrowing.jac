@@ -26,3 +26,16 @@ def iter_for_union -> int | None {
     }
     return x;
 }
+
+def nested_union(rows: list[list[int]]) -> int | str | None {
+    v: int | str | None = None;
+    for row in rows {
+        v = 5;
+        for cell in row {
+            if cell > 0 {
+                v = "s";
+            }
+        }
+    }
+    return v;
+}
