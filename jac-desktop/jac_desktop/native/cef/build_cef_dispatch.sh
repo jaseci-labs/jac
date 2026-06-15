@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Build libcef_dispatch.so from cef_dispatch.na.jac via jac nacompile --shared.
+# Build libcef_dispatch.so: splice cef_platform.na.jac into cef_dispatch.na.jac.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-SRC="$HERE/cef_dispatch.na.jac"
+BUILD_DIR="$HERE/.build"
+mkdir -p "$BUILD_DIR"
+BUILD_SRC="$BUILD_DIR/cef_dispatch_build.na.jac"
 SO="$HERE/libcef_dispatch.so"
 
 command -v jac >/dev/null 2>&1 || { echo "ERROR: jac not found on PATH." >&2; exit 1; }
 
-echo ">> compiling libcef_dispatch.so (jac nacompile --shared)"
-jac nacompile --shared "$SRC" -o "$SO"
+awk -v plat="$HERE/cef_platform.na.jac" '
+  /^# PLATFORM$/ { while ((getline line < plat) > 0) print line; next }
+  { print }
+' "$HERE/cef_dispatch.na.jac" > "$BUILD_SRC"
 
-# Ensure libcef.so is found in the same directory at runtime.
+echo ">> compiling libcef_dispatch.so (jac nacompile --shared)"
+jac nacompile --shared "$BUILD_SRC" -o "$SO"
+
 if command -v patchelf >/dev/null 2>&1; then
     patchelf --set-rpath '$ORIGIN' "$SO"
 else

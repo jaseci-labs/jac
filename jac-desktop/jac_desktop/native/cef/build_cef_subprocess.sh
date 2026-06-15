@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-# Build cef-subprocess from cef_subprocess.na.jac via jac nacompile.
+# Build cef-subprocess: splice cef_platform.na.jac into cef_subprocess.na.jac.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-SRC="$HERE/cef_subprocess.na.jac"
+BUILD_DIR="$HERE/.build"
+mkdir -p "$BUILD_DIR"
+BUILD_SRC="$BUILD_DIR/cef_subprocess_build.na.jac"
 BIN="$HERE/cef-subprocess"
 
 command -v jac >/dev/null 2>&1 || { echo "ERROR: jac not found on PATH." >&2; exit 1; }
 
-echo ">> compiling cef-subprocess (jac nacompile)"
-jac nacompile "$SRC" -o "$BIN"
+awk -v plat="$HERE/cef_platform.na.jac" '
+  /^# PLATFORM$/ { while ((getline line < plat) > 0) print line; next }
+  /^# ENTRY$/ { next }
+  { print }
+' "$HERE/cef_subprocess.na.jac" > "$BUILD_SRC"
 
-# Ensure libcef.so is found in the same directory at runtime.
+echo ">> compiling cef-subprocess (jac nacompile)"
+jac nacompile "$BUILD_SRC" -o "$BIN"
+
 if command -v patchelf >/dev/null 2>&1; then
     patchelf --set-rpath '$ORIGIN' "$BIN" 2>/dev/null || \
         echo "WARNING: patchelf could not set rpath (section headers stripped); libcef.so must be on LD_LIBRARY_PATH at runtime" >&2

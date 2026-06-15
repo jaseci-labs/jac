@@ -195,8 +195,8 @@ import from "libcef.so" {
             get_render_handler: int = 0,
             get_request_handler: int = 0,
             on_process_message_received: int = 0;
-    }  """Helpers for argv building (two int fields = argv[0..1])"""
-    obj cef_argv1_jac_t {
+    }  """Two-field helper for argv / pointer packing via memcpy."""
+    obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
     }  """cef_app_t - 80 bytes"""
@@ -301,6 +301,7 @@ import from "libcef.so" {
     }
 }  # import from libcef.so
 
+# PLATFORM
 glob g_pending_url: str = "",
      g_pending_title: str = "",
      g_pending_w: int = 800,
@@ -310,10 +311,6 @@ glob g_pending_url: str = "",
      g_exe_dir_buf: int = 0,
      g_exe_path_buf: int = 0,
      g_cached_args: int = 0,
-     g_main_argv1: cef_argv1_jac_t = cef_argv1_jac_t(),
-     g_argv_wrap: cef_argv1_jac_t = cef_argv1_jac_t(),
-     g_cmdline_buf: int = 0,
-     g_dispatch_argv_arr: int = 0,
      # Static vtable instances
      g_lsh: cef_life_span_handler_t = cef_life_span_handler_t(),
      g_bph: cef_browser_process_handler_t = cef_browser_process_handler_t(),
@@ -335,6 +332,11 @@ def _log(msg: str) {
     write(2, newline, 1);
 }
 
+def:pub cef_dispatch_get_exe_dir -> str {
+    _init_exe_dir;
+    return g_exe_dir_buf;
+}
+
 def _init_exe_dir {
     global g_exe_dir_buf,g_exe_path_buf;
     if g_exe_dir_buf != 0 {
@@ -348,10 +350,8 @@ def _init_exe_dir {
         return;
     }
     memset(buf + n, 0, 1);
-    # Save full exe path before truncating for dir
     g_exe_path_buf = calloc(1, 4096);
     memcpy(g_exe_path_buf, buf, n + 1);
-    # Find last '/' (ASCII 47) and truncate there
     slash: int = strrchr(buf, 47);
     if slash != 0 {
         memset(slash, 0, 1);
@@ -359,17 +359,13 @@ def _init_exe_dir {
     g_exe_dir_buf = buf;
 }
 
-def:pub cef_dispatch_get_exe_dir -> str {
-    _init_exe_dir();
-    return g_exe_dir_buf;
-}
-
 def:pub cef_platform_bootstrap {
-    _init_exe_dir();
+    _init_exe_dir;
     # Disable AT-SPI2 D-Bus accessibility probe (causes cef_initialize hang on Arch/Wayland)
     setenv("NO_AT_BRIDGE", "1", 0);
     # Point fontconfig at the bundled minimal config to avoid Arch 48-guessfamily.conf stall
-    if getenv("FONTCONFIG_FILE") == 0 && g_exe_dir_buf != 0 {
+    fc_val: int = getenv("FONTCONFIG_FILE");
+    if fc_val == 0 && g_exe_dir_buf != 0 {
         fc_buf: int = calloc(1, 4096);
         strcpy(fc_buf, g_exe_dir_buf);
         strcat(fc_buf, "/minimal-fonts.conf");
@@ -391,19 +387,6 @@ def:pub cef_dispatch_getenv_set(name: str) -> i32 {
 
 def:pub cef_dispatch_log(msg: str) {
     _log(msg);
-}
-
-def _cef_add_ref(self: int) { }
-def _cef_release(self: int) -> int {
-    return 0;
-}
-
-def _cef_has_one_ref(self: int) -> int {
-    return 1;
-}
-
-def _cef_has_at_least_one_ref(self: int) -> int {
-    return 1;
 }
 
 def _on_before_close(self: int, browser: int) {
@@ -481,127 +464,75 @@ def _init_vtables {
     }
     g_lsh = cef_life_span_handler_t(
         size=80,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         on_before_close=_on_before_close,
     );
     g_bph = cef_browser_process_handler_t(
         size=80,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         on_context_initialized=_on_context_initialized,
     );
     g_rph = cef_render_process_handler_t(
         size=112,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         on_context_created=_on_context_created,
     );
     g_cli = cef_client_t(
         size=192,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         get_life_span_handler=_get_life_span_handler,
     );
     g_dispatch_app = cef_app_t(
         size=80,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         on_before_command_line_processing=_on_before_cmdline,
         # get_browser_process_handler=_get_browser_process_handler,
         # get_render_process_handler=_get_render_process_handler,
     );
     g_stub_app = cef_app_t(
         size=80,
-        add_ref=_cef_add_ref,
-        release=_cef_release,
-        has_one_ref=_cef_has_one_ref,
-        has_at_least_one_ref=_cef_has_at_least_one_ref,
+        add_ref=cef_stub_add_ref,
+        release=cef_stub_release,
+        has_one_ref=cef_stub_has_one_ref,
+        has_at_least_one_ref=cef_stub_has_at_least_one_ref,
     );
     g_vtables_ready = 1;
 }
 
 
-"""Build cef_main_args_t by reading /proc/self/cmdline (null-separated args).
-This works for both the main process (argc=1, no --type) and when the
-binary is spawned as a CEF subprocess (argc>1, has --type=gpu-process etc.).
-"""
 def:pub cef_dispatch_main_args_create -> int {
-    global g_cmdline_buf,g_dispatch_argv_arr,g_main_argv1,g_argv_wrap;
-    # Read /proc/self/cmdline
-    fd: i32 = open("/proc/self/cmdline", 0);
-    if fd >= 0 {
-        buf: int = calloc(1, 65536);
-        n: int = read(fd, buf, 65535);
-        close(fd);
-        if n > 0 {
-            memset(buf + n, 0, 2);  # double-null sentinel
-            g_cmdline_buf = buf;
-            # Count argc
-            argc: int = 0;
-            pos: int = 0;
-            done: int = 0;
-            while pos < n && done == 0 {
-                arg_len: int = strlen(buf + pos);
-                if arg_len == 0 {
-                    done = 1;
-                } else {
-                    pos = pos + arg_len + 1;
-                    argc = argc + 1;
-                }
-            }
-            if argc > 0 {
-                # Build argv[] pointer array
-                argv_arr: int = calloc(argc + 1, 8);
-                g_dispatch_argv_arr = argv_arr;
-                memset(argv_arr + argc * 8, 0, 8);
-                pos = 0;
-                i: int = 0;
-                pw: cef_argv1_jac_t = cef_argv1_jac_t();
-                while i < argc {
-                    pw.p0 = buf + pos;
-                    memcpy(argv_arr + i * 8, pw, 8);
-                    ailen: int = strlen(buf + pos);
-                    pos = pos + ailen + 1;
-                    i = i + 1;
-                }
-                # Build cef_main_args_t: { i32 argc, i32 pad, ptr argv }
-                result: int = calloc(1, 16);
-                # Encode argc as little-endian i32: copy low 4 bytes of int64 value
-                pw.p0 = argc;
-                memcpy(result, pw, 4);
-                g_argv_wrap.p0 = argv_arr;
-                memcpy(result + 8, g_argv_wrap, 8);
-                _log("args: using cmdline");
-                return result;
-            }
-        } else {
-            free(buf);
-        }
+    args: int = cef_main_args_create();
+    if args != 0 {
+        _log("args: using cmdline");
+        return args;
     }
-    # Fallback: build argc=1, argv=[exe_path] from /proc/self/exe
-    _init_exe_dir();
+    _init_exe_dir;
     if g_exe_path_buf != 0 {
         _log("args: using exe_path fallback");
     } else {
         _log("args: exe_path MISSING");
     }
-    g_main_argv1.p0 = g_exe_path_buf;
-    g_main_argv1.p1 = 0;
+    argv_one: cef_ptr_wrap_t = cef_ptr_wrap_t();
+    argv_one.p0 = g_exe_path_buf;
+    argv_one.p1 = 0;
     buf2: int = calloc(1, 16);
-    memset(buf2, 1, 1);  # argc=1
-    g_argv_wrap.p0 = g_main_argv1;
-    memcpy(buf2 + 8, g_argv_wrap, 8);
+    memset(buf2, 1, 1);
+    memcpy(buf2 + 8, argv_one, 8);
     return buf2;
 }
 
@@ -713,7 +644,7 @@ def:pub cef_dispatch_set_pending_browser(
 def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
     global g_browser_pending;
     cef_dispatch_set_pending_browser(url, title, width, height);
-    _init_vtables();
+    _init_vtables;
     wi: int = cef_dispatch_window_info_create(title, width, height);
     bs: int = cef_dispatch_browser_settings_create();
     ok: i32 = cef_dispatch_create_browser(wi, g_cli, url, bs);
@@ -724,8 +655,8 @@ def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int)
 
 def:pub cef_dispatch_execute_process -> i32 {
     global g_cached_args;
-    cef_platform_bootstrap();
-    _init_vtables();
+    cef_platform_bootstrap;
+    _init_vtables;
     _log("execute_process");
     g_cached_args = cef_dispatch_main_args_create();
     code: i32 = cef_execute_process(g_cached_args, g_stub_app, 0);
@@ -741,10 +672,10 @@ def:pub cef_dispatch_execute_process -> i32 {
 }
 
 def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
-    cef_platform_bootstrap();
-    _init_vtables();
+    cef_platform_bootstrap;
+    _init_vtables;
     _log("startup: initializing CEF");
-    _init_exe_dir();
+    _init_exe_dir;
     # Build locales path: exe_dir + "/locales"
     locales_buf: int = calloc(1, 4096);
     if g_exe_dir_buf != 0 {
