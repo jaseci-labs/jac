@@ -777,6 +777,40 @@ test "_put_node_atomic persists a cleared-to-{} dict field on mongo:latest (#629
 }
 
 
+test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the atomic path" {
+    # Pins that the whole-value $literal wrap stores `$`-prefixed keys (e.g. the Serializer's `$ref`/`$type`) as data, not as misread pipeline operators.
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    ref_like = {"$ref": "deadbeefdeadbeefdeadbeefdeadbeef", "$type": "node"};
+    inst = _MongoEmptyDictNode(label="seed");
+    anchor = cast(NodeAnchor, inst.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    inst.settings = ref_like;
+    inst.__dict__['__jac_dirty_fields__'] = {'settings'};
+    fake_edge_id = str(uuid4());
+    backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
+
+    col = client["jac_test_l123"]["_anchors"];
+    doc = col.find_one({'_id': str(anchor.id)});
+    assert doc is not None , (
+        "None document means the pipeline $set tried to evaluate the "
+        "$-prefixed keys as operators — the $literal wrap must store them "
+        "as data."
+    );
+    arch_data = cast(dict, doc.get('data', {}).get('archetype', {}));
+    assert arch_data.get('settings') == ref_like , (
+        "a dict with $-prefixed keys must round-trip verbatim through the "
+        f"atomic path; got settings={arch_data.get('settings')!r}"
+    );
+
+    backend.close();
+}
+
+
 # mongo:6.0 is the production image and the only supported version where a bare
 # empty dict in a pipeline $set is rejected (40180); 6.1+ accepts them. The
 # $literal wrap makes clear-to-{} persist identically on every version. See #6167.

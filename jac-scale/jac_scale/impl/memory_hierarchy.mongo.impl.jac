@@ -113,21 +113,6 @@ def _strip_empty_dicts(v: object) -> object {
 }
 
 
-"""Recursively wrap empty-dict leaves in `{'$literal': {}}` so a pipeline $set stores `{}` instead of erroring 40180 (works on all server versions, preserving clear-to-{})."""
-def _wrap_empty_dicts_literal(v: object) -> object {
-    if isinstance(v, dict) {
-        if not v {
-            return {'$literal': {}};
-        }
-        return {k: _wrap_empty_dicts_literal(vv) for (k, vv) in v.items()};
-    }
-    if isinstance(v, list) {
-        return [_wrap_empty_dicts_literal(item) for item in v];
-    }
-    return v;
-}
-
-
 # Field-hash dirty detection lives in jaclang.runtimelib.changeset — one
 # shared implementation for the runtime's collect pass and every backend.
 """Build a stored document for an anchor, including Layer 2 fingerprint
@@ -831,15 +816,10 @@ impl MongoBackend._put_node_atomic(
         arch = anchor.archetype if anchor.is_populated() else None;
 
         # Serialize only the intent's archetype fields. `fields` comes from the
-        # collect pass — the single owner of dirty detection. The pipeline $set
-        # below rejects empty-dict leaves (error 40180), so wrap them in
-        # `{'$literal': {}}` to still persist a cleared field as `{}`.
-        serialized: dict[str, object] = Serializer.serialize_fields(anchor, fields)
+        # collect pass — the single owner of dirty detection.
+        partial_data: dict[str, object] = Serializer.serialize_fields(anchor, fields)
             if fields
             else {};
-        partial_data: dict[str, object] = cast(
-            dict, {k: _wrap_empty_dicts_literal(v) for (k, v) in serialized.items()}
-        );
 
         # Non-archetype top-level fields (e.g. access): strip empty dicts; whole-object replace + defaults-on-load lose nothing.
         full = dict(Serializer.serialize(anchor, include_type=True));
@@ -861,7 +841,7 @@ impl MongoBackend._put_node_atomic(
             set_doc[f"data.{k}"] = v;
         }
         for (k, v) in partial_data.items() {
-            set_doc[f"data.archetype.{k}"] = v;
+            set_doc[f"data.archetype.{k}"] = {'$literal': v};
         }
         set_doc['data.edges'] = {
             '$setUnion': [
