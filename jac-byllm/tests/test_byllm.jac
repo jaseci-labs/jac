@@ -202,6 +202,18 @@ test "streaming + conversation persists assistant message and emits dicts" {
     assert "STREAM_CONV_PASS" in stdout_value;
 }
 
+test "streaming generator iterates safely from a different Context" {
+    # Regression: pre-fix, the wrapper finally raised
+    # ValueError: Token was created in a different Context
+    # when SSE/run_in_executor drove the generator on a thread-pool worker.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_cross_context", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CROSS_CONTEXT_STREAM_PASS" in stdout_value;
+}
+
 test "by expr" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
