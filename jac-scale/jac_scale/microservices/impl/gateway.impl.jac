@@ -925,6 +925,8 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_admin_endpoints();
     self.register_logs_endpoints();
     self.register_llm_telemetry_endpoints();
+    # /admin/workloads/* (Prometheus-backed) for the in-admin Services page.
+    self.register_workloads_endpoints();
     # /admin/traces/* (Tempo proxy) for the in-admin Traces page.
     self.register_traces_endpoints();
     self.register_ops_endpoints();
@@ -940,6 +942,6 @@ impl MicroserviceGateway._install_admin_api -> None {
 
     logger.info(
         "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
     );
 }

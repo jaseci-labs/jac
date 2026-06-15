@@ -24,6 +24,7 @@ import from jac_scale.microservices.runtime.util {
 # admin UI loads but every fetch() falls through to the SPA fallback and
 # React fails on `Unexpected token '<'` (or spins on "Loading logs...").
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
+import from jac_scale.admin.workloads { JacAPIServerWorkloads }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
 import from jac_scale.admin.ops { JacAPIServerOps }
@@ -52,7 +53,7 @@ gateway's existing FastAPI app, then calls the inherited
 `register_admin_endpoints` + `register_logs_endpoints` +
 `register_llm_telemetry_endpoints`.
 """
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,
