@@ -389,7 +389,7 @@ Each service also gets an autoscaler (an HPA by default, or a KEDA `ScaledObject
 when `autoscaler_engine = "keda"` is set in `[plugins.scale.kubernetes]`) and a
 PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.enabled = false`.
 
-**KEDA scale-down timing:** the observed scale-down time is the sum of `autoscaler_cooldown` (KEDA's inactivity window) plus the Kubernetes HPA stabilization window (default 5 minutes). Setting `autoscaler_cooldown = 60` does not mean pods are removed after 60 seconds; Kubernetes will still wait out its own stabilization window on top. To get faster scale-down, reduce `autoscaler_cooldown` and also patch the HPA stabilization window via `keda.sh/downscale-stabilization` annotation, or accept the default 5-minute floor.
+**KEDA scale-down timing:** `autoscaler_cooldown` only applies when scaling down to 0 replicas (requires `idle_replicas = 0`). When `min_replicas > 0`, scaling down from N to min is handled entirely by the Kubernetes HPA stabilization window (default 5 minutes), and `autoscaler_cooldown` has no effect on it. To reduce the scale-down delay in this case, patch the HPA stabilization window via the `keda.sh/downscale-stabilization` annotation on the ScaledObject, or accept the default 5-minute floor.
 
 **`autoscaler_polling_interval` only applies with scale-to-zero:** KEDA emits an advisory when `pollingInterval` is set but `min_replicas > 0` and `idle_replicas` is not set. The polling interval only affects how quickly KEDA evaluates triggers when scaling down to zero replicas. For normal min/max autoscaling, the Kubernetes HPA control loop governs the evaluation cadence instead.
 
