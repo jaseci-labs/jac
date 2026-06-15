@@ -219,6 +219,9 @@ obj MonitoringDeployer {
         };
         try {
             prometheus_rbac_v1.read_cluster_role(name=prometheus_cluster_role_name);
+            prometheus_rbac_v1.replace_cluster_role(
+                name=prometheus_cluster_role_name, body=prometheus_cluster_role
+            );
         } except ApiException as e {
             if e.status == 404 {
                 prometheus_rbac_v1.create_cluster_role(body=prometheus_cluster_role);
@@ -249,6 +252,9 @@ obj MonitoringDeployer {
         try {
             prometheus_rbac_v1.read_cluster_role_binding(
                 name=prometheus_cluster_role_name
+            );
+            prometheus_rbac_v1.replace_cluster_role_binding(
+                name=prometheus_cluster_role_name, body=prometheus_crb
             );
         } except ApiException as e {
             if e.status == 404 {

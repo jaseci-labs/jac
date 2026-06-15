@@ -8,7 +8,10 @@ Kubernetes pod-naming and status heuristics that the endpoints rely on.
 """Map replica counts to a UI-friendly status.
 
 Picks the worst-case label so a workload with any failing replica surfaces as
-'Broken' even if some are still running.
+'Broken' even if some are still running. Known limitation: a workload stuck with
+ready=0, desired>0 and no restarts (e.g. ImagePullBackOff or indefinitely
+Pending) falls through to 'Starting' since restart count is the only failure
+signal available here; the pods endpoint exposes the true pod phase for that.
 """
 def phase_to_status(ready: int, desired: int, restarts: int) -> str {
     if desired > 0 and ready == 0 and restarts > 0 {

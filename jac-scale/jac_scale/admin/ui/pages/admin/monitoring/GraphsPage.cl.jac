@@ -67,7 +67,7 @@ cl {
             return points[n - 1]["v"];
         }
 
-        # Drawing area inside the 900x260 viewBox: x:[90,880] y:[20,210].
+        # Drawing area inside the 900x240 viewBox: x:[90,880] y:[20,210].
         # Left margin (90) holds Y labels, bottom margin holds X labels.
         def chartLine(points: list, maxV: float) -> str {
             n = len(points);
