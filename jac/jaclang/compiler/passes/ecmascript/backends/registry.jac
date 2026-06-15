@@ -25,6 +25,12 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
         _BACKENDS["preact"] = backend;
         return backend;
     }
+    if framework == "solid" {
+        import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
+        backend = SolidBackend();
+        _BACKENDS["solid"] = backend;
+        return backend;
+    }
     raise ValueError(f"[{E5081.code}] {E5081.format_message(framework=framework)}");
 }
 
