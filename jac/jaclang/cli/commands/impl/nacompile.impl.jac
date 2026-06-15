@@ -275,7 +275,11 @@ impl nacompile(
     # write a broken binary while printing no error.
     if prog.errors_had {
         for _err in prog.errors_had {
-            console.print(str(_err));
+            # `pretty_print` (not `str`) renders the source-location span AND
+            # the diagnostic's `help_text` — the same renderer `jac check` /
+            # `jac run` use. `str(_err)` drops help, so native E5090 guidance
+            # (unsupported import / cross-module OSP) never reached the user.
+            console.print(_err.pretty_print());
         }
         return 1;
     }
@@ -293,7 +297,7 @@ impl nacompile(
         }
         if prog.errors_had {
             for err in prog.errors_had {
-                console.error(f"  {err}");
+                console.error(err.pretty_print());
             }
         }
         return 1;

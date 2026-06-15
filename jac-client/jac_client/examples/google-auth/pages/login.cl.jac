@@ -3,7 +3,7 @@ import from "@jac/runtime" { Navigate, useNavigate }
 import from '..lib.auth' { AuthContext }
 import from '..components.Button' { Button }
 
-cl def:pub Login -> JsxElement {
+def:pub Login -> JsxElement {
     auth = useContext(AuthContext);
     navigate = useNavigate();
 

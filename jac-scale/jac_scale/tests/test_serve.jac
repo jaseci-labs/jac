@@ -172,7 +172,11 @@ def _start_server(
         cwd=str(fixtures_dir) if not extra_args else None
     );
 
-    max_attempts = 50;
+    # ~60s budget (0.5s sleep per attempt): a cold-cache start compiles the
+    # fixture and any uncached package modules through full type inference
+    # (typed-tree contract), which can exceed the old ~25s window on slower
+    # CI runners. Warm starts exit the loop early.
+    max_attempts = 120;
     server_ready = False;
 
     for _ in range(max_attempts) {

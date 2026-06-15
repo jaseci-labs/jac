@@ -9,7 +9,7 @@ update from the poll loop.
 """
 
 import from react { useRef, useEffect }
-cl import from "cytoscape" { default as cytoscape }
+import from "cytoscape" { default as cytoscape }
 sv import from ..server { GraphNode, GraphEdge }
 
 def:pub PhaseGraph(

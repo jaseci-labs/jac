@@ -53,7 +53,12 @@ import from jaclang.jac0core.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.jac0core.modresolver { infer_language }
+import from jaclang.jac0core.modresolver {
+    infer_language,
+    find_jac_project_root,
+    push_import_base,
+    pop_import_base
+}
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
 import type from http.server { BaseHTTPRequestHandler }
@@ -86,7 +91,14 @@ glob plugin_manager = plugin.PluginManager('jac'),
      # poison a live ctx. Live behavior always follows the ctx; these
      # values are only consulted during ctx construction.
      _default_base_path_dir: list = [os.getcwd()],
-     _default_full_target_path: list = [None];
+     _default_full_target_path: list = [None],
+     # Shared-root resolver seed. Slot 0 holds the callable an API server
+     # registers at startup to map the internal guest user to its root id;
+     # slot 1 caches the resolved id (root ids are stable per deployment).
+     # When no resolver is registered (CLI, scripts, embedders) `root.shared`
+     # falls back to the current context's root — in those single-user
+     # contexts the caller IS the shared graph's owner.
+     _shared_root_resolver: list = [None, None];
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -188,6 +200,56 @@ def _prefetch_edges(origin: list[NodeArchetype]) -> None {
     if node_ids {
         ctx.mem.batch_get(node_ids);
     }
+}
+
+"""Resolve a possibly-stub reference to a live anchor, healing danglers.
+
+Given the no-transactions stance of the storage layer, brief inter-document
+inconsistency is inherent, so a dangling reference is a legitimate runtime
+state — not an exception. Before this boundary existed, touching a stub
+whose referent was deleted (the #6587 corruption minted before the
+ChangeSet delete-ordering shipped) raised `ValueError: ... is not a valid
+reference` on *every* traversal shape, 500-ing the affected user's reads.
+
+`resolve_ref` makes traversal resolve-or-skip: return the populated anchor
+if it loads; otherwise skip-and-heal — log, file the dangler under
+DANGLING_REF, prune the stale citation from `referrer` — and return None so
+the loop continues. Direct attribute access on a stale handle still raises
+(programmer error, not a storage state); this is for graph traversal only.
+"""
+def resolve_ref(
+    stub: (Anchor | None), referrer: (Anchor | None) = None
+) -> (Anchor | None) {
+    if stub is None {
+        return None;
+    }
+    if stub.is_populated() {
+        return stub;
+    }
+    stub.populate();
+    if stub.is_populated() {
+        return stub;
+    }
+    ctx = JacRuntimeInterface.get_context();
+    # A referent that is recoverable-quarantined (schema drift / class missing)
+    # is not a permanent dangler: leave it and its citations to the existing
+    # quarantine/recovery machinery (`jac db recover`). Only genuinely-absent
+    # referents are healed. (DANGLING_REF rows are excluded by the gate, so a
+    # stub we already filed last pass is re-healed, not skipped.)
+    if ctx.mem.is_recoverable_quarantine(stub.id) {
+        return None;
+    }
+    ref_repr = referrer.id if referrer is not None else '?';
+    logger.error(
+        f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
+        f"{ref_repr} does not resolve; quarantining and pruning"
+    );
+    try {
+        ctx.mem.quarantine_ref(referrer, stub);
+    } except Exception as e {
+        logger.debug(f"heal of dangling ref {stub.id} failed: {e}");
+    }
+    return None;
 }
 
 """Jac Node Operations."""
@@ -930,6 +992,23 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
             Storage instance (LocalStorage by default)
         """
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
+
+    """Get the L3 persistent backend (hookable for plugins).
+
+        A DB-backend plugin (Postgres, etc.) supplies its own PersistentMemory
+        here instead of cloning the whole execution-context joint. Because
+        every hook is firstresult, the core default returns None so
+        TieredMemory falls back to SqliteMemory; a plugin that returns a
+        backend wins, composing with both core bare-serve and jac-scale.
+
+        Args:
+            config: resolved backing config (db_path, base_path, target_path)
+                so the backend can select its own keys.
+
+        Returns:
+            A PersistentMemory instance, or None to use the default.
+        """
+    static def get_persistent_memory(config: dict) -> any;
 }
 
 """Generate three helper classes based on a plugin class.
@@ -1115,6 +1194,29 @@ class JacRuntime(JacRuntimeInterface) {
         Mutates only the seed — already-constructed contexts are unaffected.
         """
     static def set_full_target_path(target_path: (str | None)) -> None;
+
+    """Return the deployment's shared root — the root every unauthenticated
+    request runs on (surfaced in Jac as `root.shared`). Resolution goes
+    through the resolver an API server registered at startup; when none is
+    registered (CLI, scripts, embedders) the current context's root is
+    returned, since single-user contexts have no separate shared graph.
+
+    Default policy: the shared root is a commons — its `access.all` is
+    floored to CONNECT on access, so every user can read it and attach to
+    it without app-side arming. Nodes users hang on the shared graph stay
+    owned by their author and closed until the author grants. Apps may
+    lower the root's level explicitly (any level other than NO_ACCESS is
+    respected, e.g. ReadPerm for a read-only commons).
+    """
+    static def get_shared_root -> Root;
+
+    """Register (or clear, with None) the callable that maps the internal
+    guest user to its root id (the shared root). API servers call this at
+    startup; replacing the resolver invalidates the cached id.
+    """
+    static def set_shared_root_resolver(
+        resolver: (Callable[([], (str | None))] | None)
+    ) -> None;
 
     """Install the process-global execution context for CLI and other
     non-server callers. Server request paths use `push_request_context`
